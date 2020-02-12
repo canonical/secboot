@@ -25,7 +25,7 @@ import (
 
 const (
 	// Default RSA2048 EK handle, see section 7.8 of "TCG TPM v2.0 Provisioning Guidance" Version 1.0, Revision 1.0, 15 March 2017
-	ekHandle  tpm2.Handle = 0x81010001
+	ekHandle tpm2.Handle = 0x81010001
 
 	// SHA-256 is mandatory to exist on every PC-Client TPM
 	// XXX: Maybe dynamically select algorithms based on what's available on the device?

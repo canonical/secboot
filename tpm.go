@@ -55,7 +55,7 @@ const (
 )
 
 var (
-	oidExtensionSubjectAltName     = asn1.ObjectIdentifier{2, 5, 29, 17} // id-ce-subjectAltName, see section 4.2.16 of RFC5280
+	oidExtensionSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17} // id-ce-subjectAltName, see section 4.2.16 of RFC5280
 
 	// TCG specific OIDs, see section 4 of "TCG EK Credential Profile For TPM Family 2.0; Level 0", Version 2.1, Revision 13, 10 December 2018.
 	oidTcgAttributeTpmManufacturer = asn1.ObjectIdentifier{2, 23, 133, 2, 1} // tcg-at-tpmManufacturer
@@ -76,8 +76,8 @@ type TPMConnection struct {
 	*tpm2.TPMContext
 	verifiedEkCertChain      []*x509.Certificate
 	verifiedDeviceAttributes *TPMDeviceAttributes
-	ek	                 tpm2.ResourceContext
-	provisionedSrk	         tpm2.ResourceContext
+	ek                       tpm2.ResourceContext
+	provisionedSrk           tpm2.ResourceContext
 	hmacSession              tpm2.SessionContext
 }
 

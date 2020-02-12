@@ -28,14 +28,14 @@ const (
 )
 
 var (
-	EkCertHandle = ekCertHandle
-	EkHandle = ekHandle
-	EkTemplate = ekTemplate
-	OidExtensionSubjectAltName = oidExtensionSubjectAltName
+	EkCertHandle                   = ekCertHandle
+	EkHandle                       = ekHandle
+	EkTemplate                     = ekTemplate
+	OidExtensionSubjectAltName     = oidExtensionSubjectAltName
 	OidTcgAttributeTpmManufacturer = oidTcgAttributeTpmManufacturer
-	OidTcgAttributeTpmModel = oidTcgAttributeTpmModel
-	OidTcgAttributeTpmVersion = oidTcgAttributeTpmVersion
-	OidTcgKpEkCertificate = oidTcgKpEkCertificate
+	OidTcgAttributeTpmModel        = oidTcgAttributeTpmModel
+	OidTcgAttributeTpmVersion      = oidTcgAttributeTpmVersion
+	OidTcgKpEkCertificate          = oidTcgKpEkCertificate
 )
 
 func SetOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) {
