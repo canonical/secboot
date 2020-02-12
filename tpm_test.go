@@ -331,18 +331,18 @@ func TestConnectToDefaultTPM(t *testing.T) {
 		run(t, false, nil)
 	})
 
-	//t.Run("Provisioned", func(t *testing.T) {
-	//	func() {
-	//		tpm := connectAndClear(t)
-	//		defer closeTPM(t, tpm)
+	t.Run("Provisioned", func(t *testing.T) {
+		func() {
+			tpm := connectAndClear(t)
+			defer closeTPM(t, tpm)
 
-	//		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-	//			t.Fatalf("ProvisionTPM failed: %v", err)
-	//		}
-	//	}()
+			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+				t.Fatalf("ProvisionTPM failed: %v", err)
+			}
+		}()
 
-	//	run(t, true, nil)
-	//})
+		run(t, true, nil)
+	})
 
 	t.Run("InvalidEK", func(t *testing.T) {
 		func() {
@@ -532,19 +532,19 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 		}
 	})
 
-	//t.Run("Provisioned", func(t *testing.T) {
-	//	// Test that we verify successfully with the properly provisioned persistent EK
-	//	func() {
-	//		tpm := connectAndClear(t)
-	//		defer closeTPM(t, tpm)
+	t.Run("Provisioned", func(t *testing.T) {
+		// Test that we verify successfully with the properly provisioned persistent EK
+		func() {
+			tpm := connectAndClear(t)
+			defer closeTPM(t, tpm)
 
-	//		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-	//			t.Fatalf("ProvisionTPM failed: %v", err)
-	//		}
-	//	}()
+			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+				t.Fatalf("ProvisionTPM failed: %v", err)
+			}
+		}()
 
-	//	run(t, bytes.NewReader(testEncodedEkCertChain), true, nil, nil)
-	//})
+		run(t, bytes.NewReader(testEncodedEkCertChain), true, nil, nil)
+	})
 
 	t.Run("CallerProvidedEkCert", func(t *testing.T) {
 		// Test that we can verify without a TPM provisioned EK certificate

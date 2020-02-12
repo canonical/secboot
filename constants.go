@@ -24,8 +24,13 @@ import (
 )
 
 const (
+	// Default RSA2048 SRK handle, see section 7.8 of "TCG TPM v2.0 Provisioning Guidance" Version 1.0, Revision 1.0, 15 March 2017
+	srkHandle tpm2.Handle = 0x81000001
+
 	// Default RSA2048 EK handle, see section 7.8 of "TCG TPM v2.0 Provisioning Guidance" Version 1.0, Revision 1.0, 15 March 2017
 	ekHandle tpm2.Handle = 0x81010001
+
+	lockNVHandle tpm2.Handle = 0x01801100 // Global NV handle for locking access to sealed key objects
 
 	// SHA-256 is mandatory to exist on every PC-Client TPM
 	// XXX: Maybe dynamically select algorithms based on what's available on the device?
