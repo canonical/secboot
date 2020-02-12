@@ -47,7 +47,7 @@ func main() {
 
 	var buffer bytes.Buffer
 
-	buffer.WriteString("package fdeutil\n\n")
+	buffer.WriteString("package secboot\n\n")
 	buffer.WriteString("var (\n")
 	buffer.WriteString("\trootCAHashes = [][]byte{\n")
 
@@ -81,7 +81,7 @@ func main() {
 	}
 
 	buffer.WriteString("\t}\n")
-	buffer.WriteString(")")
+	buffer.WriteString(")\n")
 
 	if err := ioutil.WriteFile(flag.Args()[1], buffer.Bytes(), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot write output file: %v\n", err)
