@@ -757,13 +757,13 @@ func saveEkCertificateChain(data *ekCertData, dest string) error {
 //
 // If parentsOnly is true, this function will only save the parent certificates as long as the endorsement key certificate can be
 // reliably obtained from the TPM.
-func FetchAndSaveEkCertificateChain(tpm *TPMConnection, parentsOnly bool, dest string) error {
+func FetchAndSaveEkCertificateChain(tpm *TPMConnection, parentsOnly bool, destPath string) error {
 	data, err := fetchEkCertificateChain(tpm.TPMContext, parentsOnly)
 	if err != nil {
 		return err
 	}
 
-	return saveEkCertificateChain(data, dest)
+	return saveEkCertificateChain(data, destPath)
 }
 
 // SaveEkCertificateChain will save the specified EK certificate and associated parent certificates atomically to the specified file
@@ -774,7 +774,7 @@ func FetchAndSaveEkCertificateChain(tpm *TPMConnection, parentsOnly bool, dest s
 // If the EK certificate can be obtained reliably from the TPM during establishment of a connection, then it can be omitted in order
 // to save a file that only contains parent certificates. In this case, SecureConnectToDefaultTPM will attempt to obtain the EK
 // certificate from the TPM and verify it against the supplied parent certificates.
-func SaveEkCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificate, dest string) error {
+func SaveEkCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificate, destPath string) error {
 	var data ekCertData
 	if ekCert != nil {
 		data.Cert = ekCert.Raw
@@ -783,7 +783,7 @@ func SaveEkCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificat
 		data.Parents = append(data.Parents, c.Raw)
 	}
 
-	return saveEkCertificateChain(&data, dest)
+	return saveEkCertificateChain(&data, destPath)
 }
 
 // EncodeCertificateChain will write the specified EK certificate and associated parent certificates to the specified io.Writer in a
