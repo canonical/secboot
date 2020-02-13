@@ -362,6 +362,24 @@ func connectToDefaultTPM() (*tpm2.TPMContext, error) {
 	return tpm, nil
 }
 
+func isExtKeyUsageAny(usage []x509.ExtKeyUsage) bool {
+	for _, u := range usage {
+		if u == x509.ExtKeyUsageAny {
+			return true
+		}
+	}
+	return false
+}
+
+func isExtKeyUsageEkCertificate(usage []asn1.ObjectIdentifier) bool {
+	for _, u := range usage {
+		if u.Equal(oidTcgKpEkCertificate) {
+			return true
+		}
+	}
+	return false
+}
+
 // checkChainForEkCertUsage checks whether the specified certificate chain is valid for a TPM endorsement key certificate.
 // For any certificate in the chain that defines extended key usage, that key usage must either be anyExtendedKeyUsage (RFC5280),
 // or it must contain tcg-kp-EKCertificate.
@@ -370,23 +388,18 @@ func checkChainForEkCertUsage(chain []*x509.Certificate) bool {
 		return false
 	}
 
-NextCert:
 	for i := len(chain) - 1; i >= 0; i-- {
 		cert := chain[i]
 		if len(cert.ExtKeyUsage) == 0 && len(cert.UnknownExtKeyUsage) == 0 {
 			continue
 		}
 
-		for _, usage := range cert.ExtKeyUsage {
-			if usage == x509.ExtKeyUsageAny {
-				continue NextCert
-			}
+		if isExtKeyUsageAny(cert.ExtKeyUsage) {
+			continue
 		}
 
-		for _, usage := range cert.UnknownExtKeyUsage {
-			if usage.Equal(oidTcgKpEkCertificate) {
-				continue NextCert
-			}
+		if isExtKeyUsageEkCertificate(cert.UnknownExtKeyUsage) {
+			continue
 		}
 
 		return false
