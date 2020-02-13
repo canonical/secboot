@@ -87,7 +87,7 @@ func (t *TPMConnection) VerifiedEkCertChain() []*x509.Certificate {
 	return t.verifiedEkCertChain
 }
 
-// VeririedDeviceAttributes returns the TPM device attributes for this TPM, obtained from the verified endorsement key certificate.
+// VerifiedDeviceAttributes returns the TPM device attributes for this TPM, obtained from the verified endorsement key certificate.
 func (t *TPMConnection) VerifiedDeviceAttributes() *TPMDeviceAttributes {
 	return t.verifiedDeviceAttributes
 }
