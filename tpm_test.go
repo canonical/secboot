@@ -302,7 +302,7 @@ func TestConnectToDefaultTPM(t *testing.T) {
 			if rc != nil {
 				t.Errorf("TPMConnection.EndorsementKey should have returned a nil context")
 			}
-			if err != ErrProvisioning {
+			if err != ErrTPMProvisioning {
 				t.Errorf("TPMConnection.EndorsementKey returned an unexpected error: %v", err)
 			}
 		} else {
@@ -456,7 +456,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 			if rc != nil {
 				t.Errorf("TPMConnection.EndorsementKey should have returned a nil context")
 			}
-			if err != ErrProvisioning {
+			if err != ErrTPMProvisioning {
 				t.Errorf("TPMConnection.EndorsementKey returned an unexpected error: %v", err)
 			}
 		} else {
@@ -527,7 +527,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 		if err == nil {
 			t.Fatalf("SecureConnectToDefaultTPM should have failed")
 		}
-		if err != ErrProvisioning {
+		if err != ErrTPMProvisioning {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

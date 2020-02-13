@@ -25,10 +25,10 @@ import (
 )
 
 var (
-	// ErrProvisioning indicates that the TPM is not provisioned correctly for the requested operation. Please note that other errors
+	// ErrTPMProvisioning indicates that the TPM is not provisioned correctly for the requested operation. Please note that other errors
 	// that can be returned may also be caused by incomplete provisioning, as it is not always possible to detect incomplete or
 	// incorrect provisioning in all contexts.
-	ErrProvisioning = errors.New("the TPM is not correctly provisioned")
+	ErrTPMProvisioning = errors.New("the TPM is not correctly provisioned")
 )
 
 // EkCertVerificationError is returned from SecureConnectToDefaultTPM if verification of the EK certificate against the built-in

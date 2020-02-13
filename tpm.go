@@ -97,7 +97,7 @@ func (t *TPMConnection) VerifiedDeviceAttributes() *TPMDeviceAttributes {
 // used to share secrets with the TPM.
 func (t *TPMConnection) EndorsementKey() (tpm2.ResourceContext, error) {
 	if t.ek == nil {
-		return nil, ErrProvisioning
+		return nil, ErrTPMProvisioning
 	}
 	return t.ek, nil
 }
@@ -867,7 +867,7 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 // required. If the TPM doesn't contain a valid persistent endorsement key at the expected location (eg, if ProvisionTPM hasn't been
 // executed yet), this function will attempt to create a transient endorsement key. This requires knowledge of the endorsement
 // hierarchy authorization value, which will be empty on a newly cleared device. If there is no object at the persistent endorsement
-// key index and creation of a transient endorement key fails, ErrProvisioning will be returned.
+// key index and creation of a transient endorement key fails, ErrTPMProvisioning will be returned.
 //
 // If the TPM cannot prove it is the device for which the endorsement key certificate was issued, a TPMVerificationError error will be
 // returned. This can happen if there is an object at the persistent endorsement key index but it is not the object for which the
@@ -923,7 +923,7 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 	if err := t.init(); err != nil {
 		var unavailErr tpm2.ResourceUnavailableError
 		if xerrors.As(err, &unavailErr) {
-			return nil, ErrProvisioning
+			return nil, ErrTPMProvisioning
 		}
 		var verifyErr verificationError
 		if xerrors.As(err, &verifyErr) {
