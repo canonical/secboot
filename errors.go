@@ -31,14 +31,14 @@ var (
 	ErrTPMProvisioning = errors.New("the TPM is not correctly provisioned")
 )
 
-// EkCertVerificationError is returned from SecureConnectToDefaultTPM if verification of the EK certificate against the built-in
+// EKCertVerificationError is returned from SecureConnectToDefaultTPM if verification of the EK certificate against the built-in
 // root CA certificates fails, or the EK certificate does not have the correct properties, or the supplied certificate data cannot
 // be unmarshalled correctly because it is invalid.
-type EkCertVerificationError struct {
+type EKCertVerificationError struct {
 	msg string
 }
 
-func (e EkCertVerificationError) Error() string {
+func (e EKCertVerificationError) Error() string {
 	return fmt.Sprintf("cannot verify the endorsement key certificate: %s", e.msg)
 }
 

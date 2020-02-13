@@ -849,18 +849,18 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 // SaveEkCertificateChain or EncodeEkCertificateChain. This makes it possible to connect to the TPM without requiring network access
 // to obtain certificates.
 //
-// If the data read from ekCertDataReader cannot be unmarshalled or parsed correctly, a EkCertVerificationError error will be
+// If the data read from ekCertDataReader cannot be unmarshalled or parsed correctly, a EKCertVerificationError error will be
 // returned.
 //
 // If ekCertDataReader does not contain an endorsement key certificate, this function will attempt to obtain the certificate for the
-// TPM. This does not require network access. If this fails, a EkCertVerificationError error will be returned.
+// TPM. This does not require network access. If this fails, a EKCertVerificationError error will be returned.
 //
 // If ekCertDataReader is nil, this function will attempt to obtain the endorsement key certificate for the TPM and then download the
-// parent certificates, which requires network access. If this fails, a EkCertVerificationError error will be returned. If network
+// parent certificates, which requires network access. If this fails, a EKCertVerificationError error will be returned. If network
 // access is unavailable and there is no existing EK certificate blob created previously by FetchAndSaveEkCertificateChain,
 // SaveEkCertificateChain or EncodeEkCertificateChain, then ConnectToDefaultTPM must be used instead.
 //
-// If verification of the endorsement key certificate fails, a EkCertVerificationError error will be returned. If the endorsement
+// If verification of the endorsement key certificate fails, a EKCertVerificationError error will be returned. If the endorsement
 // key certificate data was supplied by the caller, this might mean that the data is invalid and should be recreated.
 //
 // In order for the TPM to prove it is the device for which the endorsement key certificate was issued, an endorsement key is
@@ -894,12 +894,12 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 	if ekCertDataReader != nil {
 		// Unmarshal supplied EK cert data
 		if err := tpm2.UnmarshalFromReader(ekCertDataReader, &certData); err != nil {
-			return nil, EkCertVerificationError{fmt.Sprintf("cannot unmarshal supplied EK certificate data: %v", err)}
+			return nil, EKCertVerificationError{fmt.Sprintf("cannot unmarshal supplied EK certificate data: %v", err)}
 		}
 		if len(certData.Cert) == 0 {
 			// The supplied data only contains parent certificates. Retrieve the EK cert from the TPM.
 			if cert, err := readEkCertFromTPM(tpm); err != nil {
-				return nil, EkCertVerificationError{fmt.Sprintf("cannot obtain endorsement key certificate from TPM: %v", err)}
+				return nil, EKCertVerificationError{fmt.Sprintf("cannot obtain endorsement key certificate from TPM: %v", err)}
 			} else {
 				certData.Cert = cert
 			}
@@ -907,14 +907,14 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 	} else {
 		data, err := fetchEkCertificateChain(tpm, false)
 		if err != nil {
-			return nil, EkCertVerificationError{err.Error()}
+			return nil, EKCertVerificationError{err.Error()}
 		}
 		certData = data
 	}
 
 	chain, attrs, err := verifyEkCertificate(certData)
 	if err != nil {
-		return nil, EkCertVerificationError{err.Error()}
+		return nil, EKCertVerificationError{err.Error()}
 	}
 
 	t.verifiedEkCertChain = chain
