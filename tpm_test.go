@@ -243,7 +243,7 @@ func certifyTPM(tpm *tpm2.TPMContext) error {
 	} else {
 		caCert, _ := x509.ParseCertificate(testCACert)
 		b := new(bytes.Buffer)
-		if err := EncodeEkCertificateChain(nil, []*x509.Certificate{caCert}, b); err != nil {
+		if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, b); err != nil {
 			return fmt.Errorf("cannot encode EK certificate chain: %v", err)
 		}
 		testEkCert = cert
@@ -288,7 +288,7 @@ func TestConnectToDefaultTPM(t *testing.T) {
 			closeTPM(t, tpm)
 		}()
 
-		if len(tpm.VerifiedEkCertChain()) > 0 {
+		if len(tpm.VerifiedEKCertChain()) > 0 {
 			t.Errorf("Should be no verified EK cert chain")
 		}
 		if tpm.VerifiedDeviceAttributes() != nil {
@@ -428,10 +428,10 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 			closeTPM(t, tpm)
 		}()
 
-		if len(tpm.VerifiedEkCertChain()) != 2 {
+		if len(tpm.VerifiedEKCertChain()) != 2 {
 			t.Fatalf("Unexpected number of certificates in chain")
 		}
-		if !bytes.Equal(tpm.VerifiedEkCertChain()[0].Raw, testEkCert) {
+		if !bytes.Equal(tpm.VerifiedEKCertChain()[0].Raw, testEkCert) {
 			t.Errorf("Unexpected leaf certificate")
 		}
 
@@ -557,8 +557,8 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 		caCert, _ := x509.ParseCertificate(testCACert)
 
 		certData := new(bytes.Buffer)
-		if err := EncodeEkCertificateChain(cert, []*x509.Certificate{caCert}, certData); err != nil {
-			t.Fatalf("EncodeEkCertificateChain failed: %v", err)
+		if err := EncodeEKCertificateChain(cert, []*x509.Certificate{caCert}, certData); err != nil {
+			t.Fatalf("EncodeEKCertificateChain failed: %v", err)
 		}
 
 		run(t, certData, false, nil, nil)
@@ -611,8 +611,8 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 			caCert, _ := x509.ParseCertificate(caCertRaw)
 
 			b := new(bytes.Buffer)
-			if err := EncodeEkCertificateChain(cert, []*x509.Certificate{caCert}, b); err != nil {
-				t.Fatalf("EncodeEkCertificateChain failed: %v", err)
+			if err := EncodeEKCertificateChain(cert, []*x509.Certificate{caCert}, b); err != nil {
+				t.Fatalf("EncodeEKCertificateChain failed: %v", err)
 			}
 			return b
 		}()

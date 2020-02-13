@@ -81,9 +81,9 @@ type TPMConnection struct {
 	hmacSession              tpm2.SessionContext
 }
 
-// VerifiedEkCertChain returns the verified certificate chain for the endorsement key certificate obtained from this TPM. It was
+// VerifiedEKCertChain returns the verified certificate chain for the endorsement key certificate obtained from this TPM. It was
 // verified using one of the built-in TPM manufacturer root CA certificates.
-func (t *TPMConnection) VerifiedEkCertChain() []*x509.Certificate {
+func (t *TPMConnection) VerifiedEKCertChain() []*x509.Certificate {
 	return t.verifiedEkCertChain
 }
 
@@ -743,7 +743,7 @@ func saveEkCertificateChain(data *ekCertData, dest string) error {
 	return nil
 }
 
-// FetchAndSaveEkCertificateChain attempts to obtain the endorsement key certificate for the TPM associated with the tpm parameter,
+// FetchAndSaveEKCertificateChain attempts to obtain the endorsement key certificate for the TPM associated with the tpm parameter,
 // download the parent certificates and then save them atomically to the specified file in a form that can be decoded by
 // SecureConnectToDefaultTPM. This function requires network access.
 //
@@ -757,7 +757,7 @@ func saveEkCertificateChain(data *ekCertData, dest string) error {
 //
 // If parentsOnly is true, this function will only save the parent certificates as long as the endorsement key certificate can be
 // reliably obtained from the TPM.
-func FetchAndSaveEkCertificateChain(tpm *TPMConnection, parentsOnly bool, destPath string) error {
+func FetchAndSaveEKCertificateChain(tpm *TPMConnection, parentsOnly bool, destPath string) error {
 	data, err := fetchEkCertificateChain(tpm.TPMContext, parentsOnly)
 	if err != nil {
 		return err
@@ -766,7 +766,7 @@ func FetchAndSaveEkCertificateChain(tpm *TPMConnection, parentsOnly bool, destPa
 	return saveEkCertificateChain(data, destPath)
 }
 
-// SaveEkCertificateChain will save the specified EK certificate and associated parent certificates atomically to the specified file
+// SaveEKCertificateChain will save the specified EK certificate and associated parent certificates atomically to the specified file
 // in a form that can be decoded by SecureConnectToDefaultTPM. This is useful in scenarios where the EK certificate cannot be located
 // automatically, or the EK certificate or any intermediate certificates lack the Authority Information Access extension but the
 // certificates have been downloaded manually by the caller.
@@ -774,7 +774,7 @@ func FetchAndSaveEkCertificateChain(tpm *TPMConnection, parentsOnly bool, destPa
 // If the EK certificate can be obtained reliably from the TPM during establishment of a connection, then it can be omitted in order
 // to save a file that only contains parent certificates. In this case, SecureConnectToDefaultTPM will attempt to obtain the EK
 // certificate from the TPM and verify it against the supplied parent certificates.
-func SaveEkCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificate, destPath string) error {
+func SaveEKCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificate, destPath string) error {
 	var data ekCertData
 	if ekCert != nil {
 		data.Cert = ekCert.Raw
@@ -786,7 +786,7 @@ func SaveEkCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificat
 	return saveEkCertificateChain(&data, destPath)
 }
 
-// EncodeCertificateChain will write the specified EK certificate and associated parent certificates to the specified io.Writer in a
+// EncodeEKCertificateChain will write the specified EK certificate and associated parent certificates to the specified io.Writer in a
 // form that can be decoded by SecureConnectToDefaultTPM. This is useful in scenarios where the EK certificate cannot be located
 // automatically, or the EK certificate or any intermediate certificates lack the Authority Information Access extension but the
 // certificates have been downloaded manually by the caller.
@@ -794,7 +794,7 @@ func SaveEkCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificat
 // If the EK certificate can be obtained reliably from the TPM during establishment of a connection, then it can be omitted in order
 // to save a file that only contains parent certificates. In this case, SecureConnectToDefaultTPM will attempt to obtain the EK
 // certificate from the TPM and verify it against the supplied parent certificates.
-func EncodeEkCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificate, w io.Writer) error {
+func EncodeEKCertificateChain(ekCert *x509.Certificate, parents []*x509.Certificate, w io.Writer) error {
 	var data ekCertData
 	if ekCert != nil {
 		data.Cert = ekCert.Raw
@@ -813,7 +813,7 @@ func EncodeEkCertificateChain(ekCert *x509.Certificate, parents []*x509.Certific
 // ConnectToDefaultTPM will attempt to connect to the default TPM. It makes no attempt to verify the authenticity of the TPM. This
 // function is useful for connecting to a device that isn't correctly provisioned and for which the endorsement hierarchy
 // authorization value is unknown (so that it can be cleared), or for connecting to a device in order to execute
-// FetchAndSaveEkCertificate. It should not be used in any other scenario.
+// FetchAndSaveEKCertificateChain. It should not be used in any other scenario.
 func ConnectToDefaultTPM() (*TPMConnection, error) {
 	tpm, err := connectToDefaultTPM()
 	if err != nil {
@@ -845,8 +845,8 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 // SecureConnectToDefaultTPM will attempt to connect to the default TPM, verify the manufacturer issued endorsement key certificate
 // against the built-in CA roots and then verify that the TPM is the one for which the endorsement certificate was issued.
 //
-// The ekCertDataReader argument should read from a file or buffer created previously by FetchAndSaveEkCertificateChain,
-// SaveEkCertificateChain or EncodeEkCertificateChain. An error will be returned if this is not provided.
+// The ekCertDataReader argument should read from a file or buffer created previously by FetchAndSaveEKCertificateChain,
+// SaveEKCertificateChain or EncodeEKCertificateChain. An error will be returned if this is not provided.
 //
 // If the data read from ekCertDataReader cannot be unmarshalled or parsed correctly, a EKCertVerificationError error will be
 // returned.
