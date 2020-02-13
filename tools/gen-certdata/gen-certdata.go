@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto"
 	_ "crypto/sha256"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -31,14 +30,12 @@ import (
 )
 
 func main() {
-	flag.Parse()
-
-	if len(flag.Args()) != 2 {
+	if len(os.Args) != 3 {
 		fmt.Fprintf(os.Stderr, "Usage: gen-certdata <dir> <out>\n")
 		os.Exit(1)
 	}
 
-	in := flag.Args()[0]
+	in := os.Args[1]
 	files, err := ioutil.ReadDir(in)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot read directory contents: %v\n", err)
@@ -54,20 +51,11 @@ func main() {
 	for _, fi := range files {
 		buffer.WriteString("\t\t[]byte{")
 		path := filepath.Join(in, fi.Name())
-		data := func() []byte {
-			f, err := os.Open(path)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Cannot open file: %v\n", err)
-				os.Exit(1)
-			}
-			defer f.Close()
-			data, err := ioutil.ReadAll(f)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Cannot read file: %v\n", err)
-				os.Exit(1)
-			}
-			return data
-		}()
+		data, err := ioutil.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Cannot read file: %v\n", err)
+			os.Exit(1)
+		}
 		h := crypto.SHA256.New()
 		h.Write(data)
 		hash := h.Sum(nil)
@@ -83,7 +71,7 @@ func main() {
 	buffer.WriteString("\t}\n")
 	buffer.WriteString(")\n")
 
-	if err := ioutil.WriteFile(flag.Args()[1], buffer.Bytes(), 0644); err != nil {
+	if err := ioutil.WriteFile(os.Args[2], buffer.Bytes(), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot write output file: %v\n", err)
 		os.Exit(1)
 	}
