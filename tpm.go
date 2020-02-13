@@ -156,6 +156,7 @@ func verifyEk(cert *x509.Certificate, ek tpm2.ResourceContext) error {
 	b, _ := tpm2.MarshalToBytes(ekTemplate)
 	tpm2.UnmarshalFromBytes(b, &ekPublic)
 
+	// The default exponent of 2^^16-1 is indicated by the value of 0 in the public area.
 	if pubKey.E != 65537 {
 		ekPublic.Params.RSADetail().Exponent = uint32(pubKey.E)
 	}
