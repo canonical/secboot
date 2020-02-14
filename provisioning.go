@@ -154,7 +154,7 @@ var (
 func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte) error {
 	status, err := ProvisionStatus(tpm)
 	if err != nil {
-		return xerrors.Errorf("cannot determine the current status: %w", err)
+		return xerrors.Errorf("cannot determine the current TPM status: %w", err)
 	}
 
 	// Create an initial session for HMAC authorizations
