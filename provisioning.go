@@ -29,12 +29,6 @@ import (
 	"golang.org/x/xerrors"
 )
 
-// ProvisionStatusAttributes correspond to the state of the TPM with regards to provisioning for full disk encryption.
-type ProvisionStatusAttributes int
-
-// ProvisionMode is used to control the behaviour of ProvisionTPM.
-type ProvisionMode int
-
 const (
 	ppiPath string = "/sys/class/tpm/tpm0/ppi/request" // Path for submitting PPI operation requests to firmware for the default TPM
 
@@ -47,6 +41,9 @@ const (
 	recoveryTime    uint32 = 7200
 	lockoutRecovery uint32 = 86400
 )
+
+// ProvisionStatusAttributes correspond to the state of the TPM with regards to provisioning for full disk encryption.
+type ProvisionStatusAttributes int
 
 const (
 	// AttrValidSRK indicates that the TPM contains a valid primary storage key with the expected properties at the
@@ -71,6 +68,9 @@ const (
 
 	AttrLockNVIndex // The TPM has a valid NV index used for locking access to keys sealed with SealKeyToTPM
 )
+
+// ProvisionMode is used to control the behaviour of ProvisionTPM.
+type ProvisionMode int
 
 const (
 	// ProvisionModeClear specifies that the TPM should be fully provisioned after clearing it.
