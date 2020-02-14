@@ -50,7 +50,7 @@ type TPMResourceExistsError struct {
 }
 
 func (e TPMResourceExistsError) Error() string {
-	return fmt.Sprintf("a resource already exists on the TPM at handle 0x%08x", e.Handle)
+	return fmt.Sprintf("a resource already exists on the TPM at handle %v", e.Handle)
 }
 
 // AuthFailError is returned when an authorization check fails. The provided handle indicates the resource for which authorization
