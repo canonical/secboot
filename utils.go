@@ -29,6 +29,11 @@ import (
 	"golang.org/x/xerrors"
 )
 
+func isResourceUnavailableError(err error) bool {
+	var e tpm2.ResourceUnavailableError
+	return xerrors.As(err, &e)
+}
+
 // isAuthFailError indicates whether the specified error is a TPM authorization check failure, with or without DA implications.
 func isAuthFailError(err error) bool {
 	var sessionErr *tpm2.TPMSessionError
