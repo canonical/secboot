@@ -29,6 +29,7 @@ import (
 	"golang.org/x/xerrors"
 )
 
+// isResourceUnavailableError indicates whether the specified error is tpm2.ResourceUnavailableError
 func isResourceUnavailableError(err error) bool {
 	var e tpm2.ResourceUnavailableError
 	return xerrors.As(err, &e)
