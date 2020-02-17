@@ -76,8 +76,9 @@ const (
 	// ProvisionModeClear specifies that the TPM should be fully provisioned after clearing it.
 	ProvisionModeClear ProvisionMode = iota
 
-	// ProvisionModeWithoutLockout specifies that the TPM should be refreshed without performing
-	// operations that require knowledge of the lockout hierarchy authorization value.
+	// ProvisionModeWithoutLockout specifies that the TPM should be refreshed without performing operations that require knowledge of
+	// the lockout hierarchy authorization value. Operations that won't be performed in this mode are disabling owner clear, configuring
+	// the dictionary attack logic and setting the authorization value for the lockout hierarchy.
 	ProvisionModeWithoutLockout
 
 	// ProvisionModeFull specifies that the TPM should be fully provisioned without clearing it.
@@ -107,50 +108,43 @@ var (
 // ProvisionTPM prepares the TPM associated with the tpm parameter for full disk encryption. The mode parameter specifies the
 // behaviour of this function.
 //
-// If mode is not ProvisionModeWithoutLockout, this function performs operations that require knowledge of the lockout hierarchy
-// authorization value, which must be provided by calling TPMConnection.LockoutHandleContext().SetAuthValue() prior to this call.
-// If the wrong lockout hierarchy authorization value is provided, then a AuthFailError error will be returned. If this happens,
-// the TPM will have entered dictionary attack lockout mode for the lockout hierarchy. Further calls will result in a ErrTPMLockout
-// error being returned. The only way to recover from this is to either wait for the pre-programmed recovery time to expire, or to
-// clear the TPM via the physical presence interface.
+// If mode is ProvisionModeClear, this function will attempt to clear the TPM before provisioning it. If owner clear has been
+// disabled (which will be the case if the TPM has previously been provisioned with this function), then ErrTPMClearRequiresPPI
+// will be returned. In this case, the TPM must be cleared via the physical presence interface by calling RequestTPMClearUsingPPI
+// and performing a system restart.
 //
-// If mode is ProvisionModeClear, this function will attempt to clear the TPM before provisioning it. If owner clear has been disabled
-// (which will be the case if the TPM has previously been provisioned with this function), then ErrTPMClearRequiresPPI will be returned.
-// In this case, the TPM must be cleared via the physical presence interface by calling RequestTPMClearUsingPPI and performing a
-// system restart.
+// If mode is ProvisionModeClear or ProvisionModeFull then the authorization value for the lockout hierarchy will be set to
+// newLockoutAuth, owner clear will be disabled, and the TPM's dictionary attack logic will be configured. These operations require
+// knowledge of the lockout hierarchy authorization value, which must be provided by calling
+// TPMConnection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
+// provided, then a AuthFailError error will be returned. If this happens, the TPM will have entered dictionary attack lockout mode
+// for the lockout hierarchy. Further calls will result in a ErrTPMLockout error being returned. The only way to recover from this is
+// to either wait for the pre-programmed recovery time to expire, or to clear the TPM via the physical presence interface by calling
+// RequestTPMClearUsingPPI. If the lockout hierarchy authorization value is not known or the caller wants to skip the operations that
+// require use of the lockout hierarchy, then mode can be set to ProvisionModeWithoutLockout.
 //
-// This function will create and persist an endorsement key which requires knowledge of the authorization values for the storage
-// and endorsement hierarchies. If called with mode set to ProvisionModeClear, or if called just after clearing the TPM via the
-// physical presence interface, the authorization values for these hierarchies will be empty at the point that they are required.
-// If called with any other mode and if the authorization values have previously been set, they will need to be provided by calling
-// TPMConnection.EndorsementHandleContext().SetAuthValue() and TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling
-// this function. If the wrong value is provided for either authorization, then a AuthFailError error will be returned. If the
-// correct authorization values are not known, then the only way to recover from this is to call the function with mode set to
-// ProvisionModeClear. If there is an object already stored at the location used for the endorsement key then this function will
-// evict it automatically from the TPM.
+// In all modes, this function will create and persist both a storage root key and an endorsement key. These operations require
+// knowledge of the authorization values for the storage and endorsement hierarchies. If called with mode set to ProvisionModeClear,
+// or if called just after clearing the TPM via the physical presence interface, the authorization values for these hierarchies will
+// be empty at the point that they are required. If called with any other mode and if the authorization values have previously been
+// set, they will need to be provided by calling TPMConnection.EndorsementHandleContext().SetAuthValue() and
+// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the wrong value is provided for either
+// authorization, then a AuthFailError error will be returned. If the correct authorization values are not known, then the only way to
+// recover from this is to clear the TPM either by calling this function with mode set to ProvisionModeClear, or by using the physical
+// presence interface. If there are any objects already stored at the locations required for either primary key, then this function
+// will evict them automatically from the TPM.
 //
-// This function will create and persist a storage root key, which requires knowledge of the authorization value for the storage
-// hierarchy. If called with mode set to ProvisionModeClear, or if called just after clearing the TPM via the physical presence
-// interface, the authorization value for the storage hierarchy will be empty at the point that it is required. If called with any
-// other mode and if the authorization value for the storage hierarchy has previously been set, it will need to be provided by calling
-// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the wrong value is provided for the storage
-// hierarchy authorization, then a AuthFailError error will be returned. If the correct authorization value is not known, then the
-// only way to recover from this is to call the function with mode set to ProvisionModeClear. If there is an object already stored at
-// the location used for the storage root key then this function will evict it automatically from the TPM.
-//
-// This function will create a pair of NV indices used for locking access to sealed key objects, if necessary. These indices will be
-// created at 0x01801100 and 0x01801101. This requires knowledge of the authorization value for the storage hierarchy. If called with
-// mode set to ProvisionModeClear, or if called just after clearing the TPM via the physical presence interface, the authorization
-// value for the storage hierarchy will be empty at the point that it is required. If called with any other mode and if the
-// authorization value for the storage hierarchy has previously been set, it will need to be provided by calling
-// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the wrong value is provided for the storage
-// hierarchy authorization, then a AuthFailError error will be returned. If the correct authorization value is not known and new NV
-// indices need to be created, then the only way to recover from this is to call the function with mode set to ProvisionModeClear. If
-// there are already NV indices defined at either of these handles but they don't meet the requirements of this function, a
-// TPMResourceExistsError error will be returned. In this case, the caller will either need to manually undefined these using
-// TPMContext.NVUndefineSpace, or clear the TPM.
-//
-// If mode is not ProvisionModeWithoutLockout, the authorization value for the lockout hierarchy will be set to newLockoutAuth.
+// In all modes, this function will also create a pair of NV indices used for locking access to sealed key objects, if necessary.
+// These indices will be created at handles 0x01801100 and 0x01801101. This requires knowledge of the authorization value for the
+// storage hierarchy. If called with mode set to ProvisionModeClear, or if called just after clearing the TPM via the physical
+// presence interface, the authorization value for the storage hierarchy will be empty at the point that it is required. If called
+// with any other mode and if the authorization value for the storage hierarchy has previously been set, it will need to be provided
+// by calling TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the wrong value is provided for the
+// storage hierarchy authorization, then a AuthFailError error will be returned. If the correct authorization value is not known and
+// new NV indices need to be created, then the only way to recover from this is to clear the TPM either by calling this function with
+// mode set to ProvisionModeClear, or by using the physical presence interace. If there are already NV indices defined at either of
+// the required handles but they don't meet the requirements of this function, a TPMResourceExistsError error will be returned. In
+// this case, the caller will either need to manually undefine these using TPMConnection.NVUndefineSpace, or clear the TPM.
 func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte) error {
 	status, err := ProvisionStatus(tpm)
 	if err != nil {
