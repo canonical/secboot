@@ -42,7 +42,6 @@ var (
 	ErrTPMLockout = errors.New("the TPM is in DA lockout mode")
 )
 
-
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists
 // at the specified handle.
 type TPMResourceExistsError struct {

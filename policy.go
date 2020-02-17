@@ -33,8 +33,6 @@ import (
 )
 
 const (
-	lockNVDataHandle tpm2.Handle = 0x01801101 // NV index containing policy data for lockNVHandle
-
 	lockNVIndexVersion   uint8 = 0    // Policy data version for lockNVHandle, to support backwards compatible changes
 	lockNVIndexGraceTime       = 5000 // Time window in milliseconds in which lockNVHandle can be initialized after creation
 )
