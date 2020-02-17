@@ -179,27 +179,27 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	}
 
 	// Provision an endorsement key
-	if ekContext, err := tpm.CreateResourceContextFromTPM(ekHandle); err != nil {
+	if ek, err := tpm.CreateResourceContextFromTPM(ekHandle); err != nil {
 		if !isResourceUnavailableError(err) {
 			return xerrors.Errorf("cannot create context for object at handle required by endorsement key: %w", err)
 		}
-	} else if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ekContext, ekHandle, session); err != nil {
+	} else if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ek, ekHandle, session); err != nil {
 		if isAuthFailError(err) {
 			return AuthFailError{tpm2.HandleOwner}
 		}
 		return xerrors.Errorf("cannot evict existing object at handle required by endorsement key: %w", err)
 	}
 
-	ekContext, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, &ekTemplate, nil, nil, session)
+	ek, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, &ekTemplate, nil, nil, session)
 	if err != nil {
 		if isAuthFailError(err) {
 			return AuthFailError{tpm2.HandleEndorsement}
 		}
 		return xerrors.Errorf("cannot create endorsement key: %w", err)
 	}
-	defer tpm.FlushContext(ekContext)
+	defer tpm.FlushContext(ek)
 
-	if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ekContext, ekHandle, session); err != nil {
+	if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ek, ekHandle, session); err != nil {
 		if isAuthFailError(err) {
 			return AuthFailError{tpm2.HandleOwner}
 		}
@@ -219,32 +219,32 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	session = tpm.HmacSession()
 
 	// Provision a storage root key
-	if srkContext, err := tpm.CreateResourceContextFromTPM(srkHandle); err != nil {
+	if srk, err := tpm.CreateResourceContextFromTPM(srkHandle); err != nil {
 		if !isResourceUnavailableError(err) {
 			return xerrors.Errorf("cannot create context for object at handle required by storage root key: %w", err)
 		}
-	} else if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srkContext, srkHandle, session); err != nil {
+	} else if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srkHandle, session); err != nil {
 		if isAuthFailError(err) {
 			return AuthFailError{tpm2.HandleOwner}
 		}
 		return xerrors.Errorf("cannot evict existing object at handle required by storage root key: %w", err)
 	}
 
-	transientSrkContext, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, &srkTemplate, nil, nil, session)
+	transientSrk, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, &srkTemplate, nil, nil, session)
 	if err != nil {
 		if isAuthFailError(err) {
 			return AuthFailError{tpm2.HandleOwner}
 		}
 		return xerrors.Errorf("cannot create storage root key: %w", err)
 	}
-	defer tpm.FlushContext(transientSrkContext)
+	defer tpm.FlushContext(transientSrk)
 
-	srkContext, err := tpm.EvictControl(tpm.OwnerHandleContext(), transientSrkContext, srkHandle, session)
+	srk, err := tpm.EvictControl(tpm.OwnerHandleContext(), transientSrk, srkHandle, session)
 	if err != nil {
 		// Owner auth failure would have been caught by CreatePrimary
 		return xerrors.Errorf("cannot make storage root key persistent: %w", err)
 	}
-	tpm.provisionedSrk = srkContext
+	tpm.provisionedSrk = srk
 
 	// Provision a lock NV index
 	if err := ensureLockNVIndex(tpm.TPMContext, session); err != nil {
