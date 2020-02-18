@@ -123,28 +123,23 @@ var (
 // RequestTPMClearUsingPPI. If the lockout hierarchy authorization value is not known or the caller wants to skip the operations that
 // require use of the lockout hierarchy, then mode can be set to ProvisionModeWithoutLockout.
 //
-// In all modes, this function will create and persist both a storage root key and an endorsement key. These operations require
-// knowledge of the authorization values for the storage and endorsement hierarchies. If called with mode set to ProvisionModeClear,
-// or if called just after clearing the TPM via the physical presence interface, the authorization values for these hierarchies will
-// be empty at the point that they are required. If called with any other mode and if the authorization values have previously been
-// set, they will need to be provided by calling TPMConnection.EndorsementHandleContext().SetAuthValue() and
-// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the wrong value is provided for either
-// authorization, then a AuthFailError error will be returned. If the correct authorization values are not known, then the only way to
-// recover from this is to clear the TPM either by calling this function with mode set to ProvisionModeClear, or by using the physical
-// presence interface. If there are any objects already stored at the locations required for either primary key, then this function
-// will evict them automatically from the TPM.
+// If mode is ProvisionModeFull or ProvisionModeWithoutLockout, this function performes operations that require knowledge of the
+// storage and endorsement hierarchies (creation of primary keys and NV indices, detailed below). Whilst these will be empty after
+// clearing the TPM, if they have been set since clearing the TPM then they will need to be provided by calling
+// TPMConnection.EndorsementHandleContext().SetAuthValue() and TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling
+// this function. If the wrong value is provided for either authorization, then a AuthFailError error will be returned. If the correct
+// authorization values are not known, then the only way to recover from this is to clear the TPM either by calling this function with
+// mode set to ProvisionModeClear, or by using the physical presence interface.
+//
+// In all modes, this function will create and persist both a storage root key and an endorsement key. Both of these will be created
+// using the RSA templates defined in and persisted at the handles specified in the "TCG EK Credential Profile for TPM Family 2.0"
+// and "TCG TPM v2.0 Provisioning Guidance" specifications. If there are any objects already stored at the locations required for
+// either primary key, then this function will evict them automatically from the TPM.
 //
 // In all modes, this function will also create a pair of NV indices used for locking access to sealed key objects, if necessary.
-// These indices will be created at handles 0x01801100 and 0x01801101. This requires knowledge of the authorization value for the
-// storage hierarchy. If called with mode set to ProvisionModeClear, or if called just after clearing the TPM via the physical
-// presence interface, the authorization value for the storage hierarchy will be empty at the point that it is required. If called
-// with any other mode and if the authorization value for the storage hierarchy has previously been set, it will need to be provided
-// by calling TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the wrong value is provided for the
-// storage hierarchy authorization, then a AuthFailError error will be returned. If the correct authorization value is not known and
-// new NV indices need to be created, then the only way to recover from this is to clear the TPM either by calling this function with
-// mode set to ProvisionModeClear, or by using the physical presence interace. If there are already NV indices defined at either of
-// the required handles but they don't meet the requirements of this function, a TPMResourceExistsError error will be returned. In
-// this case, the caller will either need to manually undefine these using TPMConnection.NVUndefineSpace, or clear the TPM.
+// These indices will be created at handles 0x01801100 and 0x01801101. If there are already NV indices defined at either of the
+// required handles but they don't meet the requirements of this function, a TPMResourceExistsError error will be returned. In this
+// case, the caller will either need to manually undefine these using TPMConnection.NVUndefineSpace, or clear the TPM.
 func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte) error {
 	status, err := ProvisionStatus(tpm)
 	if err != nil {
