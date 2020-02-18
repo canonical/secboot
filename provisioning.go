@@ -309,26 +309,41 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 
 	session := tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit)
 
-	if ek, err := tpm.CreateResourceContextFromTPM(ekHandle, session); err != nil {
-		if !isResourceUnavailableError(err) {
-			return 0, err
+	ek, err := tpm.CreateResourceContextFromTPM(ekHandle, session)
+	switch {
+	case err != nil && !isResourceUnavailableError(err):
+		// Unexpected error
+		return 0, err
+	case isResourceUnavailableError(err):
+		// Nothing to do
+	default:
+		if ekInit, err := tpm.EndorsementKey(); err == nil && bytes.Equal(ekInit.Name(), ek.Name()) {
+			out |= AttrValidEK
 		}
-	} else if ekInit, err := tpm.EndorsementKey(); err == nil && bytes.Equal(ekInit.Name(), ek.Name()) {
-		out |= AttrValidEK
 	}
 
-	if srk, err := tpm.CreateResourceContextFromTPM(srkHandle, session); err != nil {
-		if !isResourceUnavailableError(err) {
-			return 0, err
-		}
-	} else if tpm.provisionedSrk != nil {
+	srk, err := tpm.CreateResourceContextFromTPM(srkHandle, session)
+	switch {
+	case err != nil && !isResourceUnavailableError(err):
+		// Unexpected error
+		return 0, err
+	case isResourceUnavailableError(err):
+		// Nothing to do
+	case tpm.provisionedSrk != nil:
+		// ProvisionTPM has been called with this TPMConnection. Make sure it's the same object
 		if bytes.Equal(tpm.provisionedSrk.Name(), srk.Name()) {
 			out |= AttrValidSRK
 		}
-	} else if ok, err := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, &srkTemplate, tpm.HmacSession()); err != nil {
-		return 0, xerrors.Errorf("cannot determine if object at %v is a primary key in the storage hierarchy: %w", srkHandle, err)
-	} else if ok {
-		out |= AttrValidSRK
+	default:
+		// ProvisionTPM hasn't been called with this TPMConnection, but there is an object at srkHandle. Make sure it looks like a storage
+		// primary key.
+		ok, err := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, &srkTemplate, tpm.HmacSession())
+		switch {
+		case err != nil:
+			return 0, xerrors.Errorf("cannot determine if object at %v is a primary key in the storage hierarchy: %w", srkHandle, err)
+		case ok:
+			out |= AttrValidSRK
+		}
 	}
 
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3)
@@ -350,12 +365,17 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 		out |= AttrLockoutAuthSet
 	}
 
-	if lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session); err != nil {
-		if !isResourceUnavailableError(err) {
-			return 0, err
+	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session)
+	switch {
+	case err != nil && !isResourceUnavailableError(err):
+		// Unexpected error
+		return 0, err
+	case isResourceUnavailableError(err):
+		// Nothing to do
+	default:
+		if _, err := readAndValidateLockNVIndexPublic(tpm.TPMContext, lockIndex, session); err == nil {
+			out |= AttrLockNVIndex
 		}
-	} else if _, err := readAndValidateLockNVIndexPublic(tpm.TPMContext, lockIndex, session); err == nil {
-		out |= AttrLockNVIndex
 	}
 
 	return out, nil
