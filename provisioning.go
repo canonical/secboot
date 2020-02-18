@@ -78,7 +78,7 @@ const (
 
 	// ProvisionModeWithoutLockout specifies that the TPM should be refreshed without performing operations that require knowledge of
 	// the lockout hierarchy authorization value. Operations that won't be performed in this mode are disabling owner clear, configuring
-	// the dictionary attack logic and setting the authorization value for the lockout hierarchy.
+	// the dictionary attack parameters and setting the authorization value for the lockout hierarchy.
 	ProvisionModeWithoutLockout
 
 	// ProvisionModeFull specifies that the TPM should be fully provisioned without clearing it.
@@ -114,8 +114,8 @@ var (
 // and performing a system restart.
 //
 // If mode is ProvisionModeClear or ProvisionModeFull then the authorization value for the lockout hierarchy will be set to
-// newLockoutAuth, owner clear will be disabled, and the TPM's dictionary attack logic will be configured. These operations require
-// knowledge of the lockout hierarchy authorization value, which must be provided by calling
+// newLockoutAuth, owner clear will be disabled, and the parameters of the TPM's dictionary attack logic will be configured. These
+// operations require knowledge of the lockout hierarchy authorization value, which must be provided by calling
 // TPMConnection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
 // provided, then a AuthFailError error will be returned. If this happens, the TPM will have entered dictionary attack lockout mode
 // for the lockout hierarchy. Further calls will result in a ErrTPMLockout error being returned. The only way to recover from this is
