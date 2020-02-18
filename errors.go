@@ -63,7 +63,7 @@ type AuthFailError struct {
 }
 
 func (e AuthFailError) Error() string {
-	return fmt.Sprintf("an authorization check failed for the hierarchy associated with %v", e.Handle)
+	return fmt.Sprintf("cannot access resource at handle %v because an authorization check failed", e.Handle)
 }
 
 // EKCertVerificationError is returned from SecureConnectToDefaultTPM if verification of the EK certificate against the built-in
