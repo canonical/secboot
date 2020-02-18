@@ -52,7 +52,7 @@ const (
 	AttrValidSRK ProvisionStatusAttributes = 1 << iota
 
 	// AttrValidEK indicates that the TPM contains a valid endorsement key at the expected location. On a TPMConnection created
-	// with SecureConnectToDefaultTPM, it means that the TPM contains the key associated with the verified endorsment certificate.
+	// with SecureConnectToDefaultTPM, it means that the TPM contains the key associated with the verified endorsement certificate.
 	// On a TPMConnection created with ConnectToDefaultTPM, it means that the TPM contains a valid primary key with the expected
 	// properties at the expected location, but does not mean that the object was created with the the same template that
 	// ProvisionTPM uses, and is no guarantee that a call to ProvisionTPM wouldn't result in a different key being created.
@@ -152,7 +152,7 @@ func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, t
 // RequestTPMClearUsingPPI. If the lockout hierarchy authorization value is not known or the caller wants to skip the operations that
 // require use of the lockout hierarchy, then mode can be set to ProvisionModeWithoutLockout.
 //
-// If mode is ProvisionModeFull or ProvisionModeWithoutLockout, this function performes operations that require knowledge of the
+// If mode is ProvisionModeFull or ProvisionModeWithoutLockout, this function performs operations that require knowledge of the
 // storage and endorsement hierarchies (creation of primary keys and NV indices, detailed below). Whilst these will be empty after
 // clearing the TPM, if they have been set since clearing the TPM then they will need to be provided by calling
 // TPMConnection.EndorsementHandleContext().SetAuthValue() and TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling
