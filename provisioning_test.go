@@ -594,7 +594,7 @@ func TestProvisionStatus(t *testing.T) {
 	if err != nil {
 		t.Errorf("ProvisionStatus failed: %v", err)
 	}
-	expected := AttrValidEK | AttrValidSRK | AttrDAParamsOK | AttrOwnerClearDisabled | AttrLockoutAuthSet | AttrLockNVIndex
+	expected := AttrValidEK | AttrValidSRK | AttrDAParamsOK | AttrOwnerClearDisabled | AttrLockoutAuthSet | AttrValidLockNVIndex
 	if status != expected {
 		t.Errorf("Unexpected status %d", status)
 	}

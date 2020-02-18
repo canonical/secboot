@@ -66,7 +66,7 @@ const (
 	// to ProvisionTPM - it could have been changed outside of our control.
 	AttrLockoutAuthSet
 
-	AttrLockNVIndex // The TPM has a valid NV index used for locking access to keys sealed with SealKeyToTPM
+	AttrValidLockNVIndex // The TPM has a valid NV index used for locking access to keys sealed with SealKeyToTPM
 )
 
 // ProvisionMode is used to control the behaviour of ProvisionTPM.
@@ -374,7 +374,7 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 		// Nothing to do
 	default:
 		if _, err := readAndValidateLockNVIndexPublic(tpm.TPMContext, lockIndex, session); err == nil {
-			out |= AttrLockNVIndex
+			out |= AttrValidLockNVIndex
 		}
 	}
 
