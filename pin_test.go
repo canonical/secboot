@@ -33,7 +33,7 @@ func TestCreatePinNVIndex(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 768)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestPerformPinChange(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 768)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}

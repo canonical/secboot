@@ -176,7 +176,7 @@ func createTestCA() ([]byte, crypto.PrivateKey, error) {
 		return nil, nil, fmt.Errorf("cannot obtain random key ID: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 768)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot generate RSA key: %v", err)
 	}

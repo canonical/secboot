@@ -163,7 +163,7 @@ func TestReadDynamicPolicyCounter(t *testing.T) {
 		t.Fatalf("NVReadCounter failed: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 768)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
