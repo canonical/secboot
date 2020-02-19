@@ -544,6 +544,11 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 		t.Fatalf("ParsePKCS1PrivateKey failed: %v", err)
 	}
 
+	// Generate an authorization policy for the PIN NV index public area below. For the purposes of this test, these digests could really
+	// be anything, although the ones here do actually correspond to valid authorization policies - the first one is for initialization
+	// with an asymmetric key that has been discarded. The second one is for updating with the above key. The final 3 are valid policies
+	// for PIN change (TPM2_NV_ChangeAuth), reading (TPM2_NV_Read) and TPM2_PolicyNV - see the first 5 calls to tpm2.ComputeAuthPolicy in
+	// createPinNVIndex.
 	var pinIndexAuthPolicies tpm2.DigestList
 	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexString("199c42684aafe3d9c2e18dcc162a6d3875a40ca2ab8f06228b207135281d995f"))
 	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexString("78b1915a25b400ec9a87a2830b07aaacfc440f754e0d2027d09799f894d134c0"))
