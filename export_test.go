@@ -24,19 +24,28 @@ import (
 )
 
 const (
+	EkCertHandle        = ekCertHandle
+	EkHandle            = ekHandle
+	LockNVDataHandle    = lockNVDataHandle
+	LockNVHandle        = lockNVHandle
 	SanDirectoryNameTag = sanDirectoryNameTag
+	SrkHandle           = srkHandle
 )
 
 var (
-	EkCertHandle                   = ekCertHandle
-	EkHandle                       = ekHandle
 	EkTemplate                     = ekTemplate
+	LockNVIndexAttrs               = lockNVIndexAttrs
 	OidExtensionSubjectAltName     = oidExtensionSubjectAltName
 	OidTcgAttributeTpmManufacturer = oidTcgAttributeTpmManufacturer
 	OidTcgAttributeTpmModel        = oidTcgAttributeTpmModel
 	OidTcgAttributeTpmVersion      = oidTcgAttributeTpmVersion
 	OidTcgKpEkCertificate          = oidTcgKpEkCertificate
+	SrkTemplate                    = srkTemplate
 )
+
+var CreatePublicAreaForRSASigningKey = createPublicAreaForRSASigningKey
+var EnsureLockNVIndex = ensureLockNVIndex
+var ReadAndValidateLockNVIndexPublic = readAndValidateLockNVIndexPublic
 
 func SetOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) {
 	openDefaultTcti = fn

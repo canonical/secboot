@@ -217,7 +217,7 @@ func (t *TPMConnection) init() error {
 		if err == nil {
 			return ek, nil
 		}
-		if _, unavail := err.(tpm2.ResourceUnavailableError); !unavail {
+		if !isResourceUnavailableError(err) {
 			return nil, err
 		}
 		if ek, err := createTransientEk(t.TPMContext); err == nil {
@@ -845,9 +845,8 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 	}()
 
 	if err := t.init(); err != nil {
-		var unavailErr tpm2.ResourceUnavailableError
 		var verifyErr verificationError
-		if !xerrors.As(err, &unavailErr) && !xerrors.As(err, &verifyErr) {
+		if !isResourceUnavailableError(err) && !xerrors.As(err, &verifyErr) {
 			return nil, xerrors.Errorf("cannot initialize TPM connection: %w", err)
 		}
 	}
@@ -926,8 +925,7 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 	t.verifiedDeviceAttributes = attrs
 
 	if err := t.init(); err != nil {
-		var unavailErr tpm2.ResourceUnavailableError
-		if xerrors.As(err, &unavailErr) {
+		if isResourceUnavailableError(err) {
 			return nil, ErrTPMProvisioning
 		}
 		var verifyErr verificationError

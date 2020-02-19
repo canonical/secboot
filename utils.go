@@ -21,11 +21,19 @@ package secboot
 
 import (
 	"bytes"
+	"crypto/rsa"
+	"fmt"
 
 	"github.com/chrisccoulson/go-tpm2"
 
 	"golang.org/x/xerrors"
 )
+
+// isResourceUnavailableError indicates whether the specified error is tpm2.ResourceUnavailableError
+func isResourceUnavailableError(err error) bool {
+	var e tpm2.ResourceUnavailableError
+	return xerrors.As(err, &e)
+}
 
 // isAuthFailError indicates whether the specified error is a TPM authorization check failure, with or without DA implications.
 func isAuthFailError(err error) bool {
@@ -40,6 +48,33 @@ func isAuthFailError(err error) bool {
 		return true
 	}
 	return false
+}
+
+// isLockoutError indicates whether the specific error is a TPM lockout failure.
+func isLockoutError(err error) bool {
+	var warning *tpm2.TPMWarning
+	return xerrors.As(err, &warning) && warning.Code == tpm2.WarningLockout
+}
+
+type nvIndexDefinedError struct {
+	handle tpm2.Handle
+}
+
+func (e *nvIndexDefinedError) Error() string {
+	return fmt.Sprintf("NV index defined at 0x%08x", e.handle)
+}
+
+// isNVIndexDefinedWithHandleError indicates whether the specified error is a *nvIndexDefinedError.
+func isNVIndexDefinedWithHandleError(err error) bool {
+	var e *nvIndexDefinedError
+	return xerrors.As(err, &e)
+}
+
+// isNVIndexDefinedError indicates whether the specified error is a TPM error indicating that it tried to create a NV resource
+// at a handle that is already in use.
+func isNVIndexDefinedError(err error) bool {
+	var tpmErr *tpm2.TPMError
+	return xerrors.As(err, &tpmErr) && tpmErr.Code == tpm2.ErrorNVDefined
 }
 
 // isObjectPrimaryKeyWithTemplate checks whether the object associated with context is primary key in the specified hierarchy with
@@ -92,10 +127,26 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 	h.Write(hierarchy.Name())
 	h.Write(object.Name())
 
-	expectedQualifiedName, _ := tpm2.MarshalToBytes(pub.NameAlg, h.Sum(nil))
+	expectedQualifiedName, _ := tpm2.MarshalToBytes(pub.NameAlg, tpm2.RawBytes(h.Sum(nil)))
 	if !bytes.Equal(expectedQualifiedName, qualifiedName) {
 		return false, nil
 	}
 
 	return true, nil
+}
+
+// createPublicAreaForRSASigningKey creates a *tpm2.Public from a go *rsa.PublicKey, which is suitable for loading
+// in to a TPM with TPMContext.LoadExternal.
+func createPublicAreaForRSASigningKey(key *rsa.PublicKey) *tpm2.Public {
+	return &tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs:   tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrSign,
+		Params: tpm2.PublicParamsU{
+			Data: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
+				Scheme:    tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:   uint16(key.N.BitLen()),
+				Exponent:  uint32(key.E)}},
+		Unique: tpm2.PublicIDU{Data: tpm2.PublicKeyRSA(key.N.Bytes())}}
 }
