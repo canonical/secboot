@@ -648,103 +648,105 @@ func TestComputeDynamicPolicy(t *testing.T) {
 	pinName, _ := pinIndexPub.Name()
 
 	for _, data := range []struct {
-		desc                       string
-		alg                        tpm2.HashAlgorithmId
-		signAlg                    tpm2.HashAlgorithmId
-		secureBootPCRAlg           tpm2.HashAlgorithmId
-		ubuntuBootParamsPCRAlg     tpm2.HashAlgorithmId
-		secureBootPCRDigests       tpm2.DigestList
-		ubuntuBootParamsPCRDigests tpm2.DigestList
-		policyCount                uint64
-		policy                     tpm2.Digest
+		desc        string
+		alg         tpm2.HashAlgorithmId
+		signAlg     tpm2.HashAlgorithmId
+		pcrParams   []MockPolicyPCRParam
+		policyCount uint64
+		policy      tpm2.Digest
 	}{
 		{
-			desc:                       "Single",
-			alg:                        tpm2.HashAlgorithmSHA256,
-			signAlg:                    tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")},
-			policyCount:                10,
-			policy:                     decodeHexString("c84b1520993dc6688afacc423394c7e4e7f1b85a02a520ed0dbafdc81f501faa"),
+			desc:    "Single/1",
+			alg:     tpm2.HashAlgorithmSHA256,
+			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}}},
+			policyCount: 10,
+			policy:      decodeHexString("c84b1520993dc6688afacc423394c7e4e7f1b85a02a520ed0dbafdc81f501faa"),
 		},
 		{
-			desc:                       "SHA1Session",
-			alg:                        tpm2.HashAlgorithmSHA1,
-			signAlg:                    tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")},
-			policyCount:                4551,
-			policy:                     decodeHexString("e9fef86252d7800f9df4ee29d5b73b730d9a963a"),
+			desc:    "Single/2",
+			alg:     tpm2.HashAlgorithmSHA256,
+			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}},
+				MockPolicyPCRParam{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}}},
+			policyCount: 10,
+			policy:      decodeHexString("1cce0579182ab767bc687ef5c686b515427b73c341908386096868460f983b02"),
 		},
 		{
-			desc:                       "SHA256SessionWithSHA512PCRs",
-			alg:                        tpm2.HashAlgorithmSHA256,
-			signAlg:                    tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA512,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA512,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "foo")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "bar")},
-			policyCount:                403,
-			policy:                     decodeHexString("59d6cb59b2e72588ba8e617b4d6d230581edb96486e2d09d6871c2c4487123df"),
+			desc:    "SHA1Session",
+			alg:     tpm2.HashAlgorithmSHA1,
+			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")}}},
+			policyCount: 4551,
+			policy:      decodeHexString("e9fef86252d7800f9df4ee29d5b73b730d9a963a"),
 		},
 		{
-			desc:                       "MultiplePCRValues",
-			alg:                        tpm2.HashAlgorithmSHA256,
-			signAlg:                    tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"), makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC"), makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")},
-			policyCount:                5,
-			policy:                     decodeHexString("617ad734ce1bf82ba106295715466d5fb0e7acbec20c7ca55685af10c9a746b2"),
+			desc:    "SHA256SessionWithSHA512PCRs",
+			alg:     tpm2.HashAlgorithmSHA256,
+			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA512, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "foo")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA512, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "bar")}}},
+			policyCount: 403,
+			policy:      decodeHexString("59d6cb59b2e72588ba8e617b4d6d230581edb96486e2d09d6871c2c4487123df"),
 		},
 		{
-			desc:                       "SHA512AuthKey",
-			alg:                        tpm2.HashAlgorithmSHA256,
-			signAlg:                    tpm2.HashAlgorithmSHA512,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")},
-			policyCount:                10,
-			policy:                     decodeHexString("c84b1520993dc6688afacc423394c7e4e7f1b85a02a520ed0dbafdc81f501faa"),
+			desc:    "MultiplePCRValues",
+			alg:     tpm2.HashAlgorithmSHA256,
+			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")}}},
+			policyCount: 5,
+			policy:      decodeHexString("617ad734ce1bf82ba106295715466d5fb0e7acbec20c7ca55685af10c9a746b2"),
+		},
+		{
+			desc:    "SHA512AuthKey",
+			alg:     tpm2.HashAlgorithmSHA256,
+			signAlg: tpm2.HashAlgorithmSHA512,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}}},
+			policyCount: 10,
+			policy:      decodeHexString("c84b1520993dc6688afacc423394c7e4e7f1b85a02a520ed0dbafdc81f501faa"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			d, err := ComputeDynamicPolicy(data.alg,
-				NewDynamicPolicyComputeParams(key, data.signAlg, data.secureBootPCRAlg, data.ubuntuBootParamsPCRAlg, data.secureBootPCRDigests,
-					data.ubuntuBootParamsPCRDigests, pinName, data.policyCount))
+			d, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrParams, pinName, data.policyCount))
 			if err != nil {
 				t.Fatalf("ComputeDynamicPolicy failed; %v", err)
 			}
 			dataout := AsDynamicPolicyData(d)
-			if dataout.SecureBootPCRAlg != data.secureBootPCRAlg {
-				t.Errorf("Unexpected secure boot PCR algorithm %v", dataout.SecureBootPCRAlg)
+			if len(dataout.PCRData) != len(data.pcrParams) {
+				t.Fatalf("Unexpected number of PCR data entries")
 			}
-			if dataout.UbuntuBootParamsPCRAlg != data.ubuntuBootParamsPCRAlg {
-				t.Errorf("Unexpected ubuntu boot params PCR algorithm %v", dataout.UbuntuBootParamsPCRAlg)
-			}
-			if len(dataout.SecureBootORDigests) != len(data.secureBootPCRDigests) {
-				t.Errorf("Unexpected number of secure boot OR digests")
-			}
-			if len(dataout.UbuntuBootParamsORDigests) != len(data.ubuntuBootParamsPCRDigests) {
-				t.Errorf("Unexpected number of ubuntu boot params OR digests")
+			for i, p := range dataout.PCRData {
+				if p.PCR != data.pcrParams[i].PCR {
+					t.Errorf("Unexpected PCR index")
+				}
+				if p.Alg != data.pcrParams[i].Alg {
+					t.Errorf("Unexpected PCR algorithm")
+				}
+				if len(p.OrDigests) != len(data.pcrParams[i].Digests) {
+					t.Errorf("Unexpected number of OR digests")
+				}
+				for _, d := range p.OrDigests {
+					if len(d) != data.alg.Size() {
+						t.Errorf("Unexpected OR digest size")
+					}
+				}
 			}
 			if dataout.PolicyCount != data.policyCount {
 				t.Errorf("Unexpected policy revocation count")
-			}
-
-			digestSize := data.alg.Size()
-			for _, l := range []tpm2.DigestList{dataout.SecureBootORDigests, dataout.UbuntuBootParamsORDigests} {
-				for _, digest := range l {
-					if len(digest) != int(digestSize) {
-						t.Errorf("Unexpected digest size")
-					}
-				}
 			}
 
 			if !bytes.Equal(data.policy, dataout.AuthorizedPolicy) {
@@ -809,15 +811,12 @@ func TestExecutePolicy(t *testing.T) {
 		data  string
 	}
 	type testData struct {
-		alg                        tpm2.HashAlgorithmId
-		secureBootPCRAlg           tpm2.HashAlgorithmId
-		ubuntuBootParamsPCRAlg     tpm2.HashAlgorithmId
-		secureBootPCRDigests       tpm2.DigestList
-		ubuntuBootParamsPCRDigests tpm2.DigestList
-		policyCount                uint64
-		pcrEvents                  []pcrEvent
-		pinDefine                  string
-		pinInput                   string
+		alg         tpm2.HashAlgorithmId
+		pcrParams   []MockPolicyPCRParam
+		policyCount uint64
+		pcrEvents   []pcrEvent
+		pinDefine   string
+		pinInput    string
 	}
 
 	run := func(t *testing.T, data *testData, prepare func(*StaticPolicyData, *DynamicPolicyData)) (tpm2.Digest, tpm2.Digest, error) {
@@ -840,9 +839,7 @@ func TestExecutePolicy(t *testing.T) {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
 		signAlg := AsStaticPolicyData(staticPolicyData).AuthorizeKeyPublic.NameAlg
-		dynamicPolicyData, err := ComputeDynamicPolicy(data.alg,
-			NewDynamicPolicyComputeParams(key, signAlg, data.secureBootPCRAlg, data.ubuntuBootParamsPCRAlg, data.secureBootPCRDigests,
-				data.ubuntuBootParamsPCRDigests, pinIndex.Name(), data.policyCount))
+		dynamicPolicyData, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrParams, pinIndex.Name(), data.policyCount))
 		if err != nil {
 			t.Fatalf("ComputeDynamicPolicy failed: %v", err)
 		}
@@ -883,29 +880,61 @@ func TestExecutePolicy(t *testing.T) {
 		return policy, digest, policyErr
 	}
 
-	t.Run("Single", func(t *testing.T) {
+	t.Run("Single/1", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
+					data:  "foo",
+				},
+			}}, nil)
+		if err != nil {
+			t.Errorf("Failed to execute policy session: %v", err)
+		}
+		if !bytes.Equal(digest, expected) {
+			t.Errorf("Session digest didn't match policy digest")
+		}
+	})
+
+	t.Run("Single/2", func(t *testing.T) {
+		expected, digest, err := run(t, &testData{
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
+			pcrEvents: []pcrEvent{
+				{
+					index: 7,
+					data:  "foo",
+				},
+				{
+					index: 7,
+					data:  "bar",
+				},
+				{
+					index: 8,
+					data:  "bar",
+				},
+				{
+					index: 8,
 					data:  "foo",
 				},
 			}}, nil)
@@ -919,27 +948,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("SHA1SessionWithSHA256PCRs", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA1,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA1,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, nil)
@@ -953,27 +981,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("SHA1", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA1,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA1,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA1,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA1,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA1, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA1, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, nil)
@@ -987,27 +1014,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("WithPIN", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			},
@@ -1023,27 +1049,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("WithIncorrectPIN", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			},
@@ -1060,27 +1085,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("PCRMismatch/1", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "abc",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, nil)
@@ -1095,27 +1119,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("PCRMismatch/2", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "xxx",
 				},
 			}}, nil)
@@ -1130,31 +1153,30 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("MultiplePCRValues/1", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                    tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:       tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg: tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests: tpm2.DigestList{
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")},
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")}}},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "abc",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, nil)
@@ -1168,31 +1190,30 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("MultiplePCRValues/2", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                    tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:       tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg: tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests: tpm2.DigestList{
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")},
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")}}},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "baz",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, nil)
@@ -1206,31 +1227,30 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("MultiplePCRValues/Mismatch", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                    tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:       tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg: tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests: tpm2.DigestList{
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-				makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")},
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")}}},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "baz",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "xxx",
 				},
 			}}, nil)
@@ -1245,27 +1265,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("RevokedDynamicPolicy", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount - 1,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount - 1,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, nil)
@@ -1280,27 +1299,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("Locked", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(*StaticPolicyData, *DynamicPolicyData) {
@@ -1323,27 +1341,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("InvalidStaticMetadata/PINHandle/1", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
@@ -1362,27 +1379,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("InvalidStaticMetadata/PINHandle/2", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
@@ -1399,27 +1415,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("InvalidStaticMetadata/PINIndexAuthPolicies/1", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
@@ -1436,27 +1451,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("InvalidStaticMetadata/PINIndexAuthPolicies/2", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
@@ -1473,27 +1487,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("InvalidStaticMetadata/AuthorizeKeyPublic/1", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
@@ -1512,27 +1525,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("InvalidStaticMetadata/AuthorizeKeyPublic/2", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
@@ -1555,27 +1567,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("InvalidMetadata/DynamicPolicySignature", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
@@ -1607,27 +1618,26 @@ func TestExecutePolicy(t *testing.T) {
 
 	t.Run("InvalidDynamicMetadata/PolicyCount", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
-			alg:                        tpm2.HashAlgorithmSHA256,
-			secureBootPCRAlg:           tpm2.HashAlgorithmSHA256,
-			ubuntuBootParamsPCRAlg:     tpm2.HashAlgorithmSHA256,
-			secureBootPCRDigests:       tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")},
-			ubuntuBootParamsPCRDigests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")},
-			policyCount:                policyCount - 1,
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrParams: []MockPolicyPCRParam{
+				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
+				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			policyCount: policyCount - 1,
 			pcrEvents: []pcrEvent{
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "foo",
 				},
 				{
-					index: SecureBootPCR,
+					index: 7,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "bar",
 				},
 				{
-					index: UbuntuBootParamsPCR,
+					index: 12,
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
@@ -1689,9 +1699,8 @@ func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
 
 	signAlg := AsStaticPolicyData(staticPolicyData).AuthorizeKeyPublic.NameAlg
 	dynamicPolicyData, err := ComputeDynamicPolicy(tpm2.HashAlgorithmSHA256,
-		NewDynamicPolicyComputeParams(key, signAlg, tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA256,
-			tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")},
-			tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")},
+		NewDynamicPolicyComputeParams(key, signAlg,
+			[]MockPolicyPCRParam{MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}}},
 			pinIndex.Name(), policyCount))
 	if err != nil {
 		t.Fatalf("ComputeDynamicPolicy failed: %v", err)
@@ -1701,10 +1710,7 @@ func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
 		func() {
 			resetTPMSimulator(t, tpm, tcti)
 
-			if _, err := tpm.PCREvent(tpm.PCRHandleContext(SecureBootPCR), []byte("foo"), nil); err != nil {
-				t.Fatalf("PCREvent failed: %v", err)
-			}
-			if _, err := tpm.PCREvent(tpm.PCRHandleContext(UbuntuBootParamsPCR), []byte("bar"), nil); err != nil {
+			if _, err := tpm.PCREvent(tpm.PCRHandleContext(7), []byte("foo"), nil); err != nil {
 				t.Fatalf("PCREvent failed: %v", err)
 			}
 

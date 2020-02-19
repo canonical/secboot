@@ -32,9 +32,7 @@ const (
 	LockNVDataHandle    = lockNVDataHandle
 	LockNVHandle        = lockNVHandle
 	SanDirectoryNameTag = sanDirectoryNameTag
-	SecureBootPCR       = secureBootPCR
 	SrkHandle           = srkHandle
-	UbuntuBootParamsPCR = ubuntuBootParamsPCR
 )
 
 var (
@@ -64,6 +62,12 @@ type DynamicPolicyData struct {
 	*dynamicPolicyData
 }
 
+type MockPolicyPCRParam struct {
+	PCR     int
+	Alg     tpm2.HashAlgorithmId
+	Digests tpm2.DigestList
+}
+
 type StaticPolicyData struct {
 	*staticPolicyData
 }
@@ -84,20 +88,17 @@ func InitTPMConnection(t *TPMConnection) error {
 	return t.init()
 }
 
-func NewDynamicPolicyComputeParams(
-	key *rsa.PrivateKey,
-	signAlg, secureBootPCRAlg, ubuntuBootParamsPCRAlg tpm2.HashAlgorithmId,
-	secureBootPCRDigests, ubuntuBootParamsPCRDigests tpm2.DigestList,
-	policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
+func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, mockPcrParams []MockPolicyPCRParam, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
+	var pcrParams []policyPCRParam
+	for _, p := range mockPcrParams {
+		pcrParams = append(pcrParams, policyPCRParam{pcr: p.PCR, alg: p.Alg, digests: p.Digests})
+	}
 	return &dynamicPolicyComputeParams{
-		key:                        key,
-		signAlg:                    signAlg,
-		secureBootPCRAlg:           secureBootPCRAlg,
-		ubuntuBootParamsPCRAlg:     ubuntuBootParamsPCRAlg,
-		secureBootPCRDigests:       secureBootPCRDigests,
-		ubuntuBootParamsPCRDigests: ubuntuBootParamsPCRDigests,
-		policyCountIndexName:       policyCountIndexName,
-		policyCount:                policyCount}
+		key:                  key,
+		signAlg:              signAlg,
+		pcrParams:            pcrParams,
+		policyCountIndexName: policyCountIndexName,
+		policyCount:          policyCount}
 }
 
 func NewStaticPolicyComputeParams(key *rsa.PublicKey, pinIndexPub *tpm2.NVPublic, pinIndexAuthPolicies tpm2.DigestList, lockIndexName tpm2.Name) *staticPolicyComputeParams {

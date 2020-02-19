@@ -42,29 +42,36 @@ var (
 	lockNVIndexAttrs = tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVReadStClear)
 )
 
+// policyPCRParam details a set of approved digests for a given PCR.
+type policyPCRParam struct {
+	pcr     int
+	alg     tpm2.HashAlgorithmId
+	digests tpm2.DigestList
+}
+
 // dynamicPolicyComputeParams provides the parameters to computeDynamicPolicy.
 type dynamicPolicyComputeParams struct {
 	key *rsa.PrivateKey // Key used to authorize the generated dynamic authorization policy
 
 	// signAlg is the digest algorithm for the signature used to authorize the generated dynamic authorization policy. It must
 	// match the name algorithm of the public part of key that will be loaded in to the TPM for verification.
-	signAlg                    tpm2.HashAlgorithmId
-	secureBootPCRAlg           tpm2.HashAlgorithmId // PCR bank to use for PCR7
-	ubuntuBootParamsPCRAlg     tpm2.HashAlgorithmId // PCR bank to use for PCR12
-	secureBootPCRDigests       tpm2.DigestList      // Approved PCR7 digests
-	ubuntuBootParamsPCRDigests tpm2.DigestList      // Approved PCR12 digests
-	policyCountIndexName       tpm2.Name            // Name of the NV index used for revoking authorization policies
+	signAlg              tpm2.HashAlgorithmId
+	pcrParams            []policyPCRParam // Approved PCR digests
+	policyCountIndexName tpm2.Name        // Name of the NV index used for revoking authorization policies
 
 	// policyCount is the maximum permitted value of the NV index associated with policyCountIndexName, beyond which, this authorization
 	// policy will not be satisfied.
 	policyCount uint64
 }
 
+type policyPCRData struct {
+	PCR       int
+	Alg       tpm2.HashAlgorithmId
+	OrDigests tpm2.DigestList
+}
+
 type dynamicPolicyData struct {
-	SecureBootPCRAlg          tpm2.HashAlgorithmId
-	UbuntuBootParamsPCRAlg    tpm2.HashAlgorithmId
-	SecureBootORDigests       tpm2.DigestList
-	UbuntuBootParamsORDigests tpm2.DigestList
+	PCRData                   []policyPCRData
 	PolicyCount               uint64
 	AuthorizedPolicy          tpm2.Digest
 	AuthorizedPolicySignature *tpm2.Signature
@@ -501,31 +508,28 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 // computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
 // updated.
 func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
-	if len(input.secureBootPCRDigests) == 0 {
-		return nil, errors.New("no secure-boot digests provided")
-	}
-	secureBootORDigests := make(tpm2.DigestList, 0)
-	for _, digest := range input.secureBootPCRDigests {
-		trial, _ := tpm2.ComputeAuthPolicy(alg)
-		pcrDigest, pcrs := computePolicyPCRParams(alg, input.secureBootPCRAlg, digest, secureBootPCR)
-		trial.PolicyPCR(pcrDigest, pcrs)
-		secureBootORDigests = append(secureBootORDigests, trial.GetDigest())
-	}
-
-	if len(input.ubuntuBootParamsPCRDigests) == 0 {
-		return nil, errors.New("no ubuntu boot params digests provided")
-	}
-	ubuntuBootParamsORDigests := make(tpm2.DigestList, 0)
-	for _, digest := range input.ubuntuBootParamsPCRDigests {
-		trial, _ := tpm2.ComputeAuthPolicy(alg)
-		trial.PolicyOR(ensureSufficientORDigests(secureBootORDigests))
-		pcrDigest, pcrs := computePolicyPCRParams(alg, input.ubuntuBootParamsPCRAlg, digest, ubuntuBootParamsPCR)
-		trial.PolicyPCR(pcrDigest, pcrs)
-		ubuntuBootParamsORDigests = append(ubuntuBootParamsORDigests, trial.GetDigest())
+	var pcrData []policyPCRData
+	for _, p := range input.pcrParams {
+		if len(p.digests) == 0 {
+			return nil, fmt.Errorf("no digests provided for PCR%d", p.pcr)
+		}
+		var orDigests tpm2.DigestList
+		for _, d := range p.digests {
+			trial, _ := tpm2.ComputeAuthPolicy(alg)
+			if len(pcrData) > 0 {
+				trial.PolicyOR(ensureSufficientORDigests(pcrData[len(pcrData)-1].OrDigests))
+			}
+			pcrDigest, pcrs := computePolicyPCRParams(alg, p.alg, d, p.pcr)
+			trial.PolicyPCR(pcrDigest, pcrs)
+			orDigests = append(orDigests, trial.GetDigest())
+		}
+		pcrData = append(pcrData, policyPCRData{PCR: p.pcr, Alg: p.alg, OrDigests: orDigests})
 	}
 
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
-	trial.PolicyOR(ensureSufficientORDigests(ubuntuBootParamsORDigests))
+	if len(pcrData) > 0 {
+		trial.PolicyOR(ensureSufficientORDigests(pcrData[len(pcrData)-1].OrDigests))
+	}
 
 	operandB := make([]byte, 8)
 	binary.BigEndian.PutUint64(operandB, input.policyCount)
@@ -551,35 +555,24 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 				Sig:  tpm2.PublicKeyRSA(sig)}}}
 
 	return &dynamicPolicyData{
-		SecureBootPCRAlg:          input.secureBootPCRAlg,
-		UbuntuBootParamsPCRAlg:    input.ubuntuBootParamsPCRAlg,
-		SecureBootORDigests:       secureBootORDigests,
-		UbuntuBootParamsORDigests: ubuntuBootParamsORDigests,
+		PCRData:                   pcrData,
 		PolicyCount:               input.policyCount,
 		AuthorizedPolicy:          authorizedPolicy,
 		AuthorizedPolicySignature: &signature}, nil
 }
 
-func wrapPolicyORError(err error, index int) error {
-	var e *tpm2.TPMParameterError
-	if xerrors.As(err, &e) && e.Code() == tpm2.ErrorValue {
-		return xerrors.Errorf("unexpected session digest after executing TPM2_PolicyPCR assertion for PCR%d: %w", index, err)
-	}
-	return err
-}
-
-func executePolicySessionPCRAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, input *dynamicPolicyData) error {
-	if err := tpm.PolicyPCR(session, nil, makePCRSelectionList(input.SecureBootPCRAlg, secureBootPCR)); err != nil {
-		return err
-	}
-	if err := tpm.PolicyOR(session, ensureSufficientORDigests(input.SecureBootORDigests)); err != nil {
-		return wrapPolicyORError(err, secureBootPCR)
-	}
-	if err := tpm.PolicyPCR(session, nil, makePCRSelectionList(input.UbuntuBootParamsPCRAlg, ubuntuBootParamsPCR)); err != nil {
-		return err
-	}
-	if err := tpm.PolicyOR(session, ensureSufficientORDigests(input.UbuntuBootParamsORDigests)); err != nil {
-		return wrapPolicyORError(err, ubuntuBootParamsPCR)
+func executePolicySessionPCRAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, input []policyPCRData) error {
+	for _, i := range input {
+		if err := tpm.PolicyPCR(session, nil, makePCRSelectionList(i.Alg, i.PCR)); err != nil {
+			return err
+		}
+		if err := tpm.PolicyOR(session, ensureSufficientORDigests(i.OrDigests)); err != nil {
+			var e *tpm2.TPMParameterError
+			if xerrors.As(err, &e) && e.Code() == tpm2.ErrorValue {
+				return xerrors.Errorf("unexpected session digest after executing TPM2_PolicyPCR assertion for PCR%d: %w", i.PCR, err)
+			}
+			return err
+		}
 	}
 	return nil
 }
@@ -588,7 +581,7 @@ func executePolicySessionPCRAssertions(tpm *tpm2.TPMContext, session tpm2.Sessio
 // session can be used for authorization.
 func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContext, staticInput *staticPolicyData,
 	dynamicInput *dynamicPolicyData, pin string, hmacSession tpm2.SessionContext) error {
-	if err := executePolicySessionPCRAssertions(tpm, policySession, dynamicInput); err != nil {
+	if err := executePolicySessionPCRAssertions(tpm, policySession, dynamicInput.PCRData); err != nil {
 		return xerrors.Errorf("cannot complete PCR assertions: %w", err)
 	}
 
