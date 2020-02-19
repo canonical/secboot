@@ -28,6 +28,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/binary"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -58,9 +59,22 @@ var (
 	testEncodedEkCertChain []byte
 )
 
+func decodeHexString(s string) []byte {
+	b, _ := hex.DecodeString(s)
+	return b
+}
+
+// Flush a handle context. Fails the test if it doesn't succeed.
 func flushContext(t *testing.T, tpm *TPMConnection, context tpm2.HandleContext) {
 	if err := tpm.FlushContext(context); err != nil {
 		t.Errorf("FlushContext failed: %v", err)
+	}
+}
+
+// Undefine a NV index set by a test. Fails the test if it doesn't succeed.
+func undefineNVSpace(t *testing.T, tpm *TPMConnection, context, authHandle tpm2.ResourceContext) {
+	if err := tpm.NVUndefineSpace(authHandle, context, nil); err != nil {
+		t.Errorf("NVUndefineSpace failed: %v", err)
 	}
 }
 
@@ -121,6 +135,24 @@ func clearTPMWithPlatformAuth(t *testing.T, tpm *TPMConnection) {
 	}
 	if err := tpm.Clear(tpm.PlatformHandleContext(), nil); err != nil {
 		t.Fatalf("Clear failed: %v", err)
+	}
+}
+
+// resetTPMSimulator executes reset sequence of the TPM (Shutdown(CLEAR) -> reset -> Startup(CLEAR)) and the re-initializes the
+// TPMConnection.
+func resetTPMSimulator(t *testing.T, tpm *TPMConnection, tcti *tpm2.TctiMssim) {
+	if err := tpm.Shutdown(tpm2.StartupClear); err != nil {
+		t.Fatalf("Shutdown failed: %v", err)
+	}
+	if err := tcti.Reset(); err != nil {
+		t.Fatalf("Resetting the TPM simulator failed: %v", err)
+	}
+	if err := tpm.Startup(tpm2.StartupClear); err != nil {
+		t.Fatalf("Startup failed: %v", err)
+	}
+
+	if err := InitTPMConnection(tpm); err != nil {
+		t.Fatalf("Failed to reinitialize TPMConnection after reset: %v", err)
 	}
 }
 

@@ -36,6 +36,9 @@ const (
 	// SHA-256 is mandatory to exist on every PC-Client TPM
 	// XXX: Maybe dynamically select algorithms based on what's available on the device?
 	defaultSessionHashAlgorithm tpm2.HashAlgorithmId = tpm2.HashAlgorithmSHA256
+
+	secureBootPCR       = 7
+	ubuntuBootParamsPCR = 12
 )
 
 var (
