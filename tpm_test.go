@@ -59,8 +59,11 @@ var (
 	testEncodedEkCertChain []byte
 )
 
-func decodeHexString(s string) []byte {
-	b, _ := hex.DecodeString(s)
+func decodeHexString(t *testing.T, s string) []byte {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		t.Fatalf("DecodeHexString failed: %v", err)
+	}
 	return b
 }
 
