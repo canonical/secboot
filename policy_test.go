@@ -586,11 +586,10 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			d, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(&key.PublicKey, pinIndexPub, pinIndexAuthPolicies, lockName))
+			dataout, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(&key.PublicKey, pinIndexPub, pinIndexAuthPolicies, lockName))
 			if err != nil {
 				t.Fatalf("ComputeStaticPolicy failed: %v", err)
 			}
-			dataout := AsStaticPolicyData(d)
 			if dataout.AuthorizeKeyPublic.Params.RSADetail().Exponent != uint32(key.PublicKey.E) {
 				t.Errorf("Auth key public area has wrong exponent")
 			}
@@ -721,11 +720,10 @@ func TestComputeDynamicPolicy(t *testing.T) {
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			d, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrParams, pinName, data.policyCount))
+			dataout, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrParams, pinName, data.policyCount))
 			if err != nil {
 				t.Fatalf("ComputeDynamicPolicy failed; %v", err)
 			}
-			dataout := AsDynamicPolicyData(d)
 			if len(dataout.PCRData) != len(data.pcrParams) {
 				t.Fatalf("Unexpected number of PCR data entries")
 			}
@@ -838,7 +836,7 @@ func TestExecutePolicy(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
-		signAlg := AsStaticPolicyData(staticPolicyData).AuthorizeKeyPublic.NameAlg
+		signAlg := staticPolicyData.AuthorizeKeyPublic.NameAlg
 		dynamicPolicyData, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrParams, pinIndex.Name(), data.policyCount))
 		if err != nil {
 			t.Fatalf("ComputeDynamicPolicy failed: %v", err)
@@ -1697,7 +1695,7 @@ func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
 		t.Fatalf("readDynamicPolicyCounter failed: %v", err)
 	}
 
-	signAlg := AsStaticPolicyData(staticPolicyData).AuthorizeKeyPublic.NameAlg
+	signAlg := staticPolicyData.AuthorizeKeyPublic.NameAlg
 	dynamicPolicyData, err := ComputeDynamicPolicy(tpm2.HashAlgorithmSHA256,
 		NewDynamicPolicyComputeParams(key, signAlg,
 			[]MockPolicyPCRParam{MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}}},
