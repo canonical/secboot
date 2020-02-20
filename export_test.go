@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	EkTemplate                     = ekTemplate
+	EkTemplate                     = &ekTemplate
 	LockNVIndexAttrs               = lockNVIndexAttrs
 	OidExtensionSubjectAltName     = oidExtensionSubjectAltName
 	OidTcgAttributeTpmManufacturer = oidTcgAttributeTpmManufacturer
