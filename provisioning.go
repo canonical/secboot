@@ -203,7 +203,7 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	}
 
 	// Provision an endorsement key
-	if _, err := provisionPrimaryKey(tpm.TPMContext, tpm.EndorsementHandleContext(), &ekTemplate, ekHandle, session); err != nil {
+	if _, err := provisionPrimaryKey(tpm.TPMContext, tpm.EndorsementHandleContext(), ekTemplate, ekHandle, session); err != nil {
 		var tpmErr *tpm2.TPMError
 		switch {
 		case xerrors.As(err, &tpmErr) && tpmErr.Command == tpm2.CommandEvictControl:
