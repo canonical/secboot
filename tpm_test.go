@@ -171,7 +171,7 @@ func createTestCA() ([]byte, crypto.PrivateKey, error) {
 }
 
 func createTestEkCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateKey) ([]byte, error) {
-	ekContext, pub, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, &EkTemplate, nil, nil, nil)
+	ekContext, pub, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, EkTemplate, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create EK: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestConnectToDefaultTPM(t *testing.T) {
 			tpm := connectAndClear(t)
 			defer closeTPM(t, tpm)
 
-			primary, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, &EkTemplate, nil, nil, nil)
+			primary, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, EkTemplate, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("CreatePrimary failed: %v", err)
 			}
@@ -366,7 +366,7 @@ func TestConnectToDefaultTPM(t *testing.T) {
 				t.Fatalf("PolicySecret failed: %v", err)
 			}
 
-			priv, pub, _, _, _, err := tpm.Create(primary, nil, &EkTemplate, nil, nil, sessionContext)
+			priv, pub, _, _, _, err := tpm.Create(primary, nil, EkTemplate, nil, nil, sessionContext)
 			if err != nil {
 				t.Fatalf("Create failed: %v", err)
 			}
@@ -634,7 +634,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 
 			// This produces a primary key that doesn't match the certificate created in TestMain
 			sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
-			ekContext, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, &EkTemplate, nil, nil, nil)
+			ekContext, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, EkTemplate, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("CreatePrimary failed: %v", err)
 			}
@@ -657,7 +657,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 
 			// This produces a primary key that doesn't match the certificate created in TestMain
 			sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
-			ekContext, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, &EkTemplate, nil, nil, nil)
+			ekContext, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, EkTemplate, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("CreatePrimary failed: %v", err)
 			}
@@ -685,7 +685,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 
 			// This produces a primary key that doesn't match the certificate created in TestMain
 			sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
-			ekContext, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, &EkTemplate, nil, nil, nil)
+			ekContext, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, EkTemplate, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("CreatePrimary failed: %v", err)
 			}

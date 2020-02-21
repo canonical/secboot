@@ -130,7 +130,7 @@ func createTransientEk(tpm *tpm2.TPMContext) (tpm2.ResourceContext, error) {
 	}
 	defer tpm.FlushContext(session)
 
-	ek, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, &ekTemplate, nil, nil, session)
+	ek, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, ekTemplate, nil, nil, session)
 	return ek, err
 }
 
@@ -275,7 +275,7 @@ func (t *TPMConnection) init() error {
 		// If we don't have a verified EK certificate and ek is a persistent object, just do a sanity check that the public area returned
 		// from the TPM has the expected properties. If it doesn't, then attempt to create a transient EK with the provided authorization
 		// value.
-		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, &ekTemplate, nil); err != nil {
+		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, ekTemplate, nil); err != nil {
 			return xerrors.Errorf("cannot determine if object is a primary key in the endorsement hierarchy: %w", err)
 		} else if !ok {
 			transientEk, err := createTransientEk(t.TPMContext)

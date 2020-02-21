@@ -21,6 +21,8 @@ package secboot
 
 import (
 	"io"
+
+	"github.com/chrisccoulson/go-tpm2"
 )
 
 const (
@@ -35,6 +37,7 @@ const (
 var (
 	EkTemplate                     = ekTemplate
 	LockNVIndexAttrs               = lockNVIndexAttrs
+	MakeDefaultEKTemplate	       = makeDefaultEKTemplate
 	OidExtensionSubjectAltName     = oidExtensionSubjectAltName
 	OidTcgAttributeTpmManufacturer = oidTcgAttributeTpmManufacturer
 	OidTcgAttributeTpmModel        = oidTcgAttributeTpmModel
@@ -57,4 +60,12 @@ func InitTPMConnection(t *TPMConnection) error {
 
 func AppendRootCAHash(h []byte) {
 	rootCAHashes = append(rootCAHashes, h)
+}
+
+func MockEKTemplate(mock *tpm2.Public) (restore func()) {
+	orig := ekTemplate
+	ekTemplate = mock
+	return func() {
+		ekTemplate = orig
+	}
 }

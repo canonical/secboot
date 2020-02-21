@@ -551,10 +551,10 @@ func TestProvisionWithInvalidEkCert(t *testing.T) {
 	clearTPMWithPlatformAuth(t, tpm)
 
 	// Temporarily modify the public template so that ProvisionTPM generates a primary key that doesn't match the EK cert
-	EkTemplate.Unique.RSA()[0] = 0xff
-	defer func() {
-		EkTemplate.Unique.RSA()[0] = 0x00
-	}()
+	ekTemplate := MakeDefaultEKTemplate()
+	ekTemplate.Unique.RSA()[0] = 0xff
+	restore := MockEKTemplate(ekTemplate)
+	defer restore()
 
 	err := ProvisionTPM(tpm, ProvisionModeFull, nil)
 	if err == nil {
