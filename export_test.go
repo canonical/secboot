@@ -62,7 +62,7 @@ func AppendRootCAHash(h []byte) {
 	rootCAHashes = append(rootCAHashes, h)
 }
 
-func MockEKTemplate(mock *tpm2.Public) (func()) {
+func MockEKTemplate(mock *tpm2.Public) (restore func()) {
 	orig := ekTemplate
 	ekTemplate = mock
 	return func() {
