@@ -38,9 +38,8 @@ const (
 	defaultSessionHashAlgorithm tpm2.HashAlgorithmId = tpm2.HashAlgorithmSHA256
 )
 
-var (
-	// Default RSA2048 EK template, see section B.3.3 of "TCG EK Credential Profile For TPM Family 2.0; Level 0", Version 2.1, Revision 13, 10 December 2018
-	ekTemplate = &tpm2.Public{
+func makeDefaultEKTemplate() *tpm2.Public {
+	return &tpm2.Public{
 		Type:    tpm2.ObjectTypeRSA,
 		NameAlg: tpm2.HashAlgorithmSHA256,
 		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrAdminWithPolicy | tpm2.AttrRestricted |
@@ -57,4 +56,9 @@ var (
 				KeyBits:  2048,
 				Exponent: 0}},
 		Unique: tpm2.PublicIDU{Data: make(tpm2.PublicKeyRSA, 256)}}
+}
+
+var (
+	// Default RSA2048 EK template, see section B.3.3 of "TCG EK Credential Profile For TPM Family 2.0; Level 0", Version 2.1, Revision 13, 10 December 2018
+	ekTemplate = makeDefaultEKTemplate()
 )
