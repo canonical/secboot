@@ -20,6 +20,7 @@
 package secboot
 
 import (
+	"crypto/rsa"
 	"io"
 
 	"github.com/chrisccoulson/go-tpm2"
@@ -37,7 +38,7 @@ const (
 var (
 	EkTemplate                     = ekTemplate
 	LockNVIndexAttrs               = lockNVIndexAttrs
-	MakeDefaultEKTemplate	       = makeDefaultEKTemplate
+	MakeDefaultEKTemplate          = makeDefaultEKTemplate
 	OidExtensionSubjectAltName     = oidExtensionSubjectAltName
 	OidTcgAttributeTpmManufacturer = oidTcgAttributeTpmManufacturer
 	OidTcgAttributeTpmModel        = oidTcgAttributeTpmModel
@@ -46,20 +47,46 @@ var (
 	SrkTemplate                    = srkTemplate
 )
 
+var ComputeDynamicPolicy = computeDynamicPolicy
+var ComputeStaticPolicy = computeStaticPolicy
+var CreatePinNVIndex = createPinNVIndex
 var CreatePublicAreaForRSASigningKey = createPublicAreaForRSASigningKey
 var EnsureLockNVIndex = ensureLockNVIndex
+var ExecutePolicySession = executePolicySession
+var IncrementDynamicPolicyCounter = incrementDynamicPolicyCounter
+var LockAccessToSealedKeysUntilTPMReset = lockAccessToSealedKeysUntilTPMReset
+var PerformPinChange = performPinChange
 var ReadAndValidateLockNVIndexPublic = readAndValidateLockNVIndexPublic
+var ReadDynamicPolicyCounter = readDynamicPolicyCounter
 
-func SetOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) {
-	openDefaultTcti = fn
+type DynamicPolicyData struct {
+	*dynamicPolicyData
 }
 
-func InitTPMConnection(t *TPMConnection) error {
-	return t.init()
+type MockPolicyPCRParam struct {
+	PCR     int
+	Alg     tpm2.HashAlgorithmId
+	Digests tpm2.DigestList
+}
+
+type StaticPolicyData struct {
+	*staticPolicyData
 }
 
 func AppendRootCAHash(h []byte) {
 	rootCAHashes = append(rootCAHashes, h)
+}
+
+func AsDynamicPolicyData(in *dynamicPolicyData) *DynamicPolicyData {
+	return &DynamicPolicyData{in}
+}
+
+func AsStaticPolicyData(in *staticPolicyData) *StaticPolicyData {
+	return &StaticPolicyData{in}
+}
+
+func InitTPMConnection(t *TPMConnection) error {
+	return t.init()
 }
 
 func MockEKTemplate(mock *tpm2.Public) (restore func()) {
@@ -68,4 +95,25 @@ func MockEKTemplate(mock *tpm2.Public) (restore func()) {
 	return func() {
 		ekTemplate = orig
 	}
+}
+
+func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, mockPcrParams []MockPolicyPCRParam, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
+	var pcrParams []policyPCRParam
+	for _, p := range mockPcrParams {
+		pcrParams = append(pcrParams, policyPCRParam{pcr: p.PCR, alg: p.Alg, digests: p.Digests})
+	}
+	return &dynamicPolicyComputeParams{
+		key:                  key,
+		signAlg:              signAlg,
+		pcrParams:            pcrParams,
+		policyCountIndexName: policyCountIndexName,
+		policyCount:          policyCount}
+}
+
+func NewStaticPolicyComputeParams(key *rsa.PublicKey, pinIndexPub *tpm2.NVPublic, pinIndexAuthPolicies tpm2.DigestList, lockIndexName tpm2.Name) *staticPolicyComputeParams {
+	return &staticPolicyComputeParams{key: key, pinIndexPub: pinIndexPub, pinIndexAuthPolicies: pinIndexAuthPolicies, lockIndexName: lockIndexName}
+}
+
+func SetOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) {
+	openDefaultTcti = fn
 }

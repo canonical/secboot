@@ -28,6 +28,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/binary"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -58,9 +59,25 @@ var (
 	testEncodedEkCertChain []byte
 )
 
+func decodeHexString(t *testing.T, s string) []byte {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		t.Fatalf("DecodeHexString failed: %v", err)
+	}
+	return b
+}
+
+// Flush a handle context. Fails the test if it doesn't succeed.
 func flushContext(t *testing.T, tpm *TPMConnection, context tpm2.HandleContext) {
 	if err := tpm.FlushContext(context); err != nil {
 		t.Errorf("FlushContext failed: %v", err)
+	}
+}
+
+// Undefine a NV index set by a test. Fails the test if it doesn't succeed.
+func undefineNVSpace(t *testing.T, tpm *TPMConnection, context, authHandle tpm2.ResourceContext) {
+	if err := tpm.NVUndefineSpace(authHandle, context, nil); err != nil {
+		t.Errorf("NVUndefineSpace failed: %v", err)
 	}
 }
 
@@ -124,6 +141,24 @@ func clearTPMWithPlatformAuth(t *testing.T, tpm *TPMConnection) {
 	}
 }
 
+// resetTPMSimulator executes reset sequence of the TPM (Shutdown(CLEAR) -> reset -> Startup(CLEAR)) and the re-initializes the
+// TPMConnection.
+func resetTPMSimulator(t *testing.T, tpm *TPMConnection, tcti *tpm2.TctiMssim) {
+	if err := tpm.Shutdown(tpm2.StartupClear); err != nil {
+		t.Fatalf("Shutdown failed: %v", err)
+	}
+	if err := tcti.Reset(); err != nil {
+		t.Fatalf("Resetting the TPM simulator failed: %v", err)
+	}
+	if err := tpm.Startup(tpm2.StartupClear); err != nil {
+		t.Fatalf("Startup failed: %v", err)
+	}
+
+	if err := InitTPMConnection(tpm); err != nil {
+		t.Fatalf("Failed to reinitialize TPMConnection after reset: %v", err)
+	}
+}
+
 func closeTPM(t *testing.T, tpm *TPMConnection) {
 	if err := tpm.Close(); err != nil {
 		t.Errorf("Close failed: %v", err)
@@ -141,7 +176,7 @@ func createTestCA() ([]byte, crypto.PrivateKey, error) {
 		return nil, nil, fmt.Errorf("cannot obtain random key ID: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 768)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot generate RSA key: %v", err)
 	}
@@ -159,8 +194,8 @@ func createTestCA() ([]byte, crypto.PrivateKey, error) {
 		NotAfter:              t.Add(time.Hour * 240),
 		KeyUsage:              x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
-		IsCA:                  true,
-		SubjectKeyId:          keyId}
+		IsCA:         true,
+		SubjectKeyId: keyId}
 
 	cert, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
 	if err != nil {
@@ -220,9 +255,9 @@ func createTestEkCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 		KeyUsage:              x509.KeyUsageKeyEncipherment,
 		UnknownExtKeyUsage:    []asn1.ObjectIdentifier{OidTcgKpEkCertificate},
 		BasicConstraintsValid: true,
-		IsCA:                  false,
-		SubjectKeyId:          keyId,
-		ExtraExtensions:       []pkix.Extension{sanExtension}}
+		IsCA:            false,
+		SubjectKeyId:    keyId,
+		ExtraExtensions: []pkix.Extension{sanExtension}}
 
 	root, err := x509.ParseCertificate(caCert)
 	if err != nil {
