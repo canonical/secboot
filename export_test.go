@@ -38,6 +38,7 @@ const (
 var (
 	EkTemplate                     = ekTemplate
 	LockNVIndexAttrs               = lockNVIndexAttrs
+	MakeDefaultEKTemplate	       = makeDefaultEKTemplate
 	OidExtensionSubjectAltName     = oidExtensionSubjectAltName
 	OidTcgAttributeTpmManufacturer = oidTcgAttributeTpmManufacturer
 	OidTcgAttributeTpmModel        = oidTcgAttributeTpmModel
@@ -86,6 +87,14 @@ func AsStaticPolicyData(in *staticPolicyData) *StaticPolicyData {
 
 func InitTPMConnection(t *TPMConnection) error {
 	return t.init()
+}
+
+func MockEKTemplate(mock *tpm2.Public) (restore func()) {
+	orig := ekTemplate
+	ekTemplate = mock
+	return func() {
+		ekTemplate = orig
+	}
 }
 
 func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, mockPcrParams []MockPolicyPCRParam, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
