@@ -38,7 +38,7 @@ const (
 var (
 	EkTemplate                     = ekTemplate
 	LockNVIndexAttrs               = lockNVIndexAttrs
-	MakeDefaultEKTemplate	       = makeDefaultEKTemplate
+	MakeDefaultEKTemplate          = makeDefaultEKTemplate
 	OidExtensionSubjectAltName     = oidExtensionSubjectAltName
 	OidTcgAttributeTpmManufacturer = oidTcgAttributeTpmManufacturer
 	OidTcgAttributeTpmModel        = oidTcgAttributeTpmModel

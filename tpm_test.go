@@ -194,8 +194,8 @@ func createTestCA() ([]byte, crypto.PrivateKey, error) {
 		NotAfter:              t.Add(time.Hour * 240),
 		KeyUsage:              x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
-		IsCA:                  true,
-		SubjectKeyId:          keyId}
+		IsCA:         true,
+		SubjectKeyId: keyId}
 
 	cert, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
 	if err != nil {
@@ -255,9 +255,9 @@ func createTestEkCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 		KeyUsage:              x509.KeyUsageKeyEncipherment,
 		UnknownExtKeyUsage:    []asn1.ObjectIdentifier{OidTcgKpEkCertificate},
 		BasicConstraintsValid: true,
-		IsCA:                  false,
-		SubjectKeyId:          keyId,
-		ExtraExtensions:       []pkix.Extension{sanExtension}}
+		IsCA:            false,
+		SubjectKeyId:    keyId,
+		ExtraExtensions: []pkix.Extension{sanExtension}}
 
 	root, err := x509.ParseCertificate(caCert)
 	if err != nil {

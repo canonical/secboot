@@ -87,7 +87,7 @@ type staticPolicyComputeParams struct {
 
 // staticPolicyData is an output of computeStaticPolicy and provides metadata for executing a policy session.
 type staticPolicyData struct {
-	AuthorizeKeyPublic   *tpm2.Public
+	AuthPublicKey        *tpm2.Public
 	PinIndexHandle       tpm2.Handle
 	PinIndexAuthPolicies tpm2.DigestList
 }
@@ -484,8 +484,8 @@ func computePolicyPCRParams(policyAlg, pcrAlg tpm2.HashAlgorithmId, digest tpm2.
 func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputeParams) (*staticPolicyData, tpm2.Digest, error) {
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
 
-	keyPublic := createPublicAreaForRSASigningKey(input.key)
-	keyName, err := keyPublic.Name()
+	publicKey := createPublicAreaForRSASigningKey(input.key)
+	keyName, err := publicKey.Name()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
 	}
@@ -500,7 +500,7 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 	trial.PolicyNV(input.lockIndexName, nil, 0, tpm2.OpEq)
 
 	return &staticPolicyData{
-		AuthorizeKeyPublic:   keyPublic,
+		AuthPublicKey:        publicKey,
 		PinIndexHandle:       input.pinIndexPub.Index,
 		PinIndexAuthPolicies: input.pinIndexAuthPolicies}, trial.GetDigest(), nil
 }
@@ -616,16 +616,16 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		return xerrors.Errorf("dynamic authorization policy revocation check failed: %w", err)
 	}
 
-	if !staticInput.AuthorizeKeyPublic.NameAlg.Supported() {
+	if !staticInput.AuthPublicKey.NameAlg.Supported() {
 		return errors.New("public area of dynamic authorization policy signature verification key has an unsupported name algorithm")
 	}
-	authorizeKey, err := tpm.LoadExternal(nil, staticInput.AuthorizeKeyPublic, tpm2.HandleOwner)
+	authorizeKey, err := tpm.LoadExternal(nil, staticInput.AuthPublicKey, tpm2.HandleOwner)
 	if err != nil {
 		return xerrors.Errorf("cannot load public area for dynamic authorization policy signature verification key: %w", err)
 	}
 	defer tpm.FlushContext(authorizeKey)
 
-	h := staticInput.AuthorizeKeyPublic.NameAlg.NewHash()
+	h := staticInput.AuthPublicKey.NameAlg.NewHash()
 	h.Write(dynamicInput.AuthorizedPolicy)
 
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, h.Sum(nil), dynamicInput.AuthorizedPolicySignature)

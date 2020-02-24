@@ -595,13 +595,13 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 			if err != nil {
 				t.Fatalf("ComputeStaticPolicy failed: %v", err)
 			}
-			if dataout.AuthorizeKeyPublic.Params.RSADetail().Exponent != uint32(key.PublicKey.E) {
+			if dataout.AuthPublicKey.Params.RSADetail().Exponent != uint32(key.PublicKey.E) {
 				t.Errorf("Auth key public area has wrong exponent")
 			}
-			if dataout.AuthorizeKeyPublic.Params.RSADetail().KeyBits != uint16(key.PublicKey.N.BitLen()) {
+			if dataout.AuthPublicKey.Params.RSADetail().KeyBits != uint16(key.PublicKey.N.BitLen()) {
 				t.Errorf("Auth key public area has wrong bit length")
 			}
-			if !bytes.Equal(dataout.AuthorizeKeyPublic.Unique.RSA(), key.PublicKey.N.Bytes()) {
+			if !bytes.Equal(dataout.AuthPublicKey.Unique.RSA(), key.PublicKey.N.Bytes()) {
 				t.Errorf("Auth key public area has wrong modulus")
 			}
 			if dataout.PinIndexHandle != pinIndexPub.Index {
@@ -841,7 +841,7 @@ func TestExecutePolicy(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
-		signAlg := staticPolicyData.AuthorizeKeyPublic.NameAlg
+		signAlg := staticPolicyData.AuthPublicKey.NameAlg
 		dynamicPolicyData, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrParams, pinIndex.Name(), data.policyCount))
 		if err != nil {
 			t.Fatalf("ComputeDynamicPolicy failed: %v", err)
@@ -1488,7 +1488,7 @@ func TestExecutePolicy(t *testing.T) {
 		}
 	})
 
-	t.Run("InvalidStaticMetadata/AuthorizeKeyPublic/1", func(t *testing.T) {
+	t.Run("InvalidStaticMetadata/AuthPublicKey/1", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
 			pcrParams: []MockPolicyPCRParam{
@@ -1513,7 +1513,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
-			s.AuthorizeKeyPublic.NameAlg = tpm2.HashAlgorithmId(tpm2.AlgorithmSM4)
+			s.AuthPublicKey.NameAlg = tpm2.HashAlgorithmId(tpm2.AlgorithmSM4)
 		})
 		if err == nil {
 			t.Fatalf("Expected an error")
@@ -1526,7 +1526,7 @@ func TestExecutePolicy(t *testing.T) {
 		}
 	})
 
-	t.Run("InvalidStaticMetadata/AuthorizeKeyPublic/2", func(t *testing.T) {
+	t.Run("InvalidStaticMetadata/AuthPublicKey/2", func(t *testing.T) {
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
 			pcrParams: []MockPolicyPCRParam{
@@ -1555,9 +1555,9 @@ func TestExecutePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
-			s.AuthorizeKeyPublic.Params.RSADetail().KeyBits = uint16(key.N.BitLen())
-			s.AuthorizeKeyPublic.Params.RSADetail().Exponent = uint32(key.E)
-			s.AuthorizeKeyPublic.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
+			s.AuthPublicKey.Params.RSADetail().KeyBits = uint16(key.N.BitLen())
+			s.AuthPublicKey.Params.RSADetail().Exponent = uint32(key.E)
+			s.AuthPublicKey.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
 		})
 		var e *tpm2.TPMParameterError
 		if !xerrors.As(err, &e) || e.Code() != tpm2.ErrorSignature || e.Command() != tpm2.CommandVerifySignature || e.Index != 2 {
@@ -1597,9 +1597,9 @@ func TestExecutePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
-			s.AuthorizeKeyPublic.Params.RSADetail().KeyBits = uint16(key.N.BitLen())
-			s.AuthorizeKeyPublic.Params.RSADetail().Exponent = uint32(key.E)
-			s.AuthorizeKeyPublic.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
+			s.AuthPublicKey.Params.RSADetail().KeyBits = uint16(key.N.BitLen())
+			s.AuthPublicKey.Params.RSADetail().Exponent = uint32(key.E)
+			s.AuthPublicKey.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
 
 			signAlg := d.AuthorizedPolicySignature.Signature.RSAPSS().Hash
 			h := signAlg.NewHash()
@@ -1700,7 +1700,7 @@ func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
 		t.Fatalf("readDynamicPolicyCounter failed: %v", err)
 	}
 
-	signAlg := staticPolicyData.AuthorizeKeyPublic.NameAlg
+	signAlg := staticPolicyData.AuthPublicKey.NameAlg
 	dynamicPolicyData, err := ComputeDynamicPolicy(tpm2.HashAlgorithmSHA256,
 		NewDynamicPolicyComputeParams(key, signAlg,
 			[]MockPolicyPCRParam{MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}}},
