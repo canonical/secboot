@@ -677,7 +677,7 @@ func lockAccessToSealedKeysUntilTPMReset(tpm *tpm2.TPMContext, session tpm2.Sess
 			// be unsealed on this TPM anyway.
 			return nil
 		}
-		return xerrors.Errorf("cannot readlock pin NV index: %w", err)
+		return xerrors.Errorf("cannot lock pin NV index for reading: %w", err)
 	}
 	return nil
 }
