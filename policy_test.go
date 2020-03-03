@@ -733,7 +733,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 				t.Fatalf("Unexpected number of PCR data entries")
 			}
 			for i, p := range dataout.PCRData {
-				if p.PCR != data.pcrParams[i].PCR {
+				if int(p.PCR) != data.pcrParams[i].PCR {
 					t.Errorf("Unexpected PCR index")
 				}
 				if p.Alg != data.pcrParams[i].Alg {

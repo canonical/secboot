@@ -26,6 +26,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/chrisccoulson/go-tpm2"
 
@@ -65,7 +66,7 @@ type dynamicPolicyComputeParams struct {
 }
 
 type policyPCRData struct {
-	PCR       int
+	PCR       uint8
 	Alg       tpm2.HashAlgorithmId
 	OrDigests tpm2.DigestList
 }
@@ -510,6 +511,9 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
 	var pcrData []policyPCRData
 	for _, p := range input.pcrParams {
+		if p.pcr > math.MaxUint8 {
+			return nil, fmt.Errorf("invalid PCR index (%d)", p.pcr)
+		}
 		if len(p.digests) == 0 {
 			return nil, fmt.Errorf("no digests provided for PCR%d", p.pcr)
 		}
@@ -523,7 +527,7 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 			trial.PolicyPCR(pcrDigest, pcrs)
 			orDigests = append(orDigests, trial.GetDigest())
 		}
-		pcrData = append(pcrData, policyPCRData{PCR: p.pcr, Alg: p.alg, OrDigests: orDigests})
+		pcrData = append(pcrData, policyPCRData{PCR: uint8(p.pcr), Alg: p.alg, OrDigests: orDigests})
 	}
 
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
@@ -563,7 +567,7 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 
 func executePolicySessionPCRAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, input []policyPCRData) error {
 	for _, i := range input {
-		if err := tpm.PolicyPCR(session, nil, makePCRSelectionList(i.Alg, i.PCR)); err != nil {
+		if err := tpm.PolicyPCR(session, nil, makePCRSelectionList(i.Alg, int(i.PCR))); err != nil {
 			return err
 		}
 		if err := tpm.PolicyOR(session, ensureSufficientORDigests(i.OrDigests)); err != nil {
