@@ -64,9 +64,16 @@ type dynamicPolicyComputeParams struct {
 	policyCount uint64
 }
 
+type policyOrDataNode struct {
+	Next    uint32
+	Digests tpm2.DigestList
+}
+
+type policyOrDataTree []policyOrDataNode
+
 type dynamicPolicyData struct {
 	PCRSelection              tpm2.PCRSelectionList
-	PCROrDigests              tpm2.DigestList
+	PCROrData                 policyOrDataTree
 	PolicyCount               uint64
 	AuthorizedPolicy          tpm2.Digest
 	AuthorizedPolicySignature *tpm2.Signature
@@ -485,6 +492,61 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 		PinIndexAuthPolicies: input.pinIndexAuthPolicies}, trial.GetDigest(), nil
 }
 
+// computePolicyORData computes data required to perform a sequence of TPM2_PolicyOR assertions in order to support compound
+// authorization policies with more than 8 conditions (which is the limit of the TPM). Its main purpose is to support PCR policies
+// with more than 8 conditions. It works by turning a list of digests (or, conditions) in to a tree of nodes, with each node
+// containing no more than 8 digests that can be used in a single TPM2_PolicyOR assertion, the root of the tree containing digests
+// for the final TPM2_PolicyOR assertion, and leaf nodes containing digests for each OR condition. Whilst the returned data is
+// conceptually a tree, the layout in memory is just a slice of tables of up to 8 digests, each with an index that enables the code
+// executing the assertions to traverse upwards through the tree by just advancing to another entry in the slice. This format is
+// easily serialized. After the computations are completed, the provided *tpm2.TrialAuthPolicy will be updated.
+//
+// The returned data is used by firstly finding the leaf node which contains the current session digest. Once this is found, a
+// TPM2_PolicyOR assertion is executed on the digests in that node, and then the tree is traversed upwards to the root node, executing
+// TPM2_PolicyOR assertions along the way - see executePolicyORAssertions.
+func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, digests tpm2.DigestList) policyOrDataTree {
+	var current int
+	var data policyOrDataTree
+	var nextDigests tpm2.DigestList
+
+	for {
+		n := len(digests)
+		if n > 8 {
+			// The TPM only supports 8 conditions in TPM2_PolicyOR.
+			n = 8
+		}
+
+		data = append(data, policyOrDataNode{Digests: digests[:n]})
+		if n == len(digests) && len(nextDigests) == 0 {
+			// All of the digests at this level fit in to a single TPM2_PolicyOR command, so this becomes the root node.
+			break
+		}
+
+		// Consume the next n digests to fit in to this node and produce a single digest that will go in to the parent node.
+		trial, _ := tpm2.ComputeAuthPolicy(alg)
+		trial.PolicyOR(ensureSufficientORDigests(digests[:n]))
+		nextDigests = append(nextDigests, trial.GetDigest())
+
+		// We've consumed n digests, so adjust the slice to point to the next ones to consume to produce a sibling node.
+		digests = digests[n:]
+
+		if len(digests) == 0 {
+			// There are no digests left to produce sibling nodes, and we have a collection of digests to produce parent nodes. Update the
+			// data produced for the nodes at this level to point to the parent nodes we're going to produce on the subsequent iterations.
+			for i := range nextDigests {
+				data[current+i].Next = uint32(len(nextDigests) - i + (i / 8))
+			}
+			// Grab the digests produced for the nodes at this level to produce the parent nodes.
+			current += len(nextDigests)
+			digests = nextDigests
+			nextDigests = nil
+		}
+	}
+
+	trial.PolicyOR(ensureSufficientORDigests(digests))
+	return data
+}
+
 // computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
 // updated.
 func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
@@ -563,7 +625,7 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 	}
 
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
-	trial.PolicyOR(ensureSufficientORDigests(pcrOrDigests))
+	pcrOrData := computePolicyORData(alg, trial, pcrOrDigests)
 
 	operandB := make([]byte, 8)
 	binary.BigEndian.PutUint64(operandB, input.policyCount)
@@ -590,25 +652,68 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 
 	return &dynamicPolicyData{
 		PCRSelection:              pcrs,
-		PCROrDigests:              pcrOrDigests,
+		PCROrData:                 pcrOrData,
 		PolicyCount:               input.policyCount,
 		AuthorizedPolicy:          authorizedPolicy,
 		AuthorizedPolicySignature: &signature}, nil
 }
 
-func executePolicySessionPCRAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, pcrs tpm2.PCRSelectionList, orDigests tpm2.DigestList) error {
-	if err := tpm.PolicyPCR(session, nil, pcrs); err != nil {
-		return err
+// executePolicyORAssertions takes the data produced by computePolicyORData and executes a sequence of TPM2_PolicyOR assertions, in
+// order to support compound policies with more than 8 conditions.
+func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, data policyOrDataTree) error {
+	// First of all, obtain the current digest of the session.
+	currentDigest, err := tpm.PolicyGetDigest(session)
+	if err != nil {
+		return xerrors.Errorf("cannot obtain current session digest: %w", err)
 	}
-	return tpm.PolicyOR(session, ensureSufficientORDigests(orDigests))
+
+	if len(data) == 0 {
+		return errors.New("no policy data")
+	}
+
+	// Find the leaf node that contains the current digest of the session.
+	index := -1
+	end := data[0].Next
+	if end == 0 {
+		end = 1
+	}
+
+	for i := 0; i < len(data) && i < int(end); i++ {
+		if digestListContains(data[i].Digests, currentDigest) {
+			// We've got a match!
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		return errors.New("current session digest not found in policy data")
+	}
+
+	// Execute a TPM2_PolicyOR assertion on the digests in the leaf node and then traverse up the tree to the root node, executing
+	// TPM2_PolicyOR assertions along the way.
+	for lastIndex := -1; index > lastIndex && index < len(data); index += int(data[index].Next) {
+		lastIndex = index
+		if err := tpm.PolicyOR(session, ensureSufficientORDigests(data[index].Digests)); err != nil {
+			return err
+		}
+		if data[index].Next == 0 {
+			// This is the root node, so we're finished.
+			break
+		}
+	}
+	return nil
 }
 
 // executePolicySession executes an authorization policy session using the supplied metadata. On success, the supplied policy
 // session can be used for authorization.
 func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContext, staticInput *staticPolicyData,
 	dynamicInput *dynamicPolicyData, pin string, hmacSession tpm2.SessionContext) error {
-	if err := executePolicySessionPCRAssertions(tpm, policySession, dynamicInput.PCRSelection, dynamicInput.PCROrDigests); err != nil {
-		return xerrors.Errorf("cannot complete PCR assertions: %w", err)
+	if err := tpm.PolicyPCR(policySession, nil, dynamicInput.PCRSelection); err != nil {
+		return xerrors.Errorf("cannot complete PCR assertion: %w", err)
+	}
+
+	if err := executePolicyORAssertions(tpm, policySession, dynamicInput.PCROrData); err != nil {
+		return xerrors.Errorf("cannot complete OR assertions: %w", err)
 	}
 
 	if staticInput.PinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
