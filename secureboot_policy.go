@@ -251,7 +251,7 @@ type secureBootDbIterator struct {
 	r io.ReadSeeker
 }
 
-// nextSignatureList returns the SignatureType, SignaureHeader and EFI_SIGNATURE_DATA entries associated with the next
+// nextSignatureList returns the SignatureType, SignatureHeader and EFI_SIGNATURE_DATA entries associated with the next
 // EFI_SIGNATURE_LIST.
 func (d *secureBootDbIterator) nextSignatureList() (*tcglog.EFIGUID, []byte, [][]byte, error) {
 	start, _ := d.r.Seek(0, io.SeekCurrent)
