@@ -71,9 +71,8 @@ var (
 	WinCertTypeEfiGuid                       = winCertTypeEfiGuid
 )
 
-// Export some types that wrap around unexported types, for testing. These are required in order to pass these between functions
-// in tests, or to access unexported members of unexported types. Convert the unexported types to these with the corresponding
-// As*() functions.
+// Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
+// unexported members of some unexported types.
 type DynamicPolicyData struct {
 	*dynamicPolicyData
 }
