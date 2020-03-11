@@ -76,9 +76,9 @@ func TestDecodeWinCertificate(t *testing.T) {
 			switch certType {
 			case WinCertTypePKCSSignedData:
 			case WinCertTypeEfiGuid:
-				c := AsWinCertificateUefiGuid(cert)
-				if c.CertType != *data.efiGuidCertType {
-					t.Errorf("Unexpected WIN_CERTIFICATE_UEFI_GUID type: %v", &c.CertType)
+				c := cert.(WinCertificate)
+				if c.ToWinCertificateUefiGuid().CertType != *data.efiGuidCertType {
+					t.Errorf("Unexpected WIN_CERTIFICATE_UEFI_GUID type: %v", &c.ToWinCertificateUefiGuid().CertType)
 				}
 			}
 		})
@@ -287,7 +287,7 @@ func TestDecodeSecureBootDb(t *testing.T) {
 			}
 			i := 0
 			for _, s := range signatures {
-				sig := AsEFISignatureData(s)
+				sig := (*EFISignatureData)(s)
 				if sig.SignatureType() != EFICertX509Guid {
 					continue
 				}
@@ -362,7 +362,7 @@ func TestIdentifyInitialOSLaunchVerificationEvent(t *testing.T) {
 				if err != nil {
 					t.Fatalf("IdentifyInitialOSLaunchVerificationEvent failed: %v", err)
 				}
-				e := AsSecureBootVerificationEvent(event)
+				e := (*SecureBootVerificationEvent)(event)
 				if events[data.index] != e.Event() {
 					t.Errorf("incorrect event detected")
 				}

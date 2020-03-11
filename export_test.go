@@ -82,9 +82,7 @@ func AsDynamicPolicyData(in *dynamicPolicyData) *DynamicPolicyData {
 	return &DynamicPolicyData{in}
 }
 
-type EFISignatureData struct {
-	*efiSignatureData
-}
+type EFISignatureData efiSignatureData
 
 func (s *EFISignatureData) SignatureType() *tcglog.EFIGUID {
 	return &s.signatureType
@@ -98,13 +96,7 @@ func (s *EFISignatureData) Data() []byte {
 	return s.data
 }
 
-func AsEFISignatureData(in *efiSignatureData) *EFISignatureData {
-	return &EFISignatureData{in}
-}
-
-type SecureBootVerificationEvent struct {
-	*secureBootVerificationEvent
-}
+type SecureBootVerificationEvent secureBootVerificationEvent
 
 func (e *SecureBootVerificationEvent) Event() *tcglog.Event {
 	return e.event
@@ -112,10 +104,6 @@ func (e *SecureBootVerificationEvent) Event() *tcglog.Event {
 
 func (e *SecureBootVerificationEvent) ImageLoadEvent() *tcglog.Event {
 	return e.imageLoadEvent
-}
-
-func AsSecureBootVerificationEvent(in *secureBootVerificationEvent) *SecureBootVerificationEvent {
-	return &SecureBootVerificationEvent{in}
 }
 
 type StaticPolicyData struct {
@@ -126,28 +114,29 @@ func AsStaticPolicyData(in *staticPolicyData) *StaticPolicyData {
 	return &StaticPolicyData{in}
 }
 
-type WinCertificateAuthenticode struct {
-	*winCertificateAuthenticode
+type WinCertificate interface {
+	ToWinCertificateAuthenticode() *WinCertificateAuthenticode
+	ToWinCertificateUefiGuid() *WinCertificateUefiGuid
 }
 
-func AsWinCertificateAuthenticode(in winCertificate) *WinCertificateAuthenticode {
-	cert, ok := in.(*winCertificateAuthenticode)
-	if !ok {
-		return nil
-	}
-	return &WinCertificateAuthenticode{cert}
+type WinCertificateAuthenticode winCertificateAuthenticode
+
+func (c *winCertificateAuthenticode) ToWinCertificateAuthenticode() *WinCertificateAuthenticode {
+	return (*WinCertificateAuthenticode)(c)
 }
 
-type WinCertificateUefiGuid struct {
-	*winCertificateUefiGuid
+func (c *winCertificateAuthenticode) ToWinCertificateUefiGuid() *WinCertificateUefiGuid {
+	return nil
 }
 
-func AsWinCertificateUefiGuid(in winCertificate) *WinCertificateUefiGuid {
-	cert, ok := in.(*winCertificateUefiGuid)
-	if !ok {
-		return nil
-	}
-	return &WinCertificateUefiGuid{cert}
+type WinCertificateUefiGuid winCertificateUefiGuid
+
+func (c *winCertificateUefiGuid) ToWinCertificateAuthenticode() *WinCertificateAuthenticode {
+	return nil
+}
+
+func (c *winCertificateUefiGuid) ToWinCertificateUefiGuid() *WinCertificateUefiGuid {
+	return (*WinCertificateUefiGuid)(c)
 }
 
 // Export some helpers for testing.
