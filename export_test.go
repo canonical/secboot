@@ -73,13 +73,7 @@ var (
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
-type DynamicPolicyData struct {
-	*dynamicPolicyData
-}
-
-func AsDynamicPolicyData(in *dynamicPolicyData) *DynamicPolicyData {
-	return &DynamicPolicyData{in}
-}
+type DynamicPolicyData dynamicPolicyData
 
 type EFISignatureData efiSignatureData
 
@@ -105,13 +99,7 @@ func (e *SecureBootVerificationEvent) ImageLoadEvent() *tcglog.Event {
 	return e.imageLoadEvent
 }
 
-type StaticPolicyData struct {
-	*staticPolicyData
-}
-
-func AsStaticPolicyData(in *staticPolicyData) *StaticPolicyData {
-	return &StaticPolicyData{in}
-}
+type StaticPolicyData staticPolicyData
 
 type WinCertificate interface {
 	ToWinCertificateAuthenticode() *WinCertificateAuthenticode

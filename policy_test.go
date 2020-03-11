@@ -865,7 +865,7 @@ func TestExecutePolicy(t *testing.T) {
 		}
 
 		if prepare != nil {
-			prepare(AsStaticPolicyData(staticPolicyData), AsDynamicPolicyData(dynamicPolicyData))
+			prepare((*StaticPolicyData)(staticPolicyData), (*DynamicPolicyData)(dynamicPolicyData))
 		}
 
 		session, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, data.alg)
