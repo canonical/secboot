@@ -59,9 +59,7 @@ var PerformPinChange = performPinChange
 var ReadAndValidateLockNVIndexPublic = readAndValidateLockNVIndexPublic
 var ReadDynamicPolicyCounter = readDynamicPolicyCounter
 
-type DynamicPolicyData struct {
-	*dynamicPolicyData
-}
+type DynamicPolicyData dynamicPolicyData
 
 type MockPolicyPCRParam struct {
 	PCR     int
@@ -69,20 +67,10 @@ type MockPolicyPCRParam struct {
 	Digests tpm2.DigestList
 }
 
-type StaticPolicyData struct {
-	*staticPolicyData
-}
+type StaticPolicyData staticPolicyData
 
 func AppendRootCAHash(h []byte) {
 	rootCAHashes = append(rootCAHashes, h)
-}
-
-func AsDynamicPolicyData(in *dynamicPolicyData) *DynamicPolicyData {
-	return &DynamicPolicyData{in}
-}
-
-func AsStaticPolicyData(in *staticPolicyData) *StaticPolicyData {
-	return &StaticPolicyData{in}
 }
 
 func InitTPMConnection(t *TPMConnection) error {
