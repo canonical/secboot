@@ -64,14 +64,9 @@ type dynamicPolicyComputeParams struct {
 	policyCount uint64
 }
 
-type policyPCRData struct {
-	PCR       int
-	Alg       tpm2.HashAlgorithmId
-	OrDigests tpm2.DigestList
-}
-
 type dynamicPolicyData struct {
-	PCRData                   []policyPCRData
+	PCRSelection              tpm2.PCRSelectionList
+	PCROrDigests              tpm2.DigestList
 	PolicyCount               uint64
 	AuthorizedPolicy          tpm2.Digest
 	AuthorizedPolicySignature *tpm2.Signature
@@ -465,21 +460,6 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 	return digests
 }
 
-func makePCRSelectionList(alg tpm2.HashAlgorithmId, index int) tpm2.PCRSelectionList {
-	return tpm2.PCRSelectionList{tpm2.PCRSelection{Hash: alg, Select: []int{index}}}
-}
-
-func computePolicyPCRParams(policyAlg, pcrAlg tpm2.HashAlgorithmId, digest tpm2.Digest, index int) (tpm2.Digest, tpm2.PCRSelectionList) {
-	pcrs := makePCRSelectionList(pcrAlg, index)
-
-	pcrValues := make(tpm2.PCRValues)
-	pcrValues.EnsureBank(pcrAlg)
-	pcrValues[pcrAlg][index] = digest
-	pcrDigest, _ := tpm2.ComputePCRDigest(policyAlg, pcrs, pcrValues)
-
-	return pcrDigest, pcrs
-}
-
 // computeStaticPolicy computes the part of an authorization policy that is bound to a sealed key object and never changes.
 func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputeParams) (*staticPolicyData, tpm2.Digest, error) {
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
@@ -508,28 +488,82 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 // computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
 // updated.
 func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
-	var pcrData []policyPCRData
+	// Build a PCRSelectionList from input.pcrParams
+	var pcrs tpm2.PCRSelectionList
 	for _, p := range input.pcrParams {
 		if len(p.digests) == 0 {
-			return nil, fmt.Errorf("no digests provided for PCR%d", p.pcr)
+			return nil, fmt.Errorf("no digests provided for PCR%d, bank %v", p.pcr, p.alg)
 		}
-		var orDigests tpm2.DigestList
-		for _, d := range p.digests {
-			trial, _ := tpm2.ComputeAuthPolicy(alg)
-			if len(pcrData) > 0 {
-				trial.PolicyOR(ensureSufficientORDigests(pcrData[len(pcrData)-1].OrDigests))
+		var s *tpm2.PCRSelection
+		for i := range pcrs {
+			if pcrs[i].Hash == p.alg {
+				s = &pcrs[i]
+				break
 			}
-			pcrDigest, pcrs := computePolicyPCRParams(alg, p.alg, d, p.pcr)
-			trial.PolicyPCR(pcrDigest, pcrs)
-			orDigests = append(orDigests, trial.GetDigest())
 		}
-		pcrData = append(pcrData, policyPCRData{PCR: p.pcr, Alg: p.alg, OrDigests: orDigests})
+		if s == nil {
+			pcrs = append(pcrs, tpm2.PCRSelection{Hash: p.alg})
+			s = &pcrs[len(pcrs)-1]
+		}
+		for _, i := range s.Select {
+			if i == p.pcr {
+				return nil, fmt.Errorf("digests for PCR%d, bank %v provided more than once", p.pcr, p.alg)
+			}
+		}
+		s.Select = append(s.Select, p.pcr)
+	}
+
+	// Take every combination of digest from input.pcrParams and compute the policy digest that would result from the TPM2_PolicyPCR
+	// assertion with each combination
+	var pcrOrDigests tpm2.DigestList
+	// Keep track of the index in to each policyPcrParam.digests slice without having to do a recursive iteration.
+	indices := make([]int, len(input.pcrParams))
+	advanceIndices := func() bool {
+		for i := range input.pcrParams {
+			indices[i]++
+			if indices[i] < len(input.pcrParams[i].digests) {
+				break
+			}
+			// The index for this policyPcrParam has advanced beyond the end of its digests slice - roll over to zero before moving on to
+			// advance the index for the next policyPcrParam.
+			indices[i] = 0
+			if i == len(input.pcrParams)-1 {
+				// We've rolled all of the indices back to zero, so we're finished now
+				return false
+			}
+		}
+		return true
+	}
+
+	for {
+		// Loop over input.pcrParams and add the digest at the current index for each one to pcrValues
+		pcrValues := make(tpm2.PCRValues)
+		for i := range input.pcrParams {
+			pcrValues.SetValue(input.pcrParams[i].pcr, input.pcrParams[i].alg, input.pcrParams[i].digests[indices[i]])
+		}
+
+		// Compute PCR digest from the map of PCR values and the computed selection
+		digest, _ := tpm2.ComputePCRDigest(alg, pcrs, pcrValues)
+
+		// Execute trial TPM2_PolicyPCR with the computed PCR digest and selection, and save the result
+		trial, _ := tpm2.ComputeAuthPolicy(alg)
+		trial.PolicyPCR(digest, pcrs)
+		pcrOrDigests = append(pcrOrDigests, trial.GetDigest())
+
+		// Advance to the next digest combination
+		if len(input.pcrParams) == 0 {
+			// Special case - there are no PCR parameters so we've created a single digest for a TPM2_PolicyPCR assertion with
+			// an empty selection.
+			break
+		}
+
+		if !advanceIndices() {
+			break
+		}
 	}
 
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
-	if len(pcrData) > 0 {
-		trial.PolicyOR(ensureSufficientORDigests(pcrData[len(pcrData)-1].OrDigests))
-	}
+	trial.PolicyOR(ensureSufficientORDigests(pcrOrDigests))
 
 	operandB := make([]byte, 8)
 	binary.BigEndian.PutUint64(operandB, input.policyCount)
@@ -555,33 +589,25 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 				Sig:  tpm2.PublicKeyRSA(sig)}}}
 
 	return &dynamicPolicyData{
-		PCRData:                   pcrData,
+		PCRSelection:              pcrs,
+		PCROrDigests:              pcrOrDigests,
 		PolicyCount:               input.policyCount,
 		AuthorizedPolicy:          authorizedPolicy,
 		AuthorizedPolicySignature: &signature}, nil
 }
 
-func executePolicySessionPCRAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, input []policyPCRData) error {
-	for _, i := range input {
-		if err := tpm.PolicyPCR(session, nil, makePCRSelectionList(i.Alg, i.PCR)); err != nil {
-			return err
-		}
-		if err := tpm.PolicyOR(session, ensureSufficientORDigests(i.OrDigests)); err != nil {
-			var e *tpm2.TPMParameterError
-			if xerrors.As(err, &e) && e.Code() == tpm2.ErrorValue {
-				return xerrors.Errorf("unexpected session digest after executing TPM2_PolicyPCR assertion for PCR%d: %w", i.PCR, err)
-			}
-			return err
-		}
+func executePolicySessionPCRAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, pcrs tpm2.PCRSelectionList, orDigests tpm2.DigestList) error {
+	if err := tpm.PolicyPCR(session, nil, pcrs); err != nil {
+		return err
 	}
-	return nil
+	return tpm.PolicyOR(session, ensureSufficientORDigests(orDigests))
 }
 
 // executePolicySession executes an authorization policy session using the supplied metadata. On success, the supplied policy
 // session can be used for authorization.
 func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContext, staticInput *staticPolicyData,
 	dynamicInput *dynamicPolicyData, pin string, hmacSession tpm2.SessionContext) error {
-	if err := executePolicySessionPCRAssertions(tpm, policySession, dynamicInput.PCRData); err != nil {
+	if err := executePolicySessionPCRAssertions(tpm, policySession, dynamicInput.PCRSelection, dynamicInput.PCROrDigests); err != nil {
 		return xerrors.Errorf("cannot complete PCR assertions: %w", err)
 	}
 
