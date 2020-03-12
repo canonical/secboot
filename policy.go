@@ -518,7 +518,23 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 	var pcrOrDigests tpm2.DigestList
 	// Keep track of the index in to each policyPcrParam.digests slice without having to do a recursive iteration.
 	indices := make([]int, len(input.pcrParams))
-Outer:
+	advanceIndices := func() bool {
+		for i := range input.pcrParams {
+			indices[i]++
+			if indices[i] < len(input.pcrParams[i].digests) {
+				break
+			}
+			// The index for this policyPcrParam has advanced beyond the end of its digests slice - roll over to zero before moving on to
+			// advance the index for the next policyPcrParam.
+			indices[i] = 0
+			if i == len(input.pcrParams)-1 {
+				// We've rolled all of the indices back to zero, so we're finished now
+				return false
+			}
+		}
+		return true
+	}
+
 	for {
 		// Loop over input.pcrParams and add the digest at the current index for each one to pcrValues
 		pcrValues := make(tpm2.PCRValues)
@@ -540,18 +556,9 @@ Outer:
 			// an empty selection.
 			break
 		}
-		for i := range input.pcrParams {
-			indices[i]++
-			if indices[i] < len(input.pcrParams[i].digests) {
-				break
-			}
-			// The index for this policyPcrParam has advanced beyond the end of its digests slice - roll over to zero before moving on to
-			// advance the index for the next policyPcrParam
-			indices[i] = 0
-			if i == len(input.pcrParams)-1 {
-				// We've rolled all of the indices back to zero, so we're finished now
-				break Outer
-			}
+
+		if !advanceIndices() {
+			break
 		}
 	}
 
@@ -583,7 +590,7 @@ Outer:
 
 	return &dynamicPolicyData{
 		PCRSelection:              pcrs,
-		PCROrDigests:		   pcrOrDigests,
+		PCROrDigests:              pcrOrDigests,
 		PolicyCount:               input.policyCount,
 		AuthorizedPolicy:          authorizedPolicy,
 		AuthorizedPolicySignature: &signature}, nil
