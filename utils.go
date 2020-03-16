@@ -29,52 +29,29 @@ import (
 	"golang.org/x/xerrors"
 )
 
-// isResourceUnavailableError indicates whether the specified error is tpm2.ResourceUnavailableError
-func isResourceUnavailableError(err error) bool {
-	var e tpm2.ResourceUnavailableError
-	return xerrors.As(err, &e)
-}
-
 // isAuthFailError indicates whether the specified error is a TPM authorization check failure, with or without DA implications.
-func isAuthFailError(err error) bool {
-	var sessionErr *tpm2.TPMSessionError
-	if !xerrors.As(err, &sessionErr) {
-		return false
-	}
-	switch sessionErr.Code() {
-	case tpm2.ErrorAuthFail: // With DA implications
-		return true
-	case tpm2.ErrorBadAuth: // Without DA implications
-		return true
-	}
-	return false
+func isAuthFailError(err error, command tpm2.CommandCode, index int) bool {
+	return tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, command, index) ||
+		tpm2.IsTPMSessionError(err, tpm2.ErrorBadAuth, command, index)
 }
 
-// isLockoutError indicates whether the specific error is a TPM lockout failure.
-func isLockoutError(err error) bool {
-	var warning *tpm2.TPMWarning
-	return xerrors.As(err, &warning) && warning.Code == tpm2.WarningLockout
-}
-
-type nvIndexDefinedError struct {
+type tpmErrorWithHandle struct {
 	handle tpm2.Handle
+	err    *tpm2.TPMError
 }
 
-func (e *nvIndexDefinedError) Error() string {
-	return fmt.Sprintf("NV index defined at 0x%08x", e.handle)
+func (e *tpmErrorWithHandle) Error() string {
+	return fmt.Sprintf("%v (handle %v)", e.err, e.handle)
 }
 
-// isNVIndexDefinedWithHandleError indicates whether the specified error is a *nvIndexDefinedError.
-func isNVIndexDefinedWithHandleError(err error) bool {
-	var e *nvIndexDefinedError
+func (e *tpmErrorWithHandle) Unwrap() error {
+	return e.err
+}
+
+// isTpmErrorWithHandle indicates whether the specified error is a *tpmErrorWithHandle.
+func isTpmErrorWithHandle(err error) bool {
+	var e *tpmErrorWithHandle
 	return xerrors.As(err, &e)
-}
-
-// isNVIndexDefinedError indicates whether the specified error is a TPM error indicating that it tried to create a NV resource
-// at a handle that is already in use.
-func isNVIndexDefinedError(err error) bool {
-	var tpmErr *tpm2.TPMError
-	return xerrors.As(err, &tpmErr) && tpmErr.Code == tpm2.ErrorNVDefined
 }
 
 // isObjectPrimaryKeyWithTemplate checks whether the object associated with context is primary key in the specified hierarchy with

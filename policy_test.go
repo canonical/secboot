@@ -32,8 +32,6 @@ import (
 
 	"github.com/chrisccoulson/go-tpm2"
 	. "github.com/snapcore/secboot"
-
-	"golang.org/x/xerrors"
 )
 
 func validateLockNVIndex(t *testing.T, tpm *tpm2.TPMContext) {
@@ -316,12 +314,8 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 		if pub != nil {
 			t.Errorf("ReadAndValidateLockNVIndexPublic should have returned no public area")
 		}
-		var ruErr tpm2.ResourceUnavailableError
-		if !xerrors.As(err, &ruErr) {
+		if !tpm2.IsResourceUnavailableError(err, LockNVDataHandle) {
 			t.Errorf("Unexpected error type")
-		}
-		if ruErr.Handle != LockNVDataHandle {
-			t.Errorf("Unexpected error: %v", err)
 		}
 	})
 
@@ -1427,8 +1421,7 @@ func TestExecutePolicy(t *testing.T) {
 			},
 			pinDefine: "1234",
 			pinInput:  "12345"}, nil)
-		var e *tpm2.TPMSessionError
-		if !xerrors.As(err, &e) || e.Code() != tpm2.ErrorAuthFail || e.Command() != tpm2.CommandPolicySecret {
+		if !tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandPolicySecret, 1) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1728,8 +1721,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		var e *tpm2.TPMError
-		if !xerrors.As(err, &e) || e.Code != tpm2.ErrorPolicy || e.Command != tpm2.CommandPolicyNV {
+		if !tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1771,8 +1763,7 @@ func TestExecutePolicy(t *testing.T) {
 				t.Fatalf("NVReadLock failed: %v", err)
 			}
 		})
-		var e *tpm2.TPMError
-		if !xerrors.As(err, &e) || e.Code != tpm2.ErrorNVLocked || e.Command != tpm2.CommandPolicyNV {
+		if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1847,8 +1838,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexHandle += 1
 		})
-		var e tpm2.ResourceUnavailableError
-		if !xerrors.As(err, &e) {
+		if !tpm2.IsResourceUnavailableError(err, pinIndex.Handle() + 1) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1885,8 +1875,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexAuthPolicies[len(s.PinIndexAuthPolicies)-1] = make(tpm2.Digest, len(s.PinIndexAuthPolicies[0]))
 		})
-		var e *tpm2.TPMParameterError
-		if !xerrors.As(err, &e) || e.Code() != tpm2.ErrorValue || e.Command() != tpm2.CommandPolicyOR {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1923,8 +1912,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexAuthPolicies[0] = make(tpm2.Digest, len(s.PinIndexAuthPolicies[0]))
 		})
-		var e *tpm2.TPMSessionError
-		if !xerrors.As(err, &e) || e.Code() != tpm2.ErrorPolicyFail || e.Command() != tpm2.CommandPolicyNV {
+		if !tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2007,8 +1995,7 @@ func TestExecutePolicy(t *testing.T) {
 			s.AuthPublicKey.Params.RSADetail().Exponent = uint32(key.E)
 			s.AuthPublicKey.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
 		})
-		var e *tpm2.TPMParameterError
-		if !xerrors.As(err, &e) || e.Code() != tpm2.ErrorSignature || e.Command() != tpm2.CommandVerifySignature || e.Index != 2 {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorSignature, tpm2.CommandVerifySignature, 2) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2099,8 +2086,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			d.PolicyCount += 1
 		})
-		var e *tpm2.TPMParameterError
-		if !xerrors.As(err, &e) || e.Code() != tpm2.ErrorValue || e.Command() != tpm2.CommandPolicyAuthorize || e.Index != 1 {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
 			t.Errorf("Failed to execute policy session: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2184,8 +2170,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			d.PCROrData[0].Next = 1000
 		})
-		var e *tpm2.TPMParameterError
-		if !xerrors.As(err, &e) || e.Code() != tpm2.ErrorValue || e.Command() != tpm2.CommandPolicyAuthorize || e.Index != 1 {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
 			t.Errorf("Failed to execute policy session: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2232,8 +2217,7 @@ func TestExecutePolicy(t *testing.T) {
 			x := int32(-10)
 			d.PCROrData[0].Next = *(*uint32)(unsafe.Pointer(&x))
 		})
-		var e *tpm2.TPMParameterError
-		if !xerrors.As(err, &e) || e.Code() != tpm2.ErrorValue || e.Command() != tpm2.CommandPolicyAuthorize || e.Index != 1 {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
 			t.Errorf("Failed to execute policy session: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2332,8 +2316,7 @@ func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
 			}
 
 			err = ExecutePolicySession(tpm.TPMContext, policySession, staticPolicyData, dynamicPolicyData, "", tpm.HmacSession())
-			var e *tpm2.TPMError
-			if !xerrors.As(err, &e) || e.Code != tpm2.ErrorNVLocked || e.Command != tpm2.CommandPolicyNV {
+			if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) {
 				t.Errorf("Unexpected error: %v", err)
 			}
 

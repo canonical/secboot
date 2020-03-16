@@ -281,8 +281,9 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 		Size:       0}
 	index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, public, session)
 	if err != nil {
-		if isNVIndexDefinedError(err) {
-			return &nvIndexDefinedError{public.Index}
+		var e *tpm2.TPMError
+		if tpm2.AsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace, &e) {
+			return &tpmErrorWithHandle{err: e, handle: public.Index}
 		}
 		return xerrors.Errorf("cannot create NV index: %w", err)
 	}
@@ -360,8 +361,9 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 		Size:    uint16(len(data))}
 	dataIndex, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, &dataPublic, session)
 	if err != nil {
-		if isNVIndexDefinedError(err) {
-			return &nvIndexDefinedError{dataPublic.Index}
+		var e *tpm2.TPMError
+		if tpm2.AsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace, &e) {
+			return &tpmErrorWithHandle{err: e, handle: dataPublic.Index}
 		}
 		return xerrors.Errorf("cannot create policy data NV index: %w", err)
 	}
@@ -808,8 +810,7 @@ func lockAccessToSealedKeysUntilTPMReset(tpm *tpm2.TPMContext, session tpm2.Sess
 		return xerrors.Errorf("cannot obtain context for lock NV index: %w", err)
 	}
 	if err := tpm.NVReadLock(lock, lock, session); err != nil {
-		var hErr *tpm2.TPMHandleError
-		if xerrors.As(err, &hErr) && hErr.Index == 2 && hErr.Code() == tpm2.ErrorAttributes {
+		if tpm2.IsTPMHandleError(err, tpm2.ErrorAttributes, tpm2.CommandNVReadLock, 2) {
 			// Not provisioned with a valid lock NV index, so no keys created by this package can
 			// be unsealed on this TPM anyway.
 			return nil
