@@ -150,3 +150,13 @@ func createPublicAreaForRSASigningKey(key *rsa.PublicKey) *tpm2.Public {
 				Exponent:  uint32(key.E)}},
 		Unique: tpm2.PublicIDU{Data: tpm2.PublicKeyRSA(key.N.Bytes())}}
 }
+
+// digestListContains indicates whether the specified digest is present in the list of digests.
+func digestListContains(list tpm2.DigestList, digest tpm2.Digest) bool {
+	for _, d := range list {
+		if bytes.Equal(d, digest) {
+			return true
+		}
+	}
+	return false
+}

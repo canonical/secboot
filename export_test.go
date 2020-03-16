@@ -41,6 +41,7 @@ const (
 var (
 	ComputeDbUpdate                          = computeDbUpdate
 	ComputeDynamicPolicy                     = computeDynamicPolicy
+	ComputePolicyORData                      = computePolicyORData
 	ComputeSecureBootPolicyDigests           = computeSecureBootPolicyDigests
 	ComputeStaticPolicy                      = computeStaticPolicy
 	CreatePinNVIndex                         = createPinNVIndex
