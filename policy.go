@@ -64,8 +64,10 @@ type dynamicPolicyComputeParams struct {
 	policyCount uint64
 }
 
+// policyOrDataNode represents a collection of up to 8 digests used in a single TPM2_PolicyOR invocation, and forms part of a tree
+// of nodes in order to support authorization policies with more than 8 conditions.
 type policyOrDataNode struct {
-	Next    uint32
+	Next    uint32 // Index of the parent node in the containing slice, relative to this node. Zero indicates that this is the root node
 	Digests tpm2.DigestList
 }
 
@@ -505,8 +507,8 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 // TPM2_PolicyOR assertion is executed on the digests in that node, and then the tree is traversed upwards to the root node, executing
 // TPM2_PolicyOR assertions along the way - see executePolicyORAssertions.
 func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, digests tpm2.DigestList) policyOrDataTree {
-	var current int
 	var data policyOrDataTree
+	curNode := 0
 	var nextDigests tpm2.DigestList
 
 	for {
@@ -532,12 +534,16 @@ func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, 
 
 		if len(digests) == 0 {
 			// There are no digests left to produce sibling nodes, and we have a collection of digests to produce parent nodes. Update the
-			// data produced for the nodes at this level to point to the parent nodes we're going to produce on the subsequent iterations.
+			// nodes produced at this level to point to the parent nodes we're going to produce on the subsequent iterations.
 			for i := range nextDigests {
-				data[current+i].Next = uint32(len(nextDigests) - i + (i / 8))
+				// At this point, len(nextDigests) == (len(data) - curNode).
+				// 'len(nextDigests) - i' initializes Next to point to the end of data (ie, data[len(data)]), and the '+ (i / 8)' advances it to
+				// point to the parent node that will be created on subsequent iterations, taking in to account that each node will have up to
+				// 8 child nodes.
+				data[curNode+i].Next = uint32(len(nextDigests) - i + (i / 8))
 			}
 			// Grab the digests produced for the nodes at this level to produce the parent nodes.
-			current += len(nextDigests)
+			curNode += len(nextDigests)
 			digests = nextDigests
 			nextDigests = nil
 		}
