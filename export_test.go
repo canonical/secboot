@@ -48,10 +48,12 @@ var (
 )
 
 var ComputeDynamicPolicy = computeDynamicPolicy
+var ComputePolicyORData = computePolicyORData
 var ComputeStaticPolicy = computeStaticPolicy
 var CreatePinNVIndex = createPinNVIndex
 var CreatePublicAreaForRSASigningKey = createPublicAreaForRSASigningKey
 var EnsureLockNVIndex = ensureLockNVIndex
+var ExecutePolicyORAssertions = executePolicyORAssertions
 var ExecutePolicySession = executePolicySession
 var IncrementDynamicPolicyCounter = incrementDynamicPolicyCounter
 var LockAccessToSealedKeysUntilTPMReset = lockAccessToSealedKeysUntilTPMReset
