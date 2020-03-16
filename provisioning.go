@@ -108,10 +108,10 @@ var (
 func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, template *tpm2.Public, handle tpm2.Handle, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	obj, err := tpm.CreateResourceContextFromTPM(handle)
 	switch {
-	case err != nil && !isResourceUnavailableError(err):
+	case err != nil && !tpm2.IsResourceUnavailableError(err, handle):
 		// Unexpected error
 		return nil, xerrors.Errorf("cannot create context to determine if persistent handle is already occupied: %w", err)
-	case isResourceUnavailableError(err):
+	case tpm2.IsResourceUnavailableError(err, handle):
 		// No existing object to evict
 	default:
 		// Evict the current object
@@ -191,9 +191,9 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 
 		if err := tpm.Clear(tpm.LockoutHandleContext(), session); err != nil {
 			switch {
-			case isAuthFailError(err):
+			case isAuthFailError(err, tpm2.CommandClear, 1):
 				return AuthFailError{tpm2.HandleLockout}
-			case isLockoutError(err):
+			case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandClear):
 				return ErrTPMLockout
 			}
 			return xerrors.Errorf("cannot clear the TPM: %w", err)
@@ -204,11 +204,10 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 
 	// Provision an endorsement key
 	if _, err := provisionPrimaryKey(tpm.TPMContext, tpm.EndorsementHandleContext(), ekTemplate, ekHandle, session); err != nil {
-		var tpmErr *tpm2.TPMError
 		switch {
-		case xerrors.As(err, &tpmErr) && tpmErr.Command == tpm2.CommandEvictControl:
+		case isAuthFailError(err, tpm2.CommandEvictControl, 1):
 			return AuthFailError{tpm2.HandleOwner}
-		case isAuthFailError(err):
+		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
 			return AuthFailError{tpm2.HandleEndorsement}
 		default:
 			return xerrors.Errorf("cannot provision endorsement key: %w", err)
@@ -231,7 +230,7 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	srk, err := provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), &srkTemplate, srkHandle, session)
 	if err != nil {
 		switch {
-		case isAuthFailError(err):
+		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
 			return AuthFailError{tpm2.HandleOwner}
 		default:
 			return xerrors.Errorf("cannot provision storage root key: %w", err)
@@ -241,8 +240,9 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 
 	// Provision a lock NV index
 	if err := ensureLockNVIndex(tpm.TPMContext, session); err != nil {
-		if isNVIndexDefinedWithHandleError(err) {
-			return TPMResourceExistsError{err.(*nvIndexDefinedError).handle}
+		var e *tpmErrorWithHandle
+		if tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.AnyCommandCode) && xerrors.As(err, &e) {
+			return TPMResourceExistsError{e.handle}
 		}
 		return xerrors.Errorf("cannot create lock NV index: %w", err)
 	}
@@ -256,9 +256,9 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	// Set the DA parameters.
 	if err := tpm.DictionaryAttackParameters(tpm.LockoutHandleContext(), maxTries, recoveryTime, lockoutRecovery, session); err != nil {
 		switch {
-		case isAuthFailError(err):
+		case isAuthFailError(err, tpm2.CommandDictionaryAttackParameters, 1):
 			return AuthFailError{tpm2.HandleLockout}
-		case isLockoutError(err):
+		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandDictionaryAttackParameters):
 			return ErrTPMLockout
 		}
 		return xerrors.Errorf("cannot configure dictionary attack parameters: %w", err)
@@ -304,10 +304,10 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 
 	ek, err := tpm.CreateResourceContextFromTPM(ekHandle, session)
 	switch {
-	case err != nil && !isResourceUnavailableError(err):
+	case err != nil && !tpm2.IsResourceUnavailableError(err, ekHandle):
 		// Unexpected error
 		return 0, err
-	case isResourceUnavailableError(err):
+	case tpm2.IsResourceUnavailableError(err, ekHandle):
 		// Nothing to do
 	default:
 		if ekInit, err := tpm.EndorsementKey(); err == nil && bytes.Equal(ekInit.Name(), ek.Name()) {
@@ -317,10 +317,10 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 
 	srk, err := tpm.CreateResourceContextFromTPM(srkHandle, session)
 	switch {
-	case err != nil && !isResourceUnavailableError(err):
+	case err != nil && !tpm2.IsResourceUnavailableError(err, srkHandle):
 		// Unexpected error
 		return 0, err
-	case isResourceUnavailableError(err):
+	case tpm2.IsResourceUnavailableError(err, srkHandle):
 		// Nothing to do
 	case tpm.provisionedSrk != nil:
 		// ProvisionTPM has been called with this TPMConnection. Make sure it's the same object
@@ -360,10 +360,10 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 
 	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session)
 	switch {
-	case err != nil && !isResourceUnavailableError(err):
+	case err != nil && !tpm2.IsResourceUnavailableError(err, lockNVHandle):
 		// Unexpected error
 		return 0, err
-	case isResourceUnavailableError(err):
+	case tpm2.IsResourceUnavailableError(err, lockNVHandle):
 		// Nothing to do
 	default:
 		if _, err := readAndValidateLockNVIndexPublic(tpm.TPMContext, lockIndex, session); err == nil {

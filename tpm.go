@@ -217,7 +217,7 @@ func (t *TPMConnection) init() error {
 		if err == nil {
 			return ek, nil
 		}
-		if !isResourceUnavailableError(err) {
+		if !tpm2.IsResourceUnavailableError(err, ekHandle) {
 			return nil, err
 		}
 		if ek, err := createTransientEk(t.TPMContext); err == nil {
@@ -310,7 +310,7 @@ func (t *TPMConnection) init() error {
 	if len(t.verifiedEkCertChain) > 0 {
 		_, err = t.GetRandom(20, session.WithAttrs(tpm2.AttrContinueSession|tpm2.AttrAudit))
 		if err != nil {
-			if isAuthFailError(err) {
+			if isAuthFailError(err, tpm2.CommandGetRandom, 1) {
 				return verificationError{errors.New("endorsement key proof of ownership check failed")}
 			}
 			return xerrors.Errorf("cannot execute command to complete EK proof of ownership check: %w", err)
@@ -846,7 +846,7 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 
 	if err := t.init(); err != nil {
 		var verifyErr verificationError
-		if !isResourceUnavailableError(err) && !xerrors.As(err, &verifyErr) {
+		if !tpm2.IsResourceUnavailableError(err, tpm2.AnyHandle) && !xerrors.As(err, &verifyErr) {
 			return nil, xerrors.Errorf("cannot initialize TPM connection: %w", err)
 		}
 	}
@@ -925,7 +925,7 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 	t.verifiedDeviceAttributes = attrs
 
 	if err := t.init(); err != nil {
-		if isResourceUnavailableError(err) {
+		if tpm2.IsResourceUnavailableError(err, tpm2.AnyHandle) {
 			return nil, ErrTPMProvisioning
 		}
 		var verifyErr verificationError
