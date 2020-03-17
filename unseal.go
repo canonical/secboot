@@ -60,7 +60,8 @@ import (
 // If the provided PIN is incorrect, then a ErrPinFail error will be returned and the TPM's dictionary attack counter will be
 // incremented.
 //
-// TODO: Locked access error.
+// If access to sealed key objects created by this package is disallowed until the next TPM reset or TPM restart, then a
+// ErrSealedKeyAccessLocked error will be returned.
 //
 // If the authorization policy check fails during unsealing, then a InvalidKeyFileError error will be returned. Note that this
 // condition can also occur as the result of an incorrectly provisioned TPM, which will be detected during a subsequent call to
@@ -134,8 +135,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string, lock boo
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
 			return nil, ErrTPMProvisioning
 		case tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV):
-			// TODO: Add a separate error for this
-			return nil, err
+			return nil, ErrSealedKeyAccessLocked
 		}
 		return nil, err
 	}

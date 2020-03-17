@@ -43,6 +43,10 @@ var (
 
 	// ErrPinFail is returned from SealedKeyObject.UnsealFromTPM if the provided PIN is incorrect.
 	ErrPinFail = errors.New("the provided PIN is incorrect")
+
+	// ErrSealedKeyAccessLocked is returned from SealedKeyObject.UnsealFromTPM if the sealed key object cannot be unsealed until the
+	// next TPM reset or restart.
+	ErrSealedKeyAccessLocked = errors.New("cannot access the sealed key object until the next TPM reset or restart")
 )
 
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists
