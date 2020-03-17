@@ -140,6 +140,47 @@ func InitTPMConnection(t *TPMConnection) error {
 	return t.init()
 }
 
+type MockPolicyPCRParam struct {
+	PCR     int
+	Alg     tpm2.HashAlgorithmId
+	Digests tpm2.DigestList
+}
+
+// MakeMockPolicyPCRValuesFull computes a slice of tpm2.PCRValues for every combination of supplied PCR values.
+func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRValues) {
+	indices := make([]int, len(params))
+	advanceIndices := func() bool {
+		for i := range params {
+			indices[i]++
+			if indices[i] < len(params[i].Digests) {
+				break
+			}
+			indices[i] = 0
+			if i == len(params)-1 {
+				return false
+			}
+		}
+		return true
+	}
+
+	for {
+		v := make(tpm2.PCRValues)
+		for i := range params {
+			v.SetValue(params[i].PCR, params[i].Alg, params[i].Digests[indices[i]])
+		}
+		out = append(out, v)
+
+		if len(params) == 0 {
+			break
+		}
+
+		if !advanceIndices() {
+			break
+		}
+	}
+	return
+}
+
 func MockEfivarsPath(path string) (restore func()) {
 	origPath := efivarsPath
 	efivarsPath = path
@@ -164,21 +205,11 @@ func MockEventLogPath(path string) (restore func()) {
 	}
 }
 
-type MockPolicyPCRParam struct {
-	PCR     int
-	Alg     tpm2.HashAlgorithmId
-	Digests tpm2.DigestList
-}
-
-func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, mockPcrParams []MockPolicyPCRParam, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
-	var pcrParams []policyPCRParam
-	for _, p := range mockPcrParams {
-		pcrParams = append(pcrParams, policyPCRParam{pcr: p.PCR, alg: p.Alg, digests: p.Digests})
-	}
+func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrValues []tpm2.PCRValues, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{
 		key:                  key,
 		signAlg:              signAlg,
-		pcrParams:            pcrParams,
+		pcrValues:            pcrValues,
 		policyCountIndexName: policyCountIndexName,
 		policyCount:          policyCount}
 }

@@ -26,6 +26,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/chrisccoulson/go-tpm2"
 
@@ -42,13 +43,6 @@ var (
 	lockNVIndexAttrs = tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVReadStClear)
 )
 
-// policyPCRParam details a set of approved digests for a given PCR.
-type policyPCRParam struct {
-	pcr     int
-	alg     tpm2.HashAlgorithmId
-	digests tpm2.DigestList
-}
-
 // dynamicPolicyComputeParams provides the parameters to computeDynamicPolicy.
 type dynamicPolicyComputeParams struct {
 	key *rsa.PrivateKey // Key used to authorize the generated dynamic authorization policy
@@ -56,7 +50,7 @@ type dynamicPolicyComputeParams struct {
 	// signAlg is the digest algorithm for the signature used to authorize the generated dynamic authorization policy. It must
 	// match the name algorithm of the public part of key that will be loaded in to the TPM for verification.
 	signAlg              tpm2.HashAlgorithmId
-	pcrParams            []policyPCRParam // Approved PCR digests
+	pcrValues            []tpm2.PCRValues // Approved PCR digests
 	policyCountIndexName tpm2.Name        // Name of the NV index used for revoking authorization policies
 
 	// policyCount is the maximum permitted value of the NV index associated with policyCountIndexName, beyond which, this authorization
@@ -555,81 +549,45 @@ func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, 
 	return data
 }
 
+// computePCRSelectionListFromValues builds a tpm2.PCRSelectionList from the provided map of PCR values.
+func computePCRSelectionListFromValues(v tpm2.PCRValues) (out tpm2.PCRSelectionList) {
+	for alg := range v {
+		s := tpm2.PCRSelection{Hash: alg}
+		for pcr := range v[alg] {
+			s.Select = append(s.Select, pcr)
+		}
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Hash < out[j].Hash })
+	return
+}
+
 // computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
 // updated.
 func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
-	// Build a PCRSelectionList from input.pcrParams
-	var pcrs tpm2.PCRSelectionList
-	for _, p := range input.pcrParams {
-		if len(p.digests) == 0 {
-			return nil, fmt.Errorf("no digests provided for PCR%d, bank %v", p.pcr, p.alg)
-		}
-		var s *tpm2.PCRSelection
-		for i := range pcrs {
-			if pcrs[i].Hash == p.alg {
-				s = &pcrs[i]
-				break
-			}
-		}
-		if s == nil {
-			pcrs = append(pcrs, tpm2.PCRSelection{Hash: p.alg})
-			s = &pcrs[len(pcrs)-1]
-		}
-		for _, i := range s.Select {
-			if i == p.pcr {
-				return nil, fmt.Errorf("digests for PCR%d, bank %v provided more than once", p.pcr, p.alg)
-			}
-		}
-		s.Select = append(s.Select, p.pcr)
+	if len(input.pcrValues) == 0 {
+		return nil, errors.New("no PCR values specified")
 	}
 
-	// Take every combination of digest from input.pcrParams and compute the policy digest that would result from the TPM2_PolicyPCR
-	// assertion with each combination
+	// Build a PCRSelectionList from input.pcrValues
+	pcrs := computePCRSelectionListFromValues(input.pcrValues[0])
+
+	// Compute the policy digest that would result from a TPM2_PolicyPCR assertion for each condition
 	var pcrOrDigests tpm2.DigestList
-	// Keep track of the index in to each policyPcrParam.digests slice without having to do a recursive iteration.
-	indices := make([]int, len(input.pcrParams))
-	advanceIndices := func() bool {
-		for i := range input.pcrParams {
-			indices[i]++
-			if indices[i] < len(input.pcrParams[i].digests) {
-				break
-			}
-			// The index for this policyPcrParam has advanced beyond the end of its digests slice - roll over to zero before moving on to
-			// advance the index for the next policyPcrParam.
-			indices[i] = 0
-			if i == len(input.pcrParams)-1 {
-				// We've rolled all of the indices back to zero, so we're finished now
-				return false
-			}
-		}
-		return true
-	}
-
-	for {
-		// Loop over input.pcrParams and add the digest at the current index for each one to pcrValues
-		pcrValues := make(tpm2.PCRValues)
-		for i := range input.pcrParams {
-			pcrValues.SetValue(input.pcrParams[i].pcr, input.pcrParams[i].alg, input.pcrParams[i].digests[indices[i]])
+	for _, v := range input.pcrValues {
+		// We only support a single PCR selection, so ensure that all conditions explicitly define values for the same set of PCRs
+		p := computePCRSelectionListFromValues(v)
+		if !p.Equal(pcrs) {
+			return nil, errors.New("not all combinations of PCR values contain a complete set of values")
 		}
 
 		// Compute PCR digest from the map of PCR values and the computed selection
-		digest, _ := tpm2.ComputePCRDigest(alg, pcrs, pcrValues)
+		digest, _ := tpm2.ComputePCRDigest(alg, pcrs, v)
 
 		// Execute trial TPM2_PolicyPCR with the computed PCR digest and selection, and save the result
 		trial, _ := tpm2.ComputeAuthPolicy(alg)
 		trial.PolicyPCR(digest, pcrs)
 		pcrOrDigests = append(pcrOrDigests, trial.GetDigest())
-
-		// Advance to the next digest combination
-		if len(input.pcrParams) == 0 {
-			// Special case - there are no PCR parameters so we've created a single digest for a TPM2_PolicyPCR assertion with
-			// an empty selection.
-			break
-		}
-
-		if !advanceIndices() {
-			break
-		}
 	}
 
 	trial, _ := tpm2.ComputeAuthPolicy(alg)

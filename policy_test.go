@@ -930,19 +930,24 @@ func TestComputeDynamicPolicy(t *testing.T) {
 		desc         string
 		alg          tpm2.HashAlgorithmId
 		signAlg      tpm2.HashAlgorithmId
-		pcrParams    []MockPolicyPCRParam
+		pcrValues    []tpm2.PCRValues
 		policyCount  uint64
 		pcrSelection tpm2.PCRSelectionList
-		pcrOrDigests tpm2.DigestList
 		policy       tpm2.Digest
+		err          string
 	}{
 		{
 			desc:    "Single/1",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					},
+				},
+			},
 			policyCount:  10,
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			policy:       decodeHexString(t, "3cbe37896850d15904508ddf7a28f776642fe60e10b8c9b35e22f50bdc3a53dc"),
@@ -951,9 +956,14 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "Single/2",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}},
-				MockPolicyPCRParam{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					},
+				},
+			},
 			policyCount:  10,
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8}}},
 			policy:       decodeHexString(t, "86affbdd808f57ef16c369fc2cc099a3bfa4de6d39a5c4a2cba83710c555ecbe"),
@@ -962,9 +972,14 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "SHA1Session",
 			alg:     tpm2.HashAlgorithmSHA1,
 			signAlg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234"),
+					},
+				},
+			},
 			policyCount:  4551,
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			policy:       decodeHexString(t, "28ac61ddced6e86df127edebeea647b9dc5ca84d"),
@@ -973,24 +988,54 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "SHA256SessionWithSHA512PCRs",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA512, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "foo")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA512, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "bar")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA512: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "foo"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "bar"),
+					},
+				},
+			},
 			policyCount:  403,
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA512, Select: []int{7, 12}}},
 			policy:       decodeHexString(t, "3600c82daa5035cd43270f3bc3d0e54beb5c822068ba1951e1bb8757f9dd1d15"),
 		},
 		{
-			desc:    "MultiplePCRValues",
+			desc:    "MultiplePCRValues/1",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
+					},
+				},
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234"),
+					},
+				},
+			},
+			policyCount:  5,
+			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
+			policy:       decodeHexString(t, "512b6a11965b51f1e5d7eef556bbe1d10a944e5151ed152632f51cb14a326949"),
+		},
+		{
+			desc:    "MultiplePCRValues/2",
+			alg:     tpm2.HashAlgorithmSHA256,
+			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
+				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")},
+				},
+				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")}}},
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")},
+				},
+			}),
 			policyCount:  5,
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			policy:       decodeHexString(t, "a17b393df59e27da3052bce83dbd8d97e777c4967c2ffa9ea9cc096a65944eed"),
@@ -999,9 +1044,14 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "SHA512AuthKey",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA512,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					},
+				},
+			},
 			policyCount:  10,
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			policy:       decodeHexString(t, "3cbe37896850d15904508ddf7a28f776642fe60e10b8c9b35e22f50bdc3a53dc"),
@@ -1010,102 +1060,113 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "MultiplePCRAlgorithms",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA512, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}},
-				MockPolicyPCRParam{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					},
+					tpm2.HashAlgorithmSHA512: {
+						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "foo"),
+					},
+				},
+			},
 			policyCount:  10,
-			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA512, Select: []int{7}}, {Hash: tpm2.HashAlgorithmSHA256, Select: []int{8}}},
-			policy:       decodeHexString(t, "1744562fbc67243d2a85fc293d9ccba1381ee835890044b23af957d0be44486e"),
+			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{8}}, {Hash: tpm2.HashAlgorithmSHA512, Select: []int{7}}},
+			policy:       decodeHexString(t, "adacb43d5f894bf05b6153c16743251a1896ab92d88c9032a7e94095372869dd"),
 		},
 		{
 			desc:    "LotsOfPCRValues",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
+				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")}},
-				MockPolicyPCRParam{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
+				},
+				{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar5")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar5")},
+				},
+				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")}}},
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
+				},
+			}),
 			policyCount:  15,
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}},
 			policy:       decodeHexString(t, "92a8744419642bd0c72195ec681fcc03a6f4dd3c644837c7f0eb8394d729f9d5"),
 		},
+		{
+			desc:    "IncompletePCRValues",
+			alg:     tpm2.HashAlgorithmSHA256,
+			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					},
+				},
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "baz"),
+					},
+				},
+			},
+			policyCount: 15,
+			err:         "not all combinations of PCR values contain a complete set of values",
+		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			dataout, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrParams, pinName, data.policyCount))
-			if err != nil {
-				t.Fatalf("ComputeDynamicPolicy failed; %v", err)
-			}
-			if len(dataout.PCRSelection) != len(data.pcrSelection) {
-				t.Errorf("Unexpected PCR selection length")
+			dataout, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrValues, pinName, data.policyCount))
+			if data.err == "" {
+				if err != nil {
+					t.Fatalf("ComputeDynamicPolicy failed: %v", err)
+				}
+				if !dataout.PCRSelection.Equal(data.pcrSelection) {
+					t.Errorf("Unexpected PCR selection")
+				}
+				// TODO: Test dataout.PCROrData
+
+				if dataout.PolicyCount != data.policyCount {
+					t.Errorf("Unexpected policy revocation count")
+				}
+
+				if !bytes.Equal(data.policy, dataout.AuthorizedPolicy) {
+					t.Errorf("Unexpected policy digest returned (got %x, expected %x)", dataout.AuthorizedPolicy, data.policy)
+				}
+
+				if dataout.AuthorizedPolicySignature.SigAlg != tpm2.SigSchemeAlgRSAPSS {
+					t.Errorf("Unexpected authorized policy signature algorithm")
+				}
+				if dataout.AuthorizedPolicySignature.Signature.RSAPSS().Hash != data.signAlg {
+					t.Errorf("Unexpected authorized policy signature digest algorithm")
+				}
+
+				h := data.signAlg.NewHash()
+				h.Write(dataout.AuthorizedPolicy)
+
+				if err := rsa.VerifyPSS(&key.PublicKey, data.signAlg.GetHash(), h.Sum(nil),
+					[]byte(dataout.AuthorizedPolicySignature.Signature.RSAPSS().Sig),
+					&rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash}); err != nil {
+					t.Errorf("Invalid authorized policy signature: %v", err)
+				}
 			} else {
-				for i := range dataout.PCRSelection {
-					if dataout.PCRSelection[i].Hash != data.pcrSelection[i].Hash {
-						t.Errorf("Unexpected algorithm for PCR selection")
-					}
-					if len(dataout.PCRSelection[i].Select) != len(data.pcrSelection[i].Select) {
-						t.Errorf("Unexpected number of PCRs in selection")
-					} else {
-						for j := range dataout.PCRSelection[i].Select {
-							if dataout.PCRSelection[i].Select[j] != data.pcrSelection[i].Select[j] {
-								t.Errorf("Unexpected PCR in selection")
-							}
-						}
-					}
+				if err == nil {
+					t.Fatalf("ComputeDynamicPolicy should have failed")
 				}
-			}
-			numPcrOrDigests := 0
-			for _, p := range data.pcrParams {
-				if numPcrOrDigests == 0 {
-					numPcrOrDigests = 1
+				if err.Error() != data.err {
+					t.Errorf("Unexpected error: %v", err)
 				}
-				numPcrOrDigests *= len(p.Digests)
-			}
-			//if len(dataout.PCROrDigests) != numPcrOrDigests {
-			//	t.Errorf("Unexpected number of PCR OR digests")
-			//}
-			//for _, d := range dataout.PCROrDigests {
-			//	if len(d) != data.alg.Size() {
-			//		t.Errorf("Unexpected OR digest size")
-			//	}
-			//}
-
-			if dataout.PolicyCount != data.policyCount {
-				t.Errorf("Unexpected policy revocation count")
-			}
-
-			if !bytes.Equal(data.policy, dataout.AuthorizedPolicy) {
-				t.Errorf("Unexpected policy digest returned (got %x, expected %x)", dataout.AuthorizedPolicy, data.policy)
-			}
-
-			if dataout.AuthorizedPolicySignature.SigAlg != tpm2.SigSchemeAlgRSAPSS {
-				t.Errorf("Unexpected authorized policy signature algorithm")
-			}
-			if dataout.AuthorizedPolicySignature.Signature.RSAPSS().Hash != data.signAlg {
-				t.Errorf("Unexpected authorized policy signature digest algorithm")
-			}
-
-			h := data.signAlg.NewHash()
-			h.Write(dataout.AuthorizedPolicy)
-
-			if err := rsa.VerifyPSS(&key.PublicKey, data.signAlg.GetHash(), h.Sum(nil),
-				[]byte(dataout.AuthorizedPolicySignature.Signature.RSAPSS().Sig),
-				&rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash}); err != nil {
-				t.Errorf("Invalid authorized policy signature: %v", err)
 			}
 		})
 	}
@@ -1151,7 +1212,7 @@ func TestExecutePolicy(t *testing.T) {
 	}
 	type testData struct {
 		alg         tpm2.HashAlgorithmId
-		pcrParams   []MockPolicyPCRParam
+		pcrValues   []tpm2.PCRValues
 		policyCount uint64
 		pcrEvents   []pcrEvent
 		pinDefine   string
@@ -1178,7 +1239,7 @@ func TestExecutePolicy(t *testing.T) {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
 		signAlg := staticPolicyData.AuthPublicKey.NameAlg
-		dynamicPolicyData, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrParams, pinIndex.Name(), data.policyCount))
+		dynamicPolicyData, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrValues, pinIndex.Name(), data.policyCount))
 		if err != nil {
 			t.Fatalf("ComputeDynamicPolicy failed: %v", err)
 		}
@@ -1223,9 +1284,14 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1257,9 +1323,14 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1292,9 +1363,14 @@ func TestExecutePolicy(t *testing.T) {
 		// policy digest algorithm
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA1,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1326,9 +1402,14 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs, using the SHA-1 algorithm
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA1,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA1, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA1, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA1: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1360,9 +1441,14 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs, and uses a PIN
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1397,9 +1483,14 @@ func TestExecutePolicy(t *testing.T) {
 		// (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1434,9 +1525,14 @@ func TestExecutePolicy(t *testing.T) {
 		// (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1472,9 +1568,14 @@ func TestExecutePolicy(t *testing.T) {
 		// (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1509,13 +1610,20 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a compound policy that includes a pair of digests for 2 PCRs
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1528,7 +1636,7 @@ func TestExecutePolicy(t *testing.T) {
 				},
 				{
 					index: 12,
-					data:  "abc",
+					data:  "bar",
 				},
 				{
 					index: 12,
@@ -1547,13 +1655,66 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a compound policy that includes a pair of digests for 2 PCRs
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
+					},
+				},
+			},
+			policyCount: policyCount,
+			pcrEvents: []pcrEvent{
+				{
+					index: 7,
+					data:  "foo",
+				},
+				{
+					index: 7,
+					data:  "baz",
+				},
+				{
+					index: 12,
+					data:  "abc",
+				},
+				{
+					index: 12,
+					data:  "foo",
+				},
+			}}, nil)
+		if err != nil {
+			t.Errorf("Failed to execute policy session: %v", err)
+		}
+		if !bytes.Equal(digest, expected) {
+			t.Errorf("Session digest didn't match policy digest")
+		}
+	})
+
+	t.Run("MultiplePCRValues/Mismatch", func(t *testing.T) {
+		// Test with a compound policy that includes a pair of digests for 2 PCRs, where the PCR values during execution don't match the
+		// policy (execution should fail)
+		expected, digest, err := run(t, &testData{
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1573,11 +1734,14 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if err != nil {
-			t.Errorf("Failed to execute policy session: %v", err)
+		if err == nil {
+			t.Fatalf("Expected an error")
 		}
-		if !bytes.Equal(digest, expected) {
-			t.Errorf("Session digest didn't match policy digest")
+		if err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if bytes.Equal(digest, expected) {
+			t.Errorf("Session digest shouldn't match policy digest")
 		}
 	})
 
@@ -1585,25 +1749,29 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a compound PCR policy that has 125 combinations of conditions.
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
+				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")}},
-				MockPolicyPCRParam{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
+				},
+				{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar5")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar5")},
+				},
+				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")}}},
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
+				},
+			}),
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1639,52 +1807,11 @@ func TestExecutePolicy(t *testing.T) {
 		}
 	})
 
-	t.Run("MultiplePCRValues/Mismatch", func(t *testing.T) {
-		// Test with a compound policy that includes a pair of digests for 2 PCRs, where the PCR values during execution don't match the
-		// policy (execution should fail)
-		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo")}}},
-			policyCount: policyCount,
-			pcrEvents: []pcrEvent{
-				{
-					index: 7,
-					data:  "foo",
-				},
-				{
-					index: 7,
-					data:  "baz",
-				},
-				{
-					index: 12,
-					data:  "bar",
-				},
-				{
-					index: 12,
-					data:  "xxx",
-				},
-			}}, nil)
-		if err == nil {
-			t.Fatalf("Expected an error")
-		}
-		if err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
-			t.Errorf("Unexpected error: %v", err)
-		}
-		if bytes.Equal(digest, expected) {
-			t.Errorf("Session digest shouldn't match policy digest")
-		}
-	})
-
 	t.Run("NoPCRs", func(t *testing.T) {
 		// Test with a policy that includes no PCR assertions - probably fairly pointless, but should work nonetheless
 		expected, digest, err := run(t, &testData{
 			alg:         tpm2.HashAlgorithmSHA256,
+			pcrValues:   []tpm2.PCRValues{{}},
 			policyCount: policyCount,
 		}, nil)
 		if err != nil {
@@ -1699,9 +1826,14 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a dynamic authorization policy that has been revoked (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount - 1,
 			pcrEvents: []pcrEvent{
 				{
@@ -1733,9 +1865,14 @@ func TestExecutePolicy(t *testing.T) {
 		// Test execution when access to sealed key objects has been locked (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1775,9 +1912,14 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of an invalid handle for the PIN NV index in the static metadata (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1814,9 +1956,14 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of the PIN NV index in the static metadata pointing to a non-existant resource (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1851,9 +1998,14 @@ func TestExecutePolicy(t *testing.T) {
 		// the policy for executing TPM2_PolicyNV (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1888,9 +2040,14 @@ func TestExecutePolicy(t *testing.T) {
 		// the policy for executing TPM2_PolicyNV (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1925,9 +2082,14 @@ func TestExecutePolicy(t *testing.T) {
 		// fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -1965,9 +2127,14 @@ func TestExecutePolicy(t *testing.T) {
 		// (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -2009,9 +2176,14 @@ func TestExecutePolicy(t *testing.T) {
 		// resulting session digest shouldn't match the computed policy digest)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -2062,9 +2234,14 @@ func TestExecutePolicy(t *testing.T) {
 		// counter value (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount - 1,
 			pcrEvents: []pcrEvent{
 				{
@@ -2100,9 +2277,14 @@ func TestExecutePolicy(t *testing.T) {
 		// session digest ends up correct)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo")}}},
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -2136,19 +2318,22 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of a corrupted OR digest tree with a PCR policy that has lots of conditions (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
+				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
+				},
+				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")}}},
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
+				},
+			}),
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -2182,19 +2367,22 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of a corrupted OR digest tree with a PCR policy that has lots of conditions (execution should fail)
 		expected, digest, err := run(t, &testData{
 			alg: tpm2.HashAlgorithmSHA256,
-			pcrParams: []MockPolicyPCRParam{
-				MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
+				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")}},
-				MockPolicyPCRParam{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
+				},
+				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")}}},
+					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
+				},
+			}),
 			policyCount: policyCount,
 			pcrEvents: []pcrEvent{
 				{
@@ -2272,8 +2460,7 @@ func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
 
 	signAlg := staticPolicyData.AuthPublicKey.NameAlg
 	dynamicPolicyData, err := ComputeDynamicPolicy(tpm2.HashAlgorithmSHA256,
-		NewDynamicPolicyComputeParams(key, signAlg,
-			[]MockPolicyPCRParam{MockPolicyPCRParam{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}}},
+		NewDynamicPolicyComputeParams(key, signAlg, []tpm2.PCRValues{{tpm2.HashAlgorithmSHA256: {7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}}},
 			pinIndex.Name(), policyCount))
 	if err != nil {
 		t.Fatalf("ComputeDynamicPolicy failed: %v", err)
