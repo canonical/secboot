@@ -744,18 +744,18 @@ type loadEventAndPaths struct {
 
 // secureBootPolicyGen is the main structure involved with computing secure boot policy PCR digests.
 type secureBootPolicyGen struct {
-	params *EFISecureBootPolicyProfileParams
+	*EFISecureBootPolicyProfileParams
 }
 
 // extendMeasurement extends the supplied digest to the current value of pcrValue for the specified event path.
 func (g *secureBootPolicyGen) extendMeasurement(path *secureBootPolicyGenPath, digest tpm2.Digest) {
-	path.extendMeasurement(g.params.PCRAlgorithm, digest)
+	path.extendMeasurement(g.PCRAlgorithm, digest)
 }
 
 // extendFirmwareVerificationMeasurement extends the supplied digest to the current value of pcrValue for the specified event path,
 // and records the extended digest in order to avoid measuring the same verification event more than once.
 func (g *secureBootPolicyGen) extendFirmwareVerificationMeasurement(path *secureBootPolicyGenPath, digest tpm2.Digest) {
-	path.extendVerificationMeasurement(g.params.PCRAlgorithm, digest, Firmware)
+	path.extendVerificationMeasurement(g.PCRAlgorithm, digest, Firmware)
 }
 
 // computeAndExtendVariableMeasurement computes a EFI variable measurement from the supplied arguments and extends that to the
@@ -765,7 +765,7 @@ func (g *secureBootPolicyGen) computeAndExtendVariableMeasurement(path *secureBo
 		VariableName: *varName,
 		UnicodeName:  unicodeName,
 		VariableData: varData}
-	h := g.params.PCRAlgorithm.NewHash()
+	h := g.PCRAlgorithm.NewHash()
 	if err := data.EncodeMeasuredBytes(h); err != nil {
 		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
 	}
@@ -910,7 +910,7 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 			VariableName: rootDb.variableName,
 			UnicodeName:  rootDb.unicodeName,
 			VariableData: varData.Bytes()}
-		h := g.params.PCRAlgorithm.NewHash()
+		h := g.PCRAlgorithm.NewHash()
 		if err := eventData.EncodeMeasuredBytes(h); err != nil {
 			return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
 		}
@@ -934,7 +934,7 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		if measured {
 			continue
 		}
-		p.extendVerificationMeasurement(g.params.PCRAlgorithm, digest, source)
+		p.extendVerificationMeasurement(g.PCRAlgorithm, digest, source)
 	}
 
 	return nil
@@ -1036,9 +1036,9 @@ func (g *secureBootPolicyGen) processPreOSEvents(path *secureBootPolicyGenPath, 
 				return xerrors.Errorf("cannot process dbx measurement event: %w", err)
 			}
 		case isVerificationEvent(e):
-			g.extendFirmwareVerificationMeasurement(path, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.params.PCRAlgorithm)]))
+			g.extendFirmwareVerificationMeasurement(path, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
 		case e.PCRIndex == secureBootPCR:
-			g.extendMeasurement(path, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.params.PCRAlgorithm)]))
+			g.extendMeasurement(path, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
 		}
 	}
 
@@ -1051,7 +1051,7 @@ func (g *secureBootPolicyGen) processPreOSEvents(path *secureBootPolicyGenPath, 
 	}
 
 	// The verification event associated with the initial OS load event was recorded as part of a UEFI driver load, so we need to keep it.
-	g.extendFirmwareVerificationMeasurement(path, tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(g.params.PCRAlgorithm)]))
+	g.extendFirmwareVerificationMeasurement(path, tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
 
 	return nil
 }
@@ -1111,7 +1111,7 @@ func (g *secureBootPolicyGen) processOSLoadEvent(paths []*secureBootPolicyGenPat
 // run takes a TCG event log and computes a set of secure boot policy PCR digests from the supplied configuration (see
 // EFISecureBootPolicyProfileParams)
 func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, error) {
-	sigDbUpdates, err := buildSignatureDbUpdateList(g.params.SignatureDbUpdateKeystores)
+	sigDbUpdates, err := buildSignatureDbUpdateList(g.SignatureDbUpdateKeystores)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot build list of UEFI signature DB updates: %w", err)
 	}
@@ -1124,7 +1124,7 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 	var allPaths []*secureBootPolicyGenPath
 
 	for i := 0; i <= len(sigDbUpdates); i++ {
-		path := &secureBootPolicyGenPath{pcrValue: make(tpm2.Digest, g.params.PCRAlgorithm.Size()), dbUpdateLevel: i}
+		path := &secureBootPolicyGenPath{pcrValue: make(tpm2.Digest, g.PCRAlgorithm.Size()), dbUpdateLevel: i}
 		if err := g.processPreOSEvents(path, events, initialOSVerificationEvent, sigDbUpdates[0:i]); err != nil {
 			return nil, xerrors.Errorf("cannot process pre-OS events from event log: %w", err)
 		}
@@ -1145,7 +1145,7 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 	var loadEvents []*loadEventAndPaths
 	var nextLoadEvents []*loadEventAndPaths
 
-	for i, e := range g.params.LoadSequences {
+	for i, e := range g.LoadSequences {
 		var paths []*secureBootPolicyGenPath
 		if i == 0 {
 			paths = allPaths
@@ -1291,7 +1291,7 @@ func AddEFISecureBootPolicyProfile(profile *PCRProtectionProfile, params *EFISec
 		events = append(events, event)
 	}
 
-	gen := &secureBootPolicyGen{params: params}
+	gen := &secureBootPolicyGen{params}
 	digests, err := gen.run(events)
 	if err != nil {
 		return xerrors.Errorf("cannot compute secure boot policy digests: %w", err)
