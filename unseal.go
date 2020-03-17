@@ -39,10 +39,10 @@ import (
 // the sealed object is associated with another TPM owner (the TPM has been cleared since the sealed key data file was created with
 // SealKeyToTPM), or because the TPM object at the persistent handle reserved for the storage root key has a public area that looks
 // like a valid storage root key but it was created with the wrong template. This latter case is really caused by an incorrectly
-// provisioning TPM, but it isn't possible to detect this. A subsequent call to SealKeyToTPM will rectify this.
+// provisioned TPM, but it isn't possible to detect this. A subsequent call to SealKeyToTPM or ProvisionTPM will rectify this.
 //
-// If the TPM's current PCR values don't match the PCR protection policy for this key file, a InvalidKeyFileError error will be
-// returned.
+// If the TPM's current PCR values are not consistent with the PCR protection policy for this key file, a InvalidKeyFileError error
+// will be returned.
 //
 // If any of the metadata in this key file is invalid, a InvalidKeyFileError error will be returned.
 //
