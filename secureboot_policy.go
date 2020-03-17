@@ -657,8 +657,13 @@ func isShimExecutable(r io.ReaderAt) (bool, error) {
 
 // EFISecureBootPolicyProfileParams provide the arguments to AddEFISecureBootPolicyProfile.
 type EFISecureBootPolicyProfileParams struct {
-	PCRAlgorithm  tpm2.HashAlgorithmId
-	LoadSequences []*EFIImageLoadEvent // A list of EFI image load sequences for which to compute PCR digests for
+	// PCRAlgorithm is the algorithm for which to compute PCR digests for. TPMs compliant with the "TCG PC Client Platform TPM Profile
+	// (PTP) Specification" Level 00, Revision 01.03 v22, May 22 2017 are required to support tpm2.HashAlgorithmSHA1 and
+	// tpm2.HashAlgorithmSHA256. Support for other digest algorithms is optional.
+	PCRAlgorithm tpm2.HashAlgorithmId
+
+	// LoadSequences is a list of EFI image load sequences for which to compute PCR digests for.
+	LoadSequences []*EFIImageLoadEvent
 
 	// SignatureDbUpdateKeystores is a list of directories containing EFI signature database updates for which to compute PCR digests
 	// for. These directories are passed to sbkeysync using the --keystore option.
