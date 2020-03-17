@@ -624,6 +624,23 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 		AuthorizedPolicySignature: &signature}, nil
 }
 
+type dynamicPolicyDataError struct {
+	err error
+}
+
+func (e dynamicPolicyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e dynamicPolicyDataError) Unwrap() error {
+	return e.err
+}
+
+func isDynamicPolicyDataError(err error) bool {
+	var e dynamicPolicyDataError
+	return xerrors.As(err, &e)
+}
+
 // executePolicyORAssertions takes the data produced by computePolicyORData and executes a sequence of TPM2_PolicyOR assertions, in
 // order to support compound policies with more than 8 conditions.
 func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, data policyOrDataTree) error {
@@ -634,7 +651,7 @@ func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext
 	}
 
 	if len(data) == 0 {
-		return errors.New("no policy data")
+		return dynamicPolicyDataError{errors.New("no policy data")}
 	}
 
 	// Find the leaf node that contains the current digest of the session.
@@ -652,7 +669,7 @@ func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext
 		}
 	}
 	if index == -1 {
-		return errors.New("current session digest not found in policy data")
+		return dynamicPolicyDataError{errors.New("current session digest not found in policy data")}
 	}
 
 	// Execute a TPM2_PolicyOR assertion on the digests in the leaf node and then traverse up the tree to the root node, executing
@@ -660,6 +677,10 @@ func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext
 	for lastIndex := -1; index > lastIndex && index < len(data); index += int(data[index].Next) {
 		lastIndex = index
 		if err := tpm.PolicyOR(session, ensureSufficientORDigests(data[index].Digests)); err != nil {
+			if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
+				// The dynamic authorization policy data is invalid.
+				return dynamicPolicyDataError{err}
+			}
 			return err
 		}
 		if data[index].Next == 0 {
@@ -683,9 +704,13 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 
 	if staticInput.PinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
-		return errors.New("invalid handle type for PIN NV index")
+		return keyFileError{errors.New("invalid handle type for PIN NV index")}
 	}
 	pinIndex, err := tpm.CreateResourceContextFromTPM(staticInput.PinIndexHandle)
+	if tpm2.IsResourceUnavailableError(err, staticInput.PinIndexHandle) {
+		// If there is no NV index at the expected handle then this key file is invalid.
+		err = keyFileError{err}
+	}
 	if err != nil {
 		return xerrors.Errorf("cannot obtain context for PIN NV index: %w", err)
 	}
@@ -704,20 +729,36 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
 	}
 	if err := tpm.PolicyOR(revocationCheckSession, staticInput.PinIndexAuthPolicies); err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
+			// staticInput.PinIndexAuthPolicies is invalid.
+			err = keyFileError{err}
+		}
 		return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
 	}
 
 	operandB := make([]byte, 8)
 	binary.BigEndian.PutUint64(operandB, dynamicInput.PolicyCount)
 	if err := tpm.PolicyNV(pinIndex, pinIndex, policySession, operandB, 0, tpm2.OpUnsignedLE, revocationCheckSession); err != nil {
+		switch {
+		case tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV):
+			// The dynamic authorization policy has been revoked.
+			err = dynamicPolicyDataError{err}
+		case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1):
+			// Either staticInput.PinIndexAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
+			err = keyFileError{err}
+		}
 		return xerrors.Errorf("dynamic authorization policy revocation check failed: %w", err)
 	}
 
 	if !staticInput.AuthPublicKey.NameAlg.Supported() {
-		return errors.New("public area of dynamic authorization policy signature verification key has an unsupported name algorithm")
+		return keyFileError{errors.New("public area of dynamic authorization policy signature verification key has an unsupported name algorithm")}
 	}
 	authorizeKey, err := tpm.LoadExternal(nil, staticInput.AuthPublicKey, tpm2.HandleOwner)
 	if err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
+			// staticInput.AuthPublicKey is invalid
+			err = keyFileError{err}
+		}
 		return xerrors.Errorf("cannot load public area for dynamic authorization policy signature verification key: %w", err)
 	}
 	defer tpm.FlushContext(authorizeKey)
@@ -727,10 +768,18 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, h.Sum(nil), dynamicInput.AuthorizedPolicySignature)
 	if err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
+			// dynamicInput.AuthorizedPolicySignature is invalid.
+			err = dynamicPolicyDataError{err}
+		}
 		return xerrors.Errorf("dynamic authorization policy signature verification failed: %w", err)
 	}
 
 	if err := tpm.PolicyAuthorize(policySession, dynamicInput.AuthorizedPolicy, nil, authorizeKey.Name(), authorizeTicket); err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
+			// dynamicInput.AuthorizedPolicy is invalid.
+			err = dynamicPolicyDataError{err}
+		}
 		return xerrors.Errorf("dynamic authorization policy check failed: %w", err)
 	}
 

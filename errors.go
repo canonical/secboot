@@ -40,6 +40,9 @@ var (
 	// the TPM exits lockout mode, the key will need to be recovered via a mechanism that is independent of
 	// the TPM (eg, a recovery key)
 	ErrTPMLockout = errors.New("the TPM is in DA lockout mode")
+
+	// ErrPinFail is returned from SealedKeyObject.UnsealFromTPM if the provided PIN is incorrect.
+	ErrPinFail = errors.New("the provided PIN is incorrect")
 )
 
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists
@@ -85,4 +88,15 @@ type TPMVerificationError struct {
 
 func (e TPMVerificationError) Error() string {
 	return fmt.Sprintf("cannot verify that the TPM is the device for which the supplied EK certificate was issued: %s", e.msg)
+}
+
+// InvalidKeyFileError indicates that the provided key data file is invalid. This error may also be returned in some
+// scenarious where the TPM is incorrectly provisioned, but it isn't possible to determine whether the error is with
+// the provisioning status or because the key data file is invalid.
+type InvalidKeyFileError struct {
+	msg string
+}
+
+func (e InvalidKeyFileError) Error() string {
+	return fmt.Sprintf("invalid key data file: %s", e.msg)
 }

@@ -58,7 +58,28 @@ func makeDefaultEKTemplate() *tpm2.Public {
 		Unique: tpm2.PublicIDU{Data: make(tpm2.PublicKeyRSA, 256)}}
 }
 
+func makeDefaultSRKTemplate() *tpm2.Public {
+	return &tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrDecrypt,
+		Params: tpm2.PublicParamsU{
+			Data: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   tpm2.SymKeyBitsU{Data: uint16(128)},
+					Mode:      tpm2.SymModeU{Data: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}},
+		Unique: tpm2.PublicIDU{Data: make(tpm2.PublicKeyRSA, 256)}}
+}
+
 var (
 	// Default RSA2048 EK template, see section B.3.3 of "TCG EK Credential Profile For TPM Family 2.0; Level 0", Version 2.1, Revision 13, 10 December 2018
 	ekTemplate = makeDefaultEKTemplate()
+
+	// srkTemplate is the default RSA2048 SRK template, see section 7.5.1 of "TCG TPM v2.0 Provisioning Guidance", version 1.0, revision 1.0, 15 March 2017.
+	srkTemplate = makeDefaultSRKTemplate()
 )

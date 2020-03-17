@@ -689,13 +689,13 @@ func TestProvisionStatus(t *testing.T) {
 		t.Errorf("Unexpected status %d", status)
 	}
 
-	primary, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, &SrkTemplate, nil, nil, nil)
+	primary, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, SrkTemplate, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreatePrimary failed: %v", err)
 	}
 	defer flushContext(t, tpm, primary)
 
-	priv, pub, _, _, _, err := tpm.Create(primary, nil, &SrkTemplate, nil, nil, nil)
+	priv, pub, _, _, _, err := tpm.Create(primary, nil, SrkTemplate, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}

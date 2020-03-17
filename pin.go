@@ -29,6 +29,43 @@ import (
 	"golang.org/x/xerrors"
 )
 
+func computePinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) (tpm2.DigestList, error) {
+	var out tpm2.DigestList
+
+	trial, err := tpm2.ComputeAuthPolicy(alg)
+	if err != nil {
+		return nil, err
+	}
+	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
+	trial.PolicyNvWritten(true)
+	trial.PolicySigned(updateKeyName, nil)
+	out = append(out, trial.GetDigest())
+
+	trial, err = tpm2.ComputeAuthPolicy(alg)
+	if err != nil {
+		return nil, err
+	}
+	trial.PolicyCommandCode(tpm2.CommandNVChangeAuth)
+	trial.PolicyAuthValue()
+	out = append(out, trial.GetDigest())
+
+	trial, err = tpm2.ComputeAuthPolicy(alg)
+	if err != nil {
+		return nil, err
+	}
+	trial.PolicyCommandCode(tpm2.CommandNVRead)
+	out = append(out, trial.GetDigest())
+
+	trial, err = tpm2.ComputeAuthPolicy(alg)
+	if err != nil {
+		return nil, err
+	}
+	trial.PolicyCommandCode(tpm2.CommandPolicyNV)
+	out = append(out, trial.GetDigest())
+
+	return out, nil
+}
+
 // createPinNVIndex creates a NV index that is associated with a sealed key object and is used for implementing PIN support. It is
 // also used as a counter to support revoking of dynamic authorization policies.
 //
@@ -58,7 +95,7 @@ func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tp
 
 	nameAlg := tpm2.HashAlgorithmSHA256
 
-	// The NV index requires 4 policies:
+	// The NV index requires 5 policies:
 	// - A signed policy for initialization, signed with a key that is discarded so that the index cannot be recreated.
 	// - A signed policy for updating the index to revoke old dynamic authorization policies.
 	// - A policy for updating the authorization value (PIN / passphrase).
@@ -72,24 +109,11 @@ func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tp
 	trial.PolicySigned(initKeyName, nil)
 	authPolicies = append(authPolicies, trial.GetDigest())
 
-	trial, _ = tpm2.ComputeAuthPolicy(nameAlg)
-	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
-	trial.PolicyNvWritten(true)
-	trial.PolicySigned(updateKeyName, nil)
-	authPolicies = append(authPolicies, trial.GetDigest())
-
-	trial, _ = tpm2.ComputeAuthPolicy(nameAlg)
-	trial.PolicyCommandCode(tpm2.CommandNVChangeAuth)
-	trial.PolicyAuthValue()
-	authPolicies = append(authPolicies, trial.GetDigest())
-
-	trial, _ = tpm2.ComputeAuthPolicy(nameAlg)
-	trial.PolicyCommandCode(tpm2.CommandNVRead)
-	authPolicies = append(authPolicies, trial.GetDigest())
-
-	trial, _ = tpm2.ComputeAuthPolicy(nameAlg)
-	trial.PolicyCommandCode(tpm2.CommandPolicyNV)
-	authPolicies = append(authPolicies, trial.GetDigest())
+	postInitAuthPolicies, err := computePinNVIndexPostInitAuthPolicies(nameAlg, updateKeyName)
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot compute authorization policies: %w", err)
+	}
+	authPolicies = append(authPolicies, postInitAuthPolicies...)
 
 	trial, _ = tpm2.ComputeAuthPolicy(nameAlg)
 	trial.PolicyOR(authPolicies)
