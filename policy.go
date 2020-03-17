@@ -77,7 +77,7 @@ type dynamicPolicyData struct {
 
 // staticPolicyComputeParams provides the parameters to computeStaticPolicy.
 type staticPolicyComputeParams struct {
-	key                  *rsa.PublicKey  // Public part of key used to authorize a dynamic authorization policy
+	key                  *tpm2.Public    // Public part of key used to authorize a dynamic authorization policy
 	pinIndexPub          *tpm2.NVPublic  // Public area of the NV index used for the PIN
 	pinIndexAuthPolicies tpm2.DigestList // Metadata for executing policy sessions to interact with the PIN NV index
 	lockIndexName        tpm2.Name       // Name of the global NV index for locking access to sealed key objects
@@ -469,8 +469,7 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputeParams) (*staticPolicyData, tpm2.Digest, error) {
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
 
-	publicKey := createPublicAreaForRSASigningKey(input.key)
-	keyName, err := publicKey.Name()
+	keyName, err := input.key.Name()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
 	}
@@ -485,7 +484,7 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 	trial.PolicyNV(input.lockIndexName, nil, 0, tpm2.OpEq)
 
 	return &staticPolicyData{
-		AuthPublicKey:        publicKey,
+		AuthPublicKey:        input.key,
 		PinIndexHandle:       input.pinIndexPub.Index,
 		PinIndexAuthPolicies: input.pinIndexAuthPolicies}, trial.GetDigest(), nil
 }

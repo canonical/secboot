@@ -209,7 +209,7 @@ func SealKeyToTPM(tpm *TPMConnection, keyPath, policyUpdatePath string, params *
 
 	// Compute the static policy - this never changes for the lifetime of this key file
 	staticPolicyData, authPolicy, err := computeStaticPolicy(sealedKeyNameAlg, &staticPolicyComputeParams{
-		key:                  &authKey.PublicKey,
+		key:                  authPublicKey,
 		pinIndexPub:          pinIndexPub,
 		pinIndexAuthPolicies: pinIndexAuthPolicies,
 		lockIndexName:        lockIndexName})

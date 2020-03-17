@@ -539,6 +539,7 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 	if err != nil {
 		t.Fatalf("ParsePKCS1PrivateKey failed: %v", err)
 	}
+	publicKey := CreatePublicAreaForRSASigningKey(&key.PublicKey)
 
 	// Generate an authorization policy for the PIN NV index public area below. For the purposes of this test, these digests could really
 	// be anything, although the ones here do actually correspond to valid authorization policies - the first one is for initialization
@@ -587,7 +588,7 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			dataout, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(&key.PublicKey, pinIndexPub, pinIndexAuthPolicies, lockName))
+			dataout, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(publicKey, pinIndexPub, pinIndexAuthPolicies, lockName))
 			if err != nil {
 				t.Fatalf("ComputeStaticPolicy failed: %v", err)
 			}
@@ -1236,7 +1237,7 @@ func TestExecutePolicy(t *testing.T) {
 			pinIndexAuthPoliciesCopy = append(pinIndexAuthPoliciesCopy, c)
 		}
 
-		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(&key.PublicKey, pinIndexPub, pinIndexAuthPoliciesCopy, lockIndex.Name()))
+		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreatePublicAreaForRSASigningKey(&key.PublicKey), pinIndexPub, pinIndexAuthPoliciesCopy, lockIndex.Name()))
 		if err != nil {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
@@ -2450,7 +2451,7 @@ func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
 	}
 	defer undefineNVSpace(t, tpm, pinIndex, tpm.OwnerHandleContext())
 
-	staticPolicyData, policy, err := ComputeStaticPolicy(tpm2.HashAlgorithmSHA256, NewStaticPolicyComputeParams(&key.PublicKey, pinIndexPub, pinIndexAuthPolicies, lockIndex.Name()))
+	staticPolicyData, policy, err := ComputeStaticPolicy(tpm2.HashAlgorithmSHA256, NewStaticPolicyComputeParams(keyPublic, pinIndexPub, pinIndexAuthPolicies, lockIndex.Name()))
 	if err != nil {
 		t.Fatalf("ComputeStaticPolicy failed: %v", err)
 	}
