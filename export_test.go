@@ -42,7 +42,6 @@ var (
 	ComputeDbUpdate                          = computeDbUpdate
 	ComputeDynamicPolicy                     = computeDynamicPolicy
 	ComputePolicyORData                      = computePolicyORData
-	ComputeSecureBootPolicyDigests           = computeSecureBootPolicyDigests
 	ComputeStaticPolicy                      = computeStaticPolicy
 	CreatePinNVIndex                         = createPinNVIndex
 	CreatePublicAreaForRSASigningKey         = createPublicAreaForRSASigningKey
@@ -214,12 +213,12 @@ func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorit
 		policyCount:          policyCount}
 }
 
-func NewSecureBootProtectionParams(loadSequences []*EFIImageLoadEvent, signatureDbUpdateKeystores []string) *secureBootProtectionParams {
-	return &secureBootProtectionParams{loadSequences: loadSequences, signatureDbUpdateKeystores: signatureDbUpdateKeystores}
-}
-
 func NewStaticPolicyComputeParams(key *rsa.PublicKey, pinIndexPub *tpm2.NVPublic, pinIndexAuthPolicies tpm2.DigestList, lockIndexName tpm2.Name) *staticPolicyComputeParams {
 	return &staticPolicyComputeParams{key: key, pinIndexPub: pinIndexPub, pinIndexAuthPolicies: pinIndexAuthPolicies, lockIndexName: lockIndexName}
+}
+
+func (p PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PCRValues, error) {
+	return p.computePCRValues(tpm, nil)
 }
 
 func SetOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) {

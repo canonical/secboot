@@ -618,16 +618,18 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 	}
 }
 
+func makePCREventDigest(alg tpm2.HashAlgorithmId, event string) tpm2.Digest {
+	h := alg.NewHash()
+	h.Write([]byte(event))
+	return h.Sum(nil)
+}
+
 func makePCRDigestFromEvents(alg tpm2.HashAlgorithmId, events ...string) tpm2.Digest {
 	p := make(tpm2.Digest, alg.Size())
 	for _, e := range events {
 		h := alg.NewHash()
-		h.Write([]byte(e))
-		d := h.Sum(nil)
-
-		h = alg.NewHash()
 		h.Write(p)
-		h.Write(d)
+		h.Write(makePCREventDigest(alg, e))
 		p = h.Sum(nil)
 	}
 	return p
@@ -1985,7 +1987,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexHandle += 1
 		})
-		if !tpm2.IsResourceUnavailableError(err, pinIndex.Handle() + 1) {
+		if !tpm2.IsResourceUnavailableError(err, pinIndex.Handle()+1) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
