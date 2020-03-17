@@ -655,13 +655,19 @@ func isShimExecutable(r io.ReaderAt) (bool, error) {
 	return pefile.Section(".vendor_cert") != nil, nil
 }
 
-// secureBootProtectionParams provide the arguments to computeSecureBootPolicyDigests.
-type secureBootProtectionParams struct {
-	loadSequences []*EFIImageLoadEvent // A list of EFI image load sequences for which to compute PCR digests for
+// EFISecureBootPolicyProfileParams provide the arguments to AddEFISecureBootPolicyProfile.
+type EFISecureBootPolicyProfileParams struct {
+	// PCRAlgorithm is the algorithm for which to compute PCR digests for. TPMs compliant with the "TCG PC Client Platform TPM Profile
+	// (PTP) Specification" Level 00, Revision 01.03 v22, May 22 2017 are required to support tpm2.HashAlgorithmSHA1 and
+	// tpm2.HashAlgorithmSHA256. Support for other digest algorithms is optional.
+	PCRAlgorithm tpm2.HashAlgorithmId
 
-	// signatureDbUpdateKeystores is a list of directories containing EFI signature database updates for which to compute PCR digests
+	// LoadSequences is a list of EFI image load sequences for which to compute PCR digests for.
+	LoadSequences []*EFIImageLoadEvent
+
+	// SignatureDbUpdateKeystores is a list of directories containing EFI signature database updates for which to compute PCR digests
 	// for. These directories are passed to sbkeysync using the --keystore option.
-	signatureDbUpdateKeystores []string
+	SignatureDbUpdateKeystores []string
 }
 
 // secureBootDb corresponds to a EFI signature database.
@@ -743,19 +749,18 @@ type loadEventAndPaths struct {
 
 // secureBootPolicyGen is the main structure involved with computing secure boot policy PCR digests.
 type secureBootPolicyGen struct {
-	alg    tpm2.HashAlgorithmId
-	params *secureBootProtectionParams
+	*EFISecureBootPolicyProfileParams
 }
 
 // extendMeasurement extends the supplied digest to the current value of pcrValue for the specified event path.
 func (g *secureBootPolicyGen) extendMeasurement(path *secureBootPolicyGenPath, digest tpm2.Digest) {
-	path.extendMeasurement(g.alg, digest)
+	path.extendMeasurement(g.PCRAlgorithm, digest)
 }
 
 // extendFirmwareVerificationMeasurement extends the supplied digest to the current value of pcrValue for the specified event path,
 // and records the extended digest in order to avoid measuring the same verification event more than once.
 func (g *secureBootPolicyGen) extendFirmwareVerificationMeasurement(path *secureBootPolicyGenPath, digest tpm2.Digest) {
-	path.extendVerificationMeasurement(g.alg, digest, Firmware)
+	path.extendVerificationMeasurement(g.PCRAlgorithm, digest, Firmware)
 }
 
 // computeAndExtendVariableMeasurement computes a EFI variable measurement from the supplied arguments and extends that to the
@@ -765,7 +770,7 @@ func (g *secureBootPolicyGen) computeAndExtendVariableMeasurement(path *secureBo
 		VariableName: *varName,
 		UnicodeName:  unicodeName,
 		VariableData: varData}
-	h := g.alg.NewHash()
+	h := g.PCRAlgorithm.NewHash()
 	if err := data.EncodeMeasuredBytes(h); err != nil {
 		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
 	}
@@ -910,7 +915,7 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 			VariableName: rootDb.variableName,
 			UnicodeName:  rootDb.unicodeName,
 			VariableData: varData.Bytes()}
-		h := g.alg.NewHash()
+		h := g.PCRAlgorithm.NewHash()
 		if err := eventData.EncodeMeasuredBytes(h); err != nil {
 			return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
 		}
@@ -934,7 +939,7 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		if measured {
 			continue
 		}
-		p.extendVerificationMeasurement(g.alg, digest, source)
+		p.extendVerificationMeasurement(g.PCRAlgorithm, digest, source)
 	}
 
 	return nil
@@ -1036,9 +1041,9 @@ func (g *secureBootPolicyGen) processPreOSEvents(path *secureBootPolicyGenPath, 
 				return xerrors.Errorf("cannot process dbx measurement event: %w", err)
 			}
 		case isVerificationEvent(e):
-			g.extendFirmwareVerificationMeasurement(path, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.alg)]))
+			g.extendFirmwareVerificationMeasurement(path, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
 		case e.PCRIndex == secureBootPCR:
-			g.extendMeasurement(path, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.alg)]))
+			g.extendMeasurement(path, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
 		}
 	}
 
@@ -1051,7 +1056,7 @@ func (g *secureBootPolicyGen) processPreOSEvents(path *secureBootPolicyGenPath, 
 	}
 
 	// The verification event associated with the initial OS load event was recorded as part of a UEFI driver load, so we need to keep it.
-	g.extendFirmwareVerificationMeasurement(path, tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(g.alg)]))
+	g.extendFirmwareVerificationMeasurement(path, tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
 
 	return nil
 }
@@ -1109,9 +1114,9 @@ func (g *secureBootPolicyGen) processOSLoadEvent(paths []*secureBootPolicyGenPat
 }
 
 // run takes a TCG event log and computes a set of secure boot policy PCR digests from the supplied configuration (see
-// secureBootProtectionParams)
+// EFISecureBootPolicyProfileParams)
 func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, error) {
-	sigDbUpdates, err := buildSignatureDbUpdateList(g.params.signatureDbUpdateKeystores)
+	sigDbUpdates, err := buildSignatureDbUpdateList(g.SignatureDbUpdateKeystores)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot build list of UEFI signature DB updates: %w", err)
 	}
@@ -1124,7 +1129,7 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 	var allPaths []*secureBootPolicyGenPath
 
 	for i := 0; i <= len(sigDbUpdates); i++ {
-		path := &secureBootPolicyGenPath{pcrValue: make(tpm2.Digest, g.alg.Size()), dbUpdateLevel: i}
+		path := &secureBootPolicyGenPath{pcrValue: make(tpm2.Digest, g.PCRAlgorithm.Size()), dbUpdateLevel: i}
 		if err := g.processPreOSEvents(path, events, initialOSVerificationEvent, sigDbUpdates[0:i]); err != nil {
 			return nil, xerrors.Errorf("cannot process pre-OS events from event log: %w", err)
 		}
@@ -1145,7 +1150,7 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 	var loadEvents []*loadEventAndPaths
 	var nextLoadEvents []*loadEventAndPaths
 
-	for i, e := range g.params.loadSequences {
+	for i, e := range g.LoadSequences {
 		var paths []*secureBootPolicyGenPath
 		if i == 0 {
 			paths = allPaths
@@ -1206,35 +1211,37 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 	return results, nil
 }
 
-// computeSecureBootPolicyDigests computes a set of secure boot policy PCR (PCR7) digests associated with the supplied EFI
-// signature database updates and image load event sequences. The computed digests can be used in a TPM authorization policy via the
-// TPM2_PolicyPCR assertion.
+// AddEFISecureBootPolicyProfile adds the UEFI secure boot policy profile to the provided PCR protection profile, in order to generate
+// a PCR policy that restricts access to a key to a set of UEFI secure boot policies measured to PCR 7. The secure boot policy
+// information that is measured to PCR 7 is defined in section 2.3.4.8 of the "TCG PC Client Platform Firmware Profile Specification".
 //
-// For the most common case where there are no pending EFI signature database updates and each image load event sequence
-// corresponds to loads of images that are all verified with the same chain of trust, this is a complicated way of computing a
-// single PCR digest. Where this becomes really useful is when there are pending EFI signature database updates, or where some of
-// the supplied image load event sequences correspond to loads of images that are verified with different chains of trust (which
-// may occur during a key rotation). In this case, multiple PCR digests will be computed that can be used in a compound authorization
-// policy in order to support atomic updates. For example, when applying a signature database update, this function would be called
-// before the updates are applied in order to generate a compound authorization policy. Once the updates are applied, the function can
-// be called again in order to compute a single PCR digest based on the updated database contents. As another example, if an update to
-// a EFI image changes the chain of trust used for verification (ie, it is signed with a different key), this function would be called
-// before the update is committed with image load event sequences for both the old and new versions in order to generate a compound
-// authorization policy. Once the update is committed, the function would be called again with image load event sequences for only
-// the new version in order to generate a single PCR digest.
-func computeSecureBootPolicyDigests(alg tpm2.HashAlgorithmId, params *secureBootProtectionParams) (tpm2.DigestList, error) {
+// The secure boot policy measurements include events that correspond to the verification of loaded EFI images, and those events
+// record the certificate of the authorities used to verify images. The params argument allows the generated PCR policy to be
+// restricted to a specific set of chains of trust by specifying EFI image load sequences via the LoadSequences field.
+//
+// The secure boot policy measurements include the secure boot configuration, which includes the contents of the UEFI signature
+// databases. In order to support atomic updates of these databases with the sbkeysync tool, it is possible to generate a PCR policy
+// computed from pending signature database updates. This can be done by supplying the keystore directories passed to sbkeysync via
+// the SignatureDbUpdateKeystores field of the params argument. This function assumes that sbkeysync is executed with the
+// "--no-default-keystores" option. When there are pending updates in the specified directories, this function will generate a PCR
+// policy that is compatible with the current database contents and the database contents computed for each individual update.
+//
+// For the most common case where there are no signature database updates pending in the specified keystore directories and each image
+// load event sequence corresponds to loads of images that are all verified with the same chain of trust, this is a complicated way of
+// adding a single PCR digest to the provided PCRProtectionProfile.
+func AddEFISecureBootPolicyProfile(profile *PCRProtectionProfile, params *EFISecureBootPolicyProfileParams) error {
 	// Load event log
 	eventLog, err := os.Open(eventLogPath)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot open event log: %w", err)
+		return xerrors.Errorf("cannot open TCG event log: %w", err)
 	}
 	log, err := tcglog.NewLog(eventLog, tcglog.LogOptions{})
 	if err != nil {
-		return nil, xerrors.Errorf("cannot parse log header: %w", err)
+		return xerrors.Errorf("cannot parse TCG event log header: %w", err)
 	}
 
-	if !log.Algorithms.Contains(tcglog.AlgorithmId(alg)) {
-		return nil, errors.New("event log does not have the requested algorithm")
+	if !log.Algorithms.Contains(tcglog.AlgorithmId(params.PCRAlgorithm)) {
+		return errors.New("cannot compute secure boot policy digests: the TCG event log does not have the requested algorithm")
 	}
 
 	// Parse events and make sure that the current boot is sane.
@@ -1245,48 +1252,61 @@ func computeSecureBootPolicyDigests(alg tpm2.HashAlgorithmId, params *secureBoot
 			break
 		}
 		if err != nil {
-			return nil, xerrors.Errorf("cannot parse event log: %w", err)
+			return xerrors.Errorf("cannot parse TCG event log: %w", err)
 		}
 
 		switch event.PCRIndex {
 		case bootManagerCodePCR:
 			if event.EventType == tcglog.EventTypeEFIAction && event.Data.String() == returningFromEfiApplicationEvent {
 				// Firmware should record this event if an EFI application returns to the boot manager. Bail out if this happened because the policy might not make sense.
-				return nil, errors.New("the current boot was preceeded by a boot attempt to an EFI application that returned to the boot manager, without a reboot in between")
+				return errors.New("cannot compute secure boot policy digests: the current boot was preceeded by a boot attempt to an EFI " +
+					"application that returned to the boot manager, without a reboot in between")
 			}
 		case secureBootPCR:
 			switch event.EventType {
 			case tcglog.EventTypeEFIVariableDriverConfig:
 				efiVarData, isEfiVar := event.Data.(*tcglog.EFIVariableEventData)
 				if !isEfiVar {
-					return nil, fmt.Errorf("%s secure boot policy event has invalid event data", event.EventType)
+					return fmt.Errorf("%s secure boot policy event has invalid event data", event.EventType)
 				}
 				if efiVarData.VariableName == *efiGlobalVariableGuid && efiVarData.UnicodeName == sbStateName {
 					switch {
 					case event.Index > 0:
 						// The spec says that secure boot policy must be measured again if the system supports changing it before ExitBootServices
 						// without a reboot. But the policy we create won't make sense, so bail out
-						return nil, errors.New("secure boot policy was modified after the initial secure boot configuration measurement, without performing a reboot")
+						return errors.New("cannot compute secure boot policy digests: secure boot configuration was modified after the initial " +
+							"configuration was measured, without performing a reboot")
 					case efiVarData.VariableData[0] == 0x00:
-						return nil, errors.New("the current boot was performed with secure boot disabled in firmware")
+						return errors.New("cannot compute secure boot policy digests: the current boot was performed with secure boot disabled in firmware")
 					}
 				}
 			case tcglog.EventTypeEFIVariableAuthority:
 				efiVarData, isEfiVar := event.Data.(*tcglog.EFIVariableEventData)
 				if !isEfiVar {
-					return nil, fmt.Errorf("%s secure boot policy event has invalid event data", event.EventType)
+					return fmt.Errorf("%s secure boot policy event has invalid event data", event.EventType)
 				}
 				if efiVarData.VariableName == *shimGuid && efiVarData.UnicodeName == mokSbStateName {
 					// MokSBState is set to 0x01 if secure boot enforcement is disabled in shim. The variable is deleted when secure boot enforcement
 					// is enabled, so don't bother looking at the value here. It doesn't make a lot of sense to create a policy if secure boot
 					// enforcement is disabled in shim
-					return nil, errors.New("the current boot was performed with validation disabled in Shim")
+					return errors.New("cannot compute secure boot policy digests: the current boot was performed with validation disabled in Shim")
 				}
 			}
 		}
 		events = append(events, event)
 	}
 
-	gen := &secureBootPolicyGen{alg: alg, params: params}
-	return gen.run(events)
+	gen := &secureBootPolicyGen{params}
+	digests, err := gen.run(events)
+	if err != nil {
+		return xerrors.Errorf("cannot compute secure boot policy digests: %w", err)
+	}
+
+	var subProfiles []*PCRProtectionProfile
+	for _, d := range digests {
+		subProfiles = append(subProfiles, NewPCRProtectionProfile().AddPCRValue(params.PCRAlgorithm, secureBootPCR, d))
+	}
+
+	profile.AddProfileOR(subProfiles...)
+	return nil
 }
