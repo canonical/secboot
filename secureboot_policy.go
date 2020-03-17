@@ -1209,7 +1209,6 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 // AddEFISecureBootPolicyProfile adds the UEFI secure boot policy profile to the provided PCR protection profile, in order to generate
 // a PCR policy that restricts access to a key to a set of UEFI secure boot policies measured to PCR 7. The secure boot policy
 // information that is measured to PCR 7 is defined in section 2.3.4.8 of the "TCG PC Client Platform Firmware Profile Specification".
-// As this function might cause the profile to be reallocated, it is necessary to store the result.
 //
 // The secure boot policy measurements include events that correspond to the verification of loaded EFI images, and those events
 // record the certificate of the authorities used to verify images. The params argument allows the generated PCR policy to be
@@ -1225,19 +1224,19 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 // For the most common case where there are no signature database updates pending in the specified keystore directories and each image
 // load event sequence corresponds to loads of images that are all verified with the same chain of trust, this is a complicated way of
 // adding a single PCR digest to the provided PCRProtectionProfile.
-func AddEFISecureBootPolicyProfile(profile PCRProtectionProfile, params *EFISecureBootPolicyProfileParams) (PCRProtectionProfile, error) {
+func AddEFISecureBootPolicyProfile(profile *PCRProtectionProfile, params *EFISecureBootPolicyProfileParams) error {
 	// Load event log
 	eventLog, err := os.Open(eventLogPath)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot open TCG event log: %w", err)
+		return xerrors.Errorf("cannot open TCG event log: %w", err)
 	}
 	log, err := tcglog.NewLog(eventLog, tcglog.LogOptions{})
 	if err != nil {
-		return nil, xerrors.Errorf("cannot parse TCG event log header: %w", err)
+		return xerrors.Errorf("cannot parse TCG event log header: %w", err)
 	}
 
 	if !log.Algorithms.Contains(tcglog.AlgorithmId(params.PCRAlgorithm)) {
-		return nil, errors.New("cannot compute secure boot policy digests: the TCG event log does not have the requested algorithm")
+		return errors.New("cannot compute secure boot policy digests: the TCG event log does not have the requested algorithm")
 	}
 
 	// Parse events and make sure that the current boot is sane.
@@ -1248,14 +1247,14 @@ func AddEFISecureBootPolicyProfile(profile PCRProtectionProfile, params *EFISecu
 			break
 		}
 		if err != nil {
-			return nil, xerrors.Errorf("cannot parse TCG event log: %w", err)
+			return xerrors.Errorf("cannot parse TCG event log: %w", err)
 		}
 
 		switch event.PCRIndex {
 		case bootManagerCodePCR:
 			if event.EventType == tcglog.EventTypeEFIAction && event.Data.String() == returningFromEfiApplicationEvent {
 				// Firmware should record this event if an EFI application returns to the boot manager. Bail out if this happened because the policy might not make sense.
-				return nil, errors.New("cannot compute secure boot policy digests: the current boot was preceeded by a boot attempt to an EFI " +
+				return errors.New("cannot compute secure boot policy digests: the current boot was preceeded by a boot attempt to an EFI " +
 					"application that returned to the boot manager, without a reboot in between")
 			}
 		case secureBootPCR:
@@ -1263,29 +1262,29 @@ func AddEFISecureBootPolicyProfile(profile PCRProtectionProfile, params *EFISecu
 			case tcglog.EventTypeEFIVariableDriverConfig:
 				efiVarData, isEfiVar := event.Data.(*tcglog.EFIVariableEventData)
 				if !isEfiVar {
-					return nil, fmt.Errorf("%s secure boot policy event has invalid event data", event.EventType)
+					return fmt.Errorf("%s secure boot policy event has invalid event data", event.EventType)
 				}
 				if efiVarData.VariableName == *efiGlobalVariableGuid && efiVarData.UnicodeName == sbStateName {
 					switch {
 					case event.Index > 0:
 						// The spec says that secure boot policy must be measured again if the system supports changing it before ExitBootServices
 						// without a reboot. But the policy we create won't make sense, so bail out
-						return nil, errors.New("cannot compute secure boot policy digests: secure boot configuration was modified after the initial " +
+						return errors.New("cannot compute secure boot policy digests: secure boot configuration was modified after the initial " +
 							"configuration was measured, without performing a reboot")
 					case efiVarData.VariableData[0] == 0x00:
-						return nil, errors.New("cannot compute secure boot policy digests: the current boot was performed with secure boot disabled in firmware")
+						return errors.New("cannot compute secure boot policy digests: the current boot was performed with secure boot disabled in firmware")
 					}
 				}
 			case tcglog.EventTypeEFIVariableAuthority:
 				efiVarData, isEfiVar := event.Data.(*tcglog.EFIVariableEventData)
 				if !isEfiVar {
-					return nil, fmt.Errorf("%s secure boot policy event has invalid event data", event.EventType)
+					return fmt.Errorf("%s secure boot policy event has invalid event data", event.EventType)
 				}
 				if efiVarData.VariableName == *shimGuid && efiVarData.UnicodeName == mokSbStateName {
 					// MokSBState is set to 0x01 if secure boot enforcement is disabled in shim. The variable is deleted when secure boot enforcement
 					// is enabled, so don't bother looking at the value here. It doesn't make a lot of sense to create a policy if secure boot
 					// enforcement is disabled in shim
-					return nil, errors.New("cannot compute secure boot policy digests: the current boot was performed with validation disabled in Shim")
+					return errors.New("cannot compute secure boot policy digests: the current boot was performed with validation disabled in Shim")
 				}
 			}
 		}
@@ -1295,13 +1294,14 @@ func AddEFISecureBootPolicyProfile(profile PCRProtectionProfile, params *EFISecu
 	gen := &secureBootPolicyGen{params: params}
 	digests, err := gen.run(events)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot compute secure boot policy digests: %w", err)
+		return xerrors.Errorf("cannot compute secure boot policy digests: %w", err)
 	}
 
-	var subProfiles []PCRProtectionProfile
+	var subProfiles []*PCRProtectionProfile
 	for _, d := range digests {
-		subProfiles = append(subProfiles, PCRProtectionProfile{}.AddPCRValue(params.PCRAlgorithm, secureBootPCR, d))
+		subProfiles = append(subProfiles, NewPCRProtectionProfile().AddPCRValue(params.PCRAlgorithm, secureBootPCR, d))
 	}
 
-	return profile.AddProfileOR(subProfiles...), nil
+	profile.AddProfileOR(subProfiles...)
+	return nil
 }

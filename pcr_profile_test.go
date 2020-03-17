@@ -30,14 +30,14 @@ import (
 func TestPCRProtectionProfile(t *testing.T) {
 	for _, data := range []struct {
 		desc    string
-		profile PCRProtectionProfile
+		profile *PCRProtectionProfile
 		values  []tpm2.PCRValues
 	}{
 		{
 			// Verify that AddPCRValues works as expected
 			desc: "AddValues/1",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
@@ -53,8 +53,8 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that AddPCRValues overwrites previous values
 			desc: "AddValues/2",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
@@ -69,14 +69,14 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that (A1 || A2) && (B1 || B2) produces 4 outcomes
 			desc: "OR/1",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					AddProfileOR(
-						PCRProtectionProfile{}.AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")),
-						PCRProtectionProfile{}.AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2"))).
+						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")),
+						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2"))).
 					AddProfileOR(
-						PCRProtectionProfile{}.AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
-						PCRProtectionProfile{}.AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")))
+						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")))
 			}(),
 			values: []tpm2.PCRValues{
 				{
@@ -108,12 +108,12 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that (A1 && B1) || (A2 && B2) produces 2 outcomes
 			desc: "OR/2",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.AddProfileOR(
-					PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().AddProfileOR(
+					NewPCRProtectionProfile().
 						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
-					PCRProtectionProfile{}.
+					NewPCRProtectionProfile().
 						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).
 						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")))
 			}(),
@@ -135,8 +135,8 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that ExtendPCR without an initial value works as expected
 			desc: "Extend",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
 					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")).
 					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
@@ -154,8 +154,8 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that ExtendPCR after AddPCRValue works as expected
 			desc: "AddAndExtend",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
 					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
@@ -173,15 +173,15 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that ExtendPCR inside ProfileOR with initial PCR values works as expected
 			desc: "OR/3",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
 					AddProfileOR(
-						PCRProtectionProfile{}.
+						NewPCRProtectionProfile().
 							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
 							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")),
-						PCRProtectionProfile{}.
+						NewPCRProtectionProfile().
 							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
 							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")))
 			}(),
@@ -203,15 +203,15 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that AddPCRValue inside ProfileOR with initial PCR values works as expected
 			desc: "OR/4",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
 					AddProfileOR(
-						PCRProtectionProfile{}.
+						NewPCRProtectionProfile().
 							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
 							AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")),
-						PCRProtectionProfile{}.
+						NewPCRProtectionProfile().
 							AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
 							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")))
 			}(),
@@ -233,8 +233,8 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that other PCR digest algorithms work
 			desc: "SHA1",
-			profile: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA1, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "bar"))
 			}(),
@@ -282,7 +282,7 @@ func TestPCRProtectionProfileAddValueFromTPM(t *testing.T) {
 		t.Fatalf("PCRRead failed: %v", err)
 	}
 
-	p := PCRProtectionProfile{}.AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7)
+	p := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7)
 	values, err := p.ComputePCRValues(tpm.TPMContext)
 	if err != nil {
 		t.Fatalf("ComputePCRValues failed: %v", err)

@@ -493,7 +493,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 		desc    string
 		logPath string
 		efivars string
-		initial PCRProtectionProfile
+		initial *PCRProtectionProfile
 		params  EFISecureBootPolicyProfileParams
 		values  []tpm2.PCRValues
 		err     string
@@ -1204,8 +1204,8 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "WithInitialProfile",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars1",
-			initial: func() PCRProtectionProfile {
-				return PCRProtectionProfile{}.
+			initial: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
@@ -1246,7 +1246,12 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			restoreEfivarsPath := MockEfivarsPath(data.efivars)
 			defer restoreEfivarsPath()
 
-			policy, err := AddEFISecureBootPolicyProfile(data.initial, &data.params)
+			policy := data.initial
+			if policy == nil {
+				policy = &PCRProtectionProfile{}
+			}
+
+			err := AddEFISecureBootPolicyProfile(policy, &data.params)
 			if data.err != "" {
 				if err == nil {
 					t.Fatalf("Expected AddEFISecureBootPolicyProfile to fail")
