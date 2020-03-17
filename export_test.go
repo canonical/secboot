@@ -79,7 +79,8 @@ func InitTPMConnection(t *TPMConnection) error {
 	return t.init()
 }
 
-func MakeMockPolicyPCRValues(params []MockPolicyPCRParam) (out []tpm2.PCRValues) {
+// MakeMockPolicyPCRValuesFull computes a slice of tpm2.PCRValues for every combination of supplied PCR values.
+func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRValues) {
 	indices := make([]int, len(params))
 	advanceIndices := func() bool {
 		for i := range params {
