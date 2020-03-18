@@ -311,4 +311,22 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
+
+	t.Run("InvalidPCRProfile", func(t *testing.T) {
+		key := make([]byte, 32)
+		rand.Read(key)
+
+		pcrProfile := NewPCRProtectionProfile().
+			AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).
+			AddProfileOR(
+				NewPCRProtectionProfile(),
+				NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 8))
+		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PinHandle: 0x01810000}, key)
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "cannot compute dynamic authorization policy: not all combinations of PCR values contain a complete set of values" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
 }
