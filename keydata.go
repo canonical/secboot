@@ -360,7 +360,7 @@ func readAndValidateKeyData(tpm *tpm2.TPMContext, keyFile, keyPolicyUpdateFile i
 
 	pinNVPublic, err := validateKeyData(tpm, data, policyUpdateData, session)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("key data validation failed: %w", err)
+		return nil, nil, nil, xerrors.Errorf("cannot validate key data: %w", err)
 	}
 
 	return data, policyUpdateData, pinNVPublic, nil

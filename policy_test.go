@@ -2153,7 +2153,7 @@ func TestExecutePolicy(t *testing.T) {
 		})
 		// Even though this error is caused by broken static metadata, we get a dynamicPolicyDataError error because the signature
 		// verification fails. Validation with validateKeyData will detect the real issue though.
-		if !IsDynamicPolicyDataError(err) || err.Error() != "dynamic authorization policy signature verification failed" {
+		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify dynamic authorization policy signature" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2206,7 +2206,7 @@ func TestExecutePolicy(t *testing.T) {
 			}
 			d.AuthorizedPolicySignature.Signature.RSAPSS().Sig = tpm2.PublicKeyRSA(sig)
 		})
-		if !IsDynamicPolicyDataError(err) || err.Error() != "dynamic authorization policy signature verification failed" {
+		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify dynamic authorization policy signature" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {

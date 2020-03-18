@@ -793,9 +793,9 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
 			// dynamicInput.AuthorizedPolicySignature is invalid.
-			return dynamicPolicyDataError{errors.New("dynamic authorization policy signature verification failed")}
+			return dynamicPolicyDataError{errors.New("cannot verify dynamic authorization policy signature")}
 		}
-		return xerrors.Errorf("dynamic authorization policy signature verification failed: %w", err)
+		return xerrors.Errorf("cannot verify dynamic authorization policy signature: %w", err)
 	}
 
 	if err := tpm.PolicyAuthorize(policySession, dynamicInput.AuthorizedPolicy, nil, authorizeKey.Name(), authorizeTicket); err != nil {
