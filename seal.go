@@ -33,6 +33,14 @@ import (
 	"golang.org/x/xerrors"
 )
 
+func makeSealedKeyTemplate() *tpm2.Public {
+	return &tpm2.Public{
+		Type:    tpm2.ObjectTypeKeyedHash,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs:   tpm2.AttrFixedTPM | tpm2.AttrFixedParent,
+		Params:  tpm2.PublicParamsU{Data: &tpm2.KeyedHashParams{Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}}}
+}
+
 func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, alg, signAlg tpm2.HashAlgorithmId, authKey *rsa.PrivateKey,
 	countIndexPub *tpm2.NVPublic, countIndexAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
@@ -109,10 +117,11 @@ type KeyCreationParams struct {
 // The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
 // argument.
 func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath string, params *KeyCreationParams) error {
-	// Check that the key is the correct length
+	// Check that the key is the correct length.
 	if len(key) != 32 {
 		return fmt.Errorf("expected a key length of 256 bits (got %d)", len(key)*8)
 	}
+	// params is mandatory.
 	if params == nil {
 		return errors.New("no KeyCreationParams provided")
 	}
@@ -136,6 +145,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		}
 	}
 
+	// Validate that the lock NV index is valid and obtain its name
 	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
 	switch {
 	case tpm2.IsResourceUnavailableError(err, lockNVHandle):
@@ -216,10 +226,10 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, session)
 	}()
 
-	sealedKeyNameAlg := tpm2.HashAlgorithmSHA256
+	template := makeSealedKeyTemplate()
 
 	// Compute the static policy - this never changes for the lifetime of this key file
-	staticPolicyData, authPolicy, err := computeStaticPolicy(sealedKeyNameAlg, &staticPolicyComputeParams{
+	staticPolicyData, authPolicy, err := computeStaticPolicy(template.NameAlg, &staticPolicyComputeParams{
 		key:                  authPublicKey,
 		pinIndexPub:          pinIndexPub,
 		pinIndexAuthPolicies: pinIndexAuthPolicies,
@@ -229,12 +239,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	}
 
 	// Define the template for the sealed key object, using the computed policy digest
-	template := tpm2.Public{
-		Type:       tpm2.ObjectTypeKeyedHash,
-		NameAlg:    sealedKeyNameAlg,
-		Attrs:      tpm2.AttrFixedTPM | tpm2.AttrFixedParent,
-		AuthPolicy: authPolicy,
-		Params:     tpm2.PublicParamsU{Data: &tpm2.KeyedHashParams{Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}}}
+	template.AuthPolicy = authPolicy
 	sensitive := tpm2.SensitiveCreate{Data: key}
 
 	// Have the digest of the private data recorded in the creation data for the sealed data object.
@@ -250,7 +255,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	// at has a different name (ie, if we're connected via a resource manager and somebody swapped the object with another one), this
 	// command will fail. We take advantage of parameter encryption here too.
 	priv, pub, creationData, _, creationTicket, err :=
-		tpm.Create(srk, &sensitive, &template, h.Sum(nil), nil, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
+		tpm.Create(srk, &sensitive, template, h.Sum(nil), nil, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
 		return xerrors.Errorf("cannot create sealed data object for key: %w", err)
 	}
@@ -263,7 +268,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
-	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, sealedKeyNameAlg, staticPolicyData.AuthPublicKey.NameAlg,
+	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, template.NameAlg, staticPolicyData.AuthPublicKey.NameAlg,
 		authKey, pinIndexPub, pinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
 		return err

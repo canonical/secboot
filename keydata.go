@@ -197,11 +197,13 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
+	sealedKeyTemplate := makeSealedKeyTemplate()
+
 	// Perform some initial checks on the sealed data object's public area
-	if data.KeyPublic.Type != tpm2.ObjectTypeKeyedHash {
+	if data.KeyPublic.Type != sealedKeyTemplate.Type {
 		return nil, keyFileError{errors.New("sealed key object has the wrong type")}
 	}
-	if data.KeyPublic.Attrs != (tpm2.AttrFixedTPM | tpm2.AttrFixedParent) {
+	if data.KeyPublic.Attrs != sealedKeyTemplate.Attrs {
 		return nil, keyFileError{errors.New("sealed key object has the wrong attributes")}
 	}
 
