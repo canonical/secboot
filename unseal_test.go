@@ -60,7 +60,7 @@ func TestUnsealWithNo2FA(t *testing.T) {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		keyUnsealed, err := k.UnsealFromTPM(tpm, "", false)
+		keyUnsealed, err := k.UnsealFromTPM(tpm, "")
 		if err != nil {
 			t.Fatalf("UnsealFromTPM failed: %v", err)
 		}
@@ -109,7 +109,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 
 		fn(keyFile, policyUpdateFile)
 
-		_, err = k.UnsealFromTPM(tpm, "", false)
+		_, err = k.UnsealFromTPM(tpm, "")
 		return err
 	}
 

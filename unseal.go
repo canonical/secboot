@@ -67,9 +67,8 @@ import (
 // condition can also occur as the result of an incorrectly provisioned TPM, which will be detected during a subsequent call to
 // SealKeyToTPM.
 //
-// On success, the unsealed cleartext key is returned. If the lock argument is true, then subsequent access to all sealed key
-// objects created by this package will be denied until the next TPM reset or TPM restart.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string, lock bool) ([]byte, error) {
+// On success, the unsealed cleartext key is returned.
+func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte, error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
@@ -147,12 +146,6 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string, lock boo
 		return nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}
 	case err != nil:
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
-	}
-
-	if lock {
-		if err := lockAccessToSealedKeysUntilTPMReset(tpm.TPMContext, hmacSession); err != nil {
-			return nil, xerrors.Errorf("cannot lock sealed key object from further access: %v", err)
-		}
 	}
 
 	return keyData, nil
