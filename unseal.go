@@ -123,7 +123,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string, lock boo
 	defer tpm.FlushContext(policySession)
 
 	if err := executePolicySession(tpm.TPMContext, policySession, k.data.StaticPolicyData, k.data.DynamicPolicyData, pin, hmacSession); err != nil {
-		err = xerrors.Errorf("cannot execute authorization policy assertions: %w", err)
+		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
 		case isDynamicPolicyDataError(err):
 			// TODO: Add a separate error for this

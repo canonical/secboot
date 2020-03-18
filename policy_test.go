@@ -1555,10 +1555,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
-			t.Fatalf("Expected an error")
-		}
-		if err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1598,10 +1595,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "xxx",
 				},
 			}}, nil)
-		if IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
-			t.Fatalf("Expected an error")
-		}
-		if err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1737,10 +1731,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
-			t.Fatalf("Expected an error")
-		}
-		if err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1856,7 +1847,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if !tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
+		if !IsDynamicPolicyDataError(err) || err.Error() != "the dynamic authorization policy has been revoked" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1944,10 +1935,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexHandle = tpm2.Handle(0x40ffffff)
 		})
-		if !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
-			t.Fatalf("Expected an error")
-		}
-		if err.Error() != "invalid handle type for PIN NV index" {
+		if !IsStaticPolicyDataError(err) || err.Error() != "invalid handle type for PIN NV index" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1988,7 +1976,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexHandle += 1
 		})
-		if !tpm2.IsResourceUnavailableError(err, pinIndex.Handle()+1) || !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
+		if !IsStaticPolicyDataError(err) || err.Error() != "no PIN NV index found" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2030,7 +2018,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexAuthPolicies[len(s.PinIndexAuthPolicies)-1] = make(tpm2.Digest, len(s.PinIndexAuthPolicies[0]))
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) || !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
+		if !IsStaticPolicyDataError(err) || err.Error() != "authorization policy metadata for PIN NV index is invalid" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2072,7 +2060,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexAuthPolicies[0] = make(tpm2.Digest, len(s.PinIndexAuthPolicies[0]))
 		})
-		if !tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1) || !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
+		if !IsStaticPolicyDataError(err) || err.Error() != "invalid PIN NV index or associated authorization policy metadata" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2114,10 +2102,8 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.AuthPublicKey.NameAlg = tpm2.HashAlgorithmId(tpm2.AlgorithmSM4)
 		})
-		if !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
-			t.Fatalf("Expected an error")
-		}
-		if err.Error() != "public area of dynamic authorization policy signature verification key has an unsupported name algorithm" {
+		if !IsStaticPolicyDataError(err) || err.Error() != "public area of dynamic authorization policy signature verification key has an "+
+			"unsupported name algorithm" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2167,7 +2153,7 @@ func TestExecutePolicy(t *testing.T) {
 		})
 		// Even though this error is caused by broken static metadata, we get a dynamicPolicyDataError error because the signature
 		// verification fails. Validation with validateKeyData will detect the real issue though.
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorSignature, tpm2.CommandVerifySignature, 2) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
+		if !IsDynamicPolicyDataError(err) || err.Error() != "dynamic authorization policy signature verification failed" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2175,7 +2161,60 @@ func TestExecutePolicy(t *testing.T) {
 		}
 	})
 
-	t.Run("InvalidMetadata/DynamicPolicySignature", func(t *testing.T) {
+	t.Run("InvalidMetadata/DynamicPolicySignature/1", func(t *testing.T) {
+		// Test handling of the dynamic authorization signature being replaced (execution should fail).
+		expected, digest, err := run(t, &testData{
+			alg: tpm2.HashAlgorithmSHA256,
+			pcrValues: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					},
+				},
+			},
+			policyCount: policyCount,
+			pcrEvents: []pcrEvent{
+				{
+					index: 7,
+					data:  "foo",
+				},
+				{
+					index: 7,
+					data:  "bar",
+				},
+				{
+					index: 12,
+					data:  "bar",
+				},
+				{
+					index: 12,
+					data:  "foo",
+				},
+			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
+			key, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("GenerateKey failed: %v", err)
+			}
+			alg := d.AuthorizedPolicySignature.Signature.RSAPSS().Hash
+			h := alg.NewHash()
+			h.Write(d.AuthorizedPolicy)
+
+			sig, err := rsa.SignPSS(rand.Reader, key, alg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+			if err != nil {
+				t.Fatalf("SignPSS failed: %v", err)
+			}
+			d.AuthorizedPolicySignature.Signature.RSAPSS().Sig = tpm2.PublicKeyRSA(sig)
+		})
+		if !IsDynamicPolicyDataError(err) || err.Error() != "dynamic authorization policy signature verification failed" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if bytes.Equal(digest, expected) {
+			t.Errorf("Session digest shouldn't match policy digest")
+		}
+	})
+
+	t.Run("InvalidMetadata/DynamicPolicySignature/2", func(t *testing.T) {
 		// Test handling of the public area of the dynamic policy authorization key being replaced by one corresponding to a different key,
 		// and the authorized policy signature being replaced with a signature signed by the new key (execution should succeed, but the
 		// resulting session digest shouldn't match the computed policy digest)
@@ -2268,8 +2307,8 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			d.PolicyCount += 1
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
-			t.Errorf("Failed to execute policy session: %v", err)
+		if !IsDynamicPolicyDataError(err) || err.Error() != "the dynamic authorization policy is invalid" {
+			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
 			t.Errorf("Session digest shouldn't match policy digest")
@@ -2360,8 +2399,8 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			d.PCROrData[0].Next = 1000
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
-			t.Errorf("Failed to execute policy session: %v", err)
+		if !IsDynamicPolicyDataError(err) || err.Error() != "the dynamic authorization policy is invalid" {
+			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
 			t.Errorf("Session digest shouldn't match policy digest")
@@ -2410,8 +2449,8 @@ func TestExecutePolicy(t *testing.T) {
 			x := int32(-10)
 			d.PCROrData[0].Next = *(*uint32)(unsafe.Pointer(&x))
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
-			t.Errorf("Failed to execute policy session: %v", err)
+		if !IsDynamicPolicyDataError(err) || err.Error() != "the dynamic authorization policy is invalid" {
+			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
 			t.Errorf("Session digest shouldn't match policy digest")

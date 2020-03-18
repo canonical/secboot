@@ -179,8 +179,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "invalid key data file: cannot execute authorization policy assertions: cannot complete OR assertions: current "+
-			"session digest not found in policy data" {
+		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
+			"assertions: cannot complete OR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -194,9 +194,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Fatalf("UpdateKeyPCRProtectionPolicy failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot execute authorization policy "+
-			"assertions: dynamic authorization policy revocation check failed: TPM returned an error whilst executing command "+
-			"TPM_CC_PolicyNV: TPM_RC_POLICY (policy failure in math operation or an invalid authPolicy value)" {
+		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
+			"assertions: the dynamic authorization policy has been revoked" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
