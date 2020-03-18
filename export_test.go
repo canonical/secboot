@@ -57,7 +57,6 @@ var (
 	IncrementDynamicPolicyCounter            = incrementDynamicPolicyCounter
 	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
 	IsStaticPolicyDataError                  = isStaticPolicyDataError
-	LockAccessToSealedKeysUntilTPMReset      = lockAccessToSealedKeysUntilTPMReset
 	LockNVIndexAttrs                         = lockNVIndexAttrs
 	MakeDefaultEKTemplate                    = makeDefaultEKTemplate
 	MakeDefaultSRKTemplate                   = makeDefaultSRKTemplate

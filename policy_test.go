@@ -2458,7 +2458,7 @@ func TestExecutePolicy(t *testing.T) {
 	})
 }
 
-func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
+func TestLockAccessToSealedKeys(t *testing.T) {
 	tpm, tcti := openTPMSimulatorForTesting(t)
 	defer closeTPM(t, tpm)
 
@@ -2538,8 +2538,8 @@ func TestLockAccessToSealedKeysUntilTPMReset(t *testing.T) {
 				t.Errorf("Unexpected digests")
 			}
 
-			if err := LockAccessToSealedKeysUntilTPMReset(tpm.TPMContext, tpm.HmacSession()); err != nil {
-				t.Errorf("LockAccessToSealedKeysUntilTPMReset failed: %v", err)
+			if err := LockAccessToSealedKeys(tpm); err != nil {
+				t.Errorf("LockAccessToSealedKeys failed: %v", err)
 			}
 
 			if err := tpm.PolicyRestart(policySession); err != nil {

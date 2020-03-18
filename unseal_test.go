@@ -212,13 +212,9 @@ func TestUnsealErrorHandling(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		err := run(t, tpm, func(keyFile, policyUpdateFile string) {
-			lockIndex, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
-			if err != nil {
-				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-			}
-			if err := tpm.NVReadLock(lockIndex, lockIndex, nil); err != nil {
-				t.Errorf("NVReadLock failed: %v", err)
+		err := run(t, tpm, func(_, _ string) {
+			if err := LockAccessToSealedKeys(tpm); err != nil {
+				t.Errorf("LockAccessToSealedKeys failed: %v", err)
 			}
 		})
 		if err != ErrSealedKeyAccessLocked {

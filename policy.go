@@ -822,11 +822,15 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	return nil
 }
 
-// lockAccessToSealedKeysUntilTPMReset locks access to sealed key objects created by this package until the next TPM restart
-// or TPM reset (aka, Startup(CLEAR)). This works by enabling the read lock bit for a well-known NV index. The static authorization
-// policy of sealed key objects created by this package contain a TPM2_PolicyNV assertion on this index, which will fail once the
-// read lock bit has been enabled.
-func lockAccessToSealedKeysUntilTPMReset(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+// LockAccessToSealedKeys locks access to keys sealed by this package until the next TPM restart (equivalent to eg, system resume
+// from suspend-to-disk) or TPM reset (equivalent to booting after a system restart). This works for all keys sealed by this package
+// regardless of their PCR protection profile.
+//
+// On success, subsequent calls to SealedKeyObject.UnsealFromTPM will fail with a ErrSealedKeyAccessLocked error until the next TPM
+// restart or TPM reset.
+func LockAccessToSealedKeys(tpm *TPMConnection) error {
+	session := tpm.HmacSession()
+
 	handles, err := tpm.GetCapabilityHandles(lockNVHandle, 1, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
 		return xerrors.Errorf("cannot obtain handles from TPM: %w", err)
