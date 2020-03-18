@@ -56,9 +56,9 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	}
 	defer undefineKeyNVSpace(t, tpm, keyFile)
 
-	k, err := LoadSealedKeyObject(keyFile)
+	k, err := ReadSealedKeyObject(keyFile)
 	if err != nil {
-		t.Fatalf("LoadSealedKeyObject failed: %v", err)
+		t.Fatalf("ReadSealedKeyObject failed: %v", err)
 	}
 
 	keyUnsealed, err := k.UnsealFromTPM(tpm, "", false)
@@ -94,9 +94,9 @@ func TestUnsealErrorHandling(t *testing.T) {
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-		k, err := LoadSealedKeyObject(keyFile)
+		k, err := ReadSealedKeyObject(keyFile)
 		if err != nil {
-			t.Fatalf("LoadSealedKeyObject failed: %v", err)
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
 		fn(keyFile, policyUpdateFile)

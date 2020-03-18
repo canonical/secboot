@@ -29,9 +29,17 @@ import (
 	"golang.org/x/xerrors"
 )
 
+// computePinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
+// actions on a NV index created with createPinNVIndex. These are:
+// - A policy for updating the index to revoke old dynamic authorization policies, requiring an assertion signed by the key
+//   associated with updateKeyName.
+// - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
+// - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
+// - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
 func computePinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) (tpm2.DigestList, error) {
 	var out tpm2.DigestList
-
+	// Compute a policy for incrementing the index to revoke dynamic authorization policies, requiring an assertion signed by the
+	// key associated with updateKeyName.
 	trial, err := tpm2.ComputeAuthPolicy(alg)
 	if err != nil {
 		return nil, err
@@ -41,6 +49,7 @@ func computePinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 	trial.PolicySigned(updateKeyName, nil)
 	out = append(out, trial.GetDigest())
 
+	// Compute a policy for updating the authorization value of the index, requiring knowledge of the current authorization value.
 	trial, err = tpm2.ComputeAuthPolicy(alg)
 	if err != nil {
 		return nil, err
@@ -49,6 +58,7 @@ func computePinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 	trial.PolicyAuthValue()
 	out = append(out, trial.GetDigest())
 
+	// Compute a policy for reading the counter value without knowing the authorization value.
 	trial, err = tpm2.ComputeAuthPolicy(alg)
 	if err != nil {
 		return nil, err
@@ -56,6 +66,7 @@ func computePinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 	trial.PolicyCommandCode(tpm2.CommandNVRead)
 	out = append(out, trial.GetDigest())
 
+	// Compute a policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
 	trial, err = tpm2.ComputeAuthPolicy(alg)
 	if err != nil {
 		return nil, err
@@ -96,19 +107,21 @@ func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tp
 	nameAlg := tpm2.HashAlgorithmSHA256
 
 	// The NV index requires 5 policies:
-	// - A signed policy for initialization, signed with a key that is discarded so that the index cannot be recreated.
-	// - A signed policy for updating the index to revoke old dynamic authorization policies.
-	// - A policy for updating the authorization value (PIN / passphrase).
-	// - A policy to read the counter value without knowing the authorization value, as the value isn't secret.
-	// - A policy to use the count value in a PolicyNV assertion.
+	// - A policy for initializing the index, requiring an assertion signed with an ephemeral key so that the index cannot be recreated.
+	// - A policy for updating the index to revoke old dynamic authorization policies, requiring a signed assertion.
+	// - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
+	// - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
+	// - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
 	var authPolicies tpm2.DigestList
 
+	// Compute a policy for initialization which requires an assertion signed with an ephemeral key (initKey)
 	trial, _ := tpm2.ComputeAuthPolicy(nameAlg)
 	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
 	trial.PolicyNvWritten(false)
 	trial.PolicySigned(initKeyName, nil)
 	authPolicies = append(authPolicies, trial.GetDigest())
 
+	// Compute the remaining 4 post-initalization policies.
 	postInitAuthPolicies, err := computePinNVIndexPostInitAuthPolicies(nameAlg, updateKeyName)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute authorization policies: %w", err)

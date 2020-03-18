@@ -229,10 +229,10 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	}
 	lockIndexPub, err := readAndValidateLockNVIndexPublic(tpm, lockIndex, session)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot determine if NV index at 0x%08x is global lock index: %w", lockNVHandle, err)
+		return nil, xerrors.Errorf("cannot determine if NV index at %v is global lock index: %w", lockNVHandle, err)
 	}
 	if lockIndexPub == nil {
-		return nil, xerrors.Errorf("NV index at 0x%08x is not a valid global lock index", lockNVHandle)
+		return nil, xerrors.Errorf("NV index at %v is not a valid global lock index", lockNVHandle)
 	}
 
 	// Obtain a ResourceContext for the PIN NV index. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second time is with a session, and
@@ -382,10 +382,10 @@ func (k *SealedKeyObject) PINIndexHandle() tpm2.Handle {
 	return k.data.StaticPolicyData.PinIndexHandle
 }
 
-// LoadSealedKeyObject loads a sealed key data file created by SealKeyToTPM from the specified path. If the file cannot be opened,
+// ReadSealedKeyObject loads a sealed key data file created by SealKeyToTPM from the specified path. If the file cannot be opened,
 // a wrapped *os.PathError error is returned. If the key data file cannot be deserialized successfully, a InvalidKeyFileError error
 // will be returned.
-func LoadSealedKeyObject(path string) (*SealedKeyObject, error) {
+func ReadSealedKeyObject(path string) (*SealedKeyObject, error) {
 	// Open the key data file
 	f, err := os.Open(path)
 	if err != nil {

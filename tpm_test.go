@@ -98,9 +98,9 @@ func undefineNVSpace(t *testing.T, tpm *TPMConnection, context, authHandle tpm2.
 }
 
 func undefineKeyNVSpace(t *testing.T, tpm *TPMConnection, path string) {
-	k, err := LoadSealedKeyObject(path)
+	k, err := ReadSealedKeyObject(path)
 	if err != nil {
-		t.Fatalf("LoadSealedKeyObject failed: %v", err)
+		t.Fatalf("ReadSealedKeyObject failed: %v", err)
 	}
 	rc, err := tpm.CreateResourceContextFromTPM(k.PINIndexHandle())
 	if err != nil {
