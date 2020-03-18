@@ -30,7 +30,7 @@ import (
 	. "github.com/snapcore/secboot"
 )
 
-var testCreationParams = KeyCreationParams{PinHandle: 0x0181fff0}
+var testCreationParams = KeyCreationParams{PCRProfile: getTestPCRProfile(), PinHandle: 0x0181fff0}
 
 func TestUnsealWithNo2FA(t *testing.T) {
 	tpm := openTPMForTesting(t)
@@ -51,7 +51,7 @@ func TestUnsealWithNo2FA(t *testing.T) {
 
 	keyFile := tmpDir + "/keydata"
 
-	if err := SealKeyToTPM(tpm, keyFile, "", &testCreationParams, getTestPCRProfile(), key); err != nil {
+	if err := SealKeyToTPM(tpm, keyFile, "", &testCreationParams, key); err != nil {
 		t.Fatalf("SealKeyToTPM failed: %v", err)
 	}
 	defer undefineKeyNVSpace(t, tpm, keyFile)
@@ -89,7 +89,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		keyFile := tmpDir + "/keydata"
 		policyUpdateFile := tmpDir + "/keypolicyupdatedata"
 
-		if err := SealKeyToTPM(tpm, keyFile, policyUpdateFile, &testCreationParams, getTestPCRProfile(), key); err != nil {
+		if err := SealKeyToTPM(tpm, keyFile, policyUpdateFile, &testCreationParams, key); err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)

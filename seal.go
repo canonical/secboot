@@ -69,9 +69,15 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, alg, signAlg tpm2.H
 	return policyData, nil
 }
 
-// KeyCreationParams provides the arguments for SealKeyToTPM.
+// KeyCreationParams provides arguments for SealKeyToTPM.
 type KeyCreationParams struct {
-	PinHandle tpm2.Handle // Handle at which to create a NV index for PIN support
+	// PCRProfile defines the profile used to generate a PCR protection policy for the newly created sealed key file.
+	PCRProfile *PCRProtectionProfile
+
+	// PinHandle is the handle at which to create a NV index for PIN support. The handle must be a valid NV index handle (MSO == 0x01)
+	// and the choice of handle should take in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and
+	// localities" specification. It is recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
+	PinHandle tpm2.Handle
 }
 
 // SealKeyToTPM seals the supplied disk encryption key to the storage hierarchy of the TPM. The sealed key object and associated
@@ -93,14 +99,15 @@ type KeyCreationParams struct {
 // *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
 // either file cannot be created and opened for writing.
 //
-// The caller is expected to provide a handle at which a NV index should be created via the PinHandle filed of the KeyCreationParams
-// struct. If the handle is already in use, a TPMResourceExistsError error will be returned. The handle must be a valid NV index
-// handle (MSO == 0x01), and the choice of handle should take in to consideration the reserved indices from the "Registry of reserved
-// TPM 2.0 handles and localities" specification. It is recommended that the handle is in the block reserved for owner objects
-// (0x01800000 - 0x01bfffff).
+// This function will create a NV index at the handle specified by the PinHandle field of the params argument. If the handle is already
+// in use, a TPMResourceExistsError error will be returned. In this case, the caller will need to either choose a different handle or
+// undefine the existing one. The handle must be a valid NV index handle (MSO == 0x01), and the choice of handle should take in to
+// consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is recommended
+// that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
 //
-// The key will be protected with a PCR policy computed from the supplied PCRProtectionProfile.
-func SealKeyToTPM(tpm *TPMConnection, keyPath, policyUpdatePath string, params *KeyCreationParams, pcrProfile *PCRProtectionProfile, key []byte) error {
+// The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
+// argument.
+func SealKeyToTPM(tpm *TPMConnection, keyPath, policyUpdatePath string, params *KeyCreationParams, key []byte) error {
 	// Check that the key is the correct length
 	if len(key) != 32 {
 		return fmt.Errorf("expected a key length of 256 bits (got %d)", len(key)*8)
@@ -249,7 +256,7 @@ func SealKeyToTPM(tpm *TPMConnection, keyPath, policyUpdatePath string, params *
 
 	// Create a dynamic authorization policy
 	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, sealedKeyNameAlg, staticPolicyData.AuthPublicKey.NameAlg,
-		authKey, pinIndexPub, pinIndexAuthPolicies, pcrProfile, session)
+		authKey, pinIndexPub, pinIndexAuthPolicies, params.PCRProfile, session)
 	if err != nil {
 		return err
 	}
