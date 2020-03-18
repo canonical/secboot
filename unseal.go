@@ -128,7 +128,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string, lock boo
 		case isDynamicPolicyDataError(err):
 			// TODO: Add a separate error for this
 			return nil, InvalidKeyFileError{err.Error()}
-		case isKeyFileError(err):
+		case isStaticPolicyDataError(err):
 			return nil, InvalidKeyFileError{err.Error()}
 		case isAuthFailError(err, tpm2.CommandPolicySecret, 1):
 			return nil, ErrPinFail

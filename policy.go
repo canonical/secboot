@@ -623,6 +623,23 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 		AuthorizedPolicySignature: &signature}, nil
 }
 
+type staticPolicyDataError struct {
+	err error
+}
+
+func (e staticPolicyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e staticPolicyDataError) Unwrap() error {
+	return e.err
+}
+
+func isStaticPolicyDataError(err error) bool {
+	var e staticPolicyDataError
+	return xerrors.As(err, &e)
+}
+
 type dynamicPolicyDataError struct {
 	err error
 }
@@ -703,12 +720,12 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 
 	if staticInput.PinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
-		return keyFileError{errors.New("invalid handle type for PIN NV index")}
+		return staticPolicyDataError{errors.New("invalid handle type for PIN NV index")}
 	}
 	pinIndex, err := tpm.CreateResourceContextFromTPM(staticInput.PinIndexHandle)
 	if tpm2.IsResourceUnavailableError(err, staticInput.PinIndexHandle) {
 		// If there is no NV index at the expected handle then this key file is invalid.
-		err = keyFileError{err}
+		err = staticPolicyDataError{err}
 	}
 	if err != nil {
 		return xerrors.Errorf("cannot obtain context for PIN NV index: %w", err)
@@ -730,7 +747,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	if err := tpm.PolicyOR(revocationCheckSession, staticInput.PinIndexAuthPolicies); err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
 			// staticInput.PinIndexAuthPolicies is invalid.
-			err = keyFileError{err}
+			err = staticPolicyDataError{err}
 		}
 		return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
 	}
@@ -744,19 +761,19 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 			err = dynamicPolicyDataError{err}
 		case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1):
 			// Either staticInput.PinIndexAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
-			err = keyFileError{err}
+			err = staticPolicyDataError{err}
 		}
 		return xerrors.Errorf("dynamic authorization policy revocation check failed: %w", err)
 	}
 
 	if !staticInput.AuthPublicKey.NameAlg.Supported() {
-		return keyFileError{errors.New("public area of dynamic authorization policy signature verification key has an unsupported name algorithm")}
+		return staticPolicyDataError{errors.New("public area of dynamic authorization policy signature verification key has an unsupported name algorithm")}
 	}
 	authorizeKey, err := tpm.LoadExternal(nil, staticInput.AuthPublicKey, tpm2.HandleOwner)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
 			// staticInput.AuthPublicKey is invalid
-			err = keyFileError{err}
+			err = staticPolicyDataError{err}
 		}
 		return xerrors.Errorf("cannot load public area for dynamic authorization policy signature verification key: %w", err)
 	}

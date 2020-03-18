@@ -1515,7 +1515,7 @@ func TestExecutePolicy(t *testing.T) {
 			},
 			pinDefine: "1234",
 			pinInput:  "12345"}, nil)
-		if !tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandPolicySecret, 1) {
+		if !tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandPolicySecret, 1) || IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1555,7 +1555,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if err == nil {
+		if IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
 			t.Fatalf("Expected an error")
 		}
 		if err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
@@ -1598,7 +1598,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "xxx",
 				},
 			}}, nil)
-		if err == nil {
+		if IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
 			t.Fatalf("Expected an error")
 		}
 		if err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
@@ -1737,7 +1737,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if err == nil {
+		if IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
 			t.Fatalf("Expected an error")
 		}
 		if err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
@@ -1856,7 +1856,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if !tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV) {
+		if !tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1903,7 +1903,7 @@ func TestExecutePolicy(t *testing.T) {
 				t.Fatalf("NVReadLock failed: %v", err)
 			}
 		})
-		if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) {
+		if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) || IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1944,7 +1944,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexHandle = tpm2.Handle(0x40ffffff)
 		})
-		if err == nil {
+		if !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Fatalf("Expected an error")
 		}
 		if err.Error() != "invalid handle type for PIN NV index" {
@@ -1988,7 +1988,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexHandle += 1
 		})
-		if !tpm2.IsResourceUnavailableError(err, pinIndex.Handle()+1) {
+		if !tpm2.IsResourceUnavailableError(err, pinIndex.Handle()+1) || !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2030,7 +2030,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexAuthPolicies[len(s.PinIndexAuthPolicies)-1] = make(tpm2.Digest, len(s.PinIndexAuthPolicies[0]))
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) || !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2072,7 +2072,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.PinIndexAuthPolicies[0] = make(tpm2.Digest, len(s.PinIndexAuthPolicies[0]))
 		})
-		if !tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1) {
+		if !tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1) || !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2114,7 +2114,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.AuthPublicKey.NameAlg = tpm2.HashAlgorithmId(tpm2.AlgorithmSM4)
 		})
-		if err == nil {
+		if !IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Fatalf("Expected an error")
 		}
 		if err.Error() != "public area of dynamic authorization policy signature verification key has an unsupported name algorithm" {
@@ -2165,7 +2165,9 @@ func TestExecutePolicy(t *testing.T) {
 			s.AuthPublicKey.Params.RSADetail().Exponent = uint32(key.E)
 			s.AuthPublicKey.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorSignature, tpm2.CommandVerifySignature, 2) {
+		// Even though this error is caused by broken static metadata, we get a dynamicPolicyDataError error because the signature
+		// verification fails. Validation with validateKeyData will detect the real issue though.
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorSignature, tpm2.CommandVerifySignature, 2) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2266,7 +2268,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			d.PolicyCount += 1
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
 			t.Errorf("Failed to execute policy session: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2358,7 +2360,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			d.PCROrData[0].Next = 1000
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
 			t.Errorf("Failed to execute policy session: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2408,7 +2410,7 @@ func TestExecutePolicy(t *testing.T) {
 			x := int32(-10)
 			d.PCROrData[0].Next = *(*uint32)(unsafe.Pointer(&x))
 		})
-		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
+		if !tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) || IsStaticPolicyDataError(err) || !IsDynamicPolicyDataError(err) {
 			t.Errorf("Failed to execute policy session: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
