@@ -26,7 +26,7 @@ import (
 )
 
 // UnsealFromTPM will load the TPM sealed object in to the TPM and attempt to unseal it, returning the cleartext key on success.
-// If a PIN has been set, the correct PIN must be provided via the pin argument. If the wrong PIN is provided, a ErrPinFail error
+// If a PIN has been set, the correct PIN must be provided via the pin argument. If the wrong PIN is provided, a ErrPINFail error
 // will be returned, and the TPM's dictionary attack counter will be incremented.
 //
 // If the TPM's dictionary attack logic has been triggered, a ErrTPMLockout error will be returned.
@@ -57,7 +57,7 @@ import (
 // If the metadata for the updatable part of the key file's authorization policy is not consistent with the approved policy, then a
 // InvalidKeyFileError error will be returned.
 //
-// If the provided PIN is incorrect, then a ErrPinFail error will be returned and the TPM's dictionary attack counter will be
+// If the provided PIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be
 // incremented.
 //
 // If access to sealed key objects created by this package is disallowed until the next TPM reset or TPM restart, then a
@@ -131,7 +131,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string, lock boo
 		case isStaticPolicyDataError(err):
 			return nil, InvalidKeyFileError{err.Error()}
 		case isAuthFailError(err, tpm2.CommandPolicySecret, 1):
-			return nil, ErrPinFail
+			return nil, ErrPINFail
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
 			return nil, ErrTPMProvisioning
 		case tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV):
