@@ -71,11 +71,11 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	}
 
 	t.Run("SimplePCRProfile", func(t *testing.T) {
-		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PinHandle: 0x0181fff0})
+		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0})
 	})
 
 	t.Run("NilPCRProfile", func(t *testing.T) {
-		run(t, &KeyCreationParams{PinHandle: 0x0181fff0})
+		run(t, &KeyCreationParams{PINHandle: 0x0181fff0})
 	})
 }
 
@@ -97,7 +97,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		keyFile := tmpDir + "/keydata"
 		policyUpdateFile := tmpDir + "/keypolicyupdatedata"
 
-		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PinHandle: 0x0181fff0}); err != nil {
+		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0}); err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
