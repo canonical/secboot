@@ -51,7 +51,7 @@ func TestUnsealWithNo2FA(t *testing.T) {
 
 	keyFile := tmpDir + "/keydata"
 
-	if err := SealKeyToTPM(tpm, keyFile, "", &testCreationParams, key); err != nil {
+	if err := SealKeyToTPM(tpm, key, keyFile, "", &testCreationParams); err != nil {
 		t.Fatalf("SealKeyToTPM failed: %v", err)
 	}
 	defer undefineKeyNVSpace(t, tpm, keyFile)
@@ -89,7 +89,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		keyFile := tmpDir + "/keydata"
 		policyUpdateFile := tmpDir + "/keypolicyupdatedata"
 
-		if err := SealKeyToTPM(tpm, keyFile, policyUpdateFile, &testCreationParams, key); err != nil {
+		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, &testCreationParams); err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)

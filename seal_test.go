@@ -63,7 +63,7 @@ func TestSealKeyToTPM(t *testing.T) {
 			policyUpdateFile = tmpDir + "/keypolicyupdatedata"
 		}
 
-		if err := SealKeyToTPM(tpm, keyFile, policyUpdateFile, params, key); err != nil {
+		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, params); err != nil {
 			t.Errorf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
@@ -145,7 +145,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		origPolicyUpdateFileInfo, _ := os.Stat(policyUpdateFile)
 		pinIndex, _ := tpm.CreateResourceContextFromTPM(params.PinHandle)
 
-		err := SealKeyToTPM(tpm, keyFile, policyUpdateFile, params, key)
+		err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, params)
 
 		if fi, err := os.Stat(keyFile); err == nil && (origKeyFileInfo == nil || origKeyFileInfo.ModTime() != fi.ModTime()) {
 			t.Errorf("SealKeyToTPM created a key file")

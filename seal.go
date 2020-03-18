@@ -107,7 +107,7 @@ type KeyCreationParams struct {
 //
 // The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
 // argument.
-func SealKeyToTPM(tpm *TPMConnection, keyPath, policyUpdatePath string, params *KeyCreationParams, key []byte) error {
+func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath string, params *KeyCreationParams) error {
 	// Check that the key is the correct length
 	if len(key) != 32 {
 		return fmt.Errorf("expected a key length of 256 bits (got %d)", len(key)*8)
