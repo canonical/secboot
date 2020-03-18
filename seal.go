@@ -24,6 +24,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 
@@ -111,6 +112,9 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	// Check that the key is the correct length
 	if len(key) != 32 {
 		return fmt.Errorf("expected a key length of 256 bits (got %d)", len(key)*8)
+	}
+	if params == nil {
+		return errors.New("no KeyCreationParams provided")
 	}
 
 	// Use the HMAC session created when the connection was opened rather than creating a new one.
@@ -255,8 +259,12 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	policyUpdateData.CreationTicket = creationTicket
 
 	// Create a dynamic authorization policy
+	pcrProfile := params.PCRProfile
+	if pcrProfile == nil {
+		pcrProfile = &PCRProtectionProfile{}
+	}
 	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, sealedKeyNameAlg, staticPolicyData.AuthPublicKey.NameAlg,
-		authKey, pinIndexPub, pinIndexAuthPolicies, params.PCRProfile, session)
+		authKey, pinIndexPub, pinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
 		return err
 	}
@@ -332,6 +340,9 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 	}
 
 	// Compute a new dynamic authorization policy
+	if pcrProfile == nil {
+		pcrProfile = &PCRProtectionProfile{}
+	}
 	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, data.KeyPublic.NameAlg, data.StaticPolicyData.AuthPublicKey.NameAlg,
 		authKey, pinIndexPublic, data.StaticPolicyData.PinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {

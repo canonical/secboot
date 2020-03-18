@@ -115,6 +115,12 @@ func TestSealKeyToTPM(t *testing.T) {
 
 		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PinHandle: 0x01810000})
 	})
+
+	t.Run("NilPCRProfile", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, false, &KeyCreationParams{PinHandle: 0x01810000})
+	})
 }
 
 func TestSealKeyToTPMErrorHandling(t *testing.T) {
@@ -143,7 +149,10 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 
 		origKeyFileInfo, _ := os.Stat(keyFile)
 		origPolicyUpdateFileInfo, _ := os.Stat(policyUpdateFile)
-		pinIndex, _ := tpm.CreateResourceContextFromTPM(params.PinHandle)
+		var pinIndex tpm2.ResourceContext
+		if params != nil {
+			pinIndex, _ = tpm.CreateResourceContextFromTPM(params.PinHandle)
+		}
 
 		err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, params)
 
@@ -153,10 +162,11 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		if fi, err := os.Stat(policyUpdateFile); err == nil && (origPolicyUpdateFileInfo == nil || origPolicyUpdateFileInfo.ModTime() != fi.ModTime()) {
 			t.Errorf("SealKeyToTPM created a key file")
 		}
-		if index, err := tpm.CreateResourceContextFromTPM(params.PinHandle); err == nil && (pinIndex == nil || !bytes.Equal(pinIndex.Name(), index.Name())) {
-			t.Errorf("SealKeyToTPM created a PIN NV index")
+		if params != nil {
+			if index, err := tpm.CreateResourceContextFromTPM(params.PinHandle); err == nil && (pinIndex == nil || !bytes.Equal(pinIndex.Name(), index.Name())) {
+				t.Errorf("SealKeyToTPM created a PIN NV index")
+			}
 		}
-
 		return err
 	}
 
@@ -169,6 +179,19 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Fatalf("Expected an error")
 		}
 		if err.Error() != "expected a key length of 256 bits (got 128)" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("NilParams", func(t *testing.T) {
+		key := make([]byte, 32)
+		rand.Read(key)
+
+		err := run(t, "", nil, key)
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "no KeyCreationParams provided" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

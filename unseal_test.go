@@ -30,8 +30,6 @@ import (
 	. "github.com/snapcore/secboot"
 )
 
-var testCreationParams = KeyCreationParams{PCRProfile: getTestPCRProfile(), PinHandle: 0x0181fff0}
-
 func TestUnsealWithNo2FA(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
@@ -43,32 +41,42 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
 
-	tmpDir, err := ioutil.TempDir("", "_TestUnsealWithNo2FA_")
-	if err != nil {
-		t.Fatalf("Creating temporary directory failed: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	run := func(t *testing.T, params *KeyCreationParams) {
+		tmpDir, err := ioutil.TempDir("", "_TestUnsealWithNo2FA_")
+		if err != nil {
+			t.Fatalf("Creating temporary directory failed: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
 
-	keyFile := tmpDir + "/keydata"
+		keyFile := tmpDir + "/keydata"
 
-	if err := SealKeyToTPM(tpm, key, keyFile, "", &testCreationParams); err != nil {
-		t.Fatalf("SealKeyToTPM failed: %v", err)
-	}
-	defer undefineKeyNVSpace(t, tpm, keyFile)
+		if err := SealKeyToTPM(tpm, key, keyFile, "", params); err != nil {
+			t.Fatalf("SealKeyToTPM failed: %v", err)
+		}
+		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-	k, err := ReadSealedKeyObject(keyFile)
-	if err != nil {
-		t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		k, err := ReadSealedKeyObject(keyFile)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
+
+		keyUnsealed, err := k.UnsealFromTPM(tpm, "", false)
+		if err != nil {
+			t.Fatalf("UnsealFromTPM failed: %v", err)
+		}
+
+		if !bytes.Equal(key, keyUnsealed) {
+			t.Errorf("TPM returned the wrong key")
+		}
 	}
 
-	keyUnsealed, err := k.UnsealFromTPM(tpm, "", false)
-	if err != nil {
-		t.Fatalf("UnsealFromTPM failed: %v", err)
-	}
+	t.Run("SimplePCRProfile", func(t *testing.T) {
+		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PinHandle: 0x0181fff0})
+	})
 
-	if !bytes.Equal(key, keyUnsealed) {
-		t.Errorf("TPM returned the wrong key")
-	}
+	t.Run("NilPCRProfile", func(t *testing.T) {
+		run(t, &KeyCreationParams{PinHandle: 0x0181fff0})
+	})
 }
 
 func TestUnsealErrorHandling(t *testing.T) {
@@ -89,7 +97,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		keyFile := tmpDir + "/keydata"
 		policyUpdateFile := tmpDir + "/keypolicyupdatedata"
 
-		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, &testCreationParams); err != nil {
+		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PinHandle: 0x0181fff0}); err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
