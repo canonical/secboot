@@ -51,13 +51,6 @@ type SystemdEFIStubProfileParams struct {
 //
 // The set of kernel commandlines to add to the PCRProtectionProfile is specified via the KernelCmdlines field of params.
 func AddSystemdEFIStubProfile(profile *PCRProtectionProfile, params *SystemdEFIStubProfileParams) error {
-	if profile == nil {
-		return errors.New("no profile supported")
-	}
-	if params == nil {
-		return errors.New("no params provided")
-	}
-
 	if params.PCRIndex < 0 {
 		return errors.New("invalid PCR index")
 	}
