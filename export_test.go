@@ -22,6 +22,7 @@ package secboot
 import (
 	"crypto/rsa"
 	"io"
+	"os"
 
 	"github.com/chrisccoulson/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
@@ -54,9 +55,12 @@ var (
 	ExecutePolicySession                     = executePolicySession
 	IdentifyInitialOSLaunchVerificationEvent = identifyInitialOSLaunchVerificationEvent
 	IncrementDynamicPolicyCounter            = incrementDynamicPolicyCounter
+	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
+	IsStaticPolicyDataError                  = isStaticPolicyDataError
 	LockAccessToSealedKeysUntilTPMReset      = lockAccessToSealedKeysUntilTPMReset
 	LockNVIndexAttrs                         = lockNVIndexAttrs
 	MakeDefaultEKTemplate                    = makeDefaultEKTemplate
+	MakeDefaultSRKTemplate                   = makeDefaultSRKTemplate
 	OidExtensionSubjectAltName               = oidExtensionSubjectAltName
 	OidTcgAttributeTpmManufacturer           = oidTcgAttributeTpmManufacturer
 	OidTcgAttributeTpmModel                  = oidTcgAttributeTpmModel
@@ -213,7 +217,7 @@ func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorit
 		policyCount:          policyCount}
 }
 
-func NewStaticPolicyComputeParams(key *rsa.PublicKey, pinIndexPub *tpm2.NVPublic, pinIndexAuthPolicies tpm2.DigestList, lockIndexName tpm2.Name) *staticPolicyComputeParams {
+func NewStaticPolicyComputeParams(key *tpm2.Public, pinIndexPub *tpm2.NVPublic, pinIndexAuthPolicies tpm2.DigestList, lockIndexName tpm2.Name) *staticPolicyComputeParams {
 	return &staticPolicyComputeParams{key: key, pinIndexPub: pinIndexPub, pinIndexAuthPolicies: pinIndexAuthPolicies, lockIndexName: lockIndexName}
 }
 
@@ -223,4 +227,25 @@ func (p PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PCR
 
 func SetOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) {
 	openDefaultTcti = fn
+}
+
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile, privateFile string, session tpm2.SessionContext) error {
+	kf, err := os.Open(keyFile)
+	if err != nil {
+		return err
+	}
+	defer kf.Close()
+
+	var pf io.Reader
+	if privateFile != "" {
+		f, err := os.Open(privateFile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		pf = f
+	}
+
+	_, _, _, err = readAndValidateKeyData(tpm, kf, pf, session)
+	return err
 }

@@ -57,6 +57,8 @@ var (
 	testEkCert []byte
 
 	testEncodedEkCertChain []byte
+
+	testAuth = []byte("1234")
 )
 
 func decodeHexString(t *testing.T, s string) []byte {
@@ -74,11 +76,37 @@ func flushContext(t *testing.T, tpm *TPMConnection, context tpm2.HandleContext) 
 	}
 }
 
+// Set the hierarchy auth to testAuth. Fatal on failure
+func setHierarchyAuthForTest(t *testing.T, tpm *TPMConnection, hierarchy tpm2.ResourceContext) {
+	if err := tpm.HierarchyChangeAuth(hierarchy, tpm2.Auth(testAuth), nil); err != nil {
+		t.Fatalf("HierarchyChangeAuth failed: %v", err)
+	}
+}
+
+// Reset the hierarchy auth to nil.
+func resetHierarchyAuth(t *testing.T, tpm *TPMConnection, hierarchy tpm2.ResourceContext) {
+	if err := tpm.HierarchyChangeAuth(hierarchy, nil, nil); err != nil {
+		t.Errorf("HierarchyChangeAuth failed: %v", err)
+	}
+}
+
 // Undefine a NV index set by a test. Fails the test if it doesn't succeed.
 func undefineNVSpace(t *testing.T, tpm *TPMConnection, context, authHandle tpm2.ResourceContext) {
 	if err := tpm.NVUndefineSpace(authHandle, context, nil); err != nil {
 		t.Errorf("NVUndefineSpace failed: %v", err)
 	}
+}
+
+func undefineKeyNVSpace(t *testing.T, tpm *TPMConnection, path string) {
+	k, err := ReadSealedKeyObject(path)
+	if err != nil {
+		t.Fatalf("ReadSealedKeyObject failed: %v", err)
+	}
+	rc, err := tpm.CreateResourceContextFromTPM(k.PINIndexHandle())
+	if err != nil {
+		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+	}
+	undefineNVSpace(t, tpm, rc, tpm.OwnerHandleContext())
 }
 
 func openTPMSimulatorForTesting(t *testing.T) (*TPMConnection, *tpm2.TctiMssim) {

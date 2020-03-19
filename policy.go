@@ -77,7 +77,7 @@ type dynamicPolicyData struct {
 
 // staticPolicyComputeParams provides the parameters to computeStaticPolicy.
 type staticPolicyComputeParams struct {
-	key                  *rsa.PublicKey  // Public part of key used to authorize a dynamic authorization policy
+	key                  *tpm2.Public    // Public part of key used to authorize a dynamic authorization policy
 	pinIndexPub          *tpm2.NVPublic  // Public area of the NV index used for the PIN
 	pinIndexAuthPolicies tpm2.DigestList // Metadata for executing policy sessions to interact with the PIN NV index
 	lockIndexName        tpm2.Name       // Name of the global NV index for locking access to sealed key objects
@@ -469,8 +469,7 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputeParams) (*staticPolicyData, tpm2.Digest, error) {
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
 
-	publicKey := createPublicAreaForRSASigningKey(input.key)
-	keyName, err := publicKey.Name()
+	keyName, err := input.key.Name()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
 	}
@@ -485,7 +484,7 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 	trial.PolicyNV(input.lockIndexName, nil, 0, tpm2.OpEq)
 
 	return &staticPolicyData{
-		AuthPublicKey:        publicKey,
+		AuthPublicKey:        input.key,
 		PinIndexHandle:       input.pinIndexPub.Index,
 		PinIndexAuthPolicies: input.pinIndexAuthPolicies}, trial.GetDigest(), nil
 }
@@ -624,6 +623,40 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 		AuthorizedPolicySignature: &signature}, nil
 }
 
+type staticPolicyDataError struct {
+	err error
+}
+
+func (e staticPolicyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e staticPolicyDataError) Unwrap() error {
+	return e.err
+}
+
+func isStaticPolicyDataError(err error) bool {
+	var e staticPolicyDataError
+	return xerrors.As(err, &e)
+}
+
+type dynamicPolicyDataError struct {
+	err error
+}
+
+func (e dynamicPolicyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e dynamicPolicyDataError) Unwrap() error {
+	return e.err
+}
+
+func isDynamicPolicyDataError(err error) bool {
+	var e dynamicPolicyDataError
+	return xerrors.As(err, &e)
+}
+
 // executePolicyORAssertions takes the data produced by computePolicyORData and executes a sequence of TPM2_PolicyOR assertions, in
 // order to support compound policies with more than 8 conditions.
 func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, data policyOrDataTree) error {
@@ -675,23 +708,38 @@ func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext
 func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContext, staticInput *staticPolicyData,
 	dynamicInput *dynamicPolicyData, pin string, hmacSession tpm2.SessionContext) error {
 	if err := tpm.PolicyPCR(policySession, nil, dynamicInput.PCRSelection); err != nil {
-		return xerrors.Errorf("cannot complete PCR assertion: %w", err)
+		return xerrors.Errorf("cannot execute PCR assertion: %w", err)
 	}
 
 	if err := executePolicyORAssertions(tpm, policySession, dynamicInput.PCROrData); err != nil {
-		return xerrors.Errorf("cannot complete OR assertions: %w", err)
+		switch {
+		case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.CommandPolicyGetDigest):
+			return xerrors.Errorf("cannot execute OR assertions: %w", err)
+		case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1):
+			// The dynamic authorization policy data is invalid.
+			return dynamicPolicyDataError{errors.New("cannot complete OR assertions: invalid data")}
+		}
+		return dynamicPolicyDataError{xerrors.Errorf("cannot complete OR assertions: %w", err)}
 	}
 
 	if staticInput.PinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
-		return errors.New("invalid handle type for PIN NV index")
+		return staticPolicyDataError{errors.New("invalid handle type for PIN NV index")}
 	}
 	pinIndex, err := tpm.CreateResourceContextFromTPM(staticInput.PinIndexHandle)
-	if err != nil {
+	switch {
+	case tpm2.IsResourceUnavailableError(err, staticInput.PinIndexHandle):
+		// If there is no NV index at the expected handle then the key file is invalid and must be recreated.
+		return staticPolicyDataError{errors.New("no PIN NV index found")}
+	case err != nil:
 		return xerrors.Errorf("cannot obtain context for PIN NV index: %w", err)
 	}
 	pinIndexPub, _, err := tpm.NVReadPublic(pinIndex)
 	if err != nil {
 		return xerrors.Errorf("cannot read public area for PIN NV index: %w", err)
+	}
+	if !pinIndexPub.NameAlg.Supported() {
+		//If the NV index has an unsupported name algorithm, then this key file is invalid and must be recreated.
+		return staticPolicyDataError{errors.New("PIN NV index has an unsupported name algorithm")}
 	}
 
 	revocationCheckSession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, pinIndexPub.NameAlg)
@@ -704,20 +752,36 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
 	}
 	if err := tpm.PolicyOR(revocationCheckSession, staticInput.PinIndexAuthPolicies); err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
+			// staticInput.PinIndexAuthPolicies is invalid.
+			return staticPolicyDataError{errors.New("authorization policy metadata for PIN NV index is invalid")}
+		}
 		return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
 	}
 
 	operandB := make([]byte, 8)
 	binary.BigEndian.PutUint64(operandB, dynamicInput.PolicyCount)
 	if err := tpm.PolicyNV(pinIndex, pinIndex, policySession, operandB, 0, tpm2.OpUnsignedLE, revocationCheckSession); err != nil {
+		switch {
+		case tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV):
+			// The dynamic authorization policy has been revoked.
+			return dynamicPolicyDataError{errors.New("the dynamic authorization policy has been revoked")}
+		case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1):
+			// Either staticInput.PinIndexAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
+			return staticPolicyDataError{errors.New("invalid PIN NV index or associated authorization policy metadata")}
+		}
 		return xerrors.Errorf("dynamic authorization policy revocation check failed: %w", err)
 	}
 
 	if !staticInput.AuthPublicKey.NameAlg.Supported() {
-		return errors.New("public area of dynamic authorization policy signature verification key has an unsupported name algorithm")
+		return staticPolicyDataError{errors.New("public area of dynamic authorization policy signature verification key has an unsupported name algorithm")}
 	}
 	authorizeKey, err := tpm.LoadExternal(nil, staticInput.AuthPublicKey, tpm2.HandleOwner)
 	if err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
+			// staticInput.AuthPublicKey is invalid
+			return staticPolicyDataError{errors.New("public area of dynamic authorization policy signature verification key is invalid")}
+		}
 		return xerrors.Errorf("cannot load public area for dynamic authorization policy signature verification key: %w", err)
 	}
 	defer tpm.FlushContext(authorizeKey)
@@ -727,10 +791,18 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, h.Sum(nil), dynamicInput.AuthorizedPolicySignature)
 	if err != nil {
-		return xerrors.Errorf("dynamic authorization policy signature verification failed: %w", err)
+		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
+			// dynamicInput.AuthorizedPolicySignature is invalid.
+			return dynamicPolicyDataError{errors.New("cannot verify dynamic authorization policy signature")}
+		}
+		return xerrors.Errorf("cannot verify dynamic authorization policy signature: %w", err)
 	}
 
 	if err := tpm.PolicyAuthorize(policySession, dynamicInput.AuthorizedPolicy, nil, authorizeKey.Name(), authorizeTicket); err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
+			// dynamicInput.AuthorizedPolicy is invalid.
+			return dynamicPolicyDataError{errors.New("the dynamic authorization policy is invalid")}
+		}
 		return xerrors.Errorf("dynamic authorization policy check failed: %w", err)
 	}
 

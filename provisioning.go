@@ -85,26 +85,6 @@ const (
 	ProvisionModeFull
 )
 
-var (
-	// srkTemplate is the default RSA2048 SRK template, see section 7.5.1 of "TCG TPM v2.0 Provisioning Guidance", version 1.0,
-	// revision 1.0, 15 March 2017.
-	srkTemplate = tpm2.Public{
-		Type:    tpm2.ObjectTypeRSA,
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
-			tpm2.AttrRestricted | tpm2.AttrDecrypt,
-		Params: tpm2.PublicParamsU{
-			Data: &tpm2.RSAParams{
-				Symmetric: tpm2.SymDefObject{
-					Algorithm: tpm2.SymObjectAlgorithmAES,
-					KeyBits:   tpm2.SymKeyBitsU{Data: uint16(128)},
-					Mode:      tpm2.SymModeU{Data: tpm2.SymModeCFB}},
-				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
-				KeyBits:  2048,
-				Exponent: 0}},
-		Unique: tpm2.PublicIDU{Data: make(tpm2.PublicKeyRSA, 256)}}
-)
-
 func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, template *tpm2.Public, handle tpm2.Handle, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	obj, err := tpm.CreateResourceContextFromTPM(handle)
 	switch {
@@ -227,7 +207,7 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	session = tpm.HmacSession()
 
 	// Provision a storage root key
-	srk, err := provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), &srkTemplate, srkHandle, session)
+	srk, err := provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), srkTemplate, srkHandle, session)
 	if err != nil {
 		switch {
 		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
@@ -330,7 +310,7 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 	default:
 		// ProvisionTPM hasn't been called with this TPMConnection, but there is an object at srkHandle. Make sure it looks like a storage
 		// primary key.
-		ok, err := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, &srkTemplate, tpm.HmacSession())
+		ok, err := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, srkTemplate, tpm.HmacSession())
 		switch {
 		case err != nil:
 			return 0, xerrors.Errorf("cannot determine if object at %v is a primary key in the storage hierarchy: %w", srkHandle, err)
