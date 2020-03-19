@@ -58,6 +58,9 @@ func AddSystemdEFIStubProfile(profile *PCRProtectionProfile, params *SystemdEFIS
 		return errors.New("no params provided")
 	}
 
+	if params.PCRIndex < 0 {
+		return errors.New("invalid PCR index")
+	}
 	if len(params.KernelCmdlines) == 0 {
 		return errors.New("no kernel commandlines specified")
 	}
