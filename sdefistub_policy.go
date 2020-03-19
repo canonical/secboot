@@ -31,9 +31,16 @@ import (
 
 // SystemdEFIStubProfileParams provides the parameters to AddSystemdEFIStubProfile.
 type SystemdEFIStubProfileParams struct {
-	PCRAlgorithm   tpm2.HashAlgorithmId
-	PCRIndex       int      // The PCR that the systemd EFI stub measures the kernel commandline to
-	KernelCmdlines []string // The set of kernel commandlines to generate PCR digests for
+	// PCRAlgorithm is the algorithm for which to compute PCR digests for. TPMs compliant with the "TCG PC Client Platform TPM Profile
+	// (PTP) Specification" Level 00, Revision 01.03 v22, May 22 2017 are required to support tpm2.HashAlgorithmSHA1 and
+	// tpm2.HashAlgorithmSHA256. Support for other digest algorithms is optional.
+	PCRAlgorithm tpm2.HashAlgorithmId
+
+	// PCRIndex is the PCR that the systemd EFI stub measures the kernel commandline to.
+	PCRIndex int
+
+	// KernelCmdlines is the set of kernel commandlines to add to the PCR profile.
+	KernelCmdlines []string
 }
 
 // AddSystemdEFIStubProfile adds the systemd EFI linux loader stub profile to the PCR protection profile, in order to generate a
@@ -42,7 +49,7 @@ type SystemdEFIStubProfileParams struct {
 //
 // The PCR index that the EFI stub measures the kernel commandline too can be specified via the PCRIndex field of params.
 //
-// The permitted set of kernel commandlines can be specified via the KernelCmdlines field of params.
+// The set of kernel commandlines to add to the PCRProtectionProfile is specified via the KernelCmdlines field of params.
 func AddSystemdEFIStubProfile(profile *PCRProtectionProfile, params *SystemdEFIStubProfileParams) error {
 	if profile == nil {
 		return errors.New("no profile supported")
