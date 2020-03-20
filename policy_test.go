@@ -2562,3 +2562,52 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 		}()
 	}
 }
+
+func TestLockAccessToSealedKeysUnprovisioned(t *testing.T) {
+	tpm := openTPMForTesting(t)
+	defer closeTPM(t, tpm)
+
+	run := func(t *testing.T) {
+		if err := LockAccessToSealedKeys(tpm); err != nil {
+			t.Errorf("LockAccessToSealedKeys failed: %v", err)
+		}
+	}
+
+	t.Run("NoNVIndex", func(t *testing.T) {
+		// Test with no NV index defined.
+		undefineLockNVIndices(t, tpm)
+		run(t)
+	})
+
+	t.Run("UnrelatedNVIndex/1", func(t *testing.T) {
+		// Test with a NV index defined that has the wrong attributes.
+		undefineLockNVIndices(t, tpm)
+		public := tpm2.NVPublic{
+			Index:   LockNVHandle,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVOwnerWrite | tpm2.AttrNVOwnerRead),
+			Size:    8}
+		index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, &public, nil)
+		if err != nil {
+			t.Fatalf("NVDefineSpace failed: %v", err)
+		}
+		defer undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
+		run(t)
+	})
+
+	t.Run("UnrelatedNVIndex/2", func(t *testing.T) {
+		// Test with a NV index defined with the expected attributes, but with a non-empty authorization value.
+		undefineLockNVIndices(t, tpm)
+		public := tpm2.NVPublic{
+			Index:   LockNVHandle,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVReadStClear),
+			Size:    0}
+		index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), []byte("foo"), &public, nil)
+		if err != nil {
+			t.Fatalf("NVDefineSpace failed: %v", err)
+		}
+		defer undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
+		run(t)
+	})
+}
