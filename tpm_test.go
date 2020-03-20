@@ -29,6 +29,7 @@ import (
 	"encoding/asn1"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -57,8 +58,6 @@ var (
 	testEkCert []byte
 
 	testEncodedEkCertChain []byte
-
-	testAuth = []byte("1234")
 )
 
 func decodeHexString(t *testing.T, s string) []byte {
@@ -109,13 +108,13 @@ func undefineKeyNVSpace(t *testing.T, tpm *TPMConnection, path string) {
 	undefineNVSpace(t, tpm, rc, tpm.OwnerHandleContext())
 }
 
-func openTPMSimulatorForTesting(t *testing.T) (*TPMConnection, *tpm2.TctiMssim) {
+func openTPMSimulatorForTestingCommon() (*TPMConnection, *tpm2.TctiMssim, error) {
 	if !*useMssim {
-		t.SkipNow()
+		return nil, nil, nil
 	}
 
 	if *useTpm && *useMssim {
-		t.Fatalf("Cannot specify both -use-tpm and -use-mssim")
+		return nil, nil, errors.New("cannot specify both -use-tpm and -use-mssim")
 	}
 
 	var tcti *tpm2.TctiMssim
@@ -131,20 +130,31 @@ func openTPMSimulatorForTesting(t *testing.T) (*TPMConnection, *tpm2.TctiMssim) 
 
 	tpm, err := SecureConnectToDefaultTPM(bytes.NewReader(testEncodedEkCertChain), nil)
 	if err != nil {
-		t.Fatalf("ConnectToDefaultTPM failed: %v", err)
+		return nil, nil, fmt.Errorf("ConnectToDefaultTPM failed: %v", err)
 	}
 
+	return tpm, tcti, nil
+}
+
+func openTPMSimulatorForTesting(t *testing.T) (*TPMConnection, *tpm2.TctiMssim) {
+	tpm, tcti, err := openTPMSimulatorForTestingCommon()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if tpm == nil {
+		t.SkipNow()
+	}
 	return tpm, tcti
 }
 
-func openTPMForTesting(t *testing.T) *TPMConnection {
+func openTPMForTestingCommon() (*TPMConnection, error) {
 	if !*useTpm {
-		tpm, _ := openTPMSimulatorForTesting(t)
-		return tpm
+		tpm, _, err := openTPMSimulatorForTestingCommon()
+		return tpm, err
 	}
 
 	if *useTpm && *useMssim {
-		t.Fatalf("Cannot specify both -use-tpm and -use-mssim")
+		return nil, errors.New("cannot specify both -use-tpm and -use-mssim")
 	}
 
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
@@ -153,9 +163,20 @@ func openTPMForTesting(t *testing.T) *TPMConnection {
 
 	tpm, err := ConnectToDefaultTPM()
 	if err != nil {
-		t.Fatalf("ConnectToDefaultTPM failed: %v", err)
+		return nil, fmt.Errorf("ConnectToDefaultTPM failed: %v", err)
 	}
 
+	return tpm, nil
+}
+
+func openTPMForTesting(t *testing.T) *TPMConnection {
+	tpm, err := openTPMForTestingCommon()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if tpm == nil {
+		t.SkipNow()
+	}
 	return tpm
 }
 
@@ -169,27 +190,34 @@ func clearTPMWithPlatformAuth(t *testing.T, tpm *TPMConnection) {
 	}
 }
 
-// resetTPMSimulator executes reset sequence of the TPM (Shutdown(CLEAR) -> reset -> Startup(CLEAR)) and the re-initializes the
-// TPMConnection.
-func resetTPMSimulator(t *testing.T, tpm *TPMConnection, tcti *tpm2.TctiMssim) {
+func resetTPMSimulatorCommon(tpm *TPMConnection, tcti *tpm2.TctiMssim) error {
 	if err := tpm.Shutdown(tpm2.StartupClear); err != nil {
-		t.Fatalf("Shutdown failed: %v", err)
+		return fmt.Errorf("Shutdown failed: %v", err)
 	}
 	if err := tcti.Reset(); err != nil {
-		t.Fatalf("Resetting the TPM simulator failed: %v", err)
+		return fmt.Errorf("resetting the TPM simulator failed: %v", err)
 	}
 	if err := tpm.Startup(tpm2.StartupClear); err != nil {
-		t.Fatalf("Startup failed: %v", err)
+		return fmt.Errorf("Startup failed: %v", err)
 	}
 
 	if err := InitTPMConnection(tpm); err != nil {
-		t.Fatalf("Failed to reinitialize TPMConnection after reset: %v", err)
+		return fmt.Errorf("failed to reinitialize TPMConnection after reset: %v", err)
+	}
+	return nil
+}
+
+// resetTPMSimulator executes reset sequence of the TPM (Shutdown(CLEAR) -> reset -> Startup(CLEAR)) and the re-initializes the
+// TPMConnection.
+func resetTPMSimulator(t *testing.T, tpm *TPMConnection, tcti *tpm2.TctiMssim) {
+	if err := resetTPMSimulatorCommon(tpm, tcti); err != nil {
+		t.Fatalf("%v", err)
 	}
 }
 
 func closeTPM(t *testing.T, tpm *TPMConnection) {
 	if err := tpm.Close(); err != nil {
-		t.Errorf("Close failed: %v", err)
+		t.Fatalf("Close failed: %v", err)
 	}
 }
 
