@@ -79,6 +79,51 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	})
 }
 
+func TestUnsealWithPIN(t *testing.T) {
+	tpm := openTPMForTesting(t)
+	defer closeTPM(t, tpm)
+
+	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+		t.Fatalf("Failed to provision TPM for test: %v", err)
+	}
+
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	tmpDir, err := ioutil.TempDir("", "_TestUnsealWithPIN_")
+	if err != nil {
+		t.Fatalf("Creating temporary directory failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	keyFile := tmpDir + "/keydata"
+
+	if err := SealKeyToTPM(tpm, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0}); err != nil {
+		t.Fatalf("SealKeyToTPM failed: %v", err)
+	}
+	defer undefineKeyNVSpace(t, tpm, keyFile)
+
+	testPIN := "1234"
+
+	if err := ChangePIN(tpm, keyFile, "", testPIN); err != nil {
+		t.Errorf("ChangePIN failed: %v", err)
+	}
+
+	k, err := ReadSealedKeyObject(keyFile)
+	if err != nil {
+		t.Fatalf("ReadSealedKeyObject failed: %v", err)
+	}
+
+	keyUnsealed, err := k.UnsealFromTPM(tpm, testPIN)
+	if err != nil {
+		t.Fatalf("UnsealFromTPM failed: %v", err)
+	}
+
+	if !bytes.Equal(key, keyUnsealed) {
+		t.Errorf("TPM returned the wrong key")
+	}
+}
+
 func TestUnsealErrorHandling(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -209,8 +254,11 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("SealedKeyAccessLocked", func(t *testing.T) {
-		tpm := openTPMForTesting(t)
-		defer closeTPM(t, tpm)
+		tpm, tcti := openTPMSimulatorForTesting(t)
+		defer func() {
+			resetTPMSimulator(t, tpm, tcti)
+			closeTPM(t, tpm)
+		}()
 
 		err := run(t, tpm, func(_, _ string) {
 			if err := LockAccessToSealedKeys(tpm); err != nil {
@@ -218,6 +266,20 @@ func TestUnsealErrorHandling(t *testing.T) {
 			}
 		})
 		if err != ErrSealedKeyAccessLocked {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("PINFail", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		err := run(t, tpm, func(keyFile, _ string) {
+			if err := ChangePIN(tpm, keyFile, "", "1234"); err != nil {
+				t.Errorf("ChangePIN failed: %v", err)
+			}
+		})
+		if err != ErrPINFail {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

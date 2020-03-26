@@ -23,6 +23,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/chrisccoulson/go-tpm2"
@@ -149,4 +151,132 @@ func TestPerformPinChange(t *testing.T) {
 	if _, _, err := tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil); err != nil {
 		t.Errorf("PolicySecret assertion failed: %v", err)
 	}
+}
+
+func TestChangePIN(t *testing.T) {
+	tpm := openTPMForTesting(t)
+	defer closeTPM(t, tpm)
+
+	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+		t.Fatalf("Failed to provision TPM for test: %v", err)
+	}
+
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	tmpDir, err := ioutil.TempDir("", "_TestChangePIN_")
+	if err != nil {
+		t.Fatalf("Creating temporary directory failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	keyFile := tmpDir + "/keydata"
+
+	if err := SealKeyToTPM(tpm, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0}); err != nil {
+		t.Fatalf("SealKeyToTPM failed: %v", err)
+	}
+	defer undefineKeyNVSpace(t, tpm, keyFile)
+
+	testPIN := "1234"
+
+	if err := ChangePIN(tpm, keyFile, "", testPIN); err != nil {
+		t.Fatalf("ChangePIN failed: %v", err)
+	}
+
+	// Verify that the PIN change succeeded by executing a PolicySecret assertion, which is immediate and will fail if it
+	// didn't work.
+	k, err := ReadSealedKeyObject(keyFile)
+	if err != nil {
+		t.Fatalf("ReadSealedKeyObject failed: %v", err)
+	}
+	if k.AuthMode2F() != AuthModePIN {
+		t.Errorf("Wrong auth mode")
+	}
+
+	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
+	if err != nil {
+		t.Fatalf("StartAuthSession failed: %v", err)
+	}
+	defer flushContext(t, tpm, policySession)
+
+	pinIndex, err := tpm.CreateResourceContextFromTPM(k.PINIndexHandle())
+	if err != nil {
+		t.Fatalf("CreateNVIndexResourceContextFromPublic failed: %v", err)
+	}
+	pinIndex.SetAuthValue([]byte(testPIN))
+
+	if _, _, err := tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil); err != nil {
+		t.Errorf("PolicySecret assertion failed: %v", err)
+	}
+
+	// Try clearing the PIN
+	if err := ChangePIN(tpm, keyFile, testPIN, ""); err != nil {
+		t.Fatalf("ChangePIN failed: %v", err)
+	}
+
+	// Verify that the PIN change succeeded by executing a PolicySecret assertion, which is immediate and will fail if it
+	// didn't work.
+	k, err = ReadSealedKeyObject(keyFile)
+	if err != nil {
+		t.Fatalf("ReadSealedKeyObject failed: %v", err)
+	}
+	if k.AuthMode2F() != AuthModeNone {
+		t.Errorf("Wrong auth mode")
+	}
+
+	pinIndex.SetAuthValue(nil)
+
+	if _, _, err := tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil); err != nil {
+		t.Errorf("PolicySecret assertion failed: %v", err)
+	}
+}
+
+func TestChangePINErrorHandling(t *testing.T) {
+	tpm := openTPMForTesting(t)
+	defer closeTPM(t, tpm)
+
+	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+		t.Fatalf("Failed to provision TPM for test: %v", err)
+	}
+
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	run := func(t *testing.T, oldPIN string) error {
+		tmpDir, err := ioutil.TempDir("", "_TestChangePINErrorHandling_")
+		if err != nil {
+			t.Fatalf("Creating temporary directory failed: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		keyFile := tmpDir + "/keydata"
+
+		if err := SealKeyToTPM(tpm, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0}); err != nil {
+			t.Fatalf("SealKeyToTPM failed: %v", err)
+		}
+		defer undefineKeyNVSpace(t, tpm, keyFile)
+
+		return ChangePIN(tpm, keyFile, oldPIN, "")
+	}
+
+	t.Run("TPMLockout", func(t *testing.T) {
+		// Put the TPM in DA lockout mode
+		if err := tpm.DictionaryAttackParameters(tpm.LockoutHandleContext(), 0, 7200, 86400, nil); err != nil {
+			t.Errorf("DictionaryAttackParameters failed: %v", err)
+		}
+		defer func() {
+			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+				t.Errorf("ProvisionTPM failed: %v", err)
+			}
+		}()
+		if err := run(t, ""); err != ErrTPMLockout {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("PINFail", func(t *testing.T) {
+		if err := run(t, "1234"); err != ErrPINFail {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
 }

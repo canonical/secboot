@@ -2460,7 +2460,10 @@ func TestExecutePolicy(t *testing.T) {
 
 func TestLockAccessToSealedKeys(t *testing.T) {
 	tpm, tcti := openTPMSimulatorForTesting(t)
-	defer closeTPM(t, tpm)
+	defer func() {
+		resetTPMSimulator(t, tpm, tcti)
+		closeTPM(t, tpm)
+	}()
 
 	undefineLockNVIndices(t, tpm)
 	if err := EnsureLockNVIndex(tpm.TPMContext, tpm.HmacSession()); err != nil {
