@@ -1,1 +1,7 @@
+examples/activate-volume/activate-volume
+examples/change-pin/change-pin
+examples/provision-status/provision-status
+examples/provision-tpm/provision-tpm
+examples/seal-key/seal-key
+examples/unseal-key/unseal-key
 vendor/*/
