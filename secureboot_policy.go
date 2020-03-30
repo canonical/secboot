@@ -85,7 +85,10 @@ var (
 // EFIImage corresponds to a binary that is loaded, verified and executed before ExitBootServices.
 type EFIImage interface {
 	fmt.Stringer
-	ReadAll() ([]byte, error) // Read the entire contents of the image
+	Open() (interface {
+		io.ReaderAt
+		io.Closer
+	}, error) // Open a handle to the image for reading
 }
 
 // SnapFileEFIImage corresponds to a binary contained within a snap file that is loaded, verified and executed before ExitBootServices.
@@ -96,11 +99,14 @@ type SnapFileEFIImage struct {
 }
 
 func (f SnapFileEFIImage) String() string {
-	return f.Path + ":" + f.FileName
+	return "snap:" + f.Path + ":" + f.FileName
 }
 
-func (f SnapFileEFIImage) ReadAll() ([]byte, error) {
-	return f.Container.ReadFile(f.FileName)
+func (f SnapFileEFIImage) Open() (interface {
+	io.ReaderAt
+	io.Closer
+}, error) {
+	return f.Container.RandomAccessFile(f.FileName)
 }
 
 // FileEFIImage corresponds to a file on disk that is loaded, verified and executed before ExitBootServices.
@@ -110,13 +116,15 @@ func (p FileEFIImage) String() string {
 	return string(p)
 }
 
-func (p FileEFIImage) ReadAll() ([]byte, error) {
+func (p FileEFIImage) Open() (interface {
+	io.ReaderAt
+	io.Closer
+}, error) {
 	f, err := os.Open(string(p))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	return ioutil.ReadAll(f)
+	return f, nil
 }
 
 // EFIImageLoadEventSource corresponds to the source of a EFIImageLoadEvent.
@@ -1086,12 +1094,11 @@ func (g *secureBootPolicyGen) processShimExecutable(paths []*secureBootPolicyGen
 // pcrValue for each of the specified event paths. If the image load corresponds to shim, then some additional processing is performed
 // to extract the included vendor certificate (see secureBootPolicyGen.processShimExecutable).
 func (g *secureBootPolicyGen) processOSLoadEvent(paths []*secureBootPolicyGenPath, event *EFIImageLoadEvent) error {
-	b, err := event.Image.ReadAll()
+	r, err := event.Image.Open()
 	if err != nil {
-		return xerrors.Errorf("cannot read image: %w", err)
+		return xerrors.Errorf("cannot open image: %w", err)
 	}
-
-	r := bytes.NewReader(b)
+	defer r.Close()
 
 	isShim, err := isShimExecutable(r)
 	if err != nil {
