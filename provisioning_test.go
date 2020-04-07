@@ -234,12 +234,12 @@ func TestProvisionErrorHandling(t *testing.T) {
 		closeTPM(t, tpm)
 	}()
 
-	errEndorsementAuthFail := AuthFailError{tpm2.HandleEndorsement}
-	errOwnerAuthFail := AuthFailError{tpm2.HandleOwner}
-	errLockoutAuthFail := AuthFailError{tpm2.HandleLockout}
+	errEndorsementAuthFail := AuthFailError{Handle: tpm2.HandleEndorsement}
+	errOwnerAuthFail := AuthFailError{Handle: tpm2.HandleOwner}
+	errLockoutAuthFail := AuthFailError{Handle: tpm2.HandleLockout}
 
-	errLockNVHandleExists := TPMResourceExistsError{LockNVHandle}
-	errLockNVDataHandleExists := TPMResourceExistsError{LockNVDataHandle}
+	errLockNVHandleExists := TPMResourceExistsError{Handle: LockNVHandle}
+	errLockNVDataHandleExists := TPMResourceExistsError{Handle: LockNVDataHandle}
 
 	authValue := []byte("1234")
 
