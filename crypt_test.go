@@ -37,6 +37,26 @@ import (
 	. "gopkg.in/check.v1"
 )
 
+const (
+	sessionKeyring = -3
+	userKeyring    = -4
+)
+
+func getKeyringKeys(c *C, keyringId int) (out []int) {
+	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, keyringId, nil, 0)
+	c.Assert(err, IsNil)
+	buf := make([]byte, n)
+	_, err = unix.KeyctlBuffer(unix.KEYCTL_READ, keyringId, buf, 0)
+	c.Assert(err, IsNil)
+
+	for len(buf) > 0 {
+		id := int(binary.LittleEndian.Uint32(buf[0:4]))
+		buf = buf[4:]
+		out = append(out, id)
+	}
+	return
+}
+
 type cryptTestBase struct {
 	recoveryKey      []byte
 	recoveryKeyAscii []string
@@ -49,6 +69,8 @@ type cryptTestBase struct {
 
 	mockSdAskPassword *testutil.MockCmd
 	mockSdCryptsetup  *testutil.MockCmd
+
+	possessesUserKeyringKeys bool
 }
 
 func (ctb *cryptTestBase) setUpSuiteBase(c *C) {
@@ -58,6 +80,23 @@ func (ctb *cryptTestBase) setUpSuiteBase(c *C) {
 	for i := 0; i < len(ctb.recoveryKey)/2; i++ {
 		x := binary.LittleEndian.Uint16(ctb.recoveryKey[i*2:])
 		ctb.recoveryKeyAscii = append(ctb.recoveryKeyAscii, fmt.Sprintf("%05d", x))
+	}
+
+	// These tests create keys in the user keyring that are only readable by a possessor. Reading these keys fails when running
+	// the tests inside gnome-terminal in Ubuntu 18.04 because the gnome-terminal backend runs inside the systemd user session,
+	// and inherits a private session keyring from the user session manager from which the user keyring isn't linked. This is
+	// fixed in later releases by setting KeyringMode=inherit in /lib/systemd/system/user@.service, which causes the user
+	// session manager to start without a session keyring attached (which the gnome-terminal backend inherits). In this case,
+	// for the purposes of determing whether this process possesses a key, the kernel searches the user session keyring, from
+	// which the user keyring is linked.
+	userKeyringId, err := unix.KeyctlGetKeyringID(userKeyring, false)
+	c.Assert(err, IsNil)
+	keys := getKeyringKeys(c, sessionKeyring)
+	for _, id := range keys {
+		if id == userKeyringId {
+			ctb.possessesUserKeyringKeys = true
+			break
+		}
 	}
 }
 
@@ -89,24 +128,10 @@ fi
 
 	c.Assert(ioutil.WriteFile(ctb.expectedRecoveryKeyFile, ctb.recoveryKey, 0644), IsNil)
 
-	getUserKeyringKeys := func() (out []int) {
-		n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, -4, nil, 0)
-		c.Assert(err, IsNil)
-		buf := make([]byte, n)
-		_, err = unix.KeyctlBuffer(unix.KEYCTL_READ, -4, buf, 0)
-		c.Assert(err, IsNil)
-
-		for len(buf) > 0 {
-			id := int(binary.LittleEndian.Uint32(buf[0:4]))
-			buf = buf[4:]
-			out = append(out, id)
-		}
-		return
-	}
-	startKeys := getUserKeyringKeys()
+	startKeys := getKeyringKeys(c, userKeyring)
 
 	bt.AddCleanup(func() {
-		for kid := range getUserKeyringKeys() {
+		for kid := range getKeyringKeys(c, userKeyring) {
 			found := false
 			for skid := range startKeys {
 				if skid == kid {
@@ -117,10 +142,27 @@ fi
 			if found {
 				continue
 			}
-			_, err := unix.KeyctlInt(unix.KEYCTL_UNLINK, kid, -4, 0, 0)
+			_, err := unix.KeyctlInt(unix.KEYCTL_UNLINK, kid, userKeyring, 0, 0)
 			c.Check(err, IsNil)
 		}
 	})
+}
+
+func (ctb *cryptTestBase) checkRecoveryKeyKeyringEntry(c *C, reason RecoveryReason) {
+	id, err := unix.KeyctlSearch(userKeyring, "user", fmt.Sprintf("%s:data:reason=%d", filepath.Base(os.Args[0]), reason), 0)
+	c.Check(err, IsNil)
+
+	// The previous tests should have all succeeded, but the following test will fail if the user keyring isn't reachable from
+	// the session keyring.
+	if !ctb.possessesUserKeyringKeys && !c.Failed() {
+		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
+	}
+
+	buf := make([]byte, 16)
+	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, id, buf, 0)
+	c.Check(err, IsNil)
+	c.Check(n, Equals, 16)
+	c.Check(buf, DeepEquals, ctb.recoveryKey)
 }
 
 type cryptTPMTestBase struct {
@@ -270,13 +312,8 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, da
 		return
 	}
 
-	id, err := unix.KeyctlSearch(-4, "user", fmt.Sprintf("%s:data:reason=%d", filepath.Base(os.Args[0]), data.recoveryReason), 0)
-	c.Check(err, IsNil)
-	buf := make([]byte, 16)
-	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, id, buf, 0)
-	c.Check(err, IsNil)
-	c.Check(n, Equals, 16)
-	c.Check(buf, DeepEquals, s.recoveryKey)
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyKeyringEntry(c, data.recoveryReason)
 }
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
@@ -426,13 +463,8 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 		return
 	}
 
-	id, err := unix.KeyctlSearch(-4, "user", fmt.Sprintf("%s:data:reason=%d", filepath.Base(os.Args[0]), data.recoveryReason), 0)
-	c.Check(err, IsNil)
-	buf := make([]byte, 16)
-	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, id, buf, 0)
-	c.Check(err, IsNil)
-	c.Check(n, Equals, 16)
-	c.Check(buf, DeepEquals, s.recoveryKey)
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyKeyringEntry(c, data.recoveryReason)
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
@@ -492,14 +524,8 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
 
-	kid, err := unix.KeyctlSearch(-4, "user", filepath.Base(os.Args[0])+":data:reason=2", 0)
-	c.Assert(err, IsNil)
-
-	buf := make([]byte, 16)
-	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, kid, buf, 0)
-	c.Assert(err, IsNil)
-	c.Check(buf, DeepEquals, s.recoveryKey)
-	c.Check(n, Equals, 16)
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyKeyringEntry(c, RecoveryReasonRequested)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
@@ -604,14 +630,8 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 		c.Check(call[5], Equals, "tries=1")
 	}
 
-	kid, err := unix.KeyctlSearch(-4, "user", fmt.Sprintf("%s:data:reason=%d", filepath.Base(os.Args[0]), RecoveryReasonRequested), 0)
-	c.Assert(err, IsNil)
-
-	buf := make([]byte, 16)
-	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, kid, buf, 0)
-	c.Assert(err, IsNil)
-	c.Check(buf, DeepEquals, s.recoveryKey)
-	c.Check(n, Equals, 16)
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyKeyringEntry(c, RecoveryReasonRequested)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
