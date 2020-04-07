@@ -362,16 +362,17 @@ func makeActivateOptions(in []string) ([]string, error) {
 	return append(out, "tries=1"), nil
 }
 
-// ActivateWithTPMSealedKeyOptions provides options to ActivateVolumeWIthTPMSealedKey.
+// ActivateWithTPMSealedKeyOptions provides options to ActivateVolumeWtthTPMSealedKey.
 type ActivateWithTPMSealedKeyOptions struct {
-	// PINTries specifies the maximum number of times that unsealing with a PIN should be attempted. Setting this to zero disables
-	// unsealing with a PIN - in this case, an error will be returned if the sealed key object indicates that a PIN has been set.
-	// Attempts to unseal with a PIN will stop if the TPM enters dictionary attack lockout mode before this limit is reached.
+	// PINTries specifies the maximum number of times that unsealing with a PIN should be attempted before failing with an error and
+	// falling back to activating with the recovery key if RecoveryKeyTries is greater than zero. Setting this to zero disables unsealing
+	// with a PIN - in this case, an error will be returned if the sealed key object indicates that a PIN has been set. Attempts to
+	// unseal with a PIN will stop if the TPM enters dictionary attack lockout mode before this limit is reached.
 	PINTries int
 
-	// RecoveryKeyTries specifies the maximum number of times that activation with the fallback recovery key should be attempted,
-	// if activation with the TPM sealed key fails. Setting this to zero will disable attempts to activate with the fallback recovery
-	// key.
+	// RecoveryKeyTries specifies the maximum number of times that activation with the fallback recovery key should be attempted
+	// if activation with the TPM sealed key fails, before failing with an error. Setting this to zero will disable attempts to activate
+	// with the fallback recovery key.
 	RecoveryKeyTries int
 
 	// ActivateOptions provides a mechanism to pass additional options to systemd-cryptsetup.
@@ -455,8 +456,13 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 	return true, nil
 }
 
+// ActivateWithRecoveryKeyOptions provides options to ActivateVolumeWithRecoveryKey.
 type ActivateWithRecoveryKeyOptions struct {
-	Tries           int
+	// Tries specifies the maximum number of times that activation with the fallback recovery key should be attempted before failing
+	// with an error.
+	Tries int
+
+	// ActivateOptions provides a mechanism to pass additional options to systemd-cryptsetup.
 	ActivateOptions []string
 }
 
