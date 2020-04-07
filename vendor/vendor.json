@@ -94,10 +94,10 @@
 			"revisionTime": "2020-02-28T13:54:56Z"
 		},
 		{
-			"checksumSHA1": "UvsRu+wBnqo8KqO0Wq8dECY7qfs=",
+			"checksumSHA1": "0ueeNSDWS9eGgIZmXYP6ZNB/98k=",
 			"path": "github.com/snapcore/snapd/osutil",
-			"revision": "da480b74dc895a6cbc02d7f00f3a38529fd5fd29",
-			"revisionTime": "2020-02-12T13:56:49Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
 			"checksumSHA1": "uviyHf48hcnZN/cGKNUxmvqLISQ=",
@@ -108,8 +108,8 @@
 		{
 			"checksumSHA1": "EYRtD9fNCHSSnWkkZSNTAB63IhQ=",
 			"path": "github.com/snapcore/snapd/osutil/sys",
-			"revision": "da480b74dc895a6cbc02d7f00f3a38529fd5fd29",
-			"revisionTime": "2020-02-12T13:56:49Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
 			"checksumSHA1": "K+/WBhBSI4CZvjQCYEIM7WUksYE=",
@@ -136,28 +136,34 @@
 			"revisionTime": "2020-02-12T13:56:49Z"
 		},
 		{
-			"checksumSHA1": "PTZt6txAKDZTtCky8taoAVAj4/c=",
+			"checksumSHA1": "f01gqazrvoATUzX2njKnzd+c1O0=",
 			"path": "github.com/snapcore/snapd/snap",
-			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
-			"revisionTime": "2020-02-28T13:54:56Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
-			"checksumSHA1": "WFdpsboywk0c2hITK4PqXnZy4Cc=",
+			"checksumSHA1": "oxw0r23JHi+xZgzBDLnJLESkZPk=",
 			"path": "github.com/snapcore/snapd/snap/naming",
-			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
-			"revisionTime": "2020-02-28T13:54:56Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
-			"checksumSHA1": "ChFRZSV4JJysGxc83o5z0Vf9VRM=",
+			"checksumSHA1": "vm3N9KUtggnspT4hGPd3Nw3yTHM=",
 			"path": "github.com/snapcore/snapd/snap/snapdir",
-			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
-			"revisionTime": "2020-02-28T13:54:56Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
-			"checksumSHA1": "PaC2RaEr7na/WLT/uFcanL/cUAI=",
+			"checksumSHA1": "Nls67Y45Thmm2FvrUIyJD9ol/G4=",
 			"path": "github.com/snapcore/snapd/snap/squashfs",
-			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
-			"revisionTime": "2020-02-28T13:54:56Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
+		},
+		{
+			"checksumSHA1": "O/P8dXD7Y65X/PyJFaPzl7I/E9E=",
+			"path": "github.com/snapcore/snapd/snapdenv",
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
 			"checksumSHA1": "nv9pDBzs9U3Q/scdzoyWbcNOcW4=",
