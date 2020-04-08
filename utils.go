@@ -70,7 +70,7 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 	pub, _, qualifiedName, err := tpm.ReadPublic(object, session)
 	if err != nil {
 		var he *tpm2.TPMHandleError
-		if xerrors.As(err, &he) && he.Code() == tpm2.ErrorHandle {
+		if xerrors.As(err, &he) && he.Code == tpm2.ErrorHandle {
 			return false, nil
 		}
 		return false, xerrors.Errorf("cannot read public area of object: %w", err)
