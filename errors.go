@@ -135,14 +135,14 @@ type ActivateWithTPMSealedKeyError struct {
 	// TPMErr details the error that occurred during activation with the TPM sealed key.
 	TPMErr error
 
-	// RecoveryErr details the error that occurred during activation with the fallback recovery key, if activation with the recovery key
+	// RecoveryKeyUsageErr details the error that occurred during activation with the fallback recovery key, if activation with the recovery key
 	// was also unsuccessful.
-	RecoveryErr error
+	RecoveryKeyUsageErr error
 }
 
 func (e *ActivateWithTPMSealedKeyError) Error() string {
-	if e.RecoveryErr != nil {
-		return fmt.Sprintf("cannot activate with TPM sealed key (%v) and activation with recovery key failed (%v)", e.TPMErr, e.RecoveryErr)
+	if e.RecoveryKeyUsageErr != nil {
+		return fmt.Sprintf("cannot activate with TPM sealed key (%v) and activation with recovery key failed (%v)", e.TPMErr, e.RecoveryKeyUsageErr)
 	}
 	return fmt.Sprintf("cannot activate with TPM sealed key (%v) but activation with recovery key was successful", e.TPMErr)
 }

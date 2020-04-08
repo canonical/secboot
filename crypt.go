@@ -411,9 +411,9 @@ type ActivateWithTPMSealedKeyOptions struct {
 // error will be returned. In this case, activation with either the TPM sealed key or the fallback recovery key will not be attempted.
 //
 // If activation with the TPM sealed key fails, a *ActivateWithTPMSealedKeyError error will be returned, even if the subsequent
-// fallback recovery activation is successful. In this case, the RecoveryErr field of the returned error will be nil, and the TPMErr
-// field will contain the original error. If activation with the fallback recovery key also fails, the RecoveryErr field of the
-// returned error will also contain details of the error encountered during recovery key activation.
+// fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will be nil, and the
+// TPMErr field will contain the original error. If activation with the fallback recovery key also fails, the RecoveryKeyUsageErr
+// field of the returned error will also contain details of the error encountered during recovery key activation.
 //
 // If the volume is successfully activated, either with the TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
