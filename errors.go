@@ -24,6 +24,8 @@ import (
 	"fmt"
 
 	"github.com/chrisccoulson/go-tpm2"
+
+	"golang.org/x/xerrors"
 )
 
 var (
@@ -84,6 +86,11 @@ func (e EKCertVerificationError) Error() string {
 	return fmt.Sprintf("cannot verify the endorsement key certificate: %s", e.msg)
 }
 
+func isEKCertVerificationError(err error) bool {
+	var e EKCertVerificationError
+	return xerrors.As(err, &e)
+}
+
 // TPMVerificationError is returned from SecureConnectToDefaultTPM if the TPM cannot prove it is the device for which the verified
 // EK certificate was issued.
 type TPMVerificationError struct {
@@ -92,6 +99,11 @@ type TPMVerificationError struct {
 
 func (e TPMVerificationError) Error() string {
 	return fmt.Sprintf("cannot verify that the TPM is the device for which the supplied EK certificate was issued: %s", e.msg)
+}
+
+func isTPMVerificationError(err error) bool {
+	var e TPMVerificationError
+	return xerrors.As(err, &e)
 }
 
 // InvalidKeyFileError indicates that the provided key data file is invalid. This error may also be returned in some
@@ -103,4 +115,34 @@ type InvalidKeyFileError struct {
 
 func (e InvalidKeyFileError) Error() string {
 	return fmt.Sprintf("invalid key data file: %s", e.msg)
+}
+
+func isInvalidKeyFileError(err error) bool {
+	var e InvalidKeyFileError
+	return xerrors.As(err, &e)
+}
+
+// LockAccessToSealedKeysError is returned from ActivateVolumeWithTPMSealedKey if an error occurred whilst trying to lock access
+// to sealed keys created by this package.
+type LockAccessToSealedKeysError string
+
+func (e LockAccessToSealedKeysError) Error() string {
+	return "cannot lock access to sealed keys: " + string(e)
+}
+
+// ActivateWithTPMSealedKeyError is returned from ActivateVolumeWithTPMSealedKey if activation with the TPM protected key failed.
+type ActivateWithTPMSealedKeyError struct {
+	// TPMErr details the error that occurred during activation with the TPM sealed key.
+	TPMErr error
+
+	// RecoveryKeyUsageErr details the error that occurred during activation with the fallback recovery key, if activation with the recovery key
+	// was also unsuccessful.
+	RecoveryKeyUsageErr error
+}
+
+func (e *ActivateWithTPMSealedKeyError) Error() string {
+	if e.RecoveryKeyUsageErr != nil {
+		return fmt.Sprintf("cannot activate with TPM sealed key (%v) and activation with recovery key failed (%v)", e.TPMErr, e.RecoveryKeyUsageErr)
+	}
+	return fmt.Sprintf("cannot activate with TPM sealed key (%v) but activation with recovery key was successful", e.TPMErr)
 }

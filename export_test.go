@@ -207,6 +207,22 @@ func MockEventLogPath(path string) (restore func()) {
 	}
 }
 
+func MockRunDir(path string) (restore func()) {
+	origRunDir := runDir
+	runDir = path
+	return func() {
+		runDir = origRunDir
+	}
+}
+
+func MockSystemdCryptsetupPath(path string) (restore func()) {
+	origSystemdCryptsetupPath := systemdCryptsetupPath
+	systemdCryptsetupPath = path
+	return func() {
+		systemdCryptsetupPath = origSystemdCryptsetupPath
+	}
+}
+
 func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrValues []tpm2.PCRValues, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{
 		key:                  key,
