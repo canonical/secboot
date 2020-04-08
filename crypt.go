@@ -85,7 +85,7 @@ func activate(volumeName, sourceDevicePath string, key []byte, options []string)
 		return f.Name(), nil
 	}()
 	if err != nil {
-		return xerrors.Errorf("error saving key for systemd-cryptsetup: %w", err)
+		return xerrors.Errorf("cannot temporarily save key for systemd-cryptsetup: %w", err)
 	}
 	defer os.Remove(keyFilePath)
 
