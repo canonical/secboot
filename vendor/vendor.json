@@ -3,10 +3,16 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "9knAF4MuJlL6JI1jM3i/AS4ACbY=",
+			"checksumSHA1": "vdoEbcZanhiMfNOmqdCoizz3CRI=",
 			"path": "github.com/chrisccoulson/go-tpm2",
-			"revision": "e6887e32e4a513099aedbc8fc313d369a889131e",
-			"revisionTime": "2020-03-06T09:45:16Z"
+			"revision": "c9680171bd57ce6028ecd5c895a54abe6bccc1d6",
+			"revisionTime": "2020-04-06T19:53:07Z"
+		},
+		{
+			"checksumSHA1": "gG7bzHZcHChchuLFW6XY/ojB/k8=",
+			"path": "github.com/chrisccoulson/go-tpm2/internal/crypto",
+			"revision": "c9680171bd57ce6028ecd5c895a54abe6bccc1d6",
+			"revisionTime": "2020-04-06T19:53:07Z"
 		},
 		{
 			"checksumSHA1": "eDjzake0GpHm9kfTH7FMUWX8zVA=",
@@ -20,6 +26,24 @@
 			"path": "github.com/fullsailor/pkcs7",
 			"revision": "9d98ea9f9bc8b4feee8f0d7c5ef8179f85f0e237",
 			"revisionTime": "2019-09-06T18:49:57Z"
+		},
+		{
+			"checksumSHA1": "kmcZh6191ZYy/+G/tIWFZoVEkGs=",
+			"path": "github.com/godbus/dbus",
+			"revision": "06fc4b473149e499166adbb9e31c7365a8ea146f",
+			"revisionTime": "2020-01-14T05:13:59Z"
+		},
+		{
+			"checksumSHA1": "SbguDK5lY8uhaHNrmJmNbiWIGM0=",
+			"path": "github.com/kr/text",
+			"revision": "e2ffdb16a802fe2bb95e2e35ff34f0e53aeef34f",
+			"revisionTime": "2018-05-06T08:24:08Z"
+		},
+		{
+			"checksumSHA1": "YtvGaQLW242TVjn91Awqlth4B1M=",
+			"path": "github.com/niemeyer/pretty",
+			"revision": "a10e7caefd8e0d600cea437f5c3613aeb1553d56",
+			"revisionTime": "2020-02-27T12:48:42Z"
 		},
 		{
 			"checksumSHA1": "adHhPc08cw8siTSUYwpmg4bmN7c=",
@@ -76,16 +100,22 @@
 			"revisionTime": "2020-02-28T13:54:56Z"
 		},
 		{
-			"checksumSHA1": "UvsRu+wBnqo8KqO0Wq8dECY7qfs=",
+			"checksumSHA1": "0ueeNSDWS9eGgIZmXYP6ZNB/98k=",
 			"path": "github.com/snapcore/snapd/osutil",
-			"revision": "da480b74dc895a6cbc02d7f00f3a38529fd5fd29",
-			"revisionTime": "2020-02-12T13:56:49Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
+		},
+		{
+			"checksumSHA1": "uviyHf48hcnZN/cGKNUxmvqLISQ=",
+			"path": "github.com/snapcore/snapd/osutil/mount",
+			"revision": "255cfaa1f5991a2d20232d57be6c4349338bbffa",
+			"revisionTime": "2020-03-30T18:40:30Z"
 		},
 		{
 			"checksumSHA1": "EYRtD9fNCHSSnWkkZSNTAB63IhQ=",
 			"path": "github.com/snapcore/snapd/osutil/sys",
-			"revision": "da480b74dc895a6cbc02d7f00f3a38529fd5fd29",
-			"revisionTime": "2020-02-12T13:56:49Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
 			"checksumSHA1": "K+/WBhBSI4CZvjQCYEIM7WUksYE=",
@@ -112,28 +142,34 @@
 			"revisionTime": "2020-02-12T13:56:49Z"
 		},
 		{
-			"checksumSHA1": "PTZt6txAKDZTtCky8taoAVAj4/c=",
+			"checksumSHA1": "f01gqazrvoATUzX2njKnzd+c1O0=",
 			"path": "github.com/snapcore/snapd/snap",
-			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
-			"revisionTime": "2020-02-28T13:54:56Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
-			"checksumSHA1": "WFdpsboywk0c2hITK4PqXnZy4Cc=",
+			"checksumSHA1": "oxw0r23JHi+xZgzBDLnJLESkZPk=",
 			"path": "github.com/snapcore/snapd/snap/naming",
-			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
-			"revisionTime": "2020-02-28T13:54:56Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
-			"checksumSHA1": "ChFRZSV4JJysGxc83o5z0Vf9VRM=",
+			"checksumSHA1": "vm3N9KUtggnspT4hGPd3Nw3yTHM=",
 			"path": "github.com/snapcore/snapd/snap/snapdir",
-			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
-			"revisionTime": "2020-02-28T13:54:56Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
-			"checksumSHA1": "PaC2RaEr7na/WLT/uFcanL/cUAI=",
+			"checksumSHA1": "Nls67Y45Thmm2FvrUIyJD9ol/G4=",
 			"path": "github.com/snapcore/snapd/snap/squashfs",
-			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
-			"revisionTime": "2020-02-28T13:54:56Z"
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
+		},
+		{
+			"checksumSHA1": "O/P8dXD7Y65X/PyJFaPzl7I/E9E=",
+			"path": "github.com/snapcore/snapd/snapdenv",
+			"revision": "1ca48cd75c9bfdf73fe8f1f45419f7cdad267638",
+			"revisionTime": "2020-03-26T10:31:06Z"
 		},
 		{
 			"checksumSHA1": "nv9pDBzs9U3Q/scdzoyWbcNOcW4=",
@@ -146,6 +182,12 @@
 			"path": "github.com/snapcore/snapd/strutil",
 			"revision": "da480b74dc895a6cbc02d7f00f3a38529fd5fd29",
 			"revisionTime": "2020-02-12T13:56:49Z"
+		},
+		{
+			"checksumSHA1": "gwLER4MDLp8vaTXkUFarvfl5DXM=",
+			"path": "github.com/snapcore/snapd/testutil",
+			"revision": "255cfaa1f5991a2d20232d57be6c4349338bbffa",
+			"revisionTime": "2020-03-30T18:40:30Z"
 		},
 		{
 			"checksumSHA1": "leL+WTjj2xj4V+wbm76CXw2Eo/c=",
@@ -182,6 +224,12 @@
 			"path": "golang.org/x/xerrors/internal",
 			"revision": "9bdfabe68543c54f90421aeb9a60ef8061b5b544",
 			"revisionTime": "2019-07-19T19:12:34Z"
+		},
+		{
+			"checksumSHA1": "QxGa2uH6p8ccOl8nFQPZyUoU4tA=",
+			"path": "gopkg.in/check.v1",
+			"revision": "8fa46927fb4f5b54d48bde78c6c08db205b2298c",
+			"revisionTime": "2020-02-27T12:52:54Z"
 		},
 		{
 			"checksumSHA1": "e5X6+yC/8PS/M2j+Y9Z0cSdDEYI=",
