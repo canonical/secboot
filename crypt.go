@@ -183,37 +183,38 @@ func decodeRecoveryKey(passphrase string) ([]byte, error) {
 	return key.Bytes(), nil
 }
 
-// RecoveryReason indicates the reason that a volume had to be activated with the fallback recovery key instead of the TPM sealed key.
-type RecoveryReason uint8
+// RecoveryKeyUsageReason indicates the reason that a volume had to be activated with the fallback recovery key instead of the TPM
+// sealed key.
+type RecoveryKeyUsageReason uint8
 
 const (
-	// RecoveryReasonUnexpectedError indicates that a volume had to be activated with the fallback recovery key because an unexpected
-	// error was encountered during activation with the TPM sealed key.
-	RecoveryReasonUnexpectedError RecoveryReason = iota + 1
+	// RecoveryKeyUsageReasonUnexpectedError indicates that a volume had to be activated with the fallback recovery key because an
+	// unexpected error was encountered during activation with the TPM sealed key.
+	RecoveryKeyUsageReasonUnexpectedError RecoveryKeyUsageReason = iota + 1
 
-	// RecoveryReasonRequested indicates that a volume was activated with the fallback recovery key via the ActivateVolumeWithRecoveryKey
-	// API.
-	RecoveryReasonRequested
+	// RecoveryKeyUsageReasonRequested indicates that a volume was activated with the fallback recovery key via the
+	// ActivateVolumeWithRecoveryKey API.
+	RecoveryKeyUsageReasonRequested
 
-	// RecoveryReasonTPMLockout indicates that a volume had to be activated with the fallback recovery key because the TPM is in
+	// RecoveryKeyUsageReasonTPMLockout indicates that a volume had to be activated with the fallback recovery key because the TPM is in
 	// dictionary attack lockout mode.
-	RecoveryReasonTPMLockout
+	RecoveryKeyUsageReasonTPMLockout
 
-	// RecoveryReasonTPMProvisioningError indicates that a volume had to be activated with the fallback recovery key because the TPM is
-	// not correctly provisioned.
-	RecoveryReasonTPMProvisioningError
+	// RecoveryKeyUsageReasonTPMProvisioningError indicates that a volume had to be activated with the fallback recovery key because the
+	// TPM is not correctly provisioned.
+	RecoveryKeyUsageReasonTPMProvisioningError
 
-	// RecoveryReasonInvalidKeyFile indicates that a volume had to be activated with the fallback recovery key because the TPM sealed key
-	// file is invalid. Note that attempts to resolve this by creating a new file with SealKeyToTPM may indicate that the TPM is also not
-	// correctly provisioned.
-	RecoveryReasonInvalidKeyFile
+	// RecoveryKeyUsageReasonInvalidKeyFile indicates that a volume had to be activated with the fallback recovery key because the TPM
+	// sealed key file is invalid. Note that attempts to resolve this by creating a new file with SealKeyToTPM may indicate that the TPM
+	// is also not correctly provisioned.
+	RecoveryKeyUsageReasonInvalidKeyFile
 
-	// RecoveryReasonPINFail indicates that a volume had to be activated with the fallback recovery key because the correct PIN was not
-	// provided.
-	RecoveryReasonPINFail
+	// RecoveryKeyUsageReasonPINFail indicates that a volume had to be activated with the fallback recovery key because the correct PIN
+	// was not provided.
+	RecoveryKeyUsageReasonPINFail
 )
 
-func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, reason RecoveryReason, activateOptions []string) error {
+func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, reason RecoveryKeyUsageReason, activateOptions []string) error {
 	if tries == 0 {
 		return errors.New("no recovery key tries permitted")
 	}
@@ -400,8 +401,8 @@ type ActivateWithTPMSealedKeyOptions struct {
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
 // will be made to activate the encrypted volume with the fallback recovery key. If activation with the recovery key is successful,
 // the recovery key will be added to the root user keyring in the kernel with a description of the format
-// "<argv[0]>:<volumeName>:reason=<reason>" where reason is an integer that describes the recovery reason - see the RecoveryReason
-// type.
+// "<argv[0]>:<volumeName>:reason=<reason>" where reason is an integer that describes the recovery reason - see the
+// RecoveryKeyUsageReason type.
 //
 // If either the PINTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
 // field of options contains the "tries=" option, then an error will be returned. This option cannot be used with this function.
@@ -430,24 +431,24 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 	}
 
 	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, pinReader, options.PINTries, options.LockSealedKeyAccess, activateOptions); err != nil {
-		reason := RecoveryReasonUnexpectedError
+		reason := RecoveryKeyUsageReasonUnexpectedError
 		switch {
 		case isLockAccessError(err):
 			return false, LockAccessToSealedKeysError(err.Error())
 		case xerrors.Is(err, ErrTPMLockout):
-			reason = RecoveryReasonTPMLockout
+			reason = RecoveryKeyUsageReasonTPMLockout
 		case xerrors.Is(err, ErrTPMProvisioning):
-			reason = RecoveryReasonTPMProvisioningError
+			reason = RecoveryKeyUsageReasonTPMProvisioningError
 		case isInvalidKeyFileError(err):
-			reason = RecoveryReasonInvalidKeyFile
+			reason = RecoveryKeyUsageReasonInvalidKeyFile
 		case xerrors.Is(err, requiresPinErr):
-			reason = RecoveryReasonPINFail
+			reason = RecoveryKeyUsageReasonPINFail
 		case xerrors.Is(err, ErrPINFail):
-			reason = RecoveryReasonPINFail
+			reason = RecoveryKeyUsageReasonPINFail
 		case isExecError(err, systemdCryptsetupPath):
 			// systemd-cryptsetup only provides 2 exit codes - success or fail - so we don't know the reason it failed yet. If activation
 			// with the recovery key is successful, then it's safe to assume that it failed because the key unsealed from the TPM is incorrect.
-			reason = RecoveryReasonInvalidKeyFile
+			reason = RecoveryKeyUsageReasonInvalidKeyFile
 		}
 		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, activateOptions)
 		return rErr == nil, &ActivateWithTPMSealedKeyError{err, rErr}
@@ -490,5 +491,5 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 		return err
 	}
 
-	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryReasonRequested, activateOptions)
+	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryKeyUsageReasonRequested, activateOptions)
 }
