@@ -300,10 +300,15 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	}
 
 	// Update the metadata and write a new key data file
+	origAuthModeHint := data.AuthModeHint
 	if newPIN == "" {
 		data.AuthModeHint = AuthModeNone
 	} else {
 		data.AuthModeHint = AuthModePIN
+	}
+
+	if origAuthModeHint == data.AuthModeHint {
+		return nil
 	}
 
 	if err := data.writeToFileAtomic(path); err != nil {
