@@ -23,12 +23,13 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
-	"io/ioutil"
 	"os"
 	"testing"
 
 	"github.com/chrisccoulson/go-tpm2"
 	. "github.com/snapcore/secboot"
+
+	. "gopkg.in/check.v1"
 )
 
 func TestCreatePinNVIndex(t *testing.T) {
@@ -153,130 +154,121 @@ func TestPerformPinChange(t *testing.T) {
 	}
 }
 
-func TestChangePIN(t *testing.T) {
-	tpm := openTPMForTesting(t)
-	defer closeTPM(t, tpm)
-
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-		t.Fatalf("Failed to provision TPM for test: %v", err)
-	}
-
-	key := make([]byte, 32)
-	rand.Read(key)
-
-	tmpDir, err := ioutil.TempDir("", "_TestChangePIN_")
-	if err != nil {
-		t.Fatalf("Creating temporary directory failed: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	keyFile := tmpDir + "/keydata"
-
-	if err := SealKeyToTPM(tpm, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0}); err != nil {
-		t.Fatalf("SealKeyToTPM failed: %v", err)
-	}
-	defer undefineKeyNVSpace(t, tpm, keyFile)
-
-	testPIN := "1234"
-
-	if err := ChangePIN(tpm, keyFile, "", testPIN); err != nil {
-		t.Fatalf("ChangePIN failed: %v", err)
-	}
-
-	// Verify that the PIN change succeeded by executing a PolicySecret assertion, which is immediate and will fail if it
-	// didn't work.
-	k, err := ReadSealedKeyObject(keyFile)
-	if err != nil {
-		t.Fatalf("ReadSealedKeyObject failed: %v", err)
-	}
-	if k.AuthMode2F() != AuthModePIN {
-		t.Errorf("Wrong auth mode")
-	}
-
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
-	if err != nil {
-		t.Fatalf("StartAuthSession failed: %v", err)
-	}
-	defer flushContext(t, tpm, policySession)
-
-	pinIndex, err := tpm.CreateResourceContextFromTPM(k.PINIndexHandle())
-	if err != nil {
-		t.Fatalf("CreateNVIndexResourceContextFromPublic failed: %v", err)
-	}
-	pinIndex.SetAuthValue([]byte(testPIN))
-
-	if _, _, err := tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil); err != nil {
-		t.Errorf("PolicySecret assertion failed: %v", err)
-	}
-
-	// Try clearing the PIN
-	if err := ChangePIN(tpm, keyFile, testPIN, ""); err != nil {
-		t.Fatalf("ChangePIN failed: %v", err)
-	}
-
-	// Verify that the PIN change succeeded by executing a PolicySecret assertion, which is immediate and will fail if it
-	// didn't work.
-	k, err = ReadSealedKeyObject(keyFile)
-	if err != nil {
-		t.Fatalf("ReadSealedKeyObject failed: %v", err)
-	}
-	if k.AuthMode2F() != AuthModeNone {
-		t.Errorf("Wrong auth mode")
-	}
-
-	pinIndex.SetAuthValue(nil)
-
-	if _, _, err := tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil); err != nil {
-		t.Errorf("PolicySecret assertion failed: %v", err)
-	}
+type pinSuite struct {
+	tpmTestBase
+	key       []byte
+	pinHandle tpm2.Handle
+	keyFile   string
 }
 
-func TestChangePINErrorHandling(t *testing.T) {
-	tpm := openTPMForTesting(t)
-	defer closeTPM(t, tpm)
+var _ = Suite(&pinSuite{})
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-		t.Fatalf("Failed to provision TPM for test: %v", err)
+func (s *pinSuite) SetUpSuite(c *C) {
+	s.key = make([]byte, 32)
+	rand.Read(s.key)
+	s.pinHandle = tpm2.Handle(0x0181fff0)
+}
+
+func (s *pinSuite) SetUpTest(c *C) {
+	s.tpmTestBase.SetUpTest(c)
+	c.Assert(ProvisionTPM(s.tpm, ProvisionModeFull, nil), IsNil)
+
+	dir := c.MkDir()
+	s.keyFile = dir + "/keydata"
+
+	c.Assert(SealKeyToTPM(s.tpm, s.key, s.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: s.pinHandle}), IsNil)
+	pinIndex, err := s.tpm.CreateResourceContextFromTPM(s.pinHandle)
+	c.Assert(err, IsNil)
+	s.addCleanupNVSpace(c, s.tpm.OwnerHandleContext(), pinIndex)
+}
+
+func (s *pinSuite) checkPIN(c *C, pin string) {
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+	if pin == "" {
+		c.Check(k.AuthMode2F(), Equals, AuthModeNone)
+	} else {
+		c.Check(k.AuthMode2F(), Equals, AuthModePIN)
 	}
 
-	key := make([]byte, 32)
-	rand.Read(key)
+	// Verify that the PIN change succeeded by executing a PolicySecret assertion, which is immediate and will fail if it
+	// didn't work.
+	policySession, err := s.tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
+	c.Assert(err, IsNil)
 
-	run := func(t *testing.T, oldPIN string) error {
-		tmpDir, err := ioutil.TempDir("", "_TestChangePINErrorHandling_")
-		if err != nil {
-			t.Fatalf("Creating temporary directory failed: %v", err)
-		}
-		defer os.RemoveAll(tmpDir)
+	pinIndex, err := s.tpm.CreateResourceContextFromTPM(k.PINIndexHandle())
+	c.Assert(err, IsNil)
+	pinIndex.SetAuthValue([]byte(pin))
 
-		keyFile := tmpDir + "/keydata"
+	_, _, err = s.tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil)
+	c.Check(err, IsNil)
+}
 
-		if err := SealKeyToTPM(tpm, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0}); err != nil {
-			t.Fatalf("SealKeyToTPM failed: %v", err)
-		}
-		defer undefineKeyNVSpace(t, tpm, keyFile)
+func (s *pinSuite) TestSetAndClearPIN(c *C) {
+	testPIN := "1234"
+	c.Check(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+	s.checkPIN(c, testPIN)
 
-		return ChangePIN(tpm, keyFile, oldPIN, "")
-	}
+	c.Check(ChangePIN(s.tpm, s.keyFile, testPIN, ""), IsNil)
+	s.checkPIN(c, "")
+}
 
-	t.Run("TPMLockout", func(t *testing.T) {
-		// Put the TPM in DA lockout mode
-		if err := tpm.DictionaryAttackParameters(tpm.LockoutHandleContext(), 0, 7200, 86400, nil); err != nil {
-			t.Errorf("DictionaryAttackParameters failed: %v", err)
-		}
-		defer func() {
-			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-				t.Errorf("ProvisionTPM failed: %v", err)
-			}
-		}()
-		if err := run(t, ""); err != ErrTPMLockout {
-			t.Errorf("Unexpected error: %v", err)
-		}
+func (s *pinSuite) TestChangePINDoesntUpdateFileIfAuthModeDoesntChange(c *C) {
+	fi1, err := os.Stat(s.keyFile)
+	c.Assert(err, IsNil)
+
+	c.Check(ChangePIN(s.tpm, s.keyFile, "", ""), IsNil)
+	s.checkPIN(c, "")
+
+	fi2, err := os.Stat(s.keyFile)
+	c.Assert(err, IsNil)
+	c.Check(fi2.ModTime(), DeepEquals, fi1.ModTime())
+}
+
+type testChangePINErrorHandlingData struct {
+	keyFile        string
+	errChecker     Checker
+	errCheckerArgs []interface{}
+}
+
+func (s *pinSuite) testChangePINErrorHandling(c *C, data *testChangePINErrorHandlingData) {
+	c.Check(ChangePIN(s.tpm, data.keyFile, "", "1234"), data.errChecker, data.errCheckerArgs...)
+}
+
+func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
+	// Put the TPM in DA lockout mode
+	c.Assert(s.tpm.DictionaryAttackParameters(s.tpm.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
+		keyFile:        s.keyFile,
+		errChecker:     Equals,
+		errCheckerArgs: []interface{}{ErrTPMLockout},
 	})
+}
 
-	t.Run("PINFail", func(t *testing.T) {
-		if err := run(t, "1234"); err != ErrPINFail {
-			t.Errorf("Unexpected error: %v", err)
-		}
+func (s *pinSuite) TestChangePINErrorHandling2(c *C) {
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", "1234"), IsNil)
+	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
+		keyFile:        s.keyFile,
+		errChecker:     Equals,
+		errCheckerArgs: []interface{}{ErrPINFail},
+	})
+}
+
+func (s *pinSuite) TestChangePINErrorHandling3(c *C) {
+	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
+		keyFile:        "/path/to/nothing",
+		errChecker:     ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot open key data file: open /path/to/nothing: no such file or directory"},
+	})
+}
+
+func (s *pinSuite) TestChangePINErrorHandling4(c *C) {
+	pinIndex, err := s.tpm.CreateResourceContextFromTPM(s.pinHandle)
+	c.Assert(err, IsNil)
+	c.Assert(s.tpm.NVUndefineSpace(s.tpm.OwnerHandleContext(), pinIndex, nil), IsNil)
+	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
+		keyFile:        s.keyFile,
+		errChecker:     ErrorMatches,
+		errCheckerArgs: []interface{}{"invalid key data file: cannot validate key data: PIN NV index is unavailable"},
 	})
 }
