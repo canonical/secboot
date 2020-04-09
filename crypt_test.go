@@ -290,23 +290,37 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA6(c *C) {
 }
 
 type testActivateVolumeWithTPMSealedKeyErrorHandlingData struct {
-	pinTries           int
-	recoveryKeyTries   int
-	activateOptions    []string
-	passphraseAttempts []string
-	success            bool
-	recoveryReason     RecoveryKeyUsageReason
-	errChecker         Checker
-	errCheckerArgs     []interface{}
+	pinTries          int
+	recoveryKeyTries  int
+	activateOptions   []string
+	passphrases       []string
+	sdCryptsetupCalls int
+	success           bool
+	recoveryReason    RecoveryKeyUsageReason
+	errChecker        Checker
+	errCheckerArgs    []interface{}
 }
 
 func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, data *testActivateVolumeWithTPMSealedKeyErrorHandlingData) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphraseAttempts, "\n")+"\n"), 0644), IsNil)
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
 
 	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries, RecoveryKeyTries: data.recoveryKeyTries, ActivateOptions: data.activateOptions}
 	success, err := ActivateVolumeWithTPMSealedKey(s.tpm, "data", "/dev/sda1", s.keyFile, nil, &options)
 	c.Check(err, data.errChecker, data.errCheckerArgs...)
 	c.Check(success, Equals, data.success)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.passphrases))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
+	}
+	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
+	for _, call := range s.mockSdCryptsetup.Calls() {
+		c.Assert(len(call), Equals, 6)
+		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
+	}
 
 	if !data.success {
 		return
@@ -351,11 +365,12 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
 	}()
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
-		recoveryKeyTries:   1,
-		passphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		success:            true,
-		recoveryReason:     RecoveryKeyUsageReasonTPMLockout,
-		errChecker:         ErrorMatches,
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		recoveryReason:    RecoveryKeyUsageReasonTPMLockout,
+		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) but " +
 			"activation with recovery key was successful"},
 	})
@@ -373,13 +388,14 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling5(c *C) {
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries: 2,
-		passphraseAttempts: []string{
+		passphrases: []string{
 			"00000-00000-00000-00000-00000-00000-00000-00000",
 			strings.Join(s.recoveryKeyAscii, "-"),
 		},
-		success:        true,
-		recoveryReason: RecoveryKeyUsageReasonTPMProvisioningError,
-		errChecker:     ErrorMatches,
+		sdCryptsetupCalls: 2,
+		success:           true,
+		recoveryReason:    RecoveryKeyUsageReasonTPMProvisioningError,
+		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is not correctly " +
 			"provisioned\\) but activation with recovery key was successful"},
 	})
@@ -392,11 +408,12 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
 	c.Assert(ioutil.WriteFile(s.expectedTpmKeyFile, incorrectKey, 0644), IsNil)
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
-		recoveryKeyTries:   1,
-		passphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		success:            true,
-		recoveryReason:     RecoveryKeyUsageReasonInvalidKeyFile,
-		errChecker:         ErrorMatches,
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 2,
+		success:           true,
+		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() +
 			" failed: exit status 1\\) but activation with recovery key was successful"},
 	})
@@ -425,10 +442,11 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 	}()
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
-		recoveryKeyTries:   1,
-		passphraseAttempts: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
-		success:            false,
-		errChecker:         ErrorMatches,
+		recoveryKeyTries:  1,
+		passphrases:       []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
+		sdCryptsetupCalls: 1,
+		success:           false,
+		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) " +
 			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1\\)"},
 	})
@@ -452,12 +470,25 @@ func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 }
 
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, data *testActivateVolumeWithTPMSealedKeyErrorHandlingData) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphraseAttempts, "\n")+"\n"), 0644), IsNil)
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
 
 	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries, RecoveryKeyTries: data.recoveryKeyTries, ActivateOptions: data.activateOptions}
 	success, err := ActivateVolumeWithTPMSealedKey(s.tpm, "data", "/dev/sda1", s.keyFile, nil, &options)
 	c.Check(err, data.errChecker, data.errCheckerArgs...)
 	c.Check(success, Equals, data.success)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.passphrases))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
+	}
+	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
+	for _, call := range s.mockSdCryptsetup.Calls() {
+		c.Assert(len(call), Equals, 6)
+		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
+	}
 
 	if !data.success {
 		return
@@ -473,11 +504,12 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 	c.Assert(err, IsNil)
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
-		recoveryKeyTries:   1,
-		passphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		success:            true,
-		recoveryReason:     RecoveryKeyUsageReasonInvalidKeyFile,
-		errChecker:         ErrorMatches,
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
 			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
 			"activation with recovery key was successful"},
@@ -500,21 +532,25 @@ func (s *cryptSuite) SetUpTest(c *C) {
 }
 
 type testActivateVolumeWithRecoveryKeyData struct {
-	volumeName                 string
-	sourceDevicePath           string
-	tries                      int
-	activateOptions            []string
-	recoveryPassphraseAttempts []string
-	sdCryptsetupCalls          int
+	volumeName          string
+	sourceDevicePath    string
+	tries               int
+	activateOptions     []string
+	recoveryPassphrases []string
+	sdCryptsetupCalls   int
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphraseAttempts, "\n")+"\n"), 0644), IsNil)
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 
 	options := ActivateWithRecoveryKeyOptions{Tries: data.tries, ActivateOptions: data.activateOptions}
 	c.Assert(ActivateVolumeWithRecoveryKey(data.volumeName, data.sourceDevicePath, nil, &options), IsNil)
 
-	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphraseAttempts))
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":" + data.sourceDevicePath, "Please enter the recovery key for disk " + data.sourceDevicePath + ":"})
+	}
 
 	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
 	for _, call := range s.mockSdCryptsetup.Calls() {
@@ -531,22 +567,22 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
 	// Test with a recovery key which is entered with a hyphen between each group of 5 digits.
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		tries:            1,
-		recoveryPassphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		sdCryptsetupCalls:          1,
+		volumeName:          "data",
+		sourceDevicePath:    "/dev/sda1",
+		tries:               1,
+		recoveryPassphrases: []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls:   1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey2(c *C) {
 	// Test with a recovery key which is entered without a hyphen between each group of 5 digits.
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		tries:            1,
-		recoveryPassphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "")},
-		sdCryptsetupCalls:          1,
+		volumeName:          "data",
+		sourceDevicePath:    "/dev/sda1",
+		tries:               1,
+		recoveryPassphrases: []string{strings.Join(s.recoveryKeyAscii, "")},
+		sdCryptsetupCalls:   1,
 	})
 }
 
@@ -556,7 +592,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey3(c *C) {
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		tries:            2,
-		recoveryPassphraseAttempts: []string{
+		recoveryPassphrases: []string{
 			"00000-00000-00000-00000-00000-00000-00000-00000",
 			strings.Join(s.recoveryKeyAscii, "-"),
 		},
@@ -571,7 +607,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey4(c *C) {
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		tries:            2,
-		recoveryPassphraseAttempts: []string{
+		recoveryPassphrases: []string{
 			"1234",
 			strings.Join(s.recoveryKeyAscii, "-"),
 		},
@@ -582,35 +618,35 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey4(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey5(c *C) {
 	// Test with additional options passed to systemd-cryptsetup.
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
-		volumeName:                 "data",
-		sourceDevicePath:           "/dev/sda1",
-		tries:                      1,
-		activateOptions:            []string{"foo", "bar"},
-		recoveryPassphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		sdCryptsetupCalls:          1,
+		volumeName:          "data",
+		sourceDevicePath:    "/dev/sda1",
+		tries:               1,
+		activateOptions:     []string{"foo", "bar"},
+		recoveryPassphrases: []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls:   1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey6(c *C) {
 	// Test with a different volume name / device path.
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
-		volumeName:       "foo",
-		sourceDevicePath: "/dev/vdb2",
-		tries:            1,
-		recoveryPassphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		sdCryptsetupCalls:          1,
+		volumeName:          "foo",
+		sourceDevicePath:    "/dev/vdb2",
+		tries:               1,
+		recoveryPassphrases: []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls:   1,
 	})
 }
 
 type testActivateVolumeWithRecoveryKeyUsingKeyReaderData struct {
-	tries                      int
-	recoveryKeyFileContents    string
-	recoveryPassphraseAttempts []string
-	sdCryptsetupCalls          int
+	tries                   int
+	recoveryKeyFileContents string
+	recoveryPassphrases     []string
+	sdCryptsetupCalls       int
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data *testActivateVolumeWithRecoveryKeyUsingKeyReaderData) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphraseAttempts, "\n")+"\n"), 0644), IsNil)
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 	c.Assert(ioutil.WriteFile(filepath.Join(s.dir, "keyfile"), []byte(data.recoveryKeyFileContents), 0644), IsNil)
 
 	r, err := os.Open(filepath.Join(s.dir, "keyfile"))
@@ -620,7 +656,11 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 	options := ActivateWithRecoveryKeyOptions{Tries: data.tries}
 	c.Assert(ActivateVolumeWithRecoveryKey("data", "/dev/sda1", r, &options), IsNil)
 
-	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphraseAttempts))
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
+	}
 
 	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
 	for _, call := range s.mockSdCryptsetup.Calls() {
@@ -665,9 +705,9 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader4(c *C) {
 	// Test that falling back to requesting a recovery key works if the one provided by the io.Reader is incorrect.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
 		tries: 2,
-		recoveryKeyFileContents:    "00000-00000-00000-00000-00000-00000-00000-00000\n",
-		recoveryPassphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		sdCryptsetupCalls:          2,
+		recoveryKeyFileContents: "00000-00000-00000-00000-00000-00000-00000-00000\n",
+		recoveryPassphrases:     []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls:       2,
 	})
 }
 
@@ -675,37 +715,55 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader5(c *C) {
 	// Test that falling back to requesting a recovery key works if the one provided by the io.Reader is badly formatted.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
 		tries: 2,
-		recoveryKeyFileContents:    "5678\n",
-		recoveryPassphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		sdCryptsetupCalls:          1,
+		recoveryKeyFileContents: "5678\n",
+		recoveryPassphrases:     []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls:       1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader6(c *C) {
-	// Test that falling back to requesting a recovery key works if the provided io.Reader is backed by an empty buffer.
+	// Test that falling back to requesting a recovery key works if the provided io.Reader is backed by an empty buffer,
+	// without using up a try.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
-		tries: 1,
-		recoveryPassphraseAttempts: []string{strings.Join(s.recoveryKeyAscii, "-")},
-		sdCryptsetupCalls:          1,
+		tries:               1,
+		recoveryPassphrases: []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls:   1,
 	})
 }
 
 type testActivateVolumeWithRecoveryKeyErrorHandlingData struct {
-	tries                      int
-	activateOptions            []string
-	recoveryPassphraseAttempts []string
-	errChecker                 Checker
-	errCheckerArgs             []interface{}
+	tries               int
+	activateOptions     []string
+	recoveryPassphrases []string
+	sdCryptsetupCalls   int
+	errChecker          Checker
+	errCheckerArgs      []interface{}
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *testActivateVolumeWithRecoveryKeyErrorHandlingData) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphraseAttempts, "\n")+"\n"), 0644), IsNil)
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 
 	options := ActivateWithRecoveryKeyOptions{Tries: data.tries, ActivateOptions: data.activateOptions}
 	c.Check(ActivateVolumeWithRecoveryKey("data", "/dev/sda1", nil, &options), data.errChecker, data.errCheckerArgs...)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
+	}
+
+	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
+	for _, call := range s.mockSdCryptsetup.Calls() {
+		c.Assert(len(call), Equals, 6)
+		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+		c.Check(call[5], Equals, "tries=1")
+		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
+	}
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling1(c *C) {
+	// Test with an invalid Tries value.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:          -1,
 		errChecker:     ErrorMatches,
@@ -714,6 +772,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling1(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling2(c *C) {
+	// Test with Tries set to zero.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:          0,
 		errChecker:     ErrorMatches,
@@ -722,6 +781,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling2(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling3(c *C) {
+	// Test that adding "tries=" to ActivateOptions fails.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:           1,
 		activateOptions: []string{"tries=2"},
@@ -731,28 +791,43 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling3(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling4(c *C) {
+	// Test with a badly formatted recovery key.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
-		tries: 1,
-		recoveryPassphraseAttempts: []string{"00000-1234"},
-		errChecker:                 ErrorMatches,
-		errCheckerArgs:             []interface{}{"cannot decode recovery key: incorrectly formatted \\(insufficient characters\\)"},
+		tries:               1,
+		recoveryPassphrases: []string{"00000-1234"},
+		errChecker:          ErrorMatches,
+		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted \\(insufficient characters\\)"},
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling5(c *C) {
+	// Test with a badly formatted recovery key.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
-		tries: 1,
-		recoveryPassphraseAttempts: []string{"00000-123bc"},
-		errChecker:                 ErrorMatches,
-		errCheckerArgs:             []interface{}{"cannot decode recovery key: incorrectly formatted \\(invalid base-10 number\\)"},
+		tries:               1,
+		recoveryPassphrases: []string{"00000-123bc"},
+		errChecker:          ErrorMatches,
+		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted \\(invalid base-10 number\\)"},
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
+	// Test with the wrong recovery key.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
-		tries: 1,
-		recoveryPassphraseAttempts: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
-		errChecker:                 ErrorMatches,
-		errCheckerArgs:             []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1"},
+		tries:               1,
+		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
+		sdCryptsetupCalls:   1,
+		errChecker:          ErrorMatches,
+		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1"},
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling7(c *C) {
+	// Test that the last error is returned when there are consecutive failures for different reasons.
+	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
+		tries:               2,
+		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000", "1234"},
+		sdCryptsetupCalls:   1,
+		errChecker:          ErrorMatches,
+		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted \\(insufficient characters\\)"},
 	})
 }
