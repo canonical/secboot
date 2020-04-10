@@ -22,7 +22,6 @@ package secboot_test
 import (
 	"bytes"
 	"crypto"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -33,8 +32,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"math/big"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -222,17 +221,14 @@ func closeTPM(t *testing.T, tpm *TPMConnection) {
 }
 
 func createTestCA() ([]byte, crypto.PrivateKey, error) {
-	serial, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		return nil, nil, fmt.Errorf("cannot obtain random serial number: %v", err)
-	}
+	serial := big.NewInt(rand.Int63())
 
 	keyId := make([]byte, 32)
 	if _, err := rand.Read(keyId); err != nil {
 		return nil, nil, fmt.Errorf("cannot obtain random key ID: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(rand.Reader, 768)
+	key, err := rsa.GenerateKey(testRandReader, 768)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot generate RSA key: %v", err)
 	}
@@ -253,7 +249,7 @@ func createTestCA() ([]byte, crypto.PrivateKey, error) {
 		IsCA:         true,
 		SubjectKeyId: keyId}
 
-	cert, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	cert, err := x509.CreateCertificate(testRandReader, &template, &template, &key.PublicKey, key)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot create certificate: %v", err)
 	}
@@ -268,10 +264,7 @@ func createTestEkCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 	}
 	defer tpm.FlushContext(ekContext)
 
-	serial, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		return nil, fmt.Errorf("cannot obtain random serial number for EK cert: %v", err)
-	}
+	serial := big.NewInt(rand.Int63())
 
 	key := rsa.PublicKey{
 		N: new(big.Int).SetBytes(pub.Unique.RSA()),
@@ -320,7 +313,7 @@ func createTestEkCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 		return nil, fmt.Errorf("cannot parse CA certificate: %v", err)
 	}
 
-	cert, err := x509.CreateCertificate(rand.Reader, &template, root, &key, caKey)
+	cert, err := x509.CreateCertificate(testRandReader, &template, root, &key, caKey)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create EK certificate: %v", err)
 	}
@@ -811,6 +804,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	flag.Parse()
+	rand.Seed(time.Now().UnixNano())
 	os.Exit(func() int {
 		if *useMssim {
 			if cert, key, err := createTestCA(); err != nil {

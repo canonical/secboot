@@ -21,8 +21,8 @@ package secboot_test
 
 import (
 	"bytes"
-	"crypto/rand"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"syscall"
 	"testing"

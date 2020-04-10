@@ -20,6 +20,7 @@
 package secboot_test
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/chrisccoulson/go-tpm2"
@@ -134,3 +135,11 @@ func (b *tpmSimulatorTestBase) SetUpTest(c *C) {
 func (b *tpmSimulatorTestBase) resetTPMSimulator(c *C) {
 	c.Assert(resetTPMSimulatorCommon(b.tpm, b.tcti), IsNil)
 }
+
+type testRng struct{}
+
+func (r *testRng) Read(p []byte) (int, error) {
+	return rand.Read(p)
+}
+
+var testRandReader = &testRng{}
