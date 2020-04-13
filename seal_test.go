@@ -134,7 +134,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	run := func(t *testing.T, tmpDir string, params *KeyCreationParams, key []byte) error {
+	run := func(t *testing.T, tmpDir string, params *KeyCreationParams) error {
 		if tmpDir == "" {
 			var err error
 			tmpDir, err = ioutil.TempDir("", "_TestSealKeyToTPMErrors_")
@@ -170,21 +170,8 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		return err
 	}
 
-	t.Run("InvalidKeyLength", func(t *testing.T) {
-		key := make([]byte, 16)
-		rand.Read(key)
-
-		err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}, key)
-		if err == nil {
-			t.Fatalf("Expected an error")
-		}
-		if err.Error() != "expected a key length of 512 bits (got 128)" {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
-
 	t.Run("NilParams", func(t *testing.T) {
-		err := run(t, "", nil, key)
+		err := run(t, "", nil)
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
@@ -202,7 +189,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			resetHierarchyAuth(t, tpm, tpm.OwnerHandleContext())
 		}()
 
-		err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}, key)
+		err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
 		if e, ok := err.(AuthFailError); !ok || e.Handle != tpm2.HandleOwner {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -228,7 +215,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 				t.Errorf("Failed to re-provision TPM after test: %v", err)
 			}
 		}()
-		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}, key); err != ErrTPMProvisioning {
+		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}); err != ErrTPMProvisioning {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -253,7 +240,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 				t.Errorf("Failed to re-provision TPM after test: %v", err)
 			}
 		}()
-		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}, key); err != ErrTPMProvisioning {
+		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}); err != ErrTPMProvisioning {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -268,7 +255,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Fatalf("OpenFile failed: %v", err)
 		}
 		defer f.Close()
-		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}, key)
+		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
 		var e *os.PathError
 		if !xerrors.As(err, &e) || e.Path != tmpDir+"/keydata" || e.Err != syscall.EEXIST {
 			t.Errorf("Unexpected error: %v", err)
@@ -285,7 +272,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Fatalf("OpenFile failed: %v", err)
 		}
 		defer f.Close()
-		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}, key)
+		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
 		var e *os.PathError
 		if !xerrors.As(err, &e) || e.Path != tmpDir+"/keypolicyupdatedata" || e.Err != syscall.EEXIST {
 			t.Errorf("Unexpected error: %v", err)
@@ -303,7 +290,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Fatalf("NVDefineSpace failed: %v", err)
 		}
 		defer undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-		err = run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: public.Index}, key)
+		err = run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: public.Index})
 		if e, ok := err.(TPMResourceExistsError); !ok || e.Handle != public.Index {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -315,7 +302,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			AddProfileOR(
 				NewPCRProtectionProfile(),
 				NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 8))
-		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PINHandle: 0x01810000}, key)
+		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PINHandle: 0x01810000})
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
