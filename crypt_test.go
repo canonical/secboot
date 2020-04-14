@@ -174,7 +174,7 @@ type cryptTPMTestBase struct {
 
 func (ctb *cryptTPMTestBase) setUpSuiteBase(c *C) {
 	ctb.cryptTestBase.setUpSuiteBase(c)
-	ctb.tpmKey = make([]byte, 32)
+	ctb.tpmKey = make([]byte, 64)
 	rand.Read(ctb.tpmKey)
 }
 
