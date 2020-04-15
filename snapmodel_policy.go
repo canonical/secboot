@@ -21,6 +21,7 @@ package secboot
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 
 	"github.com/chrisccoulson/go-tpm2"
@@ -48,11 +49,12 @@ type SnapModelProfileParams struct {
 // of the model that it has measured.
 //
 // The measurement of a model is a digest computed as follows (where H is the supplied params.PCRAlgorithm):
-//  digest1 = H(sign-key-sha3-384 || brand-id)
+//  digest1 = H(tpm2.HashAlgorithmSHA384 || sign-key-sha3-384 || brand-id)
 //  digest2 = H(digest1 || model)
 //  digest3 = H(digest2 || series)
-// Strings are hashed without null terminators, and the sign-key-sha3-384 field is hashed in decoded form. Separate extend operations
-// are used because brand-id, model and series are variable length.
+// String fields are hashed without null terminators, the signing key digest algorithm identifier is encoded in little-endian
+// format, and the sign-key-sha3-384 field is hashed in decoded (binary) form. Separate extend operations are used because brand-id,
+// model and series are variable length.
 //
 // The PCR index that snap-bootstrap measures the model to can be specified via the PCRIndex field of params.
 //
@@ -76,6 +78,7 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 			return xerrors.Errorf("cannot decode signing key ID: %w", err)
 		}
 		h := params.PCRAlgorithm.NewHash()
+		binary.Write(h, binary.LittleEndian, uint16(tpm2.HashAlgorithmSHA384))
 		h.Write(signKeyId)
 		h.Write([]byte(model.BrandID()))
 		digest := h.Sum(nil)
