@@ -193,6 +193,11 @@ func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *tpmTestBase) {
 	ttb.addCleanupNVSpace(c, ttb.tpm.OwnerHandleContext(), pinIndex)
 
 	c.Assert(ioutil.WriteFile(ctb.expectedTpmKeyFile, ctb.tpmKey, 0644), IsNil)
+
+	// Some tests may increment the DA lockout counter
+	ttb.AddCleanup(func() {
+		c.Check(ttb.tpm.DictionaryAttackLockReset(ttb.tpm.LockoutHandleContext(), nil), IsNil)
+	})
 }
 
 type cryptTPMSuite struct {
@@ -289,6 +294,131 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA6(c *C) {
 	})
 }
 
+type testActivateVolumeWithTPMSealedKeyAndPINData struct {
+	pins     []string
+	pinTries int
+}
+
+func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINData) {
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.pins, "\n")+"\n"), 0644), IsNil)
+
+	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries}
+	success, err := ActivateVolumeWithTPMSealedKey(s.tpm, "data", "/dev/sda1", s.keyFile, nil, &options)
+	c.Check(success, Equals, true)
+	c.Check(err, IsNil)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.pins))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the PIN for disk /dev/sda1:"})
+	}
+
+	c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
+	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+}
+
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
+	// Test with a single PIN attempt.
+	testPIN := "1234"
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+	s.testActivateVolumeWithTPMSealedKeyAndPIN(c, &testActivateVolumeWithTPMSealedKeyAndPINData{
+		pins:     []string{testPIN},
+		pinTries: 1,
+	})
+}
+
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN2(c *C) {
+	// Test with 2 PIN attempts.
+	testPIN := "1234"
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+	s.testActivateVolumeWithTPMSealedKeyAndPIN(c, &testActivateVolumeWithTPMSealedKeyAndPINData{
+		pins:     []string{"", testPIN},
+		pinTries: 2,
+	})
+}
+
+type testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData struct {
+	pins            []string
+	pinFileContents string
+	pinTries        int
+}
+
+func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData) {
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.pins, "\n")+"\n"), 0644), IsNil)
+	c.Assert(ioutil.WriteFile(filepath.Join(s.dir, "pinfile"), []byte(data.pinFileContents), 0644), IsNil)
+
+	r, err := os.Open(filepath.Join(s.dir, "pinfile"))
+	c.Assert(err, IsNil)
+	defer r.Close()
+
+	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries}
+	success, err := ActivateVolumeWithTPMSealedKey(s.tpm, "data", "/dev/sda1", s.keyFile, r, &options)
+	c.Check(success, Equals, true)
+	c.Check(err, IsNil)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.pins))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the PIN for disk /dev/sda1:"})
+	}
+
+	c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
+	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+}
+
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(c *C) {
+	// Test with the correct PIN provided via the io.Reader.
+	testPIN := "1234"
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+
+	s.testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData{
+		pinFileContents: testPIN + "\n",
+		pinTries:        1,
+	})
+}
+
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader2(c *C) {
+	// Test with the correct PIN provided via the io.Reader when the file doesn't end in a newline.
+	testPIN := "1234"
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+
+	s.testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData{
+		pinFileContents: testPIN,
+		pinTries:        1,
+	})
+}
+
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader3(c *C) {
+	// Test falling back to asking for a PIN if the wrong PIN is provided via the io.Reader.
+	testPIN := "1234"
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+
+	s.testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData{
+		pins:            []string{testPIN},
+		pinFileContents: "5678" + "\n",
+		pinTries:        2,
+	})
+}
+
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader4(c *C) {
+	// Test falling back to asking for a PIN without using a try if the io.Reader has no contents.
+	testPIN := "1234"
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+
+	s.testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData{
+		pins:     []string{testPIN},
+		pinTries: 1,
+	})
+}
+
 type testActivateVolumeWithTPMSealedKeyErrorHandlingData struct {
 	pinTries          int
 	recoveryKeyTries  int
@@ -310,9 +440,13 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, da
 	c.Check(success, Equals, data.success)
 
 	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.passphrases))
-	for _, call := range s.mockSdAskPassword.Calls() {
+	for i, call := range s.mockSdAskPassword.Calls() {
+		passphraseType := "PIN"
+		if i >= data.pinTries {
+			passphraseType = "recovery key"
+		}
 		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
-			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the " + passphraseType + " for disk /dev/sda1:"})
 	}
 	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
 	for _, call := range s.mockSdCryptsetup.Calls() {
@@ -449,6 +583,41 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) " +
 			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1\\)"},
+	})
+}
+
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
+	// Test that recovery fallback works if the wrong PIN is supplied.
+	testPIN := "1234"
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
+		pinTries:         1,
+		recoveryKeyTries: 1,
+		passphrases: []string{
+			"",
+			strings.Join(s.recoveryKeyAscii, "-"),
+		},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		recoveryReason:    RecoveryKeyUsageReasonPINFail,
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the provided PIN is incorrect\\) but " +
+			"activation with recovery key was successful"},
+	})
+}
+
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling10(c *C) {
+	// Test that recovery fallback works if a PIN is set but no PIN attempts are permitted.
+	c.Assert(ChangePIN(s.tpm, s.keyFile, "", "1234"), IsNil)
+	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		recoveryReason:    RecoveryKeyUsageReasonPINFail,
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(no PIN tries permitted when a PIN is required\\) but " +
+			"activation with recovery key was successful"},
 	})
 }
 
