@@ -95,7 +95,7 @@ type KeyCreationParams struct {
 // sealed key is written to a file at the path specified by policyUpdatePath. This file must live inside the encrypted volume
 // protected by the sealed key.
 //
-// The supplied key must be 32 bytes long. An error will be returned if it isn't.
+// The supplied key must be 64-bytes long. An error will be returned if it isn't.
 //
 // This function requires knowledge of the authorization value for the storage hierarchy, which must be provided by calling
 // TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the provided authorization value is incorrect,
@@ -118,8 +118,8 @@ type KeyCreationParams struct {
 // argument.
 func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath string, params *KeyCreationParams) error {
 	// Check that the key is the correct length.
-	if len(key) != 32 {
-		return fmt.Errorf("expected a key length of 256 bits (got %d)", len(key)*8)
+	if len(key) != 64 {
+		return fmt.Errorf("expected a key length of 512 bits (got %d)", len(key)*8)
 	}
 	// params is mandatory.
 	if params == nil {

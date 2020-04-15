@@ -38,7 +38,7 @@ func TestUnsealWithNo2FA(t *testing.T) {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
 
-	key := make([]byte, 32)
+	key := make([]byte, 64)
 	rand.Read(key)
 
 	run := func(t *testing.T, params *KeyCreationParams) {
@@ -125,7 +125,7 @@ func TestUnsealWithPIN(t *testing.T) {
 }
 
 func TestUnsealErrorHandling(t *testing.T) {
-	key := make([]byte, 32)
+	key := make([]byte, 64)
 	rand.Read(key)
 
 	run := func(t *testing.T, tpm *TPMConnection, fn func(string, string)) error {

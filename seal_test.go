@@ -47,7 +47,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		}
 	}()
 
-	key := make([]byte, 32)
+	key := make([]byte, 64)
 	rand.Read(key)
 
 	run := func(t *testing.T, tpm *TPMConnection, withPolicyUpdateFile bool, params *KeyCreationParams) {
@@ -131,7 +131,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		t.Errorf("Failed to provision TPM for test: %v", err)
 	}
 
-	key := make([]byte, 32)
+	key := make([]byte, 64)
 	rand.Read(key)
 
 	run := func(t *testing.T, tmpDir string, params *KeyCreationParams, key []byte) error {
@@ -178,15 +178,12 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "expected a key length of 256 bits (got 128)" {
+		if err.Error() != "expected a key length of 512 bits (got 128)" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
 
 	t.Run("NilParams", func(t *testing.T) {
-		key := make([]byte, 32)
-		rand.Read(key)
-
 		err := run(t, "", nil, key)
 		if err == nil {
 			t.Fatalf("Expected an error")
@@ -313,9 +310,6 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 	})
 
 	t.Run("InvalidPCRProfile", func(t *testing.T) {
-		key := make([]byte, 32)
-		rand.Read(key)
-
 		pcrProfile := NewPCRProtectionProfile().
 			AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).
 			AddProfileOR(
