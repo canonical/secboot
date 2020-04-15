@@ -87,7 +87,7 @@ func TestUnsealWithPIN(t *testing.T) {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
 
-	key := make([]byte, 32)
+	key := make([]byte, 64)
 	rand.Read(key)
 
 	tmpDir, err := ioutil.TempDir("", "_TestUnsealWithPIN_")

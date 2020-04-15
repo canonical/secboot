@@ -22,6 +22,7 @@ package secboot_test
 import (
 	"bytes"
 	"crypto/rsa"
+	"math/rand"
 	"os"
 	"testing"
 
@@ -163,7 +164,7 @@ type pinSuite struct {
 var _ = Suite(&pinSuite{})
 
 func (s *pinSuite) SetUpSuite(c *C) {
-	s.key = make([]byte, 32)
+	s.key = make([]byte, 64)
 	rand.Read(s.key)
 	s.pinHandle = tpm2.Handle(0x0181fff0)
 }
