@@ -47,12 +47,12 @@ func TestAddSystemdEFIStubProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						12: decodeHexString(t, "fc433eaf039c6261f496a2a5bf2addfd8ff1104b0fc98af3fe951517e3bde824"),
+						12: decodeHexStringT(t, "fc433eaf039c6261f496a2a5bf2addfd8ff1104b0fc98af3fe951517e3bde824"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						12: decodeHexString(t, "b3a29076eeeae197ae721c254da40480b76673038045305cfa78ec87421c4eea"),
+						12: decodeHexStringT(t, "b3a29076eeeae197ae721c254da40480b76673038045305cfa78ec87421c4eea"),
 					},
 				},
 			},
@@ -70,12 +70,12 @@ func TestAddSystemdEFIStubProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA1: {
-						12: decodeHexString(t, "eb6312b7db70fe16206c162326e36b2fcda74b68"),
+						12: decodeHexStringT(t, "eb6312b7db70fe16206c162326e36b2fcda74b68"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA1: {
-						12: decodeHexString(t, "bd612bea9efa582fcbfae97973c89b163756fe0b"),
+						12: decodeHexStringT(t, "bd612bea9efa582fcbfae97973c89b163756fe0b"),
 					},
 				},
 			},
@@ -92,7 +92,7 @@ func TestAddSystemdEFIStubProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						8: decodeHexString(t, "74fe9080b798f9220c18d0fcdd0ccb82d50ce2a317bc6cdaa2d8715d02d0efbe"),
+						8: decodeHexStringT(t, "74fe9080b798f9220c18d0fcdd0ccb82d50ce2a317bc6cdaa2d8715d02d0efbe"),
 					},
 				},
 			},
@@ -115,7 +115,7 @@ func TestAddSystemdEFIStubProfile(t *testing.T) {
 				{
 					tpm2.HashAlgorithmSHA256: {
 						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: decodeHexString(t, "3d39c0db757b47b484006003724d990403d533044ed06e8798ab374bd73f32dc"),
+						8: decodeHexStringT(t, "3d39c0db757b47b484006003724d990403d533044ed06e8798ab374bd73f32dc"),
 					},
 				},
 			},

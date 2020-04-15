@@ -100,7 +100,7 @@ func TestReadShimVendorCert(t *testing.T) {
 		{
 			desc:     "WithVendorCert",
 			path:     "testdata/mockshim1.efi.signed.2",
-			certHash: decodeHexString(t, "9badc31b6b648413f07dfa94559c27e1b923f474e2cf6bd7b40369913b6cd334"),
+			certHash: decodeHexStringT(t, "9badc31b6b648413f07dfa94559c27e1b923f474e2cf6bd7b40369913b6cd334"),
 		},
 		{
 			desc: "NoVendorCert",
@@ -155,16 +155,16 @@ func TestDecodeSecureBootDb(t *testing.T) {
 
 		microsoftRootCAName = "CN=Microsoft Root Certificate Authority 2010,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
 		microsoftPCASubject = "CN=Microsoft Windows Production PCA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
-		microsoftPCASerial  = decodeHexString(t, "61077656000000000008")
+		microsoftPCASerial  = decodeHexStringT(t, "61077656000000000008")
 
 		microsoftThirdPartyRootCAName = "CN=Microsoft Corporation Third Party Marketplace Root,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
 		microsoftCASubject            = "CN=Microsoft Corporation UEFI CA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
-		microsoftCASerial             = decodeHexString(t, "6108d3c4000000000004")
+		microsoftCASerial             = decodeHexStringT(t, "6108d3c4000000000004")
 
 		testOwnerGuid  = tcglog.NewEFIGUID(0xd1b37b32, 0x172d, 0x4d2a, 0x909f, [...]uint8{0xc7, 0x80, 0x81, 0x50, 0x17, 0x86})
 		testRootCAName = "CN=Test UEFI CA"
 		testCASubject  = "CN=Test UEFI CA"
-		testCASerial1  = decodeHexString(t, "1bd2a0d563e5901d6d1488431bc639bf06e0f4fa")
+		testCASerial1  = decodeHexStringT(t, "1bd2a0d563e5901d6d1488431bc639bf06e0f4fa")
 	)
 
 	type certId struct {
@@ -248,7 +248,7 @@ func TestDecodeSecureBootDb(t *testing.T) {
 				{
 					issuer:  testRootCAName,
 					subject: testCASubject,
-					serial:  decodeHexString(t, "2c7a9ef3e50ab167953021d32e4e9233cbc480a9"),
+					serial:  decodeHexStringT(t, "2c7a9ef3e50ab167953021d32e4e9233cbc480a9"),
 					owner:   testOwnerGuid,
 				},
 			},
@@ -261,7 +261,7 @@ func TestDecodeSecureBootDb(t *testing.T) {
 				{
 					issuer:  microsoftRootCAName,
 					subject: "CN=Microsoft Windows PCA 2010,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US",
-					serial:  decodeHexString(t, "610c6a19000000000004"),
+					serial:  decodeHexStringT(t, "610c6a19000000000004"),
 					owner:   tcglog.NewEFIGUID(0x00000000, 0x0000, 0x0000, 0x0000, [...]uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}),
 				},
 			},
@@ -397,27 +397,27 @@ func TestComputeDbUpdate(t *testing.T) {
 			desc:          "AppendOneCertToDb",
 			orig:          "testdata/efivars1/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates1/db/1.bin",
-			sha1hash:      decodeHexString(t, "49785b436fbcbbc4349dfae2c0895477baba15e8"),
+			sha1hash:      decodeHexStringT(t, "49785b436fbcbbc4349dfae2c0895477baba15e8"),
 			newSignatures: 1,
 		},
 		{
 			desc:     "AppendExistingCertToDb",
 			orig:     "testdata/efivars2/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:   "testdata/updates1/db/1.bin",
-			sha1hash: decodeHexString(t, "49785b436fbcbbc4349dfae2c0895477baba15e8"),
+			sha1hash: decodeHexStringT(t, "49785b436fbcbbc4349dfae2c0895477baba15e8"),
 		},
 		{
 			desc:          "AppendMsDbxUpdate",
 			orig:          "testdata/efivars1/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates/dbx/MS-2016-08-08.bin",
-			sha1hash:      decodeHexString(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
+			sha1hash:      decodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
 			newSignatures: 77,
 		},
 		{
 			desc:          "AppendDbxUpdateWithDuplicateSignatures",
 			orig:          "testdata/efivars3/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates2/dbx/1.bin",
-			sha1hash:      decodeHexString(t, "b49564b2daee39b01b524bef75cf9cde2c3a2a0d"),
+			sha1hash:      decodeHexStringT(t, "b49564b2daee39b01b524bef75cf9cde2c3a2a0d"),
 			newSignatures: 2,
 		},
 	} {
@@ -527,7 +527,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
+						7: decodeHexStringT(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
 					},
 				},
 			},
@@ -562,7 +562,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
+						7: decodeHexStringT(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
 					},
 				},
 			},
@@ -607,7 +607,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
+						7: decodeHexStringT(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
 					},
 				},
 			},
@@ -738,7 +738,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
+						7: decodeHexStringT(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
 					},
 				},
 			},
@@ -784,7 +784,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
+						7: decodeHexStringT(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
 					},
 				},
 			},
@@ -829,7 +829,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "f73bb24f88ba33e9a99688bb47e72edd798f2442c8e072e0de03cde9edbbf394"),
+						7: decodeHexStringT(t, "f73bb24f88ba33e9a99688bb47e72edd798f2442c8e072e0de03cde9edbbf394"),
 					},
 				},
 			},
@@ -883,12 +883,12 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "bed6e96b835c1e2bb3c7ea930f9ec728f05eeeb5622e99b8f12fafe6df93039f"),
+						7: decodeHexStringT(t, "bed6e96b835c1e2bb3c7ea930f9ec728f05eeeb5622e99b8f12fafe6df93039f"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "46387dc7040c29ec3ac57b5e616f5ede478a9f735fec08311e6f0b78e53ddb66"),
+						7: decodeHexStringT(t, "46387dc7040c29ec3ac57b5e616f5ede478a9f735fec08311e6f0b78e53ddb66"),
 					},
 				},
 			},
@@ -951,7 +951,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
+						7: decodeHexStringT(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
 					},
 				},
 			},
@@ -996,12 +996,12 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
+						7: decodeHexStringT(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "a64025484424ba7a64dc1154889eb8fe78d7b204fa581ace55522c074050e428"),
+						7: decodeHexStringT(t, "a64025484424ba7a64dc1154889eb8fe78d7b204fa581ace55522c074050e428"),
 					},
 				},
 			},
@@ -1036,12 +1036,12 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
+						7: decodeHexStringT(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "38ae1e75ea7237983f4d44c3695e08a1d7b60d8cbac3c65e576473b72777616e"),
+						7: decodeHexStringT(t, "38ae1e75ea7237983f4d44c3695e08a1d7b60d8cbac3c65e576473b72777616e"),
 					},
 				},
 			},
@@ -1078,17 +1078,17 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
+						7: decodeHexStringT(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "38ae1e75ea7237983f4d44c3695e08a1d7b60d8cbac3c65e576473b72777616e"),
+						7: decodeHexStringT(t, "38ae1e75ea7237983f4d44c3695e08a1d7b60d8cbac3c65e576473b72777616e"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "3d612a0eda6deb41982b81d4c24695cf721e00233b40489af5918dae865320ac"),
+						7: decodeHexStringT(t, "3d612a0eda6deb41982b81d4c24695cf721e00233b40489af5918dae865320ac"),
 					},
 				},
 			},
@@ -1144,17 +1144,17 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
+						7: decodeHexStringT(t, "e80130f2d8212d6969f0cd20effc3bbded14584861f8f560fbc5208a8bfc0681"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "bed6e96b835c1e2bb3c7ea930f9ec728f05eeeb5622e99b8f12fafe6df93039f"),
+						7: decodeHexStringT(t, "bed6e96b835c1e2bb3c7ea930f9ec728f05eeeb5622e99b8f12fafe6df93039f"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "46387dc7040c29ec3ac57b5e616f5ede478a9f735fec08311e6f0b78e53ddb66"),
+						7: decodeHexStringT(t, "46387dc7040c29ec3ac57b5e616f5ede478a9f735fec08311e6f0b78e53ddb66"),
 					},
 				},
 			},
@@ -1233,8 +1233,8 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexString(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
-						8: decodeHexString(t, "a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"),
+						7: decodeHexStringT(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
+						8: decodeHexStringT(t, "a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"),
 					},
 				},
 			},

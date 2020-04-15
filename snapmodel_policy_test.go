@@ -1,0 +1,393 @@
+// -*- Mode: Go; indent-tabs-mode: t -*-
+
+/*
+ * Copyright (C) 2019 Canonical Ltd
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+package secboot_test
+
+import (
+	"encoding/base64"
+	"time"
+
+	"github.com/chrisccoulson/go-tpm2"
+	. "github.com/snapcore/secboot"
+	"github.com/snapcore/snapd/asserts"
+	"github.com/snapcore/snapd/asserts/assertstest"
+
+	. "gopkg.in/check.v1"
+)
+
+type snapModelProfileTest struct{}
+
+var _ = Suite(&snapModelProfileTest{})
+
+type testAddSnapModelProfileData struct {
+	profile *PCRProtectionProfile
+	params  *SnapModelProfileParams
+	values  []tpm2.PCRValues
+}
+
+func (s *snapModelProfileTest) testAddSnapModelProfile(c *C, data *testAddSnapModelProfileData) {
+	profile := data.profile
+	if profile == nil {
+		profile = NewPCRProtectionProfile()
+	}
+	c.Check(AddSnapModelProfile(profile, data.params), IsNil)
+	values, err := profile.ComputePCRValues(nil)
+	c.Assert(err, IsNil)
+	c.Check(values, DeepEquals, data.values)
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile1(c *C) {
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "20",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: decodeHexString(c, "e42b7ae1c9027eba122fa5ee5d3fcafe5482ea46cda1280ec3065d89d6175e4e"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile2(c *C) {
+	// Test that changing the signing key produces a new digest.
+	model, err := asserts.Assemble(map[string]interface{}{
+		"type":              "model",
+		"authority-id":      "fake-brand",
+		"series":            "20",
+		"brand-id":          "fake-brand",
+		"model":             "fake-model",
+		"architecture":      "amd64",
+		"gadget":            "pc=20",
+		"kernel":            "pc-kernel=20",
+		"base":              "core20",
+		"timestamp":         time.Now().Format(time.RFC3339),
+		"sign-key-sha3-384": base64.RawURLEncoding.EncodeToString(decodeHexString(c, "190d8045dc5875c1004e4dd31f13194eea25043cf9ffc40550cca30fdcae20f8d7eed05f3c94058b206329dbe8d2312e")),
+	}, nil, nil, []byte("AXNpZw=="))
+	c.Assert(err, IsNil)
+
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models:       []*asserts.Model{model.(*asserts.Model)},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: decodeHexString(c, "cb6830f3b5ba8873e532cfc6c0475136ecb89eee2300769172dab700d9edb785"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile3(c *C) {
+	// Test that changing the brand-id produces a new digest.
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "other-brand",
+					"series":       "20",
+					"brand-id":     "other-brand",
+					"model":        "fake-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: decodeHexString(c, "1c60ad55a1c03f74b50944c3e067d49735080c85bada53e175fe6747a77b5578"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile4(c *C) {
+	// Test that changing the model produces a new digest.
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "20",
+					"brand-id":     "fake-brand",
+					"model":        "other-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: decodeHexString(c, "9aedf76f8049f50bf3b7f569ab899d3add8cec50958cd9ea801a0fa61a3e9d93"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile5(c *C) {
+	// Test that changing the series produces a new digest.
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "18",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: decodeHexString(c, "7b80a5b2f3f2f40bcecbb09a356a4a8a11a1f0612ea66088537c164af7db8c59"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile6(c *C) {
+	// Test with a different PCR alg.
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA1,
+			PCRIndex:     12,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "20",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA1: {
+					12: decodeHexString(c, "c84633bbf62a72b01b9c3190821613956ca2bd06"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile7(c *C) {
+	// Test with a different PCR.
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     14,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "20",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					14: decodeHexString(c, "e42b7ae1c9027eba122fa5ee5d3fcafe5482ea46cda1280ec3065d89d6175e4e"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile8(c *C) {
+	// Test with more than one model.
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "20",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "20",
+					"brand-id":     "fake-brand",
+					"model":        "other-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: decodeHexString(c, "e42b7ae1c9027eba122fa5ee5d3fcafe5482ea46cda1280ec3065d89d6175e4e"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: decodeHexString(c, "9aedf76f8049f50bf3b7f569ab899d3add8cec50958cd9ea801a0fa61a3e9d93"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile9(c *C) {
+	// Test extending in to an initial profile.
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		profile: NewPCRProtectionProfile().
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "20",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-brand",
+					"series":       "20",
+					"brand-id":     "fake-brand",
+					"model":        "other-model",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					12: decodeHexString(c, "7c49a939ab34ea2ba8d21acb79539f8d035acc3c8f581fe1551a1c844e179060"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					12: decodeHexString(c, "0ab1f69d3c4de619917b67da524dfaf7db17b6d9e6e43ffb8fa9c2a6abd6feec"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileTest) TestAddSnapModelProfile10(c *C) {
+	// Test that there aren't contatenation issues with brand-id/model/series - ie, "fake-brand,fake-model,20" should
+	// be different to "fake-bran,dfake-mode,l20".
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models: []*asserts.Model{
+				assertstest.FakeAssertion(map[string]interface{}{
+					"type":         "model",
+					"authority-id": "fake-bran",
+					"series":       "l20",
+					"brand-id":     "fake-bran",
+					"model":        "dfake-mode",
+					"architecture": "amd64",
+					"gadget":       "pc=20",
+					"kernel":       "pc-kernel=20",
+					"base":         "core20",
+				}).(*asserts.Model),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: decodeHexString(c, "f1edd468aca0259aa0352576371e017466025e64ac869d5c8a2089dcaffd15a5"),
+				},
+			},
+		},
+	})
+}

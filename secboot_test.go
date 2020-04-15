@@ -20,6 +20,7 @@
 package secboot_test
 
 import (
+	"encoding/hex"
 	"math/rand"
 	"testing"
 
@@ -143,3 +144,9 @@ func (r *testRng) Read(p []byte) (int, error) {
 }
 
 var testRandReader = &testRng{}
+
+func decodeHexString(c *C, s string) []byte {
+	b, err := hex.DecodeString(s)
+	c.Assert(err, IsNil)
+	return b
+}
