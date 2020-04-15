@@ -20,10 +20,10 @@
 package secboot_test
 
 import (
-	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
