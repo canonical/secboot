@@ -24,7 +24,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
 )
 

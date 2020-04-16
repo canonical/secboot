@@ -36,7 +36,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 	"github.com/snapcore/snapd/httputil"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
@@ -746,7 +746,7 @@ func saveEkCertificateChain(data *ekCertData, dest string) error {
 	}
 	defer f.Cancel()
 
-	if err := tpm2.MarshalToWriter(f, data); err != nil {
+	if _, err := tpm2.MarshalToWriter(f, data); err != nil {
 		return xerrors.Errorf("cannot marshal cert chain: %w", err)
 	}
 
@@ -817,7 +817,7 @@ func EncodeEKCertificateChain(ekCert *x509.Certificate, parents []*x509.Certific
 		data.Parents = append(data.Parents, c.Raw)
 	}
 
-	if err := tpm2.MarshalToWriter(w, &data); err != nil {
+	if _, err := tpm2.MarshalToWriter(w, &data); err != nil {
 		return xerrors.Errorf("cannot marshal cert chain: %w", err)
 	}
 
@@ -904,7 +904,7 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 
 	var certData *ekCertData
 	// Unmarshal supplied EK cert data
-	if err := tpm2.UnmarshalFromReader(ekCertDataReader, &certData); err != nil {
+	if _, err := tpm2.UnmarshalFromReader(ekCertDataReader, &certData); err != nil {
 		return nil, EKCertVerificationError{fmt.Sprintf("cannot unmarshal supplied EK certificate data: %v", err)}
 	}
 	if len(certData.Cert) == 0 {

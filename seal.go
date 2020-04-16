@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
 )
@@ -247,7 +247,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	policyUpdateData.Data.AuthKey = x509.MarshalPKCS1PrivateKey(authKey)
 
 	h := crypto.SHA256.New()
-	if err := tpm2.MarshalToWriter(h, &policyUpdateData.Data); err != nil {
+	if _, err := tpm2.MarshalToWriter(h, &policyUpdateData.Data); err != nil {
 		panic(fmt.Sprintf("cannot marshal dynamic authorization policy update data: %v", err))
 	}
 

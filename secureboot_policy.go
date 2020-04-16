@@ -34,7 +34,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
 	"github.com/fullsailor/pkcs7"
 	"github.com/snapcore/snapd/osutil"
