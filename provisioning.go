@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
 )

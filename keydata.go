@@ -30,7 +30,7 @@ import (
 	"math/big"
 	"os"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
@@ -75,7 +75,7 @@ type keyData struct {
 func readKeyPolicyUpdateData(buf io.Reader) (*keyPolicyUpdateData, error) {
 	var header uint32
 	var version uint32
-	if err := tpm2.UnmarshalFromReader(buf, &header, &version); err != nil {
+	if _, err := tpm2.UnmarshalFromReader(buf, &header, &version); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal header and version number: %w", err)
 	}
 
@@ -87,7 +87,7 @@ func readKeyPolicyUpdateData(buf io.Reader) (*keyPolicyUpdateData, error) {
 	}
 
 	var d keyPolicyUpdateData
-	if err := tpm2.UnmarshalFromReader(buf, &d); err != nil {
+	if _, err := tpm2.UnmarshalFromReader(buf, &d); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal key data: %w", err)
 	}
 
@@ -96,7 +96,10 @@ func readKeyPolicyUpdateData(buf io.Reader) (*keyPolicyUpdateData, error) {
 
 // write serializes keyPolicyUpdateData to the provided io.Writer.
 func (d *keyPolicyUpdateData) write(buf io.Writer) error {
-	return tpm2.MarshalToWriter(buf, keyPolicyUpdateDataHeader, currentVersion, d)
+	if _, err := tpm2.MarshalToWriter(buf, keyPolicyUpdateDataHeader, currentVersion, d); err != nil {
+		return err
+	}
+	return nil
 }
 
 type keyFileError struct {
@@ -120,7 +123,7 @@ func isKeyFileError(err error) bool {
 func readKeyData(buf io.Reader) (*keyData, error) {
 	var header uint32
 	var version uint32
-	if err := tpm2.UnmarshalFromReader(buf, &header, &version); err != nil {
+	if _, err := tpm2.UnmarshalFromReader(buf, &header, &version); err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot unmarshal header and version number: %w", err)}
 	}
 
@@ -132,7 +135,7 @@ func readKeyData(buf io.Reader) (*keyData, error) {
 	}
 
 	var d keyData
-	if err := tpm2.UnmarshalFromReader(buf, &d); err != nil {
+	if _, err := tpm2.UnmarshalFromReader(buf, &d); err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot unmarshal key data: %w", err)}
 	}
 
@@ -167,7 +170,10 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 
 // write serializes keyData in to the provided io.Writer.
 func (d *keyData) write(buf io.Writer) error {
-	return tpm2.MarshalToWriter(buf, keyDataHeader, currentVersion, d)
+	if _, err := tpm2.MarshalToWriter(buf, keyDataHeader, currentVersion, d); err != nil {
+		return err
+	}
+	return nil
 }
 
 // writeToFileAtomic serializes keyData and writes it atomically to the file at the specified path.
@@ -178,7 +184,7 @@ func (d *keyData) writeToFileAtomic(dest string) error {
 	}
 	defer f.Cancel()
 
-	if err := tpm2.MarshalToWriter(f, keyDataHeader, currentVersion, d); err != nil {
+	if _, err := tpm2.MarshalToWriter(f, keyDataHeader, currentVersion, d); err != nil {
 		return xerrors.Errorf("cannot marshal key data to temporary file: %w", err)
 	}
 
@@ -306,7 +312,7 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 
 	// Verify that the private data structure is bound to the key data structure.
 	h := data.KeyPublic.NameAlg.NewHash()
-	if err := tpm2.MarshalToWriter(h, policyUpdateData.CreationData); err != nil {
+	if _, err := tpm2.MarshalToWriter(h, policyUpdateData.CreationData); err != nil {
 		panic(fmt.Sprintf("cannot marshal creation data: %v", err))
 	}
 
@@ -319,7 +325,7 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	}
 
 	h = crypto.SHA256.New()
-	if err := tpm2.MarshalToWriter(h, &policyUpdateData.Data); err != nil {
+	if _, err := tpm2.MarshalToWriter(h, &policyUpdateData.Data); err != nil {
 		panic(fmt.Sprintf("cannot marshal dynamic authorization policy update data: %v", err))
 	}
 

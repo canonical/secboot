@@ -26,7 +26,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
 
 	. "gopkg.in/check.v1"
