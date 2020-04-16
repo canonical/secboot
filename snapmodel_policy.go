@@ -24,7 +24,7 @@ import (
 	"encoding/binary"
 	"errors"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 	"github.com/snapcore/snapd/asserts"
 
 	"golang.org/x/xerrors"

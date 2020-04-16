@@ -23,7 +23,7 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/chrisccoulson/go-tpm2"
+	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/snapd/asserts"
 	"github.com/snapcore/snapd/asserts/assertstest"
