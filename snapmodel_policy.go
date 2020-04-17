@@ -101,15 +101,13 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 
 	h := params.PCRAlgorithm.NewHash()
 	binary.Write(h, binary.LittleEndian, uint32(0))
-	versionDigest := h.Sum(nil)
+	profile.ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil))
 
 	var subProfiles []*PCRProtectionProfile
 	for _, model := range params.Models {
 		if model == nil {
 			return errors.New("nil model")
 		}
-
-		subProfile := NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, versionDigest)
 
 		signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
 		if err != nil {
@@ -135,7 +133,7 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 		h.Write([]byte(model.Series()))
 		h.Write([]byte{grade})
 
-		subProfiles = append(subProfiles, subProfile.ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil)))
+		subProfiles = append(subProfiles, NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil)))
 	}
 
 	profile.AddProfileOR(subProfiles...)
