@@ -70,12 +70,6 @@
 			"revisionTime": "2020-04-15T14:21:00Z"
 		},
 		{
-			"checksumSHA1": "/ZS6P2x+MCvvCCCGcZEoT7pAbbc=",
-			"path": "github.com/snapcore/snapd/asserts/assertstest",
-			"revision": "5a4d77fa2cab712c2f31249afb12f2c319c0b723",
-			"revisionTime": "2020-04-15T18:48:21Z"
-		},
-		{
 			"checksumSHA1": "dgVsGNzbHyFKJ57G677B0ks2ldw=",
 			"path": "github.com/snapcore/snapd/cmd/cmdutil",
 			"revision": "3cf189a768580bcf3ea3397361566be1a6e04bc5",
@@ -222,12 +216,6 @@
 		{
 			"checksumSHA1": "zJybXQZcPAht+soLp/ozc9q5teE=",
 			"path": "golang.org/x/crypto/cast5",
-			"revision": "0848c9571904fcbcb24543358ca8b5a7dbfde875",
-			"revisionTime": "2020-04-11T01:31:37Z"
-		},
-		{
-			"checksumSHA1": "b944y4fIe3sOBkJsJLPCzRW9mZE=",
-			"path": "golang.org/x/crypto/openpgp/armor",
 			"revision": "0848c9571904fcbcb24543358ca8b5a7dbfde875",
 			"revisionTime": "2020-04-11T01:31:37Z"
 		},
