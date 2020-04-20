@@ -23,35 +23,12 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/snapcore/snapd/asserts"
 
 	"golang.org/x/xerrors"
 )
-
-const (
-	modelGradeUnset uint8 = iota
-	modelGradeSecured
-	modelGradeSigned
-	modelGradeDangerous
-)
-
-func modelGradeEnum(grade asserts.ModelGrade) (uint8, error) {
-	switch grade {
-	case asserts.ModelGradeUnset:
-		return modelGradeUnset, nil
-	case asserts.ModelSecured:
-		return modelGradeSecured, nil
-	case asserts.ModelSigned:
-		return modelGradeSigned, nil
-	case asserts.ModelDangerous:
-		return modelGradeDangerous, nil
-	default:
-		return modelGradeUnset, fmt.Errorf("unknown grade: %v", grade)
-	}
-}
 
 // SnapModelProfileParams provides the parameters to AddSnapModelProfile.
 type SnapModelProfileParams struct {
@@ -80,12 +57,8 @@ type SnapModelProfileParams struct {
 //  digest2 = H(digest1 || model)
 //  digestModel = H(digest2 || series || grade)
 // The signing key digest algorithm is encoded in little-endian format, and the sign-key-sha3-384 field is hashed in decoded (binary)
-// form. The brand-id, model and series fields are hashed without null terminators. The grade field is encoded as a single byte with
-// the following conversion:
-//  "unset":     0
-//  "secured":   1
-//  "signed":    2
-//  "dangerous": 3
+// form. The brand-id, model and series fields are hashed without null terminators. The grade field is encoded as the 32 bits from asserts.ModelGrade.Code.
+//
 // Separate extend operations are used because brand-id, model and series are variable length.
 //
 // The PCR index that snap-bootstrap measures the model to can be specified via the PCRIndex field of params.
@@ -124,14 +97,10 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 		h.Write([]byte(model.Model()))
 		digest = h.Sum(nil)
 
-		grade, err := modelGradeEnum(model.Grade())
-		if err != nil {
-			return xerrors.Errorf("cannot detemine grade of model: %w", err)
-		}
 		h = params.PCRAlgorithm.NewHash()
 		h.Write(digest)
 		h.Write([]byte(model.Series()))
-		h.Write([]byte{grade})
+		binary.Write(h, binary.LittleEndian, model.Grade().Code())
 
 		subProfiles = append(subProfiles, NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil)))
 	}
