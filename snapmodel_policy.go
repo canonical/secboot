@@ -57,7 +57,7 @@ type SnapModelProfileParams struct {
 //  digest2 = H(digest1 || model)
 //  digestModel = H(digest2 || series || grade)
 // The signing key digest algorithm is encoded in little-endian format, and the sign-key-sha3-384 field is hashed in decoded (binary)
-// form. The brand-id, model and series fields are hashed without null terminators. The grade field is encoded as the 32 bits from asserts.ModelGrade.Code.
+// form. The brand-id, model and series fields are hashed without null terminators. The grade field is encoded as the 32 bits from asserts.ModelGrade.Code in little-endian format.
 //
 // Separate extend operations are used because brand-id, model and series are variable length.
 //
