@@ -846,7 +846,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
 	// Test with the correct recovery key supplied via a io.Reader, with a hyphen separating each group of 5 digits.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
-		tries: 1,
+		tries:                   1,
 		recoveryKeyFileContents: strings.Join(s.recoveryKeyAscii, "-") + "\n",
 		sdCryptsetupCalls:       1,
 	})
@@ -855,7 +855,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader2(c *C) {
 	// Test with the correct recovery key supplied via a io.Reader, without a hyphen separating each group of 5 digits.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
-		tries: 1,
+		tries:                   1,
 		recoveryKeyFileContents: strings.Join(s.recoveryKeyAscii, "") + "\n",
 		sdCryptsetupCalls:       1,
 	})
@@ -864,7 +864,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader2(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader3(c *C) {
 	// Test with the correct recovery key supplied via a io.Reader when the key doesn't end in a newline.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
-		tries: 1,
+		tries:                   1,
 		recoveryKeyFileContents: strings.Join(s.recoveryKeyAscii, "-"),
 		sdCryptsetupCalls:       1,
 	})
@@ -873,7 +873,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader3(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader4(c *C) {
 	// Test that falling back to requesting a recovery key works if the one provided by the io.Reader is incorrect.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
-		tries: 2,
+		tries:                   2,
 		recoveryKeyFileContents: "00000-00000-00000-00000-00000-00000-00000-00000\n",
 		recoveryPassphrases:     []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls:       2,
@@ -883,7 +883,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader4(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader5(c *C) {
 	// Test that falling back to requesting a recovery key works if the one provided by the io.Reader is badly formatted.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
-		tries: 2,
+		tries:                   2,
 		recoveryKeyFileContents: "5678\n",
 		recoveryPassphrases:     []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls:       1,
