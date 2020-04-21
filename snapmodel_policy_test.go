@@ -427,12 +427,20 @@ func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMe
 	pcrSelection, err := s.tpm.GetCapabilityPCRs()
 	c.Assert(err, IsNil)
 
-	c.Check(MeasureSnapModelToTPM(s.tpm, data.pcrIndex, data.model), IsNil)
-
+	var pcrs []int
+	for i := 0; i < 24; i++ {
+		pcrs = append(pcrs, i)
+	}
 	var readPcrSelection tpm2.PCRSelectionList
 	for _, s := range pcrSelection {
-		readPcrSelection = append(readPcrSelection, tpm2.PCRSelection{Hash: s.Hash, Select: []int{data.pcrIndex}})
+		readPcrSelection = append(readPcrSelection, tpm2.PCRSelection{Hash: s.Hash, Select: pcrs})
 	}
+
+	_, origPcrValues, err := s.tpm.PCRRead(readPcrSelection)
+	c.Assert(err, IsNil)
+
+	c.Check(MeasureSnapModelToTPM(s.tpm, data.pcrIndex, data.model), IsNil)
+
 	_, pcrValues, err := s.tpm.PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
@@ -441,10 +449,17 @@ func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMe
 		c.Assert(err, IsNil)
 
 		h := s.Hash.NewHash()
-		h.Write(make([]byte, s.Hash.Size()))
+		h.Write(origPcrValues[s.Hash][data.pcrIndex])
 		h.Write(snapModelDigest)
 
 		c.Check(pcrValues[s.Hash][data.pcrIndex], DeepEquals, tpm2.Digest(h.Sum(nil)))
+
+		for _, p := range pcrs {
+			if p == data.pcrIndex {
+				continue
+			}
+			c.Check(pcrValues[s.Hash][p], DeepEquals, origPcrValues[s.Hash][p])
+		}
 	}
 }
 
