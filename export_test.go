@@ -43,6 +43,7 @@ var (
 	ComputeDbUpdate                          = computeDbUpdate
 	ComputeDynamicPolicy                     = computeDynamicPolicy
 	ComputePolicyORData                      = computePolicyORData
+	ComputeSnapModelDigest                   = computeSnapModelDigest
 	ComputeStaticPolicy                      = computeStaticPolicy
 	CreatePinNVIndex                         = createPinNVIndex
 	CreatePublicAreaForRSASigningKey         = createPublicAreaForRSASigningKey

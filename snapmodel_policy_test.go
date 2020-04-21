@@ -29,11 +29,9 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type snapModelProfileTest struct{}
+type snapModelTestBase struct{}
 
-var _ = Suite(&snapModelProfileTest{})
-
-func (s *snapModelProfileTest) makeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) *asserts.Model {
+func (tb *snapModelTestBase) makeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) *asserts.Model {
 	template := map[string]interface{}{
 		"type":              "model",
 		"architecture":      "amd64",
@@ -62,13 +60,19 @@ func (s *snapModelProfileTest) makeMockCore20ModelAssertion(c *C, headers map[st
 	return assertion.(*asserts.Model)
 }
 
+type snapModelProfileSuite struct {
+	snapModelTestBase
+}
+
+var _ = Suite(&snapModelProfileSuite{})
+
 type testAddSnapModelProfileData struct {
 	profile *PCRProtectionProfile
 	params  *SnapModelProfileParams
 	values  []tpm2.PCRValues
 }
 
-func (s *snapModelProfileTest) testAddSnapModelProfile(c *C, data *testAddSnapModelProfileData) {
+func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapModelProfileData) {
 	profile := data.profile
 	if profile == nil {
 		profile = NewPCRProtectionProfile()
@@ -87,7 +91,7 @@ func (s *snapModelProfileTest) testAddSnapModelProfile(c *C, data *testAddSnapMo
 	}
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile1(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile1(c *C) {
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -112,7 +116,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile1(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile2(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile2(c *C) {
 	// Test that changing the signing key produces a new digest.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
@@ -138,7 +142,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile2(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile3(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile3(c *C) {
 	// Test that changing the brand-id produces a new digest.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
@@ -164,7 +168,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile3(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile4(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile4(c *C) {
 	// Test that changing the model produces a new digest.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
@@ -190,7 +194,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile4(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile5(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile5(c *C) {
 	// Test that changing the series produces a new digest.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
@@ -216,7 +220,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile5(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile6(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile6(c *C) {
 	// Test with a different PCR alg.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
@@ -242,7 +246,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile6(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile7(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile7(c *C) {
 	// Test with a different PCR.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
@@ -268,7 +272,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile7(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile8(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile8(c *C) {
 	// Test with more than one model.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
@@ -306,7 +310,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile8(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile9(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile9(c *C) {
 	// Test extending in to an initial profile.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		profile: NewPCRProtectionProfile().
@@ -349,7 +353,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile9(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile10(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile10(c *C) {
 	// Test that there aren't contatenation issues with brand-id/model/series - ie, "fake-brand,fake-model,16" should
 	// be different to "fake-bran,dfake-mode,l16".
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
@@ -376,7 +380,7 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile10(c *C) {
 	})
 }
 
-func (s *snapModelProfileTest) TestAddSnapModelProfile11(c *C) {
+func (s *snapModelProfileSuite) TestAddSnapModelProfile11(c *C) {
 	// Test with a different grade.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		params: &SnapModelProfileParams{
@@ -399,5 +403,143 @@ func (s *snapModelProfileTest) TestAddSnapModelProfile11(c *C) {
 				},
 			},
 		},
+	})
+}
+
+type snapModelMeasureSuite struct {
+	tpmSimulatorTestBase
+	snapModelTestBase
+}
+
+var _ = Suite(&snapModelMeasureSuite{})
+
+func (s *snapModelMeasureSuite) SetUpTest(c *C) {
+	s.tpmSimulatorTestBase.SetUpTest(c)
+	s.resetTPMSimulator(c)
+}
+
+type testMeasureSnapModelToTPMTestData struct {
+	pcrIndex int
+	model    *asserts.Model
+}
+
+func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMeasureSnapModelToTPMTestData) {
+	pcrSelection, err := s.tpm.GetCapabilityPCRs()
+	c.Assert(err, IsNil)
+
+	c.Check(MeasureSnapModelToTPM(s.tpm, data.pcrIndex, data.model), IsNil)
+
+	var readPcrSelection tpm2.PCRSelectionList
+	for _, s := range pcrSelection {
+		readPcrSelection = append(readPcrSelection, tpm2.PCRSelection{Hash: s.Hash, Select: []int{data.pcrIndex}})
+	}
+	_, pcrValues, err := s.tpm.PCRRead(readPcrSelection)
+	c.Assert(err, IsNil)
+
+	for _, s := range pcrSelection {
+		snapModelDigest, err := ComputeSnapModelDigest(s.Hash, data.model)
+		c.Assert(err, IsNil)
+
+		h := s.Hash.NewHash()
+		h.Write(make([]byte, s.Hash.Size()))
+		h.Write(snapModelDigest)
+
+		c.Check(pcrValues[s.Hash][data.pcrIndex], DeepEquals, tpm2.Digest(h.Sum(nil)))
+	}
+}
+
+func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest1(c *C) {
+	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
+		pcrIndex: 12,
+		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+	})
+}
+
+func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest2(c *C) {
+	// Test with a different signing key.
+	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
+		pcrIndex: 12,
+		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "GQ2ARdxYdcEATk3THxMZTuolBDz5_8QFUMyjD9yuIPjX7tBfPJQFiyBjKdvo0jEu"),
+	})
+}
+
+func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest3(c *C) {
+	// Test with a different brand.
+	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
+		pcrIndex: 12,
+		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "other-brand",
+			"series":       "16",
+			"brand-id":     "other-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+	})
+}
+
+func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest4(c *C) {
+	// Test with a different model.
+	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
+		pcrIndex: 12,
+		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+	})
+}
+
+func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest5(c *C) {
+	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
+		pcrIndex: 12,
+		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "28",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+	})
+}
+
+func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest6(c *C) {
+	// Test with a different PCR
+	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
+		pcrIndex: 14,
+		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+	})
+}
+
+func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest7(c *C) {
+	// Test with a different grade.
+	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
+		pcrIndex: 12,
+		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "dangerous",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 	})
 }
