@@ -30,6 +30,31 @@ import (
 	"golang.org/x/xerrors"
 )
 
+func computeSnapModelDigest(alg tpm2.HashAlgorithmId, model *asserts.Model) (tpm2.Digest, error) {
+	signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
+	if err != nil {
+		return nil, xerrors.Errorf("cannot decode signing key ID: %w", err)
+	}
+
+	h := alg.NewHash()
+	binary.Write(h, binary.LittleEndian, uint16(tpm2.HashAlgorithmSHA384))
+	h.Write(signKeyId)
+	h.Write([]byte(model.BrandID()))
+	digest := h.Sum(nil)
+
+	h = alg.NewHash()
+	h.Write(digest)
+	h.Write([]byte(model.Model()))
+	digest = h.Sum(nil)
+
+	h = alg.NewHash()
+	h.Write(digest)
+	h.Write([]byte(model.Series()))
+	binary.Write(h, binary.LittleEndian, model.Grade().Code())
+
+	return h.Sum(nil), nil
+}
+
 // SnapModelProfileParams provides the parameters to AddSnapModelProfile.
 type SnapModelProfileParams struct {
 	// PCRAlgorithm is the algorithm for which to compute PCR digests for. TPMs compliant with the "TCG PC Client Platform TPM Profile
@@ -57,7 +82,8 @@ type SnapModelProfileParams struct {
 //  digest2 = H(digest1 || model)
 //  digestModel = H(digest2 || series || grade)
 // The signing key digest algorithm is encoded in little-endian format, and the sign-key-sha3-384 field is hashed in decoded (binary)
-// form. The brand-id, model and series fields are hashed without null terminators. The grade field is encoded as the 32 bits from asserts.ModelGrade.Code in little-endian format.
+// form. The brand-id, model and series fields are hashed without null terminators. The grade field is encoded as the 32 bits from
+// asserts.ModelGrade.Code in little-endian format.
 //
 // Separate extend operations are used because brand-id, model and series are variable length.
 //
@@ -82,29 +108,41 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 			return errors.New("nil model")
 		}
 
-		signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
+		digest, err := computeSnapModelDigest(params.PCRAlgorithm, model)
 		if err != nil {
-			return xerrors.Errorf("cannot decode signing key ID: %w", err)
+			return err
 		}
-		h := params.PCRAlgorithm.NewHash()
-		binary.Write(h, binary.LittleEndian, uint16(tpm2.HashAlgorithmSHA384))
-		h.Write(signKeyId)
-		h.Write([]byte(model.BrandID()))
-		digest := h.Sum(nil)
-
-		h = params.PCRAlgorithm.NewHash()
-		h.Write(digest)
-		h.Write([]byte(model.Model()))
-		digest = h.Sum(nil)
-
-		h = params.PCRAlgorithm.NewHash()
-		h.Write(digest)
-		h.Write([]byte(model.Series()))
-		binary.Write(h, binary.LittleEndian, model.Grade().Code())
-
-		subProfiles = append(subProfiles, NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil)))
+		subProfiles = append(subProfiles, NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, digest))
 	}
 
 	profile.AddProfileOR(subProfiles...)
 	return nil
+}
+
+// MeasureSnapModelToTPM measures a digest of the supplied model assertion to the specified PCR for all supported PCR banks.
+// See the documentation for AddSnapModelProfile for details of how the digest of the model is computed.
+func MeasureSnapModelToTPM(tpm *TPMConnection, pcrIndex int, model *asserts.Model) error {
+	pcrSelection, err := tpm.GetCapabilityPCRs(tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit))
+	if err != nil {
+		return xerrors.Errorf("cannot determine supported PCR banks: %w", err)
+	}
+
+	var digests tpm2.TaggedHashList
+	for _, s := range pcrSelection {
+		if !s.Hash.Supported() {
+			// We can't compute a digest for this algorithm, which is unfortunate. It's unlikely that we'll come across a TPM that supports a
+			// digest algorithm that go doesn't have an implementation of, so just skip it to avoid a panic - we can't generate a PCR profile
+			// bound to any PCRs in this bank anyway.
+			continue
+		}
+
+		digest, err := computeSnapModelDigest(s.Hash, model)
+		if err != nil {
+			return xerrors.Errorf("cannot compute snap mode digest for algorithm %v: %w", s.Hash, err)
+		}
+
+		digests = append(digests, tpm2.TaggedHash{HashAlg: s.Hash, Digest: digest})
+	}
+
+	return tpm.PCRExtend(tpm.PCRHandleContext(pcrIndex), digests, tpm.HmacSession())
 }
