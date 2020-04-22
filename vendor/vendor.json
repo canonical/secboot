@@ -21,13 +21,6 @@
 			"revisionTime": "2020-02-28T14:36:39Z"
 		},
 		{
-			"checksumSHA1": "wHGa5uteRxMMSHJLQZtcBpIIUcw=",
-			"origin": "github.com/chrisccoulson/pkcs7",
-			"path": "github.com/fullsailor/pkcs7",
-			"revision": "9d98ea9f9bc8b4feee8f0d7c5ef8179f85f0e237",
-			"revisionTime": "2019-09-06T18:49:57Z"
-		},
-		{
 			"checksumSHA1": "kmcZh6191ZYy/+G/tIWFZoVEkGs=",
 			"path": "github.com/godbus/dbus",
 			"revision": "06fc4b473149e499166adbb9e31c7365a8ea146f",
@@ -216,6 +209,12 @@
 			"path": "github.com/snapcore/snapd/timeutil",
 			"revision": "cba748d1244e6861a5e407f7abe90fb2f76b6f80",
 			"revisionTime": "2020-04-20T18:59:55Z"
+		},
+		{
+			"checksumSHA1": "/mphxOFx5uIoQCnt6YtFmmPDBao=",
+			"path": "go.mozilla.org/pkcs7",
+			"revision": "432b2356ecb18209c1cec25680b8a23632794f21",
+			"revisionTime": "2020-01-28T12:03:23Z"
 		},
 		{
 			"checksumSHA1": "zJybXQZcPAht+soLp/ozc9q5teE=",
