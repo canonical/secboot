@@ -30,6 +30,14 @@ import (
 	"golang.org/x/xerrors"
 )
 
+const zeroSnapSystemEpoch uint32 = 0
+
+func computeSnapSystemEpochDigest(alg tpm2.HashAlgorithmId, epoch uint32) tpm2.Digest {
+	h := alg.NewHash()
+	binary.Write(h, binary.LittleEndian, epoch)
+	return h.Sum(nil)
+}
+
 func computeSnapModelDigest(alg tpm2.HashAlgorithmId, model *asserts.Model) (tpm2.Digest, error) {
 	signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
 	if err != nil {
@@ -103,9 +111,7 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 		return errors.New("no models provided")
 	}
 
-	h := params.PCRAlgorithm.NewHash()
-	binary.Write(h, binary.LittleEndian, uint32(0))
-	profile.ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil))
+	profile.ExtendPCR(params.PCRAlgorithm, params.PCRIndex, computeSnapSystemEpochDigest(params.PCRAlgorithm, zeroSnapSystemEpoch))
 
 	var subProfiles []*PCRProtectionProfile
 	for _, model := range params.Models {
@@ -154,9 +160,7 @@ func measureSnapPropertyToTPM(tpm *TPMConnection, pcrIndex int, computeDigest fu
 // for AddSnapModelProfile for more details.
 func MeasureSnapSystemEpochToTPM(tpm *TPMConnection, pcrIndex int) error {
 	return measureSnapPropertyToTPM(tpm, pcrIndex, func(alg tpm2.HashAlgorithmId) (tpm2.Digest, error) {
-		h := alg.NewHash()
-		binary.Write(h, binary.LittleEndian, uint32(0))
-		return h.Sum(nil), nil
+		return computeSnapSystemEpochDigest(alg, zeroSnapSystemEpoch), nil
 	})
 }
 
