@@ -30,8 +30,8 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 func TestTPMConnectionIsEnabled(t *testing.T) {
