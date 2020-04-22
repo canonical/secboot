@@ -73,11 +73,16 @@ type SnapModelProfileParams struct {
 // a PCR policy that is bound to a specific set of device models. It is the responsibility of snap-bootstrap to verify the integrity
 // of the model that it has measured.
 //
-// The profile consists of 2 measurements (where H is the digest algorithm supplied via params.PCRAlgorithm):
-//  H(uint32(0))
+// The profile consists of 2 measurements:
+//  digestEpoch
 //  digestModel
 //
-// digestModel is computed as follows:
+// digestEpoch is currently hardcoded as (where H is the digest algorithm supplied via params.PCRAlgorithm):
+//  digestEpoch = H(uint32(0))
+//
+// A future version of this package may allow another epoch to be supplied.
+//
+// digestModel is computed as follows (where H is the digest algorithm supplied via params.PCRAlgorithm):
 //  digest1 = H(tpm2.HashAlgorithmSHA384 || sign-key-sha3-384 || brand-id)
 //  digest2 = H(digest1 || model)
 //  digestModel = H(digest2 || series || grade)
@@ -119,9 +124,7 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 	return nil
 }
 
-// MeasureSnapModelToTPM measures a digest of the supplied model assertion to the specified PCR for all supported PCR banks.
-// See the documentation for AddSnapModelProfile for details of how the digest of the model is computed.
-func MeasureSnapModelToTPM(tpm *TPMConnection, pcrIndex int, model *asserts.Model) error {
+func measureSnapPropertyToTPM(tpm *TPMConnection, pcrIndex int, computeDigest func(tpm2.HashAlgorithmId) (tpm2.Digest, error)) error {
 	pcrSelection, err := tpm.GetCapabilityPCRs(tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
 		return xerrors.Errorf("cannot determine supported PCR banks: %w", err)
@@ -136,13 +139,31 @@ func MeasureSnapModelToTPM(tpm *TPMConnection, pcrIndex int, model *asserts.Mode
 			continue
 		}
 
-		digest, err := computeSnapModelDigest(s.Hash, model)
+		digest, err := computeDigest(s.Hash)
 		if err != nil {
-			return xerrors.Errorf("cannot compute snap mode digest for algorithm %v: %w", s.Hash, err)
+			return xerrors.Errorf("cannot compute digest for algorithm %v: %w", s.Hash, err)
 		}
 
 		digests = append(digests, tpm2.TaggedHash{HashAlg: s.Hash, Digest: digest})
 	}
 
 	return tpm.PCRExtend(tpm.PCRHandleContext(pcrIndex), digests, tpm.HmacSession())
+}
+
+// MeasureSnapSystemEpochToTPM measures a digest of uint32(0) to the specified PCR for all supported PCR banks. See the documentation
+// for AddSnapModelProfile for more details.
+func MeasureSnapSystemEpochToTPM(tpm *TPMConnection, pcrIndex int) error {
+	return measureSnapPropertyToTPM(tpm, pcrIndex, func(alg tpm2.HashAlgorithmId) (tpm2.Digest, error) {
+		h := alg.NewHash()
+		binary.Write(h, binary.LittleEndian, uint32(0))
+		return h.Sum(nil), nil
+	})
+}
+
+// MeasureSnapModelToTPM measures a digest of the supplied model assertion to the specified PCR for all supported PCR banks.
+// See the documentation for AddSnapModelProfile for details of how the digest of the model is computed.
+func MeasureSnapModelToTPM(tpm *TPMConnection, pcrIndex int, model *asserts.Model) error {
+	return measureSnapPropertyToTPM(tpm, pcrIndex, func(alg tpm2.HashAlgorithmId) (tpm2.Digest, error) {
+		return computeSnapModelDigest(alg, model)
+	})
 }
