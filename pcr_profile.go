@@ -20,12 +20,27 @@
 package secboot
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
 )
+
+// computePCRSelectionListFromValues builds a tpm2.PCRSelectionList from the provided map of PCR values.
+func computePCRSelectionListFromValues(v tpm2.PCRValues) (out tpm2.PCRSelectionList) {
+	for alg := range v {
+		s := tpm2.PCRSelection{Hash: alg}
+		for pcr := range v[alg] {
+			s.Select = append(s.Select, pcr)
+		}
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Hash < out[j].Hash })
+	return
+}
 
 // pcrValuesList is a list of PCR value combinations computed from PCRProtectionProfile.
 type pcrValuesList []tpm2.PCRValues
@@ -33,7 +48,7 @@ type pcrValuesList []tpm2.PCRValues
 // setValue sets the specified PCR to the supplied value for all branches.
 func (l pcrValuesList) setValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
 	for _, v := range l {
-		v.SetValue(pcr, alg, value)
+		v.SetValue(alg, pcr, value)
 	}
 }
 
@@ -192,4 +207,31 @@ func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext, values pcr
 	}
 
 	return values, nil
+}
+
+func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
+	// Compute the sets of PCR values for all branches
+	values, err := p.computePCRValues(tpm, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Compute the PCR selections and PCR digest for the first branch.
+	pcrs, firstDigest, err := tpm2.ComputePCRDigestSimple(alg, values[0])
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot compute PCR digest for first branch: %w", err)
+	}
+
+	pcrDigests := tpm2.DigestList{firstDigest}
+
+	// Compute the PCR digests for the remaining branches, making sure that they contain values for the same sets of PCRs.
+	for _, v := range values[1:] {
+		p, digest, _ := tpm2.ComputePCRDigestSimple(alg, v)
+		if !p.Equal(pcrs) {
+			return nil, nil, errors.New("not all branches contain values for the same sets of PCRs")
+		}
+		pcrDigests = append(pcrDigests, digest)
+	}
+
+	return pcrs, pcrDigests, nil
 }

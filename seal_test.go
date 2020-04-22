@@ -319,7 +319,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "cannot compute dynamic authorization policy: not all combinations of PCR values contain a complete set of values" {
+		if err.Error() != "cannot compute PCR digests from protection profile: not all branches contain values for the same sets of PCRs" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

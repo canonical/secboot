@@ -20,6 +20,7 @@
 package secboot_test
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 
@@ -30,12 +31,15 @@ import (
 func TestPCRProtectionProfile(t *testing.T) {
 	for _, data := range []struct {
 		desc    string
+		alg     tpm2.HashAlgorithmId
 		profile *PCRProtectionProfile
+		pcrs    tpm2.PCRSelectionList
 		values  []tpm2.PCRValues
 	}{
 		{
 			// Verify that AddPCRValues works as expected
 			desc: "AddValues/1",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
@@ -53,6 +57,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that AddPCRValues overwrites previous values
 			desc: "AddValues/2",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
@@ -69,6 +74,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that (A1 || A2) && (B1 || B2) produces 4 outcomes
 			desc: "OR/1",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddProfileOR(
@@ -108,6 +114,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that (A1 && B1) || (A2 && B2) produces 2 outcomes
 			desc: "OR/2",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().AddProfileOR(
 					NewPCRProtectionProfile().
@@ -135,6 +142,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that ExtendPCR without an initial value works as expected
 			desc: "Extend",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
@@ -154,6 +162,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that ExtendPCR after AddPCRValue works as expected
 			desc: "AddAndExtend",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
@@ -173,6 +182,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that ExtendPCR inside ProfileOR with initial PCR values works as expected
 			desc: "OR/3",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
@@ -203,6 +213,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 		{
 			// Verify that AddPCRValue inside ProfileOR with initial PCR values works as expected
 			desc: "OR/4",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
@@ -231,8 +242,9 @@ func TestPCRProtectionProfile(t *testing.T) {
 			},
 		},
 		{
-			// Verify that other PCR digest algorithms work
-			desc: "SHA1",
+			// Verify that other PCR algorithms work
+			desc: "SHA1PCRs",
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
@@ -249,22 +261,42 @@ func TestPCRProtectionProfile(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Verify that other PCR digest algorithms work
+			desc: "SHA1",
+			alg:  tpm2.HashAlgorithmSHA1,
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+			}(),
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					},
+				},
+			},
+		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			values, err := data.profile.ComputePCRValues(nil)
-			if err != nil {
-				t.Fatalf("ComputePCRValues failed: %v", err)
+			expectedPcrs := data.values[0].SelectionList()
+			var expectedDigests tpm2.DigestList
+			for _, v := range data.values {
+				d, _ := tpm2.ComputePCRDigest(data.alg, expectedPcrs, v)
+				expectedDigests = append(expectedDigests, d)
 			}
-			if !reflect.DeepEqual(values, data.values) {
-				t.Errorf("ComputePCRValues returned unexpected values")
-				for i, v := range values {
-					t.Logf("Value %d:", i)
-					for alg := range v {
-						for pcr := range v[alg] {
-							t.Logf(" PCR%d,%v: %x", pcr, alg, v[alg][pcr])
-						}
-					}
-				}
+
+			pcrs, pcrDigests, err := data.profile.ComputePCRDigests(nil, data.alg)
+			if err != nil {
+				t.Fatalf("ComputePCRDigests failed: %v", err)
+			}
+			if !pcrs.Equal(expectedPcrs) {
+				t.Errorf("Unexpected PCRSelectionList")
+			}
+			if !reflect.DeepEqual(pcrDigests, expectedDigests) {
+				t.Errorf("ComputePCRDigests returned unexpected digests")
 			}
 		})
 	}
@@ -283,14 +315,19 @@ func TestPCRProtectionProfileAddValueFromTPM(t *testing.T) {
 	}
 
 	p := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7)
-	values, err := p.ComputePCRValues(tpm.TPMContext)
+	pcrs, digests, err := p.ComputePCRDigests(tpm.TPMContext, tpm2.HashAlgorithmSHA256)
 	if err != nil {
-		t.Fatalf("ComputePCRValues failed: %v", err)
+		t.Fatalf("ComputePCRDigests failed: %v", err)
 	}
-	if len(values) != 1 {
-		t.Fatalf("ComputePCRValues returned the wrong number of values")
+
+	if !pcrs.Equal(tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}) {
+		t.Errorf("ComputePCRDigests returned the wrong selection")
 	}
-	if !reflect.DeepEqual(tpmValues, values[0]) {
-		t.Errorf("ComputePCRValues returned unexpected values")
+	if len(digests) != 1 {
+		t.Fatalf("ComputePCRDigests returned the wrong number of digests")
+	}
+	expectedDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}, tpmValues)
+	if !bytes.Equal(digests[0], expectedDigest) {
+		t.Errorf("ComputePCRDigests returned unexpected values")
 	}
 }

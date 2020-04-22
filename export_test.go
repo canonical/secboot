@@ -20,7 +20,9 @@
 package secboot
 
 import (
+	"bytes"
 	"crypto/rsa"
+	"fmt"
 	"io"
 	"os"
 
@@ -169,7 +171,7 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	for {
 		v := make(tpm2.PCRValues)
 		for i := range params {
-			v.SetValue(params[i].PCR, params[i].Alg, params[i].Digests[indices[i]])
+			v.SetValue(params[i].Alg, params[i].PCR, params[i].Digests[indices[i]])
 		}
 		out = append(out, v)
 
@@ -224,11 +226,12 @@ func MockSystemdCryptsetupPath(path string) (restore func()) {
 	}
 }
 
-func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrValues []tpm2.PCRValues, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
+func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{
 		key:                  key,
 		signAlg:              signAlg,
-		pcrValues:            pcrValues,
+		pcrs:                 pcrs,
+		pcrDigests:           pcrDigests,
 		policyCountIndexName: policyCountIndexName,
 		policyCount:          policyCount}
 }
@@ -237,8 +240,30 @@ func NewStaticPolicyComputeParams(key *tpm2.Public, pinIndexPub *tpm2.NVPublic, 
 	return &staticPolicyComputeParams{key: key, pinIndexPub: pinIndexPub, pinIndexAuthPolicies: pinIndexAuthPolicies, lockIndexName: lockIndexName}
 }
 
-func (p PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PCRValues, error) {
+func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PCRValues, error) {
 	return p.computePCRValues(tpm, nil)
+}
+
+func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
+	return p.computePCRDigests(tpm, alg)
+}
+
+func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
+	values, err := p.computePCRValues(tpm, nil)
+	if err != nil {
+		return ""
+	}
+	var s bytes.Buffer
+	fmt.Fprintf(&s, "\n")
+	for i, v := range values {
+		fmt.Fprintf(&s, "Value %d:\n", i)
+		for alg := range v {
+			for pcr := range v[alg] {
+				fmt.Fprintf(&s, " PCR%d,%v: %x\n", pcr, alg, v[alg][pcr])
+			}
+		}
+	}
+	return s.String()
 }
 
 func SetOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) {

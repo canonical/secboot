@@ -126,23 +126,27 @@ func TestAddSystemdEFIStubProfile(t *testing.T) {
 			if profile == nil {
 				profile = NewPCRProtectionProfile()
 			}
+			expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+			expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
+			var expectedDigests tpm2.DigestList
+			for _, v := range data.values {
+				d, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
+				expectedDigests = append(expectedDigests, d)
+			}
+
 			if err := AddSystemdEFIStubProfile(profile, &data.params); err != nil {
 				t.Fatalf("AddSystemdEFIStubProfile failed: %v", err)
 			}
-			values, err := profile.ComputePCRValues(nil)
+			pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 			if err != nil {
-				t.Fatalf("ComputePCRValues failed: %v", err)
+				t.Fatalf("ComputePCRDigests failed: %v", err)
 			}
-			if !reflect.DeepEqual(values, data.values) {
-				t.Errorf("ComputePCRValues returned unexpected values")
-				for i, v := range values {
-					t.Logf("Value %d:", i)
-					for alg := range v {
-						for pcr := range v[alg] {
-							t.Logf(" PCR%d,%v: %x", pcr, alg, v[alg][pcr])
-						}
-					}
-				}
+			if !pcrs.Equal(expectedPcrs) {
+				t.Errorf("ComputePCRDigests returned the wrong PCR selection")
+			}
+			if !reflect.DeepEqual(digests, expectedDigests) {
+				t.Errorf("ComputePCRDigests returned unexpected values")
+				t.Logf("%s", profile.DumpValues(nil))
 			}
 		})
 	}

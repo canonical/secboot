@@ -26,7 +26,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/canonical/go-tpm2"
 
@@ -50,8 +49,10 @@ type dynamicPolicyComputeParams struct {
 	// signAlg is the digest algorithm for the signature used to authorize the generated dynamic authorization policy. It must
 	// match the name algorithm of the public part of key that will be loaded in to the TPM for verification.
 	signAlg              tpm2.HashAlgorithmId
-	pcrValues            []tpm2.PCRValues // Approved PCR digests
-	policyCountIndexName tpm2.Name        // Name of the NV index used for revoking authorization policies
+	pcrs                 tpm2.PCRSelectionList // PCR selection
+	pcrDigests           tpm2.DigestList       // Approved PCR digests
+	pcrValues            []tpm2.PCRValues      // Approved PCR digests
+	policyCountIndexName tpm2.Name             // Name of the NV index used for revoking authorization policies
 
 	// policyCount is the maximum permitted value of the NV index associated with policyCountIndexName, beyond which, this authorization
 	// policy will not be satisfied.
@@ -548,44 +549,18 @@ func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, 
 	return data
 }
 
-// computePCRSelectionListFromValues builds a tpm2.PCRSelectionList from the provided map of PCR values.
-func computePCRSelectionListFromValues(v tpm2.PCRValues) (out tpm2.PCRSelectionList) {
-	for alg := range v {
-		s := tpm2.PCRSelection{Hash: alg}
-		for pcr := range v[alg] {
-			s.Select = append(s.Select, pcr)
-		}
-		out = append(out, s)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Hash < out[j].Hash })
-	return
-}
-
 // computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
 // updated.
 func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
-	if len(input.pcrValues) == 0 {
-		return nil, errors.New("no PCR values specified")
+	if len(input.pcrDigests) == 0 {
+		return nil, errors.New("no PCR digests specified")
 	}
-
-	// Build a PCRSelectionList from input.pcrValues
-	pcrs := computePCRSelectionListFromValues(input.pcrValues[0])
 
 	// Compute the policy digest that would result from a TPM2_PolicyPCR assertion for each condition
 	var pcrOrDigests tpm2.DigestList
-	for _, v := range input.pcrValues {
-		// We only support a single PCR selection, so ensure that all conditions explicitly define values for the same set of PCRs
-		p := computePCRSelectionListFromValues(v)
-		if !p.Equal(pcrs) {
-			return nil, errors.New("not all combinations of PCR values contain a complete set of values")
-		}
-
-		// Compute PCR digest from the map of PCR values and the computed selection
-		digest, _ := tpm2.ComputePCRDigest(alg, pcrs, v)
-
-		// Execute trial TPM2_PolicyPCR with the computed PCR digest and selection, and save the result
+	for _, d := range input.pcrDigests {
 		trial, _ := tpm2.ComputeAuthPolicy(alg)
-		trial.PolicyPCR(digest, pcrs)
+		trial.PolicyPCR(d, input.pcrs)
 		pcrOrDigests = append(pcrOrDigests, trial.GetDigest())
 	}
 
@@ -616,7 +591,7 @@ func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeP
 				Sig:  tpm2.PublicKeyRSA(sig)}}}
 
 	return &dynamicPolicyData{
-		PCRSelection:              pcrs,
+		PCRSelection:              input.pcrs,
 		PCROrData:                 pcrOrData,
 		PolicyCount:               input.policyCount,
 		AuthorizedPolicy:          authorizedPolicy,
