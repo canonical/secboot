@@ -23,25 +23,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
 )
-
-// computePCRSelectionListFromValues builds a tpm2.PCRSelectionList from the provided map of PCR values.
-func computePCRSelectionListFromValues(v tpm2.PCRValues) (out tpm2.PCRSelectionList) {
-	for alg := range v {
-		s := tpm2.PCRSelection{Hash: alg}
-		for pcr := range v[alg] {
-			s.Select = append(s.Select, pcr)
-		}
-		out = append(out, s)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Hash < out[j].Hash })
-	return
-}
 
 // pcrValuesList is a list of PCR value combinations computed from PCRProtectionProfile.
 type pcrValuesList []tpm2.PCRValues
