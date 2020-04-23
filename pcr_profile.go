@@ -20,6 +20,7 @@
 package secboot
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sort"
@@ -233,5 +234,20 @@ func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 		pcrDigests = append(pcrDigests, digest)
 	}
 
-	return pcrs, pcrDigests, nil
+	var filteredPcrDigests tpm2.DigestList
+	for _, d := range pcrDigests {
+		found := false
+		for _, f := range filteredPcrDigests {
+			if bytes.Equal(d, f) {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		filteredPcrDigests = append(filteredPcrDigests, d)
+	}
+
+	return pcrs, filteredPcrDigests, nil
 }

@@ -279,6 +279,28 @@ func TestPCRProtectionProfile(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Verify that (A1 && B1) || (A1 && B1) is de-duplicated
+			desc: "DeDuplicate",
+			alg:  tpm2.HashAlgorithmSHA256,
+			profile: func() *PCRProtectionProfile {
+				return NewPCRProtectionProfile().AddProfileOR(
+					NewPCRProtectionProfile().
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+					NewPCRProtectionProfile().
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")))
+			}(),
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					},
+				},
+			},
+		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
 			expectedPcrs := data.values[0].SelectionList()
