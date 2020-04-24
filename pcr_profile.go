@@ -75,26 +75,9 @@ type pcrProtectionProfileAddPCRValueInstr struct {
 	value tpm2.Digest
 }
 
-func (i *pcrProtectionProfileAddPCRValueInstr) apply(_ *tpm2.TPMContext, values pcrValuesList) (pcrValuesList, error) {
-	values.setValue(i.alg, i.pcr, i.value)
-	return values, nil
-}
-
 type pcrProtectionProfileAddPCRValueFromTPMInstr struct {
 	alg tpm2.HashAlgorithmId
 	pcr int
-}
-
-func (i *pcrProtectionProfileAddPCRValueFromTPMInstr) apply(tpm *tpm2.TPMContext, values pcrValuesList) (pcrValuesList, error) {
-	if tpm == nil {
-		return nil, fmt.Errorf("cannot read current value of PCR %d from bank %v: no TPM context", i.pcr, i.alg)
-	}
-	_, v, err := tpm.PCRRead(tpm2.PCRSelectionList{{Hash: i.alg, Select: []int{i.pcr}}})
-	if err != nil {
-		return nil, xerrors.Errorf("cannot read current value of PCR %d from bank %v: %w", i.pcr, i.alg, err)
-	}
-	values.setValue(i.alg, i.pcr, v[i.alg][i.pcr])
-	return values, nil
 }
 
 type pcrProtectionProfileExtendPCRInstr struct {
@@ -103,32 +86,14 @@ type pcrProtectionProfileExtendPCRInstr struct {
 	value tpm2.Digest
 }
 
-func (i *pcrProtectionProfileExtendPCRInstr) apply(_ *tpm2.TPMContext, values pcrValuesList) (pcrValuesList, error) {
-	values.extendValue(i.alg, i.pcr, i.value)
-	return values, nil
-}
-
 type pcrProtectionProfileAddProfileORInstr struct {
 	profiles []*PCRProtectionProfile
 }
 
-func (i *pcrProtectionProfileAddProfileORInstr) apply(tpm *tpm2.TPMContext, values pcrValuesList) (pcrValuesList, error) {
-	var out []tpm2.PCRValues
-	for _, p := range i.profiles {
-		v, err := p.computePCRValues(tpm, values.copy())
-		if err != nil {
-			// TODO: More context
-			return nil, err
-		}
-		out = append(out, v...)
-	}
-	return out, nil
-}
+type pcrProtectionProfileEndProfileInstr struct{}
 
 // pcrProtectionProfileInstr is a building block of PCRProtectionProfile.
-type pcrProtectionProfileInstr interface {
-	apply(*tpm2.TPMContext, pcrValuesList) (pcrValuesList, error)
-}
+type pcrProtectionProfileInstr interface{}
 
 // PCRProtectionProfile defines the PCR profile used to protect a key sealed with SealKeyToTPM. It contains a sequence of instructions
 // for computing combinations of PCR values that a key will be protected against. The profile is built using the methods of this type.
@@ -179,28 +144,109 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 	return p
 }
 
-// computePCRValues computes a list of different PCR value combinations from this PCRProtectionProfile.
-func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext, values pcrValuesList) (pcrValuesList, error) {
-	if len(values) == 0 {
-		values = append(values, make(tpm2.PCRValues))
+// pcrProtectionProfileIterator provides a mechanism to perform a depth first traversal of instructions in a PCRProtectionProfile.
+type pcrProtectionProfileIterator struct {
+	instrs [][]pcrProtectionProfileInstr
+}
+
+func (iter *pcrProtectionProfileIterator) descendInToProfiles(profiles ...*PCRProtectionProfile) {
+	instrs := make([][]pcrProtectionProfileInstr, 0, len(profiles)+len(iter.instrs))
+	for _, p := range profiles {
+		pi := make([]pcrProtectionProfileInstr, len(p.instrs))
+		copy(pi, p.instrs)
+		instrs = append(instrs, pi)
+	}
+	instrs = append(instrs, iter.instrs...)
+	iter.instrs = instrs
+}
+
+func (iter *pcrProtectionProfileIterator) next() pcrProtectionProfileInstr {
+	if len(iter.instrs) == 0 {
+		panic("no more instructions")
+	}
+	if len(iter.instrs[0]) == 0 {
+		iter.instrs = iter.instrs[1:]
+		return &pcrProtectionProfileEndProfileInstr{}
 	}
 
-	for _, instr := range p.instrs {
-		var err error
-		values, err = instr.apply(tpm, values)
-		if err != nil {
-			return nil, err
+	instr := iter.instrs[0][0]
+	iter.instrs[0] = iter.instrs[0][1:]
+
+	switch i := instr.(type) {
+	case *pcrProtectionProfileAddProfileORInstr:
+		iter.descendInToProfiles(i.profiles...)
+	}
+
+	return instr
+}
+
+func (iter *pcrProtectionProfileIterator) hasMore() bool {
+	return len(iter.instrs) > 0
+}
+
+// traverseInstructions returns an iterator that performs a depth first traversal through the instructions in this profile.
+func (p *PCRProtectionProfile) traverseInstructions() *pcrProtectionProfileIterator {
+	i := &pcrProtectionProfileIterator{}
+	i.descendInToProfiles(p)
+	return i
+}
+
+// pcrProtectionProfileComputeContext records state used when computing PCR values for a PCRProtectionProfile
+type pcrProtectionProfileComputeContext struct {
+	parent *pcrProtectionProfileComputeContext
+	values pcrValuesList
+}
+
+// computePCRValues computes a list of different PCR value combinations from this PCRProtectionProfile.
+func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext) (pcrValuesList, error) {
+	// Create 2 contexts. The root context is not associated with any profile and exists just to collect PCR values from the root
+	// profile.
+	var rootContext pcrProtectionProfileComputeContext
+	contexts := []*pcrProtectionProfileComputeContext{{parent: &rootContext, values: pcrValuesList{make(tpm2.PCRValues)}}}
+
+	iter := p.traverseInstructions()
+	for iter.hasMore() {
+		switch i := iter.next().(type) {
+		case *pcrProtectionProfileAddPCRValueInstr:
+			contexts[0].values.setValue(i.alg, i.pcr, i.value)
+		case *pcrProtectionProfileAddPCRValueFromTPMInstr:
+			if tpm == nil {
+				return nil, fmt.Errorf("cannot read current value of PCR %d from bank %v: no TPM context", i.pcr, i.alg)
+			}
+			_, v, err := tpm.PCRRead(tpm2.PCRSelectionList{{Hash: i.alg, Select: []int{i.pcr}}})
+			if err != nil {
+				return nil, xerrors.Errorf("cannot read current value of PCR %d from bank %v: %w", i.pcr, i.alg, err)
+			}
+			contexts[0].values.setValue(i.alg, i.pcr, v[i.alg][i.pcr])
+		case *pcrProtectionProfileExtendPCRInstr:
+			contexts[0].values.extendValue(i.alg, i.pcr, i.value)
+		case *pcrProtectionProfileAddProfileORInstr:
+			// As this is a depth-first traversal, processing of this sequence is parked when a AddProfileOR instruction is encountered.
+			// The next instructions will be from each of the sub-branches, in turn. Create contexts for each of those, initialized with
+			// the PCR values computed up to this point.
+			var newContexts []*pcrProtectionProfileComputeContext
+			for _ = range i.profiles {
+				newContexts = append(newContexts, &pcrProtectionProfileComputeContext{parent: contexts[0], values: contexts[0].values.copy()})
+			}
+			// PCR values computed in each sub-branch are propagated back to us before processing of this sequence resumes, so remove the
+			// values computed so far.
+			contexts[0].values = nil
+			contexts = append(newContexts, contexts...)
+		case *pcrProtectionProfileEndProfileInstr:
+			// This is the end of this branch - propagate the PCR values computed back to the parent sequence for when processing of it resumes.
+			contexts[0].parent.values = append(contexts[0].parent.values, contexts[0].values...)
+			contexts = contexts[1:]
 		}
 	}
 
-	return values, nil
+	return rootContext.values, nil
 }
 
 // computePCRDigests computes a PCR selection and list of PCR digests from this PCRProtectionProfile. The returned list of PCR digests
 // is de-duplicated.
 func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
 	// Compute the sets of PCR values for all branches
-	values, err := p.computePCRValues(tpm, nil)
+	values, err := p.computePCRValues(tpm)
 	if err != nil {
 		return nil, nil, err
 	}
