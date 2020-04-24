@@ -638,7 +638,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 					},
 				},
 			},
-			err: "cannot compute secure boot policy digests: no bootable paths with current EFI signature database",
+			err: "cannot compute secure boot policy profile: no bootable paths with current EFI signature database",
 		},
 		{
 			// Test with an unsigned kernel
@@ -666,7 +666,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 					},
 				},
 			},
-			err: "cannot compute secure boot policy digests: cannot process OS load event for testdata/mock.efi: cannot compute load " +
+			err: "cannot compute secure boot policy profile: cannot process OS load event for testdata/mock.efi: cannot compute load "+
 				"verification event: no Authenticode signatures",
 		},
 		{
@@ -695,7 +695,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 					},
 				},
 			},
-			err: "cannot compute secure boot policy digests: the current boot was performed with validation disabled in Shim",
+			err: "cannot compute secure boot policy profile: the current boot was performed with validation disabled in Shim",
 		},
 		{
 			// Test with a UC20 style bootchain with normal and recovery systems, and the normal path booting via a chainloaded GRUB. GRUB
@@ -918,7 +918,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 					},
 				},
 			},
-			err: "cannot compute secure boot policy digests: cannot process OS load event for testdata/mock.efi.signed.1: cannot compute " +
+			err: "cannot compute secure boot policy profile: cannot process OS load event for testdata/mock.efi.signed.1: cannot compute " +
 				"load verification event: shim specified as event source without a shim executable appearing in preceding events",
 		},
 		{
@@ -1196,7 +1196,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 				},
 				SignatureDbUpdateKeystores: []string{"testdata/updates1"},
 			},
-			err: "cannot compute secure boot policy digests: no bootable paths with current EFI signature database",
+			err: "cannot compute secure boot policy profile: no bootable paths with current EFI signature database",
 		},
 		{
 			// Test with an initial PCRProtectionProfile to verify that it behaves correctly
