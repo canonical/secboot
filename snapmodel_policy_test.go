@@ -91,7 +91,10 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 	c.Assert(err, IsNil)
 	c.Check(pcrs.Equal(expectedPcrs), Equals, true)
 	c.Check(digests, DeepEquals, expectedDigests)
-	c.Logf("%s", profile.DumpValues(nil))
+	if c.Failed() {
+		c.Logf("Profile:\n%s", profile)
+		c.Logf("Values:\n%s", profile.DumpValues(nil))
+	}
 }
 
 func (s *snapModelProfileSuite) TestAddSnapModelProfile1(c *C) {

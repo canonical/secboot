@@ -146,7 +146,8 @@ func TestAddSystemdEFIStubProfile(t *testing.T) {
 			}
 			if !reflect.DeepEqual(digests, expectedDigests) {
 				t.Errorf("ComputePCRDigests returned unexpected values")
-				t.Logf("%s", profile.DumpValues(nil))
+				t.Logf("Profile:\n%s", profile)
+				t.Logf("Values:\n%s", profile.DumpValues(nil))
 			}
 		})
 	}

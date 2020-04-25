@@ -192,6 +192,62 @@ func (p *PCRProtectionProfile) traverseInstructions() *pcrProtectionProfileItera
 	return i
 }
 
+type pcrProtectionProfileStringifyBranchContext struct {
+	index int
+	total int
+}
+
+func (p *PCRProtectionProfile) String() string {
+	var b bytes.Buffer
+
+	contexts := []*pcrProtectionProfileStringifyBranchContext{{index: 0, total: 1}}
+	branchStart := false
+
+	iter := p.traverseInstructions()
+	for len(contexts) > 0 {
+		fmt.Fprintf(&b, "\n")
+		depth := len(contexts) - 1
+		if branchStart {
+			branchStart = false
+			fmt.Fprintf(&b, "%*sBranch %d {\n", depth*3, "", contexts[0].index)
+		}
+
+		switch i := iter.next().(type) {
+		case *pcrProtectionProfileAddPCRValueInstr:
+			fmt.Fprintf(&b, "%*s AddPCRValue(%v, %d, %x)", depth*3, "", i.alg, i.pcr, i.value)
+		case *pcrProtectionProfileAddPCRValueFromTPMInstr:
+			fmt.Fprintf(&b, "%*s AddPCRValueFromTPM(%v, %d)", depth*3, "", i.alg, i.pcr)
+		case *pcrProtectionProfileExtendPCRInstr:
+			fmt.Fprintf(&b, "%*s ExtendPCR(%v, %d, %x)", depth*3, "", i.alg, i.pcr, i.value)
+		case *pcrProtectionProfileAddProfileORInstr:
+			contexts = append([]*pcrProtectionProfileStringifyBranchContext{{index: 0, total: len(i.profiles)}}, contexts...)
+			fmt.Fprintf(&b, "%*s AddProfileOR(", depth*3, "")
+			branchStart = true
+		case *pcrProtectionProfileEndProfileInstr:
+			contexts[0].index++
+			if len(contexts) > 1 {
+				// This is the end of a sub-branch rather than the root profile.
+				fmt.Fprintf(&b, "%*s}", depth*3, "")
+			}
+			switch {
+			case contexts[0].index < contexts[0].total:
+				// There are sibling branches to print.
+				branchStart = true
+			case len(contexts) > 1:
+				// This is the end of a sub-branch rather than the root profile and there are no more sibling branches. Printing
+				// will continue with the parent branch.
+				fmt.Fprintf(&b, "\n%*s )", (depth-1)*3, "")
+				fallthrough
+			default:
+				// Return to the parent branch's context.
+				contexts = contexts[1:]
+			}
+		}
+	}
+
+	return b.String()
+}
+
 // pcrProtectionProfileComputeContext records state used when computing PCR values for a PCRProtectionProfile
 type pcrProtectionProfileComputeContext struct {
 	parent *pcrProtectionProfileComputeContext
