@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"debug/pe"
+	"encoding/asn1"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -81,6 +82,8 @@ var (
 
 	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
 	efivarsPath  = "/sys/firmware/efi/efivars"                          // Default mount point for efivarfs
+
+	oidSha256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 )
 
 // EFIImage corresponds to a binary that is loaded, verified and executed before ExitBootServices.
@@ -174,17 +177,17 @@ func (c *winCertificateAuthenticode) wCertificateType() uint16 {
 
 // decodeWinCertificate decodes the WIN_CERTIFICATE implementation from r. Currently supported types are WIN_CERT_TYPE_PKCS_SIGNED_DATA
 // and WIN_CERT_TYPE_EFI_GUID.
-func decodeWinCertificate(r io.Reader) (winCertificate, error) {
+func decodeWinCertificate(r io.Reader) (winCertificate, int, error) {
 	var hdr struct {
 		Length          uint32
 		Revision        uint16
 		CertificateType uint16
 	}
 	if err := binary.Read(r, binary.LittleEndian, &hdr); err != nil {
-		return nil, xerrors.Errorf("cannot read WIN_CERTIFICATE header fields: %w", err)
+		return nil, 0, xerrors.Errorf("cannot read WIN_CERTIFICATE header fields: %w", err)
 	}
 	if hdr.Revision != 0x200 {
-		return nil, fmt.Errorf("invalid wRevision value (0x%04x)", hdr.Revision)
+		return nil, 0, fmt.Errorf("invalid wRevision value (0x%04x)", hdr.Revision)
 	}
 
 	switch hdr.CertificateType {
@@ -192,21 +195,21 @@ func decodeWinCertificate(r io.Reader) (winCertificate, error) {
 		out := &winCertificateAuthenticode{}
 		out.Data = make([]byte, int(hdr.Length)-binary.Size(hdr))
 		if _, err := io.ReadFull(r, out.Data); err != nil {
-			return nil, xerrors.Errorf("cannot read WIN_CERTIFICATE.bCertificate: %w", err)
+			return nil, 0, xerrors.Errorf("cannot read WIN_CERTIFICATE.bCertificate: %w", err)
 		}
-		return out, nil
+		return out, int(hdr.Length), nil
 	case winCertTypeEfiGuid:
 		out := &winCertificateUefiGuid{}
 		if err := binary.Read(r, binary.LittleEndian, &out.CertType); err != nil {
-			return nil, xerrors.Errorf("cannot read WIN_CERTIFICATE_UEFI_GUID.CertType: %w", err)
+			return nil, 0, xerrors.Errorf("cannot read WIN_CERTIFICATE_UEFI_GUID.CertType: %w", err)
 		}
 		out.Data = make([]byte, int(hdr.Length)-binary.Size(hdr)-binary.Size(out.CertType))
 		if _, err := io.ReadFull(r, out.Data); err != nil {
-			return nil, xerrors.Errorf("cannot read WIN_CERTIFICATE_UEFI_GUID.CertData: %w", err)
+			return nil, 0, xerrors.Errorf("cannot read WIN_CERTIFICATE_UEFI_GUID.CertData: %w", err)
 		}
-		return out, nil
+		return out, int(hdr.Length), nil
 	default:
-		return nil, fmt.Errorf("cannot decode unrecognized type (0x%04x)", hdr.CertificateType)
+		return nil, 0, fmt.Errorf("cannot decode unrecognized type (0x%04x)", hdr.CertificateType)
 	}
 }
 
@@ -386,7 +389,7 @@ func computeDbUpdate(orig io.ReaderAt, update io.ReadSeeker) ([]byte, error) {
 	update.Seek(16, io.SeekCurrent)
 
 	var cert *winCertificateUefiGuid
-	if c, err := decodeWinCertificate(update); err != nil {
+	if c, _, err := decodeWinCertificate(update); err != nil {
 		return nil, xerrors.Errorf("cannot decode EFI_VARIABLE_AUTHENTICATION_2.AuthInfo field from update: %w", err)
 	} else if c.wCertificateType() != winCertTypeEfiGuid {
 		return nil, fmt.Errorf("update has invalid EFI_VARIABLE_AUTHENTICATION_2.AuthInfo.Hdr.wCertificateType (0x%04x)", c.wCertificateType())
@@ -792,13 +795,19 @@ type secureBootAuthority struct {
 	source    *secureBootDb
 }
 
-// computeAndExtendVerificationMeasurement computes a verification measurement for the EFI image obtained from r and extends that to
-// the current value of pcrValue for the specified event paths. If the computed verification measurement has already been measured
+type authenticodeSignerAndIntermediates struct {
+	signer        *x509.Certificate
+	intermediates *x509.CertPool
+}
+
+// computeAndExtendVerificationMeasurement computes a measurement for the the authentication of the EFI image obtained from r and
+// extends that to the current value of pcrValue for the specified event paths. If the computed measurement has already been measured
 // from the specified source on an event path, then it will not be measured again.
 //
-// In order to compute the measurement for each event path, the source of the certificate that will be used to verify the image
-// needs to be determined. If the image is not signed with an authority that chains to a valid signature database for a specific path,
-// then that path will be marked as unbootable and its computed PCR digest shall be omitted from the final results.
+// In order to compute the measurement for each event path, the CA certificate that will be used to authenticate the image and the
+// source of that certificate needs to be determined. If the image is not signed with an authority that is trusted by a CA
+// certificate for a specific path then that path will be marked as unbootable and its computed PCR digest shall be omitted from
+// the final results.
 func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*secureBootPolicyGenPath, r io.ReaderAt, source EFIImageLoadEventSource) error {
 	pefile, err := pe.NewFile(r)
 	if err != nil {
@@ -836,31 +845,61 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 	// Create a reader for the security directory entry, which points to a WIN_CERTIFICATE struct
 	secReader := io.NewSectionReader(r, int64(dd.VirtualAddress), int64(dd.Size))
 
-	var cert *winCertificateAuthenticode
-	if c, err := decodeWinCertificate(secReader); err != nil {
-		return xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry of PE binary: %w", err)
-	} else if c.wCertificateType() != winCertTypePKCSSignedData {
-		return fmt.Errorf("unexpected value for WIN_CERTIFICATE.wCertificateType (0x%04x): not an Authenticode signature", c.wCertificateType())
-	} else {
-		cert = c.(*winCertificateAuthenticode)
+	// Binaries can have multiple signers - this is achieved using multiple single-signed Authenticode signatures - see section 32.5.3.3
+	// ("Secure Boot and Driver Signing - UEFI Image Validation - Signature Database Update - Authorization Process") of the UEFI
+	// Specification, version 2.8.
+	var sigs []*authenticodeSignerAndIntermediates
+	read := 0
+	for {
+		// Signatures in this section are 8-byte aligned - see the PE spec:
+		// https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-attribute-certificate-table-image-only
+		alignSize := (8 - (read & 7)) % 8
+		read += alignSize
+		secReader.Seek(int64(alignSize), io.SeekCurrent)
+
+		if int64(read) >= secReader.Size() {
+			break
+		}
+
+		c, n, err := decodeWinCertificate(secReader)
+		switch {
+		case err != nil:
+			return xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry of PE binary: %w", err)
+		case c.wCertificateType() != winCertTypePKCSSignedData:
+			return fmt.Errorf("unexpected value for WIN_CERTIFICATE.wCertificateType (0x%04x): not an Authenticode signature", c.wCertificateType())
+		}
+
+		read += n
+
+		// Decode the signature
+		p7, err := pkcs7.Parse(c.(*winCertificateAuthenticode).Data)
+		if err != nil {
+			return xerrors.Errorf("cannot decode signature: %w", err)
+		}
+
+		// Grab the certificate of the signer
+		signer := p7.GetOnlySigner()
+		if signer == nil {
+			return errors.New("cannot obtain signer certificate from signature")
+		}
+
+		// Reject any signature with a digest algorithm other than SHA256, as that's the only algorithm used for binaries we're
+		// expected to support, and therefore required by the UEFI implementation.
+		if !p7.Signers[0].DigestAlgorithm.Algorithm.Equal(oidSha256) {
+			return errors.New("signature has unexpected digest algorithm")
+		}
+
+		// Grab all of the certificates in the signature and populate an intermediates pool
+		intermediates := x509.NewCertPool()
+		for _, c := range p7.Certificates {
+			intermediates.AddCert(c)
+		}
+
+		sigs = append(sigs, &authenticodeSignerAndIntermediates{signer: p7.GetOnlySigner(), intermediates: intermediates})
 	}
 
-	// Decode the signature
-	p7, err := pkcs7.Parse(cert.Data)
-	if err != nil {
-		return xerrors.Errorf("cannot decode signature: %w", err)
-	}
-
-	// Grab the certificate of the signer
-	signer := p7.GetOnlySigner()
-	if signer == nil {
-		return errors.New("cannot obtain signer certificate from signature")
-	}
-
-	// Grab all of the certificates in the signature and populate an intermediates pool
-	intermediates := x509.NewCertPool()
-	for _, c := range p7.Certificates {
-		intermediates.AddCert(c)
+	if len(sigs) == 0 {
+		return errors.New("no Authenticode signatures")
 	}
 
 	for _, p := range paths {
@@ -878,32 +917,46 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 
 		var authority *secureBootAuthority
 
-		for _, db := range dbs {
-			if db == nil {
-				continue
-			}
-
-			for _, s := range db.signatures {
-				// Ignore signatures that aren't X509 certificates
-				if s.signatureType != *efiCertX509Guid {
+		// To determine what CA certificate will be used to authenticate this image, iterate over the signatures in the order in which they
+		// appear in the binary in this outer loop. Iterating over the CA certificates occurs in an inner loop. This behaviour isn't defined
+		// in the UEFI specification but it matches EDK2 and the firmware on the Intel NUC. If an implementation iterates over the CA
+		// certificates in an outer loop and the signatures in an inner loop, then this may produce the wrong result.
+		for _, sig := range sigs {
+			for _, db := range dbs {
+				if db == nil {
 					continue
 				}
 
-				c, err := x509.ParseCertificate(s.data)
-				if err != nil {
-					continue
+				for _, caSig := range db.signatures {
+					// Ignore signatures that aren't X509 certificates
+					if caSig.signatureType != *efiCertX509Guid {
+						continue
+					}
+
+					ca, err := x509.ParseCertificate(caSig.data)
+					if err != nil {
+						continue
+					}
+
+					roots := x509.NewCertPool()
+					roots.AddCert(ca)
+
+					opts := x509.VerifyOptions{
+						Intermediates: sig.intermediates,
+						Roots:         roots,
+						KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}
+					if _, err := sig.signer.Verify(opts); err == nil {
+						// This signer certificate is trusted by this authority
+						authority = &secureBootAuthority{signature: caSig, source: db}
+						break
+					}
+
+					if authority != nil {
+						break
+					}
 				}
 
-				roots := x509.NewCertPool()
-				roots.AddCert(c)
-
-				opts := x509.VerifyOptions{
-					Intermediates: intermediates,
-					Roots:         roots,
-					KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}
-				if _, err := signer.Verify(opts); err == nil {
-					// The signer certificate is trusted by this authority
-					authority = &secureBootAuthority{s, db}
+				if authority != nil {
 					break
 				}
 			}
@@ -1233,12 +1286,24 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 }
 
 // AddEFISecureBootPolicyProfile adds the UEFI secure boot policy profile to the provided PCR protection profile, in order to generate
-// a PCR policy that restricts access to a key to a set of UEFI secure boot policies measured to PCR 7. The secure boot policy
+// a PCR policy that restricts access to a sealed key to a set of UEFI secure boot policies measured to PCR 7. The secure boot policy
 // information that is measured to PCR 7 is defined in section 2.3.4.8 of the "TCG PC Client Platform Firmware Profile Specification".
 //
-// The secure boot policy measurements include events that correspond to the verification of loaded EFI images, and those events
-// record the certificate of the authorities used to verify images. The params argument allows the generated PCR policy to be
-// restricted to a specific set of chains of trust by specifying EFI image load sequences via the LoadSequences field.
+// This function can only be called if the current boot was performed with secure boot enabled. An error will be returned if the
+// current boot was performed with secure boot disabled. It can only generate a PCR profile that will work when secure boot is
+// enabled.
+//
+// The secure boot policy measurements include events that correspond to the authentication of loaded EFI images, and those events
+// record the certificate of the authorities used to authenticate these images. The params argument allows the generated PCR policy
+// to be restricted to a specific set of chains of trust by specifying EFI image load sequences via the LoadSequences field. Each of
+// the EFIImage instances reachable from the LoadSequences field of params must correspond to an EFI image with one or more
+// Authenticode signatures. These signatures are used to determine the CA certificate that will be used to authenticate them in order
+// to compute authentication meausurement events. The digest algorithm of the Authenticode signatures must be SHA256. If there are no
+// signatures, or the binary's certificate table contains non-Authenticode entries, or contains any Authenticode signatures with a
+// digest algorithm other than SHA256, then an error will be returned. Note that this function does not ensure that any of the
+// signatures are correct - it only determines if there is a chain of trust beween the signing certificate and a CA certificate in
+// order to determine which certificate will be used for authentication, and what the source of that certificate is (for UEFI images
+// that are loaded by shim).
 //
 // The secure boot policy measurements include the secure boot configuration, which includes the contents of the UEFI signature
 // databases. In order to support atomic updates of these databases with the sbkeysync tool, it is possible to generate a PCR policy
@@ -1246,6 +1311,29 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 // the SignatureDbUpdateKeystores field of the params argument. This function assumes that sbkeysync is executed with the
 // "--no-default-keystores" option. When there are pending updates in the specified directories, this function will generate a PCR
 // policy that is compatible with the current database contents and the database contents computed for each individual update.
+//
+// If none of the sequences in the LoadSequences field of params can be authenticated by the current authorized signature database
+// contents, then an error will be returned.
+//
+// This function does not support computing measurements for images that are authenticated by an image digest rather than an
+// Authenticode signature. If an image has a signature where the signer has a chain of trust to a CA certificate in the authorized
+// signature database (or shim's vendor certificate) but that image is authenticated because an image digest is present in the
+// authorized signature database instead, then this function will generate a PCR profile that is incorrect.
+//
+// For images with multiple Authenticode signatures, this function assumes that the device's firmware will iterate over the signatures
+// in the order in which they appear in the binary's certificate table in an outer loop during image authentication (ie, for each
+// signature, attempt to authenticate the binary using one of the CA certificates). If a device's firmware iterates over the
+// authorized signature database in an outer loop instead (ie, for each CA certificate, attempt to authenticate the binary using one
+// of its signatures), then this function may generate a PCR profile that is incorrect for binaries that have multiple signatures
+// where both signers have a chain of trust to a different CA certificate but the signatures appear in different order to which
+// their CA certificates are enrolled.
+//
+// This function does not consider the contents of the forbidden signature database. This is most relevant for images with multiple
+// signatures. If an image has more than one signature where each of the signing certificates have chains of trust to different CA
+// certificates, but the first signature is not used to authenticate the image because one of the certificates in its chain is
+// blacklisted, then this function will generate a PCR profile that is incorrect.
+//
+// This function does not support computing measurements for images that are authenticated by shim using a machine owner key (MOK).
 //
 // For the most common case where there are no signature database updates pending in the specified keystore directories and each image
 // load event sequence corresponds to loads of images that are all verified with the same chain of trust, this is a complicated way of
