@@ -787,6 +787,11 @@ func (g *secureBootPolicyGen) computeAndExtendVariableMeasurement(path *secureBo
 	return nil
 }
 
+type secureBootAuthority struct {
+	signature *efiSignatureData
+	source    *secureBootDb
+}
+
 // computeAndExtendVerificationMeasurement computes a verification measurement for the EFI image obtained from r and extends that to
 // the current value of pcrValue for the specified event paths. If the computed verification measurement has already been measured
 // from the specified source on an event path, then it will not be measured again.
@@ -846,10 +851,16 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		return xerrors.Errorf("cannot decode signature: %w", err)
 	}
 
-	// Grab the certificate for the signing key
+	// Grab the certificate of the signer
 	signer := p7.GetOnlySigner()
 	if signer == nil {
 		return errors.New("cannot obtain signer certificate from signature")
+	}
+
+	// Grab all of the certificates in the signature and populate an intermediates pool
+	intermediates := x509.NewCertPool()
+	for _, c := range p7.Certificates {
+		intermediates.AddCert(c)
 	}
 
 	for _, p := range paths {
@@ -865,9 +876,8 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 			dbs = append(dbs, p.dbSet.mokDb, p.dbSet.shimDb)
 		}
 
-		var root *efiSignatureData
-		var rootDb *secureBootDb
-	Outer:
+		var authority *secureBootAuthority
+
 		for _, db := range dbs {
 			if db == nil {
 				continue
@@ -879,28 +889,31 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 					continue
 				}
 
-				if bytes.Equal(s.data, signer.Raw) {
-					// The signing certificate is actually the root in the DB
-					root = s
-					rootDb = db
-					break Outer
-				}
-
 				c, err := x509.ParseCertificate(s.data)
 				if err != nil {
 					continue
 				}
 
-				if err := signer.CheckSignatureFrom(c); err == nil {
-					// The signing certificate was issued by this root
-					root = s
-					rootDb = db
-					break Outer
+				roots := x509.NewCertPool()
+				roots.AddCert(c)
+
+				opts := x509.VerifyOptions{
+					Intermediates: intermediates,
+					Roots:         roots,
+					KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}
+				if _, err := signer.Verify(opts); err == nil {
+					// The signer certificate is trusted by this authority
+					authority = &secureBootAuthority{s, db}
+					break
 				}
+			}
+
+			if authority != nil {
+				break
 			}
 		}
 
-		if root == nil {
+		if authority == nil {
 			p.unbootable = true
 			continue
 		}
@@ -911,18 +924,18 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		case Firmware:
 			// Firmware measures the entire EFI_SIGNATURE_DATA, including the SignatureOwner
 			varData = new(bytes.Buffer)
-			if err := root.encode(varData); err != nil {
+			if err := authority.signature.encode(varData); err != nil {
 				return xerrors.Errorf("cannot encode EFI_SIGNATURE_DATA for authority: %w", err)
 			}
 		case Shim:
 			// Shim measures the certificate data, rather than the entire EFI_SIGNATURE_DATA
-			varData = bytes.NewBuffer(root.data)
+			varData = bytes.NewBuffer(authority.signature.data)
 		}
 
 		// Create event data, compute digest and perform extension for verification of this executable
 		eventData := tcglog.EFIVariableEventData{
-			VariableName: rootDb.variableName,
-			UnicodeName:  rootDb.unicodeName,
+			VariableName: authority.source.variableName,
+			UnicodeName:  authority.source.unicodeName,
 			VariableData: varData.Bytes()}
 		h := g.PCRAlgorithm.NewHash()
 		if err := eventData.EncodeMeasuredBytes(h); err != nil {
