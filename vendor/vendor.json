@@ -3,10 +3,10 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "FM+dp3Hv1n+R9b/gqhtjSq6W4T8=",
+			"checksumSHA1": "ePxuuPL3SO9H2fEjFsmPB5qtmOM=",
 			"path": "github.com/canonical/go-tpm2",
-			"revision": "16307201a54dc51583440f9416cfa836bcf0b3fc",
-			"revisionTime": "2020-04-16T00:17:14Z"
+			"revision": "2bcab904452b67bb81f346b4fa65ac0d1cfcadbd",
+			"revisionTime": "2020-04-29T23:11:47Z"
 		},
 		{
 			"checksumSHA1": "bT/rC7K8St3lNRXf/XJGpB4wNJU=",
@@ -217,6 +217,18 @@
 			"revisionTime": "2020-01-28T12:03:23Z"
 		},
 		{
+			"checksumSHA1": "FwW3Vv4jW0Nv7V2SZC7x/Huj5M4=",
+			"path": "golang.org/x/crypto/argon2",
+			"revision": "4b2356b1ed79e6be3deca3737a3db3d132d2847a",
+			"revisionTime": "2020-04-23T13:34:55Z"
+		},
+		{
+			"checksumSHA1": "jBA6C2r4EBCfIA8B8C71Lr3MMEk=",
+			"path": "golang.org/x/crypto/blake2b",
+			"revision": "4b2356b1ed79e6be3deca3737a3db3d132d2847a",
+			"revisionTime": "2020-04-23T13:34:55Z"
+		},
+		{
 			"checksumSHA1": "zJybXQZcPAht+soLp/ozc9q5teE=",
 			"path": "golang.org/x/crypto/cast5",
 			"revision": "0848c9571904fcbcb24543358ca8b5a7dbfde875",
@@ -305,6 +317,12 @@
 			"path": "gopkg.in/yaml.v2",
 			"revision": "53403b58ad1b561927d19068c655246f2db79d48",
 			"revisionTime": "2020-01-21T17:19:40Z"
+		},
+		{
+			"checksumSHA1": "tZ9GNzrjTZEPDhoJEkouGPKRmZk=",
+			"path": "maze.io/x/crypto/afis",
+			"revision": "9b94c9afe06676a7da39a608a48ed4e31f5d125f",
+			"revisionTime": "2019-01-31T09:06:03Z"
 		}
 	],
 	"rootPath": "github.com/snapcore/secboot"

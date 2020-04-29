@@ -20,15 +20,150 @@
 package secboot
 
 import (
+	"crypto/aes"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"os"
+	"runtime"
+	"time"
 
 	"github.com/canonical/go-tpm2"
 
+	"golang.org/x/crypto/argon2"
+	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
 )
+
+const (
+	minArgon2TimeCost   = 4
+	minArgon2MemoryCost = 32 * 1024
+)
+
+type pinData struct {
+	EncryptedIK    *afSplitData
+	IKIV           []byte
+	ArgonVersion   byte
+	Salt           []byte
+	Time           uint32
+	Memory         uint32
+	Threads        uint8
+	DerivedKeySize uint32
+}
+
+func timeArgon2Execution(password, salt []byte, timeCost, memoryCost uint32, threads uint8, keyLen uint32, iterations, targetMs uint) uint {
+	var minMs uint
+
+	for i := uint(0); i < iterations; i++ {
+		fmt.Printf("   timing argon2 execution (%d), timeCost=%d, memoryCost=%d\n", i, timeCost, memoryCost)
+		start := time.Now()
+		_ = argon2.Key(password, salt, timeCost, memoryCost, threads, keyLen)
+		end := time.Now()
+		ms := uint(end.Sub(start) / time.Millisecond)
+		fmt.Printf("   ...%dms\n", ms)
+
+		runtime.GC()
+
+		if i == 0 {
+			minMs = ms
+		}
+		if ms < minMs {
+			minMs = ms
+		}
+		if minMs < targetMs {
+			break
+		}
+	}
+
+	return minMs
+}
+
+func computeNextArgon2Params(maxMemory uint32, targetMs, ms uint, timeCost, memoryCost uint32) (newTimeCost uint32, newMemoryCost uint32, done bool) {
+	newTimeCost = timeCost
+	newMemoryCost = memoryCost
+
+	switch {
+	case ms < targetMs:
+		switch {
+		case memoryCost < maxMemory:
+			newMemoryCost = uint32((uint(memoryCost) * targetMs) / ms)
+			if newMemoryCost > maxMemory {
+				newMemoryCost = maxMemory
+				newTimeCost = uint32((uint(timeCost*memoryCost) * targetMs) / (ms * uint(maxMemory)))
+			}
+		default:
+			newTimeCost = uint32((uint(timeCost) * targetMs) / ms)
+		}
+	case ms > targetMs:
+		switch {
+		case timeCost > minArgon2TimeCost:
+			newTimeCost = uint32((uint(timeCost) * targetMs) / ms)
+			if newTimeCost < minArgon2TimeCost {
+				newTimeCost = minArgon2TimeCost
+				newMemoryCost = uint32((uint(memoryCost*timeCost) * targetMs) / (ms * minArgon2TimeCost))
+				if newMemoryCost < minArgon2MemoryCost {
+					newMemoryCost = minArgon2MemoryCost
+					done = true
+				}
+			}
+		default:
+			newMemoryCost = uint32((uint(memoryCost) * targetMs) / ms)
+			if newMemoryCost < minArgon2MemoryCost {
+				newMemoryCost = minArgon2MemoryCost
+				done = true
+			}
+		}
+	}
+
+	if timeCost == newTimeCost && memoryCost == newMemoryCost {
+		done = true
+	}
+	return
+}
+
+func benchmarkArgon2(password, salt []byte, threads uint8, keyLen, maxMemoryCost uint32, targetMs uint) (timeCost uint32, memoryCost uint32) {
+	fmt.Printf("Benchmarking argon2, threads=%d, maxMemoryCost=%d, targetMs=%d\n", threads, maxMemoryCost, targetMs)
+	const (
+		initialTargetMs = 250
+		tolerance       = 0.05
+	)
+
+	timeCost = minArgon2TimeCost
+	memoryCost = minArgon2MemoryCost
+	var ms uint
+
+	for i := 0; ms < initialTargetMs; i++ {
+		if i > 0 {
+			if ms < 25 {
+				ms = 25
+			}
+			var done bool
+			timeCost, memoryCost, done = computeNextArgon2Params(maxMemoryCost, initialTargetMs, ms, timeCost, memoryCost)
+			if done {
+				break
+			}
+		}
+
+		ms = timeArgon2Execution(password, salt, timeCost, memoryCost, threads, keyLen, 3, initialTargetMs)
+	}
+
+	minTargetMs := targetMs - uint(float64(targetMs)*tolerance)
+	maxTargetMs := targetMs + uint(float64(targetMs)*tolerance)
+	for ms < minTargetMs || ms > maxTargetMs {
+		var done bool
+		timeCost, memoryCost, done = computeNextArgon2Params(maxMemoryCost, targetMs, ms, timeCost, memoryCost)
+		if done {
+			break
+		}
+
+		ms = timeArgon2Execution(password, salt, timeCost, memoryCost, threads, keyLen, 1, minTargetMs)
+	}
+
+	fmt.Printf("...done, timeCost=%d, memoryCost=%d, ms=%d\n", timeCost, memoryCost, ms)
+	return
+}
 
 // computePinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
 // actions on a NV index created with createPinNVIndex. These are:
@@ -218,17 +353,17 @@ func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tp
 	return public, authPolicies, nil
 }
 
-// performPinChange changes the authorization value of the PIN NV index associated with the public argument. This requires the
+// performTPMPinChange changes the authorization value of the PIN NV index associated with the public argument. This requires the
 // authorization policy digests initially returned from createPinNVIndex in order to execute the policy session required to change
 // the authorization value. The current authorization value must be provided via the oldAuth argument.
 //
 // On success, the authorization value of the PIN NV index will be changed to newAuth.
-func performPinChange(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies tpm2.DigestList, oldAuth, newAuth string, hmacSession tpm2.SessionContext) error {
+func performTPMPinChange(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies tpm2.DigestList, oldAuth, newAuth []byte, hmacSession tpm2.SessionContext) error {
 	index, err := tpm2.CreateNVIndexResourceContextFromPublic(public)
 	if err != nil {
 		return xerrors.Errorf("cannot create resource context for NV index: %w", err)
 	}
-	index.SetAuthValue([]byte(oldAuth))
+	index.SetAuthValue(oldAuth)
 
 	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, public.NameAlg)
 	if err != nil {
@@ -246,11 +381,98 @@ func performPinChange(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies 
 		return xerrors.Errorf("cannot execute assertion: %w", err)
 	}
 
-	if err := tpm.NVChangeAuth(index, tpm2.Auth(newAuth), policySession, hmacSession.IncludeAttrs(tpm2.AttrCommandEncrypt)); err != nil {
+	if err := tpm.NVChangeAuth(index, newAuth, policySession, hmacSession.IncludeAttrs(tpm2.AttrCommandEncrypt)); err != nil {
 		return xerrors.Errorf("cannot change authorization value for NV index: %w", err)
 	}
 
 	return nil
+}
+
+func (d *pinData) decryptIKAndObtainTPMAuthValue(pin string) (*afSplitData, []byte, error) {
+	if d.Time == 0 || d.Threads == 0 || d.DerivedKeySize == 0 {
+		return nil, nil, errors.New("invalid argon2 parameters")
+	}
+	derivedKey := argon2.Key([]byte(pin), d.Salt, d.Time, d.Memory, d.Threads, d.DerivedKeySize*2)
+	data, err := d.EncryptedIK.decrypt(derivedKey[0:d.DerivedKeySize], d.IKIV)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return data, derivedKey[d.DerivedKeySize:], nil
+}
+
+func (d *pinData) validate() error {
+	if d.Time == 0 || d.Threads == 0 || d.DerivedKeySize == 0 {
+		return errors.New("invalid argon2 parameters")
+	}
+	if len(d.IKIV) != aes.BlockSize {
+		return errors.New("invalid IV length")
+	}
+	if len(d.EncryptedIK.Data)%aes.BlockSize != 0 {
+		return errors.New("invalid intermediate key length")
+	}
+	if err := d.EncryptedIK.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func encryptIKAndComputeTPMAuthValue(params *PINParams, ik *afSplitData, auth string) (*pinData, []byte, error) {
+	const derivedKeySize uint32 = 32
+
+	var sysInfo unix.Sysinfo_t
+	if err := unix.Sysinfo(&sysInfo); err != nil {
+		return nil, nil, xerrors.Errorf("cannot determine available memory: %w", err)
+	}
+	maxMemoryCost := uint32(sysInfo.Totalram) / 2
+	if params.MaxMemoryCost < maxMemoryCost {
+		maxMemoryCost = params.MaxMemoryCost
+	}
+
+	threads := uint8(runtime.NumCPU())
+	if threads > 4 {
+		threads = 4
+	}
+
+	timeCost, memoryCost := benchmarkArgon2([]byte("foo"), []byte("0123456789abcdefghijklmnopqrstuv"), threads, derivedKeySize*2,
+		maxMemoryCost, uint(params.TimeCost/1e6))
+
+	var iv [16]byte
+	if _, err := rand.Read(iv[:]); err != nil {
+		return nil, nil, xerrors.Errorf("cannot create new IV: %w", err)
+	}
+
+	var salt [32]byte
+	if _, err := rand.Read(salt[:]); err != nil {
+		return nil, nil, xerrors.Errorf("cannot create new salt: %w", err)
+	}
+
+	derivedKey := argon2.Key([]byte(auth), salt[:], timeCost, memoryCost, threads, derivedKeySize*2)
+	runtime.GC()
+
+	ikEnc, err := ik.encrypt(derivedKey[0:derivedKeySize], iv[:])
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot encrypt intermediate key: %w", err)
+	}
+
+	return &pinData{
+		EncryptedIK:    ikEnc,
+		IKIV:           iv[:],
+		ArgonVersion:   argon2.Version,
+		Salt:           salt[:],
+		Time:           timeCost,
+		Memory:         memoryCost,
+		Threads:        threads,
+		DerivedKeySize: derivedKeySize}, derivedKey[derivedKeySize:], nil
+}
+
+// PINParams provides some additional parameters to ChangePIN.
+type PINParams struct {
+	// MaxMemoryCost is used to specify the maximum amount of memory in KiB to use when performing key derivation with the PIN.
+	MaxMemoryCost uint32
+
+	// TimeCost is used to specify the target time when computing the key derivation parameters for the PIN.
+	TimeCost time.Duration
 }
 
 // ChangePIN changes the PIN for the key data file at the specified path. The existing PIN must be supplied via the oldPIN argument.
@@ -263,7 +485,7 @@ func performPinChange(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies 
 // If the supplied key data file fails validation checks, an InvalidKeyFileError error will be returned.
 //
 // If oldPIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be incremented.
-func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
+func ChangePIN(tpm *TPMConnection, path string, params *PINParams, oldPIN, newPIN string) error {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
@@ -291,24 +513,45 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
 
-	// Change the PIN
-	if err := performPinChange(tpm.TPMContext, pinIndexPublic, data.StaticPolicyData.PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
-		if isAuthFailError(err, tpm2.CommandNVChangeAuth, 1) {
-			return ErrPINFail
+	var ik *afSplitData
+	var oldTpmAuthValue []byte
+	if data.AuthModeHint == AuthModeNone {
+		ik = data.UnprotectedIK
+	} else {
+		var err error
+		ik, oldTpmAuthValue, err = data.PINData.decryptIKAndObtainTPMAuthValue(oldPIN)
+		if err != nil {
+			return err
 		}
-		return err
 	}
 
-	// Update the metadata and write a new key data file
-	origAuthModeHint := data.AuthModeHint
 	if newPIN == "" {
 		data.AuthModeHint = AuthModeNone
 	} else {
 		data.AuthModeHint = AuthModePIN
 	}
 
-	if origAuthModeHint == data.AuthModeHint {
-		return nil
+	var newTpmAuthValue []byte
+	if data.AuthModeHint == AuthModeNone {
+		data.UnprotectedIK = ik
+		data.PINData = nil
+	} else {
+		data.UnprotectedIK = nil
+		pd, authValue, err := encryptIKAndComputeTPMAuthValue(params, ik, newPIN)
+		if err != nil {
+			return xerrors.Errorf("cannot encrypt intermediate key with new PIN: %w", err)
+		}
+		newTpmAuthValue = authValue
+		data.PINData = pd
+	}
+
+	// Change the PIN on the TPM
+	if err := performTPMPinChange(tpm.TPMContext, pinIndexPublic, data.StaticPolicyData.PinIndexAuthPolicies, oldTpmAuthValue,
+		newTpmAuthValue, tpm.HmacSession()); err != nil {
+		if isAuthFailError(err, tpm2.CommandNVChangeAuth, 1) {
+			return ErrPINFail
+		}
+		return err
 	}
 
 	if err := data.writeToFileAtomic(path); err != nil {

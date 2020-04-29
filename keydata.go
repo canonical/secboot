@@ -22,10 +22,14 @@ package secboot
 import (
 	"bytes"
 	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"math/big"
 	"os"
@@ -35,6 +39,8 @@ import (
 	"github.com/snapcore/snapd/osutil/sys"
 
 	"golang.org/x/xerrors"
+
+	"maze.io/x/crypto/afis"
 )
 
 const (
@@ -61,14 +67,134 @@ type keyPolicyUpdateData struct {
 	CreationTicket *tpm2.TkCreation
 }
 
+type tpmObject struct {
+	Private tpm2.Private
+	Public  *tpm2.Public
+}
+
+type afSplitData struct {
+	Stripes uint32
+	HashAlg tpm2.HashAlgorithmId
+	Data    []byte
+}
+
+func (d *afSplitData) Marshal(w io.Writer) (nbytes int, err error) {
+	n, err := tpm2.MarshalToWriter(w, d.Stripes, d.HashAlg)
+	nbytes += n
+	if err != nil {
+		return nbytes, err
+	}
+
+	if err := binary.Write(w, binary.BigEndian, uint32(len(d.Data))); err != nil {
+		return nbytes, err
+	}
+	nbytes += binary.Size(uint32(0))
+
+	n, err = w.Write(d.Data)
+	nbytes += n
+	if err != nil {
+		return nbytes, err
+	}
+	return
+}
+
+func (d *afSplitData) Unmarshal(r io.Reader) (nbytes int, err error) {
+	n, err := tpm2.UnmarshalFromReader(r, &d.Stripes, &d.HashAlg)
+	nbytes += n
+	if err != nil {
+		return nbytes, err
+	}
+
+	var s uint32
+	if err := binary.Read(r, binary.BigEndian, &s); err != nil {
+		return nbytes, err
+	}
+	nbytes += binary.Size(s)
+
+	d.Data = make([]byte, s)
+	n, err = r.Read(d.Data)
+	nbytes += n
+	if err != nil {
+		return nbytes, err
+	}
+	return
+}
+
+func (d *afSplitData) merge() ([]byte, error) {
+	if d.Stripes < 1 {
+		return nil, errors.New("invalid number of stripes")
+	}
+	if !d.HashAlg.Supported() {
+		return nil, errors.New("unsupported digest algorithm")
+	}
+	return afis.MergeHash(d.Data, int(d.Stripes), func() hash.Hash { return d.HashAlg.NewHash() })
+}
+
+func (d *afSplitData) decrypt(key, iv []byte) (out *afSplitData, err error) {
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create block cipher: %w", err)
+	}
+	if len(iv) != c.BlockSize() {
+		return nil, errors.New("invalid IV length")
+	}
+	if len(d.Data)%c.BlockSize() != 0 {
+		return nil, errors.New("invalid data length")
+	}
+	b := cipher.NewCBCDecrypter(c, iv)
+
+	out = &afSplitData{Stripes: d.Stripes, HashAlg: d.HashAlg, Data: make([]byte, len(d.Data))}
+	b.CryptBlocks(out.Data, d.Data)
+	return
+}
+
+func (d *afSplitData) encrypt(key, iv []byte) (out *afSplitData, err error) {
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create block cipher: %w", err)
+	}
+	b := cipher.NewCBCEncrypter(c, iv)
+
+	out = &afSplitData{Stripes: d.Stripes, HashAlg: d.HashAlg, Data: make([]byte, len(d.Data))}
+	b.CryptBlocks(out.Data, d.Data)
+	return
+}
+
+func (d *afSplitData) validate() error {
+	if d.Stripes < 1 {
+		return errors.New("invalid number of stripes")
+	}
+	if !d.HashAlg.Supported() {
+		return errors.New("unsupported digest algorithm")
+	}
+	if len(d.Data)%int(d.Stripes) != 0 {
+		return errors.New("invalid data length")
+	}
+	return nil
+}
+
+func makeAfSplitData(data []byte) (*afSplitData, error) {
+	stripes := 4000
+	hashAlg := tpm2.HashAlgorithmSHA256
+
+	split, err := afis.SplitHash(data, stripes, func() hash.Hash { return hashAlg.NewHash() })
+	if err != nil {
+		return nil, err
+	}
+
+	return &afSplitData{Stripes: uint32(stripes), HashAlg: hashAlg, Data: split}, nil
+}
+
 // keyData corresponds to the part of a sealed key object that contains the TPM sealed object and associated metadata required
 // for executing authorization policy assertions.
 type keyData struct {
-	KeyPrivate        tpm2.Private
-	KeyPublic         *tpm2.Public
+	EncryptedKey      tpmObject
+	KeyIV             []byte
 	AuthModeHint      AuthMode
 	StaticPolicyData  *staticPolicyData
 	DynamicPolicyData *dynamicPolicyData
+	UnprotectedIK     *afSplitData
+	PINData           *pinData
 }
 
 // readKeyPolicyUpdateData deserializes keyPolicyUpdateData from the provided io.Reader.
@@ -150,7 +276,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
-	keyContext, err := tpm.Load(srkContext, d.KeyPrivate, d.KeyPublic, session)
+	keyContext, err := tpm.Load(srkContext, d.EncryptedKey.Private, d.EncryptedKey.Public, session)
 	if err != nil {
 		invalidObject := false
 		switch {
@@ -184,7 +310,7 @@ func (d *keyData) writeToFileAtomic(dest string) error {
 	}
 	defer f.Cancel()
 
-	if _, err := tpm2.MarshalToWriter(f, keyDataHeader, currentVersion, d); err != nil {
+	if err := d.write(f); err != nil {
 		return xerrors.Errorf("cannot marshal key data to temporary file: %w", err)
 	}
 
@@ -197,7 +323,7 @@ func (d *keyData) writeToFileAtomic(dest string) error {
 
 // validateKeyData performs some correctness checking on the provided keyData and keyPolicyUpdateData. On success, it returns the validated
 // public area for the PIN NV index.
-func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyPolicyUpdateData, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
+func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpdateData, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
 	srkContext, err := tpm.CreateResourceContextFromTPM(srkHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
@@ -206,15 +332,15 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	sealedKeyTemplate := makeSealedKeyTemplate()
 
 	// Perform some initial checks on the sealed data object's public area
-	if data.KeyPublic.Type != sealedKeyTemplate.Type {
+	if d.EncryptedKey.Public.Type != sealedKeyTemplate.Type {
 		return nil, keyFileError{errors.New("sealed key object has the wrong type")}
 	}
-	if data.KeyPublic.Attrs != sealedKeyTemplate.Attrs {
+	if d.EncryptedKey.Public.Attrs != sealedKeyTemplate.Attrs {
 		return nil, keyFileError{errors.New("sealed key object has the wrong attributes")}
 	}
 
 	// Load the sealed data object in to the TPM for integrity checking
-	keyContext, err := tpm.Load(srkContext, data.KeyPrivate, data.KeyPublic, session)
+	keyContext, err := tpm.Load(srkContext, d.EncryptedKey.Private, d.EncryptedKey.Public, session)
 	if err != nil {
 		invalidObject := false
 		switch {
@@ -231,6 +357,10 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	// It's loaded ok, so we know that the private and public parts are consistent.
 	defer tpm.FlushContext(keyContext)
 
+	if len(d.KeyIV) != aes.BlockSize {
+		return nil, keyFileError{errors.New("invalid key IV length")}
+	}
+
 	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for lock NV index: %v", err)
@@ -246,27 +376,27 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	// Obtain a ResourceContext for the PIN NV index. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second time is with a session, and
 	// there is also verification that the returned public area is for the specified handle so that we know that the returned
 	// ResourceContext corresponds to an actual entity on the TPM at PinIndexHandle.
-	if data.StaticPolicyData.PinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
+	if d.StaticPolicyData.PinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
 		return nil, keyFileError{errors.New("PIN NV index handle is invalid")}
 	}
-	pinIndex, err := tpm.CreateResourceContextFromTPM(data.StaticPolicyData.PinIndexHandle, session.IncludeAttrs(tpm2.AttrAudit))
+	pinIndex, err := tpm.CreateResourceContextFromTPM(d.StaticPolicyData.PinIndexHandle, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		if tpm2.IsResourceUnavailableError(err, data.StaticPolicyData.PinIndexHandle) {
+		if tpm2.IsResourceUnavailableError(err, d.StaticPolicyData.PinIndexHandle) {
 			return nil, keyFileError{errors.New("PIN NV index is unavailable")}
 		}
 		return nil, xerrors.Errorf("cannot create context for PIN NV index: %w", err)
 	}
 
-	authKeyName, err := data.StaticPolicyData.AuthPublicKey.Name()
+	authKeyName, err := d.StaticPolicyData.AuthPublicKey.Name()
 	if err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}
-	if data.StaticPolicyData.AuthPublicKey.Type != tpm2.ObjectTypeRSA {
+	if d.StaticPolicyData.AuthPublicKey.Type != tpm2.ObjectTypeRSA {
 		return nil, keyFileError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
 	}
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
-	trial, err := tpm2.ComputeAuthPolicy(data.KeyPublic.NameAlg)
+	trial, err := tpm2.ComputeAuthPolicy(d.EncryptedKey.Public.NameAlg)
 	if err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot determine if static authorization policy matches sealed key object: %w", err)}
 	}
@@ -274,7 +404,7 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	trial.PolicySecret(pinIndex.Name(), nil)
 	trial.PolicyNV(lockIndex.Name(), nil, 0, tpm2.OpEq)
 
-	if !bytes.Equal(trial.GetDigest(), data.KeyPublic.AuthPolicy) {
+	if !bytes.Equal(trial.GetDigest(), d.EncryptedKey.Public.AuthPolicy) {
 		return nil, keyFileError{errors.New("the sealed key object's authorization policy is inconsistent with the associatedc metadata or persistent TPM resources")}
 	}
 
@@ -287,19 +417,32 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	if err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot determine if PIN NV index has a valid authorization policy: %w", err)}
 	}
-	if len(data.StaticPolicyData.PinIndexAuthPolicies)-1 != len(expectedPinIndexAuthPolicies) {
+	if len(d.StaticPolicyData.PinIndexAuthPolicies)-1 != len(expectedPinIndexAuthPolicies) {
 		return nil, keyFileError{errors.New("unexpected number of OR policy digests for PIN NV index")}
 	}
 	for i, expected := range expectedPinIndexAuthPolicies {
-		if !bytes.Equal(expected, data.StaticPolicyData.PinIndexAuthPolicies[i+1]) {
+		if !bytes.Equal(expected, d.StaticPolicyData.PinIndexAuthPolicies[i+1]) {
 			return nil, keyFileError{errors.New("unexpected OR policy digest for PIN NV index")}
 		}
 	}
 
 	trial, _ = tpm2.ComputeAuthPolicy(pinIndexPublic.NameAlg)
-	trial.PolicyOR(data.StaticPolicyData.PinIndexAuthPolicies)
+	trial.PolicyOR(d.StaticPolicyData.PinIndexAuthPolicies)
 	if !bytes.Equal(pinIndexPublic.AuthPolicy, trial.GetDigest()) {
 		return nil, keyFileError{errors.New("PIN NV index has unexpected authorization policy")}
+	}
+
+	switch d.AuthModeHint {
+	case AuthModeNone:
+		if err := d.UnprotectedIK.validate(); err != nil {
+			return nil, keyFileError{errors.New("unprotected intermediate key is invalid")}
+		}
+	case AuthModePIN:
+		if err := d.PINData.validate(); err != nil {
+			return nil, keyFileError{errors.New("invalid PIN metadata error")}
+		}
+	default:
+		return nil, keyFileError{errors.New("invalid auth mode hint")}
 	}
 
 	// At this point, we know that the sealed object is an object with an authorization policy created by this package and with
@@ -311,7 +454,7 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	}
 
 	// Verify that the private data structure is bound to the key data structure.
-	h := data.KeyPublic.NameAlg.NewHash()
+	h := d.EncryptedKey.Public.NameAlg.NewHash()
 	if _, err := tpm2.MarshalToWriter(h, policyUpdateData.CreationData); err != nil {
 		panic(fmt.Sprintf("cannot marshal creation data: %v", err))
 	}
@@ -339,8 +482,8 @@ func validateKeyData(tpm *tpm2.TPMContext, data *keyData, policyUpdateData *keyP
 	}
 
 	authPublicKey := rsa.PublicKey{
-		N: new(big.Int).SetBytes(data.StaticPolicyData.AuthPublicKey.Unique.RSA()),
-		E: int(data.StaticPolicyData.AuthPublicKey.Params.RSADetail().Exponent)}
+		N: new(big.Int).SetBytes(d.StaticPolicyData.AuthPublicKey.Unique.RSA()),
+		E: int(d.StaticPolicyData.AuthPublicKey.Params.RSADetail().Exponent)}
 	if authKey.PublicKey.E != authPublicKey.E || authKey.PublicKey.N.Cmp(authPublicKey.N) != 0 {
 		return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
 	}
@@ -366,7 +509,7 @@ func readAndValidateKeyData(tpm *tpm2.TPMContext, keyFile, keyPolicyUpdateFile i
 		}
 	}
 
-	pinNVPublic, err := validateKeyData(tpm, data, policyUpdateData, session)
+	pinNVPublic, err := data.validate(tpm, policyUpdateData, session)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot validate key data: %w", err)
 	}

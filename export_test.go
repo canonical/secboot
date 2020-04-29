@@ -66,7 +66,7 @@ var (
 	OidTcgAttributeTpmModel                  = oidTcgAttributeTpmModel
 	OidTcgAttributeTpmVersion                = oidTcgAttributeTpmVersion
 	OidTcgKpEkCertificate                    = oidTcgKpEkCertificate
-	PerformPinChange                         = performPinChange
+	PerformPinChange                         = performTPMPinChange
 	ReadAndValidateLockNVIndexPublic         = readAndValidateLockNVIndexPublic
 	ReadDynamicPolicyCounter                 = readDynamicPolicyCounter
 	ReadShimVendorCert                       = readShimVendorCert
@@ -169,7 +169,7 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	for {
 		v := make(tpm2.PCRValues)
 		for i := range params {
-			v.SetValue(params[i].PCR, params[i].Alg, params[i].Digests[indices[i]])
+			v.SetValue(params[i].Alg, params[i].PCR, params[i].Digests[indices[i]])
 		}
 		out = append(out, v)
 

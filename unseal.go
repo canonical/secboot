@@ -20,6 +20,10 @@
 package secboot
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"fmt"
+
 	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
@@ -83,7 +87,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 	hmacSession := tpm.HmacSession()
 
 	// Load the key data
-	key, err := k.data.load(tpm.TPMContext, hmacSession)
+	keyObject, err := k.data.load(tpm.TPMContext, hmacSession)
 	switch {
 	case isKeyFileError(err):
 		// A keyFileError can be as a result of an improperly provisioned TPM - detect if the object at srkHandle is a valid primary key
@@ -112,16 +116,28 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 	case err != nil:
 		return nil, err
 	}
-	defer tpm.FlushContext(key)
+	defer tpm.FlushContext(keyObject)
+
+	var ikSplit *afSplitData
+	var tpmAuthValue []byte
+	if k.data.AuthModeHint == AuthModeNone {
+		ikSplit = k.data.UnprotectedIK
+	} else {
+		var err error
+		ikSplit, tpmAuthValue, err = k.data.PINData.decryptIKAndObtainTPMAuthValue(pin)
+		if err != nil {
+			return nil, InvalidKeyFileError{fmt.Sprintf("cannot decrypt intermediate key: %v", err)}
+		}
+	}
 
 	// Begin and execute policy session
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.KeyPublic.NameAlg)
+	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.EncryptedKey.Public.NameAlg)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot start policy session: %w", err)
 	}
 	defer tpm.FlushContext(policySession)
 
-	if err := executePolicySession(tpm.TPMContext, policySession, k.data.StaticPolicyData, k.data.DynamicPolicyData, pin, hmacSession); err != nil {
+	if err := executePolicySession(tpm.TPMContext, policySession, k.data.StaticPolicyData, k.data.DynamicPolicyData, tpmAuthValue, hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
 		case isDynamicPolicyDataError(err):
@@ -140,13 +156,31 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 	}
 
 	// Unseal
-	keyData, err := tpm.Unseal(key, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
+	key, err := tpm.Unseal(keyObject, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
 	switch {
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
 		return nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot unseal key: %w", err)
+		return nil, xerrors.Errorf("cannot unseal encrypted key: %w", err)
 	}
 
-	return keyData, nil
+	ik, err := ikSplit.merge()
+	if err != nil {
+		return nil, InvalidKeyFileError{fmt.Sprintf("cannot merge intermediate key stripes: %v", err)}
+	}
+
+	c, err := aes.NewCipher(ik)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create block cipher: %w", err)
+	}
+	if len(k.data.KeyIV) != c.BlockSize() {
+		return nil, InvalidKeyFileError{"invalid IV length"}
+	}
+	if len(key)%c.BlockSize() != 0 {
+		return nil, InvalidKeyFileError{"invalid encrypted key length"}
+	}
+	b := cipher.NewCBCDecrypter(c, k.data.KeyIV)
+	b.CryptBlocks(key, key)
+
+	return key, nil
 }

@@ -21,6 +21,8 @@ package secboot
 
 import (
 	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -194,6 +196,24 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		}()
 	}
 
+	var keyIV [16]byte
+	if _, err := rand.Read(keyIV[:]); err != nil {
+		return xerrors.Errorf("cannot create IV: %w", err)
+	}
+
+	var ik [32]byte
+	if _, err := rand.Read(ik[:]); err != nil {
+		return xerrors.Errorf("cannot create intermediate key: %w", err)
+	}
+
+	c, err := aes.NewCipher(ik[:])
+	if err != nil {
+		return xerrors.Errorf("cannot create block cipher: %w", err)
+	}
+	b := cipher.NewCBCEncrypter(c, keyIV[:])
+	keyEnc := make([]byte, len(key))
+	b.CryptBlocks(keyEnc, key)
+
 	// Create an asymmetric key for signing authorization policy updates, and authorizing dynamic authorization policy revocations.
 	authKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -240,7 +260,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 
 	// Define the template for the sealed key object, using the computed policy digest
 	template.AuthPolicy = authPolicy
-	sensitive := tpm2.SensitiveCreate{Data: key}
+	sensitive := tpm2.SensitiveCreate{Data: keyEnc}
 
 	// Have the digest of the private data recorded in the creation data for the sealed data object.
 	var policyUpdateData keyPolicyUpdateData
@@ -274,13 +294,21 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		return err
 	}
 
+	ikSplit, err := makeAfSplitData(ik[:])
+	if err != nil {
+		return xerrors.Errorf("cannot split intermediate key: %w", err)
+	}
+
 	// Marshal the entire object (sealed key object and auxiliary data) to disk
 	data := keyData{
-		KeyPrivate:        priv,
-		KeyPublic:         pub,
+		EncryptedKey: tpmObject{
+			Private: priv,
+			Public:  pub},
+		KeyIV:             keyIV[:],
 		AuthModeHint:      AuthModeNone,
 		StaticPolicyData:  staticPolicyData,
-		DynamicPolicyData: dynamicPolicyData}
+		DynamicPolicyData: dynamicPolicyData,
+		UnprotectedIK:     ikSplit}
 
 	if err := data.write(keyFile); err != nil {
 		return xerrors.Errorf("cannot write key data file: %w", err)
@@ -348,8 +376,9 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
-	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, data.KeyPublic.NameAlg, data.StaticPolicyData.AuthPublicKey.NameAlg,
-		authKey, pinIndexPublic, data.StaticPolicyData.PinIndexAuthPolicies, pcrProfile, session)
+	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, data.EncryptedKey.Public.NameAlg,
+		data.StaticPolicyData.AuthPublicKey.NameAlg, authKey, pinIndexPublic, data.StaticPolicyData.PinIndexAuthPolicies, pcrProfile,
+		session)
 	if err != nil {
 		return err
 	}

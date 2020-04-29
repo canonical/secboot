@@ -706,7 +706,7 @@ func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext
 // executePolicySession executes an authorization policy session using the supplied metadata. On success, the supplied policy
 // session can be used for authorization.
 func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContext, staticInput *staticPolicyData,
-	dynamicInput *dynamicPolicyData, pin string, hmacSession tpm2.SessionContext) error {
+	dynamicInput *dynamicPolicyData, authValue []byte, hmacSession tpm2.SessionContext) error {
 	if err := tpm.PolicyPCR(policySession, nil, dynamicInput.PCRSelection); err != nil {
 		return xerrors.Errorf("cannot execute PCR assertion: %w", err)
 	}
@@ -806,7 +806,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		return xerrors.Errorf("dynamic authorization policy check failed: %w", err)
 	}
 
-	pinIndex.SetAuthValue([]byte(pin))
+	pinIndex.SetAuthValue(authValue)
 	if _, _, err := tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, hmacSession); err != nil {
 		return xerrors.Errorf("cannot execute PolicySecret assertion: %w", err)
 	}

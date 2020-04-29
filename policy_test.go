@@ -654,7 +654,7 @@ func (b *pcrDigestBuilder) addDigest(digest tpm2.Digest) *pcrDigestBuilder {
 		b.pcrsCurrent = b.pcrsCurrent[1:]
 	}
 
-	b.values.SetValue(b.pcrsCurrent[0].Select[0], b.pcrsCurrent[0].Hash, digest)
+	b.values.SetValue(b.pcrsCurrent[0].Hash, b.pcrsCurrent[0].Select[0], digest)
 
 	b.pcrsCurrent[0].Select = b.pcrsCurrent[0].Select[1:]
 	return b
@@ -1217,8 +1217,8 @@ func TestExecutePolicy(t *testing.T) {
 		pcrValues   []tpm2.PCRValues
 		policyCount uint64
 		pcrEvents   []pcrEvent
-		pinDefine   string
-		pinInput    string
+		pinDefine   []byte
+		pinInput    []byte
 	}
 
 	run := func(t *testing.T, data *testData, prepare func(*StaticPolicyData, *DynamicPolicyData)) (tpm2.Digest, tpm2.Digest, error) {
@@ -1252,12 +1252,12 @@ func TestExecutePolicy(t *testing.T) {
 			}
 		}
 
-		if data.pinDefine != "" {
-			if err := PerformPinChange(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, "", data.pinDefine, tpm.HmacSession()); err != nil {
+		if data.pinDefine != nil {
+			if err := PerformPinChange(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, nil, data.pinDefine, tpm.HmacSession()); err != nil {
 				t.Fatalf("PerformPinChange failed: %v", err)
 			}
 			defer func() {
-				if err := PerformPinChange(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, data.pinDefine, "", tpm.HmacSession()); err != nil {
+				if err := PerformPinChange(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, data.pinDefine, nil, tpm.HmacSession()); err != nil {
 					t.Errorf("Resetting PIN failed: %v", err)
 				}
 			}()
@@ -1470,8 +1470,8 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			},
-			pinDefine: "1234",
-			pinInput:  "1234"}, nil)
+			pinDefine: []byte("1234"),
+			pinInput:  []byte("1234")}, nil)
 		if err != nil {
 			t.Errorf("Failed to execute policy session: %v", err)
 		}
@@ -1512,8 +1512,8 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			},
-			pinDefine: "1234",
-			pinInput:  "12345"}, nil)
+			pinDefine: []byte("1234"),
+			pinInput:  []byte("12345")}, nil)
 		if !tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandPolicySecret, 1) || IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -2526,7 +2526,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 			}
 			defer flushContext(t, tpm, policySession)
 
-			err = ExecutePolicySession(tpm.TPMContext, policySession, staticPolicyData, dynamicPolicyData, "", tpm.HmacSession())
+			err = ExecutePolicySession(tpm.TPMContext, policySession, staticPolicyData, dynamicPolicyData, nil, tpm.HmacSession())
 			if err != nil {
 				t.Errorf("ExecutePolicySession failed: %v", err)
 			}
@@ -2548,7 +2548,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 				t.Errorf("PolicyRestart failed: %v", err)
 			}
 
-			err = ExecutePolicySession(tpm.TPMContext, policySession, staticPolicyData, dynamicPolicyData, "", tpm.HmacSession())
+			err = ExecutePolicySession(tpm.TPMContext, policySession, staticPolicyData, dynamicPolicyData, nil, tpm.HmacSession())
 			if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) {
 				t.Errorf("Unexpected error: %v", err)
 			}

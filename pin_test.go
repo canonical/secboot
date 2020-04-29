@@ -23,14 +23,16 @@ import (
 	"bytes"
 	"crypto/rsa"
 	"math/rand"
-	"os"
 	"testing"
+	"time"
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
 
 	. "gopkg.in/check.v1"
 )
+
+var testPINParams = PINParams{MaxMemoryCost: 32 * 1024, TimeCost: time.Millisecond}
 
 func TestCreatePinNVIndex(t *testing.T) {
 	tpm := openTPMForTesting(t)
@@ -129,9 +131,9 @@ func TestPerformPinChange(t *testing.T) {
 		undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
 	}()
 
-	pin := "1234"
+	pin := []byte("1234")
 
-	if err := PerformPinChange(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, "", pin, tpm.HmacSession()); err != nil {
+	if err := PerformPinChange(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, nil, pin, tpm.HmacSession()); err != nil {
 		t.Fatalf("PerformPinChange failed: %v", err)
 	}
 
@@ -147,7 +149,7 @@ func TestPerformPinChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNVIndexResourceContextFromPublic failed: %v", err)
 	}
-	pinIndex.SetAuthValue([]byte(pin))
+	pinIndex.SetAuthValue(pin)
 
 	if _, _, err := tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil); err != nil {
 		t.Errorf("PolicySecret assertion failed: %v", err)
@@ -206,23 +208,11 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 
 func (s *pinSuite) TestSetAndClearPIN(c *C) {
 	testPIN := "1234"
-	c.Check(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+	c.Check(ChangePIN(s.tpm, s.keyFile, &testPINParams, "", testPIN), IsNil)
 	s.checkPIN(c, testPIN)
 
-	c.Check(ChangePIN(s.tpm, s.keyFile, testPIN, ""), IsNil)
+	c.Check(ChangePIN(s.tpm, s.keyFile, &testPINParams, testPIN, ""), IsNil)
 	s.checkPIN(c, "")
-}
-
-func (s *pinSuite) TestChangePINDoesntUpdateFileIfAuthModeDoesntChange(c *C) {
-	fi1, err := os.Stat(s.keyFile)
-	c.Assert(err, IsNil)
-
-	c.Check(ChangePIN(s.tpm, s.keyFile, "", ""), IsNil)
-	s.checkPIN(c, "")
-
-	fi2, err := os.Stat(s.keyFile)
-	c.Assert(err, IsNil)
-	c.Check(fi2.ModTime(), DeepEquals, fi1.ModTime())
 }
 
 type testChangePINErrorHandlingData struct {
@@ -232,7 +222,7 @@ type testChangePINErrorHandlingData struct {
 }
 
 func (s *pinSuite) testChangePINErrorHandling(c *C, data *testChangePINErrorHandlingData) {
-	c.Check(ChangePIN(s.tpm, data.keyFile, "", "1234"), data.errChecker, data.errCheckerArgs...)
+	c.Check(ChangePIN(s.tpm, data.keyFile, &testPINParams, "", "1234"), data.errChecker, data.errCheckerArgs...)
 }
 
 func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
@@ -246,7 +236,7 @@ func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
 }
 
 func (s *pinSuite) TestChangePINErrorHandling2(c *C) {
-	c.Assert(ChangePIN(s.tpm, s.keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.tpm, s.keyFile, &testPINParams, "", "1234"), IsNil)
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     Equals,
