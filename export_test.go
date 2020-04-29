@@ -63,7 +63,7 @@ var (
 	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
 	IsStaticPolicyDataError                  = isStaticPolicyDataError
 	LockNVIndexAttrs                         = lockNVIndexAttrs
-	PerformPinChange                         = performPinChange
+	PerformTPMPinChange                      = performTPMPinChange
 	ReadAndValidateLockNVIndexPublic         = readAndValidateLockNVIndexPublic
 	ReadPcrPolicyCounter                     = readPcrPolicyCounter
 	ReadShimVendorCert                       = readShimVendorCert

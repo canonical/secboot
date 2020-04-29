@@ -387,7 +387,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *tes
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
 	// Test with a single PIN attempt.
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", testPIN), IsNil)
 	s.testActivateVolumeWithTPMSealedKeyAndPIN(c, &testActivateVolumeWithTPMSealedKeyAndPINData{
 		pins:     []string{testPIN},
 		pinTries: 1,
@@ -397,7 +397,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN2(c *C) {
 	// Test with 2 PIN attempts.
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", testPIN), IsNil)
 	s.testActivateVolumeWithTPMSealedKeyAndPIN(c, &testActivateVolumeWithTPMSealedKeyAndPINData{
 		pins:     []string{"", testPIN},
 		pinTries: 2,
@@ -440,7 +440,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(c *C) {
 	// Test with the correct PIN provided via the io.Reader.
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", testPIN), IsNil)
 
 	s.testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData{
 		pinFileContents: testPIN + "\n",
@@ -451,7 +451,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader2(c *C) {
 	// Test with the correct PIN provided via the io.Reader when the file doesn't end in a newline.
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", testPIN), IsNil)
 
 	s.testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData{
 		pinFileContents: testPIN,
@@ -462,7 +462,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader2(
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader3(c *C) {
 	// Test falling back to asking for a PIN if the wrong PIN is provided via the io.Reader.
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", testPIN), IsNil)
 
 	s.testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData{
 		pins:            []string{testPIN},
@@ -474,7 +474,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader3(
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader4(c *C) {
 	// Test falling back to asking for a PIN without using a try if the io.Reader has no contents.
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", testPIN), IsNil)
 
 	s.testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData{
 		pins:     []string{testPIN},
@@ -652,7 +652,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
 	// Test that recovery fallback works if the wrong PIN is supplied.
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", testPIN), IsNil)
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		pinTries:         1,
 		recoveryKeyTries: 1,
@@ -671,7 +671,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling10(c *C) {
 	// Test that recovery fallback works if a PIN is set but no PIN attempts are permitted.
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", "1234"), IsNil)
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries:  1,
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},

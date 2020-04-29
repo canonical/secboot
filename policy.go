@@ -969,7 +969,7 @@ func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext
 // executePolicySession executes an authorization policy session using the supplied metadata. On success, the supplied policy
 // session can be used for authorization.
 func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContext, version uint32, staticInput *staticPolicyData,
-	dynamicInput *dynamicPolicyData, pin string, hmacSession tpm2.SessionContext) error {
+	dynamicInput *dynamicPolicyData, authValue []byte, hmacSession tpm2.SessionContext) error {
 	if err := tpm.PolicyPCR(policySession, nil, dynamicInput.pcrSelection); err != nil {
 		return xerrors.Errorf("cannot execute PCR assertion: %w", err)
 	}
@@ -1097,13 +1097,14 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	if version == 0 {
 		// For metadata version 0, PIN support is implemented by asserting knowlege of the authorization value
 		// for the PCR policy counter.
-		policyCounter.SetAuthValue([]byte(pin))
+		policyCounter.SetAuthValue(authValue)
 		if _, _, err := tpm.PolicySecret(policyCounter, policySession, nil, nil, 0, hmacSession); err != nil {
 			return xerrors.Errorf("cannot execute PolicySecret assertion: %w", err)
 		}
 	} else {
 		// For metadata versions > 0, PIN support is implemented by requiring knowlege of the authorization value for
-		// the sealed key object when this policy session is used to unseal it.
+		// the sealed key object when this policy session is used to unseal it. The authorization value is derived from
+		// the PIN.
 		if err := tpm.PolicyAuthValue(policySession); err != nil {
 			return xerrors.Errorf("cannot execute PolicyAuthValue assertion: %w", err)
 		}

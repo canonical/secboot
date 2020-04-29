@@ -1243,7 +1243,7 @@ func TestExecutePolicy(t *testing.T) {
 		}
 		defer flushContext(t, tpm, session)
 
-		policyErr := ExecutePolicySession(tpm.TPMContext, session, CurrentMetadataVersion, staticPolicyData, dynamicPolicyData, "", tpm.HmacSession())
+		policyErr := ExecutePolicySession(tpm.TPMContext, session, CurrentMetadataVersion, staticPolicyData, dynamicPolicyData, nil, tpm.HmacSession())
 		digest, err := tpm.PolicyGetDigest(session)
 		if err != nil {
 			t.Errorf("PolicyGetDigest failed: %v", err)
@@ -2469,7 +2469,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 			}
 			defer flushContext(t, tpm, policySession)
 
-			err = ExecutePolicySession(tpm.TPMContext, policySession, CurrentMetadataVersion, staticPolicyData, dynamicPolicyData, "", tpm.HmacSession())
+			err = ExecutePolicySession(tpm.TPMContext, policySession, CurrentMetadataVersion, staticPolicyData, dynamicPolicyData, nil, tpm.HmacSession())
 			if err != nil {
 				t.Errorf("ExecutePolicySession failed: %v", err)
 			}
@@ -2491,7 +2491,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 				t.Errorf("PolicyRestart failed: %v", err)
 			}
 
-			err = ExecutePolicySession(tpm.TPMContext, policySession, CurrentMetadataVersion, staticPolicyData, dynamicPolicyData, "", tpm.HmacSession())
+			err = ExecutePolicySession(tpm.TPMContext, policySession, CurrentMetadataVersion, staticPolicyData, dynamicPolicyData, nil, tpm.HmacSession())
 			if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) {
 				t.Errorf("Unexpected error: %v", err)
 			}

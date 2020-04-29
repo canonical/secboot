@@ -22,6 +22,7 @@ package secboot
 import (
 	"bytes"
 	"crypto"
+	"crypto/aes"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
@@ -46,6 +47,7 @@ const (
 	currentMetadataVersion    uint32 = 1
 	keyDataHeader             uint32 = 0x55534b24
 	keyPolicyUpdateDataHeader uint32 = 0x55534b50
+	ikLength                         = 32
 )
 
 // AuthMode corresponds to an authentication mechanism.
@@ -101,6 +103,9 @@ func (d *afSplitDataRaw) data() *afSplitData {
 
 // makeAfSplitDataRaw converts afSplitData to its on disk form.
 func makeAfSplitDataRaw(d *afSplitData) *afSplitDataRaw {
+	if d == nil {
+		return nil
+	}
 	return &afSplitDataRaw{
 		Hdr: afSplitDataRawHdr{
 			Stripes: d.stripes,
@@ -289,20 +294,30 @@ type keyDataRaw_v0 struct {
 type keyDataRaw_v1 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
+	KeyIV             []byte
 	AuthModeHint      AuthMode
 	StaticPolicyData  *staticPolicyDataRaw_v1
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
+	UnprotectedIK     []byte
+	PINData           *pinDataRaw
+}
+
+type tpmObject struct {
+	private tpm2.Private
+	public  *tpm2.Public
 }
 
 // keyData corresponds to the part of a sealed key object that contains the TPM sealed object and associated metadata required
 // for executing authorization policy assertions.
 type keyData struct {
 	version           uint32
-	keyPrivate        tpm2.Private
-	keyPublic         *tpm2.Public
+	sealedKey         tpmObject
+	keyIV             []byte
 	authModeHint      AuthMode
 	staticPolicyData  *staticPolicyData
 	dynamicPolicyData *dynamicPolicyData
+	unprotectedIK     []byte
+	pinData           *pinData
 }
 
 func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
@@ -315,8 +330,8 @@ func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
 	switch d.version {
 	case 0:
 		raw := keyDataRaw_v0{
-			KeyPrivate:        d.keyPrivate,
-			KeyPublic:         d.keyPublic,
+			KeyPrivate:        d.sealedKey.private,
+			KeyPublic:         d.sealedKey.public,
 			AuthModeHint:      d.authModeHint,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v0(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
@@ -325,11 +340,14 @@ func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
 	case 1:
 		var tmpW bytes.Buffer
 		raw := keyDataRaw_v1{
-			KeyPrivate:        d.keyPrivate,
-			KeyPublic:         d.keyPublic,
+			KeyPrivate:        d.sealedKey.private,
+			KeyPublic:         d.sealedKey.public,
+			KeyIV:             d.keyIV,
 			AuthModeHint:      d.authModeHint,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
-			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
+			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData),
+			UnprotectedIK:     d.unprotectedIK,
+			PINData:           makePinDataRaw(d.pinData)}
 		if _, err := tpm2.MarshalToWriter(&tmpW, raw); err != nil {
 			return 0, xerrors.Errorf("cannot marshal data: %w", err)
 		}
@@ -361,9 +379,10 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
 		*d = keyData{
-			version:           version,
-			keyPrivate:        raw.KeyPrivate,
-			keyPublic:         raw.KeyPublic,
+			version: version,
+			sealedKey: tpmObject{
+				private: raw.KeyPrivate,
+				public:  raw.KeyPublic},
 			authModeHint:      raw.AuthModeHint,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
@@ -385,12 +404,16 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
 		*d = keyData{
-			version:           version,
-			keyPrivate:        raw.KeyPrivate,
-			keyPublic:         raw.KeyPublic,
+			version: version,
+			sealedKey: tpmObject{
+				private: raw.KeyPrivate,
+				public:  raw.KeyPublic},
+			keyIV:             raw.KeyIV,
 			authModeHint:      raw.AuthModeHint,
 			staticPolicyData:  raw.StaticPolicyData.data(),
-			dynamicPolicyData: raw.DynamicPolicyData.data()}
+			dynamicPolicyData: raw.DynamicPolicyData.data(),
+			unprotectedIK:     raw.UnprotectedIK,
+			pinData:           raw.PINData.data()}
 	default:
 		return nbytes, fmt.Errorf("unexpected version number (%d)", version)
 	}
@@ -405,7 +428,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
-	keyContext, err := tpm.Load(srkContext, d.keyPrivate, d.keyPublic, session)
+	keyContext, err := tpm.Load(srkContext, d.sealedKey.private, d.sealedKey.public, session)
 	if err != nil {
 		invalidObject := false
 		switch {
@@ -437,7 +460,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 
 	sealedKeyTemplate := makeSealedKeyTemplate()
 
-	keyPublic := d.keyPublic
+	keyPublic := d.sealedKey.public
 
 	// Perform some initial checks on the sealed data object's public area
 	if keyPublic.Type != sealedKeyTemplate.Type {
@@ -448,7 +471,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	}
 
 	// Load the sealed data object in to the TPM for integrity checking
-	keyContext, err := tpm.Load(srkContext, d.keyPrivate, keyPublic, session)
+	keyContext, err := tpm.Load(srkContext, d.sealedKey.private, keyPublic, session)
 	if err != nil {
 		invalidObject := false
 		switch {
@@ -464,6 +487,10 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	}
 	// It's loaded ok, so we know that the private and public parts are consistent.
 	defer tpm.FlushContext(keyContext)
+
+	if d.version > 0 && len(d.keyIV) != aes.BlockSize {
+		return nil, keyFileError{errors.New("invalid key IV length")}
+	}
 
 	// Obtain a ResourceContext for the lock NV index and validate it.
 	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
@@ -584,6 +611,21 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		trial.PolicyOR(pcrPolicyCounterAuthPolicies)
 		if !bytes.Equal(pcrPolicyCounterPub.AuthPolicy, trial.GetDigest()) {
 			return nil, keyFileError{errors.New("PCR policy counter has unexpected authorization policy")}
+		}
+	}
+
+	if d.version > 0 {
+		switch d.authModeHint {
+		case AuthModeNone:
+			if len(d.unprotectedIK) != ikLength {
+				return nil, keyFileError{errors.New("unexpected intermediate key length")}
+			}
+		case AuthModePIN:
+			if err := d.pinData.validate(); err != nil {
+				return nil, keyFileError{errors.New("invalid PIN metadata error")}
+			}
+		default:
+			return nil, keyFileError{errors.New("invalid auth mode hint")}
 		}
 	}
 

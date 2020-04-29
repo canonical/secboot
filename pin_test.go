@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
@@ -32,7 +33,9 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-func TestPerformPinChange(t *testing.T) {
+var testPINParams = PINParams{MaxMemoryCost: 32 * 1024, TimeCost: time.Millisecond}
+
+func TestPerformTPMPinChange(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
@@ -63,11 +66,11 @@ func TestPerformPinChange(t *testing.T) {
 	}
 	defer flushContext(t, tpm, key)
 
-	pin := "1234"
+	pin := []byte("1234")
 
-	newPriv, err := PerformPinChange(tpm.TPMContext, priv, pub, "", pin, tpm.HmacSession())
+	newPriv, err := PerformTPMPinChange(tpm.TPMContext, priv, pub, nil, pin, tpm.HmacSession())
 	if err != nil {
-		t.Fatalf("PerformPinChange failed: %v", err)
+		t.Fatalf("PerformTPMPinChange failed: %v", err)
 	}
 
 	// Verify that the PIN change succeeded by loading the new private area and trying to unseal it
@@ -133,10 +136,19 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 
 func (s *pinSuite) TestSetAndClearPIN(c *C) {
 	testPIN := "1234"
-	c.Check(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Check(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", testPIN), IsNil)
 	s.checkPIN(c, testPIN)
 
-	c.Check(ChangePIN(s.TPM, s.keyFile, testPIN, ""), IsNil)
+	c.Check(ChangePIN(s.TPM, s.keyFile, &testPINParams, testPIN, ""), IsNil)
+	s.checkPIN(c, "")
+}
+
+func (s *pinSuite) TestSetAndClearPINWithMoreCost(c *C) {
+	testPIN := "1234"
+	c.Check(ChangePIN(s.TPM, s.keyFile, &PINParams{MaxMemoryCost: 2 * 1024 * 1024, TimeCost: 2 * time.Second}, "", testPIN), IsNil)
+	s.checkPIN(c, testPIN)
+
+	c.Check(ChangePIN(s.TPM, s.keyFile, &PINParams{MaxMemoryCost: 2 * 1024 * 1024, TimeCost: 2 * time.Second}, testPIN, ""), IsNil)
 	s.checkPIN(c, "")
 }
 
@@ -147,7 +159,7 @@ type testChangePINErrorHandlingData struct {
 }
 
 func (s *pinSuite) testChangePINErrorHandling(c *C, data *testChangePINErrorHandlingData) {
-	c.Check(ChangePIN(s.TPM, data.keyFile, "", "1234"), data.errChecker, data.errCheckerArgs...)
+	c.Check(ChangePIN(s.TPM, data.keyFile, &testPINParams, "", "1234"), data.errChecker, data.errCheckerArgs...)
 }
 
 func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
@@ -161,7 +173,7 @@ func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
 }
 
 func (s *pinSuite) TestChangePINErrorHandling2(c *C) {
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, &testPINParams, "", "1234"), IsNil)
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     Equals,

@@ -48,12 +48,24 @@ func (s *compatTestV0Suite) TestUnseal2(c *C) {
 	s.testUnseal(c, s.absPath("pcrSequence.2"))
 }
 
+func (s *compatTestV0Suite) TestChangePIN1(c *C) {
+	s.testChangePIN(c, nil)
+}
+
+func (s *compatTestV0Suite) TestChangePIN2(c *C) {
+	s.testChangePIN(c, &secboot.PINParams{})
+}
+
 func (s *compatTestV0Suite) TestUnsealWithPIN1(c *C) {
-	s.testUnsealWithPIN(c, s.absPath("pcrSequence.1"))
+	s.testUnsealWithPIN(c, nil, s.absPath("pcrSequence.1"))
 }
 
 func (s *compatTestV0Suite) TestUnsealWithPIN2(c *C) {
-	s.testUnsealWithPIN(c, s.absPath("pcrSequence.2"))
+	s.testUnsealWithPIN(c, nil, s.absPath("pcrSequence.2"))
+}
+
+func (s *compatTestV0Suite) TestUnsealWithPIN3(c *C) {
+	s.testUnsealWithPIN(c, &secboot.PINParams{}, s.absPath("pcrSequence.1"))
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
