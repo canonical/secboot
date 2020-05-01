@@ -23,7 +23,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/x509"
-	"debug/pe"
 	"encoding/asn1"
 	"encoding/binary"
 	"errors"
@@ -37,8 +36,8 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
+	"github.com/snapcore/secboot/internal/pe"
 	"github.com/snapcore/snapd/osutil"
-	"github.com/snapcore/snapd/snap"
 
 	"golang.org/x/xerrors"
 
@@ -60,9 +59,8 @@ const (
 	dbxFilename     = "dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f"       // Filename in efivarfs for accessing the EFI forbidden signature database
 	mokListFilename = "MokListRT-605dab50-e046-4300-abb6-3dd810dd8b23" // Filename in efivarfs for accessing a runtime copy of the shim MOK database
 
-	uefiDriverPCR      = 2 // UEFI Drivers and UEFI Applications PCR
-	bootManagerCodePCR = 4 // Boot Manager Code and Boot Attempts PCR
-	secureBootPCR      = 7 // Secure Boot Policy Measurements PCR
+	uefiDriverPCR = 2 // UEFI Drivers and UEFI Applications PCR
+	secureBootPCR = 7 // Secure Boot Policy Measurements PCR
 
 	returningFromEfiApplicationEvent = "Returning from EFI Application from Boot Option" // EV_EFI_ACTION index 2: "Attempt to execute code from Boot Option was unsuccessful"
 
@@ -80,78 +78,10 @@ var (
 	efiCertX509Guid      = tcglog.NewEFIGUID(0xa5c059a1, 0x94e4, 0x4aa7, 0x87b5, [...]uint8{0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72}) // EFI_CERT_X509_GUID
 	efiCertTypePkcs7Guid = tcglog.NewEFIGUID(0x4aafd29d, 0x68df, 0x49ee, 0x8aa9, [...]uint8{0x34, 0x7d, 0x37, 0x56, 0x65, 0xa7}) // EFI_CERT_TYPE_PKCS7_GUID
 
-	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
-	efivarsPath  = "/sys/firmware/efi/efivars"                          // Default mount point for efivarfs
-
 	oidSha256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+
+	efivarsPath = "/sys/firmware/efi/efivars" // Default mount point for efivarfs
 )
-
-// EFIImage corresponds to a binary that is loaded, verified and executed before ExitBootServices.
-type EFIImage interface {
-	fmt.Stringer
-	Open() (interface {
-		io.ReaderAt
-		io.Closer
-	}, error) // Open a handle to the image for reading
-}
-
-// SnapFileEFIImage corresponds to a binary contained within a snap file that is loaded, verified and executed before ExitBootServices.
-type SnapFileEFIImage struct {
-	Container snap.Container
-	Path      string // The path of the snap image (used by the implementation of fmt.Stringer)
-	FileName  string // The filename within the snap squashfs
-}
-
-func (f SnapFileEFIImage) String() string {
-	return "snap:" + f.Path + ":" + f.FileName
-}
-
-func (f SnapFileEFIImage) Open() (interface {
-	io.ReaderAt
-	io.Closer
-}, error) {
-	return f.Container.RandomAccessFile(f.FileName)
-}
-
-// FileEFIImage corresponds to a file on disk that is loaded, verified and executed before ExitBootServices.
-type FileEFIImage string
-
-func (p FileEFIImage) String() string {
-	return string(p)
-}
-
-func (p FileEFIImage) Open() (interface {
-	io.ReaderAt
-	io.Closer
-}, error) {
-	f, err := os.Open(string(p))
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
-}
-
-// EFIImageLoadEventSource corresponds to the source of a EFIImageLoadEvent.
-type EFIImageLoadEventSource int
-
-const (
-	// Firmware indicates that the source of a EFIImageLoadEvent was platform firmware, via the EFI_BOOT_SERVICES.LoadImage()
-	// and EFI_BOOT_SERVICES.StartImage() functions, with the subsequently executed image being verified against the signatures
-	// in the EFI authorized signature database.
-	Firmware EFIImageLoadEventSource = iota
-
-	// Shim indicates that the source of a EFIImageLoadEvent was shim, without relying on EFI boot services for loading, verifying
-	// and executing the subsequently executed image. The image is verified by shim against the signatures in the EFI authorized
-	// signature database, the MOK database or shim's built-in vendor certificate before being executed directly.
-	Shim
-)
-
-// EFIImageLoadEvent corresponds to the execution of a verified EFIImage.
-type EFIImageLoadEvent struct {
-	Source EFIImageLoadEventSource // The source of the event
-	Image  EFIImage                // The image
-	Next   []*EFIImageLoadEvent    // A list of possible subsequent EFIImageLoadEvents
-}
 
 type winCertificate interface {
 	wCertificateType() uint16
@@ -814,36 +744,23 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		return xerrors.Errorf("cannot decode PE binary: %w", err)
 	}
 
-	if pefile.OptionalHeader == nil {
-		// Work around debug/pe not handling variable length optional headers - see
-		// https://github.com/golang/go/commit/3b92f36d15c868e856be71c0fadfc7ff97039b96. We copy the required functionality from that commit
-		// in to this package for now in order to avoid a hard dependency on newer go versions.
-		h, err := readVariableLengthOptionalHeader(r, pefile.FileHeader.SizeOfOptionalHeader)
-		if err != nil {
-			return xerrors.Errorf("cannot decode PE binary optional header: %w", err)
-		}
-		pefile.OptionalHeader = h
-	}
-
 	// Obtain security directory entry from optional header
-	var dd *pe.DataDirectory
+	var dd []pe.DataDirectory
 	switch oh := pefile.OptionalHeader.(type) {
 	case *pe.OptionalHeader32:
-		if oh.NumberOfRvaAndSizes < 5 {
-			return errors.New("cannot obtain security directory entry from PE binary: invalid number of data directories")
-		}
-		dd = &oh.DataDirectory[4]
+		dd = oh.DataDirectory[0:oh.NumberOfRvaAndSizes]
 	case *pe.OptionalHeader64:
-		if oh.NumberOfRvaAndSizes < 5 {
-			return errors.New("cannot obtain security directory entry from PE binary: invalid number of data directories")
-		}
-		dd = &oh.DataDirectory[4]
+		dd = oh.DataDirectory[0:oh.NumberOfRvaAndSizes]
 	default:
 		return errors.New("cannot obtain security directory entry from PE binary: no optional header")
 	}
 
+	if len(dd) <= certTableIndex {
+		return errors.New("cannot obtain security directory entry from PE binary: invalid number of data directories")
+	}
+
 	// Create a reader for the security directory entry, which points to a WIN_CERTIFICATE struct
-	secReader := io.NewSectionReader(r, int64(dd.VirtualAddress), int64(dd.Size))
+	certReader := io.NewSectionReader(r, int64(dd[certTableIndex].VirtualAddress), int64(dd[certTableIndex].Size))
 
 	// Binaries can have multiple signers - this is achieved using multiple single-signed Authenticode signatures - see section 32.5.3.3
 	// ("Secure Boot and Driver Signing - UEFI Image Validation - Signature Database Update - Authorization Process") of the UEFI
@@ -855,13 +772,13 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		// https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-attribute-certificate-table-image-only
 		alignSize := (8 - (read & 7)) % 8
 		read += alignSize
-		secReader.Seek(int64(alignSize), io.SeekCurrent)
+		certReader.Seek(int64(alignSize), io.SeekCurrent)
 
-		if int64(read) >= secReader.Size() {
+		if int64(read) >= certReader.Size() {
 			break
 		}
 
-		c, n, err := decodeWinCertificate(secReader)
+		c, n, err := decodeWinCertificate(certReader)
 		switch {
 		case err != nil:
 			return xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry of PE binary: %w", err)

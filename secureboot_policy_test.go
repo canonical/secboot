@@ -157,7 +157,7 @@ func TestDecodeSecureBootDb(t *testing.T) {
 		microsoftCASubject            = "CN=Microsoft Corporation UEFI CA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
 		microsoftCASerial             = decodeHexStringT(t, "6108d3c4000000000004")
 
-		testOwnerGuid  = tcglog.NewEFIGUID(0xd1b37b32, 0x172d, 0x4d2a, 0x909f, [...]uint8{0xc7, 0x80, 0x81, 0x50, 0x17, 0x86})
+		testOwnerGuid = tcglog.NewEFIGUID(0xd1b37b32, 0x172d, 0x4d2a, 0x909f, [...]uint8{0xc7, 0x80, 0x81, 0x50, 0x17, 0x86})
 	)
 
 	type certId struct {
