@@ -539,7 +539,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 		"--cipher", "aes-xts-plain64", "--key-size", "512",
 		// use argon2i as the KDF with minimum cost (lowest possible time and memory costs). This is done
 		// because the supplied input key has the same entropy (512-bits) as the derived key and therefore
-		// increased time or memory cost don't provide a security benefit (but do slow down unlocking).
+		// increased time or memory cost don't provide a security benefit (but does slow down unlocking).
 		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
 		// set LUKS2 label
 		"--label", label,
@@ -597,4 +597,10 @@ func AddRecoveryKeyToContainer(devicePath string, key []byte, recoveryKey [16]by
 	}
 
 	return nil
+}
+
+func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey [16]byte, key []byte) error {
+	if len(key) != 64 {
+		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
+	}
 }
