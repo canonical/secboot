@@ -509,6 +509,15 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryKeyUsageReasonRequested, activateOptions)
 }
 
+func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
+	cmd := exec.Command("cryptsetup", "config", "--priority", "prefer", "--key-slot", strconv.Itoa(slot), devicePath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return osutil.OutputErr(output, err)
+	}
+
+	return nil
+}
+
 // InitializeLUKS2Container will initialize the partition at the specified devicePath as a new LUKS2 container. This can only
 // be called on a partition that isn't mapped. The label for the new LUKS2 container is provided via the label argument.
 //
@@ -550,15 +559,40 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 		return osutil.OutputErr(output, err)
 	}
 
-	// Set the priority of the initial keyslot to preferred, although it will be attempted first during
-	// activation because it is the first key slot. It might not necessarily always be the first keyslot,
-	// eg, if we support changing a key, which requires a new key slot in order to be performed atomically.
-	cmd = exec.Command("cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", devicePath)
+	return setLUKS2KeyslotPreferred(devicePath, 0)
+}
+
+func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraArgs []string) error {
+	// Pass both keys to cryptsetup in the same temporary file.
+	bothKeys := make([]byte, len(existingKey)+len(key))
+	copy(bothKeys, existingKey)
+	copy(bothKeys[len(existingKey):], key)
+	keyFilePath, cleanupKeyFile, err := writeTempFile(bothKeys)
+	if err != nil {
+		return xerrors.Errorf("cannot temporarily save keys for cryptsetup: %w", err)
+	}
+	defer cleanupKeyFile()
+
+	args := []string{
+		// add a new key
+		"luksAddKey",
+		// read existing key from start of temporary file
+		"--key-file", keyFilePath, "--keyfile-offset", "0", "--keyfile-size", strconv.Itoa(len(existingKey)),
+		// specify size of recovery key and offset in to supplied input file
+		"--new-keyfile-offset", strconv.Itoa(len(existingKey)), "--new-keyfile-size", strconv.Itoa(len(key))}
+	args = append(args, extraArgs...)
+	args = append(args,
+		// container to add key to
+		devicePath,
+		// read recovery key from temporary file at previously specified offset
+		keyFilePath)
+	cmd := exec.Command("cryptsetup", args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
 	}
 
 	return nil
+
 }
 
 // AddRecoveryKeyToContainer adds a fallback recovery key to an existing LUKS2 container created with InitializeLUKS2Container. The
@@ -569,38 +603,41 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
 func AddRecoveryKeyToContainer(devicePath string, key []byte, recoveryKey [16]byte) error {
-	// Pass both keys to cryptsetup in the same temporary file.
-	bothKeys := make([]byte, len(key)+len(recoveryKey))
-	copy(bothKeys, key)
-	copy(bothKeys[len(key):], recoveryKey[:])
-	keyFilePath, cleanupKeyFile, err := writeTempFile(bothKeys)
-	if err != nil {
-		return xerrors.Errorf("cannot temporarily save keys for cryptsetup: %w", err)
-	}
-	defer cleanupKeyFile()
-
-	cmd := exec.Command("cryptsetup",
-		// add a new key
-		"luksAddKey",
-		// read existing key from start of temporary file
-		"--key-file", keyFilePath, "--keyfile-offset", "0", "--keyfile-size", strconv.Itoa(len(key)),
-		// specify size of recovery key and offset in to supplied input file
-		"--new-keyfile-offset", strconv.Itoa(len(key)), "--new-keyfile-size", strconv.Itoa(len(recoveryKey)),
+	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], []string{
 		// use argon2i as the KDF with an increased cost
-		"--pbkdf", "argon2i", "--iter-time", "5000",
-		// container to add key to
-		devicePath,
-		// read recovery key from temporary file at previously specified offset
-		keyFilePath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
-	}
-
-	return nil
+		"--pbkdf", "argon2i", "--iter-time", "5000"})
 }
 
+// ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
+// is intended to be used after the container is unlocked with the recovery key, in the scenario that the TPM sealed key is
+// invalid and needs to be recreated.
+//
+// In order to perform this action, the recovery key needs to be supplied via the recoveryKey argument. The new key is provided via
+// the key argument. The new key should be stored encrypted with SealKeyToTPM.
+//
+// Note that this operation is not atomic. It will delete the existing key from the container before configuring the keyslot with
+// the new key. This is not a problem, because this function is intended to be called in the scenario that the default key cannot
+// be used to activate the LUKS2 container.
 func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey [16]byte, key []byte) error {
 	if len(key) != 64 {
 		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
 	}
+
+	cmd := exec.Command("cryptsetup", "luksKillSlot", "--key-file", "-", devicePath, "0")
+	cmd.Stdin = bytes.NewReader(recoveryKey[:])
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return osutil.OutputErr(output, err)
+	}
+
+	if err := addKeyToLUKS2Container(devicePath, recoveryKey[:], key, []string{
+		// use argon2i as the KDF with minimum cost (lowest possible time and memory costs). This is done
+		// because the supplied input key has the same entropy (512-bits) as the derived key and therefore
+		// increased time or memory cost don't provide a security benefit (but does slow down unlocking).
+		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
+		// always have the main key in slot 0 for now
+		"--key-slot", "0"}); err != nil {
+		return err
+	}
+
+	return setLUKS2KeyslotPreferred(devicePath, 0)
 }

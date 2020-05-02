@@ -66,11 +66,12 @@ type cryptTestBase struct {
 
 	dir string
 
-	passwordFile            string // a newline delimited list of passwords for the mock systemd-ask-password to return
-	expectedTpmKeyFile      string // the TPM expected by the mock systemd-cryptsetup
-	expectedRecoveryKeyFile string // the recovery key expected by the mock systemd-cryptsetup
-	cryptsetupKey           string // The file in which the mock cryptsetup dumps the provided key
-	cryptsetupNewkey        string // The file in which the mock cryptsetup dumps the provided new key
+	passwordFile                 string // a newline delimited list of passwords for the mock systemd-ask-password to return
+	expectedTpmKeyFile           string // the TPM expected by the mock systemd-cryptsetup
+	expectedRecoveryKeyFile      string // the recovery key expected by the mock systemd-cryptsetup
+	cryptsetupInvocationCountDir string
+	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
+	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
 
 	mockSdAskPassword *testutil.MockCmd
 	mockSdCryptsetup  *testutil.MockCmd
@@ -118,6 +119,7 @@ func (ctb *cryptTestBase) setUpTestBase(c *C, bt *testutil.BaseTest) {
 	ctb.expectedRecoveryKeyFile = filepath.Join(ctb.dir, "expectedrecoverykey")
 	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")
 	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey")
+	ctb.cryptsetupInvocationCountDir = c.MkDir()
 
 	sdAskPasswordBottom := `
 head -1 %[1]s
@@ -192,6 +194,9 @@ if [ "$keyfile" = "-" ] || [ "$new_keyfile" = "-" ]; then
     cat /dev/stdin > %[1]s/stdin
 fi
 
+invocation=$(find %[4]s | wc -l)
+mktemp %[4]s/XXXX
+
 dump_key()
 {
     in=$1
@@ -216,11 +221,11 @@ dump_key()
     fi
 }
 
-dump_key "$keyfile" "$keyfile_offset" "$keyfile_size" %[2]s
-dump_key "$new_keyfile" "$new_keyfile_offset" "$new_keyfile_size" %[3]s
+dump_key "$keyfile" "$keyfile_offset" "$keyfile_size" "%[2]s.$invocation"
+dump_key "$new_keyfile" "$new_keyfile_offset" "$new_keyfile_size" "%[3]s.$invocation"
 `
 
-	ctb.mockCryptsetup = testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey))
+	ctb.mockCryptsetup = testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
 	bt.AddCleanup(ctb.mockCryptsetup.Restore)
 
 	c.Assert(ioutil.WriteFile(ctb.expectedRecoveryKeyFile, ctb.recoveryKey, 0644), IsNil)
@@ -1103,7 +1108,7 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 		{"cryptsetup", "-q", "luksFormat", "--type", "luks2", "--key-file", "-", "--cipher", "aes-xts-plain64", "--key-size", "512",
 			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--label", data.label, data.devicePath},
 		{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath}})
-	key, err := ioutil.ReadFile(s.cryptsetupKey)
+	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
 	c.Check(key, DeepEquals, data.key)
 }
@@ -1150,7 +1155,9 @@ func (s *cryptSuite) testAddRecoveryKeyToContainer(c *C, data *testAddRecoveryKe
 
 	c.Check(AddRecoveryKeyToContainer(data.devicePath, data.key, recoveryKey), IsNil)
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
+
 	call := s.mockCryptsetup.Calls()[0]
+	c.Assert(len(call), Equals, 18)
 	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
 	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
 	c.Check(call[4:17], DeepEquals, []string{
@@ -1158,11 +1165,11 @@ func (s *cryptSuite) testAddRecoveryKeyToContainer(c *C, data *testAddRecoveryKe
 		"--new-keyfile-size", strconv.Itoa(len(data.recoveryKey)), "--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath})
 	c.Check(call[17], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
 
-	key, err := ioutil.ReadFile(s.cryptsetupKey)
+	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
 	c.Check(key, DeepEquals, data.key)
 
-	newKey, err := ioutil.ReadFile(s.cryptsetupNewkey)
+	newKey, err := ioutil.ReadFile(s.cryptsetupNewkey + ".1")
 	c.Assert(err, IsNil)
 	c.Check(newKey, DeepEquals, data.recoveryKey)
 }
@@ -1199,5 +1206,76 @@ func (s *cryptSuite) TestAddRecoveryKeyToContainer4(c *C) {
 		devicePath:  "/dev/vdb2",
 		key:         s.tpmKey,
 		recoveryKey: make([]byte, 16),
+	})
+}
+
+type testChangeLUKS2KeyUsingRecoveryKeyData struct {
+	devicePath  string
+	recoveryKey []byte
+	key         []byte
+}
+
+func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLUKS2KeyUsingRecoveryKeyData) {
+	var recoveryKey [16]byte
+	copy(recoveryKey[:], data.recoveryKey)
+
+	c.Check(ChangeLUKS2KeyUsingRecoveryKey(data.devicePath, recoveryKey, data.key), IsNil)
+	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 3)
+	c.Check(s.mockCryptsetup.Calls()[0], DeepEquals, []string{"cryptsetup", "luksKillSlot", "--key-file", "-", data.devicePath, "0"})
+
+	call := s.mockCryptsetup.Calls()[1]
+	c.Assert(len(call), Equals, 22)
+	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
+	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+	c.Check(call[4:21], DeepEquals, []string{
+		"--keyfile-offset", "0", "--keyfile-size", strconv.Itoa(len(data.recoveryKey)), "--new-keyfile-offset", strconv.Itoa(len(data.recoveryKey)),
+		"--new-keyfile-size", strconv.Itoa(len(data.key)), "--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
+		"--key-slot", "0", data.devicePath})
+	c.Check(call[21], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+
+	c.Check(s.mockCryptsetup.Calls()[2], DeepEquals, []string{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath})
+
+	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
+	c.Assert(err, IsNil)
+	c.Check(key, DeepEquals, data.recoveryKey)
+
+	key, err = ioutil.ReadFile(s.cryptsetupKey + ".2")
+	c.Assert(err, IsNil)
+	c.Check(key, DeepEquals, data.recoveryKey)
+
+	key, err = ioutil.ReadFile(s.cryptsetupNewkey + ".2")
+	c.Assert(err, IsNil)
+	c.Check(key, DeepEquals, data.key)
+}
+
+func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey1(c *C) {
+	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
+		devicePath:  "/dev/sda1",
+		recoveryKey: s.recoveryKey,
+		key:         s.tpmKey,
+	})
+}
+
+func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey2(c *C) {
+	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
+		devicePath:  "/dev/vdc1",
+		recoveryKey: s.recoveryKey,
+		key:         s.tpmKey,
+	})
+}
+
+func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey3(c *C) {
+	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
+		devicePath:  "/dev/sda1",
+		recoveryKey: make([]byte, 16),
+		key:         s.tpmKey,
+	})
+}
+
+func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey4(c *C) {
+	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
+		devicePath:  "/dev/vdc1",
+		recoveryKey: s.recoveryKey,
+		key:         make([]byte, 64),
 	})
 }
