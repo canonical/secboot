@@ -595,14 +595,14 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraArg
 
 }
 
-// AddRecoveryKeyToContainer adds a fallback recovery key to an existing LUKS2 container created with InitializeLUKS2Container. The
-// recovery key is intended to be used as a fallback mechanism that operates independently of the TPM in order to unlock the
+// AddRecoveryKeyToLUKS2Container adds a fallback recovery key to an existing LUKS2 container created with InitializeLUKS2Container.
+// The recovery key is intended to be used as a fallback mechanism that operates independently of the TPM in order to unlock the
 // container in the event that the key encrypted with SealKeyToTPM cannot be used to unlock it. The devicePath argument specifies
 // the device node for the partition that contains the LUKS2 container. The existing key for the container is provided via the
 // key argument.
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
-func AddRecoveryKeyToContainer(devicePath string, key []byte, recoveryKey [16]byte) error {
+func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey [16]byte) error {
 	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], []string{
 		// use argon2i as the KDF with an increased cost
 		"--pbkdf", "argon2i", "--iter-time", "5000"})

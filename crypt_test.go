@@ -1143,17 +1143,17 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
 	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32]), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
 }
 
-type testAddRecoveryKeyToContainerData struct {
+type testAddRecoveryKeyToLUKS2ContainerData struct {
 	devicePath  string
 	key         []byte
 	recoveryKey []byte
 }
 
-func (s *cryptSuite) testAddRecoveryKeyToContainer(c *C, data *testAddRecoveryKeyToContainerData) {
+func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecoveryKeyToLUKS2ContainerData) {
 	var recoveryKey [16]byte
 	copy(recoveryKey[:], data.recoveryKey)
 
-	c.Check(AddRecoveryKeyToContainer(data.devicePath, data.key, recoveryKey), IsNil)
+	c.Check(AddRecoveryKeyToLUKS2Container(data.devicePath, data.key, recoveryKey), IsNil)
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
 
 	call := s.mockCryptsetup.Calls()[0]
@@ -1174,35 +1174,35 @@ func (s *cryptSuite) testAddRecoveryKeyToContainer(c *C, data *testAddRecoveryKe
 	c.Check(newKey, DeepEquals, data.recoveryKey)
 }
 
-func (s *cryptSuite) TestAddRecoveryKeyToContainer1(c *C) {
-	s.testAddRecoveryKeyToContainer(c, &testAddRecoveryKeyToContainerData{
+func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container1(c *C) {
+	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/sda1",
 		key:         s.tpmKey,
 		recoveryKey: s.recoveryKey,
 	})
 }
 
-func (s *cryptSuite) TestAddRecoveryKeyToContainer2(c *C) {
+func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container2(c *C) {
 	// Test with different path.
-	s.testAddRecoveryKeyToContainer(c, &testAddRecoveryKeyToContainerData{
+	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/vdb2",
 		key:         s.tpmKey,
 		recoveryKey: s.recoveryKey,
 	})
 }
 
-func (s *cryptSuite) TestAddRecoveryKeyToContainer3(c *C) {
+func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container3(c *C) {
 	// Test with different key.
-	s.testAddRecoveryKeyToContainer(c, &testAddRecoveryKeyToContainerData{
+	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/vdb2",
 		key:         make([]byte, 64),
 		recoveryKey: s.recoveryKey,
 	})
 }
 
-func (s *cryptSuite) TestAddRecoveryKeyToContainer4(c *C) {
+func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container4(c *C) {
 	// Test with different recovery key.
-	s.testAddRecoveryKeyToContainer(c, &testAddRecoveryKeyToContainerData{
+	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/vdb2",
 		key:         s.tpmKey,
 		recoveryKey: make([]byte, 16),
