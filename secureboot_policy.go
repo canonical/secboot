@@ -36,11 +36,12 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
-	"github.com/fullsailor/pkcs7"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/snap"
 
 	"golang.org/x/xerrors"
+
+	"go.mozilla.org/pkcs7"
 )
 
 const (
