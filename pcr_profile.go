@@ -196,6 +196,7 @@ func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext, values pcr
 	return values, nil
 }
 
+// computePCRDigests computes a PCR selection and list of PCR digests from this PCRProtectionProfile.
 func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
 	// Compute the sets of PCR values for all branches
 	values, err := p.computePCRValues(tpm, nil)
