@@ -1295,15 +1295,15 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 //
 // The secure boot policy measurements include events that correspond to the authentication of loaded EFI images, and those events
 // record the certificate of the authorities used to authenticate these images. The params argument allows the generated PCR policy
-// to be restricted to a specific set of chains of trust by specifying EFI image load sequences via the LoadSequences field. Each of
-// the EFIImage instances reachable from the LoadSequences field of params must correspond to an EFI image with one or more
-// Authenticode signatures. These signatures are used to determine the CA certificate that will be used to authenticate them in order
-// to compute authentication meausurement events. The digest algorithm of the Authenticode signatures must be SHA256. If there are no
-// signatures, or the binary's certificate table contains non-Authenticode entries, or contains any Authenticode signatures with a
-// digest algorithm other than SHA256, then an error will be returned. Note that this function does not ensure that any of the
-// signatures are correct - it only determines if there is a chain of trust beween the signing certificate and a CA certificate in
-// order to determine which certificate will be used for authentication, and what the source of that certificate is (for UEFI images
-// that are loaded by shim).
+// to be restricted to a specific set of chains of trust by specifying EFI image load sequences via the LoadSequences field. This
+// function will compute the measurements associated with the authentication of these load sequences. Each of the EFIImage instances
+// reachable from the LoadSequences field of params must correspond to an EFI image with one or more Authenticode signatures. These
+// signatures are used to determine the CA certificate that will be used to authenticate them in order to compute authentication
+// meausurement events. The digest algorithm of the Authenticode signatures must be SHA256. If there are no signatures, or the
+// binary's certificate table contains non-Authenticode entries, or contains any Authenticode signatures with a digest algorithm other
+// than SHA256, then an error will be returned. Note that this function does not ensure that any of the signatures are correct - it
+// only determines if there is a chain of trust beween the signing certificate and a CA certificate in order to determine which
+// certificate will be used for authentication, and what the source of that certificate is (for UEFI images that are loaded by shim).
 //
 // The secure boot policy measurements include the secure boot configuration, which includes the contents of the UEFI signature
 // databases. In order to support atomic updates of these databases with the sbkeysync tool, it is possible to generate a PCR policy
@@ -1311,6 +1311,8 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 // the SignatureDbUpdateKeystores field of the params argument. This function assumes that sbkeysync is executed with the
 // "--no-default-keystores" option. When there are pending updates in the specified directories, this function will generate a PCR
 // policy that is compatible with the current database contents and the database contents computed for each individual update.
+// Note that sbkeysync ignores errors when applying updates - if any of the pending updates don't apply for some reason, the generated
+// PCR profile will be invalid.
 //
 // If none of the sequences in the LoadSequences field of params can be authenticated by the current authorized signature database
 // contents, then an error will be returned.
@@ -1320,6 +1322,12 @@ func (g *secureBootPolicyGen) run(events []*tcglog.Event) (tpm2.DigestList, erro
 // signature database (or shim's vendor certificate) but that image is authenticated because an image digest is present in the
 // authorized signature database instead, then this function will generate a PCR profile that is incorrect.
 //
+// If an image has a signature that can be authenticated by multiple CA certificates in the authorized signature database, this
+// function assumes that the firmware will try the CA certificates in the order in which they appear in the database and authenticate
+// the image with the first valid certificate. If the firmware does not do this, then this function may generate a PCR profile that is
+// incorrect for binaries that have a signature that can be authenticated by more than one CA certificate. Note that the structure of
+// the signature database means that it can only really be iterated in one direction anyway.
+// 
 // For images with multiple Authenticode signatures, this function assumes that the device's firmware will iterate over the signatures
 // in the order in which they appear in the binary's certificate table in an outer loop during image authentication (ie, for each
 // signature, attempt to authenticate the binary using one of the CA certificates). If a device's firmware iterates over the
