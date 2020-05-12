@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rsa"
 	"fmt"
 	"math/big"
 	"os"
@@ -131,22 +130,8 @@ func bigIntToBytesZeroExtended(x *big.Int, bytes int) (out []byte) {
 	return
 }
 
-// createPublicAreaForRSASigningKey creates a *tpm2.Public from a go *rsa.PublicKey, which is suitable for loading
+// createPublicAreaForECDSAKey creates a *tpm2.Public from a go *ecdsa.PublicKey, which is suitable for loading
 // in to a TPM with TPMContext.LoadExternal.
-func createPublicAreaForRSASigningKey(key *rsa.PublicKey) *tpm2.Public {
-	return &tpm2.Public{
-		Type:    tpm2.ObjectTypeRSA,
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrSign,
-		Params: tpm2.PublicParamsU{
-			Data: &tpm2.RSAParams{
-				Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
-				Scheme:    tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
-				KeyBits:   uint16(key.N.BitLen()),
-				Exponent:  uint32(key.E)}},
-		Unique: tpm2.PublicIDU{Data: tpm2.PublicKeyRSA(key.N.Bytes())}}
-}
-
 func createPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
 	var curve tpm2.ECCCurve
 	switch key.Curve {

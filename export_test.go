@@ -49,7 +49,6 @@ var (
 	ComputeStaticPolicy                      = computeStaticPolicy
 	CreatePinNVIndex                         = createPinNVIndex
 	CreatePublicAreaForECDSAKey              = createPublicAreaForECDSAKey
-	CreatePublicAreaForRSASigningKey         = createPublicAreaForRSASigningKey
 	DecodeSecureBootDb                       = decodeSecureBootDb
 	DecodeWinCertificate                     = decodeWinCertificate
 	EFICertTypePkcs7Guid                     = efiCertTypePkcs7Guid
