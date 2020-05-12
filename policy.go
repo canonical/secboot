@@ -248,8 +248,9 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 		return xerrors.Errorf("cannot compute name of signing key for initializing NV index: %w", err)
 	}
 
-	// Read the TPM clock
-	time, err := tpm.ReadClock(session.IncludeAttrs(tpm2.AttrAudit))
+	// Read the TPM clock (no session here because some Infineon devices don't allow them, despite being permitted in the spec
+	// and reference implementation)
+	time, err := tpm.ReadClock()
 	if err != nil {
 		return xerrors.Errorf("cannot read current time: %w", err)
 	}
@@ -411,8 +412,9 @@ func readAndValidateLockNVIndexPublic(tpm *tpm2.TPMContext, index tpm2.ResourceC
 		return nil, errors.New("unrecognized version for policy data")
 	}
 
-	// Read the current TPM clock.
-	time, err := tpm.ReadClock(session.IncludeAttrs(tpm2.AttrAudit))
+	// Read the TPM clock (no session here because some Infineon devices don't allow them, despite being permitted in the spec
+	// and reference implementation)
+	time, err := tpm.ReadClock()
 	if err != nil {
 		return nil, xerrors.Errorf("cannot read current time: %w", err)
 	}
