@@ -20,8 +20,9 @@
 package secboot
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"encoding/binary"
 	"os"
 
@@ -94,12 +95,12 @@ func computePinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 // and an authorization policy that permits TPM2_NV_Increment with a signed authorization policy, signed by the key associated with
 // updateKeyName.
 func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tpm2.Name, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, tpm2.DigestList, error) {
-	initKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	initKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot create signing key for initializing NV index: %w", err)
 	}
 
-	initKeyPublic := createPublicAreaForRSASigningKey(&initKey.PublicKey)
+	initKeyPublic := createPublicAreaForECDSAKey(&initKey.PublicKey)
 	initKeyName, err := initKeyPublic.Name()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for initializing NV index: %w", err)
@@ -170,7 +171,7 @@ func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tp
 	binary.Write(h, binary.BigEndian, int32(0))
 
 	// Sign the digest
-	sig, err := rsa.SignPSS(rand.Reader, initKey, signDigest.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+	sigR, sigS, err := ecdsa.Sign(rand.Reader, initKey, h.Sum(nil))
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot provide signature for initializing NV index: %w", err)
 	}
@@ -185,11 +186,12 @@ func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tp
 	defer tpm.FlushContext(initKeyContext)
 
 	signature := tpm2.Signature{
-		SigAlg: tpm2.SigSchemeAlgRSAPSS,
+		SigAlg: tpm2.SigSchemeAlgECDSA,
 		Signature: tpm2.SignatureU{
-			Data: &tpm2.SignatureRSAPSS{
-				Hash: signDigest,
-				Sig:  tpm2.PublicKeyRSA(sig)}}}
+			Data: &tpm2.SignatureECDSA{
+				Hash:       signDigest,
+				SignatureR: sigR.Bytes(),
+				SignatureS: sigS.Bytes()}}}
 
 	// Execute the policy assertions
 	if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
