@@ -25,6 +25,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"fmt"
+	"math/big"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -120,6 +121,16 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 	return true, nil
 }
 
+func bigIntToBytesZeroExtended(x *big.Int, bytes int) (out []byte) {
+	b := x.Bytes()
+	if len(b) > bytes {
+		return b
+	}
+	out = make([]byte, bytes)
+	copy(out[bytes-len(b):], b)
+	return
+}
+
 // createPublicAreaForRSASigningKey creates a *tpm2.Public from a go *rsa.PublicKey, which is suitable for loading
 // in to a TPM with TPMContext.LoadExternal.
 func createPublicAreaForRSASigningKey(key *rsa.PublicKey) *tpm2.Public {
@@ -161,7 +172,10 @@ func createPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
 				Scheme:    tpm2.ECCScheme{Scheme: tpm2.ECCSchemeNull},
 				CurveID:   curve,
 				KDF:       tpm2.KDFScheme{Scheme: tpm2.KDFAlgorithmNull}}},
-		Unique: tpm2.PublicIDU{Data: &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}}}
+		Unique: tpm2.PublicIDU{
+			Data: &tpm2.ECCPoint{
+				X: bigIntToBytesZeroExtended(key.X, key.Params().BitSize/8),
+				Y: bigIntToBytesZeroExtended(key.Y, key.Params().BitSize/8)}}}
 }
 
 // digestListContains indicates whether the specified digest is present in the list of digests.
