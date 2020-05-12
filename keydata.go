@@ -74,12 +74,12 @@ type keyPolicyUpdateData struct {
 }
 
 func (d *keyPolicyUpdateData) Marshal(w io.Writer) (nbytes int, err error) {
-	authKeyPKCS8, err := x509.MarshalPKCS8PrivateKey(d.authKey)
+	authKey, err := x509.MarshalECPrivateKey(d.authKey.(*ecdsa.PrivateKey))
 	if err != nil {
 		return 0, xerrors.Errorf("cannot marshal private key: %w", err)
 	}
 	raw := &keyPolicyUpdateDataRaw_v1{
-		AuthKey:        authKeyPKCS8,
+		AuthKey:        authKey,
 		CreationData:   d.creationData,
 		CreationTicket: d.creationTicket}
 	return tpm2.MarshalToWriter(w, d.version, raw)
@@ -126,7 +126,7 @@ func (d *keyPolicyUpdateData) Unmarshal(r io.Reader) (nbytes int, err error) {
 			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
 
-		authKey, err := x509.ParsePKCS8PrivateKey(raw.AuthKey)
+		authKey, err := x509.ParseECPrivateKey(raw.AuthKey)
 		if err != nil {
 			return nbytes, xerrors.Errorf("cannot parse dynamic authorization policy signing key: %w", err)
 		}

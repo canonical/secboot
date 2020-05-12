@@ -270,7 +270,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	sensitive := tpm2.SensitiveCreate{Data: key}
 
 	// Have the digest of the private data recorded in the creation data for the sealed data object.
-	authKeyBytes, err := x509.MarshalPKCS8PrivateKey(authKey)
+	authKeyBytes, err := x509.MarshalECPrivateKey(authKey)
 	if err != nil {
 		return xerrors.Errorf("cannot marshal key for signing authorization policy updates: %w", err)
 	}
