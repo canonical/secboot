@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
@@ -397,12 +396,12 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 		// Test with a bogus lock NV index that allows writes far in to the future, making it possible
 		// to recreate it to remove the read lock bit.
 
-		key, err := rsa.GenerateKey(testutil.RandReader, 2048)
+		key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 		if err != nil {
 			t.Fatalf("GenerateKey failed: %v", err)
 		}
 
-		keyPublic := CreatePublicAreaForRSASigningKey(&key.PublicKey)
+		keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
 		keyName, err := keyPublic.Name()
 		if err != nil {
 			t.Errorf("Cannot compute key name: %v", err)
@@ -443,7 +442,7 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 		h.Write(policySession.NonceTPM())
 		binary.Write(h, binary.BigEndian, int32(0))
 
-		sig, err := rsa.SignPSS(testutil.RandReader, key, tpm2.HashAlgorithmSHA256.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+		sigR, sigS, err := ecdsa.Sign(testutil.RandReader, key, h.Sum(nil))
 		if err != nil {
 			t.Errorf("SignPSS failed: %v", err)
 		}
@@ -455,11 +454,12 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 		defer tpm.FlushContext(keyLoaded)
 
 		signature := tpm2.Signature{
-			SigAlg: tpm2.SigSchemeAlgRSAPSS,
+			SigAlg: tpm2.SigSchemeAlgECDSA,
 			Signature: tpm2.SignatureU{
-				Data: &tpm2.SignatureRSAPSS{
-					Hash: tpm2.HashAlgorithmSHA256,
-					Sig:  tpm2.PublicKeyRSA(sig)}}}
+				Data: &tpm2.SignatureECDSA{
+					Hash:       tpm2.HashAlgorithmSHA256,
+					SignatureR: sigR.Bytes(),
+					SignatureS: sigS.Bytes()}}}
 
 		if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVWrite); err != nil {
 			t.Errorf("Assertion failed: %v", err)

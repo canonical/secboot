@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/binary"
@@ -283,12 +284,12 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 	}
 
 	// Create signing key.
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return xerrors.Errorf("cannot create signing key for initializing NV index: %w", err)
 	}
 
-	keyPublic := createPublicAreaForRSASigningKey(&key.PublicKey)
+	keyPublic := createPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		return xerrors.Errorf("cannot compute name of signing key for initializing NV index: %w", err)
@@ -351,7 +352,7 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 	binary.Write(h, binary.BigEndian, int32(0))
 
 	// Sign the digest
-	sig, err := rsa.SignPSS(rand.Reader, key, signDigest.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+	sigR, sigS, err := ecdsa.Sign(rand.Reader, key, h.Sum(nil))
 	if err != nil {
 		return xerrors.Errorf("cannot provide signature for initializing NV index: %w", err)
 	}
@@ -366,11 +367,12 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 	defer tpm.FlushContext(keyLoaded)
 
 	signature := tpm2.Signature{
-		SigAlg: tpm2.SigSchemeAlgRSAPSS,
+		SigAlg: tpm2.SigSchemeAlgECDSA,
 		Signature: tpm2.SignatureU{
-			Data: &tpm2.SignatureRSAPSS{
-				Hash: signDigest,
-				Sig:  tpm2.PublicKeyRSA(sig)}}}
+			Data: &tpm2.SignatureECDSA{
+				Hash:       signDigest,
+				SignatureR: sigR.Bytes(),
+				SignatureS: sigS.Bytes()}}}
 
 	// Execute the policy assertions
 	if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVWrite); err != nil {
