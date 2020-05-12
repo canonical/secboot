@@ -355,14 +355,26 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		return nil, keyFileError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}
 	var expectedAuthKeyType tpm2.ObjectTypeId
+	var expectedAuthKeyScheme tpm2.AsymSchemeId
 	switch d.version {
 	case 0:
 		expectedAuthKeyType = tpm2.ObjectTypeRSA
+		expectedAuthKeyScheme = tpm2.AsymSchemeRSAPSS
 	default:
 		expectedAuthKeyType = tpm2.ObjectTypeECC
+		expectedAuthKeyScheme = tpm2.AsymSchemeECDSA
 	}
-	if d.staticPolicyData.AuthPublicKey.Type != expectedAuthKeyType {
+	if authPublicKey.Type != expectedAuthKeyType {
 		return nil, keyFileError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
+	}
+	authKeyScheme := authPublicKey.Params.AsymDetail().Scheme
+	if authKeyScheme.Scheme != tpm2.AsymSchemeNull {
+		if authKeyScheme.Scheme != expectedAuthKeyScheme {
+			return nil, keyFileError{errors.New("dynamic authorization policy signing key has unexpected scheme")}
+		}
+		if authKeyScheme.Details.Any().HashAlg != authPublicKey.NameAlg {
+			return nil, keyFileError{errors.New("dynamic authorization policy signing key algorithm must match name algorithm")}
+		}
 	}
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.

@@ -528,8 +528,8 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 	// for PIN change (TPM2_NV_ChangeAuth), reading (TPM2_NV_Read) and TPM2_PolicyNV - see the first 5 calls to tpm2.ComputeAuthPolicy in
 	// createPinNVIndex.
 	var pinIndexAuthPolicies tpm2.DigestList
-	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexStringT(t, "199c42684aafe3d9c2e18dcc162a6d3875a40ca2ab8f06228b207135281d995f"))
-	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexStringT(t, "9fee0c3282df0557dcf26db05148b7af15de17d51ef6d0bce21f171ac570fa4b"))
+	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexStringT(t, "ffa9366838948c0391c23ba4bee09eaaabc02a14c551c128ccc8a662631b1a5d"))
+	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexStringT(t, "9710b612b448b66ccda3f6c4276b72a1bd09b9d84090a9876ee5a015c83df0ee"))
 	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexStringT(t, "aa83a598d93a56c9ca6fea7c3ffc4e106357ff6d93e11a9b4ac2b6aae12ba0de"))
 	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexStringT(t, "47ce3032d8bad1f3089cb0c09088de43501491d460402b90cd1b7fc0b68ca92f"))
 	pinIndexAuthPolicies = append(pinIndexAuthPolicies, decodeHexStringT(t, "203e4bd5d0448c9615cc13fa18e8d39222441cc40204d99a77262068dbd55a43"))
@@ -560,12 +560,12 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 		{
 			desc:   "SHA256",
 			alg:    tpm2.HashAlgorithmSHA256,
-			policy: decodeHexStringT(t, "9433765055050d57bee87e7b00ba05046963fda087ce5655e012f951f8669e8f"),
+			policy: decodeHexStringT(t, "bba9fabf4377f0bfee941af5bc15cffd96a16f1f8033341f460e5260d688ba63"),
 		},
 		{
 			desc:   "SHA1",
 			alg:    tpm2.HashAlgorithmSHA1,
-			policy: decodeHexStringT(t, "250f439a79183b2017b99eb489d5000355c8f159"),
+			policy: decodeHexStringT(t, "79e090597454b5faf4e4f077db079e11a9dbb773"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {

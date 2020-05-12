@@ -154,9 +154,11 @@ func createPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
 		Params: tpm2.PublicParamsU{
 			Data: &tpm2.ECCParams{
 				Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
-				Scheme:    tpm2.ECCScheme{Scheme: tpm2.ECCSchemeNull},
-				CurveID:   curve,
-				KDF:       tpm2.KDFScheme{Scheme: tpm2.KDFAlgorithmNull}}},
+				Scheme: tpm2.ECCScheme{
+					Scheme:  tpm2.ECCSchemeECDSA,
+					Details: tpm2.AsymSchemeU{Data: &tpm2.SigSchemeECDSA{HashAlg: tpm2.HashAlgorithmSHA256}}},
+				CurveID: curve,
+				KDF:     tpm2.KDFScheme{Scheme: tpm2.KDFAlgorithmNull}}},
 		Unique: tpm2.PublicIDU{
 			Data: &tpm2.ECCPoint{
 				X: bigIntToBytesZeroExtended(key.X, key.Params().BitSize/8),
