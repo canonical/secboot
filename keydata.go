@@ -22,6 +22,7 @@ package secboot
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
 	"errors"
@@ -59,19 +60,26 @@ type keyPolicyUpdateDataRaw_v0 struct {
 	CreationTicket *tpm2.TkCreation
 }
 
+// keyPolicyUpdateDataRaw_v1 is version 1 of the on-disk format of keyPolicyUpdateData.
+type keyPolicyUpdateDataRaw_v1 keyPolicyUpdateDataRaw_v0
+
 // keyPolicyUpdateData corresponds to the private part of a sealed key object that is required in order to create new dynamic
 // authorization policies.
 type keyPolicyUpdateData struct {
 	version        uint32
-	authKey        *rsa.PrivateKey
+	authKey        crypto.PrivateKey
 	creationInfo   tpm2.Data
 	creationData   *tpm2.CreationData
 	creationTicket *tpm2.TkCreation
 }
 
 func (d *keyPolicyUpdateData) Marshal(w io.Writer) (nbytes int, err error) {
-	raw := &keyPolicyUpdateDataRaw_v0{
-		AuthKey:        x509.MarshalPKCS1PrivateKey(d.authKey),
+	authKeyPKCS8, err := x509.MarshalPKCS8PrivateKey(d.authKey)
+	if err != nil {
+		return 0, xerrors.Errorf("cannot marshal private key: %w", err)
+	}
+	raw := &keyPolicyUpdateDataRaw_v1{
+		AuthKey:        authKeyPKCS8,
 		CreationData:   d.creationData,
 		CreationTicket: d.creationTicket}
 	return tpm2.MarshalToWriter(w, d.version, raw)
@@ -86,7 +94,7 @@ func (d *keyPolicyUpdateData) Unmarshal(r io.Reader) (nbytes int, err error) {
 	}
 
 	switch version {
-	case 0, 1:
+	case 0:
 		var raw keyPolicyUpdateDataRaw_v0
 		n, err := tpm2.UnmarshalFromReader(r, &raw)
 		nbytes += n
@@ -95,6 +103,30 @@ func (d *keyPolicyUpdateData) Unmarshal(r io.Reader) (nbytes int, err error) {
 		}
 
 		authKey, err := x509.ParsePKCS1PrivateKey(raw.AuthKey)
+		if err != nil {
+			return nbytes, xerrors.Errorf("cannot parse dynamic authorization policy signing key: %w", err)
+		}
+
+		h := crypto.SHA256.New()
+		if _, err := tpm2.MarshalToWriter(h, raw.AuthKey); err != nil {
+			panic(fmt.Sprintf("cannot marshal dynamic authorization policy signing key: %v", err))
+		}
+
+		*d = keyPolicyUpdateData{
+			version:        version,
+			authKey:        authKey,
+			creationInfo:   h.Sum(nil),
+			creationData:   raw.CreationData,
+			creationTicket: raw.CreationTicket}
+	case 1:
+		var raw keyPolicyUpdateDataRaw_v1
+		n, err := tpm2.UnmarshalFromReader(r, &raw)
+		nbytes += n
+		if err != nil {
+			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
+		}
+
+		authKey, err := x509.ParsePKCS8PrivateKey(raw.AuthKey)
 		if err != nil {
 			return nbytes, xerrors.Errorf("cannot parse dynamic authorization policy signing key: %w", err)
 		}
@@ -322,7 +354,14 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	if err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}
-	if authPublicKey.Type != tpm2.ObjectTypeRSA {
+	var expectedAuthKeyType tpm2.ObjectTypeId
+	switch d.version {
+	case 0:
+		expectedAuthKeyType = tpm2.ObjectTypeRSA
+	default:
+		expectedAuthKeyType = tpm2.ObjectTypeECC
+	}
+	if d.staticPolicyData.AuthPublicKey.Type != expectedAuthKeyType {
 		return nil, keyFileError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
 	}
 
@@ -372,6 +411,10 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		return pinIndexPublic, nil
 	}
 
+	if policyUpdateData.version != d.version {
+		return nil, keyFileError{errors.New("mismatched metadata versions")}
+	}
+
 	// Verify that the private data structure is bound to the key data structure.
 	h := keyPublic.NameAlg.NewHash()
 	if _, err := tpm2.MarshalToWriter(h, policyUpdateData.creationData); err != nil {
@@ -391,11 +434,32 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	}
 
 	authKey := policyUpdateData.authKey
-	goAuthPublicKey := rsa.PublicKey{
-		N: new(big.Int).SetBytes(authPublicKey.Unique.RSA()),
-		E: int(authPublicKey.Params.RSADetail().Exponent)}
-	if authKey.E != goAuthPublicKey.E || authKey.N.Cmp(goAuthPublicKey.N) != 0 {
-		return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
+	switch d.version {
+	case 0:
+		authKeyRSA, isRSA := authKey.(*rsa.PrivateKey)
+		if !isRSA {
+			return nil, keyFileError{errors.New("unexpected dynamic authorization policy signing private key type")}
+		}
+		goAuthPublicKey := rsa.PublicKey{
+			N: new(big.Int).SetBytes(authPublicKey.Unique.RSA()),
+			E: int(authPublicKey.Params.RSADetail().Exponent)}
+		if authKeyRSA.E != goAuthPublicKey.E || authKeyRSA.N.Cmp(goAuthPublicKey.N) != 0 {
+			return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
+		}
+	default:
+		authKeyECDSA, isECDSA := authKey.(*ecdsa.PrivateKey)
+		if !isECDSA {
+			return nil, keyFileError{errors.New("unexpected dynamic authorization policy signing private key type")}
+		}
+		goAuthPublicKey := ecdsa.PublicKey{
+			Curve: authPublicKey.Params.ECCDetail().CurveID.GoCurve(),
+			X:     (&big.Int{}).SetBytes(authPublicKey.Unique.ECC().X),
+			Y:     (&big.Int{}).SetBytes(authPublicKey.Unique.ECC().Y)}
+		if authKeyECDSA.PublicKey.Curve != goAuthPublicKey.Curve ||
+			authKeyECDSA.PublicKey.X.Cmp(goAuthPublicKey.X) != 0 ||
+			authKeyECDSA.PublicKey.Y.Cmp(goAuthPublicKey.Y) != 0 {
+			return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
+		}
 	}
 
 	return pinIndexPublic, nil

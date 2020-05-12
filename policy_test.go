@@ -21,10 +21,13 @@ package secboot_test
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
+	"math/big"
 	"sort"
 	"testing"
 	"unsafe"
@@ -101,11 +104,11 @@ func TestIncrementDynamicPolicyCounter(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	key, err := rsa.GenerateKey(testutil.RandReader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForRSASigningKey(&key.PublicKey)
+	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -163,11 +166,11 @@ func TestReadDynamicPolicyCounter(t *testing.T) {
 		t.Fatalf("NVReadCounter failed: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(testutil.RandReader, 768)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForRSASigningKey(&key.PublicKey)
+	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -899,7 +902,7 @@ func TestComputePolicyORData(t *testing.T) {
 }
 
 func TestComputeDynamicPolicy(t *testing.T) {
-	key, err := rsa.GenerateKey(testutil.RandReader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -1126,20 +1129,20 @@ func TestComputeDynamicPolicy(t *testing.T) {
 					t.Errorf("Unexpected policy digest returned (got %x, expected %x)", dataout.AuthorizedPolicy, data.policy)
 				}
 
-				if dataout.AuthorizedPolicySignature.SigAlg != tpm2.SigSchemeAlgRSAPSS {
+				if dataout.AuthorizedPolicySignature.SigAlg != tpm2.SigSchemeAlgECDSA {
 					t.Errorf("Unexpected authorized policy signature algorithm")
 				}
-				if dataout.AuthorizedPolicySignature.Signature.RSAPSS().Hash != data.signAlg {
+				if dataout.AuthorizedPolicySignature.Signature.ECDSA().Hash != data.signAlg {
 					t.Errorf("Unexpected authorized policy signature digest algorithm")
 				}
 
 				h := data.signAlg.NewHash()
 				h.Write(dataout.AuthorizedPolicy)
 
-				if err := rsa.VerifyPSS(&key.PublicKey, data.signAlg.GetHash(), h.Sum(nil),
-					[]byte(dataout.AuthorizedPolicySignature.Signature.RSAPSS().Sig),
-					&rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash}); err != nil {
-					t.Errorf("Invalid authorized policy signature: %v", err)
+				if ok := ecdsa.Verify(&key.PublicKey, h.Sum(nil),
+					(&big.Int{}).SetBytes(dataout.AuthorizedPolicySignature.Signature.ECDSA().SignatureR),
+					(&big.Int{}).SetBytes(dataout.AuthorizedPolicySignature.Signature.ECDSA().SignatureS)); !ok {
+					t.Errorf("Invalid authorized policy signature")
 				}
 			} else {
 				if err == nil {
@@ -1162,11 +1165,11 @@ func TestExecutePolicy(t *testing.T) {
 		t.Errorf("ensureLockNVIndex failed: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(testutil.RandReader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForRSASigningKey(&key.PublicKey)
+	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -1216,7 +1219,7 @@ func TestExecutePolicy(t *testing.T) {
 			pinIndexAuthPoliciesCopy = append(pinIndexAuthPoliciesCopy, c)
 		}
 
-		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreatePublicAreaForRSASigningKey(&key.PublicKey), pinIndexPub, pinIndexAuthPoliciesCopy, lockIndex.Name()))
+		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreatePublicAreaForECDSAKey(&key.PublicKey), pinIndexPub, pinIndexAuthPoliciesCopy, lockIndex.Name()))
 		if err != nil {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
@@ -2147,13 +2150,11 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
-			key, err := rsa.GenerateKey(testutil.RandReader, 2048)
+			key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
-			s.AuthPublicKey.Params.RSADetail().KeyBits = uint16(key.N.BitLen())
-			s.AuthPublicKey.Params.RSADetail().Exponent = uint32(key.E)
-			s.AuthPublicKey.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
+			s.AuthPublicKey.Unique.Data = &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}
 		})
 		// Even though this error is caused by broken static metadata, we get a dynamicPolicyDataError error because the signature
 		// verification fails. Validation with validateKeyData will detect the real issue though.
@@ -2197,19 +2198,20 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
-			key, err := rsa.GenerateKey(testutil.RandReader, 2048)
+			key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
-			alg := d.AuthorizedPolicySignature.Signature.RSAPSS().Hash
+			alg := d.AuthorizedPolicySignature.Signature.ECDSA().Hash
 			h := alg.NewHash()
 			h.Write(d.AuthorizedPolicy)
 
-			sig, err := rsa.SignPSS(testutil.RandReader, key, alg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+			sigR, sigS, err := ecdsa.Sign(testutil.RandReader, key, h.Sum(nil))
 			if err != nil {
 				t.Fatalf("SignPSS failed: %v", err)
 			}
-			d.AuthorizedPolicySignature.Signature.RSAPSS().Sig = tpm2.PublicKeyRSA(sig)
+			d.AuthorizedPolicySignature.Signature.ECDSA().SignatureR = sigR.Bytes()
+			d.AuthorizedPolicySignature.Signature.ECDSA().SignatureS = sigS.Bytes()
 		})
 		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify dynamic authorization policy signature" {
 			t.Errorf("Unexpected error: %v", err)
@@ -2253,23 +2255,22 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
-			key, err := rsa.GenerateKey(testutil.RandReader, 2048)
+			key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
-			s.AuthPublicKey.Params.RSADetail().KeyBits = uint16(key.N.BitLen())
-			s.AuthPublicKey.Params.RSADetail().Exponent = uint32(key.E)
-			s.AuthPublicKey.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
+			s.AuthPublicKey.Unique.Data = &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}
 
-			signAlg := d.AuthorizedPolicySignature.Signature.RSAPSS().Hash
-			h := signAlg.NewHash()
+			alg := d.AuthorizedPolicySignature.Signature.ECDSA().Hash
+			h := alg.NewHash()
 			h.Write(d.AuthorizedPolicy)
 
-			sig, err := rsa.SignPSS(testutil.RandReader, key, signAlg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+			sigR, sigS, err := ecdsa.Sign(testutil.RandReader, key, h.Sum(nil))
 			if err != nil {
 				t.Fatalf("SignPSS failed: %v", err)
 			}
-			d.AuthorizedPolicySignature.Signature.RSAPSS().Sig = tpm2.PublicKeyRSA(sig)
+			d.AuthorizedPolicySignature.Signature.ECDSA().SignatureR = sigR.Bytes()
+			d.AuthorizedPolicySignature.Signature.ECDSA().SignatureS = sigS.Bytes()
 		})
 		if err != nil {
 			t.Errorf("Failed to execute policy session: %v", err)
@@ -2485,11 +2486,11 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(testutil.RandReader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForRSASigningKey(&key.PublicKey)
+	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)

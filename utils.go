@@ -21,6 +21,8 @@ package secboot
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"fmt"
 	"os"
@@ -132,6 +134,34 @@ func createPublicAreaForRSASigningKey(key *rsa.PublicKey) *tpm2.Public {
 				KeyBits:   uint16(key.N.BitLen()),
 				Exponent:  uint32(key.E)}},
 		Unique: tpm2.PublicIDU{Data: tpm2.PublicKeyRSA(key.N.Bytes())}}
+}
+
+func createPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
+	var curve tpm2.ECCCurve
+	switch key.Curve {
+	case elliptic.P224():
+		curve = tpm2.ECCCurveNIST_P224
+	case elliptic.P256():
+		curve = tpm2.ECCCurveNIST_P256
+	case elliptic.P384():
+		curve = tpm2.ECCCurveNIST_P384
+	case elliptic.P521():
+		curve = tpm2.ECCCurveNIST_P521
+	default:
+		panic("unsupported curve")
+	}
+
+	return &tpm2.Public{
+		Type:    tpm2.ObjectTypeECC,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs:   tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrSign,
+		Params: tpm2.PublicParamsU{
+			Data: &tpm2.ECCParams{
+				Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
+				Scheme:    tpm2.ECCScheme{Scheme: tpm2.ECCSchemeNull},
+				CurveID:   curve,
+				KDF:       tpm2.KDFScheme{Scheme: tpm2.KDFAlgorithmNull}}},
+		Unique: tpm2.PublicIDU{Data: &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}}}
 }
 
 // digestListContains indicates whether the specified digest is present in the list of digests.

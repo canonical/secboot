@@ -21,8 +21,9 @@ package secboot
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -42,7 +43,7 @@ func makeSealedKeyTemplate() *tpm2.Public {
 		Params:  tpm2.PublicParamsU{Data: &tpm2.KeyedHashParams{Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}}}
 }
 
-func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey *rsa.PrivateKey,
+func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey crypto.PrivateKey,
 	countIndexPub *tpm2.NVPublic, countIndexAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
 	// Obtain the count for the new dynamic authorization policy
@@ -221,11 +222,11 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	}
 
 	// Create an asymmetric key for signing authorization policy updates, and authorizing dynamic authorization policy revocations.
-	authKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	authKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return xerrors.Errorf("cannot generate RSA key pair for signing dynamic authorization policies: %w", err)
 	}
-	authPublicKey := createPublicAreaForRSASigningKey(&authKey.PublicKey)
+	authPublicKey := createPublicAreaForECDSAKey(&authKey.PublicKey)
 	authKeyName, err := authPublicKey.Name()
 	if err != nil {
 		return xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
@@ -269,7 +270,11 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	sensitive := tpm2.SensitiveCreate{Data: key}
 
 	// Have the digest of the private data recorded in the creation data for the sealed data object.
-	authKeyBytes := x509.MarshalPKCS1PrivateKey(authKey)
+	authKeyBytes, err := x509.MarshalPKCS8PrivateKey(authKey)
+	if err != nil {
+		return xerrors.Errorf("cannot marshal key for signing authorization policy updates: %w", err)
+	}
+
 	h := crypto.SHA256.New()
 	if _, err := tpm2.MarshalToWriter(h, authKeyBytes); err != nil {
 		panic(fmt.Sprintf("cannot marshal dynamic authorization policy update data: %v", err))
@@ -368,8 +373,8 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
 
-	authKey := policyUpdateData.authKey
 	authPublicKey := data.staticPolicyData.AuthPublicKey
+	authKey := policyUpdateData.authKey
 	pinIndexAuthPolicies := data.staticPolicyData.PinIndexAuthPolicies
 
 	// Compute a new dynamic authorization policy
@@ -389,7 +394,8 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 		return xerrors.Errorf("cannot write key data file: %v", err)
 	}
 
-	if err := incrementDynamicPolicyCounter(tpm.TPMContext, pinIndexPublic, pinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
+	if err := incrementDynamicPolicyCounter(tpm.TPMContext, pinIndexPublic, pinIndexAuthPolicies, authKey, authPublicKey,
+		session); err != nil {
 		return xerrors.Errorf("cannot revoke old dynamic authorization policies: %w", err)
 	}
 
