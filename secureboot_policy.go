@@ -177,7 +177,7 @@ func (c *winCertificateAuthenticode) wCertificateType() uint16 {
 
 // decodeWinCertificate decodes the WIN_CERTIFICATE implementation from r. Currently supported types are WIN_CERT_TYPE_PKCS_SIGNED_DATA
 // and WIN_CERT_TYPE_EFI_GUID.
-func decodeWinCertificate(r io.Reader) (winCertificate, int, error) {
+func decodeWinCertificate(r io.Reader) (cert winCertificate, length int, err error) {
 	var hdr struct {
 		Length          uint32
 		Revision        uint16
@@ -921,6 +921,7 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		// appear in the binary in this outer loop. Iterating over the CA certificates occurs in an inner loop. This behaviour isn't defined
 		// in the UEFI specification but it matches EDK2 and the firmware on the Intel NUC. If an implementation iterates over the CA
 		// certificates in an outer loop and the signatures in an inner loop, then this may produce the wrong result.
+	Outer:
 		for _, sig := range sigs {
 			for _, db := range dbs {
 				if db == nil {
@@ -948,21 +949,9 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 					if _, err := sig.signer.Verify(opts); err == nil {
 						// This signer certificate is trusted by this authority
 						authority = &secureBootAuthority{signature: caSig, source: db}
-						break
-					}
-
-					if authority != nil {
-						break
+						break Outer
 					}
 				}
-
-				if authority != nil {
-					break
-				}
-			}
-
-			if authority != nil {
-				break
 			}
 		}
 
