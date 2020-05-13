@@ -282,7 +282,7 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	defer keyFile.Close()
 
 	// Read and validate the key data file
-	data, _, pinIndexPublic, err := readAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
+	data, _, pinIndexPublic, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
 	if err != nil {
 		var kfErr keyFileError
 		if xerrors.As(err, &kfErr) {
@@ -292,7 +292,7 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	}
 
 	// Change the PIN
-	if err := performPinChange(tpm.TPMContext, pinIndexPublic, data.StaticPolicyData.PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
+	if err := performPinChange(tpm.TPMContext, pinIndexPublic, data.staticPolicyData.PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
 		if isAuthFailError(err, tpm2.CommandNVChangeAuth, 1) {
 			return ErrPINFail
 		}
@@ -300,14 +300,14 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	}
 
 	// Update the metadata and write a new key data file
-	origAuthModeHint := data.AuthModeHint
+	origAuthModeHint := data.authModeHint
 	if newPIN == "" {
-		data.AuthModeHint = AuthModeNone
+		data.authModeHint = AuthModeNone
 	} else {
-		data.AuthModeHint = AuthModePIN
+		data.authModeHint = AuthModePIN
 	}
 
-	if origAuthModeHint == data.AuthModeHint {
+	if origAuthModeHint == data.authModeHint {
 		return nil
 	}
 

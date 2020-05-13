@@ -1129,7 +1129,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			dataout, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrValues, pinName, data.policyCount))
+			dataout, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrValues, pinName, data.policyCount))
 			if data.err == "" {
 				if err != nil {
 					t.Fatalf("ComputeDynamicPolicy failed: %v", err)
@@ -1241,7 +1241,7 @@ func TestExecutePolicy(t *testing.T) {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
 		signAlg := staticPolicyData.AuthPublicKey.NameAlg
-		dynamicPolicyData, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrValues, pinIndex.Name(), data.policyCount))
+		dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrValues, pinIndex.Name(), data.policyCount))
 		if err != nil {
 			t.Fatalf("ComputeDynamicPolicy failed: %v", err)
 		}
@@ -2505,7 +2505,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 	}
 
 	signAlg := staticPolicyData.AuthPublicKey.NameAlg
-	dynamicPolicyData, err := ComputeDynamicPolicy(tpm2.HashAlgorithmSHA256,
+	dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, tpm2.HashAlgorithmSHA256,
 		NewDynamicPolicyComputeParams(key, signAlg, []tpm2.PCRValues{{tpm2.HashAlgorithmSHA256: {7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}}},
 			pinIndex.Name(), policyCount))
 	if err != nil {
