@@ -216,10 +216,10 @@ func (t *TPMConnection) init() error {
 	// Without verification against the EK certificate, ek isn't yet safe to use for secret sharing with the TPM.
 	ek, err := func() (tpm2.ResourceContext, error) {
 		ek, err := t.CreateResourceContextFromTPM(ekHandle)
-		if err == nil {
+		if err == nil || !secureMode {
 			return ek, nil
 		}
-		if !tpm2.IsResourceUnavailableError(err, ekHandle) || !secureMode {
+		if !tpm2.IsResourceUnavailableError(err, ekHandle) {
 			return nil, err
 		}
 		if ek, err := createTransientEk(t.TPMContext); err == nil {
@@ -227,16 +227,17 @@ func (t *TPMConnection) init() error {
 		}
 		return nil, err
 	}()
-	if err != nil && secureMode {
+	if err != nil {
 		// A lack of EK should be fatal in this context
 		return xerrors.Errorf("cannot obtain context for EK: %w", err)
 	}
 
+	ekIsPersistent := func() bool {
+		return ek != nil && ek.Handle() == ekHandle
+	}
+
 	defer func() {
-		if ek == nil {
-			return
-		}
-		if ek.Handle() == ekHandle {
+		if ek == nil || ekIsPersistent() {
 			return
 		}
 		t.FlushContext(ek)
@@ -302,7 +303,7 @@ func (t *TPMConnection) init() error {
 		t.FlushContext(session)
 	}()
 
-	if len(t.verifiedEkCertChain) > 0 {
+	if secureMode {
 		_, err = t.GetRandom(20, session.WithAttrs(tpm2.AttrContinueSession|tpm2.AttrAudit))
 		if err != nil {
 			if isAuthFailError(err, tpm2.CommandGetRandom, 1) {
@@ -314,7 +315,7 @@ func (t *TPMConnection) init() error {
 
 	succeeded = true
 
-	if ek != nil && ek.Handle() == ekHandle {
+	if ekIsPersistent() {
 		t.ek = ek
 	}
 	t.hmacSession = session
