@@ -50,6 +50,7 @@ var (
 	// next TPM reset or restart.
 	ErrSealedKeyAccessLocked = errors.New("cannot access the sealed key object until the next TPM reset or restart")
 
+	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
 	ErrNoTPM2Device = errors.New("no TPM2 device is available")
 )
 
