@@ -33,7 +33,7 @@ type pcrValuesList []tpm2.PCRValues
 // setValue sets the specified PCR to the supplied value for all branches.
 func (l pcrValuesList) setValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
 	for _, v := range l {
-		v.SetValue(pcr, alg, value)
+		v.SetValue(alg, pcr, value)
 	}
 }
 

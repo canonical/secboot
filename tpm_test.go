@@ -349,6 +349,38 @@ func certifyTPM(tpm *tpm2.TPMContext) error {
 	return nil
 }
 
+func TestTPMConnectionIsEnabled(t *testing.T) {
+	tpm, _ := openTPMSimulatorForTesting(t)
+	defer func() {
+		clearTPMWithPlatformAuth(t, tpm)
+		closeTPM(t, tpm)
+	}()
+
+	if !tpm.IsEnabled() {
+		t.Errorf("IsEnabled returned the wrong value")
+	}
+
+	hierarchyControl := func(auth tpm2.ResourceContext, hierarchy tpm2.Handle, enable bool) {
+		if err := tpm.HierarchyControl(auth, hierarchy, enable, nil); err != nil {
+			t.Errorf("HierarchyControl failed: %v", err)
+		}
+	}
+	defer func() {
+		hierarchyControl(tpm.PlatformHandleContext(), tpm2.HandleOwner, true)
+		hierarchyControl(tpm.PlatformHandleContext(), tpm2.HandleEndorsement, true)
+	}()
+
+	hierarchyControl(tpm.OwnerHandleContext(), tpm2.HandleOwner, false)
+	if tpm.IsEnabled() {
+		t.Errorf("IsEnabled returned the wrong value")
+	}
+
+	hierarchyControl(tpm.EndorsementHandleContext(), tpm2.HandleEndorsement, false)
+	if tpm.IsEnabled() {
+		t.Errorf("IsEnabled returned the wrong value")
+	}
+}
+
 func TestConnectToDefaultTPM(t *testing.T) {
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
 		return tpm2.OpenMssim(*mssimHost, *mssimTpmPort, *mssimPlatformPort)

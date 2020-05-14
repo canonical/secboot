@@ -3,10 +3,10 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "FM+dp3Hv1n+R9b/gqhtjSq6W4T8=",
+			"checksumSHA1": "s0Ow9uk/0H2Pmfq4JAGpzy5x6T0=",
 			"path": "github.com/canonical/go-tpm2",
-			"revision": "16307201a54dc51583440f9416cfa836bcf0b3fc",
-			"revisionTime": "2020-04-16T00:17:14Z"
+			"revision": "aaf158ed20ca23c48b446f78fb0bbaf4055e7123",
+			"revisionTime": "2020-05-14T15:04:06Z"
 		},
 		{
 			"checksumSHA1": "bT/rC7K8St3lNRXf/XJGpB4wNJU=",

@@ -654,7 +654,7 @@ func (b *pcrDigestBuilder) addDigest(digest tpm2.Digest) *pcrDigestBuilder {
 		b.pcrsCurrent = b.pcrsCurrent[1:]
 	}
 
-	b.values.SetValue(b.pcrsCurrent[0].Select[0], b.pcrsCurrent[0].Hash, digest)
+	b.values.SetValue(b.pcrsCurrent[0].Hash, b.pcrsCurrent[0].Select[0], digest)
 
 	b.pcrsCurrent[0].Select = b.pcrsCurrent[0].Select[1:]
 	return b

@@ -81,6 +81,18 @@ type TPMConnection struct {
 	hmacSession              tpm2.SessionContext
 }
 
+// IsEnabled indicates whether the TPM is enabled or whether it has been disabled by the platform firmware. A TPM device can be
+// disabled by the platform firmware by disabling the storage and endorsement hierarchies, but still remain visible to the operating
+// system.
+func (t *TPMConnection) IsEnabled() bool {
+	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyStartupClear, 1, t.HmacSession().IncludeAttrs(tpm2.AttrAudit))
+	if err != nil || len(props) == 0 {
+		return false
+	}
+	const enabledMask = tpm2.AttrShEnable|tpm2.AttrEhEnable
+	return tpm2.StartupClearAttributes(props[0].Value)&enabledMask == enabledMask
+}
+
 // VerifiedEKCertChain returns the verified certificate chain for the endorsement key certificate obtained from this TPM. It was
 // verified using one of the built-in TPM manufacturer root CA certificates.
 func (t *TPMConnection) VerifiedEKCertChain() []*x509.Certificate {
@@ -356,10 +368,23 @@ var openDefaultTcti = func() (io.ReadWriteCloser, error) {
 func connectToDefaultTPM() (*tpm2.TPMContext, error) {
 	tcti, err := openDefaultTcti()
 	if err != nil {
+		if isPathError(err) {
+			return nil, nil
+		}
 		return nil, xerrors.Errorf("cannot open TPM device: %w", err)
 	}
 
 	tpm, _ := tpm2.NewTPMContext(tcti)
+	isTpm2, err := tpm.IsTPM2()
+	if err != nil {
+		tpm.Close()
+		return nil, xerrors.Errorf("cannot determine if TPM is a TPM2 device: %w", err)
+	}
+	if !isTpm2 {
+		tpm.Close()
+		return nil, nil
+	}
+
 	return tpm, nil
 }
 
@@ -828,10 +853,15 @@ func EncodeEKCertificateChain(ekCert *x509.Certificate, parents []*x509.Certific
 // function is useful for connecting to a device that isn't correctly provisioned and for which the endorsement hierarchy
 // authorization value is unknown (so that it can be cleared), or for connecting to a device in order to execute
 // FetchAndSaveEKCertificateChain. It should not be used in any other scenario.
+//
+// If no TPM2 device is available, then a ErrNoTPM2Device error will be returned.
 func ConnectToDefaultTPM() (*TPMConnection, error) {
 	tpm, err := connectToDefaultTPM()
 	if err != nil {
 		return nil, err
+	}
+	if tpm == nil {
+		return nil, ErrNoTPM2Device
 	}
 
 	t := &TPMConnection{TPMContext: tpm}
@@ -881,6 +911,8 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 // returned. This can happen if there is an object at the persistent endorsement key index but it is not the object for which the
 // endorsement key certificate was issued, and creation of a transient endorsement key fails because the correct endorsement hierarchy
 // authorization value hasn't been provided via the endorsementAuth argument.
+//
+// If no TPM2 device is available, then a ErrNoTPM2Device error will be returned.
 func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byte) (*TPMConnection, error) {
 	if ekCertDataReader == nil {
 		return nil, errors.New("no EK certificate data was provided")
@@ -889,6 +921,9 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 	tpm, err := connectToDefaultTPM()
 	if err != nil {
 		return nil, err
+	}
+	if tpm == nil {
+		return nil, ErrNoTPM2Device
 	}
 	tpm.EndorsementHandleContext().SetAuthValue(endorsementAuth)
 
