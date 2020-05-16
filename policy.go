@@ -51,7 +51,6 @@ type dynamicPolicyComputeParams struct {
 	signAlg              tpm2.HashAlgorithmId
 	pcrs                 tpm2.PCRSelectionList // PCR selection
 	pcrDigests           tpm2.DigestList       // Approved PCR digests
-	pcrValues            []tpm2.PCRValues      // Approved PCR digests
 	policyCountIndexName tpm2.Name             // Name of the NV index used for revoking authorization policies
 
 	// policyCount is the maximum permitted value of the NV index associated with policyCountIndexName, beyond which, this authorization
