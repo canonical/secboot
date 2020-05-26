@@ -593,6 +593,7 @@ func computePCRSelectionListFromValues(v tpm2.PCRValues) (out tpm2.PCRSelectionL
 // computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
 // updated.
 func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
+	// We only have a single metadata version at the moment (version 0)
 	if version != 0 {
 		return nil, errors.New("invalid version")
 	}
