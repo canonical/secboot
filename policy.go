@@ -67,22 +67,26 @@ type policyOrDataNode struct {
 
 type policyOrDataTree []policyOrDataNode
 
-type dynamicPolicyDataRaw_v0 dynamicPolicyData
-
-func (d *dynamicPolicyDataRaw_v0) data() *dynamicPolicyData {
-	return (*dynamicPolicyData)(d)
-}
-
-func makeDynamicPolicyDataRaw_v0(data *dynamicPolicyData) *dynamicPolicyDataRaw_v0 {
-	return (*dynamicPolicyDataRaw_v0)(data)
-}
-
+// dynamicPolicyData is an output of computeDynamicPolicy and provides metadata for executing a policy session.
 type dynamicPolicyData struct {
 	PCRSelection              tpm2.PCRSelectionList
 	PCROrData                 policyOrDataTree
 	PolicyCount               uint64
 	AuthorizedPolicy          tpm2.Digest
 	AuthorizedPolicySignature *tpm2.Signature
+}
+
+// dynamicPolicyDataRaw_v0 is version 0 of the on-disk format of dynamicPolicyData. They are currently the same structures.
+type dynamicPolicyDataRaw_v0 dynamicPolicyData
+
+func (d *dynamicPolicyDataRaw_v0) data() *dynamicPolicyData {
+	return (*dynamicPolicyData)(d)
+}
+
+// makeDynamicPolicyDataRaw_v0 converts dynamicPolicyData to version 0 of the on-disk format. They are currently the same structures
+// so this is just a cast, but this may not be the case if the metadata version changes in the future.
+func makeDynamicPolicyDataRaw_v0(data *dynamicPolicyData) *dynamicPolicyDataRaw_v0 {
+	return (*dynamicPolicyDataRaw_v0)(data)
 }
 
 // staticPolicyComputeParams provides the parameters to computeStaticPolicy.
@@ -93,21 +97,24 @@ type staticPolicyComputeParams struct {
 	lockIndexName        tpm2.Name       // Name of the global NV index for locking access to sealed key objects
 }
 
+// staticPolicyData is an output of computeStaticPolicy and provides metadata for executing a policy session.
+type staticPolicyData struct {
+	AuthPublicKey        *tpm2.Public
+	PinIndexHandle       tpm2.Handle
+	PinIndexAuthPolicies tpm2.DigestList
+}
+
+// staticPolicyDataRaw_v0 is the v0 version of the on-disk format of staticPolicyData. They are currently the same structures.
 type staticPolicyDataRaw_v0 staticPolicyData
 
 func (d *staticPolicyDataRaw_v0) data() *staticPolicyData {
 	return (*staticPolicyData)(d)
 }
 
+// makeStaticPolicyDataRaw_v0 converts staticPolicyData to version 0 of the on-disk format. They are currently the same structures
+// so this is just a cast, but this may not be the case if the metadata version changes in the future.
 func makeStaticPolicyDataRaw_v0(data *staticPolicyData) *staticPolicyDataRaw_v0 {
 	return (*staticPolicyDataRaw_v0)(data)
-}
-
-// staticPolicyData is an output of computeStaticPolicy and provides metadata for executing a policy session.
-type staticPolicyData struct {
-	AuthPublicKey        *tpm2.Public
-	PinIndexHandle       tpm2.Handle
-	PinIndexAuthPolicies tpm2.DigestList
 }
 
 // incrementDynamicPolicyCounter will increment the NV counter index associated with nvPublic. This is designed to operate on a

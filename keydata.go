@@ -51,6 +51,7 @@ const (
 	AuthModePIN
 )
 
+// keyPolicyUpdateDataRaw_v0 is version 0 of the on-disk format of keyPolicyUpdateData.
 type keyPolicyUpdateDataRaw_v0 struct {
 	AuthKey        []byte
 	CreationData   *tpm2.CreationData
@@ -145,6 +146,7 @@ func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData, error) {
 	return &d, nil
 }
 
+// keyDataRaw_v0 is version 0 of the on-disk format of keyDataRaw.
 type keyDataRaw_v0 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
