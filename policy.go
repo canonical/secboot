@@ -67,12 +67,26 @@ type policyOrDataNode struct {
 
 type policyOrDataTree []policyOrDataNode
 
+// dynamicPolicyData is an output of computeDynamicPolicy and provides metadata for executing a policy session.
 type dynamicPolicyData struct {
 	PCRSelection              tpm2.PCRSelectionList
 	PCROrData                 policyOrDataTree
 	PolicyCount               uint64
 	AuthorizedPolicy          tpm2.Digest
 	AuthorizedPolicySignature *tpm2.Signature
+}
+
+// dynamicPolicyDataRaw_v0 is version 0 of the on-disk format of dynamicPolicyData. They are currently the same structures.
+type dynamicPolicyDataRaw_v0 dynamicPolicyData
+
+func (d *dynamicPolicyDataRaw_v0) data() *dynamicPolicyData {
+	return (*dynamicPolicyData)(d)
+}
+
+// makeDynamicPolicyDataRaw_v0 converts dynamicPolicyData to version 0 of the on-disk format. They are currently the same structures
+// so this is just a cast, but this may not be the case if the metadata version changes in the future.
+func makeDynamicPolicyDataRaw_v0(data *dynamicPolicyData) *dynamicPolicyDataRaw_v0 {
+	return (*dynamicPolicyDataRaw_v0)(data)
 }
 
 // staticPolicyComputeParams provides the parameters to computeStaticPolicy.
@@ -88,6 +102,19 @@ type staticPolicyData struct {
 	AuthPublicKey        *tpm2.Public
 	PinIndexHandle       tpm2.Handle
 	PinIndexAuthPolicies tpm2.DigestList
+}
+
+// staticPolicyDataRaw_v0 is the v0 version of the on-disk format of staticPolicyData. They are currently the same structures.
+type staticPolicyDataRaw_v0 staticPolicyData
+
+func (d *staticPolicyDataRaw_v0) data() *staticPolicyData {
+	return (*staticPolicyData)(d)
+}
+
+// makeStaticPolicyDataRaw_v0 converts staticPolicyData to version 0 of the on-disk format. They are currently the same structures
+// so this is just a cast, but this may not be the case if the metadata version changes in the future.
+func makeStaticPolicyDataRaw_v0(data *staticPolicyData) *staticPolicyDataRaw_v0 {
+	return (*staticPolicyDataRaw_v0)(data)
 }
 
 // incrementDynamicPolicyCounter will increment the NV counter index associated with nvPublic. This is designed to operate on a
@@ -565,7 +592,11 @@ func computePCRSelectionListFromValues(v tpm2.PCRValues) (out tpm2.PCRSelectionL
 
 // computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
 // updated.
-func computeDynamicPolicy(alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
+func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
+	// We only have a single metadata version at the moment (version 0)
+	if version != 0 {
+		return nil, errors.New("invalid version")
+	}
 	if len(input.pcrValues) == 0 {
 		return nil, errors.New("no PCR values specified")
 	}
@@ -724,12 +755,13 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		return dynamicPolicyDataError{xerrors.Errorf("cannot complete OR assertions: %w", err)}
 	}
 
-	if staticInput.PinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
+	pinIndexHandle := staticInput.PinIndexHandle
+	if pinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
 		return staticPolicyDataError{errors.New("invalid handle type for PIN NV index")}
 	}
-	pinIndex, err := tpm.CreateResourceContextFromTPM(staticInput.PinIndexHandle)
+	pinIndex, err := tpm.CreateResourceContextFromTPM(pinIndexHandle)
 	switch {
-	case tpm2.IsResourceUnavailableError(err, staticInput.PinIndexHandle):
+	case tpm2.IsResourceUnavailableError(err, pinIndexHandle):
 		// If there is no NV index at the expected handle then the key file is invalid and must be recreated.
 		return staticPolicyDataError{errors.New("no PIN NV index found")}
 	case err != nil:
@@ -775,10 +807,11 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		return xerrors.Errorf("dynamic authorization policy revocation check failed: %w", err)
 	}
 
-	if !staticInput.AuthPublicKey.NameAlg.Supported() {
+	authPublicKey := staticInput.AuthPublicKey
+	if !authPublicKey.NameAlg.Supported() {
 		return staticPolicyDataError{errors.New("public area of dynamic authorization policy signature verification key has an unsupported name algorithm")}
 	}
-	authorizeKey, err := tpm.LoadExternal(nil, staticInput.AuthPublicKey, tpm2.HandleOwner)
+	authorizeKey, err := tpm.LoadExternal(nil, authPublicKey, tpm2.HandleOwner)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
 			// staticInput.AuthPublicKey is invalid
@@ -788,7 +821,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 	defer tpm.FlushContext(authorizeKey)
 
-	h := staticInput.AuthPublicKey.NameAlg.NewHash()
+	h := authPublicKey.NameAlg.NewHash()
 	h.Write(dynamicInput.AuthorizedPolicy)
 
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, h.Sum(nil), dynamicInput.AuthorizedPolicySignature)
