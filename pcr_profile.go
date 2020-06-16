@@ -196,7 +196,8 @@ func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext, values pcr
 	return values, nil
 }
 
-// computePCRDigests computes a PCR selection and list of PCR digests from this PCRProtectionProfile.
+// computePCRDigests computes a PCR selection and list of PCR digests from this PCRProtectionProfile. The returned list of PCR digests
+// is de-duplicated.
 func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
 	// Compute the sets of PCR values for all branches
 	values, err := p.computePCRValues(tpm, nil)
@@ -217,10 +218,10 @@ func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 		pcrDigests = append(pcrDigests, digest)
 	}
 
-	var filteredPcrDigests tpm2.DigestList
+	var uniquePcrDigests tpm2.DigestList
 	for _, d := range pcrDigests {
 		found := false
-		for _, f := range filteredPcrDigests {
+		for _, f := range uniquePcrDigests {
 			if bytes.Equal(d, f) {
 				found = true
 				break
@@ -229,8 +230,8 @@ func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 		if found {
 			continue
 		}
-		filteredPcrDigests = append(filteredPcrDigests, d)
+		uniquePcrDigests = append(uniquePcrDigests, d)
 	}
 
-	return pcrs, filteredPcrDigests, nil
+	return pcrs, uniquePcrDigests, nil
 }
