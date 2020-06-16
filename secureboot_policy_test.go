@@ -1335,6 +1335,13 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			if policy == nil {
 				policy = &PCRProtectionProfile{}
 			}
+			expectedPcrs, _, _ := policy.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+			expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+			var expectedDigests tpm2.DigestList
+			for _, v := range data.values {
+				d, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
+				expectedDigests = append(expectedDigests, d)
+			}
 
 			err := AddEFISecureBootPolicyProfile(policy, &data.params)
 			if data.err != "" {
@@ -1349,20 +1356,16 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 					t.Fatalf("AddEFISecureBootPolicyProfile failed: %v", err)
 				}
 
-				values, err := policy.ComputePCRValues(nil)
+				pcrs, digests, err := policy.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 				if err != nil {
-					t.Fatalf("ComputePCRValues failed: %v", err)
+					t.Fatalf("ComputePCRDigests failed: %v", err)
 				}
-				if !reflect.DeepEqual(values, data.values) {
-					t.Errorf("ComputePCRValues returned unexpected values")
-					for i, v := range values {
-						t.Logf("Value %d:", i)
-						for alg := range v {
-							for pcr := range v[alg] {
-								t.Logf(" PCR%d,%v: %x", pcr, alg, v[alg][pcr])
-							}
-						}
-					}
+				if !pcrs.Equal(expectedPcrs) {
+					t.Errorf("ComputePCRDigests returned the wrong selection")
+				}
+				if !reflect.DeepEqual(digests, expectedDigests) {
+					t.Errorf("ComputePCRDigests returned unexpected values")
+					t.Logf("%s", policy.DumpValues(nil))
 				}
 			}
 		})

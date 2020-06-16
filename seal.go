@@ -57,16 +57,17 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 	}
 
 	// Compute PCR digests
-	pcrValues, err := pcrProfile.computePCRValues(tpm, nil)
+	pcrs, pcrDigests, err := pcrProfile.computePCRDigests(tpm, alg)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot compute PCR values from protection profile: %w", err)
+		return nil, xerrors.Errorf("cannot compute PCR digests from protection profile: %w", err)
 	}
 
 	// Use the PCR digests and NV index names to generate a single signed dynamic authorization policy digest
 	policyParams := dynamicPolicyComputeParams{
 		key:                  authKey,
 		signAlg:              signAlg,
-		pcrValues:            pcrValues,
+		pcrs:                 pcrs,
+		pcrDigests:           pcrDigests,
 		policyCountIndexName: countIndexName,
 		policyCount:          nextPolicyCount}
 

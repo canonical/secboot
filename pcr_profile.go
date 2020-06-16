@@ -20,6 +20,8 @@
 package secboot
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
@@ -33,7 +35,7 @@ type pcrValuesList []tpm2.PCRValues
 // setValue sets the specified PCR to the supplied value for all branches.
 func (l pcrValuesList) setValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
 	for _, v := range l {
-		v.SetValue(pcr, alg, value)
+		v.SetValue(alg, pcr, value)
 	}
 }
 
@@ -192,4 +194,44 @@ func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext, values pcr
 	}
 
 	return values, nil
+}
+
+// computePCRDigests computes a PCR selection and list of PCR digests from this PCRProtectionProfile. The returned list of PCR digests
+// is de-duplicated.
+func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
+	// Compute the sets of PCR values for all branches
+	values, err := p.computePCRValues(tpm, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Compute the PCR selection for this profile from the first branch.
+	pcrs := values[0].SelectionList()
+
+	// Compute the PCR digests for all branches, making sure that they all contain values for the same sets of PCRs.
+	var pcrDigests tpm2.DigestList
+	for _, v := range values {
+		p, digest, _ := tpm2.ComputePCRDigestSimple(alg, v)
+		if !p.Equal(pcrs) {
+			return nil, nil, errors.New("not all branches contain values for the same sets of PCRs")
+		}
+		pcrDigests = append(pcrDigests, digest)
+	}
+
+	var uniquePcrDigests tpm2.DigestList
+	for _, d := range pcrDigests {
+		found := false
+		for _, f := range uniquePcrDigests {
+			if bytes.Equal(d, f) {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		uniquePcrDigests = append(uniquePcrDigests, d)
+	}
+
+	return pcrs, uniquePcrDigests, nil
 }
