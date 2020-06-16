@@ -32,12 +32,13 @@ import (
 
 // Export constants for testing
 const (
-	EkCertHandle        = ekCertHandle
-	EkHandle            = ekHandle
-	LockNVDataHandle    = lockNVDataHandle
-	LockNVHandle        = lockNVHandle
-	SanDirectoryNameTag = sanDirectoryNameTag
-	SrkHandle           = srkHandle
+	CurrentMetadataVersion = currentMetadataVersion
+	EkCertHandle           = ekCertHandle
+	EkHandle               = ekHandle
+	LockNVDataHandle       = lockNVDataHandle
+	LockNVHandle           = lockNVHandle
+	SanDirectoryNameTag    = sanDirectoryNameTag
+	SrkHandle              = srkHandle
 )
 
 // Export variables and unexported functions for testing
@@ -287,6 +288,6 @@ func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile, privateFile string, sess
 		pf = f
 	}
 
-	_, _, _, err = readAndValidateKeyData(tpm, kf, pf, session)
+	_, _, _, err = decodeAndValidateKeyData(tpm, kf, pf, session)
 	return err
 }

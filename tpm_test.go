@@ -472,21 +472,6 @@ func TestConnectToDefaultTPM(t *testing.T) {
 
 		run(t, false, nil)
 	})
-
-	t.Run("UnprovisionedWithEndorsementAuth", func(t *testing.T) {
-		testAuth := []byte("foo")
-		func() {
-			tpm := connectAndClear(t)
-			defer closeTPM(t, tpm)
-			if err := tpm.HierarchyChangeAuth(tpm.EndorsementHandleContext(), testAuth, nil); err != nil {
-				t.Fatalf("HierarchyChangeAuth failed: %v", err)
-			}
-		}()
-
-		run(t, false, func(tpm *TPMConnection) {
-			clearTPMWithPlatformAuth(t, tpm)
-		})
-	})
 }
 
 func TestSecureConnectToDefaultTPM(t *testing.T) {

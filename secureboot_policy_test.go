@@ -64,7 +64,7 @@ func TestDecodeWinCertificate(t *testing.T) {
 
 			f.Seek(data.offset, io.SeekStart)
 
-			cert, err := DecodeWinCertificate(f)
+			cert, _, err := DecodeWinCertificate(f)
 			if err != nil {
 				t.Fatalf("DecodeWinCertificate failed: %v", err)
 			}
@@ -667,8 +667,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 				},
 			},
 			err: "cannot compute secure boot policy digests: cannot process OS load event for testdata/mock.efi: cannot compute load " +
-				"verification event: cannot decode WIN_CERTIFICATE from security directory entry of PE binary: cannot read WIN_CERTIFICATE " +
-				"header fields: EOF",
+				"verification event: no Authenticode signatures",
 		},
 		{
 			// Test with secure boot enforcement disabled in shim
@@ -1235,6 +1234,92 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 					tpm2.HashAlgorithmSHA256: {
 						7: decodeHexStringT(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
 						8: decodeHexStringT(t, "a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"),
+					},
+				},
+			},
+		},
+		{
+			desc:    "VerifyWithDualSignedShim_1",
+			logPath: "testdata/eventlog1.bin",
+			efivars: "testdata/efivars1",
+			params: EFISecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*EFIImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileEFIImage("testdata/mockshim2.efi.signed.21"),
+						Next: []*EFIImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileEFIImage("testdata/mock.efi.signed.2"),
+								Next: []*EFIImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mock.efi.signed.2"),
+									},
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mock.efi.signed.2"),
+										Next: []*EFIImageLoadEvent{
+											{
+												Source: Shim,
+												Image:  FileEFIImage("testdata/mock.efi.signed.2"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: decodeHexStringT(t, "4a4fd90c8418bc4e6c763acc6d8849fdd997ceafbafe83538c507daf165ae8e6"),
+					},
+				},
+			},
+		},
+		{
+			desc:    "VerifyWithDualSignedShim_2",
+			logPath: "testdata/eventlog1.bin",
+			efivars: "testdata/efivars2",
+			params: EFISecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*EFIImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileEFIImage("testdata/mockshim2.efi.signed.21"),
+						Next: []*EFIImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileEFIImage("testdata/mock.efi.signed.2"),
+								Next: []*EFIImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mock.efi.signed.2"),
+									},
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mock.efi.signed.2"),
+										Next: []*EFIImageLoadEvent{
+											{
+												Source: Shim,
+												Image:  FileEFIImage("testdata/mock.efi.signed.2"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: decodeHexStringT(t, "162830ad24ace0ba35e25e3331b445076bb593399b88ffe8d38454df780326bd"),
 					},
 				},
 			},
