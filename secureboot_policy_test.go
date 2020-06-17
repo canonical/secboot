@@ -1365,7 +1365,8 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 				}
 				if !reflect.DeepEqual(digests, expectedDigests) {
 					t.Errorf("ComputePCRDigests returned unexpected values")
-					t.Logf("%s", policy.DumpValues(nil))
+					t.Logf("Profile:\n%s", policy)
+					t.Logf("Values:\n%s", policy.DumpValues(nil))
 				}
 			}
 		})
