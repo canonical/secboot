@@ -280,8 +280,6 @@ func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext) (pcrValues
 			contexts = contexts.finishBranch()
 		}
 	}
-
-	panic("not reached")
 }
 
 // computePCRDigests computes a PCR selection and list of PCR digests from this PCRProtectionProfile. The returned list of PCR digests
