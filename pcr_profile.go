@@ -152,9 +152,7 @@ type pcrProtectionProfileIterator struct {
 func (iter *pcrProtectionProfileIterator) descendInToProfiles(profiles ...*PCRProtectionProfile) {
 	instrs := make([][]pcrProtectionProfileInstr, 0, len(profiles)+len(iter.instrs))
 	for _, p := range profiles {
-		pi := make([]pcrProtectionProfileInstr, len(p.instrs))
-		copy(pi, p.instrs)
-		instrs = append(instrs, pi)
+		instrs = append(instrs, p.instrs)
 	}
 	instrs = append(instrs, iter.instrs...)
 	iter.instrs = instrs
