@@ -56,10 +56,38 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 		return nil, xerrors.Errorf("cannot compute name of dynamic policy counter: %w", err)
 	}
 
+	supportedPcrs, err := tpm.GetCapabilityPCRs(session.IncludeAttrs(tpm2.AttrAudit))
+	if err != nil {
+		return nil, xerrors.Errorf("cannot determine supported PCRs: %w", err)
+	}
+
 	// Compute PCR digests
 	pcrs, pcrDigests, err := pcrProfile.computePCRDigests(tpm, alg)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute PCR digests from protection profile: %w", err)
+	}
+
+	for _, p := range pcrs {
+		for _, s := range p.Select {
+			found := false
+			for _, p2 := range supportedPcrs {
+				if p2.Hash != p.Hash {
+					continue
+				}
+				for _, s2 := range p2.Select {
+					if s2 == s {
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+			if !found {
+				return nil, errors.New("PCR protection profile contains digests for unsupported PCRs")
+			}
+		}
 	}
 
 	// Use the PCR digests and NV index names to generate a single signed dynamic authorization policy digest
@@ -268,7 +296,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, currentMetadataVersion, template.NameAlg,
 		authPublicKey.NameAlg, authKey, pinIndexPub, pinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
-		return err
+		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
 
 	// Marshal the entire object (sealed key object and auxiliary data) to disk
@@ -354,7 +382,7 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, data.version, data.keyPublic.NameAlg, authPublicKey.NameAlg,
 		authKey, pinIndexPublic, pinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
-		return err
+		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
 
 	// Atomically update the key data file
