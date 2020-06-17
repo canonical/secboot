@@ -90,6 +90,7 @@ type pcrProtectionProfileAddProfileORInstr struct {
 	profiles []*PCRProtectionProfile
 }
 
+// pcrProtectionProfileEndProfileInstr is a pseudo instruction to mark the end of a branch.
 type pcrProtectionProfileEndProfileInstr struct{}
 
 // pcrProtectionProfileInstr is a building block of PCRProtectionProfile.
@@ -197,10 +198,10 @@ type pcrProtectionProfileComputeContext struct {
 	values pcrValuesList
 }
 
-// handleBranch is called when encountering a branch in a profile, and returns a slice of new *pcrProtectionProfileComputeContext
+// handleBranches is called when encountering a branch in a profile, and returns a slice of new *pcrProtectionProfileComputeContext
 // instances (one for each sub-branch). At the end of each sub-branch, finishBranch must be called on the associated
 // *pcrProtectionProfileComputeContext.
-func (c *pcrProtectionProfileComputeContext) handleBranch(n int) (out []*pcrProtectionProfileComputeContext) {
+func (c *pcrProtectionProfileComputeContext) handleBranches(n int) (out []*pcrProtectionProfileComputeContext) {
 	out = make([]*pcrProtectionProfileComputeContext, 0, n)
 	for i := 0; i < n; i++ {
 		out = append(out, &pcrProtectionProfileComputeContext{parent: c, values: c.values.copy()})
@@ -225,11 +226,11 @@ func (c *pcrProtectionProfileComputeContext) isRoot() bool {
 // with the profile branch from which instructions are currently being processed.
 type pcrProtectionProfileComputeContextStack []*pcrProtectionProfileComputeContext
 
-// handleBranch is called when encountering a branch in a profile, and returns a new pcrProtectionProfileComputeContextStack with
+// handleBranches is called when encountering a branch in a profile, and returns a new pcrProtectionProfileComputeContextStack with
 // the top of the stack associated with the first sub-branch, from which subsequent instructions will be processed from. At the
 // end of each sub-branch, finishBranch must be called.
-func (s pcrProtectionProfileComputeContextStack) handleBranch(n int) pcrProtectionProfileComputeContextStack {
-	newContexts := s.top().handleBranch(n)
+func (s pcrProtectionProfileComputeContextStack) handleBranches(n int) pcrProtectionProfileComputeContextStack {
+	newContexts := s.top().handleBranches(n)
 	return pcrProtectionProfileComputeContextStack(append(newContexts, s...))
 }
 
@@ -271,7 +272,7 @@ func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext) (pcrValues
 		case *pcrProtectionProfileAddProfileORInstr:
 			// As this is a depth-first traversal, processing of this branch is parked when a AddProfileOR instruction is encountered.
 			// Subsequent instructions will be from each of the sub-branches in turn.
-			contexts = contexts.handleBranch(len(i.profiles))
+			contexts = contexts.handleBranches(len(i.profiles))
 		case *pcrProtectionProfileEndProfileInstr:
 			if contexts.top().isRoot() {
 				// This is the end of the profile
