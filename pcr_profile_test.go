@@ -21,6 +21,7 @@ package secboot_test
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -323,6 +324,44 @@ func TestPCRProtectionProfile(t *testing.T) {
 				t.Logf("Values:\n%s", data.profile.DumpValues(nil))
 			}
 		})
+	}
+}
+
+func TestPCRProtectionProfileString(t *testing.T) {
+	profile := NewPCRProtectionProfile().
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 7, make([]byte, tpm2.HashAlgorithmSHA256.Size())).
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, make([]byte, tpm2.HashAlgorithmSHA256.Size())).
+		AddProfileOR(
+			NewPCRProtectionProfile().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 8, makePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")),
+			NewPCRProtectionProfile().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 8, makePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1"))).
+		ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "end"))
+	expectedTpl := `
+ AddPCRValue(TPM_ALG_SHA256, 7, %[1]x)
+ AddPCRValue(TPM_ALG_SHA256, 8, %[1]x)
+ AddProfileOR(
+   Branch 0 {
+    ExtendPCR(TPM_ALG_SHA256, 7, %[2]x)
+    ExtendPCR(TPM_ALG_SHA256, 8, %[3]x)
+   }
+   Branch 1 {
+    ExtendPCR(TPM_ALG_SHA256, 7, %[3]x)
+    ExtendPCR(TPM_ALG_SHA256, 8, %[2]x)
+   }
+ )
+ ExtendPCR(TPM_ALG_SHA256, 7, %[4]x)
+`
+
+	expected := fmt.Sprintf(expectedTpl,
+		make([]byte, tpm2.HashAlgorithmSHA256.Size()),
+		makePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1"),
+		makePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1"),
+		makePCREventDigest(tpm2.HashAlgorithmSHA256, "end"))
+	if expected != profile.String() {
+		t.Errorf("Unexpected string:\ngot:%s\nexpected:%s", profile, expected)
 	}
 }
 
