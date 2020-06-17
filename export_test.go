@@ -241,16 +241,12 @@ func NewStaticPolicyComputeParams(key *tpm2.Public, pinIndexPub *tpm2.NVPublic, 
 	return &staticPolicyComputeParams{key: key, pinIndexPub: pinIndexPub, pinIndexAuthPolicies: pinIndexAuthPolicies, lockIndexName: lockIndexName}
 }
 
-func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PCRValues, error) {
-	return p.computePCRValues(tpm, nil)
-}
-
 func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
 	return p.computePCRDigests(tpm, alg)
 }
 
 func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
-	values, err := p.computePCRValues(tpm, nil)
+	values, err := p.computePCRValues(tpm)
 	if err != nil {
 		return ""
 	}
