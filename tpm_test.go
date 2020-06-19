@@ -831,7 +831,7 @@ func TestMain(m *testing.M) {
 				tcti, err = tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 				switch {
 				case err != nil && i == 4:
-					fmt.Fprintf(os.Stderr, "Cannot open TPM simulator connection: %w", err)
+					fmt.Fprintf(os.Stderr, "Cannot open TPM simulator connection: %v", err)
 					return 1
 				case err != nil:
 					time.Sleep(time.Second)
