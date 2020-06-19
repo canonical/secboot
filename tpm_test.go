@@ -824,10 +824,21 @@ func TestMain(m *testing.M) {
 				testCAKey = key
 			}
 
-			tcti, err := tpm2.OpenMssim(*mssimHost, *mssimPort, *mssimPort + 1)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to open mssim connection: %v", err)
-				return 1
+			var tcti *tpm2.TctiMssim
+			// Give the simulator 5 seconds to start up
+		Loop:
+			for i := 0; ; i++ {
+				var err error
+				tcti, err = tpm2.OpenMssim(*mssimHost, *mssimPort, *mssimPort+1)
+				switch {
+				case err != nil && i == 4:
+					fmt.Fprintf(os.Stderr, "Cannot open TPM simulator connection: %w", err)
+					return 1
+				case err != nil:
+					time.Sleep(time.Second)
+				default:
+					break Loop
+				}
 			}
 
 			tpm, _ := tpm2.NewTPMContext(tcti)
@@ -841,20 +852,31 @@ func TestMain(m *testing.M) {
 
 				return certifyTPM(tpm)
 			}(); err != nil {
-				fmt.Fprintf(os.Stderr, "Simulator startup failed: %v\n", err)
+				fmt.Fprintf(os.Stderr, "TPM simulator startup failed: %v\n", err)
 				return 1
 			}
 
 			defer func() {
+				if cmd == nil || cmd.Process == nil {
+					return
+				}
+				cleanShutdown := false
 				defer func() {
-					if err := cmd.Wait(); err != nil {
-						fmt.Fprintf(os.Stderr, "TPM simulator finished with an error: %v", err)
+					if cleanShutdown {
+						if err := cmd.Wait(); err != nil {
+							fmt.Fprintf(os.Stderr, "TPM simulator finished with an error: %v", err)
+						}
+					} else {
+						fmt.Fprintf(os.Stderr, "Killing TPM simulator\n")
+						if err := cmd.Process.Kill(); err != nil {
+							fmt.Fprintf(os.Stderr, "Cannot send signal to TPM simulator: %v\n", err)
+						}
 					}
 				}()
 
 				tcti, err := tpm2.OpenMssim(*mssimHost, *mssimPort, *mssimPort + 1)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to open mssim connection: %v\n", err)
+					fmt.Fprintf(os.Stderr, "Cannot open TPM simulator connection for shutdown: %v\n", err)
 					return
 				}
 
@@ -863,10 +885,14 @@ func TestMain(m *testing.M) {
 					fmt.Fprintf(os.Stderr, "TPM simulator shutdown failed: %v\n", err)
 				}
 				if err := tcti.Stop(); err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to stop TPM simulator: %v\n", err)
+					fmt.Fprintf(os.Stderr, "TPM simulator stop failed: %v\n", err)
+					return
 				}
-				tpm.Close()
-
+				if err := tpm.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "TPM simulator connection close failed: %v\n", err)
+					return
+				}
+				cleanShutdown = true
 			}()
 		}
 
