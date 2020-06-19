@@ -32,24 +32,27 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/big"
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/snapd/snap"
 )
 
 var (
 	useTpm         = flag.Bool("use-tpm", false, "")
 	tpmPathForTest = flag.String("tpm-path", "/dev/tpm0", "")
 
-	useMssim          = flag.Bool("use-mssim", false, "")
-	mssimPort	  = flag.Uint("mssim-port", 2321, "")
+	useMssim  = flag.Bool("use-mssim", false, "")
+	mssimPort = flag.Uint("mssim-port", 2321, "")
 
 	testCACert []byte
 	testCAKey  crypto.PrivateKey
@@ -120,7 +123,7 @@ func openTPMSimulatorForTestingCommon() (*TPMConnection, *tpm2.TctiMssim, error)
 
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
 		var err error
-		tcti, err = tpm2.OpenMssim("", *mssimPort, *mssimPort + 1)
+		tcti, err = tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 		if err != nil {
 			return nil, err
 		}
@@ -351,7 +354,7 @@ func certifyTPM(tpm *tpm2.TPMContext) error {
 
 func TestConnectToDefaultTPM(t *testing.T) {
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
-		return tpm2.OpenMssim("", *mssimPort, *mssimPort + 1)
+		return tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 	})
 
 	connectAndClear := func(t *testing.T) *TPMConnection {
@@ -476,7 +479,7 @@ func TestConnectToDefaultTPM(t *testing.T) {
 
 func TestSecureConnectToDefaultTPM(t *testing.T) {
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
-		return tpm2.OpenMssim("", *mssimPort, *mssimPort + 1)
+		return tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 	})
 
 	connectAndClear := func(t *testing.T) *TPMConnection {
@@ -793,7 +796,7 @@ func TestMain(m *testing.M) {
 	os.Exit(func() int {
 		if *useMssim {
 			mssimPath := ""
-			for _, p := range[]string{"tpm2-simulator", "tpm2-simulator-chrisccoulson.tpm2-simulator"} {
+			for _, p := range []string{"tpm2-simulator", "tpm2-simulator-chrisccoulson.tpm2-simulator"} {
 				var err error
 				mssimPath, err = exec.LookPath(p)
 				if err == nil {
@@ -805,7 +808,52 @@ func TestMain(m *testing.M) {
 				return 1
 			}
 
+			// The TPM simulator creates its persistent storage in its current directory. Ideally, we would create
+			// a unique temporary directory for it, but this doesn't work with the snap because it has its own private
+			// tmpdir. Detect whether the chosen TPM simulator is a snap, determine which snap it belongs to and create
+			// a temporary directory inside its common data directory instead.
+			mssimSnapName := ""
+			for currentPath, lastPath := mssimPath, ""; currentPath != ""; {
+				dest, err := os.Readlink(currentPath)
+				switch {
+				case err != nil:
+					if filepath.Base(currentPath) == "snap" {
+						mssimSnapName, _ = snap.SplitSnapApp(filepath.Base(lastPath))
+					}
+					currentPath = ""
+				default:
+					if !filepath.IsAbs(dest) {
+						dest = filepath.Join(filepath.Dir(currentPath), dest)
+					}
+					lastPath = currentPath
+					currentPath = dest
+				}
+			}
+
+			tmpRoot := ""
+			if mssimSnapName != "" {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Cannot determine home directory: %v\n", err)
+					return 1
+				}
+				tmpRoot = snap.UserCommonDataDir(home, mssimSnapName)
+			}
+
+			mssimTmpDir, err := ioutil.TempDir(tmpRoot, "secboot.mssim")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Cannot create temporary directory for TPM simulator: %v\n", err)
+				return 1
+			}
+			defer os.RemoveAll(mssimTmpDir)
+
 			cmd := exec.Command(mssimPath, "-m", strconv.FormatUint(uint64(*mssimPort), 10))
+			cmd.Dir = mssimTmpDir
+			// The tpm2-simulator-chrisccoulson snap originally had a patch to chdir in to the root of the snap's common data directory,
+			// where it would store its persistent data. We don't want this behaviour now. This environment variable exists until all
+			// secboot and go-tpm2 branches have been fixed to not depend on this behaviour.
+			cmd.Env = append(cmd.Env, "TPM2SIM_DONT_CD_TO_HOME=1")
+
 			if err := cmd.Start(); err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot start TPM simulator: %v\n", err)
 				return 1
@@ -873,7 +921,7 @@ func TestMain(m *testing.M) {
 					}
 				}()
 
-				tcti, err := tpm2.OpenMssim("", *mssimPort, *mssimPort + 1)
+				tcti, err := tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Cannot open TPM simulator connection for shutdown: %v\n", err)
 					return
