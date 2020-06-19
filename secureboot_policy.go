@@ -751,6 +751,8 @@ func (p *secureBootPolicyGenPath) duplicate() *secureBootPolicyGenPath {
 	n.shimVerificationEvents = make(tpm2.DigestList, len(p.shimVerificationEvents))
 	copy(n.shimVerificationEvents, p.shimVerificationEvents)
 
+	n.unbootable = p.unbootable
+
 	return n
 }
 
