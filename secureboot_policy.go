@@ -36,7 +36,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
-	"github.com/snapcore/secboot/internal/pe"
+	"github.com/snapcore/secboot/internal/pe1.14"
 	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/xerrors"
