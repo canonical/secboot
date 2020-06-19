@@ -696,35 +696,342 @@ type secureBootDbSet struct {
 	shimDb *secureBootDb
 }
 
+type secureBootAuthority struct {
+	signature *efiSignatureData
+	source    *secureBootDb
+}
+
+type authenticodeSignerAndIntermediates struct {
+	signer        *x509.Certificate
+	intermediates *x509.CertPool
+}
+
+// secureBootPolicyGen is the main structure involved with computing secure boot policy PCR digests. It is essentially just
+// a container for EFISecureBootPolicyProfileParams - per-branch context is maintained in secureBootPolicyGenBranch instead.
+type secureBootPolicyGen struct {
+	*EFISecureBootPolicyProfileParams
+}
+
 // secureBootPolicyGenBranch represents a branch of a PCRProtectionProfile. It contains its own PCRProtectionProfile in to which
 // instructions can be recorded, as well as some other context associated with this branch.
 type secureBootPolicyGenBranch struct {
+	gen *secureBootPolicyGen
+
 	profile     *PCRProtectionProfile        // The PCR profile containing the instructions for this branch
 	subBranches []*secureBootPolicyGenBranch // Sub-branches, if this has been branched
 
-	dbUpdateLevel              int             // The number of EFI signature database updates applied in this path
-	dbSet                      secureBootDbSet // The signature database set associated with this path
-	firmwareVerificationEvents tpm2.DigestList // The verification events recorded by firmware on this load path
-	shimVerificationEvents     tpm2.DigestList // The verification events recorded by shim on this load path
+	dbUpdateLevel              int             // The number of EFI signature database updates applied in this branch
+	dbSet                      secureBootDbSet // The signature database set associated with this branch
+	firmwareVerificationEvents tpm2.DigestList // The verification events recorded by firmware in this branch
+	shimVerificationEvents     tpm2.DigestList // The verification events recorded by shim in this branch
 }
 
 // branch creates a branch point in the current branch if one doesn't exist already (although inserting this branch point with
 // PCRProtectionProfile.AddProfileOR is deferred until later), and creates a new sub-branch at the current branch point. Once
 // this has been called, no more instructions can be inserted in to the current branch.
-func (p *secureBootPolicyGenBranch) branch() *secureBootPolicyGenBranch {
-	c := &secureBootPolicyGenBranch{
-		profile:       NewPCRProtectionProfile(),
-		dbUpdateLevel: p.dbUpdateLevel,
-		dbSet:         p.dbSet}
+func (b *secureBootPolicyGenBranch) branch() *secureBootPolicyGenBranch {
+	c := &secureBootPolicyGenBranch{gen: b.gen, profile: NewPCRProtectionProfile()}
+	b.subBranches = append(b.subBranches, c)
 
-	c.firmwareVerificationEvents = make(tpm2.DigestList, len(p.firmwareVerificationEvents))
-	copy(c.firmwareVerificationEvents, p.firmwareVerificationEvents)
-	c.shimVerificationEvents = make(tpm2.DigestList, len(p.shimVerificationEvents))
-	copy(c.shimVerificationEvents, p.shimVerificationEvents)
-
-	p.subBranches = append(p.subBranches, c)
+	// Preserve the context associated with this branch
+	c.dbUpdateLevel = b.dbUpdateLevel
+	c.dbSet = b.dbSet
+	c.firmwareVerificationEvents = make(tpm2.DigestList, len(b.firmwareVerificationEvents))
+	copy(c.firmwareVerificationEvents, b.firmwareVerificationEvents)
+	c.shimVerificationEvents = make(tpm2.DigestList, len(b.shimVerificationEvents))
+	copy(c.shimVerificationEvents, b.shimVerificationEvents)
 
 	return c
+}
+
+// extendMeasurement extends the supplied digest to this branch.
+func (b *secureBootPolicyGenBranch) extendMeasurement(digest tpm2.Digest) {
+	if len(b.subBranches) > 0 {
+		panic("This branch has already been branched")
+	}
+	b.profile.ExtendPCR(b.gen.PCRAlgorithm, secureBootPCR, digest)
+}
+
+// extendVerificationMeasurement extends the supplied digest and records that the digest has been measured by the specified source in
+// to this branch.
+func (b *secureBootPolicyGenBranch) extendVerificationMeasurement(digest tpm2.Digest, source EFIImageLoadEventSource) {
+	var digests *tpm2.DigestList
+	switch source {
+	case Firmware:
+		digests = &b.firmwareVerificationEvents
+	case Shim:
+		digests = &b.shimVerificationEvents
+	}
+	*digests = append(*digests, digest)
+	b.extendMeasurement(digest)
+}
+
+// extendFirmwareVerificationMeasurement extends the supplied digest and records that the digest has been measured by the firmware
+// in to this branch.
+func (b *secureBootPolicyGenBranch) extendFirmwareVerificationMeasurement(digest tpm2.Digest) {
+	b.extendVerificationMeasurement(digest, Firmware)
+}
+
+// omputeAndExtendVariableMeasurement computes a EFI variable measurement from the supplied arguments and extends that to
+// this branch.
+func (b *secureBootPolicyGenBranch) computeAndExtendVariableMeasurement(varName *tcglog.EFIGUID, unicodeName string, varData []byte) error {
+	data := tcglog.EFIVariableEventData{
+		VariableName: *varName,
+		UnicodeName:  unicodeName,
+		VariableData: varData}
+	h := b.gen.PCRAlgorithm.NewHash()
+	if err := data.EncodeMeasuredBytes(h); err != nil {
+		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
+	}
+	b.extendMeasurement(h.Sum(nil))
+	return nil
+}
+
+// processSignatureDbMeasurementEvent computes a EFI signature database measurement for the specified database and with the supplied
+// updates, and then extends that in to this branch.
+func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid *tcglog.EFIGUID, name, filename string, sigDbUpdates []*secureBootDbUpdate) ([]byte, error) {
+	db, err := ioutil.ReadFile(filepath.Join(efivarsPath, filename))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, xerrors.Errorf("cannot read current variable: %w", err)
+	}
+	if len(db) > 0 {
+		if len(db) < 4 {
+			return nil, errors.New("current variable data is too short")
+		}
+		db = db[4:]
+	}
+
+	for _, u := range sigDbUpdates {
+		if u.db != name {
+			continue
+		}
+		if f, err := os.Open(u.path); err != nil {
+			return nil, xerrors.Errorf("cannot open signature DB update: %w", err)
+		} else if d, err := computeDbUpdate(bytes.NewReader(db), f); err != nil {
+			return nil, xerrors.Errorf("cannot compute signature DB update for %s: %w", u.path, err)
+		} else {
+			db = d
+		}
+	}
+
+	if err := b.computeAndExtendVariableMeasurement(guid, name, db); err != nil {
+		return nil, xerrors.Errorf("cannot compute and extend measurement: %w", err)
+	}
+
+	return db, nil
+}
+
+// processKEKMeasurementEvent computes a measurement of KEK with the supplied udates applied and then extends that in to
+// this branch.
+func (b *secureBootPolicyGenBranch) processKEKMeasurementEvent(sigDbUpdates []*secureBootDbUpdate) error {
+	if _, err := b.processSignatureDbMeasurementEvent(efiGlobalVariableGuid, kekName, kekFilename, sigDbUpdates); err != nil {
+		return err
+	}
+	return nil
+}
+
+// processDbMeasurementEvent computes a measurement of the EFI authorized signature database with the supplied updates applied and
+// then extends that in to this branch. The branch context is then updated to contain a list of signatures associated with the
+// resulting authorized signature database contents, which is used later on when computing verification events in
+// secureBootPolicyGen.computeAndExtendVerificationMeasurement.
+func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(sigDbUpdates []*secureBootDbUpdate) error {
+	db, err := b.processSignatureDbMeasurementEvent(efiImageSecurityDatabaseGuid, dbName, dbFilename, sigDbUpdates)
+	if err != nil {
+		return err
+	}
+
+	sigs, err := decodeSecureBootDb(bytes.NewReader(db))
+	if err != nil {
+		return xerrors.Errorf("cannot decode DB contents: %w", err)
+	}
+
+	b.dbSet.uefiDb = &secureBootDb{variableName: *efiImageSecurityDatabaseGuid, unicodeName: dbName, signatures: sigs}
+
+	return nil
+}
+
+// processDbxMeasurementEvent computes a measurement of the EFI forbidden signature database with the supplied updates applied and
+// then extends that in to this branch.
+func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(sigDbUpdates []*secureBootDbUpdate) error {
+	if _, err := b.processSignatureDbMeasurementEvent(efiImageSecurityDatabaseGuid, dbxName, dbxFilename, sigDbUpdates); err != nil {
+		return err
+	}
+	return nil
+}
+
+// processPreOSEvents iterates over the pre-OS secure boot policy events contained within the supplied list of events and extends
+// these in to this branch. For events corresponding to the measurement of EFI signature databases, measurements are computed based
+// on the current contents of each database with the supplied updates applied.
+//
+// Processing of the list of events stops when the verification event associated with the loading of the initial OS EFI executable
+// is encountered.
+func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, initialOSVerificationEvent *secureBootVerificationEvent, sigDbUpdates []*secureBootDbUpdate) error {
+	for len(events) > 0 && events[0] != initialOSVerificationEvent.event {
+		e := events[0]
+		events = events[1:]
+		switch {
+		case isKEKMeasurementEvent(e):
+			if err := b.processKEKMeasurementEvent(sigDbUpdates); err != nil {
+				return xerrors.Errorf("cannot process KEK measurement event: %w", err)
+			}
+		case isDbMeasurementEvent(e):
+			if err := b.processDbMeasurementEvent(sigDbUpdates); err != nil {
+				return xerrors.Errorf("cannot process db measurement event: %w", err)
+			}
+		case isDbxMeasurementEvent(e):
+			if err := b.processDbxMeasurementEvent(sigDbUpdates); err != nil {
+				return xerrors.Errorf("cannot process dbx measurement event: %w", err)
+			}
+		case isVerificationEvent(e):
+			b.extendFirmwareVerificationMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.PCRAlgorithm)]))
+		case e.PCRIndex == secureBootPCR:
+			b.extendMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.PCRAlgorithm)]))
+		}
+	}
+
+	if len(events) == 0 {
+		return nil
+	}
+
+	if initialOSVerificationEvent.imageLoadEvent.PCRIndex == bootManagerCodePCR {
+		return nil
+	}
+
+	// The verification event associated with the initial OS load event was recorded as part of a UEFI driver load, so we need to keep it.
+	b.extendFirmwareVerificationMeasurement(tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(b.gen.PCRAlgorithm)]))
+
+	return nil
+}
+
+// processShimExecutableLaunch updates the context in this branch with the supplied shim vendor certificate so that it can be used
+// later on when computing verification events in secureBootPolicyGenBranch.computeAndExtendVerificationMeasurement.
+func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byte) {
+	b.dbSet.shimDb = &secureBootDb{variableName: *shimGuid, unicodeName: shimName}
+	if vendorCert != nil {
+		b.dbSet.shimDb.signatures = append(b.dbSet.shimDb.signatures, &efiSignatureData{signatureType: *efiCertX509Guid, data: vendorCert})
+	}
+	b.shimVerificationEvents = nil
+}
+
+// hasVerificationEventBeenMeasuredBy determines whether the verification event with the associated digest has been measured by the
+// supplied source already in this branch.
+func (b *secureBootPolicyGenBranch) hasVerificationEventBeenMeasuredBy(digest tpm2.Digest, source EFIImageLoadEventSource) bool {
+	var digests *tpm2.DigestList
+	switch source {
+	case Firmware:
+		digests = &b.firmwareVerificationEvents
+	case Shim:
+		digests = &b.shimVerificationEvents
+	}
+	for _, d := range *digests {
+		if bytes.Equal(d, digest) {
+			return true
+		}
+	}
+	return false
+}
+
+// computeAndExtendVerificationMeasurement computes a measurement for the the authentication of an EFI image using the supplied
+// signatures and extends that in to this branch. If the computed measurement has already been measured by the specified source, then
+// it will not be measured again.
+//
+// In order to compute the measurement, the CA certificate that will be used to authenticate the image using the supplied signatures,
+// and the source of that certificate, needs to be determined. If the image is not signed with an authority that is trusted by a CA
+// certificate that exists in this branch, then this branch will be marked as unbootable and it will be omitted from the final PCR
+// profile.
+func (b *secureBootPolicyGenBranch) computeAndExtendVerificationMeasurement(sigs []*authenticodeSignerAndIntermediates, source EFIImageLoadEventSource) error {
+	if b.profile == nil {
+		// This branch is going to be excluded because it is unbootable.
+		return nil
+	}
+
+	dbs := []*secureBootDb{b.dbSet.uefiDb}
+	if source == Shim {
+		if b.dbSet.shimDb == nil {
+			return errors.New("shim specified as event source without a shim executable appearing in preceding events")
+		}
+		dbs = append(dbs, b.dbSet.mokDb, b.dbSet.shimDb)
+	}
+
+	var authority *secureBootAuthority
+
+	// To determine what CA certificate will be used to authenticate this image, iterate over the signatures in the order in which they
+	// appear in the binary in this outer loop. Iterating over the CA certificates occurs in an inner loop. This behaviour isn't defined
+	// in the UEFI specification but it matches EDK2 and the firmware on the Intel NUC. If an implementation iterates over the CA
+	// certificates in an outer loop and the signatures in an inner loop, then this may produce the wrong result.
+Outer:
+	for _, sig := range sigs {
+		for _, db := range dbs {
+			if db == nil {
+				continue
+			}
+
+			for _, caSig := range db.signatures {
+				// Ignore signatures that aren't X509 certificates
+				if caSig.signatureType != *efiCertX509Guid {
+					continue
+				}
+
+				ca, err := x509.ParseCertificate(caSig.data)
+				if err != nil {
+					continue
+				}
+
+				// XXX: This doesn't work if there isn't a direct relationship between the
+				// signing certificate and the CA (ie, there are intermediates). Ideally we
+				// would use x509.Certificate.Verify here, but there is no way to turn off
+				// time checking and UEFI doesn't consider expired certificates invalid.
+				if bytes.Equal(ca.Raw, sig.signer.Raw) {
+					// The signer certificate is the CA
+					authority = &secureBootAuthority{signature: caSig, source: db}
+					break Outer
+				}
+				if err := sig.signer.CheckSignatureFrom(ca); err == nil {
+					// The signer certificate is directly trusted by the CA
+					authority = &secureBootAuthority{signature: caSig, source: db}
+					break Outer
+				}
+			}
+		}
+	}
+
+	if authority == nil {
+		// Mark this branch as unbootable by clearing its PCR profile
+		b.profile = nil
+		return nil
+	}
+
+	// Serialize authority certificate for measurement
+	var varData *bytes.Buffer
+	switch source {
+	case Firmware:
+		// Firmware measures the entire EFI_SIGNATURE_DATA, including the SignatureOwner
+		varData = new(bytes.Buffer)
+		if err := authority.signature.encode(varData); err != nil {
+			return xerrors.Errorf("cannot encode EFI_SIGNATURE_DATA for authority: %w", err)
+		}
+	case Shim:
+		// Shim measures the certificate data, rather than the entire EFI_SIGNATURE_DATA
+		varData = bytes.NewBuffer(authority.signature.data)
+	}
+
+	// Create event data, compute digest and perform extension for verification of this executable
+	eventData := tcglog.EFIVariableEventData{
+		VariableName: authority.source.variableName,
+		UnicodeName:  authority.source.unicodeName,
+		VariableData: varData.Bytes()}
+	h := b.gen.PCRAlgorithm.NewHash()
+	if err := eventData.EncodeMeasuredBytes(h); err != nil {
+		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
+	}
+	digest := h.Sum(nil)
+
+	// Don't measure events that have already been measured
+	if b.hasVerificationEventBeenMeasuredBy(digest, source) {
+		return nil
+	}
+	b.extendVerificationMeasurement(digest, source)
+	return nil
 }
 
 type sbLoadEventAndBranches struct {
@@ -743,66 +1050,8 @@ func (e *sbLoadEventAndBranches) branch(event *EFIImageLoadEvent) *sbLoadEventAn
 	return &sbLoadEventAndBranches{event, branches}
 }
 
-// secureBootPolicyGen is the main structure involved with computing secure boot policy PCR digests.
-type secureBootPolicyGen struct {
-	*EFISecureBootPolicyProfileParams
-}
-
-// extendMeasurement extends the supplied digest in to the specified branch.
-func (g *secureBootPolicyGen) extendMeasurement(branch *secureBootPolicyGenBranch, digest tpm2.Digest) {
-	if len(branch.subBranches) > 0 {
-		panic("This branch has already been branched")
-	}
-	branch.profile.ExtendPCR(g.PCRAlgorithm, secureBootPCR, digest)
-}
-
-// extendVerificationMeasurement extends the supplied digest and records that the digest has been measured by the specified source in
-// ths specified branch.
-func (g *secureBootPolicyGen) extendVerificationMeasurement(branch *secureBootPolicyGenBranch, digest tpm2.Digest, source EFIImageLoadEventSource) {
-	var digests *tpm2.DigestList
-	switch source {
-	case Firmware:
-		digests = &branch.firmwareVerificationEvents
-	case Shim:
-		digests = &branch.shimVerificationEvents
-	}
-	*digests = append(*digests, digest)
-	g.extendMeasurement(branch, digest)
-}
-
-// extendVerificationMeasurement extends the supplied digest and records that the digest has been measured by the firmware in the
-// specified branch.
-func (g *secureBootPolicyGen) extendFirmwareVerificationMeasurement(branch *secureBootPolicyGenBranch, digest tpm2.Digest) {
-	g.extendVerificationMeasurement(branch, digest, Firmware)
-}
-
-// computeAndExtendVariableMeasurement computes a EFI variable measurement from the supplied arguments and extends that to the
-// specified branch.
-func (g *secureBootPolicyGen) computeAndExtendVariableMeasurement(branch *secureBootPolicyGenBranch, varName *tcglog.EFIGUID, unicodeName string, varData []byte) error {
-	data := tcglog.EFIVariableEventData{
-		VariableName: *varName,
-		UnicodeName:  unicodeName,
-		VariableData: varData}
-	h := g.PCRAlgorithm.NewHash()
-	if err := data.EncodeMeasuredBytes(h); err != nil {
-		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
-	}
-	g.extendMeasurement(branch, h.Sum(nil))
-	return nil
-}
-
-type secureBootAuthority struct {
-	signature *efiSignatureData
-	source    *secureBootDb
-}
-
-type authenticodeSignerAndIntermediates struct {
-	signer        *x509.Certificate
-	intermediates *x509.CertPool
-}
-
 // computeAndExtendVerificationMeasurement computes a measurement for the the authentication of the EFI image obtained from r and
-// extends that to the supplied branches. If the computed measurement has already been measured from the specified source in a branch,
+// extends that to the supplied branches. If the computed measurement has already been measured by the specified source in a branch,
 // then it will not be measured again.
 //
 // In order to compute the measurement for each branch, the CA certificate that will be used to authenticate the image and the
@@ -904,234 +1153,18 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(branches [
 	}
 
 	for _, b := range branches {
-		if b.profile == nil {
-			continue
+		if err := b.computeAndExtendVerificationMeasurement(sigs, source); err != nil {
+			return err
 		}
-
-		dbs := []*secureBootDb{b.dbSet.uefiDb}
-		if source == Shim {
-			if b.dbSet.shimDb == nil {
-				return errors.New("shim specified as event source without a shim executable appearing in preceding events")
-			}
-			dbs = append(dbs, b.dbSet.mokDb, b.dbSet.shimDb)
-		}
-
-		var authority *secureBootAuthority
-
-		// To determine what CA certificate will be used to authenticate this image, iterate over the signatures in the order in which they
-		// appear in the binary in this outer loop. Iterating over the CA certificates occurs in an inner loop. This behaviour isn't defined
-		// in the UEFI specification but it matches EDK2 and the firmware on the Intel NUC. If an implementation iterates over the CA
-		// certificates in an outer loop and the signatures in an inner loop, then this may produce the wrong result.
-	Outer:
-		for _, sig := range sigs {
-			for _, db := range dbs {
-				if db == nil {
-					continue
-				}
-
-				for _, caSig := range db.signatures {
-					// Ignore signatures that aren't X509 certificates
-					if caSig.signatureType != *efiCertX509Guid {
-						continue
-					}
-
-					ca, err := x509.ParseCertificate(caSig.data)
-					if err != nil {
-						continue
-					}
-
-					// XXX: This doesn't work if there isn't a direct relationship between the
-					// signing certificate and the CA (ie, there are intermediates). Ideally we
-					// would use x509.Certificate.Verify here, but there is no way to turn off
-					// time checking and UEFI doesn't consider expired certificates invalid.
-					if bytes.Equal(ca.Raw, sig.signer.Raw) {
-						// The signer certificate is the CA
-						authority = &secureBootAuthority{signature: caSig, source: db}
-						break Outer
-					}
-					if err := sig.signer.CheckSignatureFrom(ca); err == nil {
-						// The signer certificate is directly trusted by the CA
-						authority = &secureBootAuthority{signature: caSig, source: db}
-						break Outer
-					}
-				}
-			}
-		}
-
-		if authority == nil {
-			b.profile = nil
-			continue
-		}
-
-		// Serialize authority certificate for measurement
-		var varData *bytes.Buffer
-		switch source {
-		case Firmware:
-			// Firmware measures the entire EFI_SIGNATURE_DATA, including the SignatureOwner
-			varData = new(bytes.Buffer)
-			if err := authority.signature.encode(varData); err != nil {
-				return xerrors.Errorf("cannot encode EFI_SIGNATURE_DATA for authority: %w", err)
-			}
-		case Shim:
-			// Shim measures the certificate data, rather than the entire EFI_SIGNATURE_DATA
-			varData = bytes.NewBuffer(authority.signature.data)
-		}
-
-		// Create event data, compute digest and perform extension for verification of this executable
-		eventData := tcglog.EFIVariableEventData{
-			VariableName: authority.source.variableName,
-			UnicodeName:  authority.source.unicodeName,
-			VariableData: varData.Bytes()}
-		h := g.PCRAlgorithm.NewHash()
-		if err := eventData.EncodeMeasuredBytes(h); err != nil {
-			return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
-		}
-		digest := h.Sum(nil)
-
-		// Don't measure events that have already been measured
-		var digests *tpm2.DigestList
-		switch source {
-		case Firmware:
-			digests = &b.firmwareVerificationEvents
-		case Shim:
-			digests = &b.shimVerificationEvents
-		}
-		measured := false
-		for _, d := range *digests {
-			if bytes.Equal(d, digest) {
-				measured = true
-				break
-			}
-		}
-		if measured {
-			continue
-		}
-		g.extendVerificationMeasurement(b, digest, source)
 	}
 
 	return nil
 }
 
-// processSignatureDbMeasurementEvent computes a EFI signature database measurement for the specified database and with the supplied
-// updates, and then extends that to the specified branch.
-func (g *secureBootPolicyGen) processSignatureDbMeasurementEvent(branch *secureBootPolicyGenBranch, guid *tcglog.EFIGUID, name, filename string, sigDbUpdates []*secureBootDbUpdate) ([]byte, error) {
-	db, err := ioutil.ReadFile(filepath.Join(efivarsPath, filename))
-	if err != nil && !os.IsNotExist(err) {
-		return nil, xerrors.Errorf("cannot read current variable: %w", err)
-	}
-	if len(db) > 0 {
-		if len(db) < 4 {
-			return nil, errors.New("current variable data is too short")
-		}
-		db = db[4:]
-	}
-
-	for _, u := range sigDbUpdates {
-		if u.db != name {
-			continue
-		}
-		if f, err := os.Open(u.path); err != nil {
-			return nil, xerrors.Errorf("cannot open signature DB update: %w", err)
-		} else if d, err := computeDbUpdate(bytes.NewReader(db), f); err != nil {
-			return nil, xerrors.Errorf("cannot compute signature DB update for %s: %w", u.path, err)
-		} else {
-			db = d
-		}
-	}
-
-	if err := g.computeAndExtendVariableMeasurement(branch, guid, name, db); err != nil {
-		return nil, xerrors.Errorf("cannot compute and extend measurement: %w", err)
-	}
-
-	return db, nil
-}
-
-// processKEKMeasurementEvent computes a measurement of KEK with the supplied udates applied and then extends that to the specified
-// branch.
-func (g *secureBootPolicyGen) processKEKMeasurementEvent(branch *secureBootPolicyGenBranch, sigDbUpdates []*secureBootDbUpdate) error {
-	if _, err := g.processSignatureDbMeasurementEvent(branch, efiGlobalVariableGuid, kekName, kekFilename, sigDbUpdates); err != nil {
-		return err
-	}
-	return nil
-}
-
-// processDbMeasurementEvent computes a measurement of the EFI authorized signature database with the supplied updates applied and
-// then extends that to the specified branch. The branch is then updated to contain a list of signatures associated with the resulting
-// authorized signature database contents, which is used later on when computing verification events in
-// secureBootPolicyGen.computeAndExtendVerificationMeasurement.
-func (g *secureBootPolicyGen) processDbMeasurementEvent(branch *secureBootPolicyGenBranch, sigDbUpdates []*secureBootDbUpdate) error {
-	db, err := g.processSignatureDbMeasurementEvent(branch, efiImageSecurityDatabaseGuid, dbName, dbFilename, sigDbUpdates)
-	if err != nil {
-		return err
-	}
-
-	sigs, err := decodeSecureBootDb(bytes.NewReader(db))
-	if err != nil {
-		return xerrors.Errorf("cannot decode DB contents: %w", err)
-	}
-
-	branch.dbSet.uefiDb = &secureBootDb{variableName: *efiImageSecurityDatabaseGuid, unicodeName: dbName, signatures: sigs}
-
-	return nil
-}
-
-// processDbxMeasurementEvent computes a measurement of the EFI forbidden signature database with the supplied updates applied and
-// then extends that to the specified branch.
-func (g *secureBootPolicyGen) processDbxMeasurementEvent(branch *secureBootPolicyGenBranch, sigDbUpdates []*secureBootDbUpdate) error {
-	if _, err := g.processSignatureDbMeasurementEvent(branch, efiImageSecurityDatabaseGuid, dbxName, dbxFilename, sigDbUpdates); err != nil {
-		return err
-	}
-	return nil
-}
-
-// processPreOSEvents iterates over the pre-OS secure boot policy events contained within the supplied list of events and extends
-// these to the specified branch. For events corresponding to the measurement of EFI signature databases, measurements are computed
-// based on the current contents of each database with the supplied updates applied.
-//
-// Processing of the list of events stops when the verification event associated with the loading of the initial OS EFI executable
-// is encountered.
-func (g *secureBootPolicyGen) processPreOSEvents(branch *secureBootPolicyGenBranch, events []*tcglog.Event, initialOSVerificationEvent *secureBootVerificationEvent, sigDbUpdates []*secureBootDbUpdate) error {
-	for len(events) > 0 && events[0] != initialOSVerificationEvent.event {
-		e := events[0]
-		events = events[1:]
-		switch {
-		case isKEKMeasurementEvent(e):
-			if err := g.processKEKMeasurementEvent(branch, sigDbUpdates); err != nil {
-				return xerrors.Errorf("cannot process KEK measurement event: %w", err)
-			}
-		case isDbMeasurementEvent(e):
-			if err := g.processDbMeasurementEvent(branch, sigDbUpdates); err != nil {
-				return xerrors.Errorf("cannot process db measurement event: %w", err)
-			}
-		case isDbxMeasurementEvent(e):
-			if err := g.processDbxMeasurementEvent(branch, sigDbUpdates); err != nil {
-				return xerrors.Errorf("cannot process dbx measurement event: %w", err)
-			}
-		case isVerificationEvent(e):
-			g.extendFirmwareVerificationMeasurement(branch, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
-		case e.PCRIndex == secureBootPCR:
-			g.extendMeasurement(branch, tpm2.Digest(e.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
-		}
-	}
-
-	if len(events) == 0 {
-		return nil
-	}
-
-	if initialOSVerificationEvent.imageLoadEvent.PCRIndex == bootManagerCodePCR {
-		return nil
-	}
-
-	// The verification event associated with the initial OS load event was recorded as part of a UEFI driver load, so we need to keep it.
-	g.extendFirmwareVerificationMeasurement(branch, tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(g.PCRAlgorithm)]))
-
-	return nil
-}
-
-// processShimExecutable extracts the vendor certificate from the shim executable read from r, and then updates the specified branches
-// to contain a reference to the vendor certificate so that it can be used later on when computing verification events in
-// secureBootPolicyGen.computeAndExtendVerificationMeasurement.
-func (g *secureBootPolicyGen) processShimExecutable(branches []*secureBootPolicyGenBranch, r io.ReaderAt) error {
+// processShimExecutableLaunch extracts the vendor certificate from the shim executable read from r, and then updates the specified
+// branches to contain a reference to the vendor certificate so that it can be used later on when computing verification events in
+// secureBootPolicyGen.computeAndExtendVerificationMeasurement for images that are authenticated by shim.
+func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBootPolicyGenBranch, r io.ReaderAt) error {
 	// Extract this shim's vendor cert
 	vendorCert, err := readShimVendorCert(r)
 	if err != nil {
@@ -1139,11 +1172,7 @@ func (g *secureBootPolicyGen) processShimExecutable(branches []*secureBootPolicy
 	}
 
 	for _, b := range branches {
-		b.dbSet.shimDb = &secureBootDb{variableName: *shimGuid, unicodeName: shimName}
-		if vendorCert != nil {
-			b.dbSet.shimDb.signatures = append(b.dbSet.shimDb.signatures, &efiSignatureData{signatureType: *efiCertX509Guid, data: vendorCert})
-		}
-		b.shimVerificationEvents = nil
+		b.processShimExecutableLaunch(vendorCert)
 	}
 
 	return nil
@@ -1151,7 +1180,7 @@ func (g *secureBootPolicyGen) processShimExecutable(branches []*secureBootPolicy
 
 // processOSLoadEvent computes a measurement associated with the supplied image load event and extends this to the specified branches.
 // If the image load corresponds to shim, then some additional processing is performed to extract the included vendor certificate
-// (see secureBootPolicyGen.processShimExecutable).
+// (see secureBootPolicyGen.processShimExecutableLaunch).
 func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGenBranch, event *EFIImageLoadEvent) error {
 	r, err := event.Image.Open()
 	if err != nil {
@@ -1172,7 +1201,7 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 		return nil
 	}
 
-	if err := g.processShimExecutable(branches, r); err != nil {
+	if err := g.processShimExecutableLaunch(branches, r); err != nil {
 		return xerrors.Errorf("cannot process shim executable: %w", err)
 	}
 
@@ -1197,8 +1226,8 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, events []*tcglo
 	// in turn.
 	var roots []*secureBootPolicyGenBranch
 	for i := 0; i <= len(sigDbUpdates); i++ {
-		branch := &secureBootPolicyGenBranch{profile: NewPCRProtectionProfile(), dbUpdateLevel: i}
-		if err := g.processPreOSEvents(branch, events, initialOSVerificationEvent, sigDbUpdates[0:i]); err != nil {
+		branch := &secureBootPolicyGenBranch{gen: g, profile: NewPCRProtectionProfile(), dbUpdateLevel: i}
+		if err := branch.processPreOSEvents(events, initialOSVerificationEvent, sigDbUpdates[0:i]); err != nil {
 			return xerrors.Errorf("cannot process pre-OS events from event log: %w", err)
 		}
 		roots = append(roots, branch)
