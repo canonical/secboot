@@ -1298,6 +1298,45 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Verify that a load sequence is omitted from the profile if any intermediate component can't be authenticated
+			// before a branch.
+			desc:    "NoBootablePaths",
+			logPath: "testdata/eventlog1.bin",
+			efivars: "testdata/efivars1",
+			params: EFISecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*EFIImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileEFIImage("testdata/mockshim2.efi.signed.2"),
+						Next: []*EFIImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*EFIImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+									},
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*EFIImageLoadEvent{
+											{
+												Source: Shim,
+												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: "cannot compute secure boot policy profile: no bootable paths with current EFI signature database",
+		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
 			restoreEventLogPath := MockEventLogPath(data.logPath)
