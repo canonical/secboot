@@ -23,7 +23,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/x509"
-	"debug/pe"
 	"encoding/asn1"
 	"encoding/binary"
 	"errors"
@@ -37,6 +36,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
+	"github.com/snapcore/secboot/internal/pe1.14"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/snap"
 
@@ -63,6 +63,8 @@ const (
 	uefiDriverPCR      = 2 // UEFI Drivers and UEFI Applications PCR
 	bootManagerCodePCR = 4 // Boot Manager Code and Boot Attempts PCR
 	secureBootPCR      = 7 // Secure Boot Policy Measurements PCR
+
+	certTableIndex = 4 // Index of the Certificate Table entry in the Data Directory of a PE image optional header
 
 	returningFromEfiApplicationEvent = "Returning from EFI Application from Boot Option" // EV_EFI_ACTION index 2: "Attempt to execute code from Boot Option was unsuccessful"
 
@@ -816,36 +818,23 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		return xerrors.Errorf("cannot decode PE binary: %w", err)
 	}
 
-	if pefile.OptionalHeader == nil {
-		// Work around debug/pe not handling variable length optional headers - see
-		// https://github.com/golang/go/commit/3b92f36d15c868e856be71c0fadfc7ff97039b96. We copy the required functionality from that commit
-		// in to this package for now in order to avoid a hard dependency on newer go versions.
-		h, err := readVariableLengthOptionalHeader(r, pefile.FileHeader.SizeOfOptionalHeader)
-		if err != nil {
-			return xerrors.Errorf("cannot decode PE binary optional header: %w", err)
-		}
-		pefile.OptionalHeader = h
-	}
-
 	// Obtain security directory entry from optional header
-	var dd *pe.DataDirectory
+	var dd []pe.DataDirectory
 	switch oh := pefile.OptionalHeader.(type) {
 	case *pe.OptionalHeader32:
-		if oh.NumberOfRvaAndSizes < 5 {
-			return errors.New("cannot obtain security directory entry from PE binary: invalid number of data directories")
-		}
-		dd = &oh.DataDirectory[4]
+		dd = oh.DataDirectory[0:oh.NumberOfRvaAndSizes]
 	case *pe.OptionalHeader64:
-		if oh.NumberOfRvaAndSizes < 5 {
-			return errors.New("cannot obtain security directory entry from PE binary: invalid number of data directories")
-		}
-		dd = &oh.DataDirectory[4]
+		dd = oh.DataDirectory[0:oh.NumberOfRvaAndSizes]
 	default:
 		return errors.New("cannot obtain security directory entry from PE binary: no optional header")
 	}
 
+	if len(dd) <= certTableIndex {
+		return errors.New("cannot obtain security directory entry from PE binary: invalid number of data directories")
+	}
+
 	// Create a reader for the security directory entry, which points to a WIN_CERTIFICATE struct
-	secReader := io.NewSectionReader(r, int64(dd.VirtualAddress), int64(dd.Size))
+	certReader := io.NewSectionReader(r, int64(dd[certTableIndex].VirtualAddress), int64(dd[certTableIndex].Size))
 
 	// Binaries can have multiple signers - this is achieved using multiple single-signed Authenticode signatures - see section 32.5.3.3
 	// ("Secure Boot and Driver Signing - UEFI Image Validation - Signature Database Update - Authorization Process") of the UEFI
@@ -857,13 +846,13 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(paths []*s
 		// https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-attribute-certificate-table-image-only
 		alignSize := (8 - (read & 7)) % 8
 		read += alignSize
-		secReader.Seek(int64(alignSize), io.SeekCurrent)
+		certReader.Seek(int64(alignSize), io.SeekCurrent)
 
-		if int64(read) >= secReader.Size() {
+		if int64(read) >= certReader.Size() {
 			break
 		}
 
-		c, n, err := decodeWinCertificate(secReader)
+		c, n, err := decodeWinCertificate(certReader)
 		switch {
 		case err != nil:
 			return xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry of PE binary: %w", err)
