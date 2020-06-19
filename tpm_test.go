@@ -832,9 +832,9 @@ func TestMain(m *testing.M) {
 
 			tmpRoot := ""
 			if mssimSnapName != "" {
-				home, err := os.UserHomeDir()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Cannot determine home directory: %v\n", err)
+				home := os.Getenv("HOME")
+				if home == "" {
+					fmt.Fprintf(os.Stderr, "Cannot determine home directory\n")
 					return 1
 				}
 				tmpRoot = snap.UserCommonDataDir(home, mssimSnapName)
