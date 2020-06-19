@@ -35,6 +35,8 @@ import (
 	"math/big"
 	"math/rand"
 	"os"
+	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 
@@ -48,8 +50,7 @@ var (
 
 	useMssim          = flag.Bool("use-mssim", false, "")
 	mssimHost         = flag.String("mssim-host", "localhost", "")
-	mssimTpmPort      = flag.Uint("mssim-tpm-port", 2321, "")
-	mssimPlatformPort = flag.Uint("mssim-platform-port", 2322, "")
+	mssimPort	  = flag.Uint("mssim-port", 2321, "")
 
 	testCACert []byte
 	testCAKey  crypto.PrivateKey
@@ -120,7 +121,7 @@ func openTPMSimulatorForTestingCommon() (*TPMConnection, *tpm2.TctiMssim, error)
 
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
 		var err error
-		tcti, err = tpm2.OpenMssim(*mssimHost, *mssimTpmPort, *mssimPlatformPort)
+		tcti, err = tpm2.OpenMssim(*mssimHost, *mssimPort, *mssimPort + 1)
 		if err != nil {
 			return nil, err
 		}
@@ -351,7 +352,7 @@ func certifyTPM(tpm *tpm2.TPMContext) error {
 
 func TestConnectToDefaultTPM(t *testing.T) {
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
-		return tpm2.OpenMssim(*mssimHost, *mssimTpmPort, *mssimPlatformPort)
+		return tpm2.OpenMssim(*mssimHost, *mssimPort, *mssimPort + 1)
 	})
 
 	connectAndClear := func(t *testing.T) *TPMConnection {
@@ -476,7 +477,7 @@ func TestConnectToDefaultTPM(t *testing.T) {
 
 func TestSecureConnectToDefaultTPM(t *testing.T) {
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
-		return tpm2.OpenMssim(*mssimHost, *mssimTpmPort, *mssimPlatformPort)
+		return tpm2.OpenMssim(*mssimHost, *mssimPort, *mssimPort + 1)
 	})
 
 	connectAndClear := func(t *testing.T) *TPMConnection {
@@ -792,6 +793,25 @@ func TestMain(m *testing.M) {
 	rand.Seed(time.Now().UnixNano())
 	os.Exit(func() int {
 		if *useMssim {
+			mssimPath := ""
+			for _, p := range[]string{"tpm2-simulator", "tpm2-simulator-chrisccoulson.tpm2-simulator"} {
+				var err error
+				mssimPath, err = exec.LookPath(p)
+				if err == nil {
+					break
+				}
+			}
+			if mssimPath == "" {
+				fmt.Fprintf(os.Stderr, "Cannot find a TPM simulator binary\n")
+				return 1
+			}
+
+			cmd := exec.Command(mssimPath, "-m", strconv.FormatUint(uint64(*mssimPort), 10))
+			if err := cmd.Start(); err != nil {
+				fmt.Fprintf(os.Stderr, "Cannot start TPM simulator: %v\n", err)
+				return 1
+			}
+
 			if cert, key, err := createTestCA(); err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot create test TPM CA certificate and private key: %v\n", err)
 				return 1
@@ -804,7 +824,7 @@ func TestMain(m *testing.M) {
 				testCAKey = key
 			}
 
-			tcti, err := tpm2.OpenMssim(*mssimHost, *mssimTpmPort, *mssimPlatformPort)
+			tcti, err := tpm2.OpenMssim(*mssimHost, *mssimPort, *mssimPort + 1)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to open mssim connection: %v", err)
 				return 1
@@ -824,27 +844,31 @@ func TestMain(m *testing.M) {
 				fmt.Fprintf(os.Stderr, "Simulator startup failed: %v\n", err)
 				return 1
 			}
+
+			defer func() {
+				defer func() {
+					if err := cmd.Wait(); err != nil {
+						fmt.Fprintf(os.Stderr, "TPM simulator finished with an error: %v", err)
+					}
+				}()
+
+				tcti, err := tpm2.OpenMssim(*mssimHost, *mssimPort, *mssimPort + 1)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to open mssim connection: %v\n", err)
+					return
+				}
+
+				tpm, _ := tpm2.NewTPMContext(tcti)
+				if err := tpm.Shutdown(tpm2.StartupClear); err != nil {
+					fmt.Fprintf(os.Stderr, "TPM simulator shutdown failed: %v\n", err)
+				}
+				if err := tcti.Stop(); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to stop TPM simulator: %v\n", err)
+				}
+				tpm.Close()
+
+			}()
 		}
-		defer func() {
-			if !*useMssim {
-				return
-			}
-
-			tcti, err := tpm2.OpenMssim(*mssimHost, *mssimTpmPort, *mssimPlatformPort)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to open mssim connection: %v\n", err)
-				return
-			}
-
-			tpm, _ := tpm2.NewTPMContext(tcti)
-			if err := tpm.Shutdown(tpm2.StartupClear); err != nil {
-				fmt.Fprintf(os.Stderr, "TPM simulator shutdown failed: %v\n", err)
-			}
-			if err := tcti.Stop(); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to stop TPM simulator: %v\n", err)
-			}
-			tpm.Close()
-		}()
 
 		return m.Run()
 	}())
