@@ -1215,49 +1215,6 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 		{
 			desc:    "VerifyWithDualSignedShim_1",
 			logPath: "testdata/eventlog1.bin",
-			efivars: "testdata/efivars1",
-			params: EFISecureBootPolicyProfileParams{
-				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
-					{
-						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim2.efi.signed.21"),
-						Next: []*EFIImageLoadEvent{
-							{
-								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
-									{
-										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
-									},
-									{
-										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-										Next: []*EFIImageLoadEvent{
-											{
-												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			values: []tpm2.PCRValues{
-				{
-					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "c96404397062ca391fb1372369c2f002a75aa8b57ee75a1152dba554cda17439"),
-					},
-				},
-			},
-		},
-		{
-			desc:    "VerifyWithDualSignedShim_2",
-			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
 			params: EFISecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -1297,6 +1254,88 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			desc:    "VerifyWithDualSignedShim_2",
+			logPath: "testdata/eventlog1.bin",
+			efivars: "testdata/efivars3",
+			params: EFISecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*EFIImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileEFIImage("testdata/mockshim2.efi.signed.21"),
+						Next: []*EFIImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*EFIImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+									},
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*EFIImageLoadEvent{
+											{
+												Source: Shim,
+												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: decodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
+					},
+				},
+			},
+		},
+		{
+			// Verify that a load sequence is omitted from the profile if any intermediate component can't be authenticated
+			// before a branch.
+			desc:    "NoBootablePaths",
+			logPath: "testdata/eventlog1.bin",
+			efivars: "testdata/efivars1",
+			params: EFISecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*EFIImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileEFIImage("testdata/mockshim2.efi.signed.2"),
+						Next: []*EFIImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*EFIImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+									},
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*EFIImageLoadEvent{
+											{
+												Source: Shim,
+												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: "cannot compute secure boot policy digests: no bootable paths with current EFI signature database",
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
