@@ -838,6 +838,10 @@ func TestMain(m *testing.M) {
 					return 1
 				}
 				tmpRoot = snap.UserCommonDataDir(home, mssimSnapName)
+				if err := os.MkdirAll(tmpRoot, 0755); err != nil {
+					fmt.Fprintf(os.Stderr, "Cannot create snap common data dir: %v\n", err)
+					return 1
+				}
 			}
 
 			mssimTmpDir, err := ioutil.TempDir(tmpRoot, "secboot.mssim")
