@@ -29,6 +29,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
 )
@@ -105,7 +106,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		srk, err := tpm.CreateResourceContextFromTPM(SrkHandle)
+		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 		if err != nil {
 			t.Fatalf("No SRK: %v", err)
 		}

@@ -33,12 +33,8 @@ import (
 // Export constants for testing
 const (
 	CurrentMetadataVersion = currentMetadataVersion
-	EkCertHandle           = ekCertHandle
-	EkHandle               = ekHandle
 	LockNVDataHandle       = lockNVDataHandle
 	LockNVHandle           = lockNVHandle
-	SanDirectoryNameTag    = sanDirectoryNameTag
-	SrkHandle              = srkHandle
 )
 
 // Export variables and unexported functions for testing
@@ -53,7 +49,6 @@ var (
 	CreatePublicAreaForRSASigningKey         = createPublicAreaForRSASigningKey
 	DecodeSecureBootDb                       = decodeSecureBootDb
 	DecodeWinCertificate                     = decodeWinCertificate
-	EkTemplate                               = ekTemplate
 	EFICertTypePkcs7Guid                     = efiCertTypePkcs7Guid
 	EFICertX509Guid                          = efiCertX509Guid
 	EnsureLockNVIndex                        = ensureLockNVIndex
@@ -63,18 +58,10 @@ var (
 	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
 	IsStaticPolicyDataError                  = isStaticPolicyDataError
 	LockNVIndexAttrs                         = lockNVIndexAttrs
-	MakeDefaultEKTemplate                    = makeDefaultEKTemplate
-	MakeDefaultSRKTemplate                   = makeDefaultSRKTemplate
-	OidExtensionSubjectAltName               = oidExtensionSubjectAltName
-	OidTcgAttributeTpmManufacturer           = oidTcgAttributeTpmManufacturer
-	OidTcgAttributeTpmModel                  = oidTcgAttributeTpmModel
-	OidTcgAttributeTpmVersion                = oidTcgAttributeTpmVersion
-	OidTcgKpEkCertificate                    = oidTcgKpEkCertificate
 	PerformPinChange                         = performPinChange
 	ReadAndValidateLockNVIndexPublic         = readAndValidateLockNVIndexPublic
 	ReadDynamicPolicyCounter                 = readDynamicPolicyCounter
 	ReadShimVendorCert                       = readShimVendorCert
-	SrkTemplate                              = srkTemplate
 	WinCertTypePKCSSignedData                = winCertTypePKCSSignedData
 	WinCertTypeEfiGuid                       = winCertTypeEfiGuid
 )
@@ -135,16 +122,8 @@ func (c *winCertificateUefiGuid) ToWinCertificateUefiGuid() *WinCertificateUefiG
 }
 
 // Export some helpers for testing.
-func AppendRootCAHash(h []byte) {
-	rootCAHashes = append(rootCAHashes, h)
-}
-
 func GetWinCertificateType(cert winCertificate) uint16 {
 	return cert.wCertificateType()
-}
-
-func InitTPMConnection(t *TPMConnection) error {
-	return t.init()
 }
 
 type MockPolicyPCRParam struct {
@@ -193,14 +172,6 @@ func MockEfivarsPath(path string) (restore func()) {
 	efivarsPath = path
 	return func() {
 		efivarsPath = origPath
-	}
-}
-
-func MockEKTemplate(mock *tpm2.Public) (restore func()) {
-	orig := ekTemplate
-	ekTemplate = mock
-	return func() {
-		ekTemplate = orig
 	}
 }
 
@@ -262,10 +233,6 @@ func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
 		}
 	}
 	return s.String()
-}
-
-func SetOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) {
-	openDefaultTcti = fn
 }
 
 func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile, privateFile string, session tpm2.SessionContext) error {

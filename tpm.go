@@ -37,31 +37,14 @@ import (
 	"time"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/tcti"
+	"github.com/snapcore/secboot/internal/truststore"
 	"github.com/snapcore/snapd/httputil"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
 	"golang.org/x/xerrors"
-)
-
-const (
-	// FIXME: This is fine during initial install and early boot, but we should strive to use the resource manager at other times.
-	tpmPath string = "/dev/tpm0"
-
-	// Handle for RSA2048 EK certificate, see section 7.8 of "TCG TPM v2.0 Provisioning Guidance" Version 1.0, Revision 1.0, 15 March 2017.
-	ekCertHandle tpm2.Handle = 0x01c00002
-
-	sanDirectoryNameTag = 4 // Subject Alternative Name directoryName, see section 4.2.16 or RFC5280
-)
-
-var (
-	oidExtensionSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17} // id-ce-subjectAltName, see section 4.2.16 of RFC5280
-
-	// TCG specific OIDs, see section 4 of "TCG EK Credential Profile For TPM Family 2.0; Level 0", Version 2.1, Revision 13, 10 December 2018.
-	oidTcgAttributeTpmManufacturer = asn1.ObjectIdentifier{2, 23, 133, 2, 1} // tcg-at-tpmManufacturer
-	oidTcgAttributeTpmModel        = asn1.ObjectIdentifier{2, 23, 133, 2, 2} // tcg-at-tpmModel
-	oidTcgAttributeTpmVersion      = asn1.ObjectIdentifier{2, 23, 133, 2, 3} // tcg-at-tpmVersion
-	oidTcgKpEkCertificate          = asn1.ObjectIdentifier{2, 23, 133, 8, 1} // tcg-kp-EKCertificate
 )
 
 // TPMDeviceAttributes contains details about the TPM extracted from a manufacturer issued endorsement key certificate.
@@ -142,7 +125,7 @@ func createTransientEk(tpm *tpm2.TPMContext) (tpm2.ResourceContext, error) {
 	}
 	defer tpm.FlushContext(session)
 
-	ek, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, ekTemplate, nil, nil, session)
+	ek, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, tcg.EKTemplate, nil, nil, session)
 	return ek, err
 }
 
@@ -165,7 +148,7 @@ func verifyEk(cert *x509.Certificate, ek tpm2.ResourceContext) error {
 
 	// Insert the RSA public key in to the EK template to compute the name of the EK object we expected to read back from the TPM.
 	var ekPublic *tpm2.Public
-	b, _ := tpm2.MarshalToBytes(ekTemplate)
+	b, _ := tpm2.MarshalToBytes(tcg.EKTemplate)
 	tpm2.UnmarshalFromBytes(b, &ekPublic)
 
 	// The default exponent of 2^^16-1 is indicated by the value of 0 in the public area.
@@ -227,11 +210,11 @@ func (t *TPMConnection) init() error {
 	//
 	// Without verification against the EK certificate, ek isn't yet safe to use for secret sharing with the TPM.
 	ek, err := func() (tpm2.ResourceContext, error) {
-		ek, err := t.CreateResourceContextFromTPM(ekHandle)
+		ek, err := t.CreateResourceContextFromTPM(tcg.EKHandle)
 		if err == nil || !secureMode {
 			return ek, nil
 		}
-		if !tpm2.IsResourceUnavailableError(err, ekHandle) {
+		if !tpm2.IsResourceUnavailableError(err, tcg.EKHandle) {
 			return nil, err
 		}
 		if ek, err := createTransientEk(t.TPMContext); err == nil {
@@ -245,7 +228,7 @@ func (t *TPMConnection) init() error {
 	}
 
 	ekIsPersistent := func() bool {
-		return ek != nil && ek.Handle() == ekHandle
+		return ek != nil && ek.Handle() == tcg.EKHandle
 	}
 
 	defer func() {
@@ -264,7 +247,7 @@ func (t *TPMConnection) init() error {
 			if err == nil {
 				return nil, nil
 			}
-			if ek.Handle() != ekHandle {
+			if ek.Handle() != tcg.EKHandle {
 				// If this was already a transient EK, fail now
 				return nil, err
 			}
@@ -288,7 +271,7 @@ func (t *TPMConnection) init() error {
 	} else if ek != nil {
 		// If we don't have a verified EK certificate and ek is a persistent object, just do a sanity check that the public area returned
 		// from the TPM has the expected properties. If it doesn't, then don't use it, as TPM2_StartAuthSession might fail.
-		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, ekTemplate, nil); err != nil {
+		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, tcg.EKTemplate, nil); err != nil {
 			return xerrors.Errorf("cannot determine if object is a primary key in the endorsement hierarchy: %w", err)
 		} else if !ok {
 			ek = nil
@@ -337,7 +320,7 @@ func (t *TPMConnection) init() error {
 // readEkCertFromTPM reads the manufacturer injected certificate for the default RSA2048 EK from the standard index, and
 // returns it as a DER encoded byte slice.
 func readEkCertFromTPM(tpm *tpm2.TPMContext) ([]byte, error) {
-	ekCertIndex, err := tpm.CreateResourceContextFromTPM(ekCertHandle)
+	ekCertIndex, err := tpm.CreateResourceContextFromTPM(tcg.EKCertHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context: %w", err)
 	}
@@ -355,14 +338,9 @@ func readEkCertFromTPM(tpm *tpm2.TPMContext) ([]byte, error) {
 	return cert, nil
 }
 
-// openDefaultTcti connects to the default TPM character device. This can be overridden for tests to connect to a simulator device.
-var openDefaultTcti = func() (io.ReadWriteCloser, error) {
-	return tpm2.OpenTPMDevice(tpmPath)
-}
-
 // connectToDefaultTPM opens a connection to the default TPM device.
 func connectToDefaultTPM() (*tpm2.TPMContext, error) {
-	tcti, err := openDefaultTcti()
+	tcti, err := tcti.OpenDefault()
 	if err != nil {
 		if isPathError(err) {
 			return nil, ErrNoTPM2Device
@@ -395,7 +373,7 @@ func isExtKeyUsageAny(usage []x509.ExtKeyUsage) bool {
 
 func isExtKeyUsageEkCertificate(usage []asn1.ObjectIdentifier) bool {
 	for _, u := range usage {
-		if u.Equal(oidTcgKpEkCertificate) {
+		if u.Equal(tcg.OIDTcgKpEkCertificate) {
 			return true
 		}
 	}
@@ -439,7 +417,7 @@ func parseTPMDeviceAttributesFromDirectoryName(dirName pkix.RDNSequence) (*TPMDe
 	for _, rdns := range dirName {
 		for _, atv := range rdns {
 			switch {
-			case atv.Type.Equal(oidTcgAttributeTpmManufacturer):
+			case atv.Type.Equal(tcg.OIDTcgAttributeTpmManufacturer):
 				if hasManufacturer {
 					return nil, nil, asn1.StructuralError{Msg: "duplicate TPM manufacturer"}
 				}
@@ -459,7 +437,7 @@ func parseTPMDeviceAttributesFromDirectoryName(dirName pkix.RDNSequence) (*TPMDe
 					return nil, nil, asn1.StructuralError{Msg: "invalid TPM manufacturer: too short"}
 				}
 				attrs.Manufacturer = tpm2.TPMManufacturer(binary.BigEndian.Uint32(hex))
-			case atv.Type.Equal(oidTcgAttributeTpmModel):
+			case atv.Type.Equal(tcg.OIDTcgAttributeTpmModel):
 				if hasModel {
 					return nil, nil, asn1.StructuralError{Msg: "duplicate TPM model"}
 				}
@@ -469,7 +447,7 @@ func parseTPMDeviceAttributesFromDirectoryName(dirName pkix.RDNSequence) (*TPMDe
 					return nil, nil, asn1.StructuralError{Msg: "invalid TPM attribute value"}
 				}
 				attrs.Model = s
-			case atv.Type.Equal(oidTcgAttributeTpmVersion):
+			case atv.Type.Equal(tcg.OIDTcgAttributeTpmVersion):
 				if hasVersion {
 					return nil, nil, asn1.StructuralError{Msg: "duplicate TPM firmware version"}
 				}
@@ -525,7 +503,7 @@ func parseTPMDeviceAttributesFromSAN(data []byte) (*TPMDeviceAttributes, pkix.RD
 			return nil, nil, asn1.StructuralError{Msg: "invalid SAN entry"}
 		}
 
-		if v.Tag == sanDirectoryNameTag {
+		if v.Tag == tcg.SANDirectoryNameTag {
 			var dirName pkix.RDNSequence
 			if rest, err := asn1.Unmarshal(v.Bytes, &dirName); err != nil {
 				return nil, nil, err
@@ -548,7 +526,7 @@ func isCertificateTrustedCA(cert *x509.Certificate) bool {
 	hash := h.Sum(nil)
 
 Outer:
-	for _, rootHash := range rootCAHashes {
+	for _, rootHash := range truststore.RootCAHashes {
 		for i, b := range rootHash {
 			if b != hash[i] {
 				continue Outer
@@ -602,7 +580,7 @@ func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *TPMDeviceAttri
 
 	var attrs *TPMDeviceAttributes
 	for _, e := range cert.Extensions {
-		if e.Id.Equal(oidExtensionSubjectAltName) {
+		if e.Id.Equal(tcg.OIDExtensionSubjectAltName) {
 			// SubjectAltName MUST be critical if subject is empty
 			if len(cert.Subject.Names) == 0 && !e.Critical {
 				return nil, nil, errors.New("certificate with empty subject contains non-critical SAN extension")
@@ -631,7 +609,7 @@ func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *TPMDeviceAttri
 	// If SAN contains only fields unhandled by crypto/x509 and it is marked as critical, then it ends up here. Remove it because
 	// we've handled it ourselves and x509.Certificate.Verify fails if we leave it here.
 	for i, e := range cert.UnhandledCriticalExtensions {
-		if e.Equal(oidExtensionSubjectAltName) {
+		if e.Equal(tcg.OIDExtensionSubjectAltName) {
 			copy(cert.UnhandledCriticalExtensions[i:], cert.UnhandledCriticalExtensions[i+1:])
 			cert.UnhandledCriticalExtensions = cert.UnhandledCriticalExtensions[:len(cert.UnhandledCriticalExtensions)-1]
 			break
