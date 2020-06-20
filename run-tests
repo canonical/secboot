@@ -24,4 +24,4 @@ if [ $WITH_MSSIM -eq 1 ]; then
 fi
 
 
-go test -v -race ./... -args -check.v $MSSIM_ARGS $@
+go test -v -race -p 1 ./... -args -check.v $MSSIM_ARGS $@

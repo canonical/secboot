@@ -36,6 +36,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
+	"github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/pe1.14"
 	"github.com/snapcore/snapd/osutil"
 
@@ -458,7 +459,7 @@ func buildSignatureDbUpdateList(keystores []string) ([]*secureBootDbUpdate, erro
 		return nil, xerrors.Errorf("lookup failed %s: %w", sbKeySyncExe, err)
 	}
 
-	args := []string{"--dry-run", "--verbose", "--no-default-keystores", "--efivars-path", efivarsPath}
+	args := []string{"--dry-run", "--verbose", "--no-default-keystores", "--efivars-path", efi.EFIVarsPath}
 	for _, ks := range keystores {
 		args = append(args, "--keystore", ks)
 	}
@@ -720,7 +721,7 @@ func (b *secureBootPolicyGenBranch) computeAndExtendVariableMeasurement(varName 
 // processSignatureDbMeasurementEvent computes a EFI signature database measurement for the specified database and with the supplied
 // updates, and then extends that in to this branch.
 func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid *tcglog.EFIGUID, name, filename string, sigDbUpdates []*secureBootDbUpdate) ([]byte, error) {
-	db, err := ioutil.ReadFile(filepath.Join(efivarsPath, filename))
+	db, err := ioutil.ReadFile(filepath.Join(efi.EFIVarsPath, filename))
 	if err != nil && !os.IsNotExist(err) {
 		return nil, xerrors.Errorf("cannot read current variable: %w", err)
 	}
@@ -1313,7 +1314,7 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, events []*tcglo
 // adding a single PCR digest to the provided PCRProtectionProfile.
 func AddEFISecureBootPolicyProfile(profile *PCRProtectionProfile, params *EFISecureBootPolicyProfileParams) error {
 	// Load event log
-	eventLog, err := os.Open(eventLogPath)
+	eventLog, err := os.Open(efi.EventLogPath)
 	if err != nil {
 		return xerrors.Errorf("cannot open TCG event log: %w", err)
 	}

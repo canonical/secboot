@@ -91,4 +91,3 @@ var (
 	OIDTcgAttributeTpmVersion      = asn1.ObjectIdentifier{2, 23, 133, 2, 3} // tcg-at-tpmVersion
 	OIDTcgKpEkCertificate          = asn1.ObjectIdentifier{2, 23, 133, 8, 1} // tcg-kp-EKCertificate
 )
-

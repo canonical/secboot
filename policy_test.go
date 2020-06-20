@@ -619,23 +619,6 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 	}
 }
 
-func makePCREventDigest(alg tpm2.HashAlgorithmId, event string) tpm2.Digest {
-	h := alg.NewHash()
-	h.Write([]byte(event))
-	return h.Sum(nil)
-}
-
-func makePCRDigestFromEvents(alg tpm2.HashAlgorithmId, events ...string) tpm2.Digest {
-	p := make(tpm2.Digest, alg.Size())
-	for _, e := range events {
-		h := alg.NewHash()
-		h.Write(p)
-		h.Write(makePCREventDigest(alg, e))
-		p = h.Sum(nil)
-	}
-	return p
-}
-
 type pcrDigestBuilder struct {
 	t           *testing.T
 	alg         tpm2.HashAlgorithmId
@@ -692,7 +675,7 @@ func TestComputePolicyORData(t *testing.T) {
 			desc: "SingleDigest",
 			alg:  tpm2.HashAlgorithmSHA256,
 			inputDigests: tpm2.DigestList{
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).end(),
 			},
 			outputPolicy: decodeHexStringT(t, "fd7451c024bafe5f117cab2841c2dd81f5304350bd8b17ef1f667bceda1ffcf9"),
 		},
@@ -700,10 +683,10 @@ func TestComputePolicyORData(t *testing.T) {
 			desc: "MultipleDigests",
 			alg:  tpm2.HashAlgorithmSHA256,
 			inputDigests: tpm2.DigestList{
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "1234")).end(),
 			},
 			outputPolicy: decodeHexStringT(t, "4088de0181ede03662fabce88ba4385b16448a981f6b399da861dfe6cc955b68"),
 		},
@@ -711,31 +694,31 @@ func TestComputePolicyORData(t *testing.T) {
 			desc: "2Rows",
 			alg:  tpm2.HashAlgorithmSHA256,
 			inputDigests: tpm2.DigestList{
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
 			},
 			outputPolicy: decodeHexStringT(t, "0a023c5b9182d2456407c39bf0ab62f6b86f90a4cec61e594c026a087c43e84c"),
 		},
@@ -743,131 +726,131 @@ func TestComputePolicyORData(t *testing.T) {
 			desc: "3Rows",
 			alg:  tpm2.HashAlgorithmSHA256,
 			inputDigests: tpm2.DigestList{
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
-				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc1")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc2")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc3")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc4")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar3")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
+				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
 			},
 			outputPolicy: decodeHexStringT(t, "447f411c3cedd453e53e9b95958774413bea32267a75db8545cd258ed4968575"),
 		},
@@ -948,8 +931,8 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 			},
@@ -965,8 +948,8 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 			},
@@ -982,8 +965,8 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "1234"),
 					},
 				},
 			},
@@ -999,8 +982,8 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA512: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "foo"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "bar"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA512, "foo"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA512, "bar"),
 					},
 				},
 			},
@@ -1016,14 +999,14 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "1234"),
 					},
 				},
 			},
@@ -1038,12 +1021,12 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")},
 				},
 				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "1234")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "ABC"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "1234")},
 				},
 			}),
 			policyCount:  5,
@@ -1058,8 +1041,8 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 			},
@@ -1075,10 +1058,10 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 					tpm2.HashAlgorithmSHA512: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA512, "foo"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA512, "foo"),
 					},
 				},
 			},
@@ -1093,25 +1076,25 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
 				},
 				{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar5")},
 				},
 				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
 				},
 			}),
 			policyCount:  15,
@@ -1292,8 +1275,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1332,8 +1315,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1373,8 +1356,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1413,8 +1396,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA1: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA1, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA1, "bar", "foo"),
 					},
 				},
 			},
@@ -1453,8 +1436,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1496,8 +1479,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1539,8 +1522,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1580,8 +1563,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1620,14 +1603,14 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
 					},
 				},
 			},
@@ -1666,14 +1649,14 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
 					},
 				},
 			},
@@ -1713,14 +1696,14 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "baz"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "foo"),
 					},
 				},
 			},
@@ -1758,25 +1741,25 @@ func TestExecutePolicy(t *testing.T) {
 			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
 				},
 				{PCR: 8, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc", "bar5")},
 				},
 				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
 				},
 			}),
 			policyCount: policyCount,
@@ -1837,8 +1820,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1877,8 +1860,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1925,8 +1908,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -1967,8 +1950,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2010,8 +1993,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2053,8 +2036,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2096,8 +2079,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2140,8 +2123,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2190,8 +2173,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2246,8 +2229,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2305,8 +2288,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2349,8 +2332,8 @@ func TestExecutePolicy(t *testing.T) {
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
 					},
 				},
 			},
@@ -2390,18 +2373,18 @@ func TestExecutePolicy(t *testing.T) {
 			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
 				},
 				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
 				},
 			}),
 			policyCount: policyCount,
@@ -2440,18 +2423,18 @@ func TestExecutePolicy(t *testing.T) {
 			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar5")},
 				},
 				{PCR: 12, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
-					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo2"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo3"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo4"),
+					testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo5")},
 				},
 			}),
 			policyCount: policyCount,
@@ -2534,7 +2517,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 
 	signAlg := staticPolicyData.AuthPublicKey.NameAlg
 	pcrs := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}
-	pcrDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, pcrs, tpm2.PCRValues{tpm2.HashAlgorithmSHA256: {7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}})
+	pcrDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, pcrs, tpm2.PCRValues{tpm2.HashAlgorithmSHA256: {7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")}})
 	dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, tpm2.HashAlgorithmSHA256,
 		NewDynamicPolicyComputeParams(key, signAlg, pcrs, tpm2.DigestList{pcrDigest}, pinIndex.Name(), policyCount))
 	if err != nil {

@@ -1,0 +1,21 @@
+type: model
+authority-id: fake-brand
+series: 16
+brand-id: fake-brand
+model: fake-model
+architecture: amd64
+base: core20
+grade: secured
+snaps:
+  -
+    id: OphGJZJ6IaWOrqS0ntWioKhgTO9rgwop
+    name: fake-gadget
+    type: gadget
+  -
+    id: pwoYfiS0uaZUQjH7qFansjomLRzz6YUF
+    name: fake-linux
+    type: kernel
+timestamp: 2020-06-18T22:44:00.0Z
+sign-key-sha3-384: Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij
+
+AXNpZw==

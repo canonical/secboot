@@ -116,7 +116,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile1(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "bd7851fd994a7f899364dbc96a95dffeaa250cd7ea33b4b6c313866169e779bc"),
+					12: testutil.DecodeHexString(c, "bd7851fd994a7f899364dbc96a95dffeaa250cd7ea33b4b6c313866169e779bc"),
 				},
 			},
 		},
@@ -142,7 +142,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile2(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "df0c79fd31951f47b547a2914427159d52a870ed368a9dfd29fc08f28c341b6d"),
+					12: testutil.DecodeHexString(c, "df0c79fd31951f47b547a2914427159d52a870ed368a9dfd29fc08f28c341b6d"),
 				},
 			},
 		},
@@ -168,7 +168,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile3(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "d2fd13d3097d7cf75c8f14f790f6a41e27e8925664b2324e73a749aa30971594"),
+					12: testutil.DecodeHexString(c, "d2fd13d3097d7cf75c8f14f790f6a41e27e8925664b2324e73a749aa30971594"),
 				},
 			},
 		},
@@ -194,7 +194,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile4(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "7135fd41c92f097075cc21eefd6797498544fd329b3bf996654885ebf83bb2de"),
+					12: testutil.DecodeHexString(c, "7135fd41c92f097075cc21eefd6797498544fd329b3bf996654885ebf83bb2de"),
 				},
 			},
 		},
@@ -220,7 +220,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile5(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "62242d713e406f862ca35be37777b6932bfdcd8b766a99ce408c8c3bce68b2fe"),
+					12: testutil.DecodeHexString(c, "62242d713e406f862ca35be37777b6932bfdcd8b766a99ce408c8c3bce68b2fe"),
 				},
 			},
 		},
@@ -246,7 +246,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile6(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA1: {
-					12: decodeHexString(c, "aa6839aca24500a572aea54bf5b23912abf8ed42"),
+					12: testutil.DecodeHexString(c, "aa6839aca24500a572aea54bf5b23912abf8ed42"),
 				},
 			},
 		},
@@ -272,7 +272,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile7(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					14: decodeHexString(c, "bd7851fd994a7f899364dbc96a95dffeaa250cd7ea33b4b6c313866169e779bc"),
+					14: testutil.DecodeHexString(c, "bd7851fd994a7f899364dbc96a95dffeaa250cd7ea33b4b6c313866169e779bc"),
 				},
 			},
 		},
@@ -305,12 +305,12 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile8(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "bd7851fd994a7f899364dbc96a95dffeaa250cd7ea33b4b6c313866169e779bc"),
+					12: testutil.DecodeHexString(c, "bd7851fd994a7f899364dbc96a95dffeaa250cd7ea33b4b6c313866169e779bc"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "7135fd41c92f097075cc21eefd6797498544fd329b3bf996654885ebf83bb2de"),
+					12: testutil.DecodeHexString(c, "7135fd41c92f097075cc21eefd6797498544fd329b3bf996654885ebf83bb2de"),
 				},
 			},
 		},
@@ -321,8 +321,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile9(c *C) {
 	// Test extending in to an initial profile.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		profile: NewPCRProtectionProfile().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
@@ -346,14 +346,14 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile9(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-					12: decodeHexString(c, "3089d679b1cda31c76fe57e6cf0c3eb35c221acde76a678c3c4771ee9b99a8c9"),
+					7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					12: testutil.DecodeHexString(c, "3089d679b1cda31c76fe57e6cf0c3eb35c221acde76a678c3c4771ee9b99a8c9"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-					12: decodeHexString(c, "cb7a1cf1afbc73e0e4348f771cf7475e7ec278549af042e2617e717ca38d3416"),
+					7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					12: testutil.DecodeHexString(c, "cb7a1cf1afbc73e0e4348f771cf7475e7ec278549af042e2617e717ca38d3416"),
 				},
 			},
 		},
@@ -380,7 +380,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile10(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "b6dfa17679ea768de6430c531da07e2f926320a1ec577c2edd97d4757dc6e45f"),
+					12: testutil.DecodeHexString(c, "b6dfa17679ea768de6430c531da07e2f926320a1ec577c2edd97d4757dc6e45f"),
 				},
 			},
 		},
@@ -406,7 +406,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile11(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					12: decodeHexString(c, "27db1fa15c2fd09361f6812bca72c3285e889dd20fcfbbe509e153b302046820"),
+					12: testutil.DecodeHexString(c, "27db1fa15c2fd09361f6812bca72c3285e889dd20fcfbbe509e153b302046820"),
 				},
 			},
 		},

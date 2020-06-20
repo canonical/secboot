@@ -36,6 +36,7 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 func TestDecodeWinCertificate(t *testing.T) {
@@ -1179,8 +1180,8 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			efivars: "testdata/efivars2",
 			initial: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
 			params: EFISecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -1339,9 +1340,9 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			restoreEventLogPath := MockEventLogPath(data.logPath)
+			restoreEventLogPath := testutil.MockEventLogPath(data.logPath)
 			defer restoreEventLogPath()
-			restoreEfivarsPath := MockEfivarsPath(data.efivars)
+			restoreEfivarsPath := testutil.MockEFIVarsPath(data.efivars)
 			defer restoreEfivarsPath()
 
 			policy := data.initial

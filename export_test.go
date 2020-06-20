@@ -167,22 +167,6 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
-func MockEfivarsPath(path string) (restore func()) {
-	origPath := efivarsPath
-	efivarsPath = path
-	return func() {
-		efivarsPath = origPath
-	}
-}
-
-func MockEventLogPath(path string) (restore func()) {
-	origPath := eventLogPath
-	eventLogPath = path
-	return func() {
-		eventLogPath = origPath
-	}
-}
-
 func MockRunDir(path string) (restore func()) {
 	origRunDir := runDir
 	runDir = path
