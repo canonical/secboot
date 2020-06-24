@@ -1263,8 +1263,7 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, events []*tcglo
 		}
 
 		if len(e.event.Next) == 1 {
-			e.event = e.event.Next[0]
-			nextLoadEvents = append(nextLoadEvents, e)
+			nextLoadEvents = append(nextLoadEvents, &sbLoadEventAndBranches{event: e.event.Next[0], branches: e.branches})
 		} else {
 			for _, n := range e.event.Next {
 				ne := e.branch(n)
