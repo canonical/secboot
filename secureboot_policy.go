@@ -798,6 +798,7 @@ func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid *tcg
 		if len(db) < 4 {
 			return nil, errors.New("current variable data is too short")
 		}
+		// Skip over the 4-byte attribute field
 		db = db[4:]
 	}
 
@@ -1034,6 +1035,7 @@ Outer:
 	return nil
 }
 
+// sbLoadEventAndBranches binds together a EFIImageLoadEvent and the branches that the event needs to be applied to.
 type sbLoadEventAndBranches struct {
 	event    *EFIImageLoadEvent
 	branches []*secureBootPolicyGenBranch
