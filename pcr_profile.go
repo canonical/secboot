@@ -169,20 +169,29 @@ func (iter *pcrProtectionProfileIterator) next() pcrProtectionProfileInstr {
 	if len(iter.instrs) == 0 {
 		panic("no more instructions")
 	}
-	if len(iter.instrs[0]) == 0 {
-		iter.instrs = iter.instrs[1:]
-		return &pcrProtectionProfileEndProfileInstr{}
+
+	for {
+		if len(iter.instrs[0]) == 0 {
+			iter.instrs = iter.instrs[1:]
+			return &pcrProtectionProfileEndProfileInstr{}
+		}
+
+		instr := iter.instrs[0][0]
+		iter.instrs[0] = iter.instrs[0][1:]
+
+		switch i := instr.(type) {
+		case *pcrProtectionProfileAddProfileORInstr:
+			if len(i.profiles) == 0 {
+				// If this is an empty branch point, don't return this instruction because there
+				// won't be a corresponding *EndProfileInstr
+				continue
+			}
+			iter.descendInToProfiles(i.profiles...)
+			return instr
+		default:
+			return instr
+		}
 	}
-
-	instr := iter.instrs[0][0]
-	iter.instrs[0] = iter.instrs[0][1:]
-
-	switch i := instr.(type) {
-	case *pcrProtectionProfileAddProfileORInstr:
-		iter.descendInToProfiles(i.profiles...)
-	}
-
-	return instr
 }
 
 // traverseInstructions returns an iterator that performs a depth first traversal through the instructions in this profile.
