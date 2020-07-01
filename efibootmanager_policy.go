@@ -23,8 +23,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
-	"io/ioutil"
 	"os"
 	"sort"
 
@@ -123,11 +123,25 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image EFIImage) (tpm2.Digest
 	if certTable != nil {
 		hr.Seek(8, io.SeekCurrent)
 	}
-	b, err = ioutil.ReadAll(hr)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot read remainder of headers and section table: %w", err)
+
+	chunkedHashAll := func(r io.Reader, h hash.Hash) error {
+		b := make([]byte, 4096)
+		for {
+			n, err := r.Read(b)
+			h.Write(b[:n])
+
+			if err == io.EOF {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+		}
 	}
-	h.Write(b)
+
+	if err := chunkedHashAll(hr, h); err != nil {
+		return nil, xerrors.Errorf("cannot hash remainder of headers and section table: %w", err)
+	}
 
 	// 8) Create a counter called sumOfBytesHashed, which is not part of the signature. Set this counter to the SizeOfHeaders field.
 	sumOfBytesHashed := sizeOfHeaders
@@ -150,11 +164,9 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image EFIImage) (tpm2.Digest
 		// 11) Walk through the sorted table, load the corresponding section into memory, and hash the entire section. Use the
 		// Size field in the SectionHeader structure to determine the amount of data to hash.
 		sr := io.NewSectionReader(r, int64(section.Offset), int64(section.Size))
-		b, err := ioutil.ReadAll(sr)
-		if err != nil {
-			return nil, xerrors.Errorf("cannot read section %s: %w", section.Name, err)
+		if err := chunkedHashAll(sr, h); err != nil {
+			return nil, xerrors.Errorf("cannot hash section %s: %w", section.Name, err)
 		}
-		h.Write(b)
 
 		// 12) Add the section’s Size value to sumOfBytesHashed.
 		sumOfBytesHashed += int64(section.Size)
@@ -181,11 +193,10 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image EFIImage) (tpm2.Digest
 			return nil, errors.New("image too short")
 		}
 
-		b = make([]byte, fileSize-sumOfBytesHashed-certSize)
-		if _, err := r.ReadAt(b, sumOfBytesHashed); err != nil {
-			return nil, xerrors.Errorf("cannot read extra data: %w", err)
+		sr := io.NewSectionReader(r, sumOfBytesHashed, fileSize-sumOfBytesHashed-certSize)
+		if err := chunkedHashAll(sr, h); err != nil {
+			return nil, xerrors.Errorf("cannot hash extra data: %w", err)
 		}
-		h.Write(b)
 	}
 
 	return h.Sum(nil), nil
@@ -202,6 +213,7 @@ func (n *bootManagerCodePolicyGenBranch) branch() *bootManagerCodePolicyGenBranc
 	return b
 }
 
+// bmLoadEventAndBranch binds together a EFIImageLoadEvent and the branch that the event needs to be applied to.
 type bmLoadEventAndBranch struct {
 	event  *EFIImageLoadEvent
 	branch *bootManagerCodePolicyGenBranch
@@ -308,8 +320,7 @@ func AddEFIBootManagerProfile(profile *PCRProtectionProfile, params *EFIBootMana
 		e.branch.profile.ExtendPCR(params.PCRAlgorithm, bootManagerCodePCR, digest)
 
 		if len(e.event.Next) == 1 {
-			e.event = e.event.Next[0]
-			nextLoadEvents = append(nextLoadEvents, e)
+			nextLoadEvents = append(nextLoadEvents, &bmLoadEventAndBranch{event: e.event.Next[0], branch: e.branch})
 		} else {
 			for _, n := range e.event.Next {
 				branch := e.branch.branch()
