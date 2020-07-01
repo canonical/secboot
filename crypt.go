@@ -562,7 +562,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 	return setLUKS2KeyslotPreferred(devicePath, 0)
 }
 
-func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraArgs []string) error {
+func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOptionArgs []string) error {
 	// Pass both keys to cryptsetup in the same temporary file.
 	bothKeys := make([]byte, len(existingKey)+len(key))
 	copy(bothKeys, existingKey)
@@ -580,7 +580,7 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraArg
 		"--key-file", keyFilePath, "--keyfile-offset", "0", "--keyfile-size", strconv.Itoa(len(existingKey)),
 		// specify size of recovery key and offset in to supplied input file
 		"--new-keyfile-offset", strconv.Itoa(len(existingKey)), "--new-keyfile-size", strconv.Itoa(len(key))}
-	args = append(args, extraArgs...)
+	args = append(args, extraOptionArgs...)
 	args = append(args,
 		// container to add key to
 		devicePath,
