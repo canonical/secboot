@@ -304,7 +304,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 		},
 		{
 			desc: "EmptyProfileOR",
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).

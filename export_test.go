@@ -32,13 +32,15 @@ import (
 
 // Export constants for testing
 const (
-	CurrentMetadataVersion = currentMetadataVersion
-	EkCertHandle           = ekCertHandle
-	EkHandle               = ekHandle
-	LockNVDataHandle       = lockNVDataHandle
-	LockNVHandle           = lockNVHandle
-	SanDirectoryNameTag    = sanDirectoryNameTag
-	SrkHandle              = srkHandle
+	CurrentMetadataVersion                = currentMetadataVersion
+	EkCertHandle                          = ekCertHandle
+	EkHandle                              = ekHandle
+	LockNVDataHandle                      = lockNVDataHandle
+	LockNVHandle                          = lockNVHandle
+	SanDirectoryNameTag                   = sanDirectoryNameTag
+	SigDbUpdateQuirkModeNone              = sigDbUpdateQuirkModeNone
+	SigDbUpdateQuirkModeDedupIgnoresOwner = sigDbUpdateQuirkModeDedupIgnoresOwner
+	SrkHandle                             = srkHandle
 )
 
 // Export variables and unexported functions for testing
@@ -105,6 +107,8 @@ func (e *SecureBootVerificationEvent) Event() *tcglog.Event {
 func (e *SecureBootVerificationEvent) ImageLoadEvent() *tcglog.Event {
 	return e.imageLoadEvent
 }
+
+type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
 
 type StaticPolicyData staticPolicyData
 
