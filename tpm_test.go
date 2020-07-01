@@ -37,6 +37,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -48,8 +49,8 @@ var (
 	useTpm         = flag.Bool("use-tpm", false, "")
 	tpmPathForTest = flag.String("tpm-path", "/dev/tpm0", "")
 
-	useMssim          = flag.Bool("use-mssim", false, "")
-	mssimPort	  = flag.Uint("mssim-port", 2321, "")
+	useMssim  = flag.Bool("use-mssim", false, "")
+	mssimPort = flag.Uint("mssim-port", 2321, "")
 
 	testCACert []byte
 	testCAKey  crypto.PrivateKey
@@ -120,7 +121,7 @@ func openTPMSimulatorForTestingCommon() (*TPMConnection, *tpm2.TctiMssim, error)
 
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
 		var err error
-		tcti, err = tpm2.OpenMssim("", *mssimPort, *mssimPort + 1)
+		tcti, err = tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 		if err != nil {
 			return nil, err
 		}
@@ -383,7 +384,7 @@ func TestTPMConnectionIsEnabled(t *testing.T) {
 
 func TestConnectToDefaultTPM(t *testing.T) {
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
-		return tpm2.OpenMssim("", *mssimPort, *mssimPort + 1)
+		return tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 	})
 
 	connectAndClear := func(t *testing.T) *TPMConnection {
@@ -506,9 +507,23 @@ func TestConnectToDefaultTPM(t *testing.T) {
 	})
 }
 
+func TestConnectToDefaultTPMNoTPM(t *testing.T) {
+	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
+		return nil, &os.PathError{Op: "open", Path: "/dev/tpm0", Err: syscall.ENOENT}
+	})
+
+	tpm, err := ConnectToDefaultTPM()
+	if tpm != nil {
+		t.Errorf("ConnectToDefaultTPM should have failed")
+	}
+	if err != ErrNoTPM2Device {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
 func TestSecureConnectToDefaultTPM(t *testing.T) {
 	SetOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
-		return tpm2.OpenMssim("", *mssimPort, *mssimPort + 1)
+		return tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 	})
 
 	connectAndClear := func(t *testing.T) *TPMConnection {
@@ -825,7 +840,7 @@ func TestMain(m *testing.M) {
 	os.Exit(func() int {
 		if *useMssim {
 			mssimPath := ""
-			for _, p := range[]string{"tpm2-simulator", "tpm2-simulator-chrisccoulson.tpm2-simulator"} {
+			for _, p := range []string{"tpm2-simulator", "tpm2-simulator-chrisccoulson.tpm2-simulator"} {
 				var err error
 				mssimPath, err = exec.LookPath(p)
 				if err == nil {
@@ -905,7 +920,7 @@ func TestMain(m *testing.M) {
 					}
 				}()
 
-				tcti, err := tpm2.OpenMssim("", *mssimPort, *mssimPort + 1)
+				tcti, err := tpm2.OpenMssim("", *mssimPort, *mssimPort+1)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Cannot open TPM simulator connection for shutdown: %v\n", err)
 					return

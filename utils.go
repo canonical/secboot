@@ -32,7 +32,7 @@ import (
 
 func isPathError(err error) bool {
 	var e *os.PathError
-	return xerrors.As(err, e)
+	return xerrors.As(err, &e)
 }
 
 // isAuthFailError indicates whether the specified error is a TPM authorization check failure, with or without DA implications.

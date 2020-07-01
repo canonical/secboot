@@ -89,7 +89,7 @@ func (t *TPMConnection) IsEnabled() bool {
 	if err != nil || len(props) == 0 {
 		return false
 	}
-	const enabledMask = tpm2.AttrShEnable|tpm2.AttrEhEnable
+	const enabledMask = tpm2.AttrShEnable | tpm2.AttrEhEnable
 	return tpm2.StartupClearAttributes(props[0].Value)&enabledMask == enabledMask
 }
 
