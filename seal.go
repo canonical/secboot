@@ -41,7 +41,7 @@ func makeSealedKeyTemplate() *tpm2.Public {
 		Params:  tpm2.PublicParamsU{Data: &tpm2.KeyedHashParams{Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}}}
 }
 
-func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, alg, signAlg tpm2.HashAlgorithmId, authKey *rsa.PrivateKey,
+func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey *rsa.PrivateKey,
 	countIndexPub *tpm2.NVPublic, countIndexAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
 	// Obtain the count for the new dynamic authorization policy
@@ -56,21 +56,50 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, alg, signAlg tpm2.H
 		return nil, xerrors.Errorf("cannot compute name of dynamic policy counter: %w", err)
 	}
 
-	// Compute PCR digests
-	pcrValues, err := pcrProfile.computePCRValues(tpm, nil)
+	supportedPcrs, err := tpm.GetCapabilityPCRs(session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		return nil, xerrors.Errorf("cannot compute PCR values from protection profile: %w", err)
+		return nil, xerrors.Errorf("cannot determine supported PCRs: %w", err)
+	}
+
+	// Compute PCR digests
+	pcrs, pcrDigests, err := pcrProfile.computePCRDigests(tpm, alg)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot compute PCR digests from protection profile: %w", err)
+	}
+
+	for _, p := range pcrs {
+		for _, s := range p.Select {
+			found := false
+			for _, p2 := range supportedPcrs {
+				if p2.Hash != p.Hash {
+					continue
+				}
+				for _, s2 := range p2.Select {
+					if s2 == s {
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+			if !found {
+				return nil, errors.New("PCR protection profile contains digests for unsupported PCRs")
+			}
+		}
 	}
 
 	// Use the PCR digests and NV index names to generate a single signed dynamic authorization policy digest
 	policyParams := dynamicPolicyComputeParams{
 		key:                  authKey,
 		signAlg:              signAlg,
-		pcrValues:            pcrValues,
+		pcrs:                 pcrs,
+		pcrDigests:           pcrDigests,
 		policyCountIndexName: countIndexName,
 		policyCount:          nextPolicyCount}
 
-	policyData, err := computeDynamicPolicy(alg, &policyParams)
+	policyData, err := computeDynamicPolicy(version, alg, &policyParams)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -243,58 +272,61 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	sensitive := tpm2.SensitiveCreate{Data: key}
 
 	// Have the digest of the private data recorded in the creation data for the sealed data object.
-	var policyUpdateData keyPolicyUpdateData
-	policyUpdateData.Data.AuthKey = x509.MarshalPKCS1PrivateKey(authKey)
-
+	authKeyBytes := x509.MarshalPKCS1PrivateKey(authKey)
 	h := crypto.SHA256.New()
-	if _, err := tpm2.MarshalToWriter(h, &policyUpdateData.Data); err != nil {
+	if _, err := tpm2.MarshalToWriter(h, authKeyBytes); err != nil {
 		panic(fmt.Sprintf("cannot marshal dynamic authorization policy update data: %v", err))
 	}
+	creationInfo := h.Sum(nil)
 
 	// Now create the sealed key object. The command is integrity protected so if the object at the handle we expect the SRK to reside
 	// at has a different name (ie, if we're connected via a resource manager and somebody swapped the object with another one), this
 	// command will fail. We take advantage of parameter encryption here too.
 	priv, pub, creationData, _, creationTicket, err :=
-		tpm.Create(srk, &sensitive, template, h.Sum(nil), nil, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
+		tpm.Create(srk, &sensitive, template, creationInfo, nil, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
 		return xerrors.Errorf("cannot create sealed data object for key: %w", err)
 	}
-
-	policyUpdateData.CreationData = creationData
-	policyUpdateData.CreationTicket = creationTicket
 
 	// Create a dynamic authorization policy
 	pcrProfile := params.PCRProfile
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
-	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, template.NameAlg, staticPolicyData.AuthPublicKey.NameAlg,
-		authKey, pinIndexPub, pinIndexAuthPolicies, pcrProfile, session)
+	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, currentMetadataVersion, template.NameAlg,
+		authPublicKey.NameAlg, authKey, pinIndexPub, pinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
-		return err
+		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
 
 	// Marshal the entire object (sealed key object and auxiliary data) to disk
 	data := keyData{
-		KeyPrivate:        priv,
-		KeyPublic:         pub,
-		AuthModeHint:      AuthModeNone,
-		StaticPolicyData:  staticPolicyData,
-		DynamicPolicyData: dynamicPolicyData}
+		version:           currentMetadataVersion,
+		keyPrivate:        priv,
+		keyPublic:         pub,
+		authModeHint:      AuthModeNone,
+		staticPolicyData:  staticPolicyData,
+		dynamicPolicyData: dynamicPolicyData}
 
 	if err := data.write(keyFile); err != nil {
 		return xerrors.Errorf("cannot write key data file: %w", err)
 	}
 
 	if policyUpdateFile != nil {
+		policyUpdateData := keyPolicyUpdateData{
+			version:        currentMetadataVersion,
+			authKey:        authKey,
+			creationInfo:   creationInfo,
+			creationData:   creationData,
+			creationTicket: creationTicket}
+
 		// Marshal the private data to disk
 		if err := policyUpdateData.write(policyUpdateFile); err != nil {
 			return xerrors.Errorf("cannot write dynamic authorization policy update data file: %w", err)
 		}
 	}
 
-	if err := incrementDynamicPolicyCounter(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, authKey,
-		data.StaticPolicyData.AuthPublicKey, session); err != nil {
+	if err := incrementDynamicPolicyCounter(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
 		return xerrors.Errorf("cannot increment dynamic policy counter: %w", err)
 	}
 
@@ -330,7 +362,7 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 	}
 	defer policyUpdateFile.Close()
 
-	data, policyUpdateData, pinIndexPublic, err := readAndValidateKeyData(tpm.TPMContext, keyFile, policyUpdateFile, session)
+	data, policyUpdateData, pinIndexPublic, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, policyUpdateFile, session)
 	if err != nil {
 		if isKeyFileError(err) {
 			return InvalidKeyFileError{err.Error()}
@@ -339,30 +371,28 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
 
-	authKey, err := x509.ParsePKCS1PrivateKey(policyUpdateData.Data.AuthKey)
-	if err != nil {
-		return xerrors.Errorf("cannot parse authorization key: %w", err)
-	}
+	authKey := policyUpdateData.authKey
+	authPublicKey := data.staticPolicyData.AuthPublicKey
+	pinIndexAuthPolicies := data.staticPolicyData.PinIndexAuthPolicies
 
 	// Compute a new dynamic authorization policy
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
-	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, data.KeyPublic.NameAlg, data.StaticPolicyData.AuthPublicKey.NameAlg,
-		authKey, pinIndexPublic, data.StaticPolicyData.PinIndexAuthPolicies, pcrProfile, session)
+	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, data.version, data.keyPublic.NameAlg, authPublicKey.NameAlg,
+		authKey, pinIndexPublic, pinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
-		return err
+		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
 
 	// Atomically update the key data file
-	data.DynamicPolicyData = policyData
+	data.dynamicPolicyData = policyData
 
 	if err := data.writeToFileAtomic(keyPath); err != nil {
 		return xerrors.Errorf("cannot write key data file: %v", err)
 	}
 
-	if err := incrementDynamicPolicyCounter(tpm.TPMContext, pinIndexPublic, data.StaticPolicyData.PinIndexAuthPolicies, authKey,
-		data.StaticPolicyData.AuthPublicKey, session); err != nil {
+	if err := incrementDynamicPolicyCounter(tpm.TPMContext, pinIndexPublic, pinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
 		return xerrors.Errorf("cannot revoke old dynamic authorization policies: %w", err)
 	}
 

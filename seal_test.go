@@ -319,7 +319,19 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "cannot compute dynamic authorization policy: not all combinations of PCR values contain a complete set of values" {
+		if err.Error() != "cannot compute dynamic authorization policy: cannot compute PCR digests from protection profile: not all "+
+			"branches contain values for the same sets of PCRs" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("InvalidPCRProfileSelection", func(t *testing.T) {
+		pcrProfile := NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size()))
+		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PINHandle: 0x01810000}, key)
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "cannot compute dynamic authorization policy: PCR protection profile contains digests for unsupported PCRs" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

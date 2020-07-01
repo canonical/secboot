@@ -216,8 +216,10 @@ func (t *TPMConnection) init() error {
 	t.ek = nil
 	t.provisionedSrk = nil
 
+	secureMode := len(t.verifiedEkCertChain) > 0
+
 	// Acquire an unverified ResourceContext for the EK. If there is no object at the persistent EK index, then attempt to create
-	// a transient EK with the supplied authorization.
+	// a transient EK with the supplied authorization if this is a secure connection.
 	//
 	// Under the hood, go-tpm2 initializes the ResourceContext with TPM2_ReadPublic (or TPM2_CreatePrimary if we create a new one),
 	// and it cross-checks that the returned name and public area match. The returned name is available via ek.Name and the
@@ -226,7 +228,7 @@ func (t *TPMConnection) init() error {
 	// Without verification against the EK certificate, ek isn't yet safe to use for secret sharing with the TPM.
 	ek, err := func() (tpm2.ResourceContext, error) {
 		ek, err := t.CreateResourceContextFromTPM(ekHandle)
-		if err == nil {
+		if err == nil || !secureMode {
 			return ek, nil
 		}
 		if !tpm2.IsResourceUnavailableError(err, ekHandle) {
@@ -237,30 +239,32 @@ func (t *TPMConnection) init() error {
 		}
 		return nil, err
 	}()
-	if err != nil && len(t.verifiedEkCertChain) > 0 {
+	if err != nil {
 		// A lack of EK should be fatal in this context
 		return xerrors.Errorf("cannot obtain context for EK: %w", err)
 	}
 
-	ekIsPersistent := false
-	if ek != nil {
-		if ek.Handle().Type() == tpm2.HandleTypeTransient {
-			defer t.FlushContext(ek)
-		} else {
-			ekIsPersistent = true
-		}
+	ekIsPersistent := func() bool {
+		return ek != nil && ek.Handle() == ekHandle
 	}
 
-	if len(t.verifiedEkCertChain) > 0 {
+	defer func() {
+		if ek == nil || ekIsPersistent() {
+			return
+		}
+		t.FlushContext(ek)
+	}()
+
+	if secureMode {
 		// Verify that ek is associated with the verified EK certificate. If the first attempt fails and ek references a persistent
 		// object, then try to create a transient EK with the provided authorization and make another attempt at verification, in case
 		// the persistent object isn't a valid EK.
 		rc, err := func() (tpm2.ResourceContext, error) {
 			err := verifyEk(t.verifiedEkCertChain[0], ek)
 			if err == nil {
-				return ek, nil
+				return nil, nil
 			}
-			if ek.Handle().Type() == tpm2.HandleTypeTransient {
+			if ek.Handle() != ekHandle {
 				// If this was already a transient EK, fail now
 				return nil, err
 			}
@@ -277,25 +281,17 @@ func (t *TPMConnection) init() error {
 		if err != nil {
 			return verificationError{xerrors.Errorf("cannot verify public area of endorsement key read from the TPM: %w", err)}
 		}
-		if ekIsPersistent && rc.Handle().Type() == tpm2.HandleTypeTransient {
+		if rc != nil {
 			// The persistent EK was bad, and we created and verified a transient EK instead
-			defer t.FlushContext(rc)
-			ekIsPersistent = false
+			ek = rc
 		}
-		ek = rc
-	} else if ekIsPersistent {
+	} else if ek != nil {
 		// If we don't have a verified EK certificate and ek is a persistent object, just do a sanity check that the public area returned
-		// from the TPM has the expected properties. If it doesn't, then attempt to create a transient EK with the provided authorization
-		// value.
+		// from the TPM has the expected properties. If it doesn't, then don't use it, as TPM2_StartAuthSession might fail.
 		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, ekTemplate, nil); err != nil {
 			return xerrors.Errorf("cannot determine if object is a primary key in the endorsement hierarchy: %w", err)
 		} else if !ok {
-			transientEk, err := createTransientEk(t.TPMContext)
-			if err == nil {
-				defer t.FlushContext(transientEk)
-			}
-			ekIsPersistent = false
-			ek = transientEk
+			ek = nil
 		}
 	}
 
@@ -319,7 +315,7 @@ func (t *TPMConnection) init() error {
 		t.FlushContext(session)
 	}()
 
-	if len(t.verifiedEkCertChain) > 0 {
+	if secureMode {
 		_, err = t.GetRandom(20, session.WithAttrs(tpm2.AttrContinueSession|tpm2.AttrAudit))
 		if err != nil {
 			if isAuthFailError(err, tpm2.CommandGetRandom, 1) {
@@ -331,7 +327,7 @@ func (t *TPMConnection) init() error {
 
 	succeeded = true
 
-	if ekIsPersistent {
+	if ekIsPersistent() {
 		t.ek = ek
 	}
 	t.hmacSession = session
@@ -905,7 +901,8 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 // executed yet), this function will attempt to create a transient endorsement key. This requires knowledge of the endorsement
 // hierarchy authorization value, provided via the endorsementAuth argument, The endorsement hierarchy authorization value will be
 // empty on a newly cleared device. If there is no valid persistent endorsement key and creation of a transient endorsement key fails,
-// ErrTPMProvisioning will be returned.
+// ErrTPMProvisioning will be returned. Note that creation of a transient endorsement key may take a long time on some TPMs (in excess
+// of 10 seconds).
 //
 // If the TPM cannot prove it is the device for which the endorsement key certificate was issued, a TPMVerificationError error will be
 // returned. This can happen if there is an object at the persistent endorsement key index but it is not the object for which the
