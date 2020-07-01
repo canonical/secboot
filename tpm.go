@@ -365,7 +365,7 @@ func connectToDefaultTPM() (*tpm2.TPMContext, error) {
 	tcti, err := openDefaultTcti()
 	if err != nil {
 		if isPathError(err) {
-			return nil, nil
+			return nil, ErrNoTPM2Device
 		}
 		return nil, xerrors.Errorf("cannot open TPM device: %w", err)
 	}
@@ -378,7 +378,7 @@ func connectToDefaultTPM() (*tpm2.TPMContext, error) {
 	}
 	if !isTpm2 {
 		tpm.Close()
-		return nil, nil
+		return nil, ErrNoTPM2Device
 	}
 
 	return tpm, nil
@@ -856,9 +856,6 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 	if err != nil {
 		return nil, err
 	}
-	if tpm == nil {
-		return nil, ErrNoTPM2Device
-	}
 
 	t := &TPMConnection{TPMContext: tpm}
 
@@ -918,9 +915,6 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 	tpm, err := connectToDefaultTPM()
 	if err != nil {
 		return nil, err
-	}
-	if tpm == nil {
-		return nil, ErrNoTPM2Device
 	}
 	tpm.EndorsementHandleContext().SetAuthValue(endorsementAuth)
 
