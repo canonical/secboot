@@ -78,17 +78,22 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 	if profile == nil {
 		profile = NewPCRProtectionProfile()
 	}
+	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
+	var expectedDigests tpm2.DigestList
+	for _, v := range data.values {
+		d, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
+		expectedDigests = append(expectedDigests, d)
+	}
+
 	c.Check(AddSnapModelProfile(profile, data.params), IsNil)
-	values, err := profile.ComputePCRValues(nil)
+	pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Assert(err, IsNil)
-	c.Check(values, DeepEquals, data.values)
-	for i, v := range values {
-		c.Logf("Value %d:", i)
-		for alg := range v {
-			for pcr := range v[alg] {
-				c.Logf(" PCR%d,%v: %x", pcr, alg, v[alg][pcr])
-			}
-		}
+	c.Check(pcrs.Equal(expectedPcrs), Equals, true)
+	c.Check(digests, DeepEquals, expectedDigests)
+	if c.Failed() {
+		c.Logf("Profile:\n%s", profile)
+		c.Logf("Values:\n%s", profile.DumpValues(nil))
 	}
 }
 

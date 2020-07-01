@@ -654,7 +654,7 @@ func (b *pcrDigestBuilder) addDigest(digest tpm2.Digest) *pcrDigestBuilder {
 		b.pcrsCurrent = b.pcrsCurrent[1:]
 	}
 
-	b.values.SetValue(b.pcrsCurrent[0].Select[0], b.pcrsCurrent[0].Hash, digest)
+	b.values.SetValue(b.pcrsCurrent[0].Hash, b.pcrsCurrent[0].Select[0], digest)
 
 	b.pcrsCurrent[0].Select = b.pcrsCurrent[0].Select[1:]
 	return b
@@ -932,6 +932,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 		desc         string
 		alg          tpm2.HashAlgorithmId
 		signAlg      tpm2.HashAlgorithmId
+		pcrs         tpm2.PCRSelectionList
 		pcrValues    []tpm2.PCRValues
 		policyCount  uint64
 		pcrSelection tpm2.PCRSelectionList
@@ -942,6 +943,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "Single/1",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -958,6 +960,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "Single/2",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -974,6 +977,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "SHA1Session",
 			alg:     tpm2.HashAlgorithmSHA1,
 			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -990,6 +994,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "SHA256SessionWithSHA512PCRs",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA512, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA512: {
@@ -1006,6 +1011,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "MultiplePCRValues/1",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1028,6 +1034,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "MultiplePCRValues/2",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
@@ -1046,6 +1053,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "SHA512AuthKey",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA512,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1062,6 +1070,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "MultiplePCRAlgorithms",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{8}}, {Hash: tpm2.HashAlgorithmSHA512, Select: []int{7}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1080,6 +1089,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			desc:    "LotsOfPCRValues",
 			alg:     tpm2.HashAlgorithmSHA256,
 			signAlg: tpm2.HashAlgorithmSHA256,
+			pcrs:    tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
@@ -1107,29 +1117,14 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}},
 			policy:       decodeHexStringT(t, "92a8744419642bd0c72195ec681fcc03a6f4dd3c644837c7f0eb8394d729f9d5"),
 		},
-		{
-			desc:    "IncompletePCRValues",
-			alg:     tpm2.HashAlgorithmSHA256,
-			signAlg: tpm2.HashAlgorithmSHA256,
-			pcrValues: []tpm2.PCRValues{
-				{
-					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-					},
-				},
-				{
-					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "baz"),
-					},
-				},
-			},
-			policyCount: 15,
-			err:         "not all combinations of PCR values contain a complete set of values",
-		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			dataout, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrValues, pinName, data.policyCount))
+			var pcrDigests tpm2.DigestList
+			for _, v := range data.pcrValues {
+				d, _ := tpm2.ComputePCRDigest(data.alg, data.pcrs, v)
+				pcrDigests = append(pcrDigests, d)
+			}
+			dataout, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrs, pcrDigests, pinName, data.policyCount))
 			if data.err == "" {
 				if err != nil {
 					t.Fatalf("ComputeDynamicPolicy failed: %v", err)
@@ -1214,6 +1209,7 @@ func TestExecutePolicy(t *testing.T) {
 	}
 	type testData struct {
 		alg         tpm2.HashAlgorithmId
+		pcrs        tpm2.PCRSelectionList
 		pcrValues   []tpm2.PCRValues
 		policyCount uint64
 		pcrEvents   []pcrEvent
@@ -1241,7 +1237,12 @@ func TestExecutePolicy(t *testing.T) {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
 		signAlg := staticPolicyData.AuthPublicKey.NameAlg
-		dynamicPolicyData, err := ComputeDynamicPolicy(data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrValues, pinIndex.Name(), data.policyCount))
+		var pcrDigests tpm2.DigestList
+		for _, v := range data.pcrValues {
+			d, _ := tpm2.ComputePCRDigest(data.alg, data.pcrs, v)
+			pcrDigests = append(pcrDigests, d)
+		}
+		dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg, NewDynamicPolicyComputeParams(key, signAlg, data.pcrs, pcrDigests, pinIndex.Name(), data.policyCount))
 		if err != nil {
 			t.Fatalf("ComputeDynamicPolicy failed: %v", err)
 		}
@@ -1285,7 +1286,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("Single/1", func(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1324,7 +1326,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("Single/2", func(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1364,7 +1367,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs and where those PCRs are for an algorithm that doesn't match the
 		// policy digest algorithm
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA1,
+			alg:  tpm2.HashAlgorithmSHA1,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1403,7 +1407,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("SHA1", func(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs, using the SHA-1 algorithm
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA1,
+			alg:  tpm2.HashAlgorithmSHA1,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA1, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA1: {
@@ -1442,7 +1447,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("WithPIN", func(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs, and uses a PIN
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1484,7 +1490,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs and uses a PIN, with the incorrect PIN provided during execution
 		// (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1526,7 +1533,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs, where the PCR values during execution don't match the policy
 		// (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1566,7 +1574,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a policy that includes a single digest for 2 PCRs, where the PCR values during execution don't match the policy
 		// (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1605,7 +1614,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("MultiplePCRValues/1", func(t *testing.T) {
 		// Test with a compound policy that includes a pair of digests for 2 PCRs
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1650,7 +1660,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("MultiplePCRValues/2", func(t *testing.T) {
 		// Test with a compound policy that includes a pair of digests for 2 PCRs
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1696,7 +1707,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test with a compound policy that includes a pair of digests for 2 PCRs, where the PCR values during execution don't match the
 		// policy (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1741,7 +1753,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("LotsOfPCRValues", func(t *testing.T) {
 		// Test with a compound PCR policy that has 125 combinations of conditions.
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
@@ -1818,7 +1831,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("RevokedDynamicPolicy", func(t *testing.T) {
 		// Test with a dynamic authorization policy that has been revoked (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1857,7 +1871,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("Locked", func(t *testing.T) {
 		// Test execution when access to sealed key objects has been locked (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1904,7 +1919,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("InvalidStaticMetadata/PINHandle/1", func(t *testing.T) {
 		// Test handling of an invalid handle for the PIN NV index in the static metadata (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1945,7 +1961,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("InvalidStaticMetadata/PINHandle/2", func(t *testing.T) {
 		// Test handling of the PIN NV index in the static metadata pointing to a non-existant resource (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -1987,7 +2004,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of invalid PIN NV index auth policy data in the static metadata, where the broken data corresponds to
 		// the policy for executing TPM2_PolicyNV (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -2029,7 +2047,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of invalid PIN NV index auth policy data in the static metadata, where the broken data doesn't correspond to
 		// the policy for executing TPM2_PolicyNV (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -2071,7 +2090,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of the public area of the dynamic policy authorization key having an unsupported name algorithm (execution should
 		// fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -2114,7 +2134,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of the public area of the dynamic policy authorization key being replaced by one corresponding to a different key
 		// (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -2163,7 +2184,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("InvalidMetadata/DynamicPolicySignature/1", func(t *testing.T) {
 		// Test handling of the dynamic authorization signature being replaced (execution should fail).
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -2218,7 +2240,8 @@ func TestExecutePolicy(t *testing.T) {
 		// and the authorized policy signature being replaced with a signature signed by the new key (execution should succeed, but the
 		// resulting session digest shouldn't match the computed policy digest)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -2276,7 +2299,8 @@ func TestExecutePolicy(t *testing.T) {
 		// Test handling of the policy count in a revoked dynamic policy metadata being changed so that it is equal to the current policy
 		// counter value (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -2319,7 +2343,8 @@ func TestExecutePolicy(t *testing.T) {
 		// corrupted value causes executeOrPolicyAssertions to bail at the right time but for the wrong reason, so the resulting
 		// session digest ends up correct)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
@@ -2360,7 +2385,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("InvalidDynamicMetadata/PCROrDigests/2", func(t *testing.T) {
 		// Test handling of a corrupted OR digest tree with a PCR policy that has lots of conditions (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
@@ -2409,7 +2435,8 @@ func TestExecutePolicy(t *testing.T) {
 	t.Run("InvalidDynamicMetadata/PCROrDigests/3", func(t *testing.T) {
 		// Test handling of a corrupted OR digest tree with a PCR policy that has lots of conditions (execution should fail)
 		expected, digest, err := run(t, &testData{
-			alg: tpm2.HashAlgorithmSHA256,
+			alg:  tpm2.HashAlgorithmSHA256,
+			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
 			pcrValues: MakeMockPolicyPCRValuesFull([]MockPolicyPCRParam{
 				{PCR: 7, Alg: tpm2.HashAlgorithmSHA256, Digests: tpm2.DigestList{
 					makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
@@ -2505,9 +2532,10 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 	}
 
 	signAlg := staticPolicyData.AuthPublicKey.NameAlg
-	dynamicPolicyData, err := ComputeDynamicPolicy(tpm2.HashAlgorithmSHA256,
-		NewDynamicPolicyComputeParams(key, signAlg, []tpm2.PCRValues{{tpm2.HashAlgorithmSHA256: {7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}}},
-			pinIndex.Name(), policyCount))
+	pcrs := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}
+	pcrDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, pcrs, tpm2.PCRValues{tpm2.HashAlgorithmSHA256: {7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")}})
+	dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, tpm2.HashAlgorithmSHA256,
+		NewDynamicPolicyComputeParams(key, signAlg, pcrs, tpm2.DigestList{pcrDigest}, pinIndex.Name(), policyCount))
 	if err != nil {
 		t.Fatalf("ComputeDynamicPolicy failed: %v", err)
 	}
