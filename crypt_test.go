@@ -113,11 +113,11 @@ func (ctb *cryptTestBase) setUpTestBase(c *C, bt *testutil.BaseTest) {
 	ctb.dir = c.MkDir()
 	bt.AddCleanup(MockRunDir(ctb.dir))
 
-	ctb.passwordFile = filepath.Join(ctb.dir, "password") // passwords to be returned by the mock sd-ask-password
-	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey") // TPM key expected by the mock systemd-cryptsetup
+	ctb.passwordFile = filepath.Join(ctb.dir, "password")                       // passwords to be returned by the mock sd-ask-password
+	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")           // TPM key expected by the mock systemd-cryptsetup
 	ctb.expectedRecoveryKeyFile = filepath.Join(ctb.dir, "expectedrecoverykey") // Recovery key expected by the mock systemd-cryptsetup
-	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey") // File in which the mock cryptsetup records the passed in key
-	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey") // File in which the mock cryptsetup records the passed in new key
+	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")                 // File in which the mock cryptsetup records the passed in key
+	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey")           // File in which the mock cryptsetup records the passed in new key
 	ctb.cryptsetupInvocationCountDir = c.MkDir()
 
 	sdAskPasswordBottom := `
