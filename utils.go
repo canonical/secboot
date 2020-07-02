@@ -23,11 +23,17 @@ import (
 	"bytes"
 	"crypto/rsa"
 	"fmt"
+	"os"
 
 	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
 )
+
+func isPathError(err error) bool {
+	var e *os.PathError
+	return xerrors.As(err, &e)
+}
 
 // isAuthFailError indicates whether the specified error is a TPM authorization check failure, with or without DA implications.
 func isAuthFailError(err error, command tpm2.CommandCode, index int) bool {
