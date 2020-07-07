@@ -275,12 +275,6 @@ type cryptTPMTestBase struct {
 	keyFile string
 }
 
-func (ctb *cryptTPMTestBase) setUpSuiteBase(c *C) {
-	ctb.cryptTestBase.setUpSuiteBase(c)
-	ctb.tpmKey = make([]byte, 64)
-	rand.Read(ctb.tpmKey)
-}
-
 func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
 	ctb.cryptTestBase.setUpTestBase(c, &ttb.BaseTest)
 
