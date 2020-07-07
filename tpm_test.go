@@ -32,10 +32,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/big"
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"testing"
@@ -43,6 +45,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/snapd/snap"
 )
 
 var (
@@ -852,7 +855,56 @@ func TestMain(m *testing.M) {
 				return 1
 			}
 
+			// The TPM simulator creates its persistent storage in its current directory. Ideally, we would create
+			// a unique temporary directory for it, but this doesn't work with the snap because it has its own private
+			// tmpdir. Detect whether the chosen TPM simulator is a snap, determine which snap it belongs to and create
+			// a temporary directory inside its common data directory instead.
+			mssimSnapName := ""
+			for currentPath, lastPath := mssimPath, ""; currentPath != ""; {
+				dest, err := os.Readlink(currentPath)
+				switch {
+				case err != nil:
+					if filepath.Base(currentPath) == "snap" {
+						mssimSnapName, _ = snap.SplitSnapApp(filepath.Base(lastPath))
+					}
+					currentPath = ""
+				default:
+					if !filepath.IsAbs(dest) {
+						dest = filepath.Join(filepath.Dir(currentPath), dest)
+					}
+					lastPath = currentPath
+					currentPath = dest
+				}
+			}
+
+			tmpRoot := ""
+			if mssimSnapName != "" {
+				home := os.Getenv("HOME")
+				if home == "" {
+					fmt.Fprintf(os.Stderr, "Cannot determine home directory\n")
+					return 1
+				}
+				tmpRoot = snap.UserCommonDataDir(home, mssimSnapName)
+				if err := os.MkdirAll(tmpRoot, 0755); err != nil {
+					fmt.Fprintf(os.Stderr, "Cannot create snap common data dir: %v\n", err)
+					return 1
+				}
+			}
+
+			mssimTmpDir, err := ioutil.TempDir(tmpRoot, "secboot.mssim")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Cannot create temporary directory for TPM simulator: %v\n", err)
+				return 1
+			}
+			defer os.RemoveAll(mssimTmpDir)
+
 			cmd := exec.Command(mssimPath, "-m", strconv.FormatUint(uint64(*mssimPort), 10))
+			cmd.Dir = mssimTmpDir
+			// The tpm2-simulator-chrisccoulson snap originally had a patch to chdir in to the root of the snap's common data directory,
+			// where it would store its persistent data. We don't want this behaviour now. This environment variable exists until all
+			// secboot and go-tpm2 branches have been fixed to not depend on this behaviour.
+			cmd.Env = append(cmd.Env, "TPM2SIM_DONT_CD_TO_HOME=1")
+
 			if err := cmd.Start(); err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot start TPM simulator: %v\n", err)
 				return 1
