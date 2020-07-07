@@ -26,7 +26,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/canonical/go-tpm2"
@@ -114,11 +113,11 @@ func (ctb *cryptTestBase) setUpTestBase(c *C, bt *testutil.BaseTest) {
 	ctb.dir = c.MkDir()
 	bt.AddCleanup(MockRunDir(ctb.dir))
 
-	ctb.passwordFile = filepath.Join(ctb.dir, "password")
-	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")
-	ctb.expectedRecoveryKeyFile = filepath.Join(ctb.dir, "expectedrecoverykey")
-	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")
-	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey")
+	ctb.passwordFile = filepath.Join(ctb.dir, "password")                       // passwords to be returned by the mock sd-ask-password
+	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")           // TPM key expected by the mock systemd-cryptsetup
+	ctb.expectedRecoveryKeyFile = filepath.Join(ctb.dir, "expectedrecoverykey") // Recovery key expected by the mock systemd-cryptsetup
+	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")                 // File in which the mock cryptsetup records the passed in key
+	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey")           // File in which the mock cryptsetup records the passed in new key
 	ctb.cryptsetupInvocationCountDir = c.MkDir()
 
 	sdAskPasswordBottom := `
@@ -129,10 +128,11 @@ sed -i -e '1,1d' %[1]s
 	bt.AddCleanup(ctb.mockSdAskPassword.Restore)
 
 	sdCryptsetupBottom := `
-if ! cmp -s "$4" "%[1]s"; then
-	if ! cmp -s "$4" "%[2]s"; then
-		exit 1
-	fi
+key=$(xxd -p < "$4")
+if [ ! -f "%[1]s" ] || [ "$key" != "$(xxd -p < "%[1]s")" ]; then
+    if [ ! -f "%[2]s" ] || [ "$key" != "$(xxd -p < "%[2]s")" ]; then
+	exit 1
+    fi
 fi
 `
 	ctb.mockSdCryptsetup = testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.expectedTpmKeyFile, ctb.expectedRecoveryKeyFile))
@@ -141,32 +141,12 @@ fi
 
 	cryptsetupBottom := `
 keyfile=""
-keyfile_offset=""
-keyfile_size=""
-new_keyfile_offset=""
-new_keyfile_size=""
 action=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --key-file)
             keyfile=$2
-            shift 2
-            ;;
-        --keyfile-offset)
-            keyfile_offset=$2
-            shift 2
-            ;;
-        --keyfile-size)
-            keyfile_size=$2
-            shift 2
-            ;;
-        --new-keyfile-offset)
-            new_keyfile_offset=$2
-            shift 2
-            ;;
-        --new-keyfile-size)
-            new_keyfile_size=$2
             shift 2
             ;;
         --type | --cipher | --key-size | --pbkdf | --pbkdf-force-iterations | --pbkdf-memory | --label | --priority | --key-slot | --iter-time)
@@ -190,39 +170,25 @@ if [ "$action" = "luksAddKey" ]; then
     new_keyfile=$2
 fi
 
-if [ "$keyfile" = "-" ] || [ "$new_keyfile" = "-" ]; then
-    cat /dev/stdin > %[1]s/stdin
-fi
-
 invocation=$(find %[4]s | wc -l)
 mktemp %[4]s/XXXX
 
 dump_key()
 {
     in=$1
-    offset=$2
-    size=$3
-    out=$4
+    out=$2
 
-    if [ "$in" = "-" ]; then
-        cat %[1]s/stdin > "$out"
-    elif [ -z "$in" ]; then
-        touch "$out"
+    if [ -z "$in" ]; then
+	touch "$out"
+    elif [ "$in" == "-" ]; then
+	cat /dev/stdin > "$out"
     else
-        offset_arg=""
-        if [ -n "$offset" ]; then
-            offset_arg="skip=$offset"
-        fi
-	size_arg=""
-        if [ -n "$size" ]; then
-            size_arg="count=$size"
-        fi
-        dd status=none if="$in" bs=1 of="$out" "$offset_arg" "$size_arg"
+	cat "$in" > "$out"
     fi
 }
 
-dump_key "$keyfile" "$keyfile_offset" "$keyfile_size" "%[2]s.$invocation"
-dump_key "$new_keyfile" "$new_keyfile_offset" "$new_keyfile_size" "%[3]s.$invocation"
+dump_key "$keyfile" "%[2]s.$invocation"
+dump_key "$new_keyfile" "%[3]s.$invocation"
 `
 
 	ctb.mockCryptsetup = testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
@@ -330,7 +296,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, data *test
 	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
 
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 }
 
@@ -412,7 +378,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *tes
 	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
 
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
 }
 
@@ -465,7 +431,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c
 	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
 
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
 }
 
@@ -547,7 +513,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, da
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
 
@@ -750,7 +716,7 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
 
@@ -820,7 +786,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
 
@@ -930,7 +896,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, "tries=1")
 	}
 
@@ -1020,7 +986,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, "tries=1")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
@@ -1157,13 +1123,10 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
 
 	call := s.mockCryptsetup.Calls()[0]
-	c.Assert(len(call), Equals, 18)
+	c.Assert(len(call), Equals, 10)
 	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
-	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
-	c.Check(call[4:17], DeepEquals, []string{
-		"--keyfile-offset", "0", "--keyfile-size", strconv.Itoa(len(data.key)), "--new-keyfile-offset", strconv.Itoa(len(data.key)),
-		"--new-keyfile-size", strconv.Itoa(len(data.recoveryKey)), "--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath})
-	c.Check(call[17], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(call[4:10], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
 
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
@@ -1224,14 +1187,10 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 	c.Check(s.mockCryptsetup.Calls()[0], DeepEquals, []string{"cryptsetup", "luksKillSlot", "--key-file", "-", data.devicePath, "0"})
 
 	call := s.mockCryptsetup.Calls()[1]
-	c.Assert(len(call), Equals, 22)
+	c.Assert(len(call), Equals, 14)
 	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
-	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
-	c.Check(call[4:21], DeepEquals, []string{
-		"--keyfile-offset", "0", "--keyfile-size", strconv.Itoa(len(data.recoveryKey)), "--new-keyfile-offset", strconv.Itoa(len(data.recoveryKey)),
-		"--new-keyfile-size", strconv.Itoa(len(data.key)), "--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
-		"--key-slot", "0", data.devicePath})
-	c.Check(call[21], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]*")
+	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(call[4:14], DeepEquals, []string{"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--key-slot", "0", data.devicePath, "-"})
 
 	c.Check(s.mockCryptsetup.Calls()[2], DeepEquals, []string{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath})
 

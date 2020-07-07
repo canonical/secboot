@@ -71,40 +71,44 @@ func isExecError(err error, path string) bool {
 	return xerrors.As(err, &e) && e.path == path
 }
 
-func writeTempFile(key []byte) (string, func(), error) {
-	// /run is not world writable but we create a unique filename here because this
-	// code can be reached by a public API and we shouldn't fail if more than one
+func mkFifo() (string, func(), error) {
+	// /run is not world writable but we create a unique directory here because this
+	// code can be invoked by a public API and we shouldn't fail if more than one
 	// process reaches here at the same time.
-	f, err := ioutil.TempFile(runDir, filepath.Base(os.Args[0])+".")
+	dir, err := ioutil.TempDir(runDir, filepath.Base(os.Args[0])+".")
 	if err != nil {
-		return "", nil, xerrors.Errorf("cannot create temporary file: %w", err)
+		return "", nil, xerrors.Errorf("cannot create temporary directory: %w", err)
 	}
-	defer f.Close()
 
-	name := f.Name()
 	cleanup := func() {
-		os.Remove(name)
+		os.RemoveAll(dir)
 	}
 
-	if err := f.Chmod(0600); err != nil {
+	succeeded := false
+	defer func() {
+		if succeeded {
+			return
+		}
 		cleanup()
-		return "", nil, err
+	}()
+
+	fifo := filepath.Join(dir, "fifo")
+	if err := unix.Mkfifo(fifo, 0600); err != nil {
+		return "", nil, xerrors.Errorf("cannot create FIFO: %w", err)
 	}
-	if _, err := f.Write(key); err != nil {
-		cleanup()
-		return "", nil, xerrors.Errorf("cannot write key to file: %w", err)
-	}
-	return name, cleanup, nil
+
+	succeeded = true
+	return fifo, cleanup, nil
 }
 
 func activate(volumeName, sourceDevicePath string, key []byte, options []string) error {
-	keyFilePath, cleanupKeyFile, err := writeTempFile(key)
+	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
-		return xerrors.Errorf("cannot temporarily save key for systemd-cryptsetup: %w", err)
+		return xerrors.Errorf("cannot create FIFO for passing key to systemd-cryptsetup: %w", err)
 	}
-	defer cleanupKeyFile()
+	defer cleanupFifo()
 
-	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, keyFilePath, strings.Join(options, ","))
+	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, fifoPath, strings.Join(options, ","))
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
 	stdout, err := cmd.StdoutPipe()
@@ -135,6 +139,23 @@ func activate(volumeName, sourceDevicePath string, key []byte, options []string)
 		}
 		done <- true
 	}()
+
+	f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
+	if err != nil {
+		// If we fail to open the write end, the read end will be blocked in open()
+		cmd.Process.Kill()
+		return xerrors.Errorf("cannot open FIFO for passing key to systemd-cryptsetup: %w", err)
+	}
+
+	if _, err := f.Write(key); err != nil {
+		f.Close()
+		// The read end is open and blocked inside read(). Closing our write end will result in the
+		// read end returning 0 bytes (EOF) and exitting cleanly.
+		cmd.Wait()
+		return xerrors.Errorf("cannot pass key to systemd-cryptsetup: %w", err)
+	}
+
+	f.Close()
 	for i := 0; i < 2; i++ {
 		<-done
 	}
@@ -554,7 +575,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 		"--label", label,
 		// device to format
 		devicePath)
-	cmd.Stdin = bytes.NewReader(key[:])
+	cmd.Stdin = bytes.NewReader(key)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
 	}
@@ -563,36 +584,54 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 }
 
 func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOptionArgs []string) error {
-	// Pass both keys to cryptsetup in the same temporary file.
-	bothKeys := make([]byte, len(existingKey)+len(key))
-	copy(bothKeys, existingKey)
-	copy(bothKeys[len(existingKey):], key)
-	keyFilePath, cleanupKeyFile, err := writeTempFile(bothKeys)
+	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
-		return xerrors.Errorf("cannot temporarily save keys for cryptsetup: %w", err)
+		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
 	}
-	defer cleanupKeyFile()
+	defer cleanupFifo()
 
 	args := []string{
 		// add a new key
 		"luksAddKey",
-		// read existing key from start of temporary file
-		"--key-file", keyFilePath, "--keyfile-offset", "0", "--keyfile-size", strconv.Itoa(len(existingKey)),
-		// specify size of recovery key and offset in to supplied input file
-		"--new-keyfile-offset", strconv.Itoa(len(existingKey)), "--new-keyfile-size", strconv.Itoa(len(key))}
+		// read existing key from named pipe
+		"--key-file", fifoPath}
 	args = append(args, extraOptionArgs...)
 	args = append(args,
 		// container to add key to
 		devicePath,
-		// read recovery key from temporary file at previously specified offset
-		keyFilePath)
+		// read new key from stdin
+		"-")
 	cmd := exec.Command("cryptsetup", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+	cmd.Stdin = bytes.NewReader(key)
+
+	var b bytes.Buffer
+	cmd.Stdout = &b
+	cmd.Stderr = &b
+
+	if err := cmd.Start(); err != nil {
+		return xerrors.Errorf("cannot start cryptsetup: %w", err)
 	}
 
-	return nil
+	f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
+	if err != nil {
+		// If we fail to open the write end, the read end will be blocked in open()
+		cmd.Process.Kill()
+		return xerrors.Errorf("cannot open FIFO for passing existing key to cryptsetup: %w", err)
+	}
 
+	if _, err := f.Write(existingKey); err != nil {
+		f.Close()
+		// The read end is open and blocked inside read(). Closing our write end will result in the
+		// read end returning 0 bytes (EOF) and exitting cleanly.
+		cmd.Wait()
+		return xerrors.Errorf("cannot pass existing key to cryptsetup: %w", err)
+	}
+
+	f.Close()
+	if err := cmd.Wait(); err != nil {
+		return osutil.OutputErr(b.Bytes(), err)
+	}
+	return nil
 }
 
 // AddRecoveryKeyToLUKS2Container adds a fallback recovery key to an existing LUKS2 container created with InitializeLUKS2Container.
