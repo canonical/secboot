@@ -335,6 +335,9 @@ func AddEFIBootManagerProfile(profile *PCRProtectionProfile, params *EFIBootMana
 		}
 	}
 
+	// Iterate over all of the branch points starting from the root and creates a tree of
+	// sub-profiles with AddProfileOR. The ordering doesn't matter here, because each subprofile
+	// is already complete
 	for _, b := range allBranches {
 		if len(b.branches) == 0 {
 			continue
