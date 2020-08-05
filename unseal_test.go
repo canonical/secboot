@@ -28,6 +28,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/tcg"
 )
 
 func TestUnsealWithNo2FA(t *testing.T) {
@@ -178,7 +179,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		defer closeTPM(t, tpm)
 
 		err := run(t, tpm, func(_, _ string) {
-			srk, err := tpm.CreateResourceContextFromTPM(SrkHandle)
+			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK: %v", err)
 			}
@@ -196,21 +197,21 @@ func TestUnsealErrorHandling(t *testing.T) {
 		defer closeTPM(t, tpm)
 
 		err := run(t, tpm, func(_, _ string) {
-			srk, err := tpm.CreateResourceContextFromTPM(SrkHandle)
+			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK: %v", err)
 			}
 			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
 				t.Errorf("EvictControl failed: %v", err)
 			}
-			srkTemplate := MakeDefaultSRKTemplate()
+			srkTemplate := tcg.MakeDefaultSRKTemplate()
 			srkTemplate.Unique.RSA()[0] = 0xff
 			srkTransient, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, srkTemplate, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("CreatePrimary failed: %v", err)
 			}
 			defer flushContext(t, tpm, srkTransient)
-			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srkTransient, SrkHandle, nil); err != nil {
+			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srkTransient, tcg.SRKHandle, nil); err != nil {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 		})
@@ -256,7 +257,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	t.Run("SealedKeyAccessLocked", func(t *testing.T) {
 		tpm, tcti := openTPMSimulatorForTesting(t)
 		defer func() {
-			resetTPMSimulator(t, tpm, tcti)
+			tpm, _ = resetTPMSimulator(t, tpm, tcti)
 			closeTPM(t, tpm)
 		}()
 

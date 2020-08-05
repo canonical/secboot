@@ -31,6 +31,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
@@ -224,7 +225,7 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 // load loads the TPM sealed object associated with this keyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
 func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
-	srkContext, err := tpm.CreateResourceContextFromTPM(srkHandle)
+	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
@@ -250,7 +251,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 // validate performs some correctness checking on the provided keyData and keyPolicyUpdateData. On success, it returns the validated
 // public area for the PIN NV index.
 func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpdateData, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
-	srkContext, err := tpm.CreateResourceContextFromTPM(srkHandle)
+	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}

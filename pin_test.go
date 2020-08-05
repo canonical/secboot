@@ -28,6 +28,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
 )
@@ -36,7 +37,7 @@ func TestCreatePinNVIndex(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	key, err := rsa.GenerateKey(testRandReader, 768)
+	key, err := rsa.GenerateKey(testutil.RandReader, 768)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestPerformPinChange(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	key, err := rsa.GenerateKey(testRandReader, 768)
+	key, err := rsa.GenerateKey(testutil.RandReader, 768)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -155,7 +156,7 @@ func TestPerformPinChange(t *testing.T) {
 }
 
 type pinSuite struct {
-	tpmTestBase
+	testutil.TPMTestBase
 	key       []byte
 	pinHandle tpm2.Handle
 	keyFile   string
@@ -170,16 +171,16 @@ func (s *pinSuite) SetUpSuite(c *C) {
 }
 
 func (s *pinSuite) SetUpTest(c *C) {
-	s.tpmTestBase.SetUpTest(c)
-	c.Assert(ProvisionTPM(s.tpm, ProvisionModeFull, nil), IsNil)
+	s.TPMTestBase.SetUpTest(c)
+	c.Assert(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
 
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
 
-	c.Assert(SealKeyToTPM(s.tpm, s.key, s.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: s.pinHandle}), IsNil)
-	pinIndex, err := s.tpm.CreateResourceContextFromTPM(s.pinHandle)
+	c.Assert(SealKeyToTPM(s.TPM, s.key, s.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: s.pinHandle}), IsNil)
+	pinIndex, err := s.TPM.CreateResourceContextFromTPM(s.pinHandle)
 	c.Assert(err, IsNil)
-	s.addCleanupNVSpace(c, s.tpm.OwnerHandleContext(), pinIndex)
+	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pinIndex)
 }
 
 func (s *pinSuite) checkPIN(c *C, pin string) {
@@ -193,23 +194,23 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 
 	// Verify that the PIN change succeeded by executing a PolicySecret assertion, which is immediate and will fail if it
 	// didn't work.
-	policySession, err := s.tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
+	policySession, err := s.TPM.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
 	c.Assert(err, IsNil)
 
-	pinIndex, err := s.tpm.CreateResourceContextFromTPM(k.PINIndexHandle())
+	pinIndex, err := s.TPM.CreateResourceContextFromTPM(k.PINIndexHandle())
 	c.Assert(err, IsNil)
 	pinIndex.SetAuthValue([]byte(pin))
 
-	_, _, err = s.tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil)
+	_, _, err = s.TPM.PolicySecret(pinIndex, policySession, nil, nil, 0, nil)
 	c.Check(err, IsNil)
 }
 
 func (s *pinSuite) TestSetAndClearPIN(c *C) {
 	testPIN := "1234"
-	c.Check(ChangePIN(s.tpm, s.keyFile, "", testPIN), IsNil)
+	c.Check(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
 	s.checkPIN(c, testPIN)
 
-	c.Check(ChangePIN(s.tpm, s.keyFile, testPIN, ""), IsNil)
+	c.Check(ChangePIN(s.TPM, s.keyFile, testPIN, ""), IsNil)
 	s.checkPIN(c, "")
 }
 
@@ -217,7 +218,7 @@ func (s *pinSuite) TestChangePINDoesntUpdateFileIfAuthModeDoesntChange(c *C) {
 	fi1, err := os.Stat(s.keyFile)
 	c.Assert(err, IsNil)
 
-	c.Check(ChangePIN(s.tpm, s.keyFile, "", ""), IsNil)
+	c.Check(ChangePIN(s.TPM, s.keyFile, "", ""), IsNil)
 	s.checkPIN(c, "")
 
 	fi2, err := os.Stat(s.keyFile)
@@ -232,12 +233,12 @@ type testChangePINErrorHandlingData struct {
 }
 
 func (s *pinSuite) testChangePINErrorHandling(c *C, data *testChangePINErrorHandlingData) {
-	c.Check(ChangePIN(s.tpm, data.keyFile, "", "1234"), data.errChecker, data.errCheckerArgs...)
+	c.Check(ChangePIN(s.TPM, data.keyFile, "", "1234"), data.errChecker, data.errCheckerArgs...)
 }
 
 func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
 	// Put the TPM in DA lockout mode
-	c.Assert(s.tpm.DictionaryAttackParameters(s.tpm.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     Equals,
@@ -246,7 +247,7 @@ func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
 }
 
 func (s *pinSuite) TestChangePINErrorHandling2(c *C) {
-	c.Assert(ChangePIN(s.tpm, s.keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     Equals,
@@ -263,9 +264,9 @@ func (s *pinSuite) TestChangePINErrorHandling3(c *C) {
 }
 
 func (s *pinSuite) TestChangePINErrorHandling4(c *C) {
-	pinIndex, err := s.tpm.CreateResourceContextFromTPM(s.pinHandle)
+	pinIndex, err := s.TPM.CreateResourceContextFromTPM(s.pinHandle)
 	c.Assert(err, IsNil)
-	c.Assert(s.tpm.NVUndefineSpace(s.tpm.OwnerHandleContext(), pinIndex, nil), IsNil)
+	c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), pinIndex, nil), IsNil)
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     ErrorMatches,

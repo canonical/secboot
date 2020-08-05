@@ -29,6 +29,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
 )
@@ -161,7 +162,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	srk := tpm.provisionedSrk
 	if srk == nil {
 		var err error
-		srk, err = provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), srkTemplate, srkHandle, session)
+		srk, err = provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), tcg.SRKTemplate, tcg.SRKHandle, session)
 		switch {
 		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
 			return AuthFailError{tpm2.HandleOwner}

@@ -25,12 +25,14 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
 )
 
 func validateSRK(t *testing.T, tpm *tpm2.TPMContext) {
-	srk, err := tpm.CreateResourceContextFromTPM(SrkHandle)
+	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
 		t.Errorf("Cannot create context for SRK: %v", err)
 	}
@@ -75,7 +77,7 @@ func validateSRK(t *testing.T, tpm *tpm2.TPMContext) {
 }
 
 func validateEK(t *testing.T, tpm *tpm2.TPMContext) {
-	ek, err := tpm.CreateResourceContextFromTPM(EkHandle)
+	ek, err := tpm.CreateResourceContextFromTPM(tcg.EKHandle)
 	if err != nil {
 		t.Errorf("Cannot create context for EK: %v", err)
 	}
@@ -416,7 +418,7 @@ func TestRecreateEK(t *testing.T) {
 				t.Errorf("Invalid HMAC session handle")
 			}
 
-			ek, err = tpm.CreateResourceContextFromTPM(EkHandle)
+			ek, err = tpm.CreateResourceContextFromTPM(tcg.EKHandle)
 			if err != nil {
 				t.Fatalf("No EK context: %v", err)
 			}
@@ -477,7 +479,7 @@ func TestRecreateSRK(t *testing.T) {
 				t.Fatalf("ProvisionTPM failed: %v", err)
 			}
 
-			srk, err := tpm.CreateResourceContextFromTPM(SrkHandle)
+			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK context: %v", err)
 			}
@@ -551,9 +553,9 @@ func TestProvisionWithInvalidEkCert(t *testing.T) {
 	clearTPMWithPlatformAuth(t, tpm)
 
 	// Temporarily modify the public template so that ProvisionTPM generates a primary key that doesn't match the EK cert
-	ekTemplate := MakeDefaultEKTemplate()
+	ekTemplate := tcg.MakeDefaultEKTemplate()
 	ekTemplate.Unique.RSA()[0] = 0xff
-	restore := MockEKTemplate(ekTemplate)
+	restore := testutil.MockEKTemplate(ekTemplate)
 	defer restore()
 
 	err := ProvisionTPM(tpm, ProvisionModeFull, nil)
@@ -655,7 +657,7 @@ func TestProvisionStatus(t *testing.T) {
 		t.Errorf("Unexpected status %d", status)
 	}
 
-	srkContext, err := tpm.CreateResourceContextFromTPM(SrkHandle)
+	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
 		t.Fatalf("No SRK context: %v", err)
 	}
@@ -672,7 +674,7 @@ func TestProvisionStatus(t *testing.T) {
 		t.Errorf("Unexpected status %d", status)
 	}
 
-	ekContext, err := tpm.CreateResourceContextFromTPM(EkHandle)
+	ekContext, err := tpm.CreateResourceContextFromTPM(tcg.EKHandle)
 	if err != nil {
 		t.Fatalf("No EK context: %v", err)
 	}
@@ -689,13 +691,13 @@ func TestProvisionStatus(t *testing.T) {
 		t.Errorf("Unexpected status %d", status)
 	}
 
-	primary, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, SrkTemplate, nil, nil, nil)
+	primary, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, tcg.SRKTemplate, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreatePrimary failed: %v", err)
 	}
 	defer flushContext(t, tpm, primary)
 
-	priv, pub, _, _, _, err := tpm.Create(primary, nil, SrkTemplate, nil, nil, nil)
+	priv, pub, _, _, _, err := tpm.Create(primary, nil, tcg.SRKTemplate, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -706,7 +708,7 @@ func TestProvisionStatus(t *testing.T) {
 	}
 	defer flushContext(t, tpm, context)
 
-	if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), context, SrkHandle, nil); err != nil {
+	if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), context, tcg.SRKHandle, nil); err != nil {
 		t.Errorf("EvictControl failed: %v", err)
 	}
 

@@ -17,17 +17,20 @@
  *
  */
 
-package secboot
+package tcti
 
 import (
+	"io"
+
 	"github.com/canonical/go-tpm2"
 )
 
 const (
-	lockNVHandle     tpm2.Handle = 0x01801100 // Global NV handle for locking access to sealed key objects
-	lockNVDataHandle tpm2.Handle = 0x01801101 // NV index containing policy data for lockNVHandle
-
-	// SHA-256 is mandatory to exist on every PC-Client TPM
-	// XXX: Maybe dynamically select algorithms based on what's available on the device?
-	defaultSessionHashAlgorithm tpm2.HashAlgorithmId = tpm2.HashAlgorithmSHA256
+	// FIXME: This is fine during initial install and early boot, but we should strive to use the resource manager at other times.
+	tpmPath = "/dev/tpm0"
 )
+
+// OpenDefaultTcti connects to the default TPM character device. This can be overridden for tests to connect to a simulator device.
+var OpenDefault = func() (io.ReadWriteCloser, error) {
+	return tpm2.OpenTPMDevice(tpmPath)
+}

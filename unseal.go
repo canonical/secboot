@@ -21,6 +21,7 @@ package secboot
 
 import (
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
 )
@@ -86,28 +87,28 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 	key, err := k.data.load(tpm.TPMContext, hmacSession)
 	switch {
 	case isKeyFileError(err):
-		// A keyFileError can be as a result of an improperly provisioned TPM - detect if the object at srkHandle is a valid primary key
+		// A keyFileError can be as a result of an improperly provisioned TPM - detect if the object at tcg.SRKHandle is a valid primary key
 		// with the correct attributes. If it's not, then it's definitely a provisioning error. If it is, then it could still be a
 		// provisioning error because we don't know if the object was created with the same template that ProvisionTPM uses. In that case,
 		// we'll just assume an invalid key file
-		srk, err2 := tpm.CreateResourceContextFromTPM(srkHandle)
+		srk, err2 := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 		switch {
-		case tpm2.IsResourceUnavailableError(err2, srkHandle):
+		case tpm2.IsResourceUnavailableError(err2, tcg.SRKHandle):
 			return nil, ErrTPMProvisioning
 		case err2 != nil:
 			return nil, xerrors.Errorf("cannot create context for SRK: %w", err2)
 		}
-		ok, err2 := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, srkTemplate, tpm.HmacSession())
+		ok, err2 := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, tcg.SRKTemplate, tpm.HmacSession())
 		switch {
 		case err2 != nil:
-			return nil, xerrors.Errorf("cannot determine if object at 0x%08x is a primary key in the storage hierarchy: %w", srkHandle, err2)
+			return nil, xerrors.Errorf("cannot determine if object at 0x%08x is a primary key in the storage hierarchy: %w", tcg.SRKHandle, err2)
 		case !ok:
 			return nil, ErrTPMProvisioning
 		}
 		// This is probably a broken key file, but it could still be a provisioning error because we don't know if the SRK object was
 		// created with the same template that ProvisionTPM uses.
 		return nil, InvalidKeyFileError{err.Error()}
-	case tpm2.IsResourceUnavailableError(err, srkHandle):
+	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
 		return nil, ErrTPMProvisioning
 	case err != nil:
 		return nil, err

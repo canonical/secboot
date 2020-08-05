@@ -31,6 +31,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 func validateLockNVIndex(t *testing.T, tpm *tpm2.TPMContext) {
@@ -100,7 +101,7 @@ func TestIncrementDynamicPolicyCounter(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	key, err := rsa.GenerateKey(testRandReader, 2048)
+	key, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -162,7 +163,7 @@ func TestReadDynamicPolicyCounter(t *testing.T) {
 		t.Fatalf("NVReadCounter failed: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(testRandReader, 768)
+	key, err := rsa.GenerateKey(testutil.RandReader, 768)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -393,7 +394,7 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 		// Test with a bogus lock NV index that allows writes far in to the future, making it possible
 		// to recreate it to remove the read lock bit.
 
-		key, err := rsa.GenerateKey(testRandReader, 2048)
+		key, err := rsa.GenerateKey(testutil.RandReader, 2048)
 		if err != nil {
 			t.Fatalf("GenerateKey failed: %v", err)
 		}
@@ -439,7 +440,7 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 		h.Write(policySession.NonceTPM())
 		binary.Write(h, binary.BigEndian, int32(0))
 
-		sig, err := rsa.SignPSS(testRandReader, key, tpm2.HashAlgorithmSHA256.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+		sig, err := rsa.SignPSS(testutil.RandReader, key, tpm2.HashAlgorithmSHA256.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 		if err != nil {
 			t.Errorf("SignPSS failed: %v", err)
 		}
@@ -915,7 +916,7 @@ func TestComputePolicyORData(t *testing.T) {
 }
 
 func TestComputeDynamicPolicy(t *testing.T) {
-	key, err := rsa.GenerateKey(testRandReader, 2048)
+	key, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -1171,14 +1172,14 @@ func TestComputeDynamicPolicy(t *testing.T) {
 
 func TestExecutePolicy(t *testing.T) {
 	tpm, tcti := openTPMSimulatorForTesting(t)
-	defer closeTPM(t, tpm)
+	defer func() { closeTPM(t, tpm) }()
 
 	undefineLockNVIndices(t, tpm)
 	if err := EnsureLockNVIndex(tpm.TPMContext, tpm.HmacSession()); err != nil {
 		t.Errorf("ensureLockNVIndex failed: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(testRandReader, 2048)
+	key, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -1196,7 +1197,7 @@ func TestExecutePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNVIndexResourceContextFromPublic failed: %v", err)
 	}
-	defer undefineNVSpace(t, tpm, pinIndex, tpm.OwnerHandleContext())
+	defer func() { undefineNVSpace(t, tpm, pinIndex, tpm.OwnerHandleContext()) }()
 
 	policyCount, err := ReadDynamicPolicyCounter(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, tpm.HmacSession())
 	if err != nil {
@@ -1218,7 +1219,7 @@ func TestExecutePolicy(t *testing.T) {
 	}
 
 	run := func(t *testing.T, data *testData, prepare func(*StaticPolicyData, *DynamicPolicyData)) (tpm2.Digest, tpm2.Digest, error) {
-		resetTPMSimulator(t, tpm, tcti)
+		tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 
 		lockIndex, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
 		if err != nil {
@@ -2163,7 +2164,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
-			key, err := rsa.GenerateKey(testRandReader, 2048)
+			key, err := rsa.GenerateKey(testutil.RandReader, 2048)
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
@@ -2213,7 +2214,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
-			key, err := rsa.GenerateKey(testRandReader, 2048)
+			key, err := rsa.GenerateKey(testutil.RandReader, 2048)
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
@@ -2221,7 +2222,7 @@ func TestExecutePolicy(t *testing.T) {
 			h := alg.NewHash()
 			h.Write(d.AuthorizedPolicy)
 
-			sig, err := rsa.SignPSS(testRandReader, key, alg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+			sig, err := rsa.SignPSS(testutil.RandReader, key, alg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 			if err != nil {
 				t.Fatalf("SignPSS failed: %v", err)
 			}
@@ -2269,7 +2270,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
-			key, err := rsa.GenerateKey(testRandReader, 2048)
+			key, err := rsa.GenerateKey(testutil.RandReader, 2048)
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
@@ -2281,7 +2282,7 @@ func TestExecutePolicy(t *testing.T) {
 			h := signAlg.NewHash()
 			h.Write(d.AuthorizedPolicy)
 
-			sig, err := rsa.SignPSS(testRandReader, key, signAlg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+			sig, err := rsa.SignPSS(testutil.RandReader, key, signAlg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 			if err != nil {
 				t.Fatalf("SignPSS failed: %v", err)
 			}
@@ -2487,7 +2488,7 @@ func TestExecutePolicy(t *testing.T) {
 func TestLockAccessToSealedKeys(t *testing.T) {
 	tpm, tcti := openTPMSimulatorForTesting(t)
 	defer func() {
-		resetTPMSimulator(t, tpm, tcti)
+		tpm, _ = resetTPMSimulator(t, tpm, tcti)
 		closeTPM(t, tpm)
 	}()
 
@@ -2501,7 +2502,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 	}
 
-	key, err := rsa.GenerateKey(testRandReader, 2048)
+	key, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
@@ -2519,7 +2520,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNVIndexResourceContextFromPublic failed: %v", err)
 	}
-	defer undefineNVSpace(t, tpm, pinIndex, tpm.OwnerHandleContext())
+	defer func() { undefineNVSpace(t, tpm, pinIndex, tpm.OwnerHandleContext()) }()
 
 	staticPolicyData, policy, err := ComputeStaticPolicy(tpm2.HashAlgorithmSHA256, NewStaticPolicyComputeParams(keyPublic, pinIndexPub, pinIndexAuthPolicies, lockIndex.Name()))
 	if err != nil {
@@ -2542,7 +2543,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		func() {
-			resetTPMSimulator(t, tpm, tcti)
+			tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 
 			if _, err := tpm.PCREvent(tpm.PCRHandleContext(7), []byte("foo"), nil); err != nil {
 				t.Fatalf("PCREvent failed: %v", err)

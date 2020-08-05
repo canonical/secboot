@@ -25,6 +25,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/snapd/asserts"
 
 	. "gopkg.in/check.v1"
@@ -413,15 +414,15 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile11(c *C) {
 }
 
 type snapModelMeasureSuite struct {
-	tpmSimulatorTestBase
+	testutil.TPMSimulatorTestBase
 	snapModelTestBase
 }
 
 var _ = Suite(&snapModelMeasureSuite{})
 
 func (s *snapModelMeasureSuite) SetUpTest(c *C) {
-	s.tpmSimulatorTestBase.SetUpTest(c)
-	s.resetTPMSimulator(c)
+	s.TPMSimulatorTestBase.SetUpTest(c)
+	s.ResetTPMSimulator(c)
 }
 
 type testMeasureSnapModelToTPMTestData struct {
@@ -430,7 +431,7 @@ type testMeasureSnapModelToTPMTestData struct {
 }
 
 func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMeasureSnapModelToTPMTestData) {
-	pcrSelection, err := s.tpm.GetCapabilityPCRs()
+	pcrSelection, err := s.TPM.GetCapabilityPCRs()
 	c.Assert(err, IsNil)
 
 	var pcrs []int
@@ -442,12 +443,12 @@ func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMe
 		readPcrSelection = append(readPcrSelection, tpm2.PCRSelection{Hash: s.Hash, Select: pcrs})
 	}
 
-	_, origPcrValues, err := s.tpm.PCRRead(readPcrSelection)
+	_, origPcrValues, err := s.TPM.PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
-	c.Check(MeasureSnapModelToTPM(s.tpm, data.pcrIndex, data.model), IsNil)
+	c.Check(MeasureSnapModelToTPM(s.TPM, data.pcrIndex, data.model), IsNil)
 
-	_, pcrValues, err := s.tpm.PCRRead(readPcrSelection)
+	_, pcrValues, err := s.TPM.PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
 	for _, s := range pcrSelection {
@@ -566,7 +567,7 @@ func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest7(c *C) {
 }
 
 func (s *snapModelMeasureSuite) testMeasureSnapSystemEpochToTPM(c *C, pcrIndex int) {
-	pcrSelection, err := s.tpm.GetCapabilityPCRs()
+	pcrSelection, err := s.TPM.GetCapabilityPCRs()
 	c.Assert(err, IsNil)
 
 	var pcrs []int
@@ -578,12 +579,12 @@ func (s *snapModelMeasureSuite) testMeasureSnapSystemEpochToTPM(c *C, pcrIndex i
 		readPcrSelection = append(readPcrSelection, tpm2.PCRSelection{Hash: s.Hash, Select: pcrs})
 	}
 
-	_, origPcrValues, err := s.tpm.PCRRead(readPcrSelection)
+	_, origPcrValues, err := s.TPM.PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
-	c.Check(MeasureSnapSystemEpochToTPM(s.tpm, pcrIndex), IsNil)
+	c.Check(MeasureSnapSystemEpochToTPM(s.TPM, pcrIndex), IsNil)
 
-	_, pcrValues, err := s.tpm.PCRRead(readPcrSelection)
+	_, pcrValues, err := s.TPM.PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
 	for _, s := range pcrSelection {

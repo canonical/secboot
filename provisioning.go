@@ -25,6 +25,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
 )
@@ -183,7 +184,7 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	}
 
 	// Provision an endorsement key
-	if _, err := provisionPrimaryKey(tpm.TPMContext, tpm.EndorsementHandleContext(), ekTemplate, ekHandle, session); err != nil {
+	if _, err := provisionPrimaryKey(tpm.TPMContext, tpm.EndorsementHandleContext(), tcg.EKTemplate, tcg.EKHandle, session); err != nil {
 		switch {
 		case isAuthFailError(err, tpm2.CommandEvictControl, 1):
 			return AuthFailError{tpm2.HandleOwner}
@@ -207,7 +208,7 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	session = tpm.HmacSession()
 
 	// Provision a storage root key
-	srk, err := provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), srkTemplate, srkHandle, session)
+	srk, err := provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), tcg.SRKTemplate, tcg.SRKHandle, session)
 	if err != nil {
 		switch {
 		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
@@ -282,12 +283,12 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 
 	session := tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit)
 
-	ek, err := tpm.CreateResourceContextFromTPM(ekHandle, session)
+	ek, err := tpm.CreateResourceContextFromTPM(tcg.EKHandle, session)
 	switch {
-	case err != nil && !tpm2.IsResourceUnavailableError(err, ekHandle):
+	case err != nil && !tpm2.IsResourceUnavailableError(err, tcg.EKHandle):
 		// Unexpected error
 		return 0, err
-	case tpm2.IsResourceUnavailableError(err, ekHandle):
+	case tpm2.IsResourceUnavailableError(err, tcg.EKHandle):
 		// Nothing to do
 	default:
 		if ekInit, err := tpm.EndorsementKey(); err == nil && bytes.Equal(ekInit.Name(), ek.Name()) {
@@ -295,12 +296,12 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 		}
 	}
 
-	srk, err := tpm.CreateResourceContextFromTPM(srkHandle, session)
+	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle, session)
 	switch {
-	case err != nil && !tpm2.IsResourceUnavailableError(err, srkHandle):
+	case err != nil && !tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
 		// Unexpected error
 		return 0, err
-	case tpm2.IsResourceUnavailableError(err, srkHandle):
+	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
 		// Nothing to do
 	case tpm.provisionedSrk != nil:
 		// ProvisionTPM has been called with this TPMConnection. Make sure it's the same object
@@ -308,12 +309,12 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 			out |= AttrValidSRK
 		}
 	default:
-		// ProvisionTPM hasn't been called with this TPMConnection, but there is an object at srkHandle. Make sure it looks like a storage
+		// ProvisionTPM hasn't been called with this TPMConnection, but there is an object at tcg.SRKHandle. Make sure it looks like a storage
 		// primary key.
-		ok, err := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, srkTemplate, tpm.HmacSession())
+		ok, err := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, tcg.SRKTemplate, tpm.HmacSession())
 		switch {
 		case err != nil:
-			return 0, xerrors.Errorf("cannot determine if object at %v is a primary key in the storage hierarchy: %w", srkHandle, err)
+			return 0, xerrors.Errorf("cannot determine if object at %v is a primary key in the storage hierarchy: %w", tcg.SRKHandle, err)
 		case ok:
 			out |= AttrValidSRK
 		}
