@@ -32,8 +32,6 @@ const (
 	certTableIndex = 4 // Index of the Certificate Table entry in the Data Directory of a PE image optional header
 )
 
-var eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
-
 // EFIImage corresponds to a binary that is loaded, verified and executed before ExitBootServices.
 type EFIImage interface {
 	fmt.Stringer
