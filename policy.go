@@ -104,7 +104,7 @@ type staticPolicyData struct {
 	PinIndexAuthPolicies tpm2.DigestList
 }
 
-// staticPolicyDataRaw_v0 is the v0 version of the on-disk format of staticPolicyData. They are currently the same structures.
+// staticPolicyDataRaw_v0 is version 0 of the on-disk format of staticPolicyData. They are currently the same structures.
 type staticPolicyDataRaw_v0 staticPolicyData
 
 func (d *staticPolicyDataRaw_v0) data() *staticPolicyData {
@@ -580,10 +580,13 @@ func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, 
 // computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
 // updated.
 func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
-	// We only have a single metadata version at the moment (version 0)
-	if version != 0 {
+	// Check that the metadata version is valid
+	switch version {
+	case 0, 1:
+	default:
 		return nil, errors.New("invalid version")
 	}
+
 	if len(input.pcrDigests) == 0 {
 		return nil, errors.New("no PCR digests specified")
 	}
