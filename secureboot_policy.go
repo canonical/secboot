@@ -227,8 +227,8 @@ func (d *secureBootDbIterator) nextSignatureList() (*tcglog.EFIGUID, []byte, [][
 	if err := binary.Read(d.r, binary.LittleEndian, &signatureSize); err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot read EFI_SIGNATURE_LIST.SignatureSize: %w", err)
 	}
-	if signatureSize == 0 {
-		return nil, nil, nil, errors.New("EFI_SIGNATURE_LIST.SignatureSize is zero")
+	if signatureSize < 16 {
+		return nil, nil, nil, errors.New("EFI_SIGNATURE_LIST.SignatureSize is invalid")
 	}
 
 	signatureHeader := make([]byte, signatureHeaderSize)
@@ -240,7 +240,7 @@ func (d *secureBootDbIterator) nextSignatureList() (*tcglog.EFIGUID, []byte, [][
 	endOfHeader, _ := d.r.Seek(0, io.SeekCurrent)
 	signatureDataSize := int64(signatureListSize) - endOfHeader + start
 	if signatureDataSize%int64(signatureSize) != 0 {
-		return nil, nil, nil, errors.New("EFI_SIGNATURE_LIST has inconsistent SignatureListSIze, SignatureHeaderSize and SignatureSize fields")
+		return nil, nil, nil, errors.New("EFI_SIGNATURE_LIST has inconsistent SignatureListSize, SignatureHeaderSize and SignatureSize fields")
 	}
 	numOfSignatures := signatureDataSize / int64(signatureSize)
 
@@ -312,9 +312,19 @@ func decodeSecureBootDb(r io.ReadSeeker) ([]*efiSignatureData, error) {
 	return out, nil
 }
 
+type sigDbUpdateQuirkMode int
+
+const (
+	sigDbUpdateQuirkModeNone = iota
+
+	// sigDbUpdateQuirkModeDedupIgnoresOwner enables a mode to compute signature database updates where the firmware
+	// doesn't consider 2 EFI_SIGNATURE_DATA entries where only the SignatureOwner fields differ to be unique.
+	sigDbUpdateQuirkModeDedupIgnoresOwner
+)
+
 // computeDbUpdate appends the EFI signature database update supplied via update to the signature database supplied via orig, filtering
 // out EFI_SIGNATURE_DATA entries that are already in orig and then returning the result.
-func computeDbUpdate(orig io.ReaderAt, update io.ReadSeeker) ([]byte, error) {
+func computeDbUpdate(orig io.ReaderAt, update io.ReadSeeker, quirkMode sigDbUpdateQuirkMode) ([]byte, error) {
 	// Skip over EFI_VARIABLE_AUTHENTICATION_2.TimeStamp
 	update.Seek(16, io.SeekCurrent)
 
@@ -363,8 +373,17 @@ func computeDbUpdate(orig io.ReaderAt, update io.ReadSeeker) ([]byte, error) {
 					continue
 				}
 				for _, sig := range sigs {
-					if bytes.Equal(sig, updateSig) {
-						isNewSig = false
+					switch quirkMode {
+					case sigDbUpdateQuirkModeNone:
+						if bytes.Equal(sig, updateSig) {
+							isNewSig = false
+						}
+					case sigDbUpdateQuirkModeDedupIgnoresOwner:
+						if bytes.Equal(sig[16:], updateSig[16:]) {
+							isNewSig = false
+						}
+					}
+					if !isNewSig {
 						break
 					}
 				}
@@ -639,7 +658,12 @@ type authenticodeSignerAndIntermediates struct {
 // secureBootPolicyGen is the main structure involved with computing secure boot policy PCR digests. It is essentially just
 // a container for EFISecureBootPolicyProfileParams - per-branch context is maintained in secureBootPolicyGenBranch instead.
 type secureBootPolicyGen struct {
-	*EFISecureBootPolicyProfileParams
+	pcrAlgorithm  tpm2.HashAlgorithmId
+	loadSequences []*EFIImageLoadEvent
+
+	events                     []*tcglog.Event
+	initialOSVerificationEvent *secureBootVerificationEvent
+	sigDbUpdates               []*secureBootDbUpdate
 }
 
 // secureBootPolicyGenBranch represents a branch of a PCRProtectionProfile. It contains its own PCRProtectionProfile in to which
@@ -679,7 +703,7 @@ func (b *secureBootPolicyGenBranch) extendMeasurement(digest tpm2.Digest) {
 	if len(b.subBranches) > 0 {
 		panic("This branch has already been branched")
 	}
-	b.profile.ExtendPCR(b.gen.PCRAlgorithm, secureBootPCR, digest)
+	b.profile.ExtendPCR(b.gen.pcrAlgorithm, secureBootPCR, digest)
 }
 
 // extendVerificationMeasurement extends the supplied digest and records that the digest has been measured by the specified source in
@@ -709,7 +733,7 @@ func (b *secureBootPolicyGenBranch) computeAndExtendVariableMeasurement(varName 
 		VariableName: *varName,
 		UnicodeName:  unicodeName,
 		VariableData: varData}
-	h := b.gen.PCRAlgorithm.NewHash()
+	h := b.gen.pcrAlgorithm.NewHash()
 	if err := data.EncodeMeasuredBytes(h); err != nil {
 		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
 	}
@@ -719,7 +743,7 @@ func (b *secureBootPolicyGenBranch) computeAndExtendVariableMeasurement(varName 
 
 // processSignatureDbMeasurementEvent computes a EFI signature database measurement for the specified database and with the supplied
 // updates, and then extends that in to this branch.
-func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid *tcglog.EFIGUID, name, filename string, sigDbUpdates []*secureBootDbUpdate) ([]byte, error) {
+func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid *tcglog.EFIGUID, name, filename string, updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) ([]byte, error) {
 	db, err := ioutil.ReadFile(filepath.Join(efivarsPath, filename))
 	if err != nil && !os.IsNotExist(err) {
 		return nil, xerrors.Errorf("cannot read current variable: %w", err)
@@ -732,13 +756,13 @@ func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid *tcg
 		db = db[4:]
 	}
 
-	for _, u := range sigDbUpdates {
+	for _, u := range updates {
 		if u.db != name {
 			continue
 		}
 		if f, err := os.Open(u.path); err != nil {
 			return nil, xerrors.Errorf("cannot open signature DB update: %w", err)
-		} else if d, err := computeDbUpdate(bytes.NewReader(db), f); err != nil {
+		} else if d, err := computeDbUpdate(bytes.NewReader(db), f, updateQuirkMode); err != nil {
 			return nil, xerrors.Errorf("cannot compute signature DB update for %s: %w", u.path, err)
 		} else {
 			db = d
@@ -754,8 +778,8 @@ func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid *tcg
 
 // processKEKMeasurementEvent computes a measurement of KEK with the supplied udates applied and then extends that in to
 // this branch.
-func (b *secureBootPolicyGenBranch) processKEKMeasurementEvent(sigDbUpdates []*secureBootDbUpdate) error {
-	if _, err := b.processSignatureDbMeasurementEvent(efiGlobalVariableGuid, kekName, kekFilename, sigDbUpdates); err != nil {
+func (b *secureBootPolicyGenBranch) processKEKMeasurementEvent(updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) error {
+	if _, err := b.processSignatureDbMeasurementEvent(efiGlobalVariableGuid, kekName, kekFilename, updates, updateQuirkMode); err != nil {
 		return err
 	}
 	return nil
@@ -765,8 +789,8 @@ func (b *secureBootPolicyGenBranch) processKEKMeasurementEvent(sigDbUpdates []*s
 // then extends that in to this branch. The branch context is then updated to contain a list of signatures associated with the
 // resulting authorized signature database contents, which is used later on when computing verification events in
 // secureBootPolicyGen.computeAndExtendVerificationMeasurement.
-func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(sigDbUpdates []*secureBootDbUpdate) error {
-	db, err := b.processSignatureDbMeasurementEvent(efiImageSecurityDatabaseGuid, dbName, dbFilename, sigDbUpdates)
+func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) error {
+	db, err := b.processSignatureDbMeasurementEvent(efiImageSecurityDatabaseGuid, dbName, dbFilename, updates, updateQuirkMode)
 	if err != nil {
 		return err
 	}
@@ -783,8 +807,8 @@ func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(sigDbUpdates []*se
 
 // processDbxMeasurementEvent computes a measurement of the EFI forbidden signature database with the supplied updates applied and
 // then extends that in to this branch.
-func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(sigDbUpdates []*secureBootDbUpdate) error {
-	if _, err := b.processSignatureDbMeasurementEvent(efiImageSecurityDatabaseGuid, dbxName, dbxFilename, sigDbUpdates); err != nil {
+func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) error {
+	if _, err := b.processSignatureDbMeasurementEvent(efiImageSecurityDatabaseGuid, dbxName, dbxFilename, updates, updateQuirkMode); err != nil {
 		return err
 	}
 	return nil
@@ -796,27 +820,27 @@ func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(sigDbUpdates []*s
 //
 // Processing of the list of events stops when the verification event associated with the loading of the initial OS EFI executable
 // is encountered.
-func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, initialOSVerificationEvent *secureBootVerificationEvent, sigDbUpdates []*secureBootDbUpdate) error {
+func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, initialOSVerificationEvent *secureBootVerificationEvent, sigDbUpdates []*secureBootDbUpdate, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
 	for len(events) > 0 && events[0] != initialOSVerificationEvent.event {
 		e := events[0]
 		events = events[1:]
 		switch {
 		case isKEKMeasurementEvent(e):
-			if err := b.processKEKMeasurementEvent(sigDbUpdates); err != nil {
+			if err := b.processKEKMeasurementEvent(sigDbUpdates, sigDbUpdateQuirkMode); err != nil {
 				return xerrors.Errorf("cannot process KEK measurement event: %w", err)
 			}
 		case isDbMeasurementEvent(e):
-			if err := b.processDbMeasurementEvent(sigDbUpdates); err != nil {
+			if err := b.processDbMeasurementEvent(sigDbUpdates, sigDbUpdateQuirkMode); err != nil {
 				return xerrors.Errorf("cannot process db measurement event: %w", err)
 			}
 		case isDbxMeasurementEvent(e):
-			if err := b.processDbxMeasurementEvent(sigDbUpdates); err != nil {
+			if err := b.processDbxMeasurementEvent(sigDbUpdates, sigDbUpdateQuirkMode); err != nil {
 				return xerrors.Errorf("cannot process dbx measurement event: %w", err)
 			}
 		case isVerificationEvent(e):
-			b.extendFirmwareVerificationMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.PCRAlgorithm)]))
+			b.extendFirmwareVerificationMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
 		case e.PCRIndex == secureBootPCR:
-			b.extendMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.PCRAlgorithm)]))
+			b.extendMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
 		}
 	}
 
@@ -829,7 +853,7 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, i
 	}
 
 	// The verification event associated with the initial OS load event was recorded as part of a UEFI driver load, so we need to keep it.
-	b.extendFirmwareVerificationMeasurement(tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(b.gen.PCRAlgorithm)]))
+	b.extendFirmwareVerificationMeasurement(tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
 
 	return nil
 }
@@ -951,7 +975,7 @@ Outer:
 		VariableName: authority.source.variableName,
 		UnicodeName:  authority.source.unicodeName,
 		VariableData: varData.Bytes()}
-	h := b.gen.PCRAlgorithm.NewHash()
+	h := b.gen.pcrAlgorithm.NewHash()
 	if err := eventData.EncodeMeasuredBytes(h); err != nil {
 		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
 	}
@@ -1128,25 +1152,13 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 }
 
 // run takes a TCG event log and builds a PCR profile from the supplied configuration (see EFISecureBootPolicyProfileParams)
-func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, events []*tcglog.Event) error {
-	// Compute a list of pending EFI signature DB updates.
-	sigDbUpdates, err := buildSignatureDbUpdateList(g.SignatureDbUpdateKeystores)
-	if err != nil {
-		return xerrors.Errorf("cannot build list of UEFI signature DB updates: %w", err)
-	}
-
-	// Find the verification event corresponding to the load of the first OS binary.
-	initialOSVerificationEvent, err := identifyInitialOSLaunchVerificationEvent(events)
-	if err != nil {
-		return xerrors.Errorf("cannot identify initial OS launch verification event: %w", err)
-	}
-
+func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
 	// Process the pre-OS events for the current signature DB and then with each pending update applied
 	// in turn.
 	var roots []*secureBootPolicyGenBranch
-	for i := 0; i <= len(sigDbUpdates); i++ {
+	for i := 0; i <= len(g.sigDbUpdates); i++ {
 		branch := &secureBootPolicyGenBranch{gen: g, profile: NewPCRProtectionProfile(), dbUpdateLevel: i}
-		if err := branch.processPreOSEvents(events, initialOSVerificationEvent, sigDbUpdates[0:i]); err != nil {
+		if err := branch.processPreOSEvents(g.events, g.initialOSVerificationEvent, g.sigDbUpdates[0:i], sigDbUpdateQuirkMode); err != nil {
 			return xerrors.Errorf("cannot process pre-OS events from event log: %w", err)
 		}
 		roots = append(roots, branch)
@@ -1158,10 +1170,10 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, events []*tcglo
 	var loadEvents []*sbLoadEventAndBranches
 	var nextLoadEvents []*sbLoadEventAndBranches
 
-	if len(g.LoadSequences) == 1 {
-		loadEvents = append(loadEvents, &sbLoadEventAndBranches{event: g.LoadSequences[0], branches: roots})
+	if len(g.loadSequences) == 1 {
+		loadEvents = append(loadEvents, &sbLoadEventAndBranches{event: g.loadSequences[0], branches: roots})
 	} else {
-		for _, e := range g.LoadSequences {
+		for _, e := range g.loadSequences {
 			var branches []*secureBootPolicyGenBranch
 			for _, b := range roots {
 				branches = append(branches, b.branch())
@@ -1381,10 +1393,30 @@ func AddEFISecureBootPolicyProfile(profile *PCRProtectionProfile, params *EFISec
 	// Initialize the secure boot PCR to 0
 	profile.AddPCRValue(params.PCRAlgorithm, secureBootPCR, make(tpm2.Digest, params.PCRAlgorithm.Size()))
 
-	gen := &secureBootPolicyGen{params}
-	if err := gen.run(profile, events); err != nil {
+	// Compute a list of pending EFI signature DB updates.
+	sigDbUpdates, err := buildSignatureDbUpdateList(params.SignatureDbUpdateKeystores)
+	if err != nil {
+		return xerrors.Errorf("cannot build list of UEFI signature DB updates: %w", err)
+	}
+
+	// Find the verification event corresponding to the load of the first OS binary.
+	initialOSVerificationEvent, err := identifyInitialOSLaunchVerificationEvent(events)
+	if err != nil {
+		return xerrors.Errorf("cannot identify initial OS launch verification event: %w", err)
+	}
+
+	gen := &secureBootPolicyGen{params.PCRAlgorithm, params.LoadSequences, events, initialOSVerificationEvent, sigDbUpdates}
+
+	profile1 := NewPCRProtectionProfile()
+	if err := gen.run(profile1, sigDbUpdateQuirkModeNone); err != nil {
 		return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
 	}
 
+	profile2 := NewPCRProtectionProfile()
+	if err := gen.run(profile2, sigDbUpdateQuirkModeDedupIgnoresOwner); err != nil {
+		return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
+	}
+
+	profile.AddProfileOR(profile1, profile2)
 	return nil
 }
