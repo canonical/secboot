@@ -29,6 +29,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
 )
@@ -146,10 +147,6 @@ type KeyCreationParams struct {
 // The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
 // argument.
 func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath string, params *KeyCreationParams) error {
-	// Check that the key is the correct length.
-	if len(key) != 64 {
-		return fmt.Errorf("expected a key length of 512 bits (got %d)", len(key)*8)
-	}
 	// params is mandatory.
 	if params == nil {
 		return errors.New("no KeyCreationParams provided")
@@ -165,7 +162,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	srk := tpm.provisionedSrk
 	if srk == nil {
 		var err error
-		srk, err = provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), srkTemplate, srkHandle, session)
+		srk, err = provisionPrimaryKey(tpm.TPMContext, tpm.OwnerHandleContext(), tcg.SRKTemplate, tcg.SRKHandle, session)
 		switch {
 		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
 			return AuthFailError{tpm2.HandleOwner}

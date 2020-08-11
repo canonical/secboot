@@ -17,17 +17,16 @@
  *
  */
 
-package secboot
+package testutil
 
 import (
-	"github.com/canonical/go-tpm2"
+	"math/rand"
 )
 
-const (
-	lockNVHandle     tpm2.Handle = 0x01801100 // Global NV handle for locking access to sealed key objects
-	lockNVDataHandle tpm2.Handle = 0x01801101 // NV index containing policy data for lockNVHandle
+type testRng struct{}
 
-	// SHA-256 is mandatory to exist on every PC-Client TPM
-	// XXX: Maybe dynamically select algorithms based on what's available on the device?
-	defaultSessionHashAlgorithm tpm2.HashAlgorithmId = tpm2.HashAlgorithmSHA256
-)
+func (r *testRng) Read(p []byte) (int, error) {
+	return rand.Read(p)
+}
+
+var RandReader = &testRng{}

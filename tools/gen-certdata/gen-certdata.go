@@ -44,9 +44,9 @@ func main() {
 
 	var buffer bytes.Buffer
 
-	buffer.WriteString("package secboot\n\n")
+	buffer.WriteString("package truststore\n\n")
 	buffer.WriteString("var (\n")
-	buffer.WriteString("\trootCAHashes = [][]byte{\n")
+	buffer.WriteString("\tRootCAHashes = [][]byte{\n")
 
 	for _, fi := range files {
 		buffer.WriteString("\t\t[]byte{")
