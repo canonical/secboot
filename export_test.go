@@ -43,11 +43,13 @@ const (
 var (
 	ComputeDbUpdate                          = computeDbUpdate
 	ComputeDynamicPolicy                     = computeDynamicPolicy
+	ComputeDynamicPolicyCounterAuthPolicies  = computeDynamicPolicyCounterAuthPolicies
+	ComputeDynamicPolicyRef                  = computeDynamicPolicyRef
 	ComputePeImageDigest                     = computePeImageDigest
 	ComputePolicyORData                      = computePolicyORData
 	ComputeSnapModelDigest                   = computeSnapModelDigest
 	ComputeStaticPolicy                      = computeStaticPolicy
-	CreatePinNVIndex                         = createPinNVIndex
+	CreateDynamicPolicyCounter               = createDynamicPolicyCounter
 	CreatePublicAreaForRSASigningKey         = createPublicAreaForRSASigningKey
 	DecodeSecureBootDb                       = decodeSecureBootDb
 	DecodeWinCertificate                     = decodeWinCertificate
@@ -70,7 +72,31 @@ var (
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
-type DynamicPolicyData dynamicPolicyData
+type DynamicPolicyData = dynamicPolicyData
+
+func (d *DynamicPolicyData) PCRSelection() tpm2.PCRSelectionList {
+	return d.pcrSelection
+}
+
+func (d *DynamicPolicyData) PCROrData() policyOrDataTree {
+	return d.pcrOrData
+}
+
+func (d *DynamicPolicyData) PolicyCount() uint64 {
+	return d.policyCount
+}
+
+func (d *DynamicPolicyData) IncrementPolicyCount() {
+	d.policyCount += 1
+}
+
+func (d *DynamicPolicyData) AuthorizedPolicy() tpm2.Digest {
+	return d.authorizedPolicy
+}
+
+func (d *DynamicPolicyData) AuthorizedPolicySignature() *tpm2.Signature {
+	return d.authorizedPolicySignature
+}
 
 type EFISignatureData efiSignatureData
 
@@ -98,7 +124,27 @@ func (e *SecureBootVerificationEvent) ImageLoadEvent() *tcglog.Event {
 
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
 
-type StaticPolicyData staticPolicyData
+type StaticPolicyData = staticPolicyData
+
+func (d *StaticPolicyData) AuthPublicKey() *tpm2.Public {
+	return d.authPublicKey
+}
+
+func (d *StaticPolicyData) PolicyCounterHandle() tpm2.Handle {
+	return d.policyCounterHandle
+}
+
+func (d *StaticPolicyData) SetPolicyCounterHandle(h tpm2.Handle) {
+	d.policyCounterHandle = h
+}
+
+func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
+	return d.v0PinIndexAuthPolicies
+}
+
+func (d *StaticPolicyData) DynamicPolicyRef() tpm2.Nonce {
+	return d.dynamicPolicyRef
+}
 
 type WinCertificate interface {
 	ToWinCertificateAuthenticode() *WinCertificateAuthenticode
@@ -187,18 +233,20 @@ func MockSystemdCryptsetupPath(path string) (restore func()) {
 	}
 }
 
-func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
+func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name, policyCount uint64,
+	policyRef tpm2.Nonce) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{
-		key:                  key,
-		signAlg:              signAlg,
-		pcrs:                 pcrs,
-		pcrDigests:           pcrDigests,
-		policyCountIndexName: policyCountIndexName,
-		policyCount:          policyCount}
+		key:               key,
+		signAlg:           signAlg,
+		pcrs:              pcrs,
+		pcrDigests:        pcrDigests,
+		policyCounterName: policyCounterName,
+		policyCount:       policyCount,
+		policyRef:         policyRef}
 }
 
-func NewStaticPolicyComputeParams(key *tpm2.Public, pinIndexPub *tpm2.NVPublic, pinIndexAuthPolicies tpm2.DigestList, lockIndexName tpm2.Name) *staticPolicyComputeParams {
-	return &staticPolicyComputeParams{key: key, pinIndexPub: pinIndexPub, pinIndexAuthPolicies: pinIndexAuthPolicies, lockIndexName: lockIndexName}
+func NewStaticPolicyComputeParams(key *tpm2.Public, policyCounterPub *tpm2.NVPublic, lockIndexName tpm2.Name) *staticPolicyComputeParams {
+	return &staticPolicyComputeParams{key: key, policyCounterPub: policyCounterPub, lockIndexName: lockIndexName}
 }
 
 func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {

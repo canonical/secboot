@@ -156,6 +156,15 @@ type keyDataRaw_v0 struct {
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
 
+// keyDataRaw_v1 is version 1 of the on-disk format of keyDataRaw.
+type keyDataRaw_v1 struct {
+	KeyPrivate        tpm2.Private
+	KeyPublic         *tpm2.Public
+	AuthModeHint      AuthMode
+	StaticPolicyData  *staticPolicyDataRaw_v1
+	DynamicPolicyData *dynamicPolicyDataRaw_v0
+}
+
 // keyData corresponds to the part of a sealed key object that contains the TPM sealed object and associated metadata required
 // for executing authorization policy assertions.
 type keyData struct {
@@ -175,12 +184,24 @@ func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
 	}
 
 	switch d.version {
-	case 0, 1:
+	case 0:
 		raw := keyDataRaw_v0{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
 			AuthModeHint:      d.authModeHint,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v0(d.staticPolicyData),
+			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
+		n, err := tpm2.MarshalToWriter(w, raw)
+		nbytes += n
+		if err != nil {
+			return nbytes, xerrors.Errorf("cannot marshal raw data: %w", err)
+		}
+	case 1:
+		raw := keyDataRaw_v1{
+			KeyPrivate:        d.keyPrivate,
+			KeyPublic:         d.keyPublic,
+			AuthModeHint:      d.authModeHint,
+			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
 		n, err := tpm2.MarshalToWriter(w, raw)
 		nbytes += n
@@ -202,8 +223,22 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 	}
 
 	switch version {
-	case 0, 1:
+	case 0:
 		var raw keyDataRaw_v0
+		n, err := tpm2.UnmarshalFromReader(r, &raw)
+		nbytes += n
+		if err != nil {
+			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
+		}
+		*d = keyData{
+			version:           version,
+			keyPrivate:        raw.KeyPrivate,
+			keyPublic:         raw.KeyPublic,
+			authModeHint:      raw.AuthModeHint,
+			staticPolicyData:  raw.StaticPolicyData.data(),
+			dynamicPolicyData: raw.DynamicPolicyData.data()}
+	case 1:
+		var raw keyDataRaw_v1
 		n, err := tpm2.UnmarshalFromReader(r, &raw)
 		nbytes += n
 		if err != nil {
@@ -249,8 +284,12 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 }
 
 // validate performs some correctness checking on the provided keyData and keyPolicyUpdateData. On success, it returns the validated
-// public area for the PIN NV index.
+// public area for the dynamic policy counter.
 func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpdateData, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
+	if d.version > currentMetadataVersion {
+		return nil, keyFileError{errors.New("invalid metadata version")}
+	}
+
 	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
@@ -286,6 +325,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	// It's loaded ok, so we know that the private and public parts are consistent.
 	defer tpm.FlushContext(keyContext)
 
+	// Obtain a ResourceContext for the lock NV index and validate it.
 	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for lock NV index: %v", err)
@@ -302,22 +342,25 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		return nil, xerrors.Errorf("cannot compute lock NV index name: %w", err)
 	}
 
-	// Obtain a ResourceContext for the PIN NV index. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second time is with a session, and
-	// there is also verification that the returned public area is for the specified handle so that we know that the returned
-	// ResourceContext corresponds to an actual entity on the TPM at PinIndexHandle.
-	pinIndexHandle := d.staticPolicyData.PinIndexHandle
-	if pinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
-		return nil, keyFileError{errors.New("PIN NV index handle is invalid")}
-	}
-	pinIndex, err := tpm.CreateResourceContextFromTPM(pinIndexHandle, session.IncludeAttrs(tpm2.AttrAudit))
-	if err != nil {
-		if tpm2.IsResourceUnavailableError(err, pinIndexHandle) {
-			return nil, keyFileError{errors.New("PIN NV index is unavailable")}
-		}
-		return nil, xerrors.Errorf("cannot create context for PIN NV index: %w", err)
+	// Obtain a ResourceContext for the dynamic authorization policy counter. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second
+	// time is with a session, and there is also verification that the returned public area is for the specified handle so that we know
+	// that the returned ResourceContext corresponds to an actual entity on the TPM at the specified handle. This index is used for
+	// dynamic authorization policy revocation, and also for PIN integration with v0 metadata only.
+	policyCounterHandle := d.staticPolicyData.policyCounterHandle
+	if policyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
+		return nil, keyFileError{errors.New("dynamic authorization policy counter handle is invalid")}
 	}
 
-	authPublicKey := d.staticPolicyData.AuthPublicKey
+	policyCounter, err := tpm.CreateResourceContextFromTPM(policyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
+	if err != nil {
+		if tpm2.IsResourceUnavailableError(err, policyCounterHandle) {
+			return nil, keyFileError{errors.New("dynamic authorization policy counter is unavailable")}
+		}
+		return nil, xerrors.Errorf("cannot create context for dynamic authorization policy counter: %w", err)
+	}
+
+	// Validate the type and scheme of the dynamic authorization policy signing key.
+	authPublicKey := d.staticPolicyData.authPublicKey
 	authKeyName, err := authPublicKey.Name()
 	if err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
@@ -331,37 +374,65 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	if err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot determine if static authorization policy matches sealed key object: %w", err)}
 	}
-	trial.PolicyAuthorize(nil, authKeyName)
-	trial.PolicySecret(pinIndex.Name(), nil)
+
+	dynamicPolicyRef := d.staticPolicyData.dynamicPolicyRef
+
+	trial.PolicyAuthorize(dynamicPolicyRef, authKeyName)
+	if d.version == 0 {
+		trial.PolicySecret(policyCounter.Name(), nil)
+	} else {
+		// v1 metadata and later
+		trial.PolicyAuthValue()
+	}
 	trial.PolicyNV(lockIndexName, nil, 0, tpm2.OpEq)
 
 	if !bytes.Equal(trial.GetDigest(), keyPublic.AuthPolicy) {
-		return nil, keyFileError{errors.New("the sealed key object's authorization policy is inconsistent with the associatedc metadata or persistent TPM resources")}
+		return nil, keyFileError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
 	}
 
-	pinIndexPublic, _, err := tpm.NVReadPublic(pinIndex, session.IncludeAttrs(tpm2.AttrAudit))
+	// Read the public area of the dynamic authorization policy counter
+	policyCounterPub, _, err := tpm.NVReadPublic(policyCounter, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read public area of PIN NV index: %w", err)
+		return nil, xerrors.Errorf("cannot read public area of dynamic authorization policy counter: %w", err)
 	}
 
-	pinIndexAuthPolicies := d.staticPolicyData.PinIndexAuthPolicies
-	expectedPinIndexAuthPolicies, err := computePinNVIndexPostInitAuthPolicies(pinIndexPublic.NameAlg, authKeyName)
-	if err != nil {
-		return nil, keyFileError{xerrors.Errorf("cannot determine if PIN NV index has a valid authorization policy: %w", err)}
-	}
-	if len(pinIndexAuthPolicies)-1 != len(expectedPinIndexAuthPolicies) {
-		return nil, keyFileError{errors.New("unexpected number of OR policy digests for PIN NV index")}
-	}
-	for i, expected := range expectedPinIndexAuthPolicies {
-		if !bytes.Equal(expected, pinIndexAuthPolicies[i+1]) {
-			return nil, keyFileError{errors.New("unexpected OR policy digest for PIN NV index")}
+	// For > v0 metadata, validate that the dynamic policy reference computed from the dynamic policy counter name matches
+	// the validated reference in the static metadata. If this checks out, then the counter has the same name as the one
+	// that was created when the key was initially sealed. This is important because if an adversary creates a new counter
+	// and modifies the static metadata to point to it and force a recovery, and then we recreate and sign a new dynamic
+	// authorization policy using the new counter, the previous policy won't be revoked.
+	if d.version > 0 {
+		expectedDynamicPolicyRef, err := computeDynamicPolicyRef(keyPublic.NameAlg, policyCounterPub)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot compute expected dynamic authorization policy ref: %w", err)
+		}
+		if !bytes.Equal(expectedDynamicPolicyRef, dynamicPolicyRef) {
+			return nil, keyFileError{errors.New("the dynamic authorization policy counter is inconsistent with the metadata")}
 		}
 	}
 
-	trial, _ = tpm2.ComputeAuthPolicy(pinIndexPublic.NameAlg)
-	trial.PolicyOR(pinIndexAuthPolicies)
-	if !bytes.Equal(pinIndexPublic.AuthPolicy, trial.GetDigest()) {
-		return nil, keyFileError{errors.New("PIN NV index has unexpected authorization policy")}
+	// For v0 metadata, validate that the OR policy digests for the dynamic authorization policy counter match the public area of the
+	// index.
+	if d.version == 0 {
+		policyCounterAuthPolicies := d.staticPolicyData.v0PinIndexAuthPolicies
+		expectedPolicyCounterAuthPolicies, err := computeV0PinNVIndexPostInitAuthPolicies(policyCounterPub.NameAlg, authKeyName)
+		if err != nil {
+			return nil, keyFileError{xerrors.Errorf("cannot determine if dynamic authorization policy counter has a valid authorization policy: %w", err)}
+		}
+		if len(policyCounterAuthPolicies)-1 != len(expectedPolicyCounterAuthPolicies) {
+			return nil, keyFileError{errors.New("unexpected number of OR policy digests for dynamic authorization policy counter")}
+		}
+		for i, expected := range expectedPolicyCounterAuthPolicies {
+			if !bytes.Equal(expected, policyCounterAuthPolicies[i+1]) {
+				return nil, keyFileError{errors.New("unexpected OR policy digest for dynamic authorization policy counter")}
+			}
+		}
+
+		trial, _ = tpm2.ComputeAuthPolicy(policyCounterPub.NameAlg)
+		trial.PolicyOR(policyCounterAuthPolicies)
+		if !bytes.Equal(policyCounterPub.AuthPolicy, trial.GetDigest()) {
+			return nil, keyFileError{errors.New("dynamic authorization policy counter has unexpected authorization policy")}
+		}
 	}
 
 	// At this point, we know that the sealed object is an object with an authorization policy created by this package and with
@@ -369,7 +440,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 
 	if policyUpdateData == nil {
 		// If we weren't passed a private data structure, we're done.
-		return pinIndexPublic, nil
+		return policyCounterPub, nil
 	}
 
 	// Verify that the private data structure is bound to the key data structure.
@@ -398,7 +469,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
 	}
 
-	return pinIndexPublic, nil
+	return policyCounterPub, nil
 }
 
 // write serializes keyData in to the provided io.Writer.
@@ -463,8 +534,9 @@ func isKeyFileError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// decodeAndValidateKeyData will deserialize keyData and keyPolicyUpdateData from the provided io.Readers and then perform some correctness
-// checking. On success, it returns the keyData, keyPolicyUpdateData and the validated public area of the PIN NV index.
+// decodeAndValidateKeyData will deserialize keyData and keyPolicyUpdateData from the provided io.Readers and then perform some
+// correctness checking. On success, it returns the keyData, keyPolicyUpdateData and the validated public area of the dynamic
+// authorization policy counter.
 func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile, keyPolicyUpdateFile io.Reader, session tpm2.SessionContext) (*keyData, *keyPolicyUpdateData, *tpm2.NVPublic, error) {
 	// Read the key data
 	data, err := decodeKeyData(keyFile)
@@ -500,9 +572,10 @@ func (k *SealedKeyObject) AuthMode2F() AuthMode {
 	return k.data.authModeHint
 }
 
-// PINIndexHandle indicates the handle of the NV index used for PIN support for this sealed key object.
-func (k *SealedKeyObject) PINIndexHandle() tpm2.Handle {
-	return k.data.staticPolicyData.PinIndexHandle
+// PolicyCounterHandle indicates the handle of the NV counter used for dynamic authorization policy revocation for this sealed key
+// object (and for PIN integration for version 0 key files).
+func (k *SealedKeyObject) PolicyCounterHandle() tpm2.Handle {
+	return k.data.staticPolicyData.policyCounterHandle
 }
 
 // ReadSealedKeyObject loads a sealed key data file created by SealKeyToTPM from the specified path. If the file cannot be opened,

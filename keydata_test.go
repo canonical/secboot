@@ -46,7 +46,7 @@ func (s *keyDataSuite) TestValidateAfterLock(c *C) {
 
 	pinHandle := tpm2.Handle(0x0181fff0)
 
-	c.Assert(SealKeyToTPM(s.TPM, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: tpm2.Handle(0x0181fff0)}), IsNil)
+	c.Assert(SealKeyToTPM(s.TPM, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: tpm2.Handle(0x0181fff0)}), IsNil)
 	pinIndex, err := s.TPM.CreateResourceContextFromTPM(pinHandle)
 	c.Assert(err, IsNil)
 	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pinIndex)

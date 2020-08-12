@@ -122,7 +122,7 @@ func undefineKeyNVSpace(t *testing.T, tpm *TPMConnection, path string) {
 	if err != nil {
 		t.Fatalf("ReadSealedKeyObject failed: %v", err)
 	}
-	rc, err := tpm.CreateResourceContextFromTPM(k.PINIndexHandle())
+	rc, err := tpm.CreateResourceContextFromTPM(k.PolicyCounterHandle())
 	if err != nil {
 		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 	}

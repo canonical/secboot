@@ -77,19 +77,19 @@ func TestSealKeyToTPM(t *testing.T) {
 	t.Run("BothFiles", func(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
+		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("NoPrivFile", func(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		run(t, tpm, false, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
+		run(t, tpm, false, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000})
 	})
 
-	t.Run("DifferentPINHandle", func(t *testing.T) {
+	t.Run("DifferentPolicyCounterHandle", func(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0})
+		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x0181fff0})
 	})
 
 	t.Run("SealAfterProvision", func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
 			t.Errorf("Failed to provision TPM for test: %v", err)
 		}
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
+		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("NoSRK", func(t *testing.T) {
@@ -114,13 +114,13 @@ func TestSealKeyToTPM(t *testing.T) {
 			t.Errorf("EvictControl failed: %v", err)
 		}
 
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
+		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("NilPCRProfile", func(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		run(t, tpm, false, &KeyCreationParams{PINHandle: 0x01810000})
+		run(t, tpm, false, &KeyCreationParams{PolicyCounterHandle: 0x01810000})
 	})
 }
 
@@ -150,9 +150,9 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 
 		origKeyFileInfo, _ := os.Stat(keyFile)
 		origPolicyUpdateFileInfo, _ := os.Stat(policyUpdateFile)
-		var pinIndex tpm2.ResourceContext
+		var policyCounter tpm2.ResourceContext
 		if params != nil {
-			pinIndex, _ = tpm.CreateResourceContextFromTPM(params.PINHandle)
+			policyCounter, _ = tpm.CreateResourceContextFromTPM(params.PolicyCounterHandle)
 		}
 
 		err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, params)
@@ -164,8 +164,8 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Errorf("SealKeyToTPM created a key file")
 		}
 		if params != nil {
-			if index, err := tpm.CreateResourceContextFromTPM(params.PINHandle); err == nil && (pinIndex == nil || !bytes.Equal(pinIndex.Name(), index.Name())) {
-				t.Errorf("SealKeyToTPM created a PIN NV index")
+			if index, err := tpm.CreateResourceContextFromTPM(params.PolicyCounterHandle); err == nil && (policyCounter == nil || !bytes.Equal(policyCounter.Name(), index.Name())) {
+				t.Errorf("SealKeyToTPM created a dynamic policy counter")
 			}
 		}
 		return err
@@ -190,7 +190,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			resetHierarchyAuth(t, tpm, tpm.OwnerHandleContext())
 		}()
 
-		err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
+		err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000})
 		if e, ok := err.(AuthFailError); !ok || e.Handle != tpm2.HandleOwner {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -216,7 +216,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 				t.Errorf("Failed to re-provision TPM after test: %v", err)
 			}
 		}()
-		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}); err != ErrTPMProvisioning {
+		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000}); err != ErrTPMProvisioning {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -241,7 +241,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 				t.Errorf("Failed to re-provision TPM after test: %v", err)
 			}
 		}()
-		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000}); err != ErrTPMProvisioning {
+		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000}); err != ErrTPMProvisioning {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -256,7 +256,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Fatalf("OpenFile failed: %v", err)
 		}
 		defer f.Close()
-		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
+		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000})
 		var e *os.PathError
 		if !xerrors.As(err, &e) || e.Path != tmpDir+"/keydata" || e.Err != syscall.EEXIST {
 			t.Errorf("Unexpected error: %v", err)
@@ -273,7 +273,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Fatalf("OpenFile failed: %v", err)
 		}
 		defer f.Close()
-		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
+		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x01810000})
 		var e *os.PathError
 		if !xerrors.As(err, &e) || e.Path != tmpDir+"/keypolicyupdatedata" || e.Err != syscall.EEXIST {
 			t.Errorf("Unexpected error: %v", err)
@@ -291,7 +291,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Fatalf("NVDefineSpace failed: %v", err)
 		}
 		defer undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-		err = run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: public.Index})
+		err = run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: public.Index})
 		if e, ok := err.(TPMResourceExistsError); !ok || e.Handle != public.Index {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -303,7 +303,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			AddProfileOR(
 				NewPCRProtectionProfile(),
 				NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 8))
-		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PINHandle: 0x01810000})
+		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PolicyCounterHandle: 0x01810000})
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
@@ -315,7 +315,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 
 	t.Run("InvalidPCRProfileSelection", func(t *testing.T) {
 		pcrProfile := NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size()))
-		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PINHandle: 0x01810000})
+		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PolicyCounterHandle: 0x01810000})
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}

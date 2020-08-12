@@ -122,7 +122,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 	}
 	defer tpm.FlushContext(policySession)
 
-	if err := executePolicySession(tpm.TPMContext, policySession, k.data.staticPolicyData, k.data.dynamicPolicyData, pin, hmacSession); err != nil {
+	if err := executePolicySession(tpm.TPMContext, policySession, k.data.version, k.data.staticPolicyData, k.data.dynamicPolicyData, pin, hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
 		case isDynamicPolicyDataError(err):
@@ -140,11 +140,16 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 		return nil, err
 	}
 
+	// Required for metadata version > 0
+	key.SetAuthValue([]byte(pin))
+
 	// Unseal
 	keyData, err := tpm.Unseal(key, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
 	switch {
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
 		return nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}
+	case isAuthFailError(err, tpm2.CommandUnseal, 1):
+		return nil, ErrPINFail
 	case err != nil:
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
