@@ -26,6 +26,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"math/big"
 	"os"
@@ -36,6 +37,8 @@ import (
 	"github.com/snapcore/snapd/osutil/sys"
 
 	"golang.org/x/xerrors"
+
+	"maze.io/x/crypto/afis"
 )
 
 const (
@@ -51,6 +54,92 @@ const (
 	AuthModeNone AuthMode = iota
 	AuthModePIN
 )
+
+type afSplitDataRawHdr struct {
+	Stripes uint32
+	HashAlg tpm2.HashAlgorithmId
+	Size    uint32
+}
+
+type afSplitDataRaw struct {
+	Hdr  afSplitDataRawHdr
+	Data tpm2.RawBytes
+}
+
+func (d *afSplitDataRaw) Marshal(w io.Writer) (nbytes int, err error) {
+	return tpm2.MarshalToWriter(w, d.Hdr, d.Data)
+}
+
+func (d *afSplitDataRaw) Unmarshal(r io.Reader) (nbytes int, err error) {
+	var h afSplitDataRawHdr
+	n, err := tpm2.UnmarshalFromReader(r, &h)
+	nbytes += n
+	if err != nil {
+		return nbytes, xerrors.Errorf("cannot unmarshal header: %w", err)
+	}
+
+	data := make([]byte, h.Size)
+	n, err = io.ReadFull(r, data)
+	nbytes += n
+	if err != nil {
+		return nbytes, xerrors.Errorf("cannot read data: %w", err)
+	}
+
+	d.Hdr = h
+	d.Data = data
+	return
+}
+
+func (d *afSplitDataRaw) data() *afSplitData {
+	return &afSplitData{
+		stripes: d.Hdr.Stripes,
+		hashAlg: d.Hdr.HashAlg,
+		data:    d.Data}
+}
+
+func makeAfSplitDataRaw(d *afSplitData) *afSplitDataRaw {
+	return &afSplitDataRaw{
+		Hdr: afSplitDataRawHdr{
+			Stripes: d.stripes,
+			HashAlg: d.hashAlg,
+			Size:    uint32(len(d.data))},
+		Data: d.data}
+}
+
+type afSplitData struct {
+	stripes uint32
+	hashAlg tpm2.HashAlgorithmId
+	data    []byte
+}
+
+func (d *afSplitData) merge() ([]byte, error) {
+	if d.stripes < 1 {
+		return nil, errors.New("invalid number of stripes")
+	}
+	if !d.hashAlg.Supported() {
+		return nil, errors.New("unsupported digest algorithm")
+	}
+	return afis.MergeHash(d.data, int(d.stripes), func() hash.Hash { return d.hashAlg.NewHash() })
+}
+
+func makeAfSplitData(data []byte, sz int, hashAlg tpm2.HashAlgorithmId) (*afSplitData, error) {
+	stripes := uint32((sz / len(data)) + 1)
+
+	split, err := afis.SplitHash(data, int(stripes), func() hash.Hash { return hashAlg.NewHash() })
+	if err != nil {
+		return nil, err
+	}
+
+	return &afSplitData{stripes: stripes, hashAlg: hashAlg, data: split}, nil
+}
+
+func (d *afSplitData) Marshal(w io.Writer) (nbytes int, err error) {
+	panic("cannot be marshalled")
+}
+
+func (d *afSplitData) Unmarshal(r io.Reader) (nbytes int, err error) {
+	panic("cannot be unmarshalled")
+}
 
 // keyPolicyUpdateDataRaw_v0 is version 0 of the on-disk format of keyPolicyUpdateData.
 type keyPolicyUpdateDataRaw_v0 struct {
@@ -192,26 +281,27 @@ func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
 			StaticPolicyData:  makeStaticPolicyDataRaw_v0(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
 		n, err := tpm2.MarshalToWriter(w, raw)
-		nbytes += n
-		if err != nil {
-			return nbytes, xerrors.Errorf("cannot marshal raw data: %w", err)
-		}
+		return nbytes + n, err
 	case 1:
+		var tmpW bytes.Buffer
 		raw := keyDataRaw_v1{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
 			AuthModeHint:      d.authModeHint,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
-		n, err := tpm2.MarshalToWriter(w, raw)
-		nbytes += n
-		if err != nil {
-			return nbytes, xerrors.Errorf("cannot marshal raw data: %w", err)
+		if _, err := tpm2.MarshalToWriter(&tmpW, raw); err != nil {
+			return 0, xerrors.Errorf("cannot marshal data: %w", err)
 		}
+		splitData, err := makeAfSplitData(tmpW.Bytes(), 128*1204, tpm2.HashAlgorithmSHA256)
+		if err != nil {
+			return 0, xerrors.Errorf("cannot split data: %w", err)
+		}
+		n, err := tpm2.MarshalToWriter(w, makeAfSplitDataRaw(splitData))
+		return nbytes + n, err
 	default:
-		return nbytes, fmt.Errorf("unexpected version number (%d)", d.version)
+		return 0, fmt.Errorf("unexpected version number (%d)", d.version)
 	}
-	return
 }
 
 func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
@@ -238,10 +328,20 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	case 1:
-		var raw keyDataRaw_v1
-		n, err := tpm2.UnmarshalFromReader(r, &raw)
+		var splitData afSplitDataRaw
+		n, err := tpm2.UnmarshalFromReader(r, &splitData)
 		nbytes += n
 		if err != nil {
+			return nbytes, xerrors.Errorf("cannot unmarshal split data: %w", err)
+		}
+
+		merged, err := splitData.data().merge()
+		if err != nil {
+			return nbytes, xerrors.Errorf("cannot merge data: %w", err)
+		}
+
+		var raw keyDataRaw_v1
+		if _, err := tpm2.UnmarshalFromBytes(merged, &raw); err != nil {
 			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
 		*d = keyData{
