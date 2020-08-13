@@ -122,6 +122,12 @@ func TestSealKeyToTPM(t *testing.T) {
 		defer closeTPM(t, tpm)
 		run(t, tpm, false, &KeyCreationParams{PolicyCounterHandle: 0x01810000})
 	})
+
+	t.Run("NoPolicyCounterHandle", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: tpm2.HandleNull})
+	})
 }
 
 func TestSealKeyToTPMErrorHandling(t *testing.T) {

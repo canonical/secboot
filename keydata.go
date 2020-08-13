@@ -347,16 +347,19 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	// that the returned ResourceContext corresponds to an actual entity on the TPM at the specified handle. This index is used for
 	// dynamic authorization policy revocation, and also for PIN integration with v0 metadata only.
 	policyCounterHandle := d.staticPolicyData.policyCounterHandle
-	if policyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
+	if (policyCounterHandle != tpm2.HandleNull || d.version == 0) && policyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
 		return nil, keyFileError{errors.New("dynamic authorization policy counter handle is invalid")}
 	}
 
-	policyCounter, err := tpm.CreateResourceContextFromTPM(policyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
-	if err != nil {
-		if tpm2.IsResourceUnavailableError(err, policyCounterHandle) {
-			return nil, keyFileError{errors.New("dynamic authorization policy counter is unavailable")}
+	var policyCounter tpm2.ResourceContext
+	if policyCounterHandle != tpm2.HandleNull {
+		policyCounter, err = tpm.CreateResourceContextFromTPM(policyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
+		if err != nil {
+			if tpm2.IsResourceUnavailableError(err, policyCounterHandle) {
+				return nil, keyFileError{errors.New("dynamic authorization policy counter is unavailable")}
+			}
+			return nil, xerrors.Errorf("cannot create context for dynamic authorization policy counter: %w", err)
 		}
-		return nil, xerrors.Errorf("cannot create context for dynamic authorization policy counter: %w", err)
 	}
 
 	// Validate the type and scheme of the dynamic authorization policy signing key.
@@ -391,9 +394,12 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	}
 
 	// Read the public area of the dynamic authorization policy counter
-	policyCounterPub, _, err := tpm.NVReadPublic(policyCounter, session.IncludeAttrs(tpm2.AttrAudit))
-	if err != nil {
-		return nil, xerrors.Errorf("cannot read public area of dynamic authorization policy counter: %w", err)
+	var policyCounterPub *tpm2.NVPublic
+	if policyCounter != nil {
+		policyCounterPub, _, err = tpm.NVReadPublic(policyCounter, session.IncludeAttrs(tpm2.AttrAudit))
+		if err != nil {
+			return nil, xerrors.Errorf("cannot read public area of dynamic authorization policy counter: %w", err)
+		}
 	}
 
 	// For > v0 metadata, validate that the dynamic policy reference computed from the dynamic policy counter name matches

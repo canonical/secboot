@@ -46,15 +46,20 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 	counterPub *tpm2.NVPublic, counterAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile, policyRef tpm2.Nonce,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
 	// Obtain the count for the new policy
-	nextPolicyCount, err := readDynamicPolicyCounter(tpm, version, counterPub, counterAuthPolicies, session)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot read policy counter: %w", err)
-	}
-	nextPolicyCount += 1
+	var nextPolicyCount uint64
+	var counterName tpm2.Name
+	if counterPub != nil {
+		var err error
+		nextPolicyCount, err = readDynamicPolicyCounter(tpm, version, counterPub, counterAuthPolicies, session)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot read policy counter: %w", err)
+		}
+		nextPolicyCount += 1
 
-	counterName, err := counterPub.Name()
-	if err != nil {
-		return nil, xerrors.Errorf("cannot compute name of policy counter: %w", err)
+		counterName, err = counterPub.Name()
+		if err != nil {
+			return nil, xerrors.Errorf("cannot compute name of policy counter: %w", err)
+		}
 	}
 
 	supportedPcrs, err := tpm.GetCapabilityPCRs(session.IncludeAttrs(tpm2.AttrAudit))
@@ -115,9 +120,10 @@ type KeyCreationParams struct {
 	PCRProfile *PCRProtectionProfile
 
 	// PolicyCounterHandle is the handle at which to create a NV index for dynamic authorization poliy revocation support. The handle
-	// must be a valid NV index handle (MSO == 0x01) and the choice of handle should take in to consideration the reserved indices
-	// from the "Registry of reserved TPM 2.0 handles and localities" specification. It is recommended that the handle is in the block
-	// reserved for owner objects (0x01800000 - 0x01bfffff).
+	// must either be tpm2.HandleNull (in which case, no NV index will be created and the sealed key will not benefit from dynamic
+	// authorization policy revocation support), or it must be a valid NV index handle (MSO == 0x01). The choice of handle should take
+	// in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is
+	// recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
 	PolicyCounterHandle tpm2.Handle
 }
 
@@ -140,11 +146,12 @@ type KeyCreationParams struct {
 // *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
 // either file cannot be created and opened for writing.
 //
-// This function will create a NV index at the handle specified by the PolicyCounterHandle field of the params argument. If the handle
-// is already in use, a TPMResourceExistsError error will be returned. In this case, the caller will need to either choose a different
-// handle or undefine the existing one. The handle must be a valid NV index handle (MSO == 0x01), and the choice of handle should take
-// in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is
-// recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
+// This function will create a NV index at the handle specified by the PolicyCounterHandle field of the params argument if it is not
+// tpm2.HandleNull. If the handle is already in use, a TPMResourceExistsError error will be returned. In this case, the caller will
+// need to either choose a different handle or undefine the existing one. If it is not tpm2.HandleNull, then it must be a valid NV
+// index handle (MSO == 0x01), and the choice of handle should take in to consideration the reserved indices from the "Registry of
+// reserved TPM 2.0 handles and localities" specification. It is recommended that the handle is in the block reserved for owner
+// objects (0x01800000 - 0x01bfffff).
 //
 // The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
 // argument.
@@ -234,25 +241,28 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	}
 
 	// Create dynamic policy counter
-	policyCounterPub, err := createDynamicPolicyCounter(tpm.TPMContext, params.PolicyCounterHandle, authKeyName, session)
-	switch {
-	case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
-		return TPMResourceExistsError{params.PolicyCounterHandle}
-	case isAuthFailError(err, tpm2.CommandNVDefineSpace, 1):
-		return AuthFailError{tpm2.HandleOwner}
-	case err != nil:
-		return xerrors.Errorf("cannot create new dynamic authorization policy counter: %w", err)
+	var policyCounterPub *tpm2.NVPublic
+	if params.PolicyCounterHandle != tpm2.HandleNull {
+		policyCounterPub, err = createDynamicPolicyCounter(tpm.TPMContext, params.PolicyCounterHandle, authKeyName, session)
+		switch {
+		case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
+			return TPMResourceExistsError{params.PolicyCounterHandle}
+		case isAuthFailError(err, tpm2.CommandNVDefineSpace, 1):
+			return AuthFailError{tpm2.HandleOwner}
+		case err != nil:
+			return xerrors.Errorf("cannot create new dynamic authorization policy counter: %w", err)
+		}
+		defer func() {
+			if succeeded {
+				return
+			}
+			index, err := tpm2.CreateNVIndexResourceContextFromPublic(policyCounterPub)
+			if err != nil {
+				return
+			}
+			tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, session)
+		}()
 	}
-	defer func() {
-		if succeeded {
-			return
-		}
-		index, err := tpm2.CreateNVIndexResourceContextFromPublic(policyCounterPub)
-		if err != nil {
-			return
-		}
-		tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, session)
-	}()
 
 	template := makeSealedKeyTemplate()
 
@@ -324,9 +334,11 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		}
 	}
 
-	if err := incrementDynamicPolicyCounter(tpm.TPMContext, currentMetadataVersion, policyCounterPub, nil, authKey, authPublicKey,
-		session); err != nil {
-		return xerrors.Errorf("cannot increment dynamic policy counter: %w", err)
+	if policyCounterPub != nil {
+		if err := incrementDynamicPolicyCounter(tpm.TPMContext, currentMetadataVersion, policyCounterPub, nil, authKey, authPublicKey,
+			session); err != nil {
+			return xerrors.Errorf("cannot increment dynamic policy counter: %w", err)
+		}
 	}
 
 	succeeded = true
@@ -389,6 +401,10 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 
 	if err := data.writeToFileAtomic(keyPath); err != nil {
 		return xerrors.Errorf("cannot write key data file: %v", err)
+	}
+
+	if policyCounterPub == nil {
+		return nil
 	}
 
 	if err := incrementDynamicPolicyCounter(tpm.TPMContext, data.version, policyCounterPub, v0PinIndexAuthPolicies, authKey,

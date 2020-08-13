@@ -650,9 +650,13 @@ func computeDynamicPolicyRef(alg tpm2.HashAlgorithmId, counterPublic *tpm2.NVPub
 		return nil, errors.New("unsupported algorithm")
 	}
 
-	counterName, err := counterPublic.Name()
-	if err != nil {
-		return nil, xerrors.Errorf("cannot compute name of counter: %w", err)
+	var counterName tpm2.Name
+	if counterPublic != nil {
+		var err error
+		counterName, err = counterPublic.Name()
+		if err != nil {
+			return nil, xerrors.Errorf("cannot compute name of counter: %w", err)
+		}
 	}
 
 	h := alg.NewHash()
@@ -680,9 +684,14 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 	trial.PolicyAuthValue()
 	trial.PolicyNV(input.lockIndexName, nil, 0, tpm2.OpEq)
 
+	policyCounterHandle := tpm2.HandleNull
+	if input.policyCounterPub != nil {
+		policyCounterHandle = input.policyCounterPub.Index
+	}
+
 	return &staticPolicyData{
 		authPublicKey:       input.key,
-		policyCounterHandle: input.policyCounterPub.Index,
+		policyCounterHandle: policyCounterHandle,
 		dynamicPolicyRef:    dynamicPolicyRef}, trial.GetDigest(), nil
 }
 
@@ -763,9 +772,11 @@ func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynam
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
 	pcrOrData := computePolicyORData(alg, trial, pcrOrDigests)
 
-	operandB := make([]byte, 8)
-	binary.BigEndian.PutUint64(operandB, input.policyCount)
-	trial.PolicyNV(input.policyCounterName, operandB, 0, tpm2.OpUnsignedLE)
+	if len(input.policyCounterName) > 0 {
+		operandB := make([]byte, 8)
+		binary.BigEndian.PutUint64(operandB, input.policyCount)
+		trial.PolicyNV(input.policyCounterName, operandB, 0, tpm2.OpUnsignedLE)
+	}
 
 	authorizedPolicy := trial.GetDigest()
 
@@ -895,60 +906,64 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 
 	policyCounterHandle := staticInput.policyCounterHandle
-	if policyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
-		return staticPolicyDataError{errors.New("invalid handle type for dynamic authorization policy counter")}
+	if (policyCounterHandle != tpm2.HandleNull || version == 0) && policyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
+		return staticPolicyDataError{errors.New("invalid handle for dynamic authorization policy counter")}
 	}
 
-	policyCounter, err := tpm.CreateResourceContextFromTPM(policyCounterHandle)
-	switch {
-	case tpm2.IsResourceUnavailableError(err, policyCounterHandle):
-		// If there is no NV index at the expected handle then the key file is invalid and must be recreated.
-		return staticPolicyDataError{errors.New("no dynamic authorization policy counter found")}
-	case err != nil:
-		return xerrors.Errorf("cannot obtain context for PIN NV index: %w", err)
-	}
-
-	var revocationCheckSession tpm2.SessionContext
-	if version == 0 {
-		policyCounterPub, _, err := tpm.NVReadPublic(policyCounter)
-		if err != nil {
-			return xerrors.Errorf("cannot read public area for dynamic authorization policy counter: %w", err)
-		}
-		if !policyCounterPub.NameAlg.Supported() {
-			//If the NV index has an unsupported name algorithm, then this key file is invalid and must be recreated.
-			return staticPolicyDataError{errors.New("dynamic authorization policy counter has an unsupported name algorithm")}
-		}
-
-		revocationCheckSession, err = tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, policyCounterPub.NameAlg)
-		if err != nil {
-			return xerrors.Errorf("cannot create session for dynamic authorization policy revocation check: %w", err)
-		}
-		defer tpm.FlushContext(revocationCheckSession)
-
-		if err := tpm.PolicyCommandCode(revocationCheckSession, tpm2.CommandPolicyNV); err != nil {
-			return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
-		}
-		if err := tpm.PolicyOR(revocationCheckSession, staticInput.v0PinIndexAuthPolicies); err != nil {
-			if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
-				// staticInput.v0PinIndexAuthPolicies is invalid.
-				return staticPolicyDataError{errors.New("authorization policy metadata for dynamic authorization policy counter is invalid")}
-			}
-			return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
-		}
-	}
-
-	operandB := make([]byte, 8)
-	binary.BigEndian.PutUint64(operandB, dynamicInput.policyCount)
-	if err := tpm.PolicyNV(policyCounter, policyCounter, policySession, operandB, 0, tpm2.OpUnsignedLE, revocationCheckSession); err != nil {
+	var policyCounter tpm2.ResourceContext
+	if policyCounterHandle != tpm2.HandleNull {
+		var err error
+		policyCounter, err = tpm.CreateResourceContextFromTPM(policyCounterHandle)
 		switch {
-		case tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV):
-			// The dynamic authorization policy has been revoked.
-			return dynamicPolicyDataError{errors.New("the dynamic authorization policy has been revoked")}
-		case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1):
-			// Either staticInput.v0PinIndexAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
-			return staticPolicyDataError{errors.New("invalid dynamic authorization policy counter or associated authorization policy metadata")}
+		case tpm2.IsResourceUnavailableError(err, policyCounterHandle):
+			// If there is no NV index at the expected handle then the key file is invalid and must be recreated.
+			return staticPolicyDataError{errors.New("no dynamic authorization policy counter found")}
+		case err != nil:
+			return xerrors.Errorf("cannot obtain context for PIN NV index: %w", err)
 		}
-		return xerrors.Errorf("dynamic authorization policy revocation check failed: %w", err)
+
+		var revocationCheckSession tpm2.SessionContext
+		if version == 0 {
+			policyCounterPub, _, err := tpm.NVReadPublic(policyCounter)
+			if err != nil {
+				return xerrors.Errorf("cannot read public area for dynamic authorization policy counter: %w", err)
+			}
+			if !policyCounterPub.NameAlg.Supported() {
+				//If the NV index has an unsupported name algorithm, then this key file is invalid and must be recreated.
+				return staticPolicyDataError{errors.New("dynamic authorization policy counter has an unsupported name algorithm")}
+			}
+
+			revocationCheckSession, err = tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, policyCounterPub.NameAlg)
+			if err != nil {
+				return xerrors.Errorf("cannot create session for dynamic authorization policy revocation check: %w", err)
+			}
+			defer tpm.FlushContext(revocationCheckSession)
+
+			if err := tpm.PolicyCommandCode(revocationCheckSession, tpm2.CommandPolicyNV); err != nil {
+				return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
+			}
+			if err := tpm.PolicyOR(revocationCheckSession, staticInput.v0PinIndexAuthPolicies); err != nil {
+				if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
+					// staticInput.v0PinIndexAuthPolicies is invalid.
+					return staticPolicyDataError{errors.New("authorization policy metadata for dynamic authorization policy counter is invalid")}
+				}
+				return xerrors.Errorf("cannot execute assertion for dynamic authorization policy revocation check: %w", err)
+			}
+		}
+
+		operandB := make([]byte, 8)
+		binary.BigEndian.PutUint64(operandB, dynamicInput.policyCount)
+		if err := tpm.PolicyNV(policyCounter, policyCounter, policySession, operandB, 0, tpm2.OpUnsignedLE, revocationCheckSession); err != nil {
+			switch {
+			case tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV):
+				// The dynamic authorization policy has been revoked.
+				return dynamicPolicyDataError{errors.New("the dynamic authorization policy has been revoked")}
+			case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1):
+				// Either staticInput.v0PinIndexAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
+				return staticPolicyDataError{errors.New("invalid dynamic authorization policy counter or associated authorization policy metadata")}
+			}
+			return xerrors.Errorf("dynamic authorization policy revocation check failed: %w", err)
+		}
 	}
 
 	authPublicKey := staticInput.authPublicKey

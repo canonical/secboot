@@ -80,6 +80,10 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	t.Run("NilPCRProfile", func(t *testing.T) {
 		run(t, &KeyCreationParams{PolicyCounterHandle: 0x0181fff0})
 	})
+
+	t.Run("NoPolicyCounterHandle", func(t *testing.T) {
+		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: tpm2.HandleNull})
+	})
 }
 
 func TestUnsealWithPIN(t *testing.T) {

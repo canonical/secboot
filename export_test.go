@@ -86,8 +86,8 @@ func (d *DynamicPolicyData) PolicyCount() uint64 {
 	return d.policyCount
 }
 
-func (d *DynamicPolicyData) IncrementPolicyCount() {
-	d.policyCount += 1
+func (d *DynamicPolicyData) SetPolicyCount(c uint64) {
+	d.policyCount = c
 }
 
 func (d *DynamicPolicyData) AuthorizedPolicy() tpm2.Digest {
