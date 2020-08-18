@@ -963,6 +963,113 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader6(c *C) {
 	})
 }
 
+type testParseRecoveryKeyData struct {
+	formatted string
+	expected  []byte
+}
+
+func (s *cryptSuite) testParseRecoveryKey(c *C, data *testParseRecoveryKeyData) {
+	k, err := ParseRecoveryKey(data.formatted)
+	c.Check(err, IsNil)
+	c.Check(k[:], DeepEquals, data.expected)
+}
+
+func (s *cryptSuite) TestParseRecoveryKey1(c *C) {
+	s.testParseRecoveryKey(c, &testParseRecoveryKeyData{
+		formatted: "00000-00000-00000-00000-00000-00000-00000-00000",
+		expected:  decodeHexString(c, "00000000000000000000000000000000"),
+	})
+}
+
+func (s *cryptSuite) TestParseRecoveryKey2(c *C) {
+	s.testParseRecoveryKey(c, &testParseRecoveryKeyData{
+		formatted: "61665-00531-54469-09783-47273-19035-40077-28287",
+		expected:  decodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
+	})
+}
+
+func (s *cryptSuite) TestParseRecoveryKey3(c *C) {
+	s.testParseRecoveryKey(c, &testParseRecoveryKeyData{
+		formatted: "6166500531544690978347273190354007728287",
+		expected:  decodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
+	})
+}
+
+type testParseRecoveryKeyErrorHandlingData struct {
+	formatted      string
+	errChecker     Checker
+	errCheckerArgs []interface{}
+}
+
+func (s *cryptSuite) testParseRecoveryKeyErrorHandling(c *C, data *testParseRecoveryKeyErrorHandlingData) {
+	_, err := ParseRecoveryKey(data.formatted)
+	c.Check(err, data.errChecker, data.errCheckerArgs...)
+}
+
+func (s *cryptSuite) TestParseRecoveryKeyErrorHandling1(c *C) {
+	s.testParseRecoveryKeyErrorHandling(c, &testParseRecoveryKeyErrorHandlingData{
+		formatted:      "00000-1234",
+		errChecker:     ErrorMatches,
+		errCheckerArgs: []interface{}{"incorrectly formatted: insufficient characters"},
+	})
+}
+
+func (s *cryptSuite) TestParseRecoveryKeyErrorHandling2(c *C) {
+	s.testParseRecoveryKeyErrorHandling(c, &testParseRecoveryKeyErrorHandlingData{
+		formatted:      "00000-123bc",
+		errChecker:     ErrorMatches,
+		errCheckerArgs: []interface{}{"incorrectly formatted: strconv.ParseUint: parsing \"123bc\": invalid syntax"},
+	})
+}
+
+func (s *cryptSuite) TestParseRecoveryKeyErrorHandling3(c *C) {
+	s.testParseRecoveryKeyErrorHandling(c, &testParseRecoveryKeyErrorHandlingData{
+		formatted:      "00000-00000-00000-00000-00000-00000-00000-00000-00000",
+		errChecker:     ErrorMatches,
+		errCheckerArgs: []interface{}{"incorrectly formatted: too many characters"},
+	})
+}
+
+func (s *cryptSuite) TestParseRecoveryKeyErrorHandling4(c *C) {
+	s.testParseRecoveryKeyErrorHandling(c, &testParseRecoveryKeyErrorHandlingData{
+		formatted:      "-00000-00000-00000-00000-00000-00000-00000-00000",
+		errChecker:     ErrorMatches,
+		errCheckerArgs: []interface{}{"incorrectly formatted: strconv.ParseUint: parsing \"-0000\": invalid syntax"},
+	})
+}
+
+func (s *cryptSuite) TestParseRecoveryKeyErrorHandling5(c *C) {
+	s.testParseRecoveryKeyErrorHandling(c, &testParseRecoveryKeyErrorHandlingData{
+		formatted:      "00000-00000-00000-00000-00000-00000-00000-00000-",
+		errChecker:     ErrorMatches,
+		errCheckerArgs: []interface{}{"incorrectly formatted: too many characters"},
+	})
+}
+
+type testRecoveryKeyStringifyData struct {
+	key      []byte
+	expected string
+}
+
+func (s *cryptSuite) testRecoveryKeyStringify(c *C, data *testRecoveryKeyStringifyData) {
+	var key RecoveryKey
+	copy(key[:], data.key)
+	c.Check(key.String(), Equals, data.expected)
+}
+
+func (s *cryptSuite) TestRecoveryKeyStringify1(c *C) {
+	s.testRecoveryKeyStringify(c, &testRecoveryKeyStringifyData{
+		expected: "00000-00000-00000-00000-00000-00000-00000-00000",
+	})
+}
+
+func (s *cryptSuite) TestRecoveryKeyStringify2(c *C) {
+	s.testRecoveryKeyStringify(c, &testRecoveryKeyStringifyData{
+		key:      decodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
+		expected: "61665-00531-54469-09783-47273-19035-40077-28287",
+	})
+}
+
 type testActivateVolumeWithRecoveryKeyErrorHandlingData struct {
 	tries               int
 	activateOptions     []string
@@ -1028,7 +1135,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling4(c *C) {
 		tries:               1,
 		recoveryPassphrases: []string{"00000-1234"},
 		errChecker:          ErrorMatches,
-		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted \\(insufficient characters\\)"},
+		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted: insufficient characters"},
 	})
 }
 
@@ -1038,7 +1145,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling5(c *C) {
 		tries:               1,
 		recoveryPassphrases: []string{"00000-123bc"},
 		errChecker:          ErrorMatches,
-		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted \\(invalid base-10 number\\)"},
+		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted: strconv.ParseUint: parsing \"123bc\": invalid syntax"},
 	})
 }
 
@@ -1060,7 +1167,17 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling7(c *C) {
 		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000", "1234"},
 		sdCryptsetupCalls:   1,
 		errChecker:          ErrorMatches,
-		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted \\(insufficient characters\\)"},
+		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted: insufficient characters"},
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling8(c *C) {
+	// Test with a badly formatted recovery key.
+	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
+		tries:               1,
+		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000-00000"},
+		errChecker:          ErrorMatches,
+		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted: too many characters"},
 	})
 }
 
