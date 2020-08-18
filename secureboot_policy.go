@@ -514,60 +514,48 @@ func buildSignatureDbUpdateList(keystores []string) ([]*secureBootDbUpdate, erro
 	return updates, nil
 }
 
-// secureBootVerificationEvent corresponds to a EV_EFI_VARIABLE_AUTHORITY event and associated image load event
-// (EV_EFI_BOOT_SERVICES_DRIVER, EV_EFI_RUNTIME_SERVICES_DRIVER or EV_EFI_BOOT_SERVICES_APPLICATION).
+// secureBootVerificationEvent corresponds to a EV_EFI_VARIABLE_AUTHORITY event and an indicator of whether the event
+// was recorded before the transition to OS-present.
 type secureBootVerificationEvent struct {
-	event          *tcglog.Event
-	imageLoadEvent *tcglog.Event
+	*tcglog.Event
+	measuredInPreOS bool
 }
 
 // identifyInitialOSLaunchVerificationEvent finds the secure boot verification event associated with the verification of the initial
 // OS EFI image.
 func identifyInitialOSLaunchVerificationEvent(events []*tcglog.Event) (*secureBootVerificationEvent, error) {
+	preOS := true
 	var lastEvent *tcglog.Event
-	var lastEventImageLoadEvent *tcglog.Event
-	seenInitialOSLaunchVerificationEvent := false
+	var lastEventIsPreOS bool
 
-Loop:
 	for _, e := range events {
+		if e.EventType == tcglog.EventTypeSeparator && e.PCRIndex != secureBootPCR {
+			preOS = false
+			continue
+		}
+
 		switch e.PCRIndex {
-		case uefiDriverPCR:
-			if e.EventType != tcglog.EventTypeEFIBootServicesDriver && e.EventType != tcglog.EventTypeEFIRuntimeServicesDriver {
-				continue
-			}
-			if lastEvent == nil {
-				// Drivers can be launched without verification in some circumstances (eg, if loaded from a firmware volume)
-				continue
-			}
-			if lastEventImageLoadEvent != nil {
-				continue
-			}
-			lastEventImageLoadEvent = e
 		case bootManagerCodePCR:
 			if e.EventType != tcglog.EventTypeEFIBootServicesApplication {
+				continue
+			}
+			if preOS {
 				continue
 			}
 			if lastEvent == nil {
 				return nil, errors.New("boot manager image load event occurred without a preceding verification event")
 			}
-			seenInitialOSLaunchVerificationEvent = true
-			if lastEventImageLoadEvent == nil {
-				lastEventImageLoadEvent = e
-			}
-			break Loop
+			return &secureBootVerificationEvent{lastEvent, lastEventIsPreOS}, nil
 		case secureBootPCR:
 			if e.EventType != tcglog.EventTypeEFIVariableAuthority {
 				continue
 			}
 			lastEvent = e
-			lastEventImageLoadEvent = nil
+			lastEventIsPreOS = preOS
 		}
 	}
 
-	if !seenInitialOSLaunchVerificationEvent {
-		return nil, errors.New("boot manager image load event not found")
-	}
-	return &secureBootVerificationEvent{event: lastEvent, imageLoadEvent: lastEventImageLoadEvent}, nil
+	return nil, errors.New("boot manager image load event not found")
 }
 
 // isSecureBootConfigMeasurementEvent determines if event corresponds to the measurement of a secure boot configuration.
@@ -821,7 +809,7 @@ func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(updates []*secure
 // Processing of the list of events stops when the verification event associated with the loading of the initial OS EFI executable
 // is encountered.
 func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, initialOSVerificationEvent *secureBootVerificationEvent, sigDbUpdates []*secureBootDbUpdate, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
-	for len(events) > 0 && events[0] != initialOSVerificationEvent.event {
+	for len(events) > 0 && events[0] != initialOSVerificationEvent.Event {
 		e := events[0]
 		events = events[1:]
 		switch {
@@ -848,12 +836,13 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, i
 		return nil
 	}
 
-	if initialOSVerificationEvent.imageLoadEvent.PCRIndex == bootManagerCodePCR {
+	if !initialOSVerificationEvent.measuredInPreOS {
 		return nil
 	}
 
-	// The verification event associated with the initial OS load event was recorded as part of a UEFI driver load, so we need to keep it.
-	b.extendFirmwareVerificationMeasurement(tpm2.Digest(initialOSVerificationEvent.event.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
+	// The verification event associated with the initial OS load event was recorded before the transition to OS-present, which means
+	// it was used to authenticate a UEFI driver or sysprep application load, so we need to keep it in the profile.
+	b.extendFirmwareVerificationMeasurement(tpm2.Digest(initialOSVerificationEvent.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
 
 	return nil
 }
