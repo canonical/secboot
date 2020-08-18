@@ -527,3 +527,20 @@ func MockEKTemplate(mock *tpm2.Public) (restore func()) {
 		tcg.EKTemplate = orig
 	}
 }
+
+func MakePCREventDigest(alg tpm2.HashAlgorithmId, event string) tpm2.Digest {
+	h := alg.NewHash()
+	h.Write([]byte(event))
+	return h.Sum(nil)
+}
+
+func MakePCRValueFromEvents(alg tpm2.HashAlgorithmId, events ...string) tpm2.Digest {
+	p := make(tpm2.Digest, alg.Size())
+	for _, e := range events {
+		h := alg.NewHash()
+		h.Write(p)
+		h.Write(MakePCREventDigest(alg, e))
+		p = h.Sum(nil)
+	}
+	return p
+}

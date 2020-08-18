@@ -25,6 +25,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 func TestAddSystemdEFIStubProfile(t *testing.T) {
@@ -101,8 +102,8 @@ func TestAddSystemdEFIStubProfile(t *testing.T) {
 			desc: "WithInitialProfile",
 			initial: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
 			params: SystemdEFIStubProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -114,7 +115,7 @@ func TestAddSystemdEFIStubProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
 						8: decodeHexStringT(t, "3d39c0db757b47b484006003724d990403d533044ed06e8798ab374bd73f32dc"),
 					},
 				},

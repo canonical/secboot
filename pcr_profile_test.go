@@ -27,6 +27,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 func TestPCRProtectionProfile(t *testing.T) {
@@ -43,14 +44,14 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 			},
@@ -61,13 +62,13 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 			},
@@ -79,35 +80,35 @@ func TestPCRProtectionProfile(t *testing.T) {
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
 					AddProfileOR(
-						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")),
-						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2"))).
+						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")),
+						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2"))).
 					AddProfileOR(
-						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
-						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")))
+						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+						NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
 					},
 				},
 			},
@@ -119,23 +120,23 @@ func TestPCRProtectionProfile(t *testing.T) {
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().AddProfileOR(
 					NewPCRProtectionProfile().
-						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 					NewPCRProtectionProfile().
-						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).
-						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2")))
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
 					},
 				},
 			},
@@ -146,16 +147,16 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
-					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")).
-					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
-					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event4"))
+					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")).
+					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
+					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4"))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "event1", "event3"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "event2", "event4"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "event1", "event3"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "event2", "event4"),
 					},
 				},
 			},
@@ -166,16 +167,16 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
-					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
-					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event2"))
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2"))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2"),
 					},
 				},
 			},
@@ -186,27 +187,27 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
 					AddProfileOR(
 						NewPCRProtectionProfile().
-							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
-							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")),
+							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")),
 						NewPCRProtectionProfile().
-							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
-							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")))
+							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
+							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event3"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event3"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4"),
 					},
 				},
 			},
@@ -217,27 +218,27 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
 					AddProfileOR(
 						NewPCRProtectionProfile().
-							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
-							AddPCRValue(tpm2.HashAlgorithmSHA256, 12, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")),
+							ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+							AddPCRValue(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")),
 						NewPCRProtectionProfile().
-							AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
-							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, makePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")))
+							AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+							ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7:  makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
-						12: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4"),
+						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4"),
 					},
 				},
 			},
@@ -248,16 +249,16 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA1, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "bar"))
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA1, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA1, "bar"))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA1: {
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA1, "bar"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA1, "bar"),
 					},
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
 					},
 				},
 			},
@@ -268,14 +269,14 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA1,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 			},
@@ -287,17 +288,17 @@ func TestPCRProtectionProfile(t *testing.T) {
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().AddProfileOR(
 					NewPCRProtectionProfile().
-						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 					NewPCRProtectionProfile().
-						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar")))
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+						AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 			},
@@ -307,15 +308,15 @@ func TestPCRProtectionProfile(t *testing.T) {
 			alg:  tpm2.HashAlgorithmSHA256,
 			profile: func() *PCRProtectionProfile {
 				return NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddProfileOR().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: makePCRDigestFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+						8: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 					},
 				},
 			},
@@ -351,12 +352,12 @@ func TestPCRProtectionProfileString(t *testing.T) {
 		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, make([]byte, tpm2.HashAlgorithmSHA256.Size())).
 		AddProfileOR(
 			NewPCRProtectionProfile().
-				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1")).
-				ExtendPCR(tpm2.HashAlgorithmSHA256, 8, makePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")),
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")),
 			NewPCRProtectionProfile().
-				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")).
-				ExtendPCR(tpm2.HashAlgorithmSHA256, 8, makePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1"))).
-		ExtendPCR(tpm2.HashAlgorithmSHA256, 7, makePCREventDigest(tpm2.HashAlgorithmSHA256, "end"))
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1"))).
+		ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "end"))
 	expectedTpl := `
  AddPCRValue(TPM_ALG_SHA256, 7, %[1]x)
  AddPCRValue(TPM_ALG_SHA256, 8, %[1]x)
@@ -375,9 +376,9 @@ func TestPCRProtectionProfileString(t *testing.T) {
 
 	expected := fmt.Sprintf(expectedTpl,
 		make([]byte, tpm2.HashAlgorithmSHA256.Size()),
-		makePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1"),
-		makePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1"),
-		makePCREventDigest(tpm2.HashAlgorithmSHA256, "end"))
+		testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1"),
+		testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1"),
+		testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "end"))
 	if expected != profile.String() {
 		t.Errorf("Unexpected string:\ngot:%s\nexpected:%s", profile, expected)
 	}

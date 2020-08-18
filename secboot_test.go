@@ -49,12 +49,6 @@ var (
 
 func Test(t *testing.T) { TestingT(t) }
 
-func decodeHexString(c *C, s string) []byte {
-	b, err := hex.DecodeString(s)
-	c.Assert(err, IsNil)
-	return b
-}
-
 // resetTPMSimulator executes reset sequence of the TPM (Shutdown(CLEAR) -> reset -> Startup(CLEAR)) and the re-initializes the
 // TPMConnection.
 func resetTPMSimulator(t *testing.T, tpm *TPMConnection, tcti *tpm2.TctiMssim) (*TPMConnection, *tpm2.TctiMssim) {

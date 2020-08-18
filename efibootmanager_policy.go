@@ -30,6 +30,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
+	"github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/pe1.14"
 
 	"golang.org/x/xerrors"
@@ -256,7 +257,7 @@ type EFIBootManagerProfileParams struct {
 // even if the successful boot attempt is of a sequence of binaries included in this PCR profile.
 func AddEFIBootManagerProfile(profile *PCRProtectionProfile, params *EFIBootManagerProfileParams) error {
 	// Load event log
-	eventLog, err := os.Open(eventLogPath)
+	eventLog, err := os.Open(efi.EventLogPath)
 	if err != nil {
 		return xerrors.Errorf("cannot open TCG event log: %w", err)
 	}
