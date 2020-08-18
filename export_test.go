@@ -86,14 +86,10 @@ func (s *EFISignatureData) Data() []byte {
 	return s.data
 }
 
-type SecureBootVerificationEvent secureBootVerificationEvent
+type SecureBootVerificationEvent = secureBootVerificationEvent
 
-func (e *SecureBootVerificationEvent) Event() *tcglog.Event {
-	return e.event
-}
-
-func (e *SecureBootVerificationEvent) ImageLoadEvent() *tcglog.Event {
-	return e.imageLoadEvent
+func (e *SecureBootVerificationEvent) MeasuredInPreOS() bool {
+	return e.measuredInPreOS
 }
 
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
