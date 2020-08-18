@@ -46,14 +46,15 @@ func (s *keyDataSuite) TestValidateAfterLock(c *C) {
 
 	pinHandle := tpm2.Handle(0x0181fff0)
 
-	c.Assert(SealKeyToTPM(s.TPM, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: tpm2.Handle(0x0181fff0)}), IsNil)
+	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: tpm2.Handle(0x0181fff0)})
+	c.Assert(err, IsNil)
 	pinIndex, err := s.TPM.CreateResourceContextFromTPM(pinHandle)
 	c.Assert(err, IsNil)
 	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pinIndex)
 
-	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, "", s.TPM.HmacSession()), IsNil)
+	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, authPrivateKey, s.TPM.HmacSession()), IsNil)
 
 	c.Assert(LockAccessToSealedKeys(s.TPM), IsNil)
 	defer s.ResetTPMSimulator(c)
-	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, "", s.TPM.HmacSession()), IsNil)
+	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, authPrivateKey, s.TPM.HmacSession()), IsNil)
 }

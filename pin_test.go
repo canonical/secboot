@@ -42,7 +42,7 @@ func TestCreatePinNVIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -114,7 +114,7 @@ func TestPerformPinChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -178,7 +178,8 @@ func (s *pinSuite) SetUpTest(c *C) {
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
 
-	c.Assert(SealKeyToTPM(s.TPM, s.key, s.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: s.pinHandle}), IsNil)
+	_, err := SealKeyToTPM(s.TPM, s.key, s.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: s.pinHandle})
+	c.Assert(err, IsNil)
 	pinIndex, err := s.TPM.CreateResourceContextFromTPM(s.pinHandle)
 	c.Assert(err, IsNil)
 	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pinIndex)

@@ -218,8 +218,8 @@ dump_key "$new_keyfile" "%[3]s.$invocation"
 	})
 }
 
-func (ctb *cryptTestBase) checkRecoveryKeyKeyringEntry(c *C, reason RecoveryKeyUsageReason) {
-	id, err := unix.KeyctlSearch(userKeyring, "user", fmt.Sprintf("%s:data:reason=%d", filepath.Base(os.Args[0]), reason), 0)
+func (ctb *cryptTestBase) checkUserKeyringEntry(c *C, desc string, payload []byte) {
+	id, err := unix.KeyctlSearch(userKeyring, "user", desc, 0)
 	c.Check(err, IsNil)
 
 	// The previous tests should have all succeeded, but the following test will fail if the user keyring isn't reachable from
@@ -228,17 +228,22 @@ func (ctb *cryptTestBase) checkRecoveryKeyKeyringEntry(c *C, reason RecoveryKeyU
 		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
 	}
 
-	buf := make([]byte, 16)
+	buf := make([]byte, len(payload))
 	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, id, buf, 0)
 	c.Check(err, IsNil)
-	c.Check(n, Equals, 16)
-	c.Check(buf, DeepEquals, ctb.recoveryKey)
+	c.Check(n, Equals, len(payload))
+	c.Check(buf, DeepEquals, payload)
+}
+
+func (ctb *cryptTestBase) checkRecoveryKeyKeyringEntry(c *C, reason RecoveryKeyUsageReason) {
+	ctb.checkUserKeyringEntry(c, fmt.Sprintf("%s:data:reason=%d", filepath.Base(os.Args[0]), reason), ctb.recoveryKey)
 }
 
 type cryptTPMTestBase struct {
 	cryptTestBase
 
-	keyFile string
+	keyFile        string
+	authPrivateKey []byte
 }
 
 func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
@@ -250,7 +255,9 @@ func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
 	ctb.keyFile = dir + "/keydata"
 
 	pinHandle := tpm2.Handle(0x0181fff0)
-	c.Assert(SealKeyToTPM(ttb.TPM, ctb.tpmKey, ctb.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: pinHandle}), IsNil)
+	authPrivateKey, err := SealKeyToTPM(ttb.TPM, ctb.tpmKey, ctb.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: pinHandle})
+	c.Assert(err, IsNil)
+	ctb.authPrivateKey = authPrivateKey
 	pinIndex, err := ttb.TPM.CreateResourceContextFromTPM(pinHandle)
 	c.Assert(err, IsNil)
 	ttb.AddCleanupNVSpace(c, ttb.TPM.OwnerHandleContext(), pinIndex)
@@ -261,6 +268,10 @@ func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
 	ttb.AddCleanup(func() {
 		c.Check(ttb.TPM.DictionaryAttackLockReset(ttb.TPM.LockoutHandleContext(), nil), IsNil)
 	})
+}
+
+func (ctb *cryptTPMTestBase) checkAuthPrivateKeyKeyringEntry(c *C, volumeName string) {
+	ctb.checkUserKeyringEntry(c, fmt.Sprintf("%s:%s:auth", filepath.Base(os.Args[0]), volumeName), ctb.authPrivateKey)
 }
 
 type cryptTPMSuite struct {
@@ -300,6 +311,8 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, data *test
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
+
+	s.checkAuthPrivateKeyKeyringEntry(c, data.volumeName)
 }
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA1(c *C) {
@@ -382,6 +395,8 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *tes
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+
+	s.checkAuthPrivateKeyKeyringEntry(c, "data")
 }
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
@@ -435,6 +450,8 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+
+	s.checkAuthPrivateKeyKeyringEntry(c, "data")
 }
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(c *C) {

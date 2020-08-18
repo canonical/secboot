@@ -100,7 +100,7 @@ func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tp
 		return nil, nil, xerrors.Errorf("cannot create signing key for initializing NV index: %w", err)
 	}
 
-	initKeyPublic := createPublicAreaForECDSAKey(&initKey.PublicKey)
+	initKeyPublic := createTPMPublicAreaForECDSAKey(&initKey.PublicKey)
 	initKeyName, err := initKeyPublic.Name()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for initializing NV index: %w", err)

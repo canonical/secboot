@@ -21,8 +21,10 @@ package secboot
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -132,7 +134,7 @@ func bigIntToBytesZeroExtended(x *big.Int, bytes int) (out []byte) {
 
 // createPublicAreaForECDSAKey creates a *tpm2.Public from a go *ecdsa.PublicKey, which is suitable for loading
 // in to a TPM with TPMContext.LoadExternal.
-func createPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
+func createTPMPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
 	var curve tpm2.ECCCurve
 	switch key.Curve {
 	case elliptic.P224():
@@ -163,6 +165,33 @@ func createPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
 			Data: &tpm2.ECCPoint{
 				X: bigIntToBytesZeroExtended(key.X, key.Params().BitSize/8),
 				Y: bigIntToBytesZeroExtended(key.Y, key.Params().BitSize/8)}}}
+}
+
+func createPrivateKeyFromTPM(public *tpm2.Public, sensitive *tpm2.Sensitive) (crypto.PrivateKey, error) {
+	if public.Type != tpm2.ObjectTypeECC || sensitive.Type != tpm2.ObjectTypeECC {
+		return nil, errors.New("unsupported type")
+	}
+
+	var curve elliptic.Curve
+	switch public.Params.ECCDetail().CurveID {
+	case tpm2.ECCCurveNIST_P224:
+		curve = elliptic.P224()
+	case tpm2.ECCCurveNIST_P256:
+		curve = elliptic.P256()
+	case tpm2.ECCCurveNIST_P384:
+		curve = elliptic.P384()
+	case tpm2.ECCCurveNIST_P521:
+		curve = elliptic.P521()
+	default:
+		return nil, errors.New("unsupported curve")
+	}
+
+	return &ecdsa.PrivateKey{
+		PublicKey: ecdsa.PublicKey{
+			Curve: curve,
+			X:     new(big.Int).SetBytes(public.Unique.ECC().X),
+			Y:     new(big.Int).SetBytes(public.Unique.ECC().Y)},
+		D: new(big.Int).SetBytes(sensitive.Sensitive.ECC())}, nil
 }
 
 // digestListContains indicates whether the specified digest is present in the list of digests.

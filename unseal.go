@@ -68,16 +68,17 @@ import (
 // condition can also occur as the result of an incorrectly provisioned TPM, which will be detected during a subsequent call to
 // SealKeyToTPM.
 //
-// On success, the unsealed cleartext key is returned.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte, error) {
+// On success, the unsealed cleartext key is returned as the first return value, and the private part of the key used for
+// authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is returned as the second return value.
+func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte, []byte, error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot fetch properties from TPM: %w", err)
+		return nil, nil, xerrors.Errorf("cannot fetch properties from TPM: %w", err)
 	}
 
 	if tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrInLockout > 0 {
-		return nil, ErrTPMLockout
+		return nil, nil, ErrTPMLockout
 	}
 
 	// Use the HMAC session created when the connection was opened for parameter encryption rather than creating a new one.
@@ -94,31 +95,31 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 		srk, err2 := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 		switch {
 		case tpm2.IsResourceUnavailableError(err2, tcg.SRKHandle):
-			return nil, ErrTPMProvisioning
+			return nil, nil, ErrTPMProvisioning
 		case err2 != nil:
-			return nil, xerrors.Errorf("cannot create context for SRK: %w", err2)
+			return nil, nil, xerrors.Errorf("cannot create context for SRK: %w", err2)
 		}
 		ok, err2 := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, tcg.SRKTemplate, tpm.HmacSession())
 		switch {
 		case err2 != nil:
-			return nil, xerrors.Errorf("cannot determine if object at 0x%08x is a primary key in the storage hierarchy: %w", tcg.SRKHandle, err2)
+			return nil, nil, xerrors.Errorf("cannot determine if object at 0x%08x is a primary key in the storage hierarchy: %w", tcg.SRKHandle, err2)
 		case !ok:
-			return nil, ErrTPMProvisioning
+			return nil, nil, ErrTPMProvisioning
 		}
 		// This is probably a broken key file, but it could still be a provisioning error because we don't know if the SRK object was
 		// created with the same template that ProvisionTPM uses.
-		return nil, InvalidKeyFileError{err.Error()}
+		return nil, nil, InvalidKeyFileError{err.Error()}
 	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
-		return nil, ErrTPMProvisioning
+		return nil, nil, ErrTPMProvisioning
 	case err != nil:
-		return nil, err
+		return nil, nil, err
 	}
 	defer tpm.FlushContext(key)
 
 	// Begin and execute policy session
 	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.keyPublic.NameAlg)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot start policy session: %w", err)
+		return nil, nil, xerrors.Errorf("cannot start policy session: %w", err)
 	}
 	defer tpm.FlushContext(policySession)
 
@@ -127,27 +128,36 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 		switch {
 		case isDynamicPolicyDataError(err):
 			// TODO: Add a separate error for this
-			return nil, InvalidKeyFileError{err.Error()}
+			return nil, nil, InvalidKeyFileError{err.Error()}
 		case isStaticPolicyDataError(err):
-			return nil, InvalidKeyFileError{err.Error()}
+			return nil, nil, InvalidKeyFileError{err.Error()}
 		case isAuthFailError(err, tpm2.CommandPolicySecret, 1):
-			return nil, ErrPINFail
+			return nil, nil, ErrPINFail
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
-			return nil, ErrTPMProvisioning
+			return nil, nil, ErrTPMProvisioning
 		case tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV):
-			return nil, ErrSealedKeyAccessLocked
+			return nil, nil, ErrSealedKeyAccessLocked
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Unseal
 	keyData, err := tpm.Unseal(key, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
 	switch {
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
-		return nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}
+		return nil, nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot unseal key: %w", err)
+		return nil, nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	return keyData, nil
+	if k.data.version == 0 {
+		return keyData, nil, nil
+	}
+
+	var sealedData sealedData
+	if _, err := tpm2.UnmarshalFromBytes(keyData, &sealedData); err != nil {
+		return nil, nil, InvalidKeyFileError{err.Error()}
+	}
+
+	return sealedData.Key, sealedData.AuthPrivateKey, nil
 }

@@ -313,8 +313,8 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 	return lastErr
 }
 
-func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, error) {
-	key, err := k.UnsealFromTPM(tpm, pin)
+func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, []byte, error) {
+	sealedKey, authPrivateKey, err := k.UnsealFromTPM(tpm, pin)
 	if err == ErrTPMProvisioning {
 		// ErrTPMProvisioning in this context might indicate that there isn't a valid persistent SRK. Have a go at creating one now and then
 		// retrying the unseal operation - if the previous SRK was evicted, the TPM owner hasn't changed and the storage hierarchy still
@@ -322,10 +322,10 @@ func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byt
 		// storage hierarchy has a non-null authorization value, ProvionTPM will fail. If the TPM owner has changed, ProvisionTPM might
 		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
 		if pErr := ProvisionTPM(tpm, ProvisionModeWithoutLockout, nil); pErr == nil {
-			key, err = k.UnsealFromTPM(tpm, pin)
+			sealedKey, authPrivateKey, err = k.UnsealFromTPM(tpm, pin)
 		}
 	}
-	return key, err
+	return sealedKey, authPrivateKey, err
 }
 
 var requiresPinErr = errors.New("no PIN tries permitted when a PIN is required")
@@ -349,7 +349,7 @@ func isLockAccessError(err error) bool {
 
 func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, pinReader io.Reader, pinTries int, lock bool, activateOptions []string) error {
 	var lockErr error
-	key, err := func() ([]byte, error) {
+	sealedKey, authPrivateKey, err := func() ([]byte, []byte, error) {
 		defer func() {
 			if !lock {
 				return
@@ -359,17 +359,18 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 
 		k, err := ReadSealedKeyObject(keyPath)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot read sealed key object: %w", err)
+			return nil, nil, xerrors.Errorf("cannot read sealed key object: %w", err)
 		}
 
 		switch {
 		case pinTries == 0 && k.AuthMode2F() == AuthModePIN:
-			return nil, requiresPinErr
+			return nil, nil, requiresPinErr
 		case pinTries == 0:
 			pinTries = 1
 		}
 
-		var key []byte
+		var sealedKey []byte
+		var authPrivateKey []byte
 
 		for ; pinTries > 0; pinTries-- {
 			var pin string
@@ -378,20 +379,20 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 				pinReader = nil
 				pin, err = getPassword(sourceDevicePath, "PIN", r)
 				if err != nil {
-					return nil, xerrors.Errorf("cannot obtain PIN: %w", err)
+					return nil, nil, xerrors.Errorf("cannot obtain PIN: %w", err)
 				}
 			}
 
-			key, err = unsealKeyFromTPM(tpm, k, pin)
+			sealedKey, authPrivateKey, err = unsealKeyFromTPM(tpm, k, pin)
 			if err != nil && (err != ErrPINFail || k.AuthMode2F() != AuthModePIN) {
 				break
 			}
 		}
 
 		if err != nil {
-			return nil, xerrors.Errorf("cannot unseal key: %w", err)
+			return nil, nil, xerrors.Errorf("cannot unseal key: %w", err)
 		}
-		return key, nil
+		return sealedKey, authPrivateKey, nil
 	}()
 
 	switch {
@@ -401,9 +402,13 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 		return err
 	}
 
-	if err := activate(volumeName, sourceDevicePath, key, activateOptions); err != nil {
+	if err := activate(volumeName, sourceDevicePath, sealedKey, activateOptions); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
+
+	// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we
+	// close the volume again.
+	unix.AddKey("user", fmt.Sprintf("%s:%s:auth", filepath.Base(os.Args[0]), volumeName), authPrivateKey, userKeyring)
 
 	return nil
 }
@@ -470,6 +475,10 @@ type ActivateWithTPMSealedKeyOptions struct {
 // fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will be nil, and the
 // TPMErr field will contain the original error. If activation with the fallback recovery key also fails, the RecoveryKeyUsageErr
 // field of the returned error will also contain details of the error encountered during recovery key activation.
+//
+// If the volume is successfully activated with the TPM sealed key and the TPM sealed key has a version of greater than 1, the
+// private part of the key used for authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is added to the root user keyring
+// in the kernel with a description of the format "<argv[0]>:<volumeName>:auth".
 //
 // If the volume is successfully activated, either with the TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
