@@ -977,21 +977,21 @@ func (s *cryptSuite) testParseRecoveryKey(c *C, data *testParseRecoveryKeyData) 
 func (s *cryptSuite) TestParseRecoveryKey1(c *C) {
 	s.testParseRecoveryKey(c, &testParseRecoveryKeyData{
 		formatted: "00000-00000-00000-00000-00000-00000-00000-00000",
-		expected:  decodeHexString(c, "00000000000000000000000000000000"),
+		expected:  testutil.DecodeHexString(c, "00000000000000000000000000000000"),
 	})
 }
 
 func (s *cryptSuite) TestParseRecoveryKey2(c *C) {
 	s.testParseRecoveryKey(c, &testParseRecoveryKeyData{
 		formatted: "61665-00531-54469-09783-47273-19035-40077-28287",
-		expected:  decodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
+		expected:  testutil.DecodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
 	})
 }
 
 func (s *cryptSuite) TestParseRecoveryKey3(c *C) {
 	s.testParseRecoveryKey(c, &testParseRecoveryKeyData{
 		formatted: "6166500531544690978347273190354007728287",
-		expected:  decodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
+		expected:  testutil.DecodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
 	})
 }
 
@@ -1065,7 +1065,7 @@ func (s *cryptSuite) TestRecoveryKeyStringify1(c *C) {
 
 func (s *cryptSuite) TestRecoveryKeyStringify2(c *C) {
 	s.testRecoveryKeyStringify(c, &testRecoveryKeyStringifyData{
-		key:      decodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
+		key:      testutil.DecodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
 		expected: "61665-00531-54469-09783-47273-19035-40077-28287",
 	})
 }
