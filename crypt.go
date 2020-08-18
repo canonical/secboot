@@ -46,6 +46,50 @@ var (
 	systemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
 )
 
+// RecoveryKey corresponds to a 16-byte recovery key in its binary form.
+type RecoveryKey [16]byte
+
+func (k RecoveryKey) String() string {
+	var u16 [8]uint16
+	for i := 0; i < 8; i++ {
+		u16[i] = binary.LittleEndian.Uint16(k[i*2:])
+	}
+	return fmt.Sprintf("%05d-%05d-%05d-%05d-%05d-%05d-%05d-%05d", u16[0], u16[1], u16[2], u16[3], u16[4], u16[5], u16[6], u16[7])
+}
+
+// ParseRecoveryKey interprets the supplied string and returns the corresponding RecoveryKey. The recovery key is a
+// 16-byte number, and the formatted version of this is represented as 8 5-digit zero-extended base-10 numbers (each
+// with a range of 00000-65535) which may be separated by an optional '-', eg:
+//
+// "61665-00531-54469-09783-47273-19035-40077-28287"
+//
+// The formatted version of the recovery key is designed to be able to be inputted on a numeric keypad.
+func ParseRecoveryKey(s string) (out RecoveryKey, err error) {
+	for i := 0; i < 8; i++ {
+		if len(s) < 5 {
+			return RecoveryKey{}, errors.New("incorrectly formatted: insufficient characters")
+		}
+		x, err := strconv.ParseUint(s[0:5], 10, 16)
+		if err != nil {
+			return RecoveryKey{}, xerrors.Errorf("incorrectly formatted: %w", err)
+		}
+		binary.LittleEndian.PutUint16(out[i*2:], uint16(x))
+
+		// Move to the next 5 digits
+		s = s[5:]
+		// Permit each set of 5 digits to be separated by an optional '-', but don't allow the formatted key to end or begin with one.
+		if len(s) > 1 && s[0] == '-' {
+			s = s[1:]
+		}
+	}
+
+	if len(s) > 0 {
+		return RecoveryKey{}, errors.New("incorrectly formatted: too many characters")
+	}
+
+	return
+}
+
 type execError struct {
 	path string
 	err  error
@@ -195,30 +239,6 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
-func decodeRecoveryKey(passphrase string) ([]byte, error) {
-	// The recovery key should be provided as 8 groups of 5 base-10 digits, with each 5 digits being converted to a 2-byte number to
-	// make a 16-byte key.
-	var key bytes.Buffer
-	for len(passphrase) > 0 {
-		if len(passphrase) < 5 {
-			return nil, errors.New("incorrectly formatted (insufficient characters)")
-		}
-		x, err := strconv.ParseUint(passphrase[0:5], 10, 16)
-		if err != nil {
-			return nil, errors.New("incorrectly formatted (invalid base-10 number)")
-		}
-		binary.Write(&key, binary.LittleEndian, uint16(x))
-
-		// Move to the next 5 digits
-		passphrase = passphrase[5:]
-		// Permit each set of 5 digits to be separated by '-', but don't allow the recovery key to end or begin with one.
-		if len(passphrase) > 1 && passphrase[0] == '-' {
-			passphrase = passphrase[1:]
-		}
-	}
-	return key.Bytes(), nil
-}
-
 // RecoveryKeyUsageReason indicates the reason that a volume had to be activated with the fallback recovery key instead of the TPM
 // sealed key.
 type RecoveryKeyUsageReason uint8
@@ -268,13 +288,13 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			return xerrors.Errorf("cannot obtain recovery key: %w", err)
 		}
 
-		key, err := decodeRecoveryKey(passphrase)
+		key, err := ParseRecoveryKey(passphrase)
 		if err != nil {
 			lastErr = xerrors.Errorf("cannot decode recovery key: %w", err)
 			continue
 		}
 
-		if err := activate(volumeName, sourceDevicePath, key, activateOptions); err != nil {
+		if err := activate(volumeName, sourceDevicePath, key[:], activateOptions); err != nil {
 			err = xerrors.Errorf("cannot activate volume: %w", err)
 			var e *exec.ExitError
 			if !xerrors.As(err, &e) {
@@ -284,7 +304,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		if _, err := unix.AddKey("user", fmt.Sprintf("%s:%s:reason=%d", filepath.Base(os.Args[0]), volumeName, reason), key, userKeyring); err != nil {
+		if _, err := unix.AddKey("user", fmt.Sprintf("%s:%s:reason=%d", filepath.Base(os.Args[0]), volumeName, reason), key[:], userKeyring); err != nil {
 			lastErr = xerrors.Errorf("cannot add recovery key to user keyring: %w", err)
 		}
 		break
@@ -641,7 +661,7 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOpt
 // key argument.
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
-func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey [16]byte) error {
+func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
 	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], []string{
 		// use argon2i as the KDF with an increased cost
 		"--pbkdf", "argon2i", "--iter-time", "5000"})
@@ -657,7 +677,7 @@ func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey [
 // Note that this operation is not atomic. It will delete the existing key from the container before configuring the keyslot with
 // the new key. This is not a problem, because this function is intended to be called in the scenario that the default key cannot
 // be used to activate the LUKS2 container.
-func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey [16]byte, key []byte) error {
+func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, key []byte) error {
 	if len(key) != 64 {
 		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
 	}
