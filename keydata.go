@@ -297,6 +297,10 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	if lockIndexPub == nil {
 		return nil, xerrors.Errorf("NV index at %v is not a valid global lock index", lockNVHandle)
 	}
+	lockIndexName, err := lockIndexPub.Name()
+	if err != nil {
+		return nil, xerrors.Errorf("cannot compute lock NV index name: %w", err)
+	}
 
 	// Obtain a ResourceContext for the PIN NV index. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second time is with a session, and
 	// there is also verification that the returned public area is for the specified handle so that we know that the returned
@@ -329,7 +333,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	}
 	trial.PolicyAuthorize(nil, authKeyName)
 	trial.PolicySecret(pinIndex.Name(), nil)
-	trial.PolicyNV(lockIndex.Name(), nil, 0, tpm2.OpEq)
+	trial.PolicyNV(lockIndexName, nil, 0, tpm2.OpEq)
 
 	if !bytes.Equal(trial.GetDigest(), keyPublic.AuthPolicy) {
 		return nil, keyFileError{errors.New("the sealed key object's authorization policy is inconsistent with the associatedc metadata or persistent TPM resources")}

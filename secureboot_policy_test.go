@@ -384,6 +384,7 @@ func TestComputeDbUpdate(t *testing.T) {
 		desc          string
 		orig          string
 		update        string
+		quirkMode     SigDbUpdateQuirkMode
 		sha1hash      []byte
 		newSignatures int
 	}{
@@ -391,28 +392,48 @@ func TestComputeDbUpdate(t *testing.T) {
 			desc:          "AppendOneCertToDb",
 			orig:          "testdata/efivars3/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates2/db/1.bin",
+			quirkMode:     SigDbUpdateQuirkModeNone,
 			sha1hash:      decodeHexStringT(t, "12669d032dd0c15a157a7af0df7b86f2e174344b"),
 			newSignatures: 1,
 		},
 		{
-			desc:     "AppendExistingCertToDb",
-			orig:     "testdata/efivars5/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
-			update:   "testdata/updates2/db/1.bin",
-			sha1hash: decodeHexStringT(t, "12669d032dd0c15a157a7af0df7b86f2e174344b"),
+			desc:      "AppendExistingCertToDb",
+			orig:      "testdata/efivars5/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
+			update:    "testdata/updates2/db/1.bin",
+			quirkMode: SigDbUpdateQuirkModeNone,
+			sha1hash:  decodeHexStringT(t, "12669d032dd0c15a157a7af0df7b86f2e174344b"),
 		},
 		{
-			desc:          "AppendMsDbxUpdate",
+			desc:          "AppendMsDbxUpdate/1",
 			orig:          "testdata/efivars2/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates1/dbx/MS-2016-08-08.bin",
+			quirkMode:     SigDbUpdateQuirkModeNone,
 			sha1hash:      decodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
 			newSignatures: 77,
 		},
 		{
-			desc:          "AppendDbxUpdateWithDuplicateSignatures",
+			desc:          "AppendMsDbxUpdate/2",
+			orig:          "testdata/efivars2/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
+			update:        "testdata/updates1/dbx/MS-2016-08-08.bin",
+			quirkMode:     SigDbUpdateQuirkModeDedupIgnoresOwner,
+			sha1hash:      decodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
+			newSignatures: 77,
+		},
+		{
+			desc:          "AppendDbxUpdateWithDuplicateSignatures/1",
 			orig:          "testdata/efivars4/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates3/dbx/1.bin",
+			quirkMode:     SigDbUpdateQuirkModeNone,
 			sha1hash:      decodeHexStringT(t, "b49564b2daee39b01b524bef75cf9cde2c3a2a0d"),
 			newSignatures: 2,
+		},
+		{
+			desc:          "AppendDbxUpdateWithDuplicateSignatures/2",
+			orig:          "testdata/efivars4/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
+			update:        "testdata/updates3/dbx/1.bin",
+			quirkMode:     SigDbUpdateQuirkModeDedupIgnoresOwner,
+			sha1hash:      decodeHexStringT(t, "d2af590925046adc61b250a71f00b7b38d0eb3d1"),
+			newSignatures: 1,
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
@@ -433,7 +454,7 @@ func TestComputeDbUpdate(t *testing.T) {
 			}
 			defer update.Close()
 
-			db, err := ComputeDbUpdate(origReader, update)
+			db, err := ComputeDbUpdate(origReader, update, data.quirkMode)
 			if err != nil {
 				t.Fatalf("ComputeDbUpdate failed: %v", err)
 			}
@@ -982,7 +1003,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 		},
 		{
 			// Test that a single dbx update produces 2 digests
-			desc:    "DbxUpdate",
+			desc:    "DbxUpdate/1",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
 			params: EFISecureBootPolicyProfileParams{
@@ -1016,6 +1037,53 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 				{
 					tpm2.HashAlgorithmSHA256: {
 						7: decodeHexStringT(t, "3adb2087747261c43a096cb63ce49d60548029c9e848e8db37f2613a1d39b9e3"),
+					},
+				},
+			},
+		},
+		{
+			// Test that a single dbx update that contains a signature that only differs from an existing signature by SignatureOwner
+			// produces 3 digests - we don't know whether the firmware will consider this extra signature as new or not, so precompute
+			// values for both scenarios.
+			desc:    "DbxUpdate/2",
+			logPath: "testdata/eventlog1.bin",
+			efivars: "testdata/efivars4",
+			params: EFISecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*EFIImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*EFIImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*EFIImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+									},
+								},
+							},
+						},
+					},
+				},
+				SignatureDbUpdateKeystores: []string{"testdata/updates3"},
+			},
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: decodeHexStringT(t, "3adb2087747261c43a096cb63ce49d60548029c9e848e8db37f2613a1d39b9e3"),
+					},
+				},
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: decodeHexStringT(t, "486bbbead76727ca5c634105f6f5d233c8320fa5565b053e34677bf263a684c4"),
+					},
+				},
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: decodeHexStringT(t, "6afe6128b8fa5826736c27c7510d7e576ace53e98abc9e0638dde94e5ec1ecde"),
 					},
 				},
 			},
