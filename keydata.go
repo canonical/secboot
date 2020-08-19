@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	currentMetadataVersion    uint32 = 0
+	currentMetadataVersion    uint32 = 1
 	keyDataHeader             uint32 = 0x55534b24
 	keyPolicyUpdateDataHeader uint32 = 0x55534b50
 )
@@ -86,7 +86,7 @@ func (d *keyPolicyUpdateData) Unmarshal(r io.Reader) (nbytes int, err error) {
 	}
 
 	switch version {
-	case 0:
+	case 0, 1:
 		var raw keyPolicyUpdateDataRaw_v0
 		n, err := tpm2.UnmarshalFromReader(r, &raw)
 		nbytes += n
@@ -105,7 +105,7 @@ func (d *keyPolicyUpdateData) Unmarshal(r io.Reader) (nbytes int, err error) {
 		}
 
 		*d = keyPolicyUpdateData{
-			version:        0,
+			version:        version,
 			authKey:        authKey,
 			creationInfo:   h.Sum(nil),
 			creationData:   raw.CreationData,
@@ -175,7 +175,7 @@ func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
 	}
 
 	switch d.version {
-	case 0:
+	case 0, 1:
 		raw := keyDataRaw_v0{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
@@ -202,7 +202,7 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 	}
 
 	switch version {
-	case 0:
+	case 0, 1:
 		var raw keyDataRaw_v0
 		n, err := tpm2.UnmarshalFromReader(r, &raw)
 		nbytes += n
@@ -210,7 +210,7 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
 		*d = keyData{
-			version:           0,
+			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
 			authModeHint:      raw.AuthModeHint,
