@@ -293,7 +293,7 @@ func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
 		if _, err := tpm2.MarshalToWriter(&tmpW, raw); err != nil {
 			return 0, xerrors.Errorf("cannot marshal data: %w", err)
 		}
-		splitData, err := makeAfSplitData(tmpW.Bytes(), 128*1204, tpm2.HashAlgorithmSHA256)
+		splitData, err := makeAfSplitData(tmpW.Bytes(), 128*1024, tpm2.HashAlgorithmSHA256)
 		if err != nil {
 			return 0, xerrors.Errorf("cannot split data: %w", err)
 		}
