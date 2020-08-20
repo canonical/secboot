@@ -122,8 +122,8 @@ func (d *afSplitData) merge() ([]byte, error) {
 	return afis.MergeHash(d.data, int(d.stripes), func() hash.Hash { return d.hashAlg.NewHash() })
 }
 
-func makeAfSplitData(data []byte, sz int, hashAlg tpm2.HashAlgorithmId) (*afSplitData, error) {
-	stripes := uint32((sz / len(data)) + 1)
+func makeAfSplitData(data []byte, minSz int, hashAlg tpm2.HashAlgorithmId) (*afSplitData, error) {
+	stripes := uint32((minSz / len(data)) + 1)
 
 	split, err := afis.SplitHash(data, int(stripes), func() hash.Hash { return hashAlg.NewHash() })
 	if err != nil {
