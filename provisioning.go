@@ -252,7 +252,7 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	}
 
 	// Set the lockout hierarchy authorization.
-	if err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), tpm2.Auth(newLockoutAuth),
+	if err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), newLockoutAuth,
 		session.IncludeAttrs(tpm2.AttrCommandEncrypt)); err != nil {
 		return xerrors.Errorf("cannot set the lockout hierarchy authorization value: %w", err)
 	}

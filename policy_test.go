@@ -456,7 +456,7 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 			Signature: tpm2.SignatureU{
 				Data: &tpm2.SignatureRSAPSS{
 					Hash: tpm2.HashAlgorithmSHA256,
-					Sig:  tpm2.PublicKeyRSA(sig)}}}
+					Sig:  sig}}}
 
 		if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVWrite); err != nil {
 			t.Errorf("Assertion failed: %v", err)
@@ -2153,7 +2153,7 @@ func TestExecutePolicy(t *testing.T) {
 			}
 			s.AuthPublicKey.Params.RSADetail().KeyBits = uint16(key.N.BitLen())
 			s.AuthPublicKey.Params.RSADetail().Exponent = uint32(key.E)
-			s.AuthPublicKey.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
+			s.AuthPublicKey.Unique.Data = key.N.Bytes()
 		})
 		// Even though this error is caused by broken static metadata, we get a dynamicPolicyDataError error because the signature
 		// verification fails. Validation with validateKeyData will detect the real issue though.
@@ -2209,7 +2209,7 @@ func TestExecutePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("SignPSS failed: %v", err)
 			}
-			d.AuthorizedPolicySignature.Signature.RSAPSS().Sig = tpm2.PublicKeyRSA(sig)
+			d.AuthorizedPolicySignature.Signature.RSAPSS().Sig = sig
 		})
 		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify dynamic authorization policy signature" {
 			t.Errorf("Unexpected error: %v", err)
@@ -2259,7 +2259,7 @@ func TestExecutePolicy(t *testing.T) {
 			}
 			s.AuthPublicKey.Params.RSADetail().KeyBits = uint16(key.N.BitLen())
 			s.AuthPublicKey.Params.RSADetail().Exponent = uint32(key.E)
-			s.AuthPublicKey.Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
+			s.AuthPublicKey.Unique.Data = key.N.Bytes()
 
 			signAlg := d.AuthorizedPolicySignature.Signature.RSAPSS().Hash
 			h := signAlg.NewHash()
@@ -2269,7 +2269,7 @@ func TestExecutePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("SignPSS failed: %v", err)
 			}
-			d.AuthorizedPolicySignature.Signature.RSAPSS().Sig = tpm2.PublicKeyRSA(sig)
+			d.AuthorizedPolicySignature.Signature.RSAPSS().Sig = sig
 		})
 		if err != nil {
 			t.Errorf("Failed to execute policy session: %v", err)

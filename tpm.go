@@ -155,7 +155,7 @@ func verifyEk(cert *x509.Certificate, ek tpm2.ResourceContext) error {
 	if pubKey.E != 65537 {
 		ekPublic.Params.RSADetail().Exponent = uint32(pubKey.E)
 	}
-	ekPublic.Unique.Data = tpm2.PublicKeyRSA(pubKey.N.Bytes())
+	ekPublic.Unique.Data = pubKey.N.Bytes()
 
 	expectedEkName, err := ekPublic.Name()
 	if err != nil {

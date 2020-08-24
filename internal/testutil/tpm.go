@@ -421,7 +421,7 @@ func CertifyTPM(tpm *tpm2.TPMContext, ekCert []byte) error {
 	if err != nil {
 		return xerrors.Errorf("cannot define NV index for EK certificate: %w", err)
 	}
-	if err := tpm.NVWrite(tpm.PlatformHandleContext(), index, tpm2.MaxNVBuffer(ekCert), 0, nil); err != nil {
+	if err := tpm.NVWrite(tpm.PlatformHandleContext(), index, ekCert, 0, nil); err != nil {
 		return xerrors.Errorf("cannot write EK certificate to NV index: %w", err)
 	}
 	return nil
