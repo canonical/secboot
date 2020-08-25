@@ -357,15 +357,17 @@ func TestIdentifyInitialOSLaunchVerificationEvent(t *testing.T) {
 				if err != nil {
 					t.Fatalf("IdentifyInitialOSLaunchVerificationEvent failed: %v", err)
 				}
-				e := (*SecureBootVerificationEvent)(event)
-				if events[data.index] != e.Event() {
+				if events[data.index] != event.Event {
 					t.Errorf("incorrect event detected")
 				}
-				if e.Event().PCRIndex != 7 {
+				if event.PCRIndex != 7 {
 					t.Errorf("Detected event has wrong PCR index")
 				}
-				if e.Event().EventType != tcglog.EventTypeEFIVariableAuthority {
+				if event.EventType != tcglog.EventTypeEFIVariableAuthority {
 					t.Errorf("Detected event has wrong type")
+				}
+				if event.MeasuredInPreOS() {
+					t.Errorf("Detected pre-OS event")
 				}
 			} else {
 				if err == nil {
