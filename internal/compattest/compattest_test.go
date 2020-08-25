@@ -167,11 +167,12 @@ func (s *compatTestSuiteBase) TestChangePIN(c *C) {
 func (s *compatTestSuiteBase) testUnsealWithPIN(c *C, pcrEventsFile string) {
 	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
-
 	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 
 	s.replayPCRSequenceFromFile(c, pcrEventsFile)
 
+	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
+	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
 
 	key, err := k.UnsealFromTPM(s.TPM, testPIN)
@@ -183,40 +184,34 @@ func (s *compatTestSuiteBase) testUnsealWithPIN(c *C, pcrEventsFile string) {
 	c.Check(key, DeepEquals, expectedKey)
 }
 
-func (s *compatTestSuiteBase) testUpdateKeyPCRProtectionPolicy(c *C, pcrProfile *secboot.PCRProtectionProfile) {
-	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.absPath("pud"), pcrProfile), IsNil)
+func (s *compatTestSuiteBase) testUpdatePCRProtectionPolicy(c *C, pcrProfile *secboot.PCRProtectionProfile) {
+	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	c.Assert(err, IsNil)
+	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.absPath("pud"), pcrProfile), IsNil)
 }
 
-func (s *compatTestSuiteBase) testUpdateKeyPCRProtectionPolicyRevokes(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEventsFile string) {
-	tmpDir := c.MkDir()
-	keyFile, err := os.Open(s.absPath("key"))
-	c.Assert(err, IsNil)
-	defer keyFile.Close()
-
-	keyFileBackup, err := os.Create(filepath.Join(tmpDir, "key"))
-	c.Assert(err, IsNil)
-	defer keyFileBackup.Close()
-
-	_, err = io.Copy(keyFileBackup, keyFile)
+func (s *compatTestSuiteBase) testUpdatePCRProtectionPolicyRevokes(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEventsFile string) {
+	kOrig, err := secboot.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
 
-	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.absPath("pud"), pcrProfile), IsNil)
+	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	c.Assert(err, IsNil)
+	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.absPath("pud"), pcrProfile), IsNil)
 
 	s.replayPCRSequenceFromFile(c, pcrEventsFile)
 
-	k, err := secboot.ReadSealedKeyObject(filepath.Join(tmpDir, "key"))
-	c.Assert(err, IsNil)
-
-	_, err = k.UnsealFromTPM(s.TPM, "")
+	_, err = kOrig.UnsealFromTPM(s.TPM, "")
 	c.Check(err, ErrorMatches, "invalid key data file: cannot complete authorization policy assertions: the dynamic authorization policy has been revoked")
 }
 
-func (s *compatTestSuiteBase) testUpdateKeyPCRProtectionPolicyAndUnseal(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEvents io.Reader) {
-	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.absPath("pud"), pcrProfile), IsNil)
+func (s *compatTestSuiteBase) testUpdatePCRProtectionPolicyAndUnseal(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEvents io.Reader) {
+	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	c.Assert(err, IsNil)
+	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.absPath("pud"), pcrProfile), IsNil)
 
 	s.replayPCRSequenceFromReader(c, pcrEvents)
 
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
 
 	key, err := k.UnsealFromTPM(s.TPM, "")

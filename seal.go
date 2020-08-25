@@ -331,26 +331,17 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	return nil
 }
 
-// UpdateKeyPCRProtectionPolicy updates the PCR protection policy for the sealed key at the path specified by the keyPath argument
-// to the profile defined by the pcrProfile argument. In order to do this, the caller must also specify the path to the policy update
-// data file that was saved by SealKeyToTPM.
+// UpdatePCRProtectionPolicy updates the PCR protection policy for the sealed key to the profile defined by the pcrProfile argument.
+// In order to do this, the caller must also specify the path to the policy update data file that was saved by SealKeyToTPM. If this
+// file cannot be opened, a wrapped *os.PathError error will be returned.
 //
-// If either file cannot be opened, a wrapped *os.PathError error will be returned.
+// If the sealed key data fails validation checks, an InvalidKeyFileError error will be returned.
 //
-// If either file cannot be deserialized correctly or validation of the files fails, a InvalidKeyFileError error will be returned.
-//
-// On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
-// computed from the supplied PCRProtectionProfile.
-func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath string, pcrProfile *PCRProtectionProfile) error {
+// On success, the file at the path that the sealed key data was originally loaded from is updated atomically with an updated
+// authorization policy that includes a PCR policy computed from the supplied PCRProtectionProfile.
+func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *TPMConnection, policyUpdatePath string, pcrProfile *PCRProtectionProfile) error {
 	// Use the HMAC session created when the connection was opened rather than creating a new one.
 	session := tpm.HmacSession()
-
-	// Open the key data file
-	keyFile, err := os.Open(keyPath)
-	if err != nil {
-		return xerrors.Errorf("cannot open key data file: %w", err)
-	}
-	defer keyFile.Close()
 
 	// Open the policy update data file
 	policyUpdateFile, err := os.Open(policyUpdatePath)
@@ -359,7 +350,12 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 	}
 	defer policyUpdateFile.Close()
 
-	data, policyUpdateData, pinIndexPublic, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, policyUpdateFile, session)
+	policyUpdateData, err := decodeKeyPolicyUpdateData(policyUpdateFile)
+	if err != nil {
+		return InvalidKeyFileError{fmt.Sprintf("cannot decode dynamic policy update data: %v", err)}
+	}
+
+	pinIndexPublic, err := k.data.validate(tpm.TPMContext, policyUpdateData, tpm.HmacSession())
 	if err != nil {
 		if isKeyFileError(err) {
 			return InvalidKeyFileError{err.Error()}
@@ -369,23 +365,23 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 	}
 
 	authKey := policyUpdateData.authKey
-	authPublicKey := data.staticPolicyData.AuthPublicKey
-	pinIndexAuthPolicies := data.staticPolicyData.PinIndexAuthPolicies
+	authPublicKey := k.data.staticPolicyData.AuthPublicKey
+	pinIndexAuthPolicies := k.data.staticPolicyData.PinIndexAuthPolicies
 
 	// Compute a new dynamic authorization policy
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
-	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, data.version, data.keyPublic.NameAlg, authPublicKey.NameAlg,
+	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, k.data.version, k.data.keyPublic.NameAlg, authPublicKey.NameAlg,
 		authKey, pinIndexPublic, pinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
 		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
 
 	// Atomically update the key data file
-	data.dynamicPolicyData = policyData
+	k.data.dynamicPolicyData = policyData
 
-	if err := data.writeToFileAtomic(keyPath); err != nil {
+	if err := k.data.writeToFileAtomic(k.path); err != nil {
 		return xerrors.Errorf("cannot write key data file: %v", err)
 	}
 

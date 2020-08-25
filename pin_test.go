@@ -246,7 +246,10 @@ type testChangePINErrorHandlingData struct {
 
 func (s *pinSuite) testChangePINErrorHandling(c *C, data *testChangePINErrorHandlingData) {
 	k, err := ReadSealedKeyObject(data.keyFile)
-	c.Assert(err, IsNil)
+	if err != nil {
+		c.Check(err, data.errChecker, data.errCheckerArgs...)
+		return
+	}
 	c.Check(k.ChangePIN(s.TPM, "", "1234"), data.errChecker, data.errCheckerArgs...)
 }
 
@@ -286,6 +289,6 @@ func (s *pinSuite) TestChangePINErrorHandling4(c *C) {
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"invalid key data file: cannot validate key data: PIN NV index is unavailable"},
+		errCheckerArgs: []interface{}{"invalid key data file: PIN NV index is unavailable"},
 	})
 }

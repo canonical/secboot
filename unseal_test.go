@@ -244,8 +244,12 @@ func TestUnsealErrorHandling(t *testing.T) {
 		defer closeTPM(t, tpm)
 
 		err := run(t, tpm, func(keyFile, policyUpdateFile string) {
-			if err := UpdateKeyPCRProtectionPolicy(tpm, keyFile, policyUpdateFile, getTestPCRProfile()); err != nil {
-				t.Fatalf("UpdateKeyPCRProtectionPolicy failed: %v", err)
+			k, err := ReadSealedKeyObject(keyFile)
+			if err != nil {
+				t.Fatalf("ReadSealedKeyObject failed: %v", err)
+			}
+			if err := k.UpdatePCRProtectionPolicy(tpm, policyUpdateFile, getTestPCRProfile()); err != nil {
+				t.Fatalf("UpdatePCRProtectionPolicy failed: %v", err)
 			}
 		})
 		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+

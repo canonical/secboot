@@ -261,7 +261,7 @@ func performPinChange(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies 
 //
 // If oldPIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be incremented.
 //
-// On success, the file at the original path of the sealed key object is updated atomically.
+// On success, the file at the path that the sealed key data was originally loaded from is updated atomically.
 func (k *SealedKeyObject) ChangePIN(tpm *TPMConnection, oldPIN, newPIN string) error {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
