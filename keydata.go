@@ -462,6 +462,11 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		}
 	}
 
+	var pcrPolicyRef tpm2.Nonce
+	if d.version > 0 {
+		pcrPolicyRef = computePcrPolicyRefFromCounterContext(pcrPolicyCounter)
+	}
+
 	// Validate the type and scheme of the dynamic authorization policy signing key.
 	authPublicKey := d.staticPolicyData.authPublicKey
 	authKeyName, err := authPublicKey.Name()
@@ -477,8 +482,6 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	if err != nil {
 		return nil, keyFileError{xerrors.Errorf("cannot determine if static authorization policy matches sealed key object: %w", err)}
 	}
-
-	pcrPolicyRef := d.staticPolicyData.pcrPolicyRef
 
 	trial.PolicyAuthorize(pcrPolicyRef, authKeyName)
 	if d.version == 0 {
@@ -499,21 +502,6 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		pcrPolicyCounterPub, _, err = tpm.NVReadPublic(pcrPolicyCounter, session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
 			return nil, xerrors.Errorf("cannot read public area of PCR policy counter: %w", err)
-		}
-	}
-
-	// For > v0 metadata, validate that the PCR policy reference computed from the PCR policy counter name matches the validated
-	// reference in the static metadata. If this checks out, then the counter has the same name as the one that was created when
-	// the key was initially sealed. This is important because if an adversary creates a new counter and modifies the static metadata
-	// to point to it and force a recovery, and then we recreate and sign a new PCR policy using the new counter, the previous policy
-	// won't be revoked.
-	if d.version > 0 {
-		expectedPcrPolicyRef, err := computePcrPolicyRef(keyPublic.NameAlg, pcrPolicyCounterPub)
-		if err != nil {
-			return nil, xerrors.Errorf("cannot compute expected PCR policy ref: %w", err)
-		}
-		if !bytes.Equal(expectedPcrPolicyRef, pcrPolicyRef) {
-			return nil, keyFileError{errors.New("the PCR policy counter is inconsistent with the metadata")}
 		}
 	}
 

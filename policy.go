@@ -53,7 +53,6 @@ type dynamicPolicyComputeParams struct {
 	pcrDigests        tpm2.DigestList       // Approved PCR digests
 	policyCounterName tpm2.Name             // Name of the NV index used for revoking authorization policies
 	policyCount       uint64                // Count for this policy, used for revocation
-	policyRef         tpm2.Nonce            // The reference used when authorizing the computed policy
 }
 
 // policyOrDataNode represents a collection of up to 8 digests used in a single TPM2_PolicyOR invocation, and forms part of a tree
@@ -114,7 +113,6 @@ type staticPolicyData struct {
 	authPublicKey          *tpm2.Public
 	pcrPolicyCounterHandle tpm2.Handle
 	v0PinIndexAuthPolicies tpm2.DigestList
-	pcrPolicyRef           tpm2.Nonce
 }
 
 // staticPolicyDataRaw_v0 is version 0 of the on-disk format of staticPolicyData.
@@ -149,16 +147,14 @@ type staticPolicyDataRaw_v1 struct {
 func (d *staticPolicyDataRaw_v1) data() *staticPolicyData {
 	return &staticPolicyData{
 		authPublicKey:          d.AuthPublicKey,
-		pcrPolicyCounterHandle: d.PCRPolicyCounterHandle,
-		pcrPolicyRef:           d.PCRPolicyRef}
+		pcrPolicyCounterHandle: d.PCRPolicyCounterHandle}
 }
 
 // makeStaticPolicyDataRaw_v1 converts staticPolicyData to version 1 of the on-disk format.
 func makeStaticPolicyDataRaw_v1(data *staticPolicyData) *staticPolicyDataRaw_v1 {
 	return &staticPolicyDataRaw_v1{
 		AuthPublicKey:          data.authPublicKey,
-		PCRPolicyCounterHandle: data.pcrPolicyCounterHandle,
-		PCRPolicyRef:           data.pcrPolicyRef}
+		PCRPolicyCounterHandle: data.pcrPolicyCounterHandle}
 }
 
 // computePcrPolicyCounterAuthPolicies computes the authorization policy digests passed to TPM2_PolicyOR for a PCR
@@ -644,29 +640,33 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 	return digests
 }
 
-// computePcrPolicyRef computes the reference used for authorization of signed PCR policies.
-func computePcrPolicyRef(alg tpm2.HashAlgorithmId, counterPublic *tpm2.NVPublic) (tpm2.Nonce, error) {
-	if !alg.Supported() {
-		return nil, errors.New("unsupported algorithm")
+// computePcrPolicyRefFromCounterName computes the reference used for authorization of signed PCR policies from the supplied
+// PCR policy counter name. If name is empty, then the name of the null handle is assumed. The policy ref serves 2 purposes:
+// 1) It limits the scope of the signed policy to just PCR policies (the dynamic authorization policy key may be able to sign
+//    different types of policy in the future, for example, to permit recovery with a signed assertion.
+// 2) It binds the name of the PCR policy counter to the static authorization policy.
+func computePcrPolicyRefFromCounterName(name tpm2.Name) tpm2.Nonce {
+	if len(name) == 0 {
+		name = make(tpm2.Name, binary.Size(tpm2.Handle(0)))
+		binary.BigEndian.PutUint32(name, uint32(tpm2.HandleNull))
 	}
 
-	var counterName tpm2.Name
-	if counterPublic != nil {
-		var err error
-		counterName, err = counterPublic.Name()
-		if err != nil {
-			return nil, xerrors.Errorf("cannot compute name of counter: %w", err)
-		}
-	} else {
-		counterName = make(tpm2.Name, binary.Size(tpm2.Handle(0)))
-		binary.BigEndian.PutUint32(counterName, uint32(tpm2.HandleNull))
-	}
-
-	h := alg.NewHash()
+	h := tpm2.HashAlgorithmSHA256.NewHash()
 	h.Write([]byte("AUTH-PCR-POLICY"))
-	h.Write(counterName)
+	h.Write(name)
 
-	return h.Sum(nil), nil
+	return h.Sum(nil)
+}
+
+// computePcrPolicyRefFromCounterContext computes the reference used for authorization of signed PCR policies from the supplied
+// ResourceContext.
+func computePcrPolicyRefFromCounterContext(context tpm2.ResourceContext) tpm2.Nonce {
+	var name tpm2.Name
+	if context != nil {
+		name = context.Name()
+	}
+
+	return computePcrPolicyRefFromCounterName(name)
 }
 
 // computeStaticPolicy computes the part of an authorization policy that is bound to a sealed key object and never changes.
@@ -676,26 +676,24 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
 	}
 
-	pcrPolicyRef, err := computePcrPolicyRef(alg, input.pcrPolicyCounterPub)
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute dynamic authorization policy ref: %w", err)
+	pcrPolicyCounterHandle := tpm2.HandleNull
+	var pcrPolicyCounterName tpm2.Name
+	if input.pcrPolicyCounterPub != nil {
+		pcrPolicyCounterHandle = input.pcrPolicyCounterPub.Index
+		pcrPolicyCounterName, err = input.pcrPolicyCounterPub.Name()
+		if err != nil {
+			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
+		}
 	}
 
 	trial, _ := tpm2.ComputeAuthPolicy(alg)
-
-	trial.PolicyAuthorize(pcrPolicyRef, keyName)
+	trial.PolicyAuthorize(computePcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
 	trial.PolicyAuthValue()
 	trial.PolicyNV(input.lockIndexName, nil, 0, tpm2.OpEq)
 
-	pcrPolicyCounterHandle := tpm2.HandleNull
-	if input.pcrPolicyCounterPub != nil {
-		pcrPolicyCounterHandle = input.pcrPolicyCounterPub.Index
-	}
-
 	return &staticPolicyData{
 		authPublicKey:          input.key,
-		pcrPolicyCounterHandle: pcrPolicyCounterHandle,
-		pcrPolicyRef:           pcrPolicyRef}, trial.GetDigest(), nil
+		pcrPolicyCounterHandle: pcrPolicyCounterHandle}, trial.GetDigest(), nil
 }
 
 // computePolicyORData computes data required to perform a sequence of TPM2_PolicyOR assertions in order to support compound
@@ -786,7 +784,9 @@ func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynam
 	// Create a digest to sign
 	h := input.signAlg.NewHash()
 	h.Write(authorizedPolicy)
-	h.Write(input.policyRef)
+	if version > 0 {
+		h.Write(computePcrPolicyRefFromCounterName(input.policyCounterName))
+	}
 
 	// Sign the digest
 	sig, err := rsa.SignPSS(rand.Reader, input.key, input.signAlg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
@@ -983,20 +983,27 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 	defer tpm.FlushContext(authorizeKey)
 
+	var pcrPolicyRef tpm2.Nonce
+	if version > 0 {
+		pcrPolicyRef = computePcrPolicyRefFromCounterContext(policyCounter)
+	}
+
 	h := authPublicKey.NameAlg.NewHash()
 	h.Write(dynamicInput.authorizedPolicy)
-	h.Write(staticInput.pcrPolicyRef)
+	h.Write(pcrPolicyRef)
 
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, h.Sum(nil), dynamicInput.authorizedPolicySignature)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
-			// dynamicInput.AuthorizedPolicySignature is invalid.
+			// dynamicInput.AuthorizedPolicySignature or the computed policy ref is invalid.
+			// XXX: It's not possible to determine whether this is broken dynamic or static metadata -
+			//  we should just do away with the distinction here tbh
 			return dynamicPolicyDataError{errors.New("cannot verify PCR policy signature")}
 		}
 		return xerrors.Errorf("cannot verify PCR policy signature: %w", err)
 	}
 
-	if err := tpm.PolicyAuthorize(policySession, dynamicInput.authorizedPolicy, staticInput.pcrPolicyRef, authorizeKey.Name(), authorizeTicket); err != nil {
+	if err := tpm.PolicyAuthorize(policySession, dynamicInput.authorizedPolicy, pcrPolicyRef, authorizeKey.Name(), authorizeTicket); err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
 			// dynamicInput.AuthorizedPolicy is invalid.
 			return dynamicPolicyDataError{errors.New("the PCR policy is invalid")}

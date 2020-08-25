@@ -43,7 +43,7 @@ func makeSealedKeyTemplate() *tpm2.Public {
 }
 
 func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey *rsa.PrivateKey,
-	counterPub *tpm2.NVPublic, counterAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile, policyRef tpm2.Nonce,
+	counterPub *tpm2.NVPublic, counterAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
 	// Obtain the count for the new policy
 	var nextPolicyCount uint64
@@ -103,8 +103,7 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 		pcrs:              pcrs,
 		pcrDigests:        pcrDigests,
 		policyCounterName: counterName,
-		policyCount:       nextPolicyCount,
-		policyRef:         policyRef}
+		policyCount:       nextPolicyCount}
 
 	policyData, err := computeDynamicPolicy(version, alg, &policyParams)
 	if err != nil {
@@ -302,7 +301,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		pcrProfile = &PCRProtectionProfile{}
 	}
 	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, currentMetadataVersion, template.NameAlg,
-		authPublicKey.NameAlg, authKey, pcrPolicyCounterPub, nil, pcrProfile, staticPolicyData.pcrPolicyRef, session)
+		authPublicKey.NameAlg, authKey, pcrPolicyCounterPub, nil, pcrProfile, session)
 	if err != nil {
 		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -391,7 +390,7 @@ func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath, policyUpdatePath 
 		pcrProfile = &PCRProtectionProfile{}
 	}
 	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, data.version, data.keyPublic.NameAlg, authPublicKey.NameAlg,
-		authKey, pcrPolicyCounterPub, v0PinIndexAuthPolicies, pcrProfile, data.staticPolicyData.pcrPolicyRef, session)
+		authKey, pcrPolicyCounterPub, v0PinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
 		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}

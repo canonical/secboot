@@ -567,7 +567,7 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 			desc:                "SHA1",
 			alg:                 tpm2.HashAlgorithmSHA1,
 			pcrPolicyCounterPub: pcrPolicyCounterPub,
-			policy:              decodeHexStringT(t, "53401cc75dc653571c955f004700a0f8efb85a34"),
+			policy:              decodeHexStringT(t, "788f729a408299adb6d80b57978456d9712ea145"),
 		},
 		{
 			desc:   "NoPolicyCounter",
@@ -600,11 +600,6 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 
 			if len(dataout.V0PinIndexAuthPolicies()) != 0 {
 				t.Errorf("Wrong number of legacy PIN NV index auth policies")
-			}
-
-			expectedPcrPolicyRef, _ := ComputePcrPolicyRef(data.alg, data.pcrPolicyCounterPub)
-			if !bytes.Equal(dataout.PcrPolicyRef(), expectedPcrPolicyRef) {
-				t.Errorf("Unexpected PCR policy ref")
 			}
 
 			if !bytes.Equal(policy, data.policy) {
@@ -1120,7 +1115,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 				},
 			},
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
-			policy:       decodeHexStringT(t, "e76d63a3bf5a231bad618a41699cb15227f53dd7602b8ef79ddb10d3c253e826"),
+			policy:       decodeHexStringT(t, "2af7dc478be6b563113b150fa5c2cc844506ec2273c9aa69ff5a67b150b3c339"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
@@ -1129,8 +1124,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 				d, _ := tpm2.ComputePCRDigest(data.alg, data.pcrs, v)
 				pcrDigests = append(pcrDigests, d)
 			}
-			policyRef, _ := ComputePcrPolicyRef(data.alg, policyCounterPub)
-			dataout, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrs, pcrDigests, policyCounterName, data.policyCount, policyRef))
+			dataout, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrs, pcrDigests, data.policyCounterName, data.policyCount))
 			if data.err == "" {
 				if err != nil {
 					t.Fatalf("ComputeDynamicPolicy failed: %v", err)
@@ -1157,7 +1151,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 
 				h := data.signAlg.NewHash()
 				h.Write(dataout.AuthorizedPolicy())
-				h.Write(policyRef)
+				h.Write(ComputePcrPolicyRefFromCounterName(data.policyCounterName))
 
 				if err := rsa.VerifyPSS(&key.PublicKey, data.signAlg.GetHash(), h.Sum(nil),
 					[]byte(dataout.AuthorizedPolicySignature().Signature.RSAPSS().Sig),
@@ -1247,7 +1241,7 @@ func TestExecutePolicy(t *testing.T) {
 			pcrDigests = append(pcrDigests, d)
 		}
 		dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg,
-			NewDynamicPolicyComputeParams(key, signAlg, data.pcrs, pcrDigests, policyCounterName, data.policyCount, staticPolicyData.PcrPolicyRef()))
+			NewDynamicPolicyComputeParams(key, signAlg, data.pcrs, pcrDigests, policyCounterName, data.policyCount))
 		if err != nil {
 			t.Fatalf("ComputeDynamicPolicy failed: %v", err)
 		}
@@ -2058,10 +2052,16 @@ func TestExecutePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
+
+			policyCounter, err := tpm.CreateResourceContextFromTPM(s.PcrPolicyCounterHandle())
+			if err != nil {
+				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+			}
+
 			alg := d.AuthorizedPolicySignature().Signature.RSAPSS().Hash
 			h := alg.NewHash()
 			h.Write(d.AuthorizedPolicy())
-			h.Write(s.PcrPolicyRef())
+			h.Write(ComputePcrPolicyRefFromCounterContext(policyCounter))
 
 			sig, err := rsa.SignPSS(testutil.RandReader, key, alg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 			if err != nil {
@@ -2120,10 +2120,15 @@ func TestExecutePolicy(t *testing.T) {
 			s.AuthPublicKey().Params.RSADetail().Exponent = uint32(key.E)
 			s.AuthPublicKey().Unique.Data = tpm2.PublicKeyRSA(key.N.Bytes())
 
+			policyCounter, err := tpm.CreateResourceContextFromTPM(s.PcrPolicyCounterHandle())
+			if err != nil {
+				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+			}
+
 			signAlg := d.AuthorizedPolicySignature().Signature.RSAPSS().Hash
 			h := signAlg.NewHash()
 			h.Write(d.AuthorizedPolicy())
-			h.Write(s.PcrPolicyRef())
+			h.Write(ComputePcrPolicyRefFromCounterContext(policyCounter))
 
 			sig, err := rsa.SignPSS(testutil.RandReader, key, signAlg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 			if err != nil {
@@ -2405,7 +2410,7 @@ func TestExecutePolicy(t *testing.T) {
 			s.SetPcrPolicyCounterHandle(policyCounterPub.Index)
 			d.SetPolicyCount(policyCount)
 		})
-		if !IsDynamicPolicyDataError(err) || err.Error() != "the PCR policy is invalid" {
+		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2465,7 +2470,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 	pcrs := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}
 	pcrDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, pcrs, tpm2.PCRValues{tpm2.HashAlgorithmSHA256: {7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")}})
 	dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, tpm2.HashAlgorithmSHA256,
-		NewDynamicPolicyComputeParams(key, signAlg, pcrs, tpm2.DigestList{pcrDigest}, policyCounter.Name(), policyCount, staticPolicyData.PcrPolicyRef()))
+		NewDynamicPolicyComputeParams(key, signAlg, pcrs, tpm2.DigestList{pcrDigest}, policyCounter.Name(), policyCount))
 	if err != nil {
 		t.Fatalf("ComputeDynamicPolicy failed: %v", err)
 	}

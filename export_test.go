@@ -44,7 +44,8 @@ var (
 	ComputeDbUpdate                          = computeDbUpdate
 	ComputeDynamicPolicy                     = computeDynamicPolicy
 	ComputePcrPolicyCounterAuthPolicies      = computePcrPolicyCounterAuthPolicies
-	ComputePcrPolicyRef                      = computePcrPolicyRef
+	ComputePcrPolicyRefFromCounterContext    = computePcrPolicyRefFromCounterContext
+	ComputePcrPolicyRefFromCounterName       = computePcrPolicyRefFromCounterName
 	ComputePeImageDigest                     = computePeImageDigest
 	ComputePolicyORData                      = computePolicyORData
 	ComputeSnapModelDigest                   = computeSnapModelDigest
@@ -142,10 +143,6 @@ func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
 	return d.v0PinIndexAuthPolicies
 }
 
-func (d *StaticPolicyData) PcrPolicyRef() tpm2.Nonce {
-	return d.pcrPolicyRef
-}
-
 type WinCertificate interface {
 	ToWinCertificateAuthenticode() *WinCertificateAuthenticode
 	ToWinCertificateUefiGuid() *WinCertificateUefiGuid
@@ -233,16 +230,15 @@ func MockSystemdCryptsetupPath(path string) (restore func()) {
 	}
 }
 
-func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name, policyCount uint64,
-	policyRef tpm2.Nonce) *dynamicPolicyComputeParams {
+func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList,
+	pcrDigests tpm2.DigestList, policyCounterName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{
 		key:               key,
 		signAlg:           signAlg,
 		pcrs:              pcrs,
 		pcrDigests:        pcrDigests,
 		policyCounterName: policyCounterName,
-		policyCount:       policyCount,
-		policyRef:         policyRef}
+		policyCount:       policyCount}
 }
 
 func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, lockIndexName tpm2.Name) *staticPolicyComputeParams {
