@@ -558,14 +558,16 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 		policy           tpm2.Digest
 	}{
 		{
-			desc:   "SHA256",
-			alg:    tpm2.HashAlgorithmSHA256,
-			policy: decodeHexStringT(t, "e172910f530f8ba086fd347f57709a5e7aa0528a766c5270d7fd2e2c5bad55ac"),
+			desc:             "SHA256",
+			alg:              tpm2.HashAlgorithmSHA256,
+			policyCounterPub: policyCounterPub,
+			policy:           decodeHexStringT(t, "b3040eda571b46a83266c0d548e80dc69932eaa66f3ad724cd1a6db5606cca72"),
 		},
 		{
-			desc:   "SHA1",
-			alg:    tpm2.HashAlgorithmSHA1,
-			policy: decodeHexStringT(t, "90b35075d3a988632ae3be3ddfc92227e322c17f"),
+			desc:             "SHA1",
+			alg:              tpm2.HashAlgorithmSHA1,
+			policyCounterPub: policyCounterPub,
+			policy:           decodeHexStringT(t, "53401cc75dc653571c955f004700a0f8efb85a34"),
 		},
 		{
 			desc:   "NoPolicyCounter",
