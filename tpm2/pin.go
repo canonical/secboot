@@ -20,8 +20,6 @@
 package tpm2
 
 import (
-	"os"
-
 	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
@@ -150,7 +148,7 @@ func performPinChange(tpm *tpm2.TPMContext, keyPrivate tpm2.Private, keyPublic *
 // If the supplied key data file fails validation checks, an InvalidKeyFileError error will be returned.
 //
 // If oldPIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be incremented.
-func ChangePIN(tpm *Connection, path string, oldPIN, newPIN string) error {
+func (k *SealedKeyObject) ChangePIN(tpm *Connection, oldPIN, newPIN string) error {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
@@ -161,15 +159,8 @@ func ChangePIN(tpm *Connection, path string, oldPIN, newPIN string) error {
 		return ErrTPMLockout
 	}
 
-	// Open the key data file
-	keyFile, err := os.Open(path)
-	if err != nil {
-		return xerrors.Errorf("cannot open key data file: %w", err)
-	}
-	defer keyFile.Close()
-
-	// Read and validate the key data file
-	data, _, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
+	// Validate the sealed key data
+	pcrPolicyCounterPub, err := k.data.validate(tpm.TPMContext, nil, tpm.HmacSession())
 	if err != nil {
 		if isKeyFileError(err) {
 			return InvalidKeyFileError{err.Error()}
@@ -178,37 +169,37 @@ func ChangePIN(tpm *Connection, path string, oldPIN, newPIN string) error {
 	}
 
 	// Change the PIN
-	if data.version == 0 {
-		if err := performPinChangeV0(tpm.TPMContext, pcrPolicyCounterPub, data.staticPolicyData.v0PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
+	if k.data.version == 0 {
+		if err := performPinChangeV0(tpm.TPMContext, pcrPolicyCounterPub, k.data.staticPolicyData.v0PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
 			if isAuthFailError(err, tpm2.CommandNVChangeAuth, 1) {
 				return ErrPINFail
 			}
 			return err
 		}
 	} else {
-		newKeyPrivate, err := performPinChange(tpm.TPMContext, data.keyPrivate, data.keyPublic, oldPIN, newPIN, tpm.HmacSession())
+		newKeyPrivate, err := performPinChange(tpm.TPMContext, k.data.keyPrivate, k.data.keyPublic, oldPIN, newPIN, tpm.HmacSession())
 		if err != nil {
 			if isAuthFailError(err, tpm2.CommandObjectChangeAuth, 1) {
 				return ErrPINFail
 			}
 			return err
 		}
-		data.keyPrivate = newKeyPrivate
+		k.data.keyPrivate = newKeyPrivate
 	}
 
 	// Update the metadata and write a new key data file
-	origAuthModeHint := data.authModeHint
+	origAuthModeHint := k.data.authModeHint
 	if newPIN == "" {
-		data.authModeHint = authModeNone
+		k.data.authModeHint = authModeNone
 	} else {
-		data.authModeHint = authModePIN
+		k.data.authModeHint = authModePIN
 	}
 
-	if origAuthModeHint == data.authModeHint && data.version == 0 {
+	if origAuthModeHint == k.data.authModeHint && k.data.version == 0 {
 		return nil
 	}
 
-	if err := data.writeToFileAtomic(path); err != nil {
+	if err := k.data.writeToFileAtomic(k.path); err != nil {
 		return xerrors.Errorf("cannot write key data file: %v", err)
 	}
 
