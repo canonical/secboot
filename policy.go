@@ -660,7 +660,7 @@ func computeDynamicPolicyRef(alg tpm2.HashAlgorithmId, counterPublic *tpm2.NVPub
 	}
 
 	h := alg.NewHash()
-	h.Write([]byte("DYNAMIC-PCR"))
+	h.Write([]byte("AUTH-PCR-POLICY"))
 	h.Write(counterName)
 
 	return h.Sum(nil), nil
