@@ -685,52 +685,6 @@ func isKeyFileError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// decodeAndValidateKeyData will deserialize keyData from the provided io.Reader and then perform some correctness checking. On
-// success, it returns the keyData, dynamic authorization policy signing key (if authData is provided) and the validated public area
-// of the PCR policy counter index.
-func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile io.Reader, authData interface{}, session tpm2.SessionContext) (*keyData, crypto.PrivateKey, *tpm2.NVPublic, error) {
-	// Read the key data
-	data, err := decodeKeyData(keyFile)
-	if err != nil {
-		return nil, nil, nil, keyFileError{xerrors.Errorf("cannot read key data: %w", err)}
-	}
-
-	var authKey crypto.PrivateKey
-
-	switch a := authData.(type) {
-	case io.Reader:
-		// If we were called with an io.Reader, then we're expecting to load a legacy version-0 keydata and associated
-		// private key file.
-		policyUpdateData, err := decodeKeyPolicyUpdateData(a)
-		if err != nil {
-			return nil, nil, nil, keyFileError{xerrors.Errorf("cannot read dynamic policy update data: %w", err)}
-		}
-		if policyUpdateData.version != data.version {
-			return nil, nil, nil, keyFileError{errors.New("mismatched metadata versions")}
-		}
-		authKey = policyUpdateData.authKey
-	case PolicyAuthKey:
-		if len(a) > 0 {
-			// If we were called with a byte slice, then we're expecting to load the current keydata version and the byte
-			// slice is the private part of the elliptic auth key.
-			authKey, err = createECDSAPrivateKeyFromTPM(data.staticPolicyData.authPublicKey, tpm2.ECCParameter(a))
-			if err != nil {
-				return nil, nil, nil, keyFileError{xerrors.Errorf("cannot create auth key: %w", err)}
-			}
-		}
-	case nil:
-	default:
-		panic("invalid type")
-	}
-
-	pcrPolicyCounterPub, err := data.validate(tpm, authKey, session)
-	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot validate key data: %w", err)
-	}
-
-	return data, authKey, pcrPolicyCounterPub, nil
-}
-
 // SealedKeyObject corresponds to a sealed key data file.
 type SealedKeyObject struct {
 	path string // XXX: This is here temporarily and will be removed in a future PR

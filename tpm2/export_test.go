@@ -22,7 +22,6 @@ package tpm2
 import (
 	"crypto/ecdsa"
 	"io"
-	"os"
 
 	"github.com/canonical/go-tpm2"
 
@@ -176,12 +175,16 @@ func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NV
 }
 
 func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
-	kf, err := os.Open(keyFile)
+	k, err := ReadSealedKeyObject(keyFile)
 	if err != nil {
 		return err
 	}
-	defer kf.Close()
 
-	_, _, _, err = decodeAndValidateKeyData(tpm, kf, authPrivateKey, session)
+	authKey, err := createECDSAPrivateKeyFromTPM(k.data.staticPolicyData.authPublicKey, tpm2.ECCParameter(authPrivateKey))
+	if err != nil {
+		return err
+	}
+
+	_, err = k.data.validate(tpm, authKey, session)
 	return err
 }
