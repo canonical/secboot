@@ -657,6 +657,9 @@ func computePcrPolicyRef(alg tpm2.HashAlgorithmId, counterPublic *tpm2.NVPublic)
 		if err != nil {
 			return nil, xerrors.Errorf("cannot compute name of counter: %w", err)
 		}
+	} else {
+		counterName = make(tpm2.Name, binary.Size(tpm2.Handle(0)))
+		binary.BigEndian.PutUint32(counterName, uint32(tpm2.HandleNull))
 	}
 
 	h := alg.NewHash()

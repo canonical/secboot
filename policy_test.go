@@ -572,7 +572,7 @@ duwzA18V2dm66mFx1NcqfNyRUbclhN26KAaRnTDQrAaxFIgoO+Xm
 		{
 			desc:   "NoPolicyCounter",
 			alg:    tpm2.HashAlgorithmSHA256,
-			policy: decodeHexStringT(t, "e172910f530f8ba086fd347f57709a5e7aa0528a766c5270d7fd2e2c5bad55ac"),
+			policy: decodeHexStringT(t, "84a089cef19c8ea684e6338cd2a12ed53cf7e7601600a15304edd5914b1c3c0f"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
