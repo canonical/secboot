@@ -151,24 +151,27 @@ func (s *compatTestSuiteBase) TestChangePIN(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
 
-	c.Check(secboot.ChangePIN(s.TPM, s.absPath("key"), "", testPIN), IsNil)
+	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
+	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
 	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
 
-	c.Check(secboot.ChangePIN(s.TPM, s.absPath("key"), testPIN, ""), IsNil)
+	c.Check(k.ChangePIN(s.TPM, testPIN, ""), IsNil)
+	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
 	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
 }
 
 func (s *compatTestSuiteBase) testUnsealWithPIN(c *C, pcrEventsFile string) {
-	c.Check(secboot.ChangePIN(s.TPM, s.absPath("key"), "", testPIN), IsNil)
+	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	c.Assert(err, IsNil)
+
+	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 
 	s.replayPCRSequenceFromFile(c, pcrEventsFile)
 
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
-	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
 
 	key, err := k.UnsealFromTPM(s.TPM, testPIN)

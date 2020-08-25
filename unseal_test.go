@@ -104,15 +104,15 @@ func TestUnsealWithPIN(t *testing.T) {
 	}
 	defer undefineKeyNVSpace(t, tpm, keyFile)
 
-	testPIN := "1234"
-
-	if err := ChangePIN(tpm, keyFile, "", testPIN); err != nil {
-		t.Errorf("ChangePIN failed: %v", err)
-	}
-
 	k, err := ReadSealedKeyObject(keyFile)
 	if err != nil {
 		t.Fatalf("ReadSealedKeyObject failed: %v", err)
+	}
+
+	testPIN := "1234"
+
+	if err := k.ChangePIN(tpm, "", testPIN); err != nil {
+		t.Errorf("ChangePIN failed: %v", err)
 	}
 
 	keyUnsealed, err := k.UnsealFromTPM(tpm, testPIN)
@@ -276,7 +276,11 @@ func TestUnsealErrorHandling(t *testing.T) {
 		defer closeTPM(t, tpm)
 
 		err := run(t, tpm, func(keyFile, _ string) {
-			if err := ChangePIN(tpm, keyFile, "", "1234"); err != nil {
+			k, err := ReadSealedKeyObject(keyFile)
+			if err != nil {
+				t.Fatalf("ReadSealedKeyObject failed: %v", err)
+			}
+			if err := k.ChangePIN(tpm, "", "1234"); err != nil {
 				t.Errorf("ChangePIN failed: %v", err)
 			}
 		})

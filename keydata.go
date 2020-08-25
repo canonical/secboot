@@ -492,6 +492,7 @@ func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile, keyPolicyUpdateFile
 // SealedKeyObject corresponds to a sealed key data file and exists to provide access to some read only operations on the underlying
 // file without having to read and deserialize the key data file more than once.
 type SealedKeyObject struct {
+	path string
 	data *keyData
 }
 
@@ -521,5 +522,5 @@ func ReadSealedKeyObject(path string) (*SealedKeyObject, error) {
 		return nil, InvalidKeyFileError{err.Error()}
 	}
 
-	return &SealedKeyObject{data: data}, nil
+	return &SealedKeyObject{path: path, data: data}, nil
 }

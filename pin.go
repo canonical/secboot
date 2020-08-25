@@ -23,7 +23,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/binary"
-	"os"
 
 	"github.com/canonical/go-tpm2"
 
@@ -253,17 +252,17 @@ func performPinChange(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies 
 	return nil
 }
 
-// ChangePIN changes the PIN for the key data file at the specified path. The existing PIN must be supplied via the oldPIN argument.
-// Setting newPIN to an empty string will clear the PIN and set a hint on the key data file that no PIN is set.
+// ChangePIN changes the PIN for the sealed key. The existing PIN must be supplied via the oldPIN argument. Setting newPIN to an
+// empty string will clear the PIN and set a hint in the sealed key data that no PIN is set.
 //
 // If the TPM's dictionary attack logic has been triggered, a ErrTPMLockout error will be returned.
 //
-// If the file at the specified path cannot be opened, then a wrapped *os.PathError error will be returned.
-//
-// If the supplied key data file fails validation checks, an InvalidKeyFileError error will be returned.
+// If the sealed key data fails validation checks, an InvalidKeyFileError error will be returned.
 //
 // If oldPIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be incremented.
-func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
+//
+// On success, the file at the original path of the sealed key object is updated atomically.
+func (k *SealedKeyObject) ChangePIN(tpm *TPMConnection, oldPIN, newPIN string) error {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
@@ -274,25 +273,18 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 		return ErrTPMLockout
 	}
 
-	// Open the key data file
-	keyFile, err := os.Open(path)
-	if err != nil {
-		return xerrors.Errorf("cannot open key data file: %w", err)
-	}
-	defer keyFile.Close()
-
-	// Read and validate the key data file
-	data, _, pinIndexPublic, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
+	// Validate the sealed key data
+	pinIndexPublic, err := k.data.validate(tpm.TPMContext, nil, tpm.HmacSession())
 	if err != nil {
 		var kfErr keyFileError
 		if xerrors.As(err, &kfErr) {
 			return InvalidKeyFileError{err.Error()}
 		}
-		return xerrors.Errorf("cannot read and validate key data file: %w", err)
+		return xerrors.Errorf("cannot validate sealed key data: %w", err)
 	}
 
 	// Change the PIN
-	if err := performPinChange(tpm.TPMContext, pinIndexPublic, data.staticPolicyData.PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
+	if err := performPinChange(tpm.TPMContext, pinIndexPublic, k.data.staticPolicyData.PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
 		if isAuthFailError(err, tpm2.CommandNVChangeAuth, 1) {
 			return ErrPINFail
 		}
@@ -300,19 +292,19 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	}
 
 	// Update the metadata and write a new key data file
-	origAuthModeHint := data.authModeHint
+	origAuthModeHint := k.data.authModeHint
 	if newPIN == "" {
-		data.authModeHint = AuthModeNone
+		k.data.authModeHint = AuthModeNone
 	} else {
-		data.authModeHint = AuthModePIN
+		k.data.authModeHint = AuthModePIN
 	}
 
-	if origAuthModeHint == data.authModeHint {
+	if origAuthModeHint == k.data.authModeHint {
 		return nil
 	}
 
-	if err := data.writeToFileAtomic(path); err != nil {
-		return xerrors.Errorf("cannot write key data file: %v", err)
+	if err := k.data.writeToFileAtomic(k.path); err != nil {
+		return xerrors.Errorf("cannot write sealed key data file: %v", err)
 	}
 
 	return nil
