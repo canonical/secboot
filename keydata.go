@@ -384,7 +384,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 }
 
 // validate performs some correctness checking on the provided keyData and keyPolicyUpdateData. On success, it returns the validated
-// public area for the dynamic policy counter.
+// public area for the PCR policy counter.
 func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpdateData, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
 	if d.version > currentMetadataVersion {
 		return nil, keyFileError{errors.New("invalid metadata version")}
@@ -442,23 +442,23 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		return nil, xerrors.Errorf("cannot compute lock NV index name: %w", err)
 	}
 
-	// Obtain a ResourceContext for the dynamic authorization policy counter. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second
-	// time is with a session, and there is also verification that the returned public area is for the specified handle so that we know
-	// that the returned ResourceContext corresponds to an actual entity on the TPM at the specified handle. This index is used for
-	// dynamic authorization policy revocation, and also for PIN integration with v0 metadata only.
-	policyCounterHandle := d.staticPolicyData.policyCounterHandle
-	if (policyCounterHandle != tpm2.HandleNull || d.version == 0) && policyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
-		return nil, keyFileError{errors.New("dynamic authorization policy counter handle is invalid")}
+	// Obtain a ResourceContext for the PCR policy counter. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second time is with a
+	// session, and there is also verification that the returned public area is for the specified handle so that we know that the
+	// returned ResourceContext corresponds to an actual entity on the TPM at the specified handle. This index is used for PCR policy
+	// revocation, and also for PIN integration with v0 metadata only.
+	pcrPolicyCounterHandle := d.staticPolicyData.pcrPolicyCounterHandle
+	if (pcrPolicyCounterHandle != tpm2.HandleNull || d.version == 0) && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
+		return nil, keyFileError{errors.New("PCR policy counter handle is invalid")}
 	}
 
-	var policyCounter tpm2.ResourceContext
-	if policyCounterHandle != tpm2.HandleNull {
-		policyCounter, err = tpm.CreateResourceContextFromTPM(policyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
+	var pcrPolicyCounter tpm2.ResourceContext
+	if pcrPolicyCounterHandle != tpm2.HandleNull {
+		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
-			if tpm2.IsResourceUnavailableError(err, policyCounterHandle) {
-				return nil, keyFileError{errors.New("dynamic authorization policy counter is unavailable")}
+			if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
+				return nil, keyFileError{errors.New("PCR policy counter is unavailable")}
 			}
-			return nil, xerrors.Errorf("cannot create context for dynamic authorization policy counter: %w", err)
+			return nil, xerrors.Errorf("cannot create context for PCR policy counter: %w", err)
 		}
 	}
 
@@ -478,11 +478,11 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		return nil, keyFileError{xerrors.Errorf("cannot determine if static authorization policy matches sealed key object: %w", err)}
 	}
 
-	dynamicPolicyRef := d.staticPolicyData.dynamicPolicyRef
+	pcrPolicyRef := d.staticPolicyData.pcrPolicyRef
 
-	trial.PolicyAuthorize(dynamicPolicyRef, authKeyName)
+	trial.PolicyAuthorize(pcrPolicyRef, authKeyName)
 	if d.version == 0 {
-		trial.PolicySecret(policyCounter.Name(), nil)
+		trial.PolicySecret(pcrPolicyCounter.Name(), nil)
 	} else {
 		// v1 metadata and later
 		trial.PolicyAuthValue()
@@ -493,51 +493,50 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		return nil, keyFileError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
 	}
 
-	// Read the public area of the dynamic authorization policy counter
-	var policyCounterPub *tpm2.NVPublic
-	if policyCounter != nil {
-		policyCounterPub, _, err = tpm.NVReadPublic(policyCounter, session.IncludeAttrs(tpm2.AttrAudit))
+	// Read the public area of the PCR policy counter
+	var pcrPolicyCounterPub *tpm2.NVPublic
+	if pcrPolicyCounter != nil {
+		pcrPolicyCounterPub, _, err = tpm.NVReadPublic(pcrPolicyCounter, session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
-			return nil, xerrors.Errorf("cannot read public area of dynamic authorization policy counter: %w", err)
+			return nil, xerrors.Errorf("cannot read public area of PCR policy counter: %w", err)
 		}
 	}
 
-	// For > v0 metadata, validate that the dynamic policy reference computed from the dynamic policy counter name matches
-	// the validated reference in the static metadata. If this checks out, then the counter has the same name as the one
-	// that was created when the key was initially sealed. This is important because if an adversary creates a new counter
-	// and modifies the static metadata to point to it and force a recovery, and then we recreate and sign a new dynamic
-	// authorization policy using the new counter, the previous policy won't be revoked.
+	// For > v0 metadata, validate that the PCR policy reference computed from the PCR policy counter name matches the validated
+	// reference in the static metadata. If this checks out, then the counter has the same name as the one that was created when
+	// the key was initially sealed. This is important because if an adversary creates a new counter and modifies the static metadata
+	// to point to it and force a recovery, and then we recreate and sign a new PCR policy using the new counter, the previous policy
+	// won't be revoked.
 	if d.version > 0 {
-		expectedDynamicPolicyRef, err := computeDynamicPolicyRef(keyPublic.NameAlg, policyCounterPub)
+		expectedPcrPolicyRef, err := computePcrPolicyRef(keyPublic.NameAlg, pcrPolicyCounterPub)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot compute expected dynamic authorization policy ref: %w", err)
+			return nil, xerrors.Errorf("cannot compute expected PCR policy ref: %w", err)
 		}
-		if !bytes.Equal(expectedDynamicPolicyRef, dynamicPolicyRef) {
-			return nil, keyFileError{errors.New("the dynamic authorization policy counter is inconsistent with the metadata")}
+		if !bytes.Equal(expectedPcrPolicyRef, pcrPolicyRef) {
+			return nil, keyFileError{errors.New("the PCR policy counter is inconsistent with the metadata")}
 		}
 	}
 
-	// For v0 metadata, validate that the OR policy digests for the dynamic authorization policy counter match the public area of the
-	// index.
+	// For v0 metadata, validate that the OR policy digests for the PCR policy counter match the public area of the index.
 	if d.version == 0 {
-		policyCounterAuthPolicies := d.staticPolicyData.v0PinIndexAuthPolicies
-		expectedPolicyCounterAuthPolicies, err := computeV0PinNVIndexPostInitAuthPolicies(policyCounterPub.NameAlg, authKeyName)
+		pcrPolicyCounterAuthPolicies := d.staticPolicyData.v0PinIndexAuthPolicies
+		expectedPcrPolicyCounterAuthPolicies, err := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authKeyName)
 		if err != nil {
-			return nil, keyFileError{xerrors.Errorf("cannot determine if dynamic authorization policy counter has a valid authorization policy: %w", err)}
+			return nil, keyFileError{xerrors.Errorf("cannot determine if PCR policy counter has a valid authorization policy: %w", err)}
 		}
-		if len(policyCounterAuthPolicies)-1 != len(expectedPolicyCounterAuthPolicies) {
-			return nil, keyFileError{errors.New("unexpected number of OR policy digests for dynamic authorization policy counter")}
+		if len(pcrPolicyCounterAuthPolicies)-1 != len(expectedPcrPolicyCounterAuthPolicies) {
+			return nil, keyFileError{errors.New("unexpected number of OR policy digests for PCR policy counter")}
 		}
-		for i, expected := range expectedPolicyCounterAuthPolicies {
-			if !bytes.Equal(expected, policyCounterAuthPolicies[i+1]) {
-				return nil, keyFileError{errors.New("unexpected OR policy digest for dynamic authorization policy counter")}
+		for i, expected := range expectedPcrPolicyCounterAuthPolicies {
+			if !bytes.Equal(expected, pcrPolicyCounterAuthPolicies[i+1]) {
+				return nil, keyFileError{errors.New("unexpected OR policy digest for PCR policy counter")}
 			}
 		}
 
-		trial, _ = tpm2.ComputeAuthPolicy(policyCounterPub.NameAlg)
-		trial.PolicyOR(policyCounterAuthPolicies)
-		if !bytes.Equal(policyCounterPub.AuthPolicy, trial.GetDigest()) {
-			return nil, keyFileError{errors.New("dynamic authorization policy counter has unexpected authorization policy")}
+		trial, _ = tpm2.ComputeAuthPolicy(pcrPolicyCounterPub.NameAlg)
+		trial.PolicyOR(pcrPolicyCounterAuthPolicies)
+		if !bytes.Equal(pcrPolicyCounterPub.AuthPolicy, trial.GetDigest()) {
+			return nil, keyFileError{errors.New("PCR policy counter has unexpected authorization policy")}
 		}
 	}
 
@@ -546,7 +545,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 
 	if policyUpdateData == nil {
 		// If we weren't passed a private data structure, we're done.
-		return policyCounterPub, nil
+		return pcrPolicyCounterPub, nil
 	}
 
 	// Verify that the private data structure is bound to the key data structure.
@@ -575,7 +574,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
 	}
 
-	return policyCounterPub, nil
+	return pcrPolicyCounterPub, nil
 }
 
 // write serializes keyData in to the provided io.Writer.
@@ -641,8 +640,8 @@ func isKeyFileError(err error) bool {
 }
 
 // decodeAndValidateKeyData will deserialize keyData and keyPolicyUpdateData from the provided io.Readers and then perform some
-// correctness checking. On success, it returns the keyData, keyPolicyUpdateData and the validated public area of the dynamic
-// authorization policy counter.
+// correctness checking. On success, it returns the keyData, keyPolicyUpdateData and the validated public area of the PCR policy
+// counter.
 func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile, keyPolicyUpdateFile io.Reader, session tpm2.SessionContext) (*keyData, *keyPolicyUpdateData, *tpm2.NVPublic, error) {
 	// Read the key data
 	data, err := decodeKeyData(keyFile)
@@ -659,12 +658,12 @@ func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile, keyPolicyUpdateFile
 		}
 	}
 
-	pinNVPublic, err := data.validate(tpm, policyUpdateData, session)
+	pcrPolicyCounterPub, err := data.validate(tpm, policyUpdateData, session)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot validate key data: %w", err)
 	}
 
-	return data, policyUpdateData, pinNVPublic, nil
+	return data, policyUpdateData, pcrPolicyCounterPub, nil
 }
 
 // SealedKeyObject corresponds to a sealed key data file and exists to provide access to some read only operations on the underlying
@@ -678,10 +677,10 @@ func (k *SealedKeyObject) AuthMode2F() AuthMode {
 	return k.data.authModeHint
 }
 
-// PolicyCounterHandle indicates the handle of the NV counter used for dynamic authorization policy revocation for this sealed key
-// object (and for PIN integration for version 0 key files).
-func (k *SealedKeyObject) PolicyCounterHandle() tpm2.Handle {
-	return k.data.staticPolicyData.policyCounterHandle
+// PCRPolicyCounterHandle indicates the handle of the NV counter used for PCR policy revocation for this sealed key object (and for
+// PIN integration for version 0 key files).
+func (k *SealedKeyObject) PCRPolicyCounterHandle() tpm2.Handle {
+	return k.data.staticPolicyData.pcrPolicyCounterHandle
 }
 
 // ReadSealedKeyObject loads a sealed key data file created by SealKeyToTPM from the specified path. If the file cannot be opened,

@@ -168,7 +168,7 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	defer keyFile.Close()
 
 	// Read and validate the key data file
-	data, _, policyCounterPub, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
+	data, _, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
 	if err != nil {
 		if isKeyFileError(err) {
 			return InvalidKeyFileError{err.Error()}
@@ -178,7 +178,7 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 
 	// Change the PIN
 	if data.version == 0 {
-		if err := performPinChangeV0(tpm.TPMContext, policyCounterPub, data.staticPolicyData.v0PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
+		if err := performPinChangeV0(tpm.TPMContext, pcrPolicyCounterPub, data.staticPolicyData.v0PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
 			if isAuthFailError(err, tpm2.CommandNVChangeAuth, 1) {
 				return ErrPINFail
 			}

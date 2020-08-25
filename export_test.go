@@ -43,13 +43,13 @@ const (
 var (
 	ComputeDbUpdate                          = computeDbUpdate
 	ComputeDynamicPolicy                     = computeDynamicPolicy
-	ComputeDynamicPolicyCounterAuthPolicies  = computeDynamicPolicyCounterAuthPolicies
-	ComputeDynamicPolicyRef                  = computeDynamicPolicyRef
+	ComputePcrPolicyCounterAuthPolicies      = computePcrPolicyCounterAuthPolicies
+	ComputePcrPolicyRef                      = computePcrPolicyRef
 	ComputePeImageDigest                     = computePeImageDigest
 	ComputePolicyORData                      = computePolicyORData
 	ComputeSnapModelDigest                   = computeSnapModelDigest
 	ComputeStaticPolicy                      = computeStaticPolicy
-	CreateDynamicPolicyCounter               = createDynamicPolicyCounter
+	CreatePcrPolicyCounter                   = createPcrPolicyCounter
 	CreatePublicAreaForRSASigningKey         = createPublicAreaForRSASigningKey
 	DecodeSecureBootDb                       = decodeSecureBootDb
 	DecodeWinCertificate                     = decodeWinCertificate
@@ -58,13 +58,13 @@ var (
 	EnsureLockNVIndex                        = ensureLockNVIndex
 	ExecutePolicySession                     = executePolicySession
 	IdentifyInitialOSLaunchVerificationEvent = identifyInitialOSLaunchVerificationEvent
-	IncrementDynamicPolicyCounter            = incrementDynamicPolicyCounter
+	IncrementPcrPolicyCounter                = incrementPcrPolicyCounter
 	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
 	IsStaticPolicyDataError                  = isStaticPolicyDataError
 	LockNVIndexAttrs                         = lockNVIndexAttrs
 	PerformPinChange                         = performPinChange
 	ReadAndValidateLockNVIndexPublic         = readAndValidateLockNVIndexPublic
-	ReadDynamicPolicyCounter                 = readDynamicPolicyCounter
+	ReadPcrPolicyCounter                     = readPcrPolicyCounter
 	ReadShimVendorCert                       = readShimVendorCert
 	WinCertTypePKCSSignedData                = winCertTypePKCSSignedData
 	WinCertTypeEfiGuid                       = winCertTypeEfiGuid
@@ -130,20 +130,20 @@ func (d *StaticPolicyData) AuthPublicKey() *tpm2.Public {
 	return d.authPublicKey
 }
 
-func (d *StaticPolicyData) PolicyCounterHandle() tpm2.Handle {
-	return d.policyCounterHandle
+func (d *StaticPolicyData) PcrPolicyCounterHandle() tpm2.Handle {
+	return d.pcrPolicyCounterHandle
 }
 
-func (d *StaticPolicyData) SetPolicyCounterHandle(h tpm2.Handle) {
-	d.policyCounterHandle = h
+func (d *StaticPolicyData) SetPcrPolicyCounterHandle(h tpm2.Handle) {
+	d.pcrPolicyCounterHandle = h
 }
 
 func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
 	return d.v0PinIndexAuthPolicies
 }
 
-func (d *StaticPolicyData) DynamicPolicyRef() tpm2.Nonce {
-	return d.dynamicPolicyRef
+func (d *StaticPolicyData) PcrPolicyRef() tpm2.Nonce {
+	return d.pcrPolicyRef
 }
 
 type WinCertificate interface {
@@ -245,8 +245,8 @@ func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorit
 		policyRef:         policyRef}
 }
 
-func NewStaticPolicyComputeParams(key *tpm2.Public, policyCounterPub *tpm2.NVPublic, lockIndexName tpm2.Name) *staticPolicyComputeParams {
-	return &staticPolicyComputeParams{key: key, policyCounterPub: policyCounterPub, lockIndexName: lockIndexName}
+func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, lockIndexName tpm2.Name) *staticPolicyComputeParams {
+	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub, lockIndexName: lockIndexName}
 }
 
 func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {

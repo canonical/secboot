@@ -122,7 +122,7 @@ func undefineKeyNVSpace(t *testing.T, tpm *TPMConnection, path string) {
 	if err != nil {
 		t.Fatalf("ReadSealedKeyObject failed: %v", err)
 	}
-	h := k.PolicyCounterHandle()
+	h := k.PCRPolicyCounterHandle()
 	if h == tpm2.HandleNull {
 		return
 	}

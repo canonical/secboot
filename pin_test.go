@@ -91,9 +91,9 @@ func TestPerformPinChange(t *testing.T) {
 
 type pinSuite struct {
 	testutil.TPMTestBase
-	key                 []byte
-	policyCounterHandle tpm2.Handle
-	keyFile             string
+	key                    []byte
+	pcrPolicyCounterHandle tpm2.Handle
+	keyFile                string
 }
 
 var _ = Suite(&pinSuite{})
@@ -101,7 +101,7 @@ var _ = Suite(&pinSuite{})
 func (s *pinSuite) SetUpSuite(c *C) {
 	s.key = make([]byte, 64)
 	rand.Read(s.key)
-	s.policyCounterHandle = tpm2.Handle(0x0181fff0)
+	s.pcrPolicyCounterHandle = tpm2.Handle(0x0181fff0)
 }
 
 func (s *pinSuite) SetUpTest(c *C) {
@@ -111,8 +111,8 @@ func (s *pinSuite) SetUpTest(c *C) {
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
 
-	c.Assert(SealKeyToTPM(s.TPM, s.key, s.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: s.policyCounterHandle}), IsNil)
-	policyCounter, err := s.TPM.CreateResourceContextFromTPM(s.policyCounterHandle)
+	c.Assert(SealKeyToTPM(s.TPM, s.key, s.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: s.pcrPolicyCounterHandle}), IsNil)
+	policyCounter, err := s.TPM.CreateResourceContextFromTPM(s.pcrPolicyCounterHandle)
 	c.Assert(err, IsNil)
 	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), policyCounter)
 }

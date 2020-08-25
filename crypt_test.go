@@ -249,9 +249,9 @@ func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
 	dir := c.MkDir()
 	ctb.keyFile = dir + "/keydata"
 
-	policyCounterHandle := tpm2.Handle(0x0181fff0)
-	c.Assert(SealKeyToTPM(ttb.TPM, ctb.tpmKey, ctb.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: policyCounterHandle}), IsNil)
-	pinIndex, err := ttb.TPM.CreateResourceContextFromTPM(policyCounterHandle)
+	pcrPolicyCounterHandle := tpm2.Handle(0x0181fff0)
+	c.Assert(SealKeyToTPM(ttb.TPM, ctb.tpmKey, ctb.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: pcrPolicyCounterHandle}), IsNil)
+	pinIndex, err := ttb.TPM.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
 	c.Assert(err, IsNil)
 	ttb.AddCleanupNVSpace(c, ttb.TPM.OwnerHandleContext(), pinIndex)
 

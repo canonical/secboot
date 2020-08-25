@@ -74,15 +74,15 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	}
 
 	t.Run("SimplePCRProfile", func(t *testing.T) {
-		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x0181fff0})
+		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
 	})
 
 	t.Run("NilPCRProfile", func(t *testing.T) {
-		run(t, &KeyCreationParams{PolicyCounterHandle: 0x0181fff0})
+		run(t, &KeyCreationParams{PCRPolicyCounterHandle: 0x0181fff0})
 	})
 
-	t.Run("NoPolicyCounterHandle", func(t *testing.T) {
-		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: tpm2.HandleNull})
+	t.Run("NoPCRPolicyCounterHandle", func(t *testing.T) {
+		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	})
 }
 
@@ -105,7 +105,7 @@ func TestUnsealWithPIN(t *testing.T) {
 
 	keyFile := tmpDir + "/keydata"
 
-	if err := SealKeyToTPM(tpm, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x0181fff0}); err != nil {
+	if err := SealKeyToTPM(tpm, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0}); err != nil {
 		t.Fatalf("SealKeyToTPM failed: %v", err)
 	}
 	defer undefineKeyNVSpace(t, tpm, keyFile)
@@ -149,7 +149,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		keyFile := tmpDir + "/keydata"
 		policyUpdateFile := tmpDir + "/keypolicyupdatedata"
 
-		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PolicyCounterHandle: 0x0181fff0}); err != nil {
+		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0}); err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
@@ -270,7 +270,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 			}
 		})
 		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
-			"assertions: the dynamic authorization policy has been revoked" {
+			"assertions: the PCR policy has been revoked" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

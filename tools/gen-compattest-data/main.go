@@ -184,8 +184,8 @@ func run() int {
 	rand.Read(key)
 
 	params := secboot.KeyCreationParams{
-		PCRProfile:          pcrProfile,
-		PolicyCounterHandle: 0x01801000,
+		PCRProfile:             pcrProfile,
+		PCRPolicyCounterHandle: 0x01801000,
 	}
 
 	keyFile := filepath.Join(outputDir, "key")
