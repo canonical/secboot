@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto/rsa"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -220,22 +219,24 @@ func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
 }
 
 func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile, privateFile string, session tpm2.SessionContext) error {
-	kf, err := os.Open(keyFile)
+	k, err := ReadSealedKeyObject(keyFile)
 	if err != nil {
 		return err
 	}
-	defer kf.Close()
 
-	var pf io.Reader
+	var pud *keyPolicyUpdateData
 	if privateFile != "" {
 		f, err := os.Open(privateFile)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		pf = f
+		pud, err = decodeKeyPolicyUpdateData(f)
+		if err != nil {
+			return err
+		}
 	}
 
-	_, _, _, err = decodeAndValidateKeyData(tpm, kf, pf, session)
+	_, err = k.data.validate(tpm, pud, session)
 	return err
 }

@@ -61,7 +61,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	s.testUpdateKeyPCRProtectionPolicy(c, profile)
+	s.testUpdatePCRProtectionPolicy(c, profile)
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
@@ -69,7 +69,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	s.testUpdateKeyPCRProtectionPolicyRevokes(c, profile, s.absPath("pcrSequence.1"))
+	s.testUpdatePCRProtectionPolicyRevokes(c, profile, s.absPath("pcrSequence.1"))
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
@@ -81,7 +81,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 	fmt.Fprintf(&b, "7 11 %x\n", testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	fmt.Fprintf(&b, "12 11 %x\n", testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	s.testUpdateKeyPCRProtectionPolicyAndUnseal(c, profile, &b)
+	s.testUpdatePCRProtectionPolicyAndUnseal(c, profile, &b)
 }
 
 func (s *compatTestV0Suite) TestUnsealAfterLock(c *C) {
