@@ -165,7 +165,7 @@ func (k *SealedKeyObject) ChangePIN(tpm *Connection, oldPIN, newPIN string) erro
 		if isKeyFileError(err) {
 			return InvalidKeyFileError{err.Error()}
 		}
-		return xerrors.Errorf("cannot read and validate key data file: %w", err)
+		return xerrors.Errorf("cannot validate key data: %w", err)
 	}
 
 	// Change the PIN

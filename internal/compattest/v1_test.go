@@ -68,7 +68,9 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	c.Check(secboot_tpm2.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.readFile(c, "authKey"), profile), IsNil)
+	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
+	c.Assert(err, IsNil)
+	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
 }
 
 func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
@@ -78,7 +80,10 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
 
 	key2 := s.copyFile(c, s.absPath("key"))
 
-	c.Check(secboot_tpm2.UpdateKeyPCRProtectionPolicy(s.TPM, key2, s.readFile(c, "authKey"), profile), IsNil)
+	k, err := secboot_tpm2.ReadSealedKeyObject(key2)
+	c.Assert(err, IsNil)
+
+	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
 	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }
@@ -88,7 +93,9 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	c.Check(secboot_tpm2.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.readFile(c, "authKey"), profile), IsNil)
+	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
+	c.Assert(err, IsNil)
+	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
 
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "7 11 %x\n", testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
@@ -105,7 +112,9 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	c.Check(secboot_tpm2.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.readFile(c, "authKey"), profile), IsNil)
+	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
+	c.Assert(err, IsNil)
+	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
 }
 
 func (s *compatTestV1Suite) TestUnsealAfterLock(c *C) {
