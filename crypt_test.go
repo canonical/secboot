@@ -20,12 +20,18 @@
 package secboot_test
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/canonical/go-tpm2"
@@ -35,6 +41,7 @@ import (
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	"golang.org/x/sys/unix"
+	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 )
@@ -59,13 +66,245 @@ func getKeyringKeys(c *C, keyringId int) (out []int) {
 	return
 }
 
+type luksBinaryHdr struct {
+	Magic       [6]byte
+	Version     uint16
+	HdrSize     uint64
+	SeqId       uint64
+	Label       [48]byte
+	CsumAlg     [32]byte
+	Salt        [64]byte
+	Uuid        [40]byte
+	Subsystem   [48]byte
+	HdrOffset   uint64
+	Padding     [184]byte
+	Csum        [64]byte
+	Padding4096 [7 * 512]byte
+}
+
+type uint64s uint64
+
+func (u *uint64s) UnmarshalText(text []byte) error {
+	n, err := strconv.ParseUint(string(text), 10, 64)
+	if err != nil {
+		return err
+	}
+	*u = uint64s(n)
+	return nil
+}
+
+type ints int
+
+func (i *ints) UnmarshalText(text []byte) error {
+	n, err := strconv.Atoi(string(text))
+	if err != nil {
+		return err
+	}
+	*i = ints(n)
+	return nil
+}
+
+type luksConfig struct {
+	JSONSize     uint64s `json:"json_size"`
+	KeyslotsSize uint64s `json:"keyslots_size"`
+	Flags        []string
+	Requirements []string
+}
+
+type luksToken struct {
+	Type     string
+	Keyslots []ints
+	Params   map[string]interface{}
+}
+
+func (t *luksToken) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &t); err != nil {
+		return err
+	}
+
+	m := make(map[string]interface{})
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+
+	for k, v := range m {
+		switch k {
+		case "type", "keyslots":
+		default:
+			t.Params[k] = v
+		}
+	}
+
+	return nil
+}
+
+type luksDigest struct {
+	Type       string
+	Keyslots   []ints
+	Segments   []ints
+	Salt       []byte
+	Digest     []byte
+	Hash       string
+	Iterations int
+}
+
+type luksSegment struct {
+	Type        string
+	Offset      uint64
+	Size        uint64
+	DynamicSize bool
+	Encryption  string
+}
+
+func (s *luksSegment) UnmarshalJSON(data []byte) error {
+	var d struct {
+		Type       string
+		Offset     uint64s
+		Size       string
+		Encryption string
+	}
+
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+
+	*s = luksSegment{
+		Type:       d.Type,
+		Offset:     uint64(d.Offset),
+		Encryption: d.Encryption}
+	if d.Size == "dynamic" {
+		s.DynamicSize = true
+	} else {
+		n, err := strconv.ParseUint(d.Size, 10, 64)
+		if err != nil {
+			return err
+		}
+		s.Size = n
+	}
+
+	return nil
+}
+
+type luksArea struct {
+	Type       string
+	Offset     uint64s
+	Size       uint64s
+	Encryption string
+	KeySize    int `json:"key_size"`
+}
+
+type luksAF struct {
+	Type    string
+	Stripes int
+	Hash    string
+}
+
+type luksKDF struct {
+	Type       string
+	Salt       []byte
+	Hash       string
+	Iterations int
+	Time       int
+	Memory     int
+	CPUs       int
+}
+
+type luksKeyslot struct {
+	Type     string
+	KeySize  int `json:"key_size"`
+	Area     luksArea
+	KDF      luksKDF
+	AF       luksAF
+	Priority *int
+}
+
+type luksMetadata struct {
+	Keyslots map[ints]*luksKeyslot
+	Segments map[ints]*luksSegment
+	Digests  map[ints]*luksDigest
+	Tokens   map[ints]*luksToken
+	Config   luksConfig
+}
+
+type luksInfo struct {
+	HdrSize  uint64
+	Label    string
+	Metadata luksMetadata
+}
+
+// decodeLuksInfo is currently just used for testing, but will eventually go in to
+// internal/luks for use in non-test code. It will need some additional work for that
+// to happen.
+func decodeLuksInfo(path string) (*luksInfo, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var primaryHdr luksBinaryHdr
+	if err := binary.Read(f, binary.BigEndian, &primaryHdr); err != nil {
+		return nil, xerrors.Errorf("cannot read primary header: %w", err)
+	}
+	if !bytes.Equal(primaryHdr.Magic[:], []byte{'L', 'U', 'K', 'S', 0xba, 0xbe}) {
+		return nil, errors.New("invalid primary header magic")
+	}
+	if primaryHdr.Version != 2 {
+		return nil, errors.New("invalid primary header version")
+	}
+
+	if _, err := f.Seek(int64(primaryHdr.HdrSize), io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	// TODO: If first binary header fails validation, search for second header at known offsets
+	var secondaryHdr luksBinaryHdr
+	if err := binary.Read(f, binary.BigEndian, &secondaryHdr); err != nil {
+		return nil, xerrors.Errorf("cannot read secondary header: %w", err)
+	}
+	if !bytes.Equal(secondaryHdr.Magic[:], []byte{'S', 'K', 'U', 'L', 0xba, 0xbe}) {
+		return nil, errors.New("invalid secondary header magic")
+	}
+	if secondaryHdr.Version != 2 {
+		return nil, errors.New("invalid secondary header version")
+	}
+	// TODO: After loading each binary header:
+	// - validate offset
+	// - validate checksum
+	// - load and validate JSON metadata
+
+	// TODO: Only use known good header
+	activeHdr := &primaryHdr
+	if secondaryHdr.SeqId > primaryHdr.SeqId {
+		activeHdr = &secondaryHdr
+	}
+
+	info := &luksInfo{
+		HdrSize: activeHdr.HdrSize,
+		Label:   strings.TrimRight(string(activeHdr.Label[:]), "\x00")}
+
+	if _, err := f.Seek(int64(activeHdr.HdrOffset)+int64(binary.Size(activeHdr)), io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	dec := json.NewDecoder(f)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&info.Metadata); err != nil {
+		return nil, err
+	}
+
+	return info, nil
+}
+
 type cryptTestBase struct {
+	base *snapd_testutil.BaseTest
+
 	recoveryKey      []byte
 	recoveryKeyAscii []string
 
 	tpmKey []byte
 
-	dir string
+	dir string // directory used for storing test files
 
 	passwordFile                 string // a newline delimited list of passwords for the mock systemd-ask-password to return
 	expectedTpmKeyFile           string // the TPM expected by the mock systemd-cryptsetup
@@ -76,12 +315,13 @@ type cryptTestBase struct {
 
 	mockSdAskPassword *snapd_testutil.MockCmd
 	mockSdCryptsetup  *snapd_testutil.MockCmd
-	mockCryptsetup    *snapd_testutil.MockCmd
 
 	possessesUserKeyringKeys bool
 }
 
-func (ctb *cryptTestBase) setUpSuiteBase(c *C) {
+func (ctb *cryptTestBase) setUpSuite(c *C, base *snapd_testutil.BaseTest) {
+	ctb.base = base
+
 	ctb.recoveryKey = make([]byte, 16)
 	rand.Read(ctb.recoveryKey)
 
@@ -111,9 +351,9 @@ func (ctb *cryptTestBase) setUpSuiteBase(c *C) {
 	}
 }
 
-func (ctb *cryptTestBase) setUpTestBase(c *C, bt *snapd_testutil.BaseTest) {
+func (ctb *cryptTestBase) setUpTest(c *C) {
 	ctb.dir = c.MkDir()
-	bt.AddCleanup(testutil.MockRunDir(ctb.dir))
+	ctb.base.AddCleanup(testutil.MockRunDir(ctb.dir))
 
 	ctb.passwordFile = filepath.Join(ctb.dir, "password")                       // passwords to be returned by the mock sd-ask-password
 	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")           // TPM key expected by the mock systemd-cryptsetup
@@ -127,7 +367,7 @@ head -1 %[1]s
 sed -i -e '1,1d' %[1]s
 `
 	ctb.mockSdAskPassword = snapd_testutil.MockCommand(c, "systemd-ask-password", fmt.Sprintf(sdAskPasswordBottom, ctb.passwordFile))
-	bt.AddCleanup(ctb.mockSdAskPassword.Restore)
+	ctb.base.AddCleanup(ctb.mockSdAskPassword.Restore)
 
 	sdCryptsetupBottom := `
 key=$(xxd -p < "$4")
@@ -137,10 +377,47 @@ if [ ! -f "%[1]s" ] || [ "$key" != "$(xxd -p < "%[1]s")" ]; then
     fi
 fi
 `
-	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.expectedTpmKeyFile, ctb.expectedRecoveryKeyFile))
-	bt.AddCleanup(ctb.mockSdCryptsetup.Restore)
-	bt.AddCleanup(testutil.MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
+	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, filepath.Join(c.MkDir(), "systemd-cryptsetup"), fmt.Sprintf(sdCryptsetupBottom, ctb.expectedTpmKeyFile, ctb.expectedRecoveryKeyFile))
+	ctb.base.AddCleanup(ctb.mockSdCryptsetup.Restore)
+	ctb.base.AddCleanup(testutil.MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
 
+	c.Assert(ioutil.WriteFile(ctb.expectedRecoveryKeyFile, ctb.recoveryKey, 0644), IsNil)
+
+	startKeys := getKeyringKeys(c, userKeyring)
+
+	ctb.base.AddCleanup(func() {
+		for kid := range getKeyringKeys(c, userKeyring) {
+			found := false
+			for skid := range startKeys {
+				if skid == kid {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+			_, err := unix.KeyctlInt(unix.KEYCTL_UNLINK, kid, userKeyring, 0, 0)
+			c.Check(err, IsNil)
+		}
+	})
+
+	cryptsetupWrapperBottom := `
+# Set max locked memory to 0. Without this and without CAP_IPC_LOCK, mlockall will
+# succeed but subsequent calls to mmap will fail because the limit is too low. Setting
+# this to 0 here will cause mlockall to fail, which cryptsetup ignores.
+ulimit -l 0
+exec %[1]s "$@" </dev/stdin
+`
+
+	cryptsetup, err := exec.LookPath("cryptsetup")
+	c.Assert(err, IsNil)
+
+	cryptsetupWrapper := snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupWrapperBottom, cryptsetup))
+	ctb.base.AddCleanup(cryptsetupWrapper.Restore)
+}
+
+func (ctb *cryptTestBase) mockCryptsetup(c *C) *snapd_testutil.MockCmd {
 	cryptsetupBottom := `
 keyfile=""
 action=""
@@ -193,29 +470,18 @@ dump_key "$keyfile" "%[2]s.$invocation"
 dump_key "$new_keyfile" "%[3]s.$invocation"
 `
 
-	ctb.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
-	bt.AddCleanup(ctb.mockCryptsetup.Restore)
+	mock := snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
+	ctb.base.AddCleanup(mock.Restore)
+	return mock
+}
 
-	c.Assert(ioutil.WriteFile(ctb.expectedRecoveryKeyFile, ctb.recoveryKey, 0644), IsNil)
+func (ctb *cryptTestBase) createEmptyDiskImage(c *C) string {
+	f, err := ioutil.TempFile(ctb.dir, "disk")
+	c.Assert(err, IsNil)
+	defer f.Close()
 
-	startKeys := getKeyringKeys(c, userKeyring)
-
-	bt.AddCleanup(func() {
-		for kid := range getKeyringKeys(c, userKeyring) {
-			found := false
-			for skid := range startKeys {
-				if skid == kid {
-					found = true
-					break
-				}
-			}
-			if found {
-				continue
-			}
-			_, err := unix.KeyctlInt(unix.KEYCTL_UNLINK, kid, userKeyring, 0, 0)
-			c.Check(err, IsNil)
-		}
-	})
+	c.Assert(f.Truncate(20*1024*1024), IsNil)
+	return f.Name()
 }
 
 func (ctb *cryptTestBase) checkRecoveryKeyKeyringEntry(c *C, reason RecoveryKeyUsageReason) {
@@ -237,29 +503,35 @@ func (ctb *cryptTestBase) checkRecoveryKeyKeyringEntry(c *C, reason RecoveryKeyU
 
 type cryptTPMTestBase struct {
 	cryptTestBase
+	base *testutil.TPMTestBase
 
 	keyFile string
 }
 
-func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
-	ctb.cryptTestBase.setUpTestBase(c, &ttb.BaseTest)
+func (ctb *cryptTPMTestBase) setUpSuite(c *C, base *testutil.TPMTestBase) {
+	ctb.cryptTestBase.setUpSuite(c, &base.BaseTest)
+	ctb.base = base
+}
 
-	c.Assert(ProvisionTPM(ttb.TPM, ProvisionModeFull, nil), IsNil)
+func (ctb *cryptTPMTestBase) setUpTest(c *C) {
+	ctb.cryptTestBase.setUpTest(c)
+
+	c.Assert(ProvisionTPM(ctb.base.TPM, ProvisionModeFull, nil), IsNil)
 
 	dir := c.MkDir()
 	ctb.keyFile = dir + "/keydata"
 
 	pinHandle := tpm2.Handle(0x0181fff0)
-	c.Assert(SealKeyToTPM(ttb.TPM, ctb.tpmKey, ctb.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: pinHandle}), IsNil)
-	pinIndex, err := ttb.TPM.CreateResourceContextFromTPM(pinHandle)
+	c.Assert(SealKeyToTPM(ctb.base.TPM, ctb.tpmKey, ctb.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: pinHandle}), IsNil)
+	pinIndex, err := ctb.base.TPM.CreateResourceContextFromTPM(pinHandle)
 	c.Assert(err, IsNil)
-	ttb.AddCleanupNVSpace(c, ttb.TPM.OwnerHandleContext(), pinIndex)
+	ctb.base.AddCleanupNVSpace(c, ctb.base.TPM.OwnerHandleContext(), pinIndex)
 
 	c.Assert(ioutil.WriteFile(ctb.expectedTpmKeyFile, ctb.tpmKey, 0644), IsNil)
 
 	// Some tests may increment the DA lockout counter
-	ttb.AddCleanup(func() {
-		c.Check(ttb.TPM.DictionaryAttackLockReset(ttb.TPM.LockoutHandleContext(), nil), IsNil)
+	ctb.base.AddCleanup(func() {
+		c.Check(ctb.base.TPM.DictionaryAttackLockReset(ctb.base.TPM.LockoutHandleContext(), nil), IsNil)
 	})
 }
 
@@ -271,12 +543,12 @@ type cryptTPMSuite struct {
 var _ = Suite(&cryptTPMSuite{})
 
 func (s *cryptTPMSuite) SetUpSuite(c *C) {
-	s.cryptTPMTestBase.setUpSuiteBase(c)
+	s.cryptTPMTestBase.setUpSuite(c, &s.TPMTestBase)
 }
 
 func (s *cryptTPMSuite) SetUpTest(c *C) {
 	s.TPMTestBase.SetUpTest(c)
-	s.cryptTPMTestBase.setUpTestBase(c, &s.TPMTestBase)
+	s.cryptTPMTestBase.setUpTest(c)
 }
 
 type testActivateVolumeWithTPMSealedKeyNo2FAData struct {
@@ -692,13 +964,13 @@ type cryptTPMSimulatorSuite struct {
 var _ = Suite(&cryptTPMSimulatorSuite{})
 
 func (s *cryptTPMSimulatorSuite) SetUpSuite(c *C) {
-	s.cryptTPMTestBase.setUpSuiteBase(c)
+	s.cryptTPMTestBase.setUpSuite(c, &s.TPMTestBase)
 }
 
 func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 	s.TPMSimulatorTestBase.SetUpTest(c)
 	s.ResetTPMSimulator(c)
-	s.cryptTPMTestBase.setUpTestBase(c, &s.TPMTestBase)
+	s.cryptTPMTestBase.setUpTest(c)
 }
 
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, data *testActivateVolumeWithTPMSealedKeyErrorHandlingData) {
@@ -756,11 +1028,11 @@ type cryptSuite struct {
 var _ = Suite(&cryptSuite{})
 
 func (s *cryptSuite) SetUpSuite(c *C) {
-	s.cryptTestBase.setUpSuiteBase(c)
+	s.cryptTestBase.setUpSuite(c, &s.BaseTest)
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {
-	s.cryptTestBase.setUpTestBase(c, &s.BaseTest)
+	s.cryptTestBase.setUpTest(c)
 }
 
 type testActivateVolumeWithRecoveryKeyData struct {
@@ -1182,45 +1454,61 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling8(c *C) {
 }
 
 type testInitializeLUKS2ContainerData struct {
-	devicePath string
-	label      string
-	key        []byte
+	label string
+	key   []byte
 }
 
 func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS2ContainerData) {
-	c.Check(InitializeLUKS2Container(data.devicePath, data.label, data.key), IsNil)
-	c.Check(s.mockCryptsetup.Calls(), DeepEquals, [][]string{
-		{"cryptsetup", "-q", "luksFormat", "--type", "luks2", "--key-file", "-", "--cipher", "aes-xts-plain64", "--key-size", "512",
-			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--label", data.label, data.devicePath},
-		{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath}})
-	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
+	devicePath := s.createEmptyDiskImage(c)
+
+	c.Check(InitializeLUKS2Container(devicePath, data.label, data.key), IsNil)
+
+	info, err := decodeLuksInfo(devicePath)
 	c.Assert(err, IsNil)
-	c.Check(key, DeepEquals, data.key)
+
+	c.Check(info.Label, Equals, data.label)
+
+	c.Check(info.Metadata.Keyslots, HasLen, 1)
+	keyslot, ok := info.Metadata.Keyslots[0]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.KeySize, Equals, 64)
+	c.Assert(keyslot.Priority, NotNil)
+	c.Check(*keyslot.Priority, Equals, 2)
+	c.Assert(keyslot.KDF, NotNil)
+	c.Check(keyslot.KDF.Type, Equals, "argon2i")
+	c.Check(keyslot.KDF.Time, Equals, 4)
+	c.Check(keyslot.KDF.Memory, Equals, 32)
+
+	c.Check(info.Metadata.Segments, HasLen, 1)
+	segment, ok := info.Metadata.Segments[0]
+	c.Assert(ok, Equals, true)
+	c.Check(segment.Encryption, Equals, "aes-xts-plain64")
+
+	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
+	cmd.Stdin = bytes.NewReader(data.key)
+	c.Check(cmd.Run(), IsNil)
 }
 
 func (s *cryptSuite) TestInitializeLUKS2Container1(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
-		devicePath: "/dev/sda1",
-		label:      "data",
-		key:        s.tpmKey,
+		label: "data",
+		key:   s.tpmKey,
 	})
 }
 
 func (s *cryptSuite) TestInitializeLUKS2Container2(c *C) {
 	// Test with different args.
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
-		devicePath: "/dev/vdc2",
-		label:      "test",
-		key:        s.tpmKey,
+		label: "test",
+		key:   s.tpmKey,
 	})
 }
 
-func (s *cryptSuite) TestInitializeLUKS2Container(c *C) {
+func (s *cryptSuite) TestInitializeLUKS2Container3(c *C) {
 	// Test with a different key
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
-		devicePath: "/dev/vdc2",
-		label:      "test",
-		key:        make([]byte, 64),
+		label: "test",
+		key:   make([]byte, 64),
 	})
 }
 
@@ -1229,106 +1517,97 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
 }
 
 type testAddRecoveryKeyToLUKS2ContainerData struct {
-	devicePath  string
 	key         []byte
 	recoveryKey []byte
 }
 
 func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecoveryKeyToLUKS2ContainerData) {
-	var recoveryKey [16]byte
+	devicePath := s.createEmptyDiskImage(c)
+	c.Assert(InitializeLUKS2Container(devicePath, "test", data.key), IsNil)
+
+	var recoveryKey RecoveryKey
 	copy(recoveryKey[:], data.recoveryKey)
 
-	c.Check(AddRecoveryKeyToLUKS2Container(data.devicePath, data.key, recoveryKey), IsNil)
-	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
+	c.Check(AddRecoveryKeyToLUKS2Container(devicePath, data.key, recoveryKey), IsNil)
 
-	call := s.mockCryptsetup.Calls()[0]
-	c.Assert(len(call), Equals, 10)
-	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
-	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:10], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
-
-	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
+	info, err := decodeLuksInfo(devicePath)
 	c.Assert(err, IsNil)
-	c.Check(key, DeepEquals, data.key)
 
-	newKey, err := ioutil.ReadFile(s.cryptsetupNewkey + ".1")
-	c.Assert(err, IsNil)
-	c.Check(newKey, DeepEquals, data.recoveryKey)
+	c.Check(info.Metadata.Keyslots, HasLen, 2)
+	keyslot, ok := info.Metadata.Keyslots[1]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.KeySize, Equals, 64)
+	c.Check(keyslot.Priority, IsNil)
+	c.Assert(keyslot.KDF, NotNil)
+	c.Check(keyslot.KDF.Type, Equals, "argon2i")
+
+	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
+	cmd.Stdin = bytes.NewReader(data.recoveryKey)
+	c.Check(cmd.Run(), IsNil)
 }
 
 func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container1(c *C) {
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
-		devicePath:  "/dev/sda1",
 		key:         s.tpmKey,
 		recoveryKey: s.recoveryKey,
 	})
 }
 
 func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container2(c *C) {
-	// Test with different path.
-	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
-		devicePath:  "/dev/vdb2",
-		key:         s.tpmKey,
-		recoveryKey: s.recoveryKey,
-	})
-}
-
-func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container3(c *C) {
 	// Test with different key.
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
-		devicePath:  "/dev/vdb2",
 		key:         make([]byte, 64),
 		recoveryKey: s.recoveryKey,
 	})
 }
 
-func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container4(c *C) {
+func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container3(c *C) {
 	// Test with different recovery key.
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
-		devicePath:  "/dev/vdb2",
 		key:         s.tpmKey,
 		recoveryKey: make([]byte, 16),
 	})
 }
 
 type testChangeLUKS2KeyUsingRecoveryKeyData struct {
-	devicePath  string
 	recoveryKey []byte
 	key         []byte
 }
 
 func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLUKS2KeyUsingRecoveryKeyData) {
+	devicePath := s.createEmptyDiskImage(c)
+	initialKey := make([]byte, 64)
+	rand.Read(initialKey)
+	c.Assert(InitializeLUKS2Container(devicePath, "test", initialKey), IsNil)
+
 	var recoveryKey [16]byte
 	copy(recoveryKey[:], data.recoveryKey)
 
-	c.Check(ChangeLUKS2KeyUsingRecoveryKey(data.devicePath, recoveryKey, data.key), IsNil)
-	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 3)
-	c.Check(s.mockCryptsetup.Calls()[0], DeepEquals, []string{"cryptsetup", "luksKillSlot", "--key-file", "-", data.devicePath, "0"})
+	c.Assert(AddRecoveryKeyToLUKS2Container(devicePath, initialKey, recoveryKey), IsNil)
 
-	call := s.mockCryptsetup.Calls()[1]
-	c.Assert(len(call), Equals, 14)
-	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
-	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:14], DeepEquals, []string{"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--key-slot", "0", data.devicePath, "-"})
+	c.Check(ChangeLUKS2KeyUsingRecoveryKey(devicePath, recoveryKey, data.key), IsNil)
 
-	c.Check(s.mockCryptsetup.Calls()[2], DeepEquals, []string{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath})
-
-	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
+	info, err := decodeLuksInfo(devicePath)
 	c.Assert(err, IsNil)
-	c.Check(key, DeepEquals, data.recoveryKey)
 
-	key, err = ioutil.ReadFile(s.cryptsetupKey + ".2")
-	c.Assert(err, IsNil)
-	c.Check(key, DeepEquals, data.recoveryKey)
+	c.Check(info.Metadata.Keyslots, HasLen, 2)
+	keyslot, ok := info.Metadata.Keyslots[0]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.KeySize, Equals, 64)
+	c.Assert(keyslot.Priority, NotNil)
+	c.Check(*keyslot.Priority, Equals, 2)
+	c.Assert(keyslot.KDF, NotNil)
+	c.Check(keyslot.KDF.Type, Equals, "argon2i")
+	c.Check(keyslot.KDF.Time, Equals, 4)
+	c.Check(keyslot.KDF.Memory, Equals, 32)
 
-	key, err = ioutil.ReadFile(s.cryptsetupNewkey + ".2")
-	c.Assert(err, IsNil)
-	c.Check(key, DeepEquals, data.key)
+	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
+	cmd.Stdin = bytes.NewReader(data.key)
+	c.Check(cmd.Run(), IsNil)
 }
 
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey1(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
-		devicePath:  "/dev/sda1",
 		recoveryKey: s.recoveryKey,
 		key:         s.tpmKey,
 	})
@@ -1336,23 +1615,13 @@ func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey1(c *C) {
 
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey2(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
-		devicePath:  "/dev/vdc1",
-		recoveryKey: s.recoveryKey,
+		recoveryKey: make([]byte, 16),
 		key:         s.tpmKey,
 	})
 }
 
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey3(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
-		devicePath:  "/dev/sda1",
-		recoveryKey: make([]byte, 16),
-		key:         s.tpmKey,
-	})
-}
-
-func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey4(c *C) {
-	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
-		devicePath:  "/dev/vdc1",
 		recoveryKey: s.recoveryKey,
 		key:         make([]byte, 64),
 	})
