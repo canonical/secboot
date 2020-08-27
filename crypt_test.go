@@ -113,7 +113,7 @@ func (ctb *cryptTestBase) setUpSuiteBase(c *C) {
 
 func (ctb *cryptTestBase) setUpTestBase(c *C, bt *snapd_testutil.BaseTest) {
 	ctb.dir = c.MkDir()
-	bt.AddCleanup(MockRunDir(ctb.dir))
+	bt.AddCleanup(testutil.MockRunDir(ctb.dir))
 
 	ctb.passwordFile = filepath.Join(ctb.dir, "password")                       // passwords to be returned by the mock sd-ask-password
 	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")           // TPM key expected by the mock systemd-cryptsetup
@@ -139,7 +139,7 @@ fi
 `
 	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.expectedTpmKeyFile, ctb.expectedRecoveryKeyFile))
 	bt.AddCleanup(ctb.mockSdCryptsetup.Restore)
-	bt.AddCleanup(MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
+	bt.AddCleanup(testutil.MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
 
 	cryptsetupBottom := `
 keyfile=""
@@ -611,8 +611,8 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
 		success:           true,
 		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
 		errChecker:        ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() +
-			" failed: exit status 1\\) but activation with recovery key was successful"},
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: exit status 1\\) but activation " +
+			"with recovery key was successful"},
 	})
 }
 
@@ -645,7 +645,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 		success:           false,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) " +
-			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1\\)"},
+			"and activation with recovery key failed \\(cannot activate volume: exit status 1\\)"},
 	})
 }
 
@@ -1156,7 +1156,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
 		sdCryptsetupCalls:   1,
 		errChecker:          ErrorMatches,
-		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1"},
+		errCheckerArgs:      []interface{}{"cannot activate volume: exit status 1"},
 	})
 }
 

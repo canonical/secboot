@@ -167,22 +167,6 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
-func MockRunDir(path string) (restore func()) {
-	origRunDir := runDir
-	runDir = path
-	return func() {
-		runDir = origRunDir
-	}
-}
-
-func MockSystemdCryptsetupPath(path string) (restore func()) {
-	origSystemdCryptsetupPath := systemdCryptsetupPath
-	systemdCryptsetupPath = path
-	return func() {
-		systemdCryptsetupPath = origSystemdCryptsetupPath
-	}
-}
-
 func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{
 		key:                  key,
