@@ -435,8 +435,9 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 // InitializeLUKS2Container will initialize the partition at the specified devicePath as a new LUKS2 container. This can only
 // be called on a partition that isn't mapped. The label for the new LUKS2 container is provided via the label argument.
 //
-// The initial key used for unlocking the container is provided via the key argument, and must be a cryptographically secure
-// 64-byte random number. The key should be stored encrypted by using SealKeyToTPM.
+// The initial master key used for unlocking the container is provided via the key argument, and must be a cryptographically secure
+// 64-byte random number. The key should be stored encrypted by using SealKeyToTPM. Note that "master key" in this context refers
+// to the main key used to activate the volume, and is not the same as the LUKS volume key.
 //
 // The container will be configured to encrypt data with AES-256 and XTS block cipher mode.
 //

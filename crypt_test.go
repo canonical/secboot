@@ -302,7 +302,7 @@ type cryptTestBase struct {
 	recoveryKey      []byte
 	recoveryKeyAscii []string
 
-	tpmKey []byte
+	masterKey []byte
 
 	dir string // directory used for storing test files
 
@@ -330,8 +330,8 @@ func (ctb *cryptTestBase) setUpSuite(c *C, base *snapd_testutil.BaseTest) {
 		ctb.recoveryKeyAscii = append(ctb.recoveryKeyAscii, fmt.Sprintf("%05d", x))
 	}
 
-	ctb.tpmKey = make([]byte, 64)
-	rand.Read(ctb.tpmKey)
+	ctb.masterKey = make([]byte, 64)
+	rand.Read(ctb.masterKey)
 
 	// These tests create keys in the user keyring that are only readable by a possessor. Reading these keys fails when running
 	// the tests inside gnome-terminal in Ubuntu 18.04 because the gnome-terminal backend runs inside the systemd user session,
@@ -522,12 +522,12 @@ func (ctb *cryptTPMTestBase) setUpTest(c *C) {
 	ctb.keyFile = dir + "/keydata"
 
 	pinHandle := tpm2.Handle(0x0181fff0)
-	c.Assert(SealKeyToTPM(ctb.base.TPM, ctb.tpmKey, ctb.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: pinHandle}), IsNil)
+	c.Assert(SealKeyToTPM(ctb.base.TPM, ctb.masterKey, ctb.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: pinHandle}), IsNil)
 	pinIndex, err := ctb.base.TPM.CreateResourceContextFromTPM(pinHandle)
 	c.Assert(err, IsNil)
 	ctb.base.AddCleanupNVSpace(c, ctb.base.TPM.OwnerHandleContext(), pinIndex)
 
-	c.Assert(ioutil.WriteFile(ctb.expectedTpmKeyFile, ctb.tpmKey, 0644), IsNil)
+	c.Assert(ioutil.WriteFile(ctb.expectedTpmKeyFile, ctb.masterKey, 0644), IsNil)
 
 	// Some tests may increment the DA lockout counter
 	ctb.base.AddCleanup(func() {
@@ -1492,7 +1492,7 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 func (s *cryptSuite) TestInitializeLUKS2Container1(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		label: "data",
-		key:   s.tpmKey,
+		key:   s.masterKey,
 	})
 }
 
@@ -1500,7 +1500,7 @@ func (s *cryptSuite) TestInitializeLUKS2Container2(c *C) {
 	// Test with different args.
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		label: "test",
-		key:   s.tpmKey,
+		key:   s.masterKey,
 	})
 }
 
@@ -1513,7 +1513,7 @@ func (s *cryptSuite) TestInitializeLUKS2Container3(c *C) {
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
-	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32]), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
+	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.masterKey[0:32]), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
 }
 
 type testAddRecoveryKeyToLUKS2ContainerData struct {
@@ -1548,7 +1548,7 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 
 func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container1(c *C) {
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
-		key:         s.tpmKey,
+		key:         s.masterKey,
 		recoveryKey: s.recoveryKey,
 	})
 }
@@ -1564,7 +1564,7 @@ func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container2(c *C) {
 func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container3(c *C) {
 	// Test with different recovery key.
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
-		key:         s.tpmKey,
+		key:         s.masterKey,
 		recoveryKey: make([]byte, 16),
 	})
 }
@@ -1609,14 +1609,14 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey1(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		recoveryKey: s.recoveryKey,
-		key:         s.tpmKey,
+		key:         s.masterKey,
 	})
 }
 
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey2(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		recoveryKey: make([]byte, 16),
-		key:         s.tpmKey,
+		key:         s.masterKey,
 	})
 }
 
