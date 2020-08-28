@@ -33,7 +33,6 @@ import (
 	"strings"
 
 	"github.com/snapcore/secboot/internal/luks2"
-	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
@@ -450,28 +449,8 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
 	}
 
-	cmd := exec.Command("cryptsetup",
-		// batch processing, no password verification for formatting an existing LUKS container
-		"-q",
-		// formatting a new volume
-		"luksFormat",
-		// use LUKS2
-		"--type", "luks2",
-		// read the key from stdin
-		"--key-file", "-",
-		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
-		"--cipher", "aes-xts-plain64", "--key-size", "512",
-		// use argon2i as the KDF with minimum cost (lowest possible time and memory costs). This is done
-		// because the supplied input key has the same entropy (512-bits) as the derived key and therefore
-		// increased time or memory cost don't provide a security benefit (but does slow down unlocking).
-		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
-		// set LUKS2 label
-		"--label", label,
-		// device to format
-		devicePath)
-	cmd.Stdin = bytes.NewReader(key)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+	if err := luks2.Format(devicePath, label, key); err != nil {
+		return xerrors.Errorf("cannot format device: %w", err)
 	}
 
 	return luks2.SetKeyslotPreferred(devicePath, 0)
@@ -505,10 +484,8 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
 	}
 
-	cmd := exec.Command("cryptsetup", "luksKillSlot", "--key-file", "-", devicePath, "0")
-	cmd.Stdin = bytes.NewReader(recoveryKey[:])
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+	if err := luks2.KillSlot(devicePath, 0, recoveryKey[:]); err != nil {
+		return xerrors.Errorf("cannot kill existing keyslot: %w", err)
 	}
 
 	if err := luks2.AddKey(devicePath, recoveryKey[:], key, []string{
@@ -518,7 +495,7 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
 		// always have the main key in slot 0 for now
 		"--key-slot", "0"}); err != nil {
-		return err
+		return xerrors.Errorf("cannot add new keyslot: %w", err)
 	}
 
 	return luks2.SetKeyslotPreferred(devicePath, 0)

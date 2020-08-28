@@ -436,6 +436,34 @@ func Activate(volumeName, sourceDevicePath string, key []byte, options []string)
 	return cmd.Wait()
 }
 
+func Format(devicePath, label string, key []byte) error {
+	cmd := exec.Command("cryptsetup",
+		// batch processing, no password verification for formatting an existing LUKS container
+		"-q",
+		// formatting a new volume
+		"luksFormat",
+		// use LUKS2
+		"--type", "luks2",
+		// read the key from stdin
+		"--key-file", "-",
+		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
+		"--cipher", "aes-xts-plain64", "--key-size", "512",
+		// use argon2i as the KDF with minimum cost (lowest possible time and memory costs). This is done
+		// because the supplied input key has the same entropy (512-bits) as the derived key and therefore
+		// increased time or memory cost don't provide a security benefit (but does slow down unlocking).
+		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
+		// set LUKS2 label
+		"--label", label,
+		// device to format
+		devicePath)
+	cmd.Stdin = bytes.NewReader(key)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return osutil.OutputErr(output, err)
+	}
+
+	return nil
+}
+
 func AddKey(devicePath string, existingKey, key []byte, extraOptionArgs []string) error {
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
@@ -483,6 +511,15 @@ func AddKey(devicePath string, existingKey, key []byte, extraOptionArgs []string
 	f.Close()
 	if err := cmd.Wait(); err != nil {
 		return osutil.OutputErr(b.Bytes(), err)
+	}
+	return nil
+}
+
+func KillSlot(devicePath string, slot int, key []byte) error {
+	cmd := exec.Command("cryptsetup", "luksKillSlot", "--key-file", "-", devicePath, strconv.Itoa(slot))
+	cmd.Stdin = bytes.NewReader(key)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return osutil.OutputErr(output, err)
 	}
 	return nil
 }
