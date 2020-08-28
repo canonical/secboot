@@ -41,6 +41,11 @@ import (
 
 const userKeyring = -4
 
+var (
+	masterTokenType   = "secboot-master-detached"
+	recoveryTokenType = "secboot-recovery"
+)
+
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
 type RecoveryKey [16]byte
 
@@ -436,8 +441,9 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 // be called on a partition that isn't mapped. The label for the new LUKS2 container is provided via the label argument.
 //
 // The initial master key used for unlocking the container is provided via the key argument, and must be a cryptographically secure
-// 64-byte random number. The key should be stored encrypted by using SealKeyToTPM. Note that "master key" in this context refers
-// to the main key used to activate the volume, and is not the same as the LUKS volume key although they must be the same size.
+// 64-byte random number. The key should be protected by a hardware backed keystore, such as a TPM by using SealKeyToTPM. Note that
+// "master key" in this context refers to the main key used to activate the volume, and is not the same as the LUKS volume key
+// although they must be the same size.
 //
 // The container will be configured to encrypt data with AES-256 and XTS block cipher mode.
 //
@@ -450,39 +456,107 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 		return xerrors.Errorf("cannot format device: %w", err)
 	}
 
-	return luks2.SetKeyslotPreferred(devicePath, 0)
+	if err := luks2.SetKeyslotPriority(devicePath, 0, "prefer"); err != nil {
+		return xerrors.Errorf("cannot set keyslot priority: %w", err)
+	}
+
+	if err := luks2.ImportToken(devicePath, &luks2.Token{Type: masterTokenType, Keyslots: []luks2.Ints{0}}); err != nil {
+		return xerrors.Errorf("cannot add token: %w", err)
+	}
+
+	return nil
 }
 
-// AddRecoveryKeyToLUKS2Container adds a fallback recovery key to an existing LUKS2 container created with InitializeLUKS2Container.
-// The recovery key is intended to be used as a fallback mechanism that operates independently of the TPM in order to unlock the
-// container in the event that the key encrypted with SealKeyToTPM cannot be used to unlock it. The devicePath argument specifies
-// the device node for the partition that contains the LUKS2 container. The existing key for the container is provided via the
-// key argument.
+func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, tokenType string, kdf *luks2.KDFOptions) (int, error) {
+	startInfo, err := luks2.DecodeHdr(devicePath)
+	if err != nil {
+		return 0, xerrors.Errorf("cannot decode LUKS2 header: %w", err)
+	}
+
+	oldTokenId := -1
+	for k, v := range startInfo.Metadata.Tokens {
+		if v.Type == tokenType {
+			oldTokenId = int(k)
+			break
+		}
+	}
+
+	if err := luks2.AddKey(devicePath, existingKey, newKey, kdf); err != nil {
+		return 0, xerrors.Errorf("cannot add new keyslot: %w", err)
+	}
+
+	updatedInfo, err := luks2.DecodeHdr(devicePath)
+	if err != nil {
+		return 0, xerrors.Errorf("cannot decode updated LUKS2 header: %w", err)
+	}
+
+	newSlotId := -1
+	for s := range updatedInfo.Metadata.Keyslots {
+		if _, ok := startInfo.Metadata.Keyslots[s]; !ok {
+			newSlotId = int(s)
+			break
+		}
+	}
+
+	if newSlotId == -1 {
+		return 0, errors.New("cannot determine new keyslot ID")
+	}
+
+	if err := luks2.ImportToken(devicePath, &luks2.Token{Type: tokenType, Keyslots: []luks2.Ints{luks2.Ints(newSlotId)}}); err != nil {
+		return 0, xerrors.Errorf("cannot add new token: %w", err)
+	}
+
+	if oldTokenId == -1 {
+		return newSlotId, nil
+	}
+
+	if len(startInfo.Metadata.Tokens[luks2.Ints(oldTokenId)].Keyslots) > 0 {
+		if err := luks2.KillSlot(devicePath, int(startInfo.Metadata.Tokens[luks2.Ints(oldTokenId)].Keyslots[0]), existingKey); err != nil {
+			return 0, xerrors.Errorf("cannot delete old keyslot: %w", err)
+		}
+	}
+
+	if err := luks2.RemoveToken(devicePath, oldTokenId); err != nil {
+		return 0, xerrors.Errorf("cannot delete old token: %w", err)
+	}
+
+	return newSlotId, nil
+}
+
+// SetLUKS2ContainerRecoveryKey sets the fallback recovery key on an existing LUKS2 container created with InitializeLUKS2Container.
+// The recovery key is intended to be provided manually as a fallback mechanism that operates independently of any hardware backed
+// keystore in the event that the key normally used for unlocking the container cannot be recovered. The devicePath argument specifies
+// the device that contains the LUKS2 container. An existing key or passphrase for the container must be provided via the existingKey
+// argument.
 //
-// The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
-func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
+// The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte random number.
+//
+// If the container already has a recovery key defined, then this function will delete the old recovery key once the new one has been
+// set.
+func SetLUKS2ContainerRecoveryKey(devicePath string, existingKey []byte, recoveryKey RecoveryKey) error {
 	// Use a KDF with an increased cost for the recovery key.
-	return luks2.AddKey(devicePath, key, recoveryKey[:], -1, &luks2.KDFOptions{IterTime: 5 * time.Second})
+	_, err := setLUKS2ContainerKey(devicePath, existingKey, recoveryKey[:], recoveryTokenType, &luks2.KDFOptions{IterTime: 5 * time.Second})
+	return err
 }
 
-// ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
-// is intended to be used after the container is unlocked with the recovery key, in the scenario that the TPM sealed key is
-// invalid and needs to be recreated.
+// SetLUKS2ContainerMasterKey sets the master key that is normally used for unlocking the LUKS2 container at devicePath. This
+// function is intended to be used after the container has had to be unlocked with the recovery key because the original master
+// key could not be recovered from the hardware backed keystore that is protecting it. It can also be used to set the master key
+// for a container that is normally unlocked with a passphrase. An existing key or passphrase for the container must be provided
+// via the existingKey argument.
 //
-// In order to perform this action, the recovery key needs to be supplied via the recoveryKey argument. The new key is provided via
-// the key argument. The new key should be stored encrypted with SealKeyToTPM.
+// The new key is provided via the key argument and must be a cryptographically secure 64-byte random number.
 //
-// Note that this operation is not atomic. It will delete the existing key from the container before configuring the keyslot with
-// the new key. This is not a problem, because this function is intended to be called in the scenario that the default key cannot
-// be used to activate the LUKS2 container.
-func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, key []byte) error {
-	if err := luks2.KillSlot(devicePath, 0, recoveryKey[:]); err != nil {
-		return xerrors.Errorf("cannot kill existing keyslot: %w", err)
+// If the container already has a master key defined, then this function will delete the old master key once the new one has been set.
+func SetLUKS2ContainerMasterKey(devicePath string, existingKey, newKey []byte) error {
+	slotId, err := setLUKS2ContainerKey(devicePath, existingKey, newKey, masterTokenType, &luks2.KDFOptions{Master: true})
+	if err != nil {
+		return err
 	}
 
-	if err := luks2.AddKey(devicePath, recoveryKey[:], key, 0, &luks2.KDFOptions{Master: true}); err != nil {
-		return xerrors.Errorf("cannot add new keyslot: %w", err)
+	if err := luks2.SetKeyslotPriority(devicePath, slotId, "prefer"); err != nil {
+		return xerrors.Errorf("cannot set priority of new keyslot: %w", err)
 	}
 
-	return luks2.SetKeyslotPreferred(devicePath, 0)
+	return nil
 }

@@ -1250,6 +1250,13 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	c.Assert(ok, Equals, true)
 	c.Check(segment.Encryption, Equals, "aes-xts-plain64")
 
+	c.Check(info.Metadata.Tokens, HasLen, 1)
+	token, ok := info.Metadata.Tokens[0]
+	c.Assert(ok, Equals, true)
+	c.Check(token.Type, Equals, "secboot-master-detached")
+	c.Assert(token.Keyslots, HasLen, 1)
+	c.Check(int(token.Keyslots[0]), Equals, 0)
+
 	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
 	cmd.Stdin = bytes.NewReader(data.key)
 	c.Check(cmd.Run(), IsNil)
@@ -1282,25 +1289,37 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
 	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.masterKey[0:32]), ErrorMatches, "cannot format device: expected a key length of 512-bits \\(got 256\\)")
 }
 
-type testAddRecoveryKeyToLUKS2ContainerData struct {
+type testSetLUKS2ContainerRecoveryKeyData struct {
 	key         []byte
 	recoveryKey []byte
 }
 
-func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecoveryKeyToLUKS2ContainerData) {
+func (s *cryptSuite) testSetLUKS2ContainerRecoveryKey(c *C, data *testSetLUKS2ContainerRecoveryKeyData) {
 	devicePath := s.createEmptyDiskImage(c)
 	c.Assert(InitializeLUKS2Container(devicePath, "test", data.key), IsNil)
 
 	var recoveryKey RecoveryKey
 	copy(recoveryKey[:], data.recoveryKey)
 
-	c.Check(AddRecoveryKeyToLUKS2Container(devicePath, data.key, recoveryKey), IsNil)
+	c.Check(SetLUKS2ContainerRecoveryKey(devicePath, data.key, recoveryKey), IsNil)
 
 	info, err := luks2.DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 
+	c.Check(info.Metadata.Tokens, HasLen, 2)
+	var token *luks2.Token
+	for _, t := range info.Metadata.Tokens {
+		if t.Type == "secboot-recovery" {
+			token = t
+			break
+		}
+	}
+	c.Assert(token, NotNil)
+	c.Assert(token.Keyslots, HasLen, 1)
+	keyslotId := token.Keyslots[0]
+
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
-	keyslot, ok := info.Metadata.Keyslots[1]
+	keyslot, ok := info.Metadata.Keyslots[keyslotId]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
 	c.Check(keyslot.Priority, IsNil)
@@ -1312,35 +1331,35 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 	c.Check(cmd.Run(), IsNil)
 }
 
-func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container1(c *C) {
-	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
+func (s *cryptSuite) TestSetLUKS2ContainerRecoveryKey1(c *C) {
+	s.testSetLUKS2ContainerRecoveryKey(c, &testSetLUKS2ContainerRecoveryKeyData{
 		key:         s.masterKey,
 		recoveryKey: s.recoveryKey,
 	})
 }
 
-func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container2(c *C) {
+func (s *cryptSuite) TestSetLUKS2ContainerRecoveryKey2(c *C) {
 	// Test with different key.
-	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
+	s.testSetLUKS2ContainerRecoveryKey(c, &testSetLUKS2ContainerRecoveryKeyData{
 		key:         make([]byte, 64),
 		recoveryKey: s.recoveryKey,
 	})
 }
 
-func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container3(c *C) {
+func (s *cryptSuite) TestSetLUKS2ContainerRecoveryKey3(c *C) {
 	// Test with different recovery key.
-	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
+	s.testSetLUKS2ContainerRecoveryKey(c, &testSetLUKS2ContainerRecoveryKeyData{
 		key:         s.masterKey,
 		recoveryKey: make([]byte, 16),
 	})
 }
 
-type testChangeLUKS2KeyUsingRecoveryKeyData struct {
+type testSetLUKS2ContainerMasterKeyData struct {
 	recoveryKey []byte
 	key         []byte
 }
 
-func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLUKS2KeyUsingRecoveryKeyData) {
+func (s *cryptSuite) testSetLUKS2ContainerMasterKey(c *C, data *testSetLUKS2ContainerMasterKeyData) {
 	devicePath := s.createEmptyDiskImage(c)
 	initialKey := make([]byte, 64)
 	rand.Read(initialKey)
@@ -1348,16 +1367,27 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 
 	var recoveryKey [16]byte
 	copy(recoveryKey[:], data.recoveryKey)
+	c.Assert(SetLUKS2ContainerRecoveryKey(devicePath, initialKey, recoveryKey), IsNil)
 
-	c.Assert(AddRecoveryKeyToLUKS2Container(devicePath, initialKey, recoveryKey), IsNil)
-
-	c.Check(ChangeLUKS2KeyUsingRecoveryKey(devicePath, recoveryKey, data.key), IsNil)
+	c.Check(SetLUKS2ContainerMasterKey(devicePath, data.recoveryKey, data.key), IsNil)
 
 	info, err := luks2.DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 
+	c.Check(info.Metadata.Tokens, HasLen, 2)
+	var token *luks2.Token
+	for _, t := range info.Metadata.Tokens {
+		if t.Type == "secboot-master-detached" {
+			token = t
+			break
+		}
+	}
+	c.Assert(token, NotNil)
+	c.Assert(token.Keyslots, HasLen, 1)
+	keyslotId := token.Keyslots[0]
+
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
-	keyslot, ok := info.Metadata.Keyslots[0]
+	keyslot, ok := info.Metadata.Keyslots[keyslotId]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
 	c.Assert(keyslot.Priority, NotNil)
@@ -1372,22 +1402,22 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 	c.Check(cmd.Run(), IsNil)
 }
 
-func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey1(c *C) {
-	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
+func (s *cryptSuite) TestSetLUKS2ContainerMasterKey1(c *C) {
+	s.testSetLUKS2ContainerMasterKey(c, &testSetLUKS2ContainerMasterKeyData{
 		recoveryKey: s.recoveryKey,
 		key:         s.masterKey,
 	})
 }
 
-func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey2(c *C) {
-	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
+func (s *cryptSuite) TestSetLUKS2ContainerMasterKey2(c *C) {
+	s.testSetLUKS2ContainerMasterKey(c, &testSetLUKS2ContainerMasterKeyData{
 		recoveryKey: make([]byte, 16),
 		key:         s.masterKey,
 	})
 }
 
-func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey3(c *C) {
-	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
+func (s *cryptSuite) TestSetLUKS2ContainerMasterKey3(c *C) {
+	s.testSetLUKS2ContainerMasterKey(c, &testSetLUKS2ContainerMasterKeyData{
 		recoveryKey: s.recoveryKey,
 		key:         make([]byte, 64),
 	})

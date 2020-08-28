@@ -113,6 +113,11 @@ func (u *Uint64s) UnmarshalText(text []byte) error {
 
 type Ints int
 
+func (i Ints) MarshalText() ([]byte, error) {
+	t := strconv.Itoa(int(i))
+	return []byte(t), nil
+}
+
 func (i *Ints) UnmarshalText(text []byte) error {
 	n, err := strconv.Atoi(string(text))
 	if err != nil {
@@ -135,30 +140,44 @@ type Token struct {
 	Params   map[string]interface{}
 }
 
-func (t *Token) UnmarshalJSON(data []byte) error {
-	if err := json.Unmarshal(data, &t); err != nil {
-		return err
+func (t Token) MarshalJSON() ([]byte, error) {
+	m := make(map[string]interface{})
+	for k, v := range t.Params {
+		m[k] = v
 	}
+	m["type"] = t.Type
+	m["keyslots"] = t.Keyslots
+	return json.Marshal(m)
+}
 
+func (t *Token) UnmarshalJSON(data []byte) error {
 	m := make(map[string]interface{})
 	if err := json.Unmarshal(data, &m); err != nil {
 		return err
 	}
 
-	for k, v := range m {
-		switch k {
-		case "type", "keyslots":
-		default:
-			t.Params[k] = v
-		}
+	if ty, ok := m["type"].(string); ok {
+		t.Type = ty
+	}
+	delete(m, "type")
+
+	ksd, err := json.Marshal(m["keyslots"])
+	if err != nil {
+		return err
+	}
+	delete(m, "keyslots")
+
+	if err := json.Unmarshal(ksd, &t.Keyslots); err != nil {
+		return err
 	}
 
+	t.Params = m
 	return nil
 }
 
 type Digest struct {
 	Type       string
-	Keyslots   []Ints
+	eyslots    []Ints
 	Segments   []Ints
 	Salt       []byte
 	Digest     []byte
@@ -370,7 +389,6 @@ func DecodeHdr(path string) (*HdrInfo, error) {
 	}
 
 	dec := json.NewDecoder(f)
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(&info.Metadata); err != nil {
 		return nil, err
 	}
@@ -490,7 +508,7 @@ func (o KDFOptions) args() []string {
 	return append(args, "--iter-time", strconv.FormatUint(uint64(o.IterTime/time.Millisecond), 10))
 }
 
-func AddKey(devicePath string, existingKey, key []byte, slot int, kdf *KDFOptions) error {
+func AddKey(devicePath string, existingKey, key []byte, kdf *KDFOptions) error {
 	if kdf.Master && len(key) != keySize {
 		return fmt.Errorf("expected a key length of %d-bits (got %d)", keySize*8, len(key)*8)
 	}
@@ -545,6 +563,27 @@ func AddKey(devicePath string, existingKey, key []byte, slot int, kdf *KDFOption
 	return nil
 }
 
+func ImportToken(devicePath string, token *Token) error {
+	tokenJSON, err := json.Marshal(token)
+	if err != nil {
+		return xerrors.Errorf("cannot serialize token: %w", err)
+	}
+	cmd := exec.Command("cryptsetup", "token", "import", devicePath)
+	cmd.Stdin = bytes.NewReader(tokenJSON)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return osutil.OutputErr(output, err)
+	}
+	return nil
+}
+
+func RemoveToken(devicePath string, id int) error {
+	cmd := exec.Command("cryptsetup", "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return osutil.OutputErr(output, err)
+	}
+	return nil
+}
+
 func KillSlot(devicePath string, slot int, key []byte) error {
 	cmd := exec.Command("cryptsetup", "luksKillSlot", "--key-file", "-", devicePath, strconv.Itoa(slot))
 	cmd.Stdin = bytes.NewReader(key)
@@ -554,8 +593,8 @@ func KillSlot(devicePath string, slot int, key []byte) error {
 	return nil
 }
 
-func SetKeyslotPreferred(devicePath string, slot int) error {
-	cmd := exec.Command("cryptsetup", "config", "--priority", "prefer", "--key-slot", strconv.Itoa(slot), devicePath)
+func SetKeyslotPriority(devicePath string, slot int, priority string) error {
+	cmd := exec.Command("cryptsetup", "config", "--priority", priority, "--key-slot", strconv.Itoa(slot), devicePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
 	}
