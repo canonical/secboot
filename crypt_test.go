@@ -22,26 +22,22 @@ package secboot_test
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 )
@@ -64,236 +60,6 @@ func getKeyringKeys(c *C, keyringId int) (out []int) {
 		out = append(out, id)
 	}
 	return
-}
-
-type luksBinaryHdr struct {
-	Magic       [6]byte
-	Version     uint16
-	HdrSize     uint64
-	SeqId       uint64
-	Label       [48]byte
-	CsumAlg     [32]byte
-	Salt        [64]byte
-	Uuid        [40]byte
-	Subsystem   [48]byte
-	HdrOffset   uint64
-	Padding     [184]byte
-	Csum        [64]byte
-	Padding4096 [7 * 512]byte
-}
-
-type uint64s uint64
-
-func (u *uint64s) UnmarshalText(text []byte) error {
-	n, err := strconv.ParseUint(string(text), 10, 64)
-	if err != nil {
-		return err
-	}
-	*u = uint64s(n)
-	return nil
-}
-
-type ints int
-
-func (i *ints) UnmarshalText(text []byte) error {
-	n, err := strconv.Atoi(string(text))
-	if err != nil {
-		return err
-	}
-	*i = ints(n)
-	return nil
-}
-
-type luksConfig struct {
-	JSONSize     uint64s `json:"json_size"`
-	KeyslotsSize uint64s `json:"keyslots_size"`
-	Flags        []string
-	Requirements []string
-}
-
-type luksToken struct {
-	Type     string
-	Keyslots []ints
-	Params   map[string]interface{}
-}
-
-func (t *luksToken) UnmarshalJSON(data []byte) error {
-	if err := json.Unmarshal(data, &t); err != nil {
-		return err
-	}
-
-	m := make(map[string]interface{})
-	if err := json.Unmarshal(data, &m); err != nil {
-		return err
-	}
-
-	for k, v := range m {
-		switch k {
-		case "type", "keyslots":
-		default:
-			t.Params[k] = v
-		}
-	}
-
-	return nil
-}
-
-type luksDigest struct {
-	Type       string
-	Keyslots   []ints
-	Segments   []ints
-	Salt       []byte
-	Digest     []byte
-	Hash       string
-	Iterations int
-}
-
-type luksSegment struct {
-	Type        string
-	Offset      uint64
-	Size        uint64
-	DynamicSize bool
-	Encryption  string
-}
-
-func (s *luksSegment) UnmarshalJSON(data []byte) error {
-	var d struct {
-		Type       string
-		Offset     uint64s
-		Size       string
-		Encryption string
-	}
-
-	if err := json.Unmarshal(data, &d); err != nil {
-		return err
-	}
-
-	*s = luksSegment{
-		Type:       d.Type,
-		Offset:     uint64(d.Offset),
-		Encryption: d.Encryption}
-	if d.Size == "dynamic" {
-		s.DynamicSize = true
-	} else {
-		n, err := strconv.ParseUint(d.Size, 10, 64)
-		if err != nil {
-			return err
-		}
-		s.Size = n
-	}
-
-	return nil
-}
-
-type luksArea struct {
-	Type       string
-	Offset     uint64s
-	Size       uint64s
-	Encryption string
-	KeySize    int `json:"key_size"`
-}
-
-type luksAF struct {
-	Type    string
-	Stripes int
-	Hash    string
-}
-
-type luksKDF struct {
-	Type       string
-	Salt       []byte
-	Hash       string
-	Iterations int
-	Time       int
-	Memory     int
-	CPUs       int
-}
-
-type luksKeyslot struct {
-	Type     string
-	KeySize  int `json:"key_size"`
-	Area     luksArea
-	KDF      luksKDF
-	AF       luksAF
-	Priority *int
-}
-
-type luksMetadata struct {
-	Keyslots map[ints]*luksKeyslot
-	Segments map[ints]*luksSegment
-	Digests  map[ints]*luksDigest
-	Tokens   map[ints]*luksToken
-	Config   luksConfig
-}
-
-type luksInfo struct {
-	HdrSize  uint64
-	Label    string
-	Metadata luksMetadata
-}
-
-// decodeLuksInfo is currently just used for testing, but will eventually go in to
-// internal/luks for use in non-test code. It will need some additional work for that
-// to happen.
-func decodeLuksInfo(path string) (*luksInfo, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var primaryHdr luksBinaryHdr
-	if err := binary.Read(f, binary.BigEndian, &primaryHdr); err != nil {
-		return nil, xerrors.Errorf("cannot read primary header: %w", err)
-	}
-	if !bytes.Equal(primaryHdr.Magic[:], []byte{'L', 'U', 'K', 'S', 0xba, 0xbe}) {
-		return nil, errors.New("invalid primary header magic")
-	}
-	if primaryHdr.Version != 2 {
-		return nil, errors.New("invalid primary header version")
-	}
-
-	if _, err := f.Seek(int64(primaryHdr.HdrSize), io.SeekStart); err != nil {
-		return nil, err
-	}
-
-	// TODO: If first binary header fails validation, search for second header at known offsets
-	var secondaryHdr luksBinaryHdr
-	if err := binary.Read(f, binary.BigEndian, &secondaryHdr); err != nil {
-		return nil, xerrors.Errorf("cannot read secondary header: %w", err)
-	}
-	if !bytes.Equal(secondaryHdr.Magic[:], []byte{'S', 'K', 'U', 'L', 0xba, 0xbe}) {
-		return nil, errors.New("invalid secondary header magic")
-	}
-	if secondaryHdr.Version != 2 {
-		return nil, errors.New("invalid secondary header version")
-	}
-	// TODO: After loading each binary header:
-	// - validate offset
-	// - validate checksum
-	// - load and validate JSON metadata
-
-	// TODO: Only use known good header
-	activeHdr := &primaryHdr
-	if secondaryHdr.SeqId > primaryHdr.SeqId {
-		activeHdr = &secondaryHdr
-	}
-
-	info := &luksInfo{
-		HdrSize: activeHdr.HdrSize,
-		Label:   strings.TrimRight(string(activeHdr.Label[:]), "\x00")}
-
-	if _, err := f.Seek(int64(activeHdr.HdrOffset)+int64(binary.Size(activeHdr)), io.SeekStart); err != nil {
-		return nil, err
-	}
-
-	dec := json.NewDecoder(f)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&info.Metadata); err != nil {
-		return nil, err
-	}
-
-	return info, nil
 }
 
 type cryptTestBase struct {
@@ -1463,7 +1229,7 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 
 	c.Check(InitializeLUKS2Container(devicePath, data.label, data.key), IsNil)
 
-	info, err := decodeLuksInfo(devicePath)
+	info, err := luks2.DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Label, Equals, data.label)
@@ -1530,7 +1296,7 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 
 	c.Check(AddRecoveryKeyToLUKS2Container(devicePath, data.key, recoveryKey), IsNil)
 
-	info, err := decodeLuksInfo(devicePath)
+	info, err := luks2.DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
@@ -1587,7 +1353,7 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 
 	c.Check(ChangeLUKS2KeyUsingRecoveryKey(devicePath, recoveryKey, data.key), IsNil)
 
-	info, err := decodeLuksInfo(devicePath)
+	info, err := luks2.DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
