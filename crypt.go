@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/snapcore/secboot/internal/luks2"
 
@@ -436,7 +437,7 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 //
 // The initial master key used for unlocking the container is provided via the key argument, and must be a cryptographically secure
 // 64-byte random number. The key should be stored encrypted by using SealKeyToTPM. Note that "master key" in this context refers
-// to the main key used to activate the volume, and is not the same as the LUKS volume key.
+// to the main key used to activate the volume, and is not the same as the LUKS volume key although they must be the same size.
 //
 // The container will be configured to encrypt data with AES-256 and XTS block cipher mode.
 //
@@ -445,11 +446,7 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 // WARNING: This function is destructive. Calling this on an existing LUKS container will make the data contained inside of it
 // irretrievable.
 func InitializeLUKS2Container(devicePath, label string, key []byte) error {
-	if len(key) != 64 {
-		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
-	}
-
-	if err := luks2.Format(devicePath, label, key); err != nil {
+	if err := luks2.Format(devicePath, label, key, &luks2.KDFOptions{Master: true}); err != nil {
 		return xerrors.Errorf("cannot format device: %w", err)
 	}
 
@@ -464,9 +461,8 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
 func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
-	return luks2.AddKey(devicePath, key, recoveryKey[:], []string{
-		// use argon2i as the KDF with an increased cost
-		"--pbkdf", "argon2i", "--iter-time", "5000"})
+	// Use a KDF with an increased cost for the recovery key.
+	return luks2.AddKey(devicePath, key, recoveryKey[:], -1, &luks2.KDFOptions{IterTime: 5 * time.Second})
 }
 
 // ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
@@ -480,21 +476,11 @@ func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey R
 // the new key. This is not a problem, because this function is intended to be called in the scenario that the default key cannot
 // be used to activate the LUKS2 container.
 func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, key []byte) error {
-	if len(key) != 64 {
-		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
-	}
-
 	if err := luks2.KillSlot(devicePath, 0, recoveryKey[:]); err != nil {
 		return xerrors.Errorf("cannot kill existing keyslot: %w", err)
 	}
 
-	if err := luks2.AddKey(devicePath, recoveryKey[:], key, []string{
-		// use argon2i as the KDF with minimum cost (lowest possible time and memory costs). This is done
-		// because the supplied input key has the same entropy (512-bits) as the derived key and therefore
-		// increased time or memory cost don't provide a security benefit (but does slow down unlocking).
-		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
-		// always have the main key in slot 0 for now
-		"--key-slot", "0"}); err != nil {
+	if err := luks2.AddKey(devicePath, recoveryKey[:], key, 0, &luks2.KDFOptions{Master: true}); err != nil {
 		return xerrors.Errorf("cannot add new keyslot: %w", err)
 	}
 

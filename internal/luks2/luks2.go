@@ -39,6 +39,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/snapcore/snapd/osutil"
 
@@ -49,6 +50,8 @@ import (
 var (
 	RunDir                = "/run"
 	SystemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
+
+	keySize = 64
 )
 
 func mkFifo() (string, func(), error) {
@@ -436,8 +439,12 @@ func Activate(volumeName, sourceDevicePath string, key []byte, options []string)
 	return cmd.Wait()
 }
 
-func Format(devicePath, label string, key []byte) error {
-	cmd := exec.Command("cryptsetup",
+func Format(devicePath, label string, key []byte, kdf *KDFOptions) error {
+	if kdf.Master && len(key) != keySize {
+		return fmt.Errorf("expected a key length of %d-bits (got %d)", keySize*8, len(key)*8)
+	}
+
+	args := []string{
 		// batch processing, no password verification for formatting an existing LUKS container
 		"-q",
 		// formatting a new volume
@@ -447,15 +454,14 @@ func Format(devicePath, label string, key []byte) error {
 		// read the key from stdin
 		"--key-file", "-",
 		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
-		"--cipher", "aes-xts-plain64", "--key-size", "512",
-		// use argon2i as the KDF with minimum cost (lowest possible time and memory costs). This is done
-		// because the supplied input key has the same entropy (512-bits) as the derived key and therefore
-		// increased time or memory cost don't provide a security benefit (but does slow down unlocking).
-		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
+		"--cipher", "aes-xts-plain64", "--key-size", strconv.Itoa(keySize * 8),
 		// set LUKS2 label
-		"--label", label,
+		"--label", label}
+	args = append(args, kdf.args()...)
+	args = append(args,
 		// device to format
 		devicePath)
+	cmd := exec.Command("cryptsetup", args...)
 	cmd.Stdin = bytes.NewReader(key)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
@@ -464,7 +470,31 @@ func Format(devicePath, label string, key []byte) error {
 	return nil
 }
 
-func AddKey(devicePath string, existingKey, key []byte, extraOptionArgs []string) error {
+type KDFOptions struct {
+	Master   bool
+	IterTime time.Duration
+}
+
+func (o KDFOptions) args() []string {
+	// Use argon2i as the KDF.
+	args := []string{"--pbkdf", "argon2i"}
+	if o.Master {
+		// For "master" keys, configure the KDF with minimum cost (lowest possible time and memory costs). This
+		// is done for keys that have the same entropy as the derived key and therefore increased time or memory
+		// cost doesn't provide a security benefit (but does slow down unlocking).
+		return append(args, "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32")
+	}
+	if o.IterTime == 0 {
+		return args
+	}
+	return append(args, "--iter-time", strconv.FormatUint(uint64(o.IterTime/time.Millisecond), 10))
+}
+
+func AddKey(devicePath string, existingKey, key []byte, slot int, kdf *KDFOptions) error {
+	if kdf.Master && len(key) != keySize {
+		return fmt.Errorf("expected a key length of %d-bits (got %d)", keySize*8, len(key)*8)
+	}
+
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
 		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
@@ -476,7 +506,7 @@ func AddKey(devicePath string, existingKey, key []byte, extraOptionArgs []string
 		"luksAddKey",
 		// read existing key from named pipe
 		"--key-file", fifoPath}
-	args = append(args, extraOptionArgs...)
+	args = append(args, kdf.args()...)
 	args = append(args,
 		// container to add key to
 		devicePath,
