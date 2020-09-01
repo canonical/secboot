@@ -70,11 +70,10 @@ type cryptTestBase struct {
 
 	masterKey []byte
 
-	dir string // directory used for storing test files
+	runDir string // /run override directory
 
-	passwordFile            string // a newline delimited list of passwords for the mock systemd-ask-password to return
-	expectedTpmKeyFile      string // the TPM expected by the mock systemd-cryptsetup
-	expectedRecoveryKeyFile string // the recovery key expected by the mock systemd-cryptsetup
+	passwordFile          string // a newline delimited list of passwords for the mock systemd-ask-password to return
+	expectedMasterKeyFile string // the master expected by the mock systemd-cryptsetup
 
 	mockSdAskPassword *snapd_testutil.MockCmd
 	mockSdCryptsetup  *snapd_testutil.MockCmd
@@ -115,12 +114,13 @@ func (ctb *cryptTestBase) setUpSuite(c *C, base *snapd_testutil.BaseTest) {
 }
 
 func (ctb *cryptTestBase) setUpTest(c *C) {
-	ctb.dir = c.MkDir()
-	ctb.base.AddCleanup(testutil.MockRunDir(ctb.dir))
+	ctb.runDir = c.MkDir()
+	ctb.base.AddCleanup(testutil.MockRunDir(ctb.runDir))
 
-	ctb.passwordFile = filepath.Join(ctb.dir, "password")                       // passwords to be returned by the mock sd-ask-password
-	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")           // TPM key expected by the mock systemd-cryptsetup
-	ctb.expectedRecoveryKeyFile = filepath.Join(ctb.dir, "expectedrecoverykey") // Recovery key expected by the mock systemd-cryptsetup
+	dir := c.MkDir()
+	ctb.passwordFile = filepath.Join(dir, "password")
+	ctb.expectedMasterKeyFile = filepath.Join(dir, "expectedmasterkey")
+	expectedRecoveryKeyFile := filepath.Join(dir, "expectedrecoverykey")
 
 	sdAskPasswordBottom := `
 head -1 %[1]s
@@ -137,11 +137,12 @@ if [ ! -f "%[1]s" ] || [ "$key" != "$(xxd -p < "%[1]s")" ]; then
     fi
 fi
 `
-	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, filepath.Join(c.MkDir(), "systemd-cryptsetup"), fmt.Sprintf(sdCryptsetupBottom, ctb.expectedTpmKeyFile, ctb.expectedRecoveryKeyFile))
+	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, filepath.Join(c.MkDir(), "systemd-cryptsetup"), fmt.Sprintf(sdCryptsetupBottom, ctb.expectedMasterKeyFile, expectedRecoveryKeyFile))
 	ctb.base.AddCleanup(ctb.mockSdCryptsetup.Restore)
 	ctb.base.AddCleanup(testutil.MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
 
-	c.Assert(ioutil.WriteFile(ctb.expectedRecoveryKeyFile, ctb.recoveryKey, 0644), IsNil)
+	c.Assert(ioutil.WriteFile(ctb.expectedMasterKeyFile, ctb.masterKey, 0644), IsNil)
+	c.Assert(ioutil.WriteFile(expectedRecoveryKeyFile, ctb.recoveryKey, 0644), IsNil)
 
 	startKeys := getKeyringKeys(c, userKeyring)
 
@@ -178,7 +179,7 @@ exec %[1]s "$@" </dev/stdin
 }
 
 func (ctb *cryptTestBase) createEmptyDiskImage(c *C) string {
-	f, err := ioutil.TempFile(ctb.dir, "disk")
+	f, err := os.OpenFile(filepath.Join(c.MkDir(), "disk.img"), os.O_RDWR|os.O_CREATE, 0600)
 	c.Assert(err, IsNil)
 	defer f.Close()
 
@@ -229,8 +230,6 @@ func (ctb *cryptTPMTestBase) setUpTest(c *C) {
 	c.Assert(err, IsNil)
 	ctb.base.AddCleanupNVSpace(c, ctb.base.TPM.OwnerHandleContext(), pinIndex)
 
-	c.Assert(ioutil.WriteFile(ctb.expectedTpmKeyFile, ctb.masterKey, 0644), IsNil)
-
 	// Some tests may increment the DA lockout counter
 	ctb.base.AddCleanup(func() {
 		c.Check(ctb.base.TPM.DictionaryAttackLockReset(ctb.base.TPM.LockoutHandleContext(), nil), IsNil)
@@ -272,7 +271,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, data *test
 	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
 
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 }
 
@@ -354,7 +353,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *tes
 	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
 
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
 }
 
@@ -386,9 +385,11 @@ type testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData struct {
 
 func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.pins, "\n")+"\n"), 0644), IsNil)
-	c.Assert(ioutil.WriteFile(filepath.Join(s.dir, "pinfile"), []byte(data.pinFileContents), 0644), IsNil)
 
-	r, err := os.Open(filepath.Join(s.dir, "pinfile"))
+	pinfile := filepath.Join(c.MkDir(), "pinfile")
+	c.Assert(ioutil.WriteFile(pinfile, []byte(data.pinFileContents), 0644), IsNil)
+
+	r, err := os.Open(pinfile)
 	c.Assert(err, IsNil)
 	defer r.Close()
 
@@ -407,7 +408,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c
 	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
 
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
 }
 
@@ -489,7 +490,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, da
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
 
@@ -576,7 +577,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
 	// Test that recovery fallback works when the unsealed key is incorrect.
 	incorrectKey := make([]byte, 32)
 	rand.Read(incorrectKey)
-	c.Assert(ioutil.WriteFile(s.expectedTpmKeyFile, incorrectKey, 0644), IsNil)
+	c.Assert(ioutil.WriteFile(s.expectedMasterKeyFile, incorrectKey, 0644), IsNil)
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries:  1,
@@ -692,7 +693,7 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
 
@@ -762,7 +763,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
 
@@ -853,9 +854,11 @@ type testActivateVolumeWithRecoveryKeyUsingKeyReaderData struct {
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data *testActivateVolumeWithRecoveryKeyUsingKeyReaderData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
-	c.Assert(ioutil.WriteFile(filepath.Join(s.dir, "keyfile"), []byte(data.recoveryKeyFileContents), 0644), IsNil)
 
-	r, err := os.Open(filepath.Join(s.dir, "keyfile"))
+	keyfile := filepath.Join(c.MkDir(), "keyfile")
+	c.Assert(ioutil.WriteFile(keyfile, []byte(data.recoveryKeyFileContents), 0644), IsNil)
+
+	r, err := os.Open(keyfile)
 	c.Assert(err, IsNil)
 	defer r.Close()
 
@@ -872,7 +875,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, "tries=1")
 	}
 
@@ -1069,7 +1072,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 	for _, call := range s.mockSdCryptsetup.Calls() {
 		c.Assert(len(call), Equals, 6)
 		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, "tries=1")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
