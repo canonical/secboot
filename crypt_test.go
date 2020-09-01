@@ -163,18 +163,7 @@ fi
 		}
 	})
 
-	cryptsetupWrapperBottom := `
-# Set max locked memory to 0. Without this and without CAP_IPC_LOCK, mlockall will
-# succeed but subsequent calls to mmap will fail because the limit is too low. Setting
-# this to 0 here will cause mlockall to fail, which cryptsetup ignores.
-ulimit -l 0
-exec %[1]s "$@" </dev/stdin
-`
-
-	cryptsetup, err := exec.LookPath("cryptsetup")
-	c.Assert(err, IsNil)
-
-	cryptsetupWrapper := snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupWrapperBottom, cryptsetup))
+	cryptsetupWrapper := testutil.WrapCryptsetup(c)
 	ctb.base.AddCleanup(cryptsetupWrapper.Restore)
 }
 
