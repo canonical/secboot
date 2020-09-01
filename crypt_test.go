@@ -72,12 +72,9 @@ type cryptTestBase struct {
 
 	dir string // directory used for storing test files
 
-	passwordFile                 string // a newline delimited list of passwords for the mock systemd-ask-password to return
-	expectedTpmKeyFile           string // the TPM expected by the mock systemd-cryptsetup
-	expectedRecoveryKeyFile      string // the recovery key expected by the mock systemd-cryptsetup
-	cryptsetupInvocationCountDir string
-	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
-	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
+	passwordFile            string // a newline delimited list of passwords for the mock systemd-ask-password to return
+	expectedTpmKeyFile      string // the TPM expected by the mock systemd-cryptsetup
+	expectedRecoveryKeyFile string // the recovery key expected by the mock systemd-cryptsetup
 
 	mockSdAskPassword *snapd_testutil.MockCmd
 	mockSdCryptsetup  *snapd_testutil.MockCmd
@@ -124,9 +121,6 @@ func (ctb *cryptTestBase) setUpTest(c *C) {
 	ctb.passwordFile = filepath.Join(ctb.dir, "password")                       // passwords to be returned by the mock sd-ask-password
 	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")           // TPM key expected by the mock systemd-cryptsetup
 	ctb.expectedRecoveryKeyFile = filepath.Join(ctb.dir, "expectedrecoverykey") // Recovery key expected by the mock systemd-cryptsetup
-	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")                 // File in which the mock cryptsetup records the passed in key
-	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey")           // File in which the mock cryptsetup records the passed in new key
-	ctb.cryptsetupInvocationCountDir = c.MkDir()
 
 	sdAskPasswordBottom := `
 head -1 %[1]s
@@ -181,64 +175,6 @@ exec %[1]s "$@" </dev/stdin
 
 	cryptsetupWrapper := snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupWrapperBottom, cryptsetup))
 	ctb.base.AddCleanup(cryptsetupWrapper.Restore)
-}
-
-func (ctb *cryptTestBase) mockCryptsetup(c *C) *snapd_testutil.MockCmd {
-	cryptsetupBottom := `
-keyfile=""
-action=""
-
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --key-file)
-            keyfile=$2
-            shift 2
-            ;;
-        --type | --cipher | --key-size | --pbkdf | --pbkdf-force-iterations | --pbkdf-memory | --label | --priority | --key-slot | --iter-time)
-            shift 2
-            ;;
-        -*)
-            shift
-            ;;
-        *)
-            if [ -z "$action" ]; then
-                action=$1
-                shift
-            else
-                break
-            fi
-    esac
-done
-
-new_keyfile=""
-if [ "$action" = "luksAddKey" ]; then
-    new_keyfile=$2
-fi
-
-invocation=$(find %[4]s | wc -l)
-mktemp %[4]s/XXXX
-
-dump_key()
-{
-    in=$1
-    out=$2
-
-    if [ -z "$in" ]; then
-	touch "$out"
-    elif [ "$in" == "-" ]; then
-	cat /dev/stdin > "$out"
-    else
-	cat "$in" > "$out"
-    fi
-}
-
-dump_key "$keyfile" "%[2]s.$invocation"
-dump_key "$new_keyfile" "%[3]s.$invocation"
-`
-
-	mock := snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
-	ctb.base.AddCleanup(mock.Restore)
-	return mock
 }
 
 func (ctb *cryptTestBase) createEmptyDiskImage(c *C) string {
