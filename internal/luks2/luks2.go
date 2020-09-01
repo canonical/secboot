@@ -50,6 +50,7 @@ import (
 var (
 	RunDir                = "/run"
 	SystemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
+	cryptsetupLockDir     = RunDir + "/cryptsetup"
 
 	keySize = 64
 )
@@ -82,6 +83,132 @@ func mkFifo() (string, func(), error) {
 
 	succeeded = true
 	return fifo, cleanup, nil
+}
+
+type LockMode int
+
+const (
+	LockModeShared LockMode = iota
+	LockModeExclusive
+
+	LockModeTry LockMode = 1 << 8
+)
+
+func (m LockMode) mode() LockMode {
+	return m & 0xff
+}
+
+func (m LockMode) try() bool {
+	return m&LockModeTry > 0
+}
+
+func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
+	f, err := os.Open(devicePath)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot open device: %w", err)
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, xerrors.Errorf("cannot obtain file info: %w", err)
+	}
+
+	var how int
+	switch mode.mode() {
+	case LockModeShared:
+		how = unix.LOCK_SH
+	case LockModeExclusive:
+		how = unix.LOCK_EX
+	default:
+		return nil, errors.New("invalid lock mode")
+	}
+	if mode.try() {
+		how |= unix.LOCK_NB
+	}
+
+	isDevice := func() bool {
+		return fi.Mode()&os.ModeDevice > 0
+	}
+
+	var lockPath string
+	var devSt unix.Stat_t
+
+	switch {
+	case isDevice():
+		if err := os.Mkdir(cryptsetupLockDir, 0700); err != nil && !os.IsExist(err) {
+			return nil, xerrors.Errorf("cannot create lock directory: %w", err)
+		}
+
+		if err := unix.Fstat(int(f.Fd()), &devSt); err != nil {
+			return nil, xerrors.Errorf("cannot stat device: %w", err)
+		}
+		major := (devSt.Rdev&0x00000000000fff00)>>8 | (devSt.Rdev&0xfffff00000000000)>>32
+		minor := (devSt.Rdev&0x00000000000000ff)>>0 | (devSt.Rdev&0x00000ffffff00000)>>12
+		lockPath = filepath.Join(cryptsetupLockDir, fmt.Sprintf("L_%d:%d", major, minor))
+	case fi.Mode().IsRegular():
+		lockPath = devicePath
+	default:
+		return nil, errors.New("unsupported file type")
+	}
+
+	for {
+		lockFile, err := os.OpenFile(lockPath, os.O_RDWR, 0)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot open lock file for writing: %w", err)
+		}
+
+		succeeded := false
+		defer func() {
+			if succeeded {
+				return
+			}
+			lockFile.Close()
+		}()
+
+		if err := unix.Flock(int(lockFile.Fd()), how); err != nil {
+			return nil, xerrors.Errorf("cannot obtain lock: %w", err)
+		}
+
+		if isDevice() {
+			var st unix.Stat_t
+			if err := unix.Stat(lockPath, &st); err != nil {
+				// The lock file we opened was unlinked by another process releasing its lock.
+				lockFile.Close()
+				continue
+			}
+
+			if devSt.Ino != st.Ino {
+				// The lock file we opened was unlinked by another process releasing its lock and someone else
+				// has created a new lock file in the meantime.
+				lockFile.Close()
+				continue
+			}
+		}
+
+		succeeded = true
+		return func() {
+			unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
+			defer lockFile.Close()
+			if !isDevice() {
+				return
+			}
+			if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+				// Another process has grabbed the lock
+				return
+			}
+			var st unix.Stat_t
+			if err := unix.Stat(lockPath, &st); err != nil {
+				// Another process might have deleted the lock file we created whilst we didn't hold the exclusive lock.
+				return
+			}
+			if devSt.Ino != st.Ino {
+				// Another process might have deleted and recreated the lock file whilst we didn't hold the exclusive lock.
+				return
+			}
+			os.Remove(lockPath)
+		}, nil
+	}
 }
 
 type binaryHdr struct {
@@ -465,6 +592,8 @@ func Format(devicePath, label string, key []byte, kdf *KDFOptions) error {
 	args := []string{
 		// batch processing, no password verification for formatting an existing LUKS container
 		"-q",
+		// disable locking
+		"--disable-locks",
 		// formatting a new volume
 		"luksFormat",
 		// use LUKS2
@@ -520,6 +649,8 @@ func AddKey(devicePath string, existingKey, key []byte, kdf *KDFOptions) error {
 	defer cleanupFifo()
 
 	args := []string{
+		// disable locking
+		"--disable-locks",
 		// add a new key
 		"luksAddKey",
 		// read existing key from named pipe
@@ -568,7 +699,7 @@ func ImportToken(devicePath string, token *Token) error {
 	if err != nil {
 		return xerrors.Errorf("cannot serialize token: %w", err)
 	}
-	cmd := exec.Command("cryptsetup", "token", "import", devicePath)
+	cmd := exec.Command("cryptsetup", "--disable-locks", "token", "import", devicePath)
 	cmd.Stdin = bytes.NewReader(tokenJSON)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
@@ -577,7 +708,7 @@ func ImportToken(devicePath string, token *Token) error {
 }
 
 func RemoveToken(devicePath string, id int) error {
-	cmd := exec.Command("cryptsetup", "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
+	cmd := exec.Command("cryptsetup", "--disable-locks", "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
 	}
@@ -585,7 +716,7 @@ func RemoveToken(devicePath string, id int) error {
 }
 
 func KillSlot(devicePath string, slot int, key []byte) error {
-	cmd := exec.Command("cryptsetup", "luksKillSlot", "--key-file", "-", devicePath, strconv.Itoa(slot))
+	cmd := exec.Command("cryptsetup", "--disable-locks", "luksKillSlot", "--key-file", "-", devicePath, strconv.Itoa(slot))
 	cmd.Stdin = bytes.NewReader(key)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
@@ -594,7 +725,7 @@ func KillSlot(devicePath string, slot int, key []byte) error {
 }
 
 func SetKeyslotPriority(devicePath string, slot int, priority string) error {
-	cmd := exec.Command("cryptsetup", "config", "--priority", priority, "--key-slot", strconv.Itoa(slot), devicePath)
+	cmd := exec.Command("cryptsetup", "--disable-locks", "config", "--priority", priority, "--key-slot", strconv.Itoa(slot), devicePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
 	}

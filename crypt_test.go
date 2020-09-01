@@ -1286,7 +1286,8 @@ func (s *cryptSuite) TestInitializeLUKS2Container3(c *C) {
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
-	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.masterKey[0:32]), ErrorMatches, "cannot format device: expected a key length of 512-bits \\(got 256\\)")
+	devicePath := s.createEmptyDiskImage(c)
+	c.Check(InitializeLUKS2Container(devicePath, "data", s.masterKey[0:32]), ErrorMatches, "cannot format device: expected a key length of 512-bits \\(got 256\\)")
 }
 
 type testSetLUKS2ContainerRecoveryKeyData struct {

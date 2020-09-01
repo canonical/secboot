@@ -452,6 +452,12 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 // WARNING: This function is destructive. Calling this on an existing LUKS container will make the data contained inside of it
 // irretrievable.
 func InitializeLUKS2Container(devicePath, label string, key []byte) error {
+	releaseLock, err := luks2.AcquireLock(devicePath, luks2.LockModeExclusive)
+	if err != nil {
+		return xerrors.Errorf("cannot acquire lock: %w", err)
+	}
+	defer releaseLock()
+
 	if err := luks2.Format(devicePath, label, key, &luks2.KDFOptions{Master: true}); err != nil {
 		return xerrors.Errorf("cannot format device: %w", err)
 	}
@@ -534,8 +540,14 @@ func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, tokenTy
 // If the container already has a recovery key defined, then this function will delete the old recovery key once the new one has been
 // set.
 func SetLUKS2ContainerRecoveryKey(devicePath string, existingKey []byte, recoveryKey RecoveryKey) error {
+	releaseLock, err := luks2.AcquireLock(devicePath, luks2.LockModeExclusive)
+	if err != nil {
+		return xerrors.Errorf("cannot acquire lock: %w", err)
+	}
+	defer releaseLock()
+
 	// Use a KDF with an increased cost for the recovery key.
-	_, err := setLUKS2ContainerKey(devicePath, existingKey, recoveryKey[:], recoveryTokenType, &luks2.KDFOptions{IterTime: 5 * time.Second})
+	_, err = setLUKS2ContainerKey(devicePath, existingKey, recoveryKey[:], recoveryTokenType, &luks2.KDFOptions{IterTime: 5 * time.Second})
 	return err
 }
 
@@ -549,6 +561,12 @@ func SetLUKS2ContainerRecoveryKey(devicePath string, existingKey []byte, recover
 //
 // If the container already has a master key defined, then this function will delete the old master key once the new one has been set.
 func SetLUKS2ContainerMasterKey(devicePath string, existingKey, newKey []byte) error {
+	releaseLock, err := luks2.AcquireLock(devicePath, luks2.LockModeExclusive)
+	if err != nil {
+		return xerrors.Errorf("cannot acquire lock: %w", err)
+	}
+	defer releaseLock()
+
 	slotId, err := setLUKS2ContainerKey(devicePath, existingKey, newKey, masterTokenType, &luks2.KDFOptions{Master: true})
 	if err != nil {
 		return err
