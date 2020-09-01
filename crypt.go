@@ -517,7 +517,7 @@ func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, tokenTy
 	}
 
 	if len(startInfo.Metadata.Tokens[luks2.Ints(oldTokenId)].Keyslots) > 0 {
-		if err := luks2.KillSlot(devicePath, int(startInfo.Metadata.Tokens[luks2.Ints(oldTokenId)].Keyslots[0]), existingKey); err != nil {
+		if err := luks2.KillSlot(devicePath, int(startInfo.Metadata.Tokens[luks2.Ints(oldTokenId)].Keyslots[0]), newKey); err != nil {
 			return 0, xerrors.Errorf("cannot delete old keyslot: %w", err)
 		}
 	}

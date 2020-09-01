@@ -20,13 +20,11 @@
 package secboot_test
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -1279,6 +1277,46 @@ func (s *cryptSuite) TestSetLUKS2ContainerRecoveryKey3(c *C) {
 	})
 }
 
+func (s *cryptSuite) TestChangeLUKS2ContainerRecoveryKey(c *C) {
+	devicePath := s.createEmptyDiskImage(c)
+	c.Assert(InitializeLUKS2Container(devicePath, "test", s.masterKey), IsNil)
+
+	var recoveryKey RecoveryKey
+	copy(recoveryKey[:], s.recoveryKey)
+
+	c.Assert(SetLUKS2ContainerRecoveryKey(devicePath, s.masterKey, recoveryKey), IsNil)
+
+	rand.Read(recoveryKey[:])
+	c.Check(SetLUKS2ContainerRecoveryKey(devicePath, s.recoveryKey, recoveryKey), IsNil)
+
+	info, err := luks2.DecodeHdr(devicePath)
+	c.Assert(err, IsNil)
+
+	c.Check(info.Metadata.Keyslots, HasLen, 2)
+
+	c.Check(info.Metadata.Tokens, HasLen, 2)
+	var token *luks2.Token
+	for _, t := range info.Metadata.Tokens {
+		if t.Type == "secboot-recovery" {
+			token = t
+			break
+		}
+	}
+	c.Assert(token, NotNil)
+	c.Assert(token.Keyslots, HasLen, 1)
+	keyslotId := token.Keyslots[0]
+
+	keyslot, ok := info.Metadata.Keyslots[keyslotId]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.KeySize, Equals, 64)
+	c.Check(keyslot.Priority, IsNil)
+	c.Assert(keyslot.KDF, NotNil)
+	c.Check(keyslot.KDF.Type, Equals, "argon2i")
+
+	testutil.CheckLUKS2Passphrase(c, devicePath, s.masterKey)
+	testutil.CheckLUKS2Passphrase(c, devicePath, recoveryKey[:])
+}
+
 type testSetLUKS2ContainerMasterKeyData struct {
 	recoveryKey []byte
 	key         []byte
@@ -1344,4 +1382,42 @@ func (s *cryptSuite) TestSetLUKS2ContainerMasterKey3(c *C) {
 		recoveryKey: s.recoveryKey,
 		key:         make([]byte, 64),
 	})
+}
+
+func (s *cryptSuite) TestChangeLUKS2ContainerMasterKey(c *C) {
+	devicePath := s.createEmptyDiskImage(c)
+	c.Assert(InitializeLUKS2Container(devicePath, "test", s.masterKey), IsNil)
+
+	newKey := make([]byte, 64)
+	rand.Read(newKey)
+	c.Check(SetLUKS2ContainerMasterKey(devicePath, s.masterKey, newKey), IsNil)
+
+	info, err := luks2.DecodeHdr(devicePath)
+	c.Assert(err, IsNil)
+
+	c.Check(info.Metadata.Keyslots, HasLen, 1)
+
+	c.Check(info.Metadata.Tokens, HasLen, 1)
+	var token *luks2.Token
+	for _, t := range info.Metadata.Tokens {
+		if t.Type == "secboot-master-detached" {
+			token = t
+			break
+		}
+	}
+	c.Assert(token, NotNil)
+	c.Assert(token.Keyslots, HasLen, 1)
+	keyslotId := token.Keyslots[0]
+
+	keyslot, ok := info.Metadata.Keyslots[keyslotId]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.KeySize, Equals, 64)
+	c.Assert(keyslot.Priority, NotNil)
+	c.Check(*keyslot.Priority, Equals, 2)
+	c.Assert(keyslot.KDF, NotNil)
+	c.Check(keyslot.KDF.Type, Equals, "argon2i")
+	c.Check(keyslot.KDF.Time, Equals, 4)
+	c.Check(keyslot.KDF.Memory, Equals, 32)
+
+	testutil.CheckLUKS2Passphrase(c, devicePath, newKey)
 }
