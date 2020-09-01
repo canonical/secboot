@@ -127,15 +127,15 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 		how |= unix.LOCK_NB
 	}
 
-	isDevice := func() bool {
-		return fi.Mode()&os.ModeDevice > 0
+	isBlockDevice := func() bool {
+		return fi.Mode()&os.ModeDevice > 0 && fi.Mode()&os.ModeCharDevice == 0
 	}
 
 	var lockPath string
 	var devSt unix.Stat_t
 
 	switch {
-	case isDevice():
+	case isBlockDevice():
 		if err := os.Mkdir(cryptsetupLockDir, 0700); err != nil && !os.IsExist(err) {
 			return nil, xerrors.Errorf("cannot create lock directory: %w", err)
 		}
@@ -143,9 +143,7 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 		if err := unix.Fstat(int(f.Fd()), &devSt); err != nil {
 			return nil, xerrors.Errorf("cannot stat device: %w", err)
 		}
-		major := (devSt.Rdev&0x00000000000fff00)>>8 | (devSt.Rdev&0xfffff00000000000)>>32
-		minor := (devSt.Rdev&0x00000000000000ff)>>0 | (devSt.Rdev&0x00000ffffff00000)>>12
-		lockPath = filepath.Join(cryptsetupLockDir, fmt.Sprintf("L_%d:%d", major, minor))
+		lockPath = filepath.Join(cryptsetupLockDir, fmt.Sprintf("L_%d:%d", unix.Major(devSt.Rdev), unix.Minor(devSt.Rdev)))
 	case fi.Mode().IsRegular():
 		lockPath = devicePath
 	default:
@@ -170,7 +168,7 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 			return nil, xerrors.Errorf("cannot obtain lock: %w", err)
 		}
 
-		if isDevice() {
+		if isBlockDevice() {
 			var st unix.Stat_t
 			if err := unix.Stat(lockPath, &st); err != nil {
 				// The lock file we opened was unlinked by another process releasing its lock.
@@ -190,7 +188,7 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 		return func() {
 			unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
 			defer lockFile.Close()
-			if !isDevice() {
+			if !isBlockDevice() {
 				return
 			}
 			if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {

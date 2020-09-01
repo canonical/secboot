@@ -1185,9 +1185,7 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	c.Assert(token.Keyslots, HasLen, 1)
 	c.Check(int(token.Keyslots[0]), Equals, 0)
 
-	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
-	cmd.Stdin = bytes.NewReader(data.key)
-	c.Check(cmd.Run(), IsNil)
+	testutil.CheckLUKS2Passphrase(c, devicePath, data.key)
 }
 
 func (s *cryptSuite) TestInitializeLUKS2Container1(c *C) {
@@ -1255,9 +1253,7 @@ func (s *cryptSuite) testSetLUKS2ContainerRecoveryKey(c *C, data *testSetLUKS2Co
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, "argon2i")
 
-	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
-	cmd.Stdin = bytes.NewReader(data.recoveryKey)
-	c.Check(cmd.Run(), IsNil)
+	testutil.CheckLUKS2Passphrase(c, devicePath, data.recoveryKey)
 }
 
 func (s *cryptSuite) TestSetLUKS2ContainerRecoveryKey1(c *C) {
@@ -1326,9 +1322,7 @@ func (s *cryptSuite) testSetLUKS2ContainerMasterKey(c *C, data *testSetLUKS2Cont
 	c.Check(keyslot.KDF.Time, Equals, 4)
 	c.Check(keyslot.KDF.Memory, Equals, 32)
 
-	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
-	cmd.Stdin = bytes.NewReader(data.key)
-	c.Check(cmd.Run(), IsNil)
+	testutil.CheckLUKS2Passphrase(c, devicePath, data.key)
 }
 
 func (s *cryptSuite) TestSetLUKS2ContainerMasterKey1(c *C) {
