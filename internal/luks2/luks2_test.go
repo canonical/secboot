@@ -145,6 +145,10 @@ func (s *luks2Suite) TestActivateWrongKey(c *C) {
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
 }
 
+func (s *luks2Suite) TestActivateWithInvalidOptions(c *C) {
+	c.Check(Activate("data", "/dev/sda1", nil, []string{"tries=2"}), ErrorMatches, "cannot specify the \"tries=\" option")
+}
+
 func (s *luks2Suite) TestAcquireSharedLockOnFile(c *C) {
 	path := filepath.Join(c.MkDir(), "disk")
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)

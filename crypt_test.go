@@ -488,17 +488,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling2(c *C) {
 	})
 }
 
-// TODO:
-//func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling3(c *C) {
-//	// Test that adding "tries=" to ActivateOptions fails.
-//	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
-//		activateOptions: []string{"tries=2"},
-//		errChecker:      ErrorMatches,
-//		errCheckerArgs:  []interface{}{"cannot specify the \"tries=\" option for systemd-cryptsetup"},
-//	})
-//}
-
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling3(c *C) {
 	// Test that recovery fallback works with the TPM in DA lockout mode.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
@@ -517,7 +507,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling5(c *C) {
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
 	// Test that recovery fallback works when there is no SRK and a new one can't be created.
 	srk, err := s.TPM.CreateResourceContextFromTPM(tcg.SRKHandle)
 	c.Assert(err, IsNil)
@@ -542,7 +532,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling5(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling5(c *C) {
 	// Test that recovery fallback works when the unsealed key is incorrect.
 	incorrectKey := make([]byte, 32)
 	rand.Read(incorrectKey)
@@ -560,7 +550,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
 	// Test that activation fails if RecoveryKeyTries is zero.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
@@ -575,7 +565,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
 	// Test that activation fails if the wrong recovery key is provided.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
@@ -593,7 +583,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 	// Test that recovery fallback works if the wrong PIN is supplied.
 	testPIN := "1234"
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
@@ -613,7 +603,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling10(c *C) {
+func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
 	// Test that recovery fallback works if a PIN is set but no PIN attempts are permitted.
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
@@ -745,17 +735,16 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
 	})
 }
 
-// TODO:
-//func (s *cryptSuite) TestActivateVolumeWithRecoveryKey2(c *C) {
-//	// Test with a recovery key which is entered without a hyphen between each group of 5 digits.
-//	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
-//		volumeName:          "data",
-//		sourceDevicePath:    "/dev/sda1",
-//		tries:               1,
-//		recoveryPassphrases: []string{strings.Join(s.recoveryKeyAscii, "")},
-//		activateCalls:   1,
-//	})
-//}
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKey2(c *C) {
+	// Test with a recovery key which is entered without a hyphen between each group of 5 digits.
+	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		volumeName:          "data",
+		sourceDevicePath:    "/dev/sda1",
+		tries:               1,
+		recoveryPassphrases: []string{strings.ReplaceAll(s.recoveryKey.String(), "-", "")},
+		activateCalls:       1,
+	})
+}
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey3(c *C) {
 	// Test that activation succeeds when the correct recovery key is provided on the second attempt.
@@ -853,15 +842,14 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
 	})
 }
 
-// TODO:
-//func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader2(c *C) {
-//	// Test with the correct recovery key supplied via a io.Reader, without a hyphen separating each group of 5 digits.
-//	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
-//		tries:                   1,
-//		recoveryKeyFileContents: strings.Join(s.recoveryKeyAscii, "") + "\n",
-//		activateCalls:       1,
-//	})
-//}
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader2(c *C) {
+	// Test with the correct recovery key supplied via a io.Reader, without a hyphen separating each group of 5 digits.
+	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
+		tries:                   1,
+		recoveryKeyFileContents: strings.ReplaceAll(s.recoveryKey.String(), "-", "") + "\n",
+		activateCalls:           1,
+	})
+}
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader3(c *C) {
 	// Test with the correct recovery key supplied via a io.Reader when the key doesn't end in a newline.
@@ -1054,19 +1042,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling2(c *C) {
 	})
 }
 
-// TODO:
-//func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling3(c *C) {
-//	// Test that adding "tries=" to ActivateOptions fails.
-//	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
-//		tries:           1,
-//		activateOptions: []string{"tries=2"},
-//		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
-//		errChecker:      ErrorMatches,
-//		errCheckerArgs:  []interface{}{"cannot specify the \"tries=\" option for systemd-cryptsetup"},
-//	})
-//}
-
-func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling4(c *C) {
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling3(c *C) {
 	// Test with a badly formatted recovery key.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:               1,
@@ -1076,7 +1052,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling4(c *C) {
 	})
 }
 
-func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling5(c *C) {
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling4(c *C) {
 	// Test with a badly formatted recovery key.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:               1,
@@ -1086,7 +1062,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling5(c *C) {
 	})
 }
 
-func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling5(c *C) {
 	// Test with the wrong recovery key.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:               1,
@@ -1097,7 +1073,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 	})
 }
 
-func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling7(c *C) {
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 	// Test that the last error is returned when there are consecutive failures for different reasons.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:               2,
@@ -1108,7 +1084,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling7(c *C) {
 	})
 }
 
-func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling8(c *C) {
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling7(c *C) {
 	// Test with a badly formatted recovery key.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:               1,
