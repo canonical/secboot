@@ -625,37 +625,37 @@ func getHash(alg string) crypto.Hash {
 	}
 }
 
-func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryHdr, error) {
+func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryHdr, []byte, error) {
 	if _, err := r.Seek(offset, io.SeekStart); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var hdr binaryHdr
 	if err := binary.Read(r, binary.BigEndian, &hdr); err != nil {
-		return nil, xerrors.Errorf("cannot read header: %w", err)
+		return nil, nil, xerrors.Errorf("cannot read header: %w", err)
 	}
 	switch {
 	case primary && bytes.Equal(hdr.Magic[:], []byte("LUKS\xba\xbe")):
 	case !primary && bytes.Equal(hdr.Magic[:], []byte("SKUL\xba\xbe")):
 	default:
-		return nil, errors.New("invalid magic")
+		return nil, nil, errors.New("invalid magic")
 	}
 	if hdr.Version != 2 {
-		return nil, errors.New("invalid version")
+		return nil, nil, errors.New("invalid version")
 	}
 	if hdr.HdrSize > uint64(math.MaxInt64) {
-		return nil, errors.New("header size too large")
+		return nil, nil, errors.New("header size too large")
 	}
 	if hdr.HdrOffset > uint64(math.MaxInt64) {
-		return nil, errors.New("header offset too large")
+		return nil, nil, errors.New("header offset too large")
 	}
 	if int64(hdr.HdrOffset) != offset {
-		return nil, errors.New("invalid header offset")
+		return nil, nil, errors.New("invalid header offset")
 	}
 
 	csumHash := getHash(toString(hdr.CsumAlg[:]))
 	if csumHash == 0 {
-		return nil, errors.New("unsupported checksum alg")
+		return nil, nil, errors.New("unsupported checksum alg")
 	}
 
 	h := csumHash.New()
@@ -664,17 +664,21 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 	hdrTmp.Csum = [64]byte{}
 
 	if err := binary.Write(h, binary.BigEndian, &hdrTmp); err != nil {
-		return nil, xerrors.Errorf("cannot calculate checksum, error serializing header: %w", err)
+		return nil, nil, xerrors.Errorf("cannot calculate checksum, error serializing header: %w", err)
 	}
-	if _, err := io.CopyN(h, r, int64(hdr.HdrSize)-int64(binary.Size(hdr))); err != nil {
-		return nil, xerrors.Errorf("cannot calculate checksum, error reading JSON metadata: %w", err)
+
+	var jsonBuffer bytes.Buffer
+	tr := io.TeeReader(r, &jsonBuffer)
+
+	if _, err := io.CopyN(h, tr, int64(hdr.HdrSize)-int64(binary.Size(hdr))); err != nil {
+		return nil, nil, xerrors.Errorf("cannot calculate checksum, error reading JSON metadata: %w", err)
 	}
 
 	if !bytes.Equal(h.Sum(nil), hdr.Csum[0:csumHash.Size()]) {
-		return nil, errors.New("invalid header checksum")
+		return nil, nil, errors.New("invalid header checksum")
 	}
 
-	return &hdr, nil
+	return &hdr, jsonBuffer.Bytes(), nil
 }
 
 func DecodeHdr(path string) (*HdrInfo, error) {
@@ -684,33 +688,39 @@ func DecodeHdr(path string) (*HdrInfo, error) {
 	}
 	defer f.Close()
 
-	primaryHdr, primaryErr := decodeAndCheckHeader(f, 0, true)
+	primaryHdr, primaryJSON, primaryErr := decodeAndCheckHeader(f, 0, true)
 
 	var secondaryHdr *binaryHdr
+	var secondaryJSON []byte
 	if primaryErr != nil {
 		for _, off := range []int64{0x4000, 0x8000, 0x10000, 0x20000, 0x40000, 0x80000, 0x100000, 0x200000, 0x400000} {
-			secondaryHdr, err = decodeAndCheckHeader(f, off, false)
+			secondaryHdr, secondaryJSON, err = decodeAndCheckHeader(f, off, false)
 			if err == nil {
 				break
 			}
 		}
 	} else {
-		secondaryHdr, _ = decodeAndCheckHeader(f, int64(primaryHdr.HdrSize), false)
+		secondaryHdr, secondaryJSON, _ = decodeAndCheckHeader(f, int64(primaryHdr.HdrSize), false)
 	}
 
 	// TODO: Check both JSON areas
 
 	var hdr *binaryHdr
+	var jsonData []byte
 	switch {
 	case primaryHdr != nil && secondaryHdr != nil:
 		hdr = primaryHdr
+		jsonData = primaryJSON
 		if secondaryHdr.SeqId > primaryHdr.SeqId {
 			hdr = secondaryHdr
+			jsonData = secondaryJSON
 		}
 	case primaryHdr != nil:
 		hdr = primaryHdr
+		jsonData = primaryJSON
 	case secondaryHdr != nil:
 		hdr = secondaryHdr
+		jsonData = secondaryJSON
 	default:
 		return nil, xerrors.Errorf("no valid header found, error from decoding primary header: %w", err)
 	}
@@ -719,12 +729,7 @@ func DecodeHdr(path string) (*HdrInfo, error) {
 		HdrSize: hdr.HdrSize,
 		Label:   toString(hdr.Label[:])}
 
-	if _, err := f.Seek(int64(hdr.HdrOffset)+int64(binary.Size(hdr)), io.SeekStart); err != nil {
-		return nil, err
-	}
-
-	dec := json.NewDecoder(f)
-	if err := dec.Decode(&info.Metadata); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(jsonData)).Decode(&info.Metadata); err != nil {
 		return nil, err
 	}
 
