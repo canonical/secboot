@@ -19,10 +19,29 @@
 
 package luks2
 
-func MockCryptsetupLockDir(path string) (restore func()) {
-	origDir := cryptsetupLockDir
-	cryptsetupLockDir = path
+import (
+	"os"
+
+	"golang.org/x/sys/unix"
+)
+
+func MockDataDeviceFstatResult(stMock *unix.Stat_t) (restore func()) {
+	origFn := dataDeviceFstat
+	dataDeviceFstat = func(fd int, st *unix.Stat_t) error {
+		*st = *stMock
+		return nil
+	}
 	return func() {
-		cryptsetupLockDir = origDir
+		dataDeviceFstat = origFn
+	}
+}
+
+func MockIsBlockDeviceArgs(mode os.FileMode) (restore func()) {
+	origFn := isBlockDevice
+	isBlockDevice = func(os.FileMode) bool {
+		return origFn(mode)
+	}
+	return func() {
+		isBlockDevice = origFn
 	}
 }

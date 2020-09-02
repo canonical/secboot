@@ -50,10 +50,19 @@ import (
 var (
 	RunDir                = "/run"
 	SystemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
-	cryptsetupLockDir     = RunDir + "/cryptsetup"
 
 	keySize = 64
+
+	dataDeviceFstat = unix.Fstat
 )
+
+func cryptsetupLockDir() string {
+	return filepath.Join(RunDir, "cryptsetup")
+}
+
+var isBlockDevice = func(mode os.FileMode) bool {
+	return mode&os.ModeDevice > 0 && mode&os.ModeCharDevice == 0
+}
 
 func mkFifo() (string, func(), error) {
 	// /run is not world writable but we create a unique directory here because this
@@ -127,31 +136,30 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 		how |= unix.LOCK_NB
 	}
 
-	isBlockDevice := func() bool {
-		return fi.Mode()&os.ModeDevice > 0 && fi.Mode()&os.ModeCharDevice == 0
-	}
-
 	var lockPath string
-	var devSt unix.Stat_t
+	var openFlags int
 
 	switch {
-	case isBlockDevice():
-		if err := os.Mkdir(cryptsetupLockDir, 0700); err != nil && !os.IsExist(err) {
+	case isBlockDevice(fi.Mode()):
+		if err := os.Mkdir(cryptsetupLockDir(), 0700); err != nil && !os.IsExist(err) {
 			return nil, xerrors.Errorf("cannot create lock directory: %w", err)
 		}
 
-		if err := unix.Fstat(int(f.Fd()), &devSt); err != nil {
-			return nil, xerrors.Errorf("cannot stat device: %w", err)
+		var st unix.Stat_t
+		if err := dataDeviceFstat(int(f.Fd()), &st); err != nil {
+			return nil, xerrors.Errorf("cannot obtain device info: %w", err)
 		}
-		lockPath = filepath.Join(cryptsetupLockDir, fmt.Sprintf("L_%d:%d", unix.Major(devSt.Rdev), unix.Minor(devSt.Rdev)))
+		lockPath = filepath.Join(cryptsetupLockDir(), fmt.Sprintf("L_%d:%d", unix.Major(st.Rdev), unix.Minor(st.Rdev)))
+		openFlags = os.O_RDWR | os.O_CREATE
 	case fi.Mode().IsRegular():
 		lockPath = devicePath
+		openFlags = os.O_RDWR
 	default:
 		return nil, errors.New("unsupported file type")
 	}
 
 	for {
-		lockFile, err := os.OpenFile(lockPath, os.O_RDWR, 0)
+		lockFile, err := os.OpenFile(lockPath, openFlags, 0600)
 		if err != nil {
 			return nil, xerrors.Errorf("cannot open lock file for writing: %w", err)
 		}
@@ -164,11 +172,16 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 			lockFile.Close()
 		}()
 
+		var origSt unix.Stat_t
+		if err := unix.Fstat(int(lockFile.Fd()), &origSt); err != nil {
+			return nil, xerrors.Errorf("cannot obtain lock file info: %w", err)
+		}
+
 		if err := unix.Flock(int(lockFile.Fd()), how); err != nil {
 			return nil, xerrors.Errorf("cannot obtain lock: %w", err)
 		}
 
-		if isBlockDevice() {
+		if isBlockDevice(fi.Mode()) {
 			var st unix.Stat_t
 			if err := unix.Stat(lockPath, &st); err != nil {
 				// The lock file we opened was unlinked by another process releasing its lock.
@@ -176,7 +189,7 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 				continue
 			}
 
-			if devSt.Ino != st.Ino {
+			if origSt.Ino != st.Ino {
 				// The lock file we opened was unlinked by another process releasing its lock and someone else
 				// has created a new lock file in the meantime.
 				lockFile.Close()
@@ -188,7 +201,7 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 		return func() {
 			unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
 			defer lockFile.Close()
-			if !isBlockDevice() {
+			if !isBlockDevice(fi.Mode()) {
 				return
 			}
 			if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
@@ -200,7 +213,7 @@ func AcquireLock(devicePath string, mode LockMode) (release func(), err error) {
 				// Another process might have deleted the lock file we created whilst we didn't hold the exclusive lock.
 				return
 			}
-			if devSt.Ino != st.Ino {
+			if origSt.Ino != st.Ino {
 				// Another process might have deleted and recreated the lock file whilst we didn't hold the exclusive lock.
 				return
 			}

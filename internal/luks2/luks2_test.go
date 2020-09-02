@@ -27,7 +27,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	. "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/testutil"
@@ -37,6 +39,11 @@ import (
 
 	. "gopkg.in/check.v1"
 )
+
+func TestMain(m *testing.M) {
+	rand.Seed(time.Now().UnixNano())
+	os.Exit(m.Run())
+}
 
 func Test(t *testing.T) { TestingT(t) }
 
@@ -203,8 +210,9 @@ func (s *luks2Suite) TestTryAcquireExclusiveLockOnFile(c *C) {
 	err = unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	c.Assert(err, IsNil)
 
-	_, err = AcquireLock(path, LockModeExclusive|LockModeTry)
-	c.Check(err, IsNil)
+	release, err := AcquireLock(path, LockModeExclusive|LockModeTry)
+	c.Assert(err, IsNil)
+	defer release()
 }
 
 func (s *luks2Suite) TestAcquireLockOnUnsupportedFile(c *C) {
@@ -212,7 +220,129 @@ func (s *luks2Suite) TestAcquireLockOnUnsupportedFile(c *C) {
 	c.Check(err, ErrorMatches, "unsupported file type")
 }
 
-// TODO: Figure out how to test locking against block devices
+func (s *luks2Suite) TestAcquireSharedLockOnDevice(c *C) {
+	restore1 := MockIsBlockDeviceArgs(os.ModeDevice | 0600)
+	defer restore1()
+	restore2 := MockDataDeviceFstatResult(&unix.Stat_t{Rdev: unix.Mkdev(8, 0)})
+	defer restore2()
+
+	path := filepath.Join(c.MkDir(), "disk")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
+
+	release, err := AcquireLock(path, LockModeShared)
+	c.Assert(err, IsNil)
+	defer release()
+
+	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR, 0)
+	c.Assert(err, IsNil)
+	defer lockFile.Close()
+
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_SH|unix.LOCK_NB)
+	c.Check(err, IsNil)
+
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, ErrorMatches, "resource temporarily unavailable")
+
+	release()
+
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, IsNil)
+
+	_, err = os.Open(lockPath)
+	c.Check(err, ErrorMatches, ".*: no such file or directory")
+}
+
+func (s *luks2Suite) TestAcquireExclusiveLockOnDevice(c *C) {
+	restore1 := MockIsBlockDeviceArgs(os.ModeDevice | 0600)
+	defer restore1()
+	restore2 := MockDataDeviceFstatResult(&unix.Stat_t{Rdev: unix.Mkdev(3, 65)})
+	defer restore2()
+
+	path := filepath.Join(c.MkDir(), "disk")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
+
+	release, err := AcquireLock(path, LockModeExclusive)
+	c.Assert(err, IsNil)
+	defer release()
+
+	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_3:65")
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR, 0)
+	c.Assert(err, IsNil)
+	defer lockFile.Close()
+
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_SH|unix.LOCK_NB)
+	c.Check(err, ErrorMatches, "resource temporarily unavailable")
+
+	release()
+
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_SH|unix.LOCK_NB)
+	c.Check(err, IsNil)
+
+	_, err = os.Open(lockPath)
+	c.Check(err, ErrorMatches, ".*: no such file or directory")
+}
+
+func (s *luks2Suite) TestAcquireLockOnDeviceWithExistingLockDir(c *C) {
+	restore1 := MockIsBlockDeviceArgs(os.ModeDevice | 0600)
+	defer restore1()
+	restore2 := MockDataDeviceFstatResult(&unix.Stat_t{Rdev: unix.Mkdev(8, 0)})
+	defer restore2()
+
+	c.Assert(os.Mkdir(filepath.Join(s.runDir, "cryptsetup"), 0700), IsNil)
+
+	path := filepath.Join(c.MkDir(), "disk")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
+
+	release, err := AcquireLock(path, LockModeShared)
+	c.Assert(err, IsNil)
+	defer release()
+
+	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR, 0)
+	c.Assert(err, IsNil)
+	defer lockFile.Close()
+}
+
+func (s *luks2Suite) TestAcquireExclusiveLockOnDeviceMulti(c *C) {
+	restore1 := MockIsBlockDeviceArgs(os.ModeDevice | 0600)
+	defer restore1()
+	restore2 := MockDataDeviceFstatResult(&unix.Stat_t{Rdev: unix.Mkdev(8, 0)})
+	defer restore2()
+
+	path := filepath.Join(c.MkDir(), "disk")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
+
+	var wg sync.WaitGroup
+
+	routine := func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			release, err := AcquireLock(path, LockModeExclusive)
+			c.Assert(err, IsNil)
+			time.Sleep(time.Duration(rand.Intn(15000)) * time.Microsecond)
+			release()
+		}
+	}
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go routine()
+	}
+
+	wg.Wait()
+
+	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
+	_, err = os.Open(lockPath)
+	c.Check(err, ErrorMatches, ".*: no such file or directory")
+}
 
 type testFormatData struct {
 	label string
@@ -224,6 +354,7 @@ func (s *luks2Suite) testFormat(c *C, data *testFormatData) {
 	devicePath := s.createEmptyDiskImage(c)
 	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 
 	c.Check(Format(devicePath, data.label, data.key, data.kdf), IsNil)
 
@@ -292,6 +423,7 @@ func (s *luks2Suite) testAddKey(c *C, data *testAddKeyData) {
 	devicePath := s.createEmptyDiskImage(c)
 	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 	c.Assert(Format(devicePath, "", masterKey, &KDFOptions{Master: true}), IsNil)
 
 	startInfo, err := DecodeHdr(devicePath)
@@ -349,6 +481,7 @@ func (s *luks2Suite) TestAddKeyWithIncorrectExistingKey(c *C) {
 	devicePath := s.createEmptyDiskImage(c)
 	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 	c.Assert(Format(devicePath, "", masterKey, &KDFOptions{Master: true}), IsNil)
 
 	c.Check(AddKey(devicePath, make([]byte, 64), []byte("foo"), &KDFOptions{}), ErrorMatches, "No key available with this passphrase.")
@@ -370,8 +503,9 @@ type testImportTokenData struct {
 
 func (s *luks2Suite) testImportToken(c *C, data *testImportTokenData) {
 	devicePath := s.createEmptyDiskImage(c)
-	_, err := AcquireLock(devicePath, LockModeExclusive)
+	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 	c.Assert(Format(devicePath, "", make([]byte, 64), &KDFOptions{Master: true}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 64), make([]byte, 64), &KDFOptions{Master: true}), IsNil)
 
@@ -438,8 +572,9 @@ func (s *luks2Suite) TestImportToken3(c *C) {
 
 func (s *luks2Suite) testRemoveToken(c *C, tokenId int) {
 	devicePath := s.createEmptyDiskImage(c)
-	_, err := AcquireLock(devicePath, LockModeExclusive)
+	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 	c.Assert(Format(devicePath, "", make([]byte, 64), &KDFOptions{Master: true}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 64), make([]byte, 64), &KDFOptions{Master: true}), IsNil)
 	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []int{0}}), IsNil)
@@ -494,6 +629,7 @@ func (s *luks2Suite) testKillSlot(c *C, data *testKillSlotData) {
 	devicePath := s.createEmptyDiskImage(c)
 	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 	c.Assert(Format(devicePath, "", data.key1, &KDFOptions{Master: true}), IsNil)
 	c.Assert(AddKey(devicePath, data.key1, data.key2, &KDFOptions{Master: true}), IsNil)
 
@@ -552,6 +688,7 @@ func (s *luks2Suite) TestKillSlotWithWrongPassphrase(c *C) {
 	devicePath := s.createEmptyDiskImage(c)
 	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 	c.Assert(Format(devicePath, "", key1, &KDFOptions{Master: true}), IsNil)
 	c.Assert(AddKey(devicePath, key1, key2, &KDFOptions{Master: true}), IsNil)
 
@@ -569,6 +706,7 @@ func (s *luks2Suite) TestKillNonExistantSlot(c *C) {
 	devicePath := s.createEmptyDiskImage(c)
 	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 	c.Assert(Format(devicePath, "", key, &KDFOptions{Master: true}), IsNil)
 
 	c.Check(KillSlot(devicePath, 8, key), ErrorMatches, "Keyslot 8 is not active.")
@@ -585,8 +723,9 @@ type testSetKeyslotPriorityData struct {
 
 func (s *luks2Suite) testSetKeyslotPriority(c *C, data *testSetKeyslotPriorityData) {
 	devicePath := s.createEmptyDiskImage(c)
-	_, err := AcquireLock(devicePath, LockModeExclusive)
+	releaseLock, err := AcquireLock(devicePath, LockModeExclusive)
 	c.Assert(err, IsNil)
+	defer releaseLock()
 	c.Assert(Format(devicePath, "", make([]byte, 64), &KDFOptions{Master: true}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 64), make([]byte, 64), &KDFOptions{Master: true}), IsNil)
 
