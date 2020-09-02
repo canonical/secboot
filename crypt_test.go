@@ -1137,8 +1137,7 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	keyslot, ok := info.Metadata.Keyslots[0]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
-	c.Assert(keyslot.Priority, NotNil)
-	c.Check(*keyslot.Priority, Equals, 2)
+	c.Check(keyslot.Priority, Equals, 2)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, "argon2i")
 	c.Check(keyslot.KDF.Time, Equals, 4)
@@ -1220,7 +1219,7 @@ func (s *cryptSuite) TestSetLUKS2ContainerRecoveryKey(c *C) {
 		keyslot, ok := info.Metadata.Keyslots[keyslotId]
 		c.Assert(ok, Equals, true)
 		c.Check(keyslot.KeySize, Equals, 64)
-		c.Check(keyslot.Priority, IsNil)
+		c.Check(keyslot.Priority, Equals, 1)
 		c.Assert(keyslot.KDF, NotNil)
 		c.Check(keyslot.KDF.Type, Equals, "argon2i")
 
@@ -1264,7 +1263,7 @@ func (s *cryptSuite) TestChangeLUKS2ContainerRecoveryKey(c *C) {
 	keyslot, ok := info.Metadata.Keyslots[keyslotId]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
-	c.Check(keyslot.Priority, IsNil)
+	c.Check(keyslot.Priority, Equals, 1)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, "argon2i")
 
@@ -1308,8 +1307,7 @@ func (s *cryptSuite) TestSetLUKS2ContainerMasterKey(c *C) {
 		keyslot, ok := info.Metadata.Keyslots[keyslotId]
 		c.Assert(ok, Equals, true)
 		c.Check(keyslot.KeySize, Equals, 64)
-		c.Assert(keyslot.Priority, NotNil)
-		c.Check(*keyslot.Priority, Equals, 2)
+		c.Check(keyslot.Priority, Equals, 2)
 		c.Assert(keyslot.KDF, NotNil)
 		c.Check(keyslot.KDF.Type, Equals, "argon2i")
 		c.Check(keyslot.KDF.Time, Equals, 4)
@@ -1350,8 +1348,7 @@ func (s *cryptSuite) TestChangeLUKS2ContainerMasterKey(c *C) {
 	keyslot, ok := info.Metadata.Keyslots[keyslotId]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
-	c.Assert(keyslot.Priority, NotNil)
-	c.Check(*keyslot.Priority, Equals, 2)
+	c.Check(keyslot.Priority, Equals, 2)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, "argon2i")
 	c.Check(keyslot.KDF.Time, Equals, 4)

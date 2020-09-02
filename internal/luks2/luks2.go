@@ -225,43 +225,55 @@ type binaryHdr struct {
 	Padding4096 [7 * 512]byte
 }
 
-type Uint64s uint64
+type jsonNumber string
 
-func (u *Uint64s) UnmarshalText(text []byte) error {
-	n, err := strconv.ParseUint(string(text), 10, 64)
-	if err != nil {
-		return err
-	}
-	*u = Uint64s(n)
-	return nil
+func (n jsonNumber) int() (int, error) {
+	return strconv.Atoi(string(n))
 }
 
-type Ints int
-
-func (i Ints) MarshalText() ([]byte, error) {
-	t := strconv.Itoa(int(i))
-	return []byte(t), nil
-}
-
-func (i *Ints) UnmarshalText(text []byte) error {
-	n, err := strconv.Atoi(string(text))
-	if err != nil {
-		return err
-	}
-	*i = Ints(n)
-	return nil
+func (n jsonNumber) uint64() (uint64, error) {
+	return strconv.ParseUint(string(n), 10, 64)
 }
 
 type Config struct {
-	JSONSize     Uint64s `json:"json_size"`
-	KeyslotsSize Uint64s `json:"keyslots_size"`
+	JSONSize     uint64
+	KeyslotsSize uint64
 	Flags        []string
 	Requirements []string
 }
 
+func (c *Config) UnmarshalJSON(data []byte) error {
+	var d struct {
+		JSONSize     jsonNumber `json:"json_size"`
+		KeyslotsSize jsonNumber `json:"keyslots_size"`
+		Flags        []string
+		Requirements []string
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+
+	*c = Config{
+		Flags:        d.Flags,
+		Requirements: d.Requirements}
+	jsonSize, err := d.JSONSize.uint64()
+	if err != nil {
+		return xerrors.Errorf("invalid json_size value: %w", err)
+	}
+	c.JSONSize = jsonSize
+
+	keyslotsSize, err := d.KeyslotsSize.uint64()
+	if err != nil {
+		return xerrors.Errorf("invalid keyslots_size value: %w", err)
+	}
+	c.KeyslotsSize = keyslotsSize
+
+	return nil
+}
+
 type Token struct {
 	Type     string
-	Keyslots []Ints
+	Keyslots []int
 	Params   map[string]interface{}
 }
 
@@ -271,7 +283,12 @@ func (t Token) MarshalJSON() ([]byte, error) {
 		m[k] = v
 	}
 	m["type"] = t.Type
-	m["keyslots"] = t.Keyslots
+	var keyslots []jsonNumber
+	for _, s := range t.Keyslots {
+		keyslots = append(keyslots, jsonNumber(strconv.Itoa(s)))
+	}
+	m["keyslots"] = keyslots
+
 	return json.Marshal(m)
 }
 
@@ -281,20 +298,33 @@ func (t *Token) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	if ty, ok := m["type"].(string); ok {
-		t.Type = ty
+	if ty, ok := m["type"]; ok {
+		ts, ok := ty.(string)
+		if !ok {
+			return errors.New("invalid type field type")
+		}
+		t.Type = ts
 	}
 	delete(m, "type")
 
-	ksd, err := json.Marshal(m["keyslots"])
-	if err != nil {
-		return err
+	if slots, ok := m["keyslots"]; ok {
+		slotsI, ok := slots.([]interface{})
+		if !ok {
+			return errors.New("invalid keyslots field type")
+		}
+		for _, i := range slotsI {
+			s, ok := i.(string)
+			if !ok {
+				return errors.New("invalid keyslot id type")
+			}
+			n, err := jsonNumber(s).int()
+			if err != nil {
+				return xerrors.Errorf("invalid keyslot id: %w", err)
+			}
+			t.Keyslots = append(t.Keyslots, n)
+		}
 	}
 	delete(m, "keyslots")
-
-	if err := json.Unmarshal(ksd, &t.Keyslots); err != nil {
-		return err
-	}
 
 	t.Params = m
 	return nil
@@ -302,12 +332,58 @@ func (t *Token) UnmarshalJSON(data []byte) error {
 
 type Digest struct {
 	Type       string
-	eyslots    []Ints
-	Segments   []Ints
+	Keyslots   []int
+	Segments   []int
 	Salt       []byte
 	Digest     []byte
 	Hash       string
 	Iterations int
+}
+
+func (d *Digest) UnmarshalJSON(data []byte) error {
+	var t struct {
+		Type       string
+		Keyslots   []jsonNumber
+		Segments   []jsonNumber
+		Salt       []byte
+		Digest     []byte
+		Hash       string
+		Iterations int
+	}
+	if err := json.Unmarshal(data, &t); err != nil {
+		return err
+	}
+
+	*d = Digest{
+		Type:       t.Type,
+		Salt:       t.Salt,
+		Digest:     t.Digest,
+		Hash:       t.Hash,
+		Iterations: t.Iterations}
+
+	for _, v := range t.Keyslots {
+		s, err := v.int()
+		if err != nil {
+			return xerrors.Errorf("invalid keyslot id: %w", err)
+		}
+		d.Keyslots = append(d.Keyslots, s)
+	}
+
+	for _, v := range t.Segments {
+		s, err := v.int()
+		if err != nil {
+			return xerrors.Errorf("invalid segment id: %w", err)
+		}
+		d.Segments = append(d.Segments, s)
+	}
+
+	return nil
+}
+
+type Integrity struct {
+	Type              string
+	JournalEncryption string
+	JournalIntegrity  string
 }
 
 type Segment struct {
@@ -315,44 +391,99 @@ type Segment struct {
 	Offset      uint64
 	Size        uint64
 	DynamicSize bool
+	IVTweak     uint64
 	Encryption  string
+	SectorSize  int
+	Integrity   *Integrity
+	Flags       []string
 }
 
 func (s *Segment) UnmarshalJSON(data []byte) error {
 	var d struct {
 		Type       string
-		Offset     Uint64s
-		Size       string
+		Offset     jsonNumber
+		Size       jsonNumber
+		IVTweak    jsonNumber `json:"iv_tweak"`
 		Encryption string
+		SectorSize int `json:"sector_size"`
+		Integrity  *Integrity
+		Flags      []string
 	}
-
 	if err := json.Unmarshal(data, &d); err != nil {
 		return err
 	}
 
 	*s = Segment{
 		Type:       d.Type,
-		Offset:     uint64(d.Offset),
-		Encryption: d.Encryption}
-	if d.Size == "dynamic" {
-		s.DynamicSize = true
-	} else {
-		n, err := strconv.ParseUint(d.Size, 10, 64)
-		if err != nil {
-			return err
-		}
-		s.Size = n
+		Encryption: d.Encryption,
+		SectorSize: d.SectorSize,
+		Integrity:  d.Integrity,
+		Flags:      d.Flags}
+
+	offset, err := d.Offset.uint64()
+	if err != nil {
+		return xerrors.Errorf("invalid offset value: %w", err)
 	}
+	s.Offset = offset
+
+	switch string(d.Size) {
+	case "dynamic":
+		s.DynamicSize = true
+	default:
+		sz, err := d.Size.uint64()
+		if err != nil {
+			return xerrors.Errorf("invalid size value: %w", err)
+		}
+		s.Size = sz
+	}
+
+	ivTweak, err := d.IVTweak.uint64()
+	if err != nil {
+		return xerrors.Errorf("invalid iv_tweak value: %w", err)
+	}
+	s.IVTweak = ivTweak
 
 	return nil
 }
 
 type Area struct {
 	Type       string
-	Offset     Uint64s
-	Size       Uint64s
+	Offset     uint64
+	Size       uint64
 	Encryption string
-	KeySize    int `json:"key_size"`
+	KeySize    int
+}
+
+func (a *Area) UnmarshalJSON(data []byte) error {
+	var d struct {
+		Type       string
+		Offset     jsonNumber
+		Size       jsonNumber
+		Encryption string
+		KeySize    int `json:"key_size"`
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+
+	*a = Area{
+		Type:       d.Type,
+		Encryption: d.Encryption,
+		KeySize:    d.KeySize}
+
+	offset, err := d.Offset.uint64()
+	if err != nil {
+		return xerrors.Errorf("invalid offset value: %w", err)
+	}
+	a.Offset = offset
+
+	sz, err := d.Size.uint64()
+	if err != nil {
+		return xerrors.Errorf("invalid size value: %w", err)
+	}
+	a.Size = sz
+
+	return nil
 }
 
 type AF struct {
@@ -373,19 +504,98 @@ type KDF struct {
 
 type Keyslot struct {
 	Type     string
-	KeySize  int `json:"key_size"`
-	Area     Area
-	KDF      KDF
-	AF       AF
-	Priority *int
+	KeySize  int
+	Area     *Area
+	KDF      *KDF
+	AF       *AF
+	Priority int
+}
+
+func (s *Keyslot) UnmarshalJSON(data []byte) error {
+	var d struct {
+		Type     string
+		KeySize  int `json:"key_size"`
+		Area     *Area
+		KDF      *KDF
+		AF       *AF
+		Priority *int
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+
+	*s = Keyslot{
+		Type:    d.Type,
+		KeySize: d.KeySize,
+		Area:    d.Area,
+		KDF:     d.KDF,
+		AF:      d.AF}
+	if d.Priority != nil {
+		s.Priority = *d.Priority
+	} else {
+		s.Priority = 1
+	}
+	return nil
 }
 
 type Metadata struct {
-	Keyslots map[Ints]*Keyslot
-	Segments map[Ints]*Segment
-	Digests  map[Ints]*Digest
-	Tokens   map[Ints]*Token
+	Keyslots map[int]*Keyslot
+	Segments map[int]*Segment
+	Digests  map[int]*Digest
+	Tokens   map[int]*Token
 	Config   Config
+}
+
+func (m *Metadata) UnmarshalJSON(data []byte) error {
+	var d struct {
+		Keyslots map[jsonNumber]*Keyslot
+		Segments map[jsonNumber]*Segment
+		Digests  map[jsonNumber]*Digest
+		Tokens   map[jsonNumber]*Token
+		Config   Config
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+
+	m.Keyslots = make(map[int]*Keyslot)
+	for k, v := range d.Keyslots {
+		id, err := k.int()
+		if err != nil {
+			return xerrors.Errorf("invalid keyslot index: %w", err)
+		}
+		m.Keyslots[id] = v
+	}
+
+	m.Segments = make(map[int]*Segment)
+	for k, v := range d.Segments {
+		id, err := k.int()
+		if err != nil {
+			return xerrors.Errorf("invalid segment index: %w", err)
+		}
+		m.Segments[id] = v
+	}
+
+	m.Digests = make(map[int]*Digest)
+	for k, v := range d.Digests {
+		id, err := k.int()
+		if err != nil {
+			return xerrors.Errorf("invalid digest index: %w", err)
+		}
+		m.Digests[id] = v
+	}
+
+	m.Tokens = make(map[int]*Token)
+	for k, v := range d.Tokens {
+		id, err := k.int()
+		if err != nil {
+			return xerrors.Errorf("invalid token index: %w", err)
+		}
+		m.Tokens[id] = v
+	}
+
+	m.Config = d.Config
+	return nil
 }
 
 type HdrInfo struct {

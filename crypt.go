@@ -447,7 +447,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 		return xerrors.Errorf("cannot set keyslot priority: %w", err)
 	}
 
-	if err := luks2.ImportToken(devicePath, &luks2.Token{Type: masterTokenType, Keyslots: []luks2.Ints{0}}); err != nil {
+	if err := luks2.ImportToken(devicePath, &luks2.Token{Type: masterTokenType, Keyslots: []int{0}}); err != nil {
 		return xerrors.Errorf("cannot add token: %w", err)
 	}
 
@@ -489,7 +489,7 @@ func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, tokenTy
 		return 0, errors.New("cannot determine new keyslot ID")
 	}
 
-	if err := luks2.ImportToken(devicePath, &luks2.Token{Type: tokenType, Keyslots: []luks2.Ints{luks2.Ints(newSlotId)}}); err != nil {
+	if err := luks2.ImportToken(devicePath, &luks2.Token{Type: tokenType, Keyslots: []int{newSlotId}}); err != nil {
 		return 0, xerrors.Errorf("cannot add new token: %w", err)
 	}
 
@@ -497,8 +497,8 @@ func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, tokenTy
 		return newSlotId, nil
 	}
 
-	if len(startInfo.Metadata.Tokens[luks2.Ints(oldTokenId)].Keyslots) > 0 {
-		if err := luks2.KillSlot(devicePath, int(startInfo.Metadata.Tokens[luks2.Ints(oldTokenId)].Keyslots[0]), newKey); err != nil {
+	if len(startInfo.Metadata.Tokens[oldTokenId].Keyslots) > 0 {
+		if err := luks2.KillSlot(devicePath, int(startInfo.Metadata.Tokens[oldTokenId].Keyslots[0]), newKey); err != nil {
 			return 0, xerrors.Errorf("cannot delete old keyslot: %w", err)
 		}
 	}

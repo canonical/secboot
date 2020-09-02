@@ -232,7 +232,7 @@ func (s *luks2Suite) testFormat(c *C, data *testFormatData) {
 	keyslot, ok := info.Metadata.Keyslots[0]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
-	c.Assert(keyslot.Priority, IsNil)
+	c.Check(keyslot.Priority, Equals, 1)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, "argon2i")
 	if data.kdf.Master {
@@ -308,10 +308,10 @@ func (s *luks2Suite) testAddKey(c *C, data *testAddKeyData) {
 
 	c.Assert(newSlotId, snapd_testutil.IntGreaterThan, -1)
 	c.Check(endInfo.Metadata.Keyslots, HasLen, 2)
-	keyslot, ok := endInfo.Metadata.Keyslots[Ints(newSlotId)]
+	keyslot, ok := endInfo.Metadata.Keyslots[newSlotId]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
-	c.Assert(keyslot.Priority, IsNil)
+	c.Check(keyslot.Priority, Equals, 1)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, "argon2i")
 	if data.kdf.Master {
@@ -391,7 +391,7 @@ func (s *luks2Suite) TestImportToken1(c *C) {
 	s.testImportToken(c, &testImportTokenData{
 		token: &Token{
 			Type:     "secboot-test",
-			Keyslots: []Ints{Ints(0)},
+			Keyslots: []int{0},
 			Params: map[string]interface{}{
 				"secboot-a": 50,
 				"secboot-b": data}},
@@ -407,7 +407,7 @@ func (s *luks2Suite) TestImportToken2(c *C) {
 	s.testImportToken(c, &testImportTokenData{
 		token: &Token{
 			Type:     "secboot-test-2",
-			Keyslots: []Ints{Ints(1)},
+			Keyslots: []int{1},
 			Params: map[string]interface{}{
 				"secboot-a": true,
 				"secboot-b": data}},
@@ -423,7 +423,7 @@ func (s *luks2Suite) TestImportToken3(c *C) {
 	s.testImportToken(c, &testImportTokenData{
 		token: &Token{
 			Type:     "secboot-test",
-			Keyslots: []Ints{Ints(0), Ints(1)},
+			Keyslots: []int{0, 1},
 			Params: map[string]interface{}{
 				"secboot-a": 50,
 				"secboot-b": data}},
@@ -438,13 +438,13 @@ func (s *luks2Suite) testRemoveToken(c *C, tokenId int) {
 	c.Assert(err, IsNil)
 	c.Assert(Format(devicePath, "", make([]byte, 64), &KDFOptions{Master: true}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 64), make([]byte, 64), &KDFOptions{Master: true}), IsNil)
-	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []Ints{Ints(0)}}), IsNil)
-	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-bar", Keyslots: []Ints{Ints(1)}}), IsNil)
+	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []int{0}}), IsNil)
+	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-bar", Keyslots: []int{1}}), IsNil)
 
 	info, err := DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Tokens, HasLen, 2)
-	_, ok := info.Metadata.Tokens[Ints(tokenId)]
+	_, ok := info.Metadata.Tokens[tokenId]
 	c.Check(ok, Equals, true)
 
 	c.Check(RemoveToken(devicePath, tokenId), IsNil)
@@ -452,7 +452,7 @@ func (s *luks2Suite) testRemoveToken(c *C, tokenId int) {
 	info, err = DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Tokens, HasLen, 1)
-	_, ok = info.Metadata.Tokens[Ints(tokenId)]
+	_, ok = info.Metadata.Tokens[tokenId]
 	c.Check(ok, Equals, false)
 }
 
@@ -467,7 +467,7 @@ func (s *luks2Suite) TestRemoveToken2(c *C) {
 func (s *luks2Suite) TestRemoveNonExistantToken(c *C) {
 	devicePath := s.createEmptyDiskImage(c)
 	c.Assert(Format(devicePath, "", make([]byte, 64), &KDFOptions{Master: true}), IsNil)
-	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []Ints{Ints(0)}}), IsNil)
+	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []int{0}}), IsNil)
 
 	c.Check(RemoveToken(devicePath, 10), ErrorMatches, "Token 10 is not in use.")
 
@@ -496,7 +496,7 @@ func (s *luks2Suite) testKillSlot(c *C, data *testKillSlotData) {
 	info, err := DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
-	_, ok := info.Metadata.Keyslots[Ints(data.slotId)]
+	_, ok := info.Metadata.Keyslots[data.slotId]
 	c.Check(ok, Equals, true)
 
 	c.Check(KillSlot(devicePath, data.slotId, data.key), IsNil)
@@ -504,7 +504,7 @@ func (s *luks2Suite) testKillSlot(c *C, data *testKillSlotData) {
 	info, err = DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
-	_, ok = info.Metadata.Keyslots[Ints(data.slotId)]
+	_, ok = info.Metadata.Keyslots[data.slotId]
 	c.Check(ok, Equals, false)
 
 	releaseLock()
@@ -588,18 +588,17 @@ func (s *luks2Suite) testSetKeyslotPriority(c *C, data *testSetKeyslotPriorityDa
 
 	info, err := DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
-	keyslot, ok := info.Metadata.Keyslots[Ints(data.slotId)]
+	keyslot, ok := info.Metadata.Keyslots[data.slotId]
 	c.Assert(ok, Equals, true)
-	c.Assert(keyslot.Priority, IsNil)
+	c.Check(keyslot.Priority, Equals, 1)
 
 	c.Check(SetKeyslotPriority(devicePath, data.slotId, data.priority), IsNil)
 
 	info, err = DecodeHdr(devicePath)
 	c.Assert(err, IsNil)
-	keyslot, ok = info.Metadata.Keyslots[Ints(data.slotId)]
+	keyslot, ok = info.Metadata.Keyslots[data.slotId]
 	c.Assert(ok, Equals, true)
-	c.Assert(keyslot.Priority, NotNil)
-	c.Check(*keyslot.Priority, Equals, data.expected)
+	c.Check(keyslot.Priority, Equals, data.expected)
 }
 
 func (s *luks2Suite) TestSetKeyslotPriority1(c *C) {
