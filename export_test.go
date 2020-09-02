@@ -167,6 +167,14 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
+func MockLUKS2Activate(fn func(string, string, []byte, []string) error) (restore func()) {
+	origFn := luks2Activate
+	luks2Activate = fn
+	return func() {
+		luks2Activate = origFn
+	}
+}
+
 func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{
 		key:                  key,

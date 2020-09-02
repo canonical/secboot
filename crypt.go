@@ -44,6 +44,8 @@ const userKeyring = -4
 var (
 	masterTokenType   = "secboot-master-detached"
 	recoveryTokenType = "secboot-recovery"
+
+	luks2Activate = luks2.Activate
 )
 
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
@@ -182,7 +184,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		if err := luks2.Activate(volumeName, sourceDevicePath, key[:], activateOptions); err != nil {
+		if err := luks2Activate(volumeName, sourceDevicePath, key[:], activateOptions); err != nil {
 			err = xerrors.Errorf("cannot activate volume: %w", err)
 			if !isExitError(err) {
 				return err
@@ -288,22 +290,11 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 		return err
 	}
 
-	if err := luks2.Activate(volumeName, sourceDevicePath, key, activateOptions); err != nil {
+	if err := luks2Activate(volumeName, sourceDevicePath, key, activateOptions); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 
 	return nil
-}
-
-func makeActivateOptions(in []string) ([]string, error) {
-	var out []string
-	for _, o := range in {
-		if strings.HasPrefix(o, "tries=") {
-			return nil, errors.New("cannot specify the \"tries=\" option for systemd-cryptsetup")
-		}
-		out = append(out, o)
-	}
-	return append(out, "tries=1"), nil
 }
 
 // ActivateWithTPMSealedKeyOptions provides options to ActivateVolumeWtthTPMSealedKey.
@@ -368,12 +359,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		return false, errors.New("invalid RecoveryKeyTries")
 	}
 
-	activateOptions, err := makeActivateOptions(options.ActivateOptions)
-	if err != nil {
-		return false, err
-	}
-
-	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, pinReader, options.PINTries, options.LockSealedKeyAccess, activateOptions); err != nil {
+	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, pinReader, options.PINTries, options.LockSealedKeyAccess, options.ActivateOptions); err != nil {
 		reason := RecoveryKeyUsageReasonUnexpectedError
 		switch {
 		case isLockAccessError(err):
@@ -393,7 +379,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 			// with the recovery key is successful, then it's safe to assume that it failed because the key unsealed from the TPM is incorrect.
 			reason = RecoveryKeyUsageReasonInvalidKeyFile
 		}
-		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, activateOptions)
+		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, options.ActivateOptions)
 		return rErr == nil, &ActivateWithTPMSealedKeyError{err, rErr}
 	}
 
@@ -429,12 +415,7 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 		return errors.New("invalid Tries")
 	}
 
-	activateOptions, err := makeActivateOptions(options.ActivateOptions)
-	if err != nil {
-		return err
-	}
-
-	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryKeyUsageReasonRequested, activateOptions)
+	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryKeyUsageReasonRequested, options.ActivateOptions)
 }
 
 // InitializeLUKS2Container will initialize the partition at the specified devicePath as a new LUKS2 container. This can only

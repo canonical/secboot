@@ -522,13 +522,21 @@ func DecodeHdr(path string) (*HdrInfo, error) {
 }
 
 func Activate(volumeName, sourceDevicePath string, key []byte, options []string) error {
+	var activateOptions []string
+	for _, o := range options {
+		if strings.HasPrefix(o, "tries=") {
+			return errors.New("cannot specify the \"tries=\" option")
+		}
+		activateOptions = append(activateOptions, o)
+	}
+
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
 		return xerrors.Errorf("cannot create FIFO for passing key to systemd-cryptsetup: %w", err)
 	}
 	defer cleanupFifo()
 
-	cmd := exec.Command(SystemdCryptsetupPath, "attach", volumeName, sourceDevicePath, fifoPath, strings.Join(options, ","))
+	cmd := exec.Command(SystemdCryptsetupPath, "attach", volumeName, sourceDevicePath, fifoPath, strings.Join(append(activateOptions, "tries=1"), ","))
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
 	stdout, err := cmd.StdoutPipe()

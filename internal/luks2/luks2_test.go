@@ -21,9 +21,12 @@ package luks2_test
 
 import (
 	"encoding/base64"
+	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/snapcore/secboot/internal/luks2"
@@ -39,15 +42,37 @@ func Test(t *testing.T) { TestingT(t) }
 
 type luks2Suite struct {
 	snapd_testutil.BaseTest
+
+	runDir string
+
+	expectedActivateKeyFile string
+	mockSdCryptsetup        *snapd_testutil.MockCmd
 }
 
 func (s *luks2Suite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 
-	s.AddCleanup(testutil.MockRunDir(c.MkDir()))
+	s.runDir = c.MkDir()
+	s.AddCleanup(testutil.MockRunDir(s.runDir))
+
+	s.expectedActivateKeyFile = filepath.Join(c.MkDir(), "expectedkey")
+
+	sdCryptsetupBottom := `
+key=$(xxd -p < "$4")
+if [ ! -f "%[1]s" ] || [ "$key" != "$(xxd -p < "%[1]s")" ]; then
+	exit 1
+fi
+`
+	s.mockSdCryptsetup = snapd_testutil.MockCommand(c, filepath.Join(c.MkDir(), "systemd-cryptsetup"), fmt.Sprintf(sdCryptsetupBottom, s.expectedActivateKeyFile))
+	s.AddCleanup(s.mockSdCryptsetup.Restore)
+	s.AddCleanup(testutil.MockSystemdCryptsetupPath(s.mockSdCryptsetup.Exe()))
 
 	cryptsetupWrapper := testutil.WrapCryptsetup(c)
 	s.AddCleanup(cryptsetupWrapper.Restore)
+}
+
+func (s *luks2Suite) setExpectedActivateKey(c *C, key []byte) {
+	c.Assert(ioutil.WriteFile(s.expectedActivateKeyFile, key, 0644), IsNil)
 }
 
 func (s *luks2Suite) createEmptyDiskImage(c *C) string {
@@ -60,6 +85,65 @@ func (s *luks2Suite) createEmptyDiskImage(c *C) string {
 }
 
 var _ = Suite(&luks2Suite{})
+
+type testActivateData struct {
+	volumeName       string
+	sourceDevicePath string
+	options          []string
+}
+
+func (s *luks2Suite) testActivate(c *C, data *testActivateData) {
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.setExpectedActivateKey(c, key)
+
+	c.Check(Activate(data.volumeName, data.sourceDevicePath, key, data.options), IsNil)
+
+	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
+	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
+	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, strings.Join(append(data.options, "tries=1"), ","))
+}
+
+func (s *luks2Suite) TestActivate1(c *C) {
+	s.testActivate(c, &testActivateData{
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1"})
+}
+
+func (s *luks2Suite) TestActivate2(c *C) {
+	s.testActivate(c, &testActivateData{
+		volumeName:       "test",
+		sourceDevicePath: "/dev/sda1"})
+}
+
+func (s *luks2Suite) TestActivate3(c *C) {
+	s.testActivate(c, &testActivateData{
+		volumeName:       "data",
+		sourceDevicePath: "/dev/vda2"})
+}
+
+func (s *luks2Suite) TestActivate4(c *C) {
+	s.testActivate(c, &testActivateData{
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		options:          []string{"foo=bar", "baz"}})
+}
+
+func (s *luks2Suite) TestActivateWrongKey(c *C) {
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.setExpectedActivateKey(c, key)
+
+	c.Check(Activate("data", "/dev/sda1", nil, nil), ErrorMatches, "exit status 1")
+
+	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
+	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
+	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+}
 
 func (s *luks2Suite) TestAcquireSharedLockOnFile(c *C) {
 	path := filepath.Join(c.MkDir(), "disk")
