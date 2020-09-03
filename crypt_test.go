@@ -741,7 +741,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey2(c *C) {
 		volumeName:          "data",
 		sourceDevicePath:    "/dev/sda1",
 		tries:               1,
-		recoveryPassphrases: []string{strings.ReplaceAll(s.recoveryKey.String(), "-", "")},
+		recoveryPassphrases: []string{strings.Replace(s.recoveryKey.String(), "-", "", -1)},
 		activateCalls:       1,
 	})
 }
@@ -846,7 +846,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader2(c *C) {
 	// Test with the correct recovery key supplied via a io.Reader, without a hyphen separating each group of 5 digits.
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
 		tries:                   1,
-		recoveryKeyFileContents: strings.ReplaceAll(s.recoveryKey.String(), "-", "") + "\n",
+		recoveryKeyFileContents: strings.Replace(s.recoveryKey.String(), "-", "", -1) + "\n",
 		activateCalls:           1,
 	})
 }
