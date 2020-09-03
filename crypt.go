@@ -42,8 +42,10 @@ import (
 const userKeyring = -4
 
 var (
-	masterTokenType   = "secboot-master-detached"
-	recoveryTokenType = "secboot-recovery"
+	tokenType        = "secboot"         // The type used for all secboot tokens
+	slotTypeKey      = "secboot-type"    // The key used to identify the type of secboot keyslot associated with a token
+	masterSlotType   = "master-detached" // Used to idenfity a master keyslot with detached metadata
+	recoverySlotType = "recovery"        // Used to identify a recovery keyslot
 
 	luks2Activate = luks2.Activate
 )
@@ -418,6 +420,10 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryKeyUsageReasonRequested, options.ActivateOptions)
 }
 
+func makeTokenForKeyslot(slotType string, slot int) *luks2.Token {
+	return &luks2.Token{Type: tokenType, Keyslots: []int{slot}, Params: map[string]interface{}{slotTypeKey: slotType}}
+}
+
 // InitializeLUKS2Container will initialize the partition at the specified devicePath as a new LUKS2 container. This can only
 // be called on a partition that isn't mapped. The label for the new LUKS2 container is provided via the label argument.
 //
@@ -447,14 +453,14 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 		return xerrors.Errorf("cannot set keyslot priority: %w", err)
 	}
 
-	if err := luks2.ImportToken(devicePath, &luks2.Token{Type: masterTokenType, Keyslots: []int{0}}); err != nil {
+	if err := luks2.ImportToken(devicePath, makeTokenForKeyslot(masterSlotType, 0)); err != nil {
 		return xerrors.Errorf("cannot add token: %w", err)
 	}
 
 	return nil
 }
 
-func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, tokenType string, kdf *luks2.KDFOptions) (int, error) {
+func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, slotType string, kdf *luks2.KDFOptions) (int, error) {
 	startInfo, err := luks2.DecodeHdr(devicePath)
 	if err != nil {
 		return 0, xerrors.Errorf("cannot decode LUKS2 header: %w", err)
@@ -462,7 +468,10 @@ func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, tokenTy
 
 	oldTokenId := -1
 	for k, v := range startInfo.Metadata.Tokens {
-		if v.Type == tokenType {
+		if v.Type != tokenType {
+			continue
+		}
+		if s := v.Params[slotTypeKey]; s == slotType {
 			oldTokenId = int(k)
 			break
 		}
@@ -489,7 +498,7 @@ func setLUKS2ContainerKey(devicePath string, existingKey, newKey []byte, tokenTy
 		return 0, errors.New("cannot determine new keyslot ID")
 	}
 
-	if err := luks2.ImportToken(devicePath, &luks2.Token{Type: tokenType, Keyslots: []int{newSlotId}}); err != nil {
+	if err := luks2.ImportToken(devicePath, makeTokenForKeyslot(slotType, newSlotId)); err != nil {
 		return 0, xerrors.Errorf("cannot add new token: %w", err)
 	}
 
@@ -528,7 +537,7 @@ func SetLUKS2ContainerRecoveryKey(devicePath string, existingKey []byte, recover
 	defer releaseLock()
 
 	// Use a KDF with an increased cost for the recovery key.
-	_, err = setLUKS2ContainerKey(devicePath, existingKey, recoveryKey[:], recoveryTokenType, &luks2.KDFOptions{IterTime: 5 * time.Second})
+	_, err = setLUKS2ContainerKey(devicePath, existingKey, recoveryKey[:], recoverySlotType, &luks2.KDFOptions{IterTime: 5 * time.Second})
 	return err
 }
 
@@ -548,7 +557,7 @@ func SetLUKS2ContainerMasterKey(devicePath string, existingKey, newKey []byte) e
 	}
 	defer releaseLock()
 
-	slotId, err := setLUKS2ContainerKey(devicePath, existingKey, newKey, masterTokenType, &luks2.KDFOptions{Master: true})
+	slotId, err := setLUKS2ContainerKey(devicePath, existingKey, newKey, masterSlotType, &luks2.KDFOptions{Master: true})
 	if err != nil {
 		return err
 	}

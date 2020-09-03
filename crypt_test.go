@@ -1127,9 +1127,10 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	c.Check(info.Metadata.Tokens, HasLen, 1)
 	token, ok := info.Metadata.Tokens[0]
 	c.Assert(ok, Equals, true)
-	c.Check(token.Type, Equals, "secboot-master-detached")
+	c.Check(token.Type, Equals, "secboot")
 	c.Assert(token.Keyslots, HasLen, 1)
 	c.Check(int(token.Keyslots[0]), Equals, 0)
+	c.Check(token.Params["secboot-type"], Equals, "master-detached")
 
 	testutil.CheckLUKS2Passphrase(c, devicePath, data.key)
 }
@@ -1182,7 +1183,7 @@ func (s *cryptSuite) TestSetLUKS2ContainerRecoveryKey(c *C) {
 		c.Check(info.Metadata.Tokens, HasLen, 2)
 		var token *luks2.Token
 		for _, t := range info.Metadata.Tokens {
-			if t.Type == "secboot-recovery" {
+			if t.Type == "secboot" && t.Params["secboot-type"] == "recovery" {
 				token = t
 				break
 			}
@@ -1227,7 +1228,7 @@ func (s *cryptSuite) TestChangeLUKS2ContainerRecoveryKey(c *C) {
 	c.Check(info.Metadata.Tokens, HasLen, 2)
 	var token *luks2.Token
 	for _, t := range info.Metadata.Tokens {
-		if t.Type == "secboot-recovery" {
+		if t.Type == "secboot" && t.Params["secboot-type"] == "recovery" {
 			token = t
 			break
 		}
@@ -1270,7 +1271,7 @@ func (s *cryptSuite) TestSetLUKS2ContainerMasterKey(c *C) {
 		c.Check(info.Metadata.Tokens, HasLen, 2)
 		var token *luks2.Token
 		for _, t := range info.Metadata.Tokens {
-			if t.Type == "secboot-master-detached" {
+			if t.Type == "secboot" && t.Params["secboot-type"] == "master-detached" {
 				token = t
 				break
 			}
@@ -1312,7 +1313,7 @@ func (s *cryptSuite) TestChangeLUKS2ContainerMasterKey(c *C) {
 	c.Check(info.Metadata.Tokens, HasLen, 1)
 	var token *luks2.Token
 	for _, t := range info.Metadata.Tokens {
-		if t.Type == "secboot-master-detached" {
+		if t.Type == "secboot" && t.Params["secboot-type"] == "master-detached" {
 			token = t
 			break
 		}
