@@ -1,5 +1,5 @@
 language: go
-
+dist: bionic
 install:
   - sudo apt-get update
   - sudo apt-get install -y sbsigntool
