@@ -179,10 +179,7 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image EFIImage) (tpm2.Digest
 	// greater than sumOfBytesHashed, the file contains extra data that must be added to the hash. This data begins at the
 	// sumOfBytesHashed file offset, and its length is:
 	// fileSize – (certTable.Size + sumOfBytesHashed)
-	fileSize, err := r.Size()
-	if err != nil {
-		return nil, xerrors.Errorf("cannot obtain image size: %w", err)
-	}
+	fileSize := r.Size()
 
 	if fileSize > sumOfBytesHashed {
 		var certSize int64
