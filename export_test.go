@@ -21,7 +21,7 @@ package secboot
 
 import (
 	"bytes"
-	"crypto/rsa"
+	"crypto/ecdsa"
 	"fmt"
 	"io"
 	"os"
@@ -48,7 +48,7 @@ var (
 	ComputeSnapModelDigest                   = computeSnapModelDigest
 	ComputeStaticPolicy                      = computeStaticPolicy
 	CreatePinNVIndex                         = createPinNVIndex
-	CreatePublicAreaForRSASigningKey         = createPublicAreaForRSASigningKey
+	CreatePublicAreaForECDSAKey              = createPublicAreaForECDSAKey
 	DecodeSecureBootDb                       = decodeSecureBootDb
 	DecodeWinCertificate                     = decodeWinCertificate
 	EFICertTypePkcs7Guid                     = efiCertTypePkcs7Guid
@@ -183,7 +183,7 @@ func MockSystemdCryptsetupPath(path string) (restore func()) {
 	}
 }
 
-func NewDynamicPolicyComputeParams(key *rsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
+func NewDynamicPolicyComputeParams(key *ecdsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCountIndexName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{
 		key:                  key,
 		signAlg:              signAlg,

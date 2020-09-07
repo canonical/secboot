@@ -21,6 +21,9 @@ package secboot
 
 import (
 	"bytes"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/binary"
@@ -44,7 +47,7 @@ var (
 
 // dynamicPolicyComputeParams provides the parameters to computeDynamicPolicy.
 type dynamicPolicyComputeParams struct {
-	key *rsa.PrivateKey // Key used to authorize the generated dynamic authorization policy
+	key crypto.PrivateKey // Key used to authorize the generated dynamic authorization policy
 
 	// signAlg is the digest algorithm for the signature used to authorize the generated dynamic authorization policy. It must
 	// match the name algorithm of the public part of key that will be loaded in to the TPM for verification.
@@ -123,7 +126,7 @@ func makeStaticPolicyDataRaw_v0(data *staticPolicyData) *staticPolicyDataRaw_v0 
 //
 // This requires a signed authorization. The keyPublic argument must correspond to the updateKeyName argument originally passed to
 // createPinNVIndex. The private part of that key must be supplied via the key argument.
-func incrementDynamicPolicyCounter(tpm *tpm2.TPMContext, nvPublic *tpm2.NVPublic, nvAuthPolicies tpm2.DigestList, key *rsa.PrivateKey, keyPublic *tpm2.Public, hmacSession tpm2.SessionContext) error {
+func incrementDynamicPolicyCounter(tpm *tpm2.TPMContext, nvPublic *tpm2.NVPublic, nvAuthPolicies tpm2.DigestList, key crypto.PrivateKey, keyPublic *tpm2.Public, hmacSession tpm2.SessionContext) error {
 	index, err := tpm2.CreateNVIndexResourceContextFromPublic(nvPublic)
 	if err != nil {
 		return xerrors.Errorf("cannot create context for NV index: %w", err)
@@ -137,15 +140,46 @@ func incrementDynamicPolicyCounter(tpm *tpm2.TPMContext, nvPublic *tpm2.NVPublic
 	defer tpm.FlushContext(policySession)
 
 	// Compute a digest for signing with the update key
-	signDigest := tpm2.HashAlgorithmSHA256
+	signDigest := tpm2.HashAlgorithmNull
+	keyScheme := keyPublic.Params.AsymDetail().Scheme
+	if keyScheme.Scheme != tpm2.AsymSchemeNull {
+		signDigest = keyScheme.Details.Any().HashAlg
+	}
+	if signDigest == tpm2.HashAlgorithmNull {
+		signDigest = tpm2.HashAlgorithmSHA256
+	}
 	h := signDigest.NewHash()
 	h.Write(policySession.NonceTPM())
 	binary.Write(h, binary.BigEndian, int32(0)) // expiration
 
 	// Sign the digest
-	sig, err := rsa.SignPSS(rand.Reader, key, signDigest.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
-	if err != nil {
-		return xerrors.Errorf("cannot sign authorization: %w", err)
+	var signature tpm2.Signature
+	switch k := key.(type) {
+	case *rsa.PrivateKey:
+		sig, err := rsa.SignPSS(rand.Reader, k, signDigest.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+		if err != nil {
+			return xerrors.Errorf("cannot sign authorization: %w", err)
+		}
+		signature = tpm2.Signature{
+			SigAlg: tpm2.SigSchemeAlgRSAPSS,
+			Signature: tpm2.SignatureU{
+				Data: &tpm2.SignatureRSAPSS{
+					Hash: signDigest,
+					Sig:  tpm2.PublicKeyRSA(sig)}}}
+	case *ecdsa.PrivateKey:
+		sigR, sigS, err := ecdsa.Sign(rand.Reader, k, h.Sum(nil))
+		if err != nil {
+			return xerrors.Errorf("cannot sign authorization: %w", err)
+		}
+		signature = tpm2.Signature{
+			SigAlg: tpm2.SigSchemeAlgECDSA,
+			Signature: tpm2.SignatureU{
+				Data: &tpm2.SignatureECDSA{
+					Hash:       signDigest,
+					SignatureR: sigR.Bytes(),
+					SignatureS: sigS.Bytes()}}}
+	default:
+		panic("invalid private key type")
 	}
 
 	// Load the public part of the key in to the TPM. There's no integrity protection for this command as if it's altered in
@@ -156,13 +190,6 @@ func incrementDynamicPolicyCounter(tpm *tpm2.TPMContext, nvPublic *tpm2.NVPublic
 		return xerrors.Errorf("cannot load public part of key used to verify authorization signature: %w", err)
 	}
 	defer tpm.FlushContext(keyLoaded)
-
-	signature := tpm2.Signature{
-		SigAlg: tpm2.SigSchemeAlgRSAPSS,
-		Signature: tpm2.SignatureU{
-			Data: &tpm2.SignatureRSAPSS{
-				Hash: signDigest,
-				Sig:  tpm2.PublicKeyRSA(sig)}}}
 
 	// Execute the policy assertions
 	if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
@@ -264,12 +291,12 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 	}
 
 	// Create signing key.
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return xerrors.Errorf("cannot create signing key for initializing NV index: %w", err)
 	}
 
-	keyPublic := createPublicAreaForRSASigningKey(&key.PublicKey)
+	keyPublic := createPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		return xerrors.Errorf("cannot compute name of signing key for initializing NV index: %w", err)
@@ -326,13 +353,20 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 	defer tpm.FlushContext(policySession)
 
 	// Compute a digest for signing with our key
-	signDigest := tpm2.HashAlgorithmSHA256
+	signDigest := tpm2.HashAlgorithmNull
+	keyScheme := keyPublic.Params.AsymDetail().Scheme
+	if keyScheme.Scheme != tpm2.AsymSchemeNull {
+		signDigest = keyScheme.Details.Any().HashAlg
+	}
+	if signDigest == tpm2.HashAlgorithmNull {
+		signDigest = tpm2.HashAlgorithmSHA256
+	}
 	h := signDigest.NewHash()
 	h.Write(policySession.NonceTPM())
 	binary.Write(h, binary.BigEndian, int32(0))
 
 	// Sign the digest
-	sig, err := rsa.SignPSS(rand.Reader, key, signDigest.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+	sigR, sigS, err := ecdsa.Sign(rand.Reader, key, h.Sum(nil))
 	if err != nil {
 		return xerrors.Errorf("cannot provide signature for initializing NV index: %w", err)
 	}
@@ -347,11 +381,12 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 	defer tpm.FlushContext(keyLoaded)
 
 	signature := tpm2.Signature{
-		SigAlg: tpm2.SigSchemeAlgRSAPSS,
+		SigAlg: tpm2.SigSchemeAlgECDSA,
 		Signature: tpm2.SignatureU{
-			Data: &tpm2.SignatureRSAPSS{
-				Hash: signDigest,
-				Sig:  tpm2.PublicKeyRSA(sig)}}}
+			Data: &tpm2.SignatureECDSA{
+				Hash:       signDigest,
+				SignatureR: sigR.Bytes(),
+				SignatureS: sigS.Bytes()}}}
 
 	// Execute the policy assertions
 	if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVWrite); err != nil {
@@ -613,17 +648,34 @@ func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynam
 	h.Write(authorizedPolicy)
 
 	// Sign the digest
-	sig, err := rsa.SignPSS(rand.Reader, input.key, input.signAlg.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
-	if err != nil {
-		return nil, xerrors.Errorf("cannot provide signature for initializing NV index: %w", err)
-	}
+	var signature tpm2.Signature
+	if version == 0 {
+		sig, err := rsa.SignPSS(rand.Reader, input.key.(*rsa.PrivateKey), input.signAlg.GetHash(), h.Sum(nil),
+			&rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+		if err != nil {
+			return nil, xerrors.Errorf("cannot provide signature for initializing NV index: %w", err)
+		}
 
-	signature := tpm2.Signature{
-		SigAlg: tpm2.SigSchemeAlgRSAPSS,
-		Signature: tpm2.SignatureU{
-			Data: &tpm2.SignatureRSAPSS{
-				Hash: input.signAlg,
-				Sig:  tpm2.PublicKeyRSA(sig)}}}
+		signature = tpm2.Signature{
+			SigAlg: tpm2.SigSchemeAlgRSAPSS,
+			Signature: tpm2.SignatureU{
+				Data: &tpm2.SignatureRSAPSS{
+					Hash: input.signAlg,
+					Sig:  tpm2.PublicKeyRSA(sig)}}}
+	} else {
+		sigR, sigS, err := ecdsa.Sign(rand.Reader, input.key.(*ecdsa.PrivateKey), h.Sum(nil))
+		if err != nil {
+			return nil, xerrors.Errorf("cannot provide signature for initializing NV index: %w", err)
+		}
+
+		signature = tpm2.Signature{
+			SigAlg: tpm2.SigSchemeAlgECDSA,
+			Signature: tpm2.SignatureU{
+				Data: &tpm2.SignatureECDSA{
+					Hash:       input.signAlg,
+					SignatureR: sigR.Bytes(),
+					SignatureS: sigS.Bytes()}}}
+	}
 
 	return &dynamicPolicyData{
 		PCRSelection:              input.pcrs,
