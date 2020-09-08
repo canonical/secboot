@@ -88,6 +88,7 @@ func (p FileEFIImage) Open() (interface {
 	}
 	fi, err := f.Stat()
 	if err != nil {
+		f.Close()
 		return nil, err
 	}
 	return &fileEFIImageHandle{File: f, size: fi.Size()}, nil
