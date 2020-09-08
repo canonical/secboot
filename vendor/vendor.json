@@ -145,10 +145,10 @@
 			"revisionTime": "2020-04-20T18:59:55Z"
 		},
 		{
-			"checksumSHA1": "f01gqazrvoATUzX2njKnzd+c1O0=",
+			"checksumSHA1": "TOoWW8rGy9VaSreHsF41wC9AKZo=",
 			"path": "github.com/snapcore/snapd/snap",
-			"revision": "cba748d1244e6861a5e407f7abe90fb2f76b6f80",
-			"revisionTime": "2020-04-20T18:59:55Z"
+			"revision": "fb087b94699cd51acf7b3fe14585c3b24f37873e",
+			"revisionTime": "2020-08-27T07:31:38Z"
 		},
 		{
 			"checksumSHA1": "o5TwzS0cwJNV8HNIIZrRfZPANLU=",
