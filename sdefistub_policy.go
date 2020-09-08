@@ -24,7 +24,7 @@ import (
 	"errors"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/chrisccoulson/tcglog-parser"
+	"github.com/canonical/tcglog-parser"
 
 	"golang.org/x/xerrors"
 )
