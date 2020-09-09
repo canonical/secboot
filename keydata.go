@@ -62,6 +62,7 @@ type afSplitDataRawHdr struct {
 	Size    uint32
 }
 
+// afSlitDataRaw is the on-disk version of afSplitData.
 type afSplitDataRaw struct {
 	Hdr  afSplitDataRawHdr
 	Data tpm2.RawBytes
@@ -98,6 +99,7 @@ func (d *afSplitDataRaw) data() *afSplitData {
 		data:    d.Data}
 }
 
+// makeAfSplitDataRaw converts afSplitData to its on disk form.
 func makeAfSplitDataRaw(d *afSplitData) *afSplitDataRaw {
 	return &afSplitDataRaw{
 		Hdr: afSplitDataRawHdr{
@@ -107,12 +109,16 @@ func makeAfSplitDataRaw(d *afSplitData) *afSplitDataRaw {
 		Data: d.data}
 }
 
+// afSplitData is a container for data that has been passed through an Anti-Forensic Information Splitter, to support
+// secure destruction of on-disk key material by increasing the size of the data stored and requiring every bit to survive
+// in order to recover the original data.
 type afSplitData struct {
 	stripes uint32
 	hashAlg tpm2.HashAlgorithmId
 	data    []byte
 }
 
+// merge recovers the original data from this container.
 func (d *afSplitData) merge() ([]byte, error) {
 	if d.stripes < 1 {
 		return nil, errors.New("invalid number of stripes")
@@ -123,6 +129,8 @@ func (d *afSplitData) merge() ([]byte, error) {
 	return afis.MergeHash(d.data, int(d.stripes), func() hash.Hash { return d.hashAlg.NewHash() })
 }
 
+// makeAfSplitData passes the supplied data through an Anti-Forensic Information Splitter to increase the size of the data to at
+// least the size specified by the minSz argument.
 func makeAfSplitData(data []byte, minSz int, hashAlg tpm2.HashAlgorithmId) (*afSplitData, error) {
 	stripes := uint32((minSz / len(data)) + 1)
 

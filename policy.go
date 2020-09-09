@@ -165,7 +165,12 @@ func makeStaticPolicyDataRaw_v1(data *staticPolicyData) *staticPolicyDataRaw_v1 
 func computePcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) (tpm2.DigestList, error) {
 	// The NV index requires 2 policies:
 	// - A policy to initialize the index with no authorization
-	// - A policy for updating the index to revoke old PCR policies, using a signed assertion.
+	// - A policy for updating the index to revoke old PCR policies using a signed assertion. This isn't done for security
+	//   reasons, but just to make it harder to accidentally increment the counter for anyone interacting with the TPM.
+	// This is simpler than the policy required for the v0 PIN NV index because it doesn't require additional authorization
+	// policy branches to allow its authorization value to be changed, or to be able to read the counter value or use it in
+	// a policy assertion without knowing the authorization value (reading the value of this counter does require the
+	// authorization value, but it is always empty and this policy doesn't allow it to be changed).
 	var authPolicies tpm2.DigestList
 
 	trial, err := tpm2.ComputeAuthPolicy(alg)
@@ -257,6 +262,8 @@ func incrementPcrPolicyCounter(tpm *tpm2.TPMContext, version uint32, nvPublic *t
 
 	// Execute the policy assertions
 	if version == 0 {
+		// See the comment for computeV0PinNVIndexPostInitAuthPolicies for a description of the authorization policy
+		// for the v0 NV index.
 		if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
 			return xerrors.Errorf("cannot execute assertion to increment counter: %w", err)
 		}
@@ -304,6 +311,9 @@ func readPcrPolicyCounter(tpm *tpm2.TPMContext, version uint32, nvPublic *tpm2.N
 		}
 		defer tpm.FlushContext(authSession)
 
+		// See the comment for computeV0PinNVIndexPostInitAuthPolicies for a description of the authorization policy
+		// for the v0 NV index. Because the v0 NV index was also used for the PIN, it needed an authorization policy
+		// to permit reading the counter value without knowing the authorization value of the index.
 		if err := tpm.PolicyCommandCode(authSession, tpm2.CommandNVRead); err != nil {
 			return 0, xerrors.Errorf("cannot execute assertion to read counter: %w", err)
 		}
@@ -994,6 +1004,9 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 			}
 			defer tpm.FlushContext(revocationCheckSession)
 
+			// See the comment for computeV0PinNVIndexPostInitAuthPolicies for a description of the authorization policy
+			// for the v0 NV index. Because the v0 NV index was also used for the PIN, it needed an authorization policy to
+			// permit using the counter value in an assertion without knowing the authorization value of the index.
 			if err := tpm.PolicyCommandCode(revocationCheckSession, tpm2.CommandPolicyNV); err != nil {
 				return xerrors.Errorf("cannot execute assertion for PCR policy revocation check: %w", err)
 			}
@@ -1037,6 +1050,9 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 
 	var pcrPolicyRef tpm2.Nonce
 	if version > 0 {
+		// The authorized PCR policy signature contains a reference for > v0 metadata, which limits the scope of it for authorizing
+		// PCR policy. In future, the key that authorizes this policy may be used to authorize other policy digests for the purposes of,
+		// eg, recovery with a signed assertion.
 		pcrPolicyRef = computePcrPolicyRefFromCounterContext(policyCounter)
 	}
 
@@ -1064,11 +1080,15 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 
 	if version == 0 {
+		// For metadata version 0, PIN support is implemented by asserting knowlege of the authorization value
+		// for the PCR policy counter.
 		policyCounter.SetAuthValue([]byte(pin))
 		if _, _, err := tpm.PolicySecret(policyCounter, policySession, nil, nil, 0, hmacSession); err != nil {
 			return xerrors.Errorf("cannot execute PolicySecret assertion: %w", err)
 		}
 	} else {
+		// For metadata versions > 0, PIN support is implemented by requiring knowlege of the authorization value for
+		// the sealed key object when this policy session is used to unseal it.
 		if err := tpm.PolicyAuthValue(policySession); err != nil {
 			return xerrors.Errorf("cannot execute PolicyAuthValue assertion: %w", err)
 		}

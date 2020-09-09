@@ -140,7 +140,8 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 		return nil, err
 	}
 
-	// Required for metadata version > 0
+	// For metadata version > 0, the PIN is the auth value for the sealed key object, and the authorization
+	// policy asserts that this value is known when the policy session is used.
 	key.SetAuthValue([]byte(pin))
 
 	// Unseal
