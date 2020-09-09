@@ -38,8 +38,8 @@ func computeSnapSystemEpochDigest(alg tpm2.HashAlgorithmId, epoch uint32) tpm2.D
 	return h.Sum(nil)
 }
 
-// Model exposes the details of a device model that are to be measured.
-type Model interface {
+// SnapModel exposes the details of a snap device model that are to be measured.
+type SnapModel interface {
 	Series() string
 	BrandID() string
 	Model() string
@@ -47,7 +47,7 @@ type Model interface {
 	SignKeyID() string
 }
 
-func computeSnapModelDigest(alg tpm2.HashAlgorithmId, model Model) (tpm2.Digest, error) {
+func computeSnapModelDigest(alg tpm2.HashAlgorithmId, model SnapModel) (tpm2.Digest, error) {
 	signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
 	if err != nil {
 		return nil, xerrors.Errorf("cannot decode signing key ID: %w", err)
@@ -83,7 +83,7 @@ type SnapModelProfileParams struct {
 	PCRIndex int
 
 	// Models is the set of models to add to the PCR profile.
-	Models []Model
+	Models []SnapModel
 }
 
 // AddSnapModelProfile adds the snap model profile to the PCR protection profile, as measured by snap-bootstrap, in order to generate
@@ -175,7 +175,7 @@ func MeasureSnapSystemEpochToTPM(tpm *TPMConnection, pcrIndex int) error {
 
 // MeasureSnapModelToTPM measures a digest of the supplied model assertion to the specified PCR for all supported PCR banks.
 // See the documentation for AddSnapModelProfile for details of how the digest of the model is computed.
-func MeasureSnapModelToTPM(tpm *TPMConnection, pcrIndex int, model Model) error {
+func MeasureSnapModelToTPM(tpm *TPMConnection, pcrIndex int, model SnapModel) error {
 	return measureSnapPropertyToTPM(tpm, pcrIndex, func(alg tpm2.HashAlgorithmId) (tpm2.Digest, error) {
 		return computeSnapModelDigest(alg, model)
 	})

@@ -100,7 +100,7 @@ func computePCRProtectionProfile() (*secboot.PCRProtectionProfile, error) {
 	smParams := secboot.SnapModelProfileParams{
 		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 		PCRIndex:     12,
-		Models:       []secboot.Model{model.(secboot.Model)},
+		Models:       []secboot.SnapModel{model.(secboot.SnapModel)},
 	}
 
 	if err := secboot.AddSnapModelProfile(profile, &smParams); err != nil {
