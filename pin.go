@@ -20,25 +20,22 @@
 package secboot
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"encoding/binary"
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
 )
 
-// computePinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
-// actions on a NV index created with createPinNVIndex. These are:
+// computeV0PinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
+// actions on a NV index created with the removed createPinNVIndex for version 0 key files. These are:
 // - A policy for updating the index to revoke old dynamic authorization policies, requiring an assertion signed by the key
 //   associated with updateKeyName.
 // - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
 // - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
 // - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
-func computePinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) (tpm2.DigestList, error) {
+func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) (tpm2.DigestList, error) {
 	var out tpm2.DigestList
 	// Compute a policy for incrementing the index to revoke dynamic authorization policies, requiring an assertion signed by the
 	// key associated with updateKeyName.
@@ -79,153 +76,13 @@ func computePinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 	return out, nil
 }
 
-// createPinNVIndex creates a NV index that is associated with a sealed key object and is used for implementing PIN support. It is
-// also used as a counter to support revoking of dynamic authorization policies.
+// performPinChangeV0 changes the authorization value of the dynamic authorization policy counter associated with the public
+// argument, for PIN integration in version 0 key files. This requires the authorization policy digests initially returned from
+// (the now removed) createPinNVIndex function in order to execute the policy session required to change the authorization value.
+// The current authorization value must be provided via the oldAuth argument.
 //
-// To prevent someone with knowledge of the owner authorization (which is empty unless someone has taken ownership of the TPM) from
-// resetting the PIN by just undefining and redifining a new NV index with the same properties, we need a way to prevent someone
-// from being able to create an index with the same name. To do this, we require the NV index to have been written to and only allow
-// the initial write with a signed authorization policy. Once initialized, the signing key that authorized the initial write is
-// discarded. This works because the name of the signing key is included in the authorization policy digest for the NV index, and the
-// authorization policy digest and attributes are included in the name of the NV index. Without the private part of the signing key,
-// it is impossible to create a new NV index with the same name, and so, if this NV index is undefined then it becomes impossible to
-// satisfy the authorization policy for the sealed key object to which it is associated.
-//
-// The NV index will be created with an authorization policy that permits TPM2_NV_Read and TPM2_PolicyNV without knowing the PIN,
-// and an authorization policy that permits TPM2_NV_Increment with a signed authorization policy, signed by the key associated with
-// updateKeyName.
-func createPinNVIndex(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tpm2.Name, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, tpm2.DigestList, error) {
-	initKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot create signing key for initializing NV index: %w", err)
-	}
-
-	initKeyPublic := createPublicAreaForECDSAKey(&initKey.PublicKey)
-	initKeyName, err := initKeyPublic.Name()
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute name of signing key for initializing NV index: %w", err)
-	}
-
-	nameAlg := tpm2.HashAlgorithmSHA256
-
-	// The NV index requires 5 policies:
-	// - A policy for initializing the index, requiring an assertion signed with an ephemeral key so that the index cannot be recreated.
-	// - A policy for updating the index to revoke old dynamic authorization policies, requiring a signed assertion.
-	// - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
-	// - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
-	// - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
-	var authPolicies tpm2.DigestList
-
-	// Compute a policy for initialization which requires an assertion signed with an ephemeral key (initKey)
-	trial, _ := tpm2.ComputeAuthPolicy(nameAlg)
-	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
-	trial.PolicyNvWritten(false)
-	trial.PolicySigned(initKeyName, nil)
-	authPolicies = append(authPolicies, trial.GetDigest())
-
-	// Compute the remaining 4 post-initalization policies.
-	postInitAuthPolicies, err := computePinNVIndexPostInitAuthPolicies(nameAlg, updateKeyName)
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute authorization policies: %w", err)
-	}
-	authPolicies = append(authPolicies, postInitAuthPolicies...)
-
-	trial, _ = tpm2.ComputeAuthPolicy(nameAlg)
-	trial.PolicyOR(authPolicies)
-
-	// Define the NV index
-	public := &tpm2.NVPublic{
-		Index:      handle,
-		NameAlg:    nameAlg,
-		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVPolicyRead),
-		AuthPolicy: trial.GetDigest(),
-		Size:       8}
-
-	index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, public, hmacSession)
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot define NV space: %w", err)
-	}
-
-	// NVDefineSpace was integrity protected, so we know that we have an index with the expected public area at the handle we specified
-	// at this point.
-
-	succeeded := false
-	defer func() {
-		if succeeded {
-			return
-		}
-		tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, hmacSession)
-	}()
-
-	// Begin a session to initialize the index.
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, nameAlg)
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot begin policy session to initialize NV index: %w", err)
-	}
-	defer tpm.FlushContext(policySession)
-
-	// Compute a digest for signing with our key
-	signDigest := tpm2.HashAlgorithmSHA256
-	h := signDigest.NewHash()
-	h.Write(policySession.NonceTPM())
-	binary.Write(h, binary.BigEndian, int32(0))
-
-	// Sign the digest
-	sigR, sigS, err := ecdsa.Sign(rand.Reader, initKey, h.Sum(nil))
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot provide signature for initializing NV index: %w", err)
-	}
-
-	// Load the public part of the key in to the TPM. There's no integrity protection for this command as if it's altered in
-	// transit then either the signature verification fails or the policy digest will not match the one associated with the NV
-	// index.
-	initKeyContext, err := tpm.LoadExternal(nil, initKeyPublic, tpm2.HandleEndorsement)
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot load public part of key used to initialize NV index to the TPM: %w", err)
-	}
-	defer tpm.FlushContext(initKeyContext)
-
-	signature := tpm2.Signature{
-		SigAlg: tpm2.SigSchemeAlgECDSA,
-		Signature: tpm2.SignatureU{
-			Data: &tpm2.SignatureECDSA{
-				Hash:       signDigest,
-				SignatureR: sigR.Bytes(),
-				SignatureS: sigS.Bytes()}}}
-
-	// Execute the policy assertions
-	if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
-		return nil, nil, xerrors.Errorf("cannot execute assertion to initialize NV index: %w", err)
-	}
-	if err := tpm.PolicyNvWritten(policySession, false); err != nil {
-		return nil, nil, xerrors.Errorf("cannot execute assertion to initialize NV index: %w", err)
-	}
-	if _, _, err := tpm.PolicySigned(initKeyContext, policySession, true, nil, nil, 0, &signature); err != nil {
-		return nil, nil, xerrors.Errorf("cannot execute assertion to initialize NV index: %w", err)
-	}
-	if err := tpm.PolicyOR(policySession, authPolicies); err != nil {
-		return nil, nil, xerrors.Errorf("cannot execute assertion to initialize NV index: %w", err)
-	}
-
-	// Initialize the index
-	if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
-		return nil, nil, xerrors.Errorf("cannot initialize NV index: %w", err)
-	}
-
-	// The index has a different name now that it has been written, so update the public area we return so that it can be used
-	// to construct an authorization policy.
-	public.Attrs |= tpm2.AttrNVWritten
-
-	succeeded = true
-	return public, authPolicies, nil
-}
-
-// performPinChange changes the authorization value of the PIN NV index associated with the public argument. This requires the
-// authorization policy digests initially returned from createPinNVIndex in order to execute the policy session required to change
-// the authorization value. The current authorization value must be provided via the oldAuth argument.
-//
-// On success, the authorization value of the PIN NV index will be changed to newAuth.
-func performPinChange(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies tpm2.DigestList, oldAuth, newAuth string, hmacSession tpm2.SessionContext) error {
+// On success, the authorization value of the counter will be changed to newAuth.
+func performPinChangeV0(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies tpm2.DigestList, oldAuth, newAuth string, hmacSession tpm2.SessionContext) error {
 	index, err := tpm2.CreateNVIndexResourceContextFromPublic(public)
 	if err != nil {
 		return xerrors.Errorf("cannot create resource context for NV index: %w", err)
@@ -253,6 +110,33 @@ func performPinChange(tpm *tpm2.TPMContext, public *tpm2.NVPublic, authPolicies 
 	}
 
 	return nil
+}
+
+// performPinChange changes the authorization value of the sealed key object associated with keyPrivate and keyPublic, for PIN
+// integration in current key files. The sealed key file must be created without the AttrAdminWithPolicy attribute. The current
+// authorization value must be provided via the oldAuth argument.
+//
+// On success, a new private area will be returned for the sealed key object, containing the new PIN.
+func performPinChange(tpm *tpm2.TPMContext, keyPrivate tpm2.Private, keyPublic *tpm2.Public, oldPIN, newPIN string, session tpm2.SessionContext) (tpm2.Private, error) {
+	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
+	}
+
+	key, err := tpm.Load(srk, keyPrivate, keyPublic, session)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot load sealed key object in to TPM: %w", err)
+	}
+	defer tpm.FlushContext(key)
+
+	key.SetAuthValue([]byte(oldPIN))
+
+	newKeyPrivate, err := tpm.ObjectChangeAuth(key, srk, []byte(newPIN), session.IncludeAttrs(tpm2.AttrCommandEncrypt))
+	if err != nil {
+		return nil, xerrors.Errorf("cannot change sealed key object authorization value: %w", err)
+	}
+
+	return newKeyPrivate, nil
 }
 
 // ChangePIN changes the PIN for the key data file at the specified path. The existing PIN must be supplied via the oldPIN argument.
@@ -284,21 +168,31 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	defer keyFile.Close()
 
 	// Read and validate the key data file
-	data, _, pinIndexPublic, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
+	data, _, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
 	if err != nil {
-		var kfErr keyFileError
-		if xerrors.As(err, &kfErr) {
+		if isKeyFileError(err) {
 			return InvalidKeyFileError{err.Error()}
 		}
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
 
 	// Change the PIN
-	if err := performPinChange(tpm.TPMContext, pinIndexPublic, data.staticPolicyData.PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
-		if isAuthFailError(err, tpm2.CommandNVChangeAuth, 1) {
-			return ErrPINFail
+	if data.version == 0 {
+		if err := performPinChangeV0(tpm.TPMContext, pcrPolicyCounterPub, data.staticPolicyData.v0PinIndexAuthPolicies, oldPIN, newPIN, tpm.HmacSession()); err != nil {
+			if isAuthFailError(err, tpm2.CommandNVChangeAuth, 1) {
+				return ErrPINFail
+			}
+			return err
 		}
-		return err
+	} else {
+		newKeyPrivate, err := performPinChange(tpm.TPMContext, data.keyPrivate, data.keyPublic, oldPIN, newPIN, tpm.HmacSession())
+		if err != nil {
+			if isAuthFailError(err, tpm2.CommandObjectChangeAuth, 1) {
+				return ErrPINFail
+			}
+			return err
+		}
+		data.keyPrivate = newKeyPrivate
 	}
 
 	// Update the metadata and write a new key data file
@@ -309,7 +203,7 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 		data.authModeHint = AuthModePIN
 	}
 
-	if origAuthModeHint == data.authModeHint {
+	if origAuthModeHint == data.authModeHint && data.version == 0 {
 		return nil
 	}
 

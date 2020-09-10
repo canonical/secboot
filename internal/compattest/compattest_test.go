@@ -205,7 +205,7 @@ func (s *compatTestSuiteBase) testUpdateKeyPCRProtectionPolicyRevokes(c *C, pcrP
 	c.Assert(err, IsNil)
 
 	_, err = k.UnsealFromTPM(s.TPM, "")
-	c.Check(err, ErrorMatches, "invalid key data file: cannot complete authorization policy assertions: the dynamic authorization policy has been revoked")
+	c.Check(err, ErrorMatches, "invalid key data file: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }
 
 func (s *compatTestSuiteBase) testUpdateKeyPCRProtectionPolicyAndUnseal(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEvents io.Reader) {
