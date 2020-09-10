@@ -714,7 +714,15 @@ func computePcrPolicyRefFromCounterContext(context tpm2.ResourceContext) tpm2.No
 	return computePcrPolicyRefFromCounterName(name)
 }
 
-// computeStaticPolicy computes the part of an authorization policy that is bound to a sealed key object and never changes.
+// computeStaticPolicy computes the part of an authorization policy that is bound to a sealed key object and never changes. The
+// static policy asserts that the following are true:
+// - The signed PCR policy created by computeDynamicPolicy is valid and has been satisfied (by way of a PolicyAuthorize assertion,
+//   which allows the PCR policy to be updated without creating a new sealed key object).
+// - Knowledge of the the authorization value for the entity on which the policy session is used has been demonstrated by the
+//   caller (in SealedKeyObject.UnsealFromTPM where the policy session is used for authorizing unsealing the sealed key object,
+//   this means that the PIN / passhphrase has been provided).
+// - That access to sealed keys created by this package is currently permitted (by way of a PolicyNV assertion against a NV index
+//   at a well-known handle) because LockAccessToSealedKeys hasn't been called yet.
 func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputeParams) (*staticPolicyData, tpm2.Digest, error) {
 	keyName, err := input.key.Name()
 	if err != nil {
@@ -800,8 +808,15 @@ func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, 
 	return data
 }
 
-// computeDynamicPolicy computes the part of an authorization policy associated with a sealed key object that can change and be
-// updated.
+// computeDynamicPolicy computes the PCR policy associated with a sealed key object, and can be updated without having to create a
+// new sealed key object as it takes advantage of the PolicyAuthorize assertion. The PCR policy asserts that the following are true:
+// - The selected PCRs contain expected values - ie, one of the sets of permitted values specified by the caller to this function,
+//   indicating that the device is in an expected state. This is done by a single PolicyPCR assertion and then one or more PolicyOR
+//   assertions (depending on how many sets of permitted PCR values there are).
+// - The PCR policy hasn't been revoked. This is done using a PolicyNV assertion to assert that the value of an optional NV counter
+//   is not greater than the expected value.
+// The computed PCR policy digest is signed with the supplied asymmetric key, and the signature of this is validated before executing
+// the corresponding PolicyAuthorize assertion as part of the static policy.
 func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
 	if len(input.pcrDigests) == 0 {
 		return nil, errors.New("no PCR digests specified")
