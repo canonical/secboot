@@ -28,6 +28,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 
 	"golang.org/x/xerrors"
 )
@@ -370,7 +371,7 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 	}
 
 	// Marshal key name and cut-off time for writing to the NV index so that they can be used for verification in the future.
-	data, err := tpm2.MarshalToBytes(lockNVIndexVersion, keyName, time.ClockInfo.Clock)
+	data, err := mu.MarshalToBytes(lockNVIndexVersion, keyName, time.ClockInfo.Clock)
 	if err != nil {
 		panic(fmt.Sprintf("cannot marshal contents for policy data NV index: %v", err))
 	}
@@ -430,7 +431,7 @@ func readAndValidateLockNVIndexPublic(tpm *tpm2.TPMContext, index tpm2.ResourceC
 	var version uint8
 	var keyName tpm2.Name
 	var clock uint64
-	if _, err := tpm2.UnmarshalFromBytes(data, &version, &keyName, &clock); err != nil {
+	if _, err := mu.UnmarshalFromBytes(data, &version, &keyName, &clock); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal policy data: %w", err)
 	}
 
