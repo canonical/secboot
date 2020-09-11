@@ -244,7 +244,7 @@ type cryptTPMTestBase struct {
 func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
 	ctb.cryptTestBase.setUpTestBase(c, &ttb.BaseTest)
 
-	c.Assert(ProvisionTPM(ttb.TPM, ProvisionModeFull, nil), IsNil)
+	c.Assert(ttb.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 
 	dir := c.MkDir()
 	ctb.keyFile = dir + "/keydata"
@@ -558,7 +558,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
 	// Test that recovery fallback works with the TPM in DA lockout mode.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
-		c.Check(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 	}()
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
@@ -620,7 +620,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
 	// Test that activation fails if RecoveryKeyTries is zero.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
-		c.Check(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 	}()
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
@@ -635,7 +635,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 	// Test that activation fails if the wrong recovery key is provided.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
-		c.Check(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 	}()
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{

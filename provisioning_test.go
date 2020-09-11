@@ -150,8 +150,8 @@ func TestProvisionNewTPM(t *testing.T) {
 			origEk, _ := tpm.EndorsementKey()
 			origHmacSession := tpm.HmacSession()
 
-			if err := ProvisionTPM(tpm, data.mode, lockoutAuth); err != nil {
-				t.Fatalf("ProvisionTPM failed: %v", err)
+			if err := tpm.EnsureProvisioned(data.mode, lockoutAuth); err != nil {
+				t.Fatalf("EnsureProvisioned failed: %v", err)
 			}
 
 			validateEK(t, tpm.TPMContext)
@@ -369,12 +369,12 @@ func TestProvisionErrorHandling(t *testing.T) {
 			tpm.OwnerHandleContext().SetAuthValue(nil)
 			tpm.EndorsementHandleContext().SetAuthValue(nil)
 
-			err := ProvisionTPM(tpm, data.mode, nil)
+			err := tpm.EnsureProvisioned(data.mode, nil)
 			if err == nil {
-				t.Fatalf("ProvisionTPM should have returned an error")
+				t.Fatalf("EnsureProvisioned should have returned an error")
 			}
 			if err != data.err {
-				t.Errorf("ProvisionTPM returned an unexpected error: %v", err)
+				t.Errorf("EnsureProvisioned returned an unexpected error: %v", err)
 			}
 		})
 	}
@@ -402,8 +402,8 @@ func TestRecreateEK(t *testing.T) {
 
 			lockoutAuth := []byte("1234")
 
-			if err := ProvisionTPM(tpm, ProvisionModeFull, lockoutAuth); err != nil {
-				t.Fatalf("ProvisionTPM failed: %v", err)
+			if err := tpm.EnsureProvisioned(ProvisionModeFull, lockoutAuth); err != nil {
+				t.Fatalf("EnsureProvisioned failed: %v", err)
 			}
 
 			ek, err := tpm.EndorsementKey()
@@ -426,8 +426,8 @@ func TestRecreateEK(t *testing.T) {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 
-			if err := ProvisionTPM(tpm, data.mode, lockoutAuth); err != nil {
-				t.Fatalf("ProvisionTPM failed: %v", err)
+			if err := tpm.EnsureProvisioned(data.mode, lockoutAuth); err != nil {
+				t.Fatalf("EnsureProvisioned failed: %v", err)
 			}
 
 			validateEK(t, tpm.TPMContext)
@@ -475,8 +475,8 @@ func TestRecreateSRK(t *testing.T) {
 
 			lockoutAuth := []byte("1234")
 
-			if err := ProvisionTPM(tpm, ProvisionModeFull, lockoutAuth); err != nil {
-				t.Fatalf("ProvisionTPM failed: %v", err)
+			if err := tpm.EnsureProvisioned(ProvisionModeFull, lockoutAuth); err != nil {
+				t.Fatalf("EnsureProvisioned failed: %v", err)
 			}
 
 			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
@@ -488,8 +488,8 @@ func TestRecreateSRK(t *testing.T) {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 
-			if err := ProvisionTPM(tpm, data.mode, lockoutAuth); err != nil {
-				t.Fatalf("ProvisionTPM failed: %v", err)
+			if err := tpm.EnsureProvisioned(data.mode, lockoutAuth); err != nil {
+				t.Fatalf("EnsureProvisioned failed: %v", err)
 			}
 
 			validateSRK(t, tpm.TPMContext)
@@ -512,8 +512,8 @@ func TestProvisionWithEndorsementAuth(t *testing.T) {
 		t.Fatalf("HierarchyChangeAuth failed: %v", err)
 	}
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-		t.Fatalf("ProvisionTPM failed: %v", err)
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+		t.Fatalf("EnsureProvisioned failed: %v", err)
 	}
 
 	validateEK(t, tpm.TPMContext)
@@ -535,8 +535,8 @@ func TestProvisionWithOwnerAuth(t *testing.T) {
 		t.Fatalf("HierarchyChangeAuth failed: %v", err)
 	}
 
-	if err := ProvisionTPM(tpm, ProvisionModeClear, nil); err != nil {
-		t.Fatalf("ProvisionTPM failed: %v", err)
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+		t.Fatalf("EnsureProvisioned failed: %v", err)
 	}
 
 	validateEK(t, tpm.TPMContext)
@@ -558,166 +558,13 @@ func TestProvisionWithInvalidEkCert(t *testing.T) {
 	restore := testutil.MockEKTemplate(ekTemplate)
 	defer restore()
 
-	err := ProvisionTPM(tpm, ProvisionModeFull, nil)
+	err := tpm.EnsureProvisioned(ProvisionModeFull, nil)
 	if err == nil {
-		t.Fatalf("ProvisionTPM should have returned an error")
+		t.Fatalf("EnsureProvisioned should have returned an error")
 	}
 	var ve TPMVerificationError
 	if !xerrors.As(err, &ve) && err.Error() != "verification of the TPM failed: cannot verify TPM: endorsement key returned from the "+
 		"TPM doesn't match the endorsement certificate" {
 		t.Errorf("ProvisionTPM returned an unexpected error: %v", err)
-	}
-}
-
-func TestProvisionStatus(t *testing.T) {
-	tpm, _ := openTPMSimulatorForTesting(t)
-	defer func() {
-		clearTPMWithPlatformAuth(t, tpm)
-		closeTPM(t, tpm)
-	}()
-
-	clearTPMWithPlatformAuth(t, tpm)
-
-	status, err := ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	if status != 0 {
-		t.Errorf("Unexpected status")
-	}
-
-	lockoutAuth := []byte("1234")
-
-	if err := ProvisionTPM(tpm, ProvisionModeClear, lockoutAuth); err != nil {
-		t.Fatalf("ProvisionTPM failed: %v", err)
-	}
-
-	status, err = ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	expected := AttrValidEK | AttrValidSRK | AttrDAParamsOK | AttrOwnerClearDisabled | AttrLockoutAuthSet | AttrValidLockNVIndex
-	if status != expected {
-		t.Errorf("Unexpected status %d", status)
-	}
-
-	lockIndex, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
-	if err != nil {
-		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-	}
-	if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), lockIndex, nil); err != nil {
-		t.Errorf("NVUndefineSpace failed: %v", err)
-	}
-
-	status, err = ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	expected = AttrValidEK | AttrValidSRK | AttrDAParamsOK | AttrOwnerClearDisabled | AttrLockoutAuthSet
-	if status != expected {
-		t.Errorf("Unexpected status %d", status)
-	}
-
-	if err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), nil, nil); err != nil {
-		t.Errorf("HierarchyChangeAuth failed: %v", err)
-	}
-
-	status, err = ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	expected = AttrValidEK | AttrValidSRK | AttrDAParamsOK | AttrOwnerClearDisabled
-	if status != expected {
-		t.Errorf("Unexpected status %d", status)
-	}
-
-	if err := tpm.ClearControl(tpm.PlatformHandleContext(), false, nil); err != nil {
-		t.Errorf("ClearControl failed: %v", err)
-	}
-
-	status, err = ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	expected = AttrValidEK | AttrValidSRK | AttrDAParamsOK
-	if status != expected {
-		t.Errorf("Unexpected status %d", status)
-	}
-
-	if err := tpm.DictionaryAttackParameters(tpm.LockoutHandleContext(), 3, 0, 0, nil); err != nil {
-		t.Errorf("DictionaryAttackParameters failed: %v", err)
-	}
-
-	status, err = ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	expected = AttrValidEK | AttrValidSRK
-	if status != expected {
-		t.Errorf("Unexpected status %d", status)
-	}
-
-	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-	if err != nil {
-		t.Fatalf("No SRK context: %v", err)
-	}
-	if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srkContext, srkContext.Handle(), nil); err != nil {
-		t.Errorf("EvictControl failed: %v", err)
-	}
-
-	status, err = ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	expected = AttrValidEK
-	if status != expected {
-		t.Errorf("Unexpected status %d", status)
-	}
-
-	ekContext, err := tpm.CreateResourceContextFromTPM(tcg.EKHandle)
-	if err != nil {
-		t.Fatalf("No EK context: %v", err)
-	}
-	if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ekContext, ekContext.Handle(), nil); err != nil {
-		t.Errorf("EvictControl failed: %v", err)
-	}
-
-	status, err = ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	expected = 0
-	if status != expected {
-		t.Errorf("Unexpected status %d", status)
-	}
-
-	primary, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, tcg.SRKTemplate, nil, nil, nil)
-	if err != nil {
-		t.Fatalf("CreatePrimary failed: %v", err)
-	}
-	defer flushContext(t, tpm, primary)
-
-	priv, pub, _, _, _, err := tpm.Create(primary, nil, tcg.SRKTemplate, nil, nil, nil)
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	context, err := tpm.Load(primary, priv, pub, nil)
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	defer flushContext(t, tpm, context)
-
-	if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), context, tcg.SRKHandle, nil); err != nil {
-		t.Errorf("EvictControl failed: %v", err)
-	}
-
-	status, err = ProvisionStatus(tpm)
-	if err != nil {
-		t.Errorf("ProvisionStatus failed: %v", err)
-	}
-	expected = 0
-	if status != expected {
-		t.Errorf("Unexpected status %d", status)
 	}
 }
