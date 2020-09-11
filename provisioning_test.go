@@ -250,6 +250,11 @@ func TestProvisionErrorHandling(t *testing.T) {
 			t.Fatalf("HierarchyChangeAuth failed: %v", err)
 		}
 	}
+	disableOwnerClear := func(t *testing.T) {
+		if err := tpm.ClearControl(tpm.LockoutHandleContext(), true, nil); err != nil {
+			t.Fatalf("ClearControl failed: %v", err)
+		}
+	}
 
 	for _, data := range []struct {
 		desc        string
@@ -262,16 +267,12 @@ func TestProvisionErrorHandling(t *testing.T) {
 			desc: "ErrTPMClearRequiresPPI",
 			mode: ProvisionModeClear,
 			prepare: func(t *testing.T) {
-				if err := tpm.ClearControl(tpm.LockoutHandleContext(), true, nil); err != nil {
-					t.Fatalf("ClearControl failed: %v", err)
-				}
-				setLockoutAuth(t)
+				disableOwnerClear(t)
 			},
-			lockoutAuth: authValue,
-			err:         ErrTPMClearRequiresPPI,
+			err: ErrTPMClearRequiresPPI,
 		},
 		{
-			desc: "ErrTPMLockoutAuthFail1",
+			desc: "ErrTPMLockoutAuthFail/1",
 			mode: ProvisionModeFull,
 			prepare: func(t *testing.T) {
 				setLockoutAuth(t)
@@ -280,7 +281,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 			err:         errLockoutAuthFail,
 		},
 		{
-			desc: "ErrTPMLockoutAuthFail2",
+			desc: "ErrTPMLockoutAuthFail/2",
 			mode: ProvisionModeClear,
 			prepare: func(t *testing.T) {
 				setLockoutAuth(t)
@@ -289,7 +290,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 			err:         errLockoutAuthFail,
 		},
 		{
-			desc: "ErrInLockout1",
+			desc: "ErrInLockout/1",
 			mode: ProvisionModeFull,
 			prepare: func(t *testing.T) {
 				setLockoutAuth(t)
@@ -300,7 +301,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 			err:         ErrTPMLockout,
 		},
 		{
-			desc: "ErrInLockout2",
+			desc: "ErrInLockout/2",
 			mode: ProvisionModeClear,
 			prepare: func(t *testing.T) {
 				setLockoutAuth(t)
@@ -360,11 +361,43 @@ func TestProvisionErrorHandling(t *testing.T) {
 			},
 			err: errLockNVDataHandleExists,
 		},
+		{
+			desc: "ErrTPMProvisioningRequiresLockout/1",
+			mode: ProvisionModeWithoutLockout,
+			err:  ErrTPMProvisioningRequiresLockout,
+		},
+		{
+			desc: "ErrTPMProvisioningRequiresLockout/2",
+			mode: ProvisionModeWithoutLockout,
+			prepare: func(t *testing.T) {
+				disableOwnerClear(t)
+			},
+			err: ErrTPMProvisioningRequiresLockout,
+		},
+		{
+			desc: "ErrTPMProvisioningRequiresLockout/3",
+			mode: ProvisionModeWithoutLockout,
+			prepare: func(t *testing.T) {
+				setLockoutAuth(t)
+			},
+			err: ErrTPMProvisioningRequiresLockout,
+		},
+		{
+			desc: "ErrTPMProvisioningRequiresLockout/4",
+			mode: ProvisionModeWithoutLockout,
+			prepare: func(t *testing.T) {
+				setLockoutAuth(t)
+				disableOwnerClear(t)
+			},
+			err: ErrTPMProvisioningRequiresLockout,
+		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
 			clearTPMWithPlatformAuth(t, tpm)
 
-			data.prepare(t)
+			if data.prepare != nil {
+				data.prepare(t)
+			}
 			tpm.LockoutHandleContext().SetAuthValue(data.lockoutAuth)
 			tpm.OwnerHandleContext().SetAuthValue(nil)
 			tpm.EndorsementHandleContext().SetAuthValue(nil)
@@ -483,6 +516,7 @@ func TestRecreateSRK(t *testing.T) {
 			if err != nil {
 				t.Fatalf("No SRK context: %v", err)
 			}
+			expectedName := srk.Name()
 
 			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
 				t.Errorf("EvictControl failed: %v", err)
@@ -490,6 +524,14 @@ func TestRecreateSRK(t *testing.T) {
 
 			if err := tpm.EnsureProvisioned(data.mode, lockoutAuth); err != nil {
 				t.Fatalf("EnsureProvisioned failed: %v", err)
+			}
+
+			srk, err = tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			if err != nil {
+				t.Fatalf("No SRK context: %v", err)
+			}
+			if !bytes.Equal(srk.Name(), expectedName) {
+				t.Errorf("Unexpected SRK name")
 			}
 
 			validateSRK(t, tpm.TPMContext)
