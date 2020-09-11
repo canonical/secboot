@@ -44,13 +44,13 @@ func (s *keyDataSuite) TestValidateAfterLock(c *C) {
 	dir := c.MkDir()
 	keyFile := dir + "/keydata"
 
-	pinHandle := tpm2.Handle(0x0181fff0)
+	pcrPolicyCounterHandle := tpm2.Handle(0x0181fff0)
 
-	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: tpm2.Handle(0x0181fff0)})
+	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: pcrPolicyCounterHandle})
 	c.Assert(err, IsNil)
-	pinIndex, err := s.TPM.CreateResourceContextFromTPM(pinHandle)
+	pcrPolicyCounter, err := s.TPM.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
 	c.Assert(err, IsNil)
-	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pinIndex)
+	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pcrPolicyCounter)
 
 	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, authPrivateKey, s.TPM.HmacSession()), IsNil)
 

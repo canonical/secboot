@@ -21,9 +21,11 @@ package secboot_test
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/canonical/go-tpm2"
@@ -76,11 +78,15 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	}
 
 	t.Run("SimplePCRProfile", func(t *testing.T) {
-		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0})
+		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
 	})
 
 	t.Run("NilPCRProfile", func(t *testing.T) {
-		run(t, &KeyCreationParams{PINHandle: 0x0181fff0})
+		run(t, &KeyCreationParams{PCRPolicyCounterHandle: 0x0181fff0})
+	})
+
+	t.Run("NoPCRPolicyCounterHandle", func(t *testing.T) {
+		run(t, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	})
 }
 
@@ -103,7 +109,7 @@ func TestUnsealWithPIN(t *testing.T) {
 
 	keyFile := tmpDir + "/keydata"
 
-	if _, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0}); err != nil {
+	if _, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0}); err != nil {
 		t.Fatalf("SealKeyToTPM failed: %v", err)
 	}
 	defer undefineKeyNVSpace(t, tpm, keyFile)
@@ -146,18 +152,18 @@ func TestUnsealErrorHandling(t *testing.T) {
 
 		keyFile := tmpDir + "/keydata"
 
-		authKey, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x0181fff0})
+		authKey, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
 		if err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
+		fn(keyFile, authKey)
+
 		k, err := ReadSealedKeyObject(keyFile)
 		if err != nil {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
-
-		fn(keyFile, authKey)
 
 		_, _, err = k.UnsealFromTPM(tpm, "")
 		return err
@@ -248,12 +254,27 @@ func TestUnsealErrorHandling(t *testing.T) {
 		defer closeTPM(t, tpm)
 
 		err := run(t, tpm, func(keyFile string, authKey []byte) {
-			if err := UpdateKeyPCRProtectionPolicy(tpm, keyFile, authKey, getTestPCRProfile()); err != nil {
+			src, err := os.Open(keyFile)
+			if err != nil {
+				t.Fatalf("Open failed: %v", err)
+			}
+			defer src.Close()
+
+			newKeyFile := filepath.Dir(keyFile) + "/newkeydata"
+			dst, err := os.OpenFile(newKeyFile, os.O_WRONLY|os.O_CREATE, 0644)
+			if err != nil {
+				t.Fatalf("Open failed: %v", err)
+			}
+			defer dst.Close()
+
+			io.Copy(dst, src)
+
+			if err := UpdateKeyPCRProtectionPolicy(tpm, newKeyFile, authKey, getTestPCRProfile()); err != nil {
 				t.Fatalf("UpdateKeyPCRProtectionPolicy failed: %v", err)
 			}
 		})
 		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
-			"assertions: the dynamic authorization policy has been revoked" {
+			"assertions: the PCR policy has been revoked" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

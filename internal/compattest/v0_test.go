@@ -73,7 +73,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
 
 	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, key2, s.absPath("pud"), profile), IsNil)
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
-	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: the dynamic authorization policy has been revoked")
+	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {

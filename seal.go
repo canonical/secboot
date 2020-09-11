@@ -43,18 +43,23 @@ func makeSealedKeyTemplate() *tpm2.Public {
 }
 
 func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey crypto.PrivateKey,
-	countIndexPub *tpm2.NVPublic, countIndexAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
+	counterPub *tpm2.NVPublic, counterAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
-	// Obtain the count for the new dynamic authorization policy
-	nextPolicyCount, err := readDynamicPolicyCounter(tpm, countIndexPub, countIndexAuthPolicies, session)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot read dynamic policy counter: %w", err)
-	}
-	nextPolicyCount += 1
+	// Obtain the count for the new policy
+	var nextPolicyCount uint64
+	var counterName tpm2.Name
+	if counterPub != nil {
+		var err error
+		nextPolicyCount, err = readPcrPolicyCounter(tpm, version, counterPub, counterAuthPolicies, session)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot read policy counter: %w", err)
+		}
+		nextPolicyCount += 1
 
-	countIndexName, _ := countIndexPub.Name()
-	if err != nil {
-		return nil, xerrors.Errorf("cannot compute name of dynamic policy counter: %w", err)
+		counterName, err = counterPub.Name()
+		if err != nil {
+			return nil, xerrors.Errorf("cannot compute name of policy counter: %w", err)
+		}
 	}
 
 	supportedPcrs, err := tpm.GetCapabilityPCRs(session.IncludeAttrs(tpm2.AttrAudit))
@@ -93,12 +98,12 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 
 	// Use the PCR digests and NV index names to generate a single signed dynamic authorization policy digest
 	policyParams := dynamicPolicyComputeParams{
-		key:                  authKey,
-		signAlg:              signAlg,
-		pcrs:                 pcrs,
-		pcrDigests:           pcrDigests,
-		policyCountIndexName: countIndexName,
-		policyCount:          nextPolicyCount}
+		key:               authKey,
+		signAlg:           signAlg,
+		pcrs:              pcrs,
+		pcrDigests:        pcrDigests,
+		policyCounterName: counterName,
+		policyCount:       nextPolicyCount}
 
 	policyData, err := computeDynamicPolicy(version, alg, &policyParams)
 	if err != nil {
@@ -113,10 +118,12 @@ type KeyCreationParams struct {
 	// PCRProfile defines the profile used to generate a PCR protection policy for the newly created sealed key file.
 	PCRProfile *PCRProtectionProfile
 
-	// PINHandle is the handle at which to create a NV index for PIN support. The handle must be a valid NV index handle (MSO == 0x01)
-	// and the choice of handle should take in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and
-	// localities" specification. It is recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
-	PINHandle tpm2.Handle
+	// PCRPolicyCounterHandle is the handle at which to create a NV index for dynamic authorization poliy revocation support. The handle
+	// must either be tpm2.HandleNull (in which case, no NV index will be created and the sealed key will not benefit from dynamic
+	// authorization policy revocation support), or it must be a valid NV index handle (MSO == 0x01). The choice of handle should take
+	// in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is
+	// recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
+	PCRPolicyCounterHandle tpm2.Handle
 }
 
 // SealKeyToTPM seals the supplied disk encryption key to the storage hierarchy of the TPM. The sealed key object and associated
@@ -134,11 +141,12 @@ type KeyCreationParams struct {
 // *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
 // the file cannot be created and opened for writing.
 //
-// This function will create a NV index at the handle specified by the PINHandle field of the params argument. If the handle is already
-// in use, a TPMResourceExistsError error will be returned. In this case, the caller will need to either choose a different handle or
-// undefine the existing one. The handle must be a valid NV index handle (MSO == 0x01), and the choice of handle should take in to
-// consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is recommended
-// that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
+// This function will create a NV index at the handle specified by the PCRPolicyCounterHandle field of the params argument if it is not
+// tpm2.HandleNull. If the handle is already in use, a TPMResourceExistsError error will be returned. In this case, the caller will
+// need to either choose a different handle or undefine the existing one. If it is not tpm2.HandleNull, then it must be a valid NV
+// index handle (MSO == 0x01), and the choice of handle should take in to consideration the reserved indices from the "Registry of
+// reserved TPM 2.0 handles and localities" specification. It is recommended that the handle is in the block reserved for owner
+// objects (0x01800000 - 0x01bfffff).
 //
 // The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
 // argument.
@@ -216,35 +224,37 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 		return nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
 	}
 
-	// Create pin NV index
-	pinIndexPub, pinIndexAuthPolicies, err := createPinNVIndex(tpm.TPMContext, params.PINHandle, authKeyName, session)
-	switch {
-	case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
-		return nil, TPMResourceExistsError{params.PINHandle}
-	case isAuthFailError(err, tpm2.CommandNVDefineSpace, 1):
-		return nil, AuthFailError{tpm2.HandleOwner}
-	case err != nil:
-		return nil, xerrors.Errorf("cannot create new pin NV index: %w", err)
+	// Create PCR policy counter
+	var pcrPolicyCounterPub *tpm2.NVPublic
+	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
+		pcrPolicyCounterPub, err = createPcrPolicyCounter(tpm.TPMContext, params.PCRPolicyCounterHandle, authKeyName, session)
+		switch {
+		case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
+			return nil, TPMResourceExistsError{params.PCRPolicyCounterHandle}
+		case isAuthFailError(err, tpm2.CommandNVDefineSpace, 1):
+			return nil, AuthFailError{tpm2.HandleOwner}
+		case err != nil:
+			return nil, xerrors.Errorf("cannot create new dynamic authorization policy counter: %w", err)
+		}
+		defer func() {
+			if succeeded {
+				return
+			}
+			index, err := tpm2.CreateNVIndexResourceContextFromPublic(pcrPolicyCounterPub)
+			if err != nil {
+				return
+			}
+			tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, session)
+		}()
 	}
-	defer func() {
-		if succeeded {
-			return
-		}
-		index, err := tpm2.CreateNVIndexResourceContextFromPublic(pinIndexPub)
-		if err != nil {
-			return
-		}
-		tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, session)
-	}()
 
 	template := makeSealedKeyTemplate()
 
 	// Compute the static policy - this never changes for the lifetime of this key file
 	staticPolicyData, authPolicy, err := computeStaticPolicy(template.NameAlg, &staticPolicyComputeParams{
-		key:                  authPublicKey,
-		pinIndexPub:          pinIndexPub,
-		pinIndexAuthPolicies: pinIndexAuthPolicies,
-		lockIndexName:        lockIndexName})
+		key:                 authPublicKey,
+		pcrPolicyCounterPub: pcrPolicyCounterPub,
+		lockIndexName:       lockIndexName})
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute static authorization policy: %w", err)
 	}
@@ -273,7 +283,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 		pcrProfile = &PCRProtectionProfile{}
 	}
 	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, currentMetadataVersion, template.NameAlg,
-		authPublicKey.NameAlg, authKey, pinIndexPub, pinIndexAuthPolicies, pcrProfile, session)
+		authPublicKey.NameAlg, authKey, pcrPolicyCounterPub, nil, pcrProfile, session)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -291,8 +301,11 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 		return nil, xerrors.Errorf("cannot write key data file: %w", err)
 	}
 
-	if err := incrementDynamicPolicyCounter(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
-		return nil, xerrors.Errorf("cannot increment dynamic policy counter: %w", err)
+	if pcrPolicyCounterPub != nil {
+		if err := incrementPcrPolicyCounter(tpm.TPMContext, currentMetadataVersion, pcrPolicyCounterPub, nil, authKey, authPublicKey,
+			session); err != nil {
+			return nil, xerrors.Errorf("cannot increment PCR policy counter: %w", err)
+		}
 	}
 
 	succeeded = true
@@ -307,7 +320,7 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 	}
 	defer keyFile.Close()
 
-	data, authKey, pinIndexPublic, err := decodeAndValidateKeyData(tpm, keyFile, authData, session)
+	data, authKey, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm, keyFile, authData, session)
 	if err != nil {
 		if isKeyFileError(err) {
 			return InvalidKeyFileError{err.Error()}
@@ -316,15 +329,15 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
 
-	authPublicKey := data.staticPolicyData.AuthPublicKey
-	pinIndexAuthPolicies := data.staticPolicyData.PinIndexAuthPolicies
+	authPublicKey := data.staticPolicyData.authPublicKey
+	v0PinIndexAuthPolicies := data.staticPolicyData.v0PinIndexAuthPolicies
 
 	// Compute a new dynamic authorization policy
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
 	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm, data.version, data.keyPublic.NameAlg, authPublicKey.NameAlg, authKey,
-		pinIndexPublic, pinIndexAuthPolicies, pcrProfile, session)
+		pcrPolicyCounterPub, v0PinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
 		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -336,8 +349,12 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 		return xerrors.Errorf("cannot write key data file: %v", err)
 	}
 
-	if err := incrementDynamicPolicyCounter(tpm, pinIndexPublic, pinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
-		return xerrors.Errorf("cannot revoke old dynamic authorization policies: %w", err)
+	if pcrPolicyCounterPub == nil {
+		return nil
+	}
+
+	if err := incrementPcrPolicyCounter(tpm, data.version, pcrPolicyCounterPub, v0PinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
+		return xerrors.Errorf("cannot revoke old PCR policies: %w", err)
 	}
 
 	return nil

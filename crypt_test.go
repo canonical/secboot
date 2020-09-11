@@ -254,13 +254,13 @@ func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
 	dir := c.MkDir()
 	ctb.keyFile = dir + "/keydata"
 
-	pinHandle := tpm2.Handle(0x0181fff0)
-	authPrivateKey, err := SealKeyToTPM(ttb.TPM, ctb.tpmKey, ctb.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: pinHandle})
+	pcrPolicyCounterHandle := tpm2.Handle(0x0181fff0)
+	authPrivateKey, err := SealKeyToTPM(ttb.TPM, ctb.tpmKey, ctb.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: pcrPolicyCounterHandle})
 	c.Assert(err, IsNil)
 	ctb.authPrivateKey = authPrivateKey
-	pinIndex, err := ttb.TPM.CreateResourceContextFromTPM(pinHandle)
+	pcrPolicyCounter, err := ttb.TPM.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
 	c.Assert(err, IsNil)
-	ttb.AddCleanupNVSpace(c, ttb.TPM.OwnerHandleContext(), pinIndex)
+	ttb.AddCleanupNVSpace(c, ttb.TPM.OwnerHandleContext(), pcrPolicyCounter)
 
 	c.Assert(ioutil.WriteFile(ctb.expectedTpmKeyFile, ctb.tpmKey, 0644), IsNil)
 
