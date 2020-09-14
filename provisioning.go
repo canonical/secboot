@@ -148,8 +148,9 @@ func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, t
 //
 // In all modes, this function will also create a pair of NV indices used for locking access to sealed key objects, if necessary.
 // These indices will be created at handles 0x01801100 and 0x01801101. If there are already NV indices defined at either of the
-// required handles but they don't meet the requirements of this function, a TPMResourceExistsError error will be returned. In this
-// case, the caller will either need to manually undefine these using TPMConnection.NVUndefineSpace, or clear the TPM.
+// required handles but they don't meet the requirements of this function, then this function will undefine them automatically in
+// order to define new indices. Note that these indices will be created in their locked state (as if LockAccessToSealedKeys has been
+// called), and so secrets protected with SealKeyToTPM cannot be recovered until the next TPM reset or restart.
 func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte) error {
 	status, err := ProvisionStatus(tpm)
 	if err != nil {
@@ -219,13 +220,9 @@ func ProvisionTPM(tpm *TPMConnection, mode ProvisionMode, newLockoutAuth []byte)
 	}
 	tpm.provisionedSrk = srk
 
-	// Provision a lock NV index
-	if err := ensureLockNVIndex(tpm.TPMContext, session); err != nil {
-		var e *tpmErrorWithHandle
-		if tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.AnyCommandCode) && xerrors.As(err, &e) {
-			return TPMResourceExistsError{e.handle}
-		}
-		return xerrors.Errorf("cannot create lock NV index: %w", err)
+	// Provision new lock NV indices if required
+	if err := ensureLockNVIndices(tpm.TPMContext, session); err != nil {
+		return xerrors.Errorf("cannot create lock NV indices: %w", err)
 	}
 
 	if mode == ProvisionModeWithoutLockout {
@@ -339,18 +336,18 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 		out |= AttrLockoutAuthSet
 	}
 
-	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session)
-	switch {
-	case err != nil && !tpm2.IsResourceUnavailableError(err, lockNVHandle):
-		// Unexpected error
-		return 0, err
-	case tpm2.IsResourceUnavailableError(err, lockNVHandle):
-		// Nothing to do
-	default:
-		if _, err := readAndValidateLockNVIndexPublic(tpm.TPMContext, lockIndex, session); err == nil {
-			out |= AttrValidLockNVIndex
-		}
-	}
+	//lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session)
+	//switch {
+	//case err != nil && !tpm2.IsResourceUnavailableError(err, lockNVHandle):
+	//	// Unexpected error
+	//	return 0, err
+	//case tpm2.IsResourceUnavailableError(err, lockNVHandle):
+	//	// Nothing to do
+	//default:
+	//	if _, err := readAndValidateLockNVIndexPublic(tpm.TPMContext, lockIndex, session); err == nil {
+	//		out |= AttrValidLockNVIndex
+	//	}
+	//}
 
 	return out, nil
 }

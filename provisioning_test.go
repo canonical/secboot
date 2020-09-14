@@ -156,7 +156,9 @@ func TestProvisionNewTPM(t *testing.T) {
 
 			validateEK(t, tpm.TPMContext)
 			validateSRK(t, tpm.TPMContext)
-			validateLockNVIndex(t, tpm.TPMContext)
+			if _, err := ValidateLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
+				t.Errorf("ValidateLockNVIndices failed: %v", err)
+			}
 
 			// Validate the DA parameters
 			props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3)
@@ -239,9 +241,6 @@ func TestProvisionErrorHandling(t *testing.T) {
 	errEndorsementAuthFail := AuthFailError{Handle: tpm2.HandleEndorsement}
 	errOwnerAuthFail := AuthFailError{Handle: tpm2.HandleOwner}
 	errLockoutAuthFail := AuthFailError{Handle: tpm2.HandleLockout}
-
-	errLockNVHandleExists := TPMResourceExistsError{Handle: LockNVHandle}
-	errLockNVDataHandleExists := TPMResourceExistsError{Handle: LockNVDataHandle}
 
 	authValue := []byte("1234")
 
@@ -329,36 +328,6 @@ func TestProvisionErrorHandling(t *testing.T) {
 				}
 			},
 			err: errEndorsementAuthFail,
-		},
-		{
-			desc: "ErrLockNVHandleExists",
-			mode: ProvisionModeFull,
-			prepare: func(t *testing.T) {
-				public := tpm2.NVPublic{
-					Index:   LockNVHandle,
-					NameAlg: tpm2.HashAlgorithmSHA256,
-					Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthRead | tpm2.AttrNVAuthWrite),
-					Size:    0}
-				if _, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, &public, nil); err != nil {
-					t.Fatalf("NVDefineSpace failed: %v", err)
-				}
-			},
-			err: errLockNVHandleExists,
-		},
-		{
-			desc: "ErrLockNVDataHandleExists",
-			mode: ProvisionModeFull,
-			prepare: func(t *testing.T) {
-				public := tpm2.NVPublic{
-					Index:   LockNVDataHandle,
-					NameAlg: tpm2.HashAlgorithmSHA256,
-					Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthRead | tpm2.AttrNVAuthWrite),
-					Size:    0}
-				if _, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, &public, nil); err != nil {
-					t.Fatalf("NVDefineSpace failed: %v", err)
-				}
-			},
-			err: errLockNVDataHandleExists,
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
@@ -601,7 +570,7 @@ func TestProvisionStatus(t *testing.T) {
 		t.Errorf("Unexpected status %d", status)
 	}
 
-	lockIndex, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
+	lockIndex, err := tpm.CreateResourceContextFromTPM(LockNVHandle1)
 	if err != nil {
 		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 	}

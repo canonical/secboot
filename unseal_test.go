@@ -34,12 +34,13 @@ import (
 )
 
 func TestUnsealWithNo2FA(t *testing.T) {
-	tpm := openTPMForTesting(t)
-	defer closeTPM(t, tpm)
+	tpm, tcti := openTPMSimulatorForTesting(t)
+	defer func() { closeTPM(t, tpm) }()
 
 	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
+	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 
 	key := make([]byte, 64)
 	rand.Read(key)
@@ -87,12 +88,13 @@ func TestUnsealWithNo2FA(t *testing.T) {
 }
 
 func TestUnsealWithPIN(t *testing.T) {
-	tpm := openTPMForTesting(t)
-	defer closeTPM(t, tpm)
+	tpm, tcti := openTPMSimulatorForTesting(t)
+	defer func() { closeTPM(t, tpm) }()
 
 	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
+	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 
 	key := make([]byte, 64)
 	rand.Read(key)
@@ -135,10 +137,17 @@ func TestUnsealErrorHandling(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	run := func(t *testing.T, tpm *TPMConnection, fn func(string, string)) error {
+	run := func(t *testing.T, fn func(*TPMConnection, string, string)) error {
+		tpm, tcti := openTPMSimulatorForTesting(t)
+		defer func() {
+			tpm, _ = resetTPMSimulator(t, tpm, tcti)
+			closeTPM(t, tpm)
+		}()
+
 		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
 			t.Errorf("ProvisionTPM failed: %v", err)
 		}
+		tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 
 		tmpDir, err := ioutil.TempDir("", "_TestUnsealErrorHandling_")
 		if err != nil {
@@ -154,7 +163,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-		fn(keyFile, policyUpdateFile)
+		fn(tpm, keyFile, policyUpdateFile)
 
 		k, err := ReadSealedKeyObject(keyFile)
 		if err != nil {
@@ -166,10 +175,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	}
 
 	t.Run("TPMLockout", func(t *testing.T) {
-		tpm := openTPMForTesting(t)
-		defer closeTPM(t, tpm)
-
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, func(tpm *TPMConnection, _, _ string) {
 			// Put the TPM in DA lockout mode
 			if err := tpm.DictionaryAttackParameters(tpm.LockoutHandleContext(), 0, 7200, 86400, nil); err != nil {
 				t.Errorf("DictionaryAttackParameters failed: %v", err)
@@ -181,10 +187,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("NoSRK", func(t *testing.T) {
-		tpm := openTPMForTesting(t)
-		defer closeTPM(t, tpm)
-
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, func(tpm *TPMConnection, _, _ string) {
 			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK: %v", err)
@@ -199,10 +202,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("InvalidSRK", func(t *testing.T) {
-		tpm := openTPMForTesting(t)
-		defer closeTPM(t, tpm)
-
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, func(tpm *TPMConnection, _, _ string) {
 			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK: %v", err)
@@ -228,10 +228,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("IncorrectPCRProfile", func(t *testing.T) {
-		tpm, _ := openTPMSimulatorForTesting(t)
-		defer closeTPM(t, tpm)
-
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, func(tpm *TPMConnection, _, _ string) {
 			if _, err := tpm.PCREvent(tpm.PCRHandleContext(7), tpm2.Event("foo"), nil); err != nil {
 				t.Errorf("PCREvent failed: %v", err)
 			}
@@ -246,10 +243,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("RevokedPolicy", func(t *testing.T) {
-		tpm := openTPMForTesting(t)
-		defer closeTPM(t, tpm)
-
-		err := run(t, tpm, func(keyFile, policyUpdateFile string) {
+		err := run(t, func(tpm *TPMConnection, keyFile, policyUpdateFile string) {
 			src, err := os.Open(keyFile)
 			if err != nil {
 				t.Fatalf("Open failed: %v", err)
@@ -276,13 +270,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("SealedKeyAccessLocked", func(t *testing.T) {
-		tpm, tcti := openTPMSimulatorForTesting(t)
-		defer func() {
-			tpm, _ = resetTPMSimulator(t, tpm, tcti)
-			closeTPM(t, tpm)
-		}()
-
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, func(tpm *TPMConnection, _, _ string) {
 			if err := LockAccessToSealedKeys(tpm); err != nil {
 				t.Errorf("LockAccessToSealedKeys failed: %v", err)
 			}
@@ -293,10 +281,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("PINFail", func(t *testing.T) {
-		tpm := openTPMForTesting(t)
-		defer closeTPM(t, tpm)
-
-		err := run(t, tpm, func(keyFile, _ string) {
+		err := run(t, func(tpm *TPMConnection, keyFile, _ string) {
 			if err := ChangePIN(tpm, keyFile, "", "1234"); err != nil {
 				t.Errorf("ChangePIN failed: %v", err)
 			}

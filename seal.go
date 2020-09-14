@@ -180,22 +180,17 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		}
 	}
 
-	// Validate that the lock NV index is valid and obtain its name
-	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
-	switch {
-	case tpm2.IsResourceUnavailableError(err, lockNVHandle):
-		return ErrTPMProvisioning
-	case err != nil:
-		return xerrors.Errorf("cannot create context for lock NV index: %w", err)
-	}
-
-	lockIndexPub, err := readAndValidateLockNVIndexPublic(tpm.TPMContext, lockIndex, session)
+	// Validate that the TPM has either new-style lock NV indices or legacy-style lock NV index.
+	legacyLockIndexPub, err := validateLockNVIndices(tpm.TPMContext, session)
 	if err != nil {
 		return ErrTPMProvisioning
 	}
-	lockIndexName, err := lockIndexPub.Name()
-	if err != nil {
-		return xerrors.Errorf("cannot compute name of global lock NV index: %w", err)
+	var legacyLockIndexName tpm2.Name
+	if legacyLockIndexPub != nil {
+		legacyLockIndexName, err = legacyLockIndexPub.Name()
+		if err != nil {
+			return xerrors.Errorf("cannot compute name of legacy global lock NV index: %w", err)
+		}
 	}
 
 	succeeded := false
@@ -270,7 +265,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	staticPolicyData, authPolicy, err := computeStaticPolicy(template.NameAlg, &staticPolicyComputeParams{
 		key:                 authPublicKey,
 		pcrPolicyCounterPub: pcrPolicyCounterPub,
-		lockIndexName:       lockIndexName})
+		legacyLockIndexName: legacyLockIndexName})
 	if err != nil {
 		return xerrors.Errorf("cannot compute static authorization policy: %w", err)
 	}

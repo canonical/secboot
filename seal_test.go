@@ -203,7 +203,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Provisioning/1", func(t *testing.T) {
-		index, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
+		index, err := tpm.CreateResourceContextFromTPM(LockNVHandle1)
 		if err != nil {
 			t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 		}
@@ -211,13 +211,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Errorf("NVUndefineSpace failed: %v", err)
 		}
 		defer func() {
-			index, err := tpm.CreateResourceContextFromTPM(LockNVDataHandle)
-			if err != nil {
-				t.Errorf("CreateResourceContextFromTPM failed: %v", err)
-			}
-			if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
-				t.Errorf("NVUndefineSpace failed: %v", err)
-			}
+			undefineLockNVIndices(t, tpm)
 			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
 				t.Errorf("Failed to re-provision TPM after test: %v", err)
 			}
@@ -228,7 +222,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Provisioning/2", func(t *testing.T) {
-		index, err := tpm.CreateResourceContextFromTPM(LockNVDataHandle)
+		index, err := tpm.CreateResourceContextFromTPM(LockNVHandle2)
 		if err != nil {
 			t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 		}
@@ -236,13 +230,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Errorf("NVUndefineSpace failed: %v", err)
 		}
 		defer func() {
-			index, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
-			if err != nil {
-				t.Errorf("CreateResourceContextFromTPM failed: %v", err)
-			}
-			if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
-				t.Errorf("NVUndefineSpace failed: %v", err)
-			}
+			undefineLockNVIndices(t, tpm)
 			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
 				t.Errorf("Failed to re-provision TPM after test: %v", err)
 			}

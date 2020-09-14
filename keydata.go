@@ -465,21 +465,16 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 	// It's loaded ok, so we know that the private and public parts are consistent.
 	defer tpm.FlushContext(keyContext)
 
-	// Obtain a ResourceContext for the lock NV index and validate it.
-	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
+	legacyLockIndexPub, err := validateLockNVIndices(tpm, session)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create context for lock NV index: %v", err)
+		return nil, xerrors.Errorf("cannot validate lock NV indices: %w", err)
 	}
-	lockIndexPub, err := readAndValidateLockNVIndexPublic(tpm, lockIndex, session)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot determine if NV index at %v is global lock index: %w", lockNVHandle, err)
-	}
-	if lockIndexPub == nil {
-		return nil, xerrors.Errorf("NV index at %v is not a valid global lock index", lockNVHandle)
-	}
-	lockIndexName, err := lockIndexPub.Name()
-	if err != nil {
-		return nil, xerrors.Errorf("cannot compute lock NV index name: %w", err)
+	var legacyLockIndexName tpm2.Name
+	if legacyLockIndexPub != nil {
+		legacyLockIndexName, err = legacyLockIndexPub.Name()
+		if err != nil {
+			return nil, xerrors.Errorf("cannot compute lock NV index name: %w", err)
+		}
 	}
 
 	// Obtain a ResourceContext for the PCR policy counter. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second time is with a
@@ -549,7 +544,16 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, policyUpdateData *keyPolicyUpda
 		// v1 metadata and later
 		trial.PolicyAuthValue()
 	}
-	trial.PolicyNV(lockIndexName, nil, 0, tpm2.OpEq)
+	if len(legacyLockIndexName) > 0 {
+		trial.PolicyNV(legacyLockIndexName, nil, 0, tpm2.OpEq)
+	} else {
+		lockIndex1Name, lockIndex2Name, err := computeLockNVIndexNames()
+		if err != nil {
+			return nil, xerrors.Errorf("cannot compute expected names of lock NV indices: %w", err)
+		}
+		trial.PolicyNV(lockIndex1Name, nil, 0, tpm2.OpEq)
+		trial.PolicyNV(lockIndex2Name, nil, 0, tpm2.OpEq)
+	}
 
 	if !bytes.Equal(trial.GetDigest(), keyPublic.AuthPolicy) {
 		return nil, keyFileError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
