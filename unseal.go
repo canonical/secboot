@@ -70,7 +70,7 @@ import (
 //
 // On success, the unsealed cleartext key is returned as the first return value, and the private part of the key used for
 // authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is returned as the second return value.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte, []byte, error) {
+func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []byte, authKey []byte, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
@@ -85,7 +85,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 	hmacSession := tpm.HmacSession()
 
 	// Load the key data
-	key, err := k.data.load(tpm.TPMContext, hmacSession)
+	keyObject, err := k.data.load(tpm.TPMContext, hmacSession)
 	switch {
 	case isKeyFileError(err):
 		// A keyFileError can be as a result of an improperly provisioned TPM - detect if the object at tcg.SRKHandle is a valid primary key
@@ -114,7 +114,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 	case err != nil:
 		return nil, nil, err
 	}
-	defer tpm.FlushContext(key)
+	defer tpm.FlushContext(keyObject)
 
 	// Begin and execute policy session
 	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.keyPublic.NameAlg)
@@ -143,10 +143,10 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) ([]byte,
 
 	// For metadata version > 0, the PIN is the auth value for the sealed key object, and the authorization
 	// policy asserts that this value is known when the policy session is used.
-	key.SetAuthValue([]byte(pin))
+	keyObject.SetAuthValue([]byte(pin))
 
 	// Unseal
-	keyData, err := tpm.Unseal(key, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
+	keyData, err := tpm.Unseal(keyObject, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
 	switch {
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
 		return nil, nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}

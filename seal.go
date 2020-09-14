@@ -155,7 +155,7 @@ type KeyCreationParams struct {
 // UpdateKeyPCRProtectionPolicy. This key doesn't need to be stored anywhere, and certainly mustn't be stored outside of the encrypted
 // volume protected with this sealed key file. The key is stored encrypted inside this sealed key file and returned from future calls
 // to SealedKeyObject.UnsealFromTPM.
-func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCreationParams) ([]byte, error) {
+func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCreationParams) (authKey []byte, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
@@ -214,11 +214,11 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	}()
 
 	// Create an asymmetric key for signing authorization policy updates, and authorizing dynamic authorization policy revocations.
-	authKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	goAuthKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot generate RSA key pair for signing dynamic authorization policies: %w", err)
 	}
-	authPublicKey := createTPMPublicAreaForECDSAKey(&authKey.PublicKey)
+	authPublicKey := createTPMPublicAreaForECDSAKey(&goAuthKey.PublicKey)
 	authKeyName, err := authPublicKey.Name()
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
@@ -263,7 +263,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	template.AuthPolicy = authPolicy
 
 	// Create the sensitive data
-	sealedData, err := tpm2.MarshalToBytes(sealedData{Key: key, AuthPrivateKey: authKey.D.Bytes()})
+	sealedData, err := tpm2.MarshalToBytes(sealedData{Key: key, AuthPrivateKey: goAuthKey.D.Bytes()})
 	if err != nil {
 		panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
 	}
@@ -283,7 +283,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 		pcrProfile = &PCRProtectionProfile{}
 	}
 	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, currentMetadataVersion, template.NameAlg,
-		authPublicKey.NameAlg, authKey, pcrPolicyCounterPub, nil, pcrProfile, session)
+		authPublicKey.NameAlg, goAuthKey, pcrPolicyCounterPub, nil, pcrProfile, session)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -302,14 +302,14 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	}
 
 	if pcrPolicyCounterPub != nil {
-		if err := incrementPcrPolicyCounter(tpm.TPMContext, currentMetadataVersion, pcrPolicyCounterPub, nil, authKey, authPublicKey,
+		if err := incrementPcrPolicyCounter(tpm.TPMContext, currentMetadataVersion, pcrPolicyCounterPub, nil, goAuthKey, authPublicKey,
 			session); err != nil {
 			return nil, xerrors.Errorf("cannot increment PCR policy counter: %w", err)
 		}
 	}
 
 	succeeded = true
-	return authKey.D.Bytes(), nil
+	return goAuthKey.D.Bytes(), nil
 }
 
 func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, authData interface{}, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
