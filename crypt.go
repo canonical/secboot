@@ -304,7 +304,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		if _, err := unix.AddKey("user", fmt.Sprintf("%s:%s:reason=%d", filepath.Base(os.Args[0]), volumeName, reason), key[:], userKeyring); err != nil {
+		if _, err := unix.AddKey("user", fmt.Sprintf("secboot-recover:%s?reason=%d", sourceDevicePath, reason), key[:], userKeyring); err != nil {
 			lastErr = xerrors.Errorf("cannot add recovery key to user keyring: %w", err)
 		}
 		break
@@ -408,7 +408,7 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 
 	// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we
 	// close the volume again.
-	unix.AddKey("user", fmt.Sprintf("%s:%s:auth", filepath.Base(os.Args[0]), volumeName), authPrivateKey, userKeyring)
+	unix.AddKey("user", fmt.Sprintf("secboot-tpmauth:%s", sourceDevicePath), authPrivateKey, userKeyring)
 
 	return nil
 }
@@ -462,7 +462,7 @@ type ActivateWithTPMSealedKeyOptions struct {
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
 // will be made to activate the encrypted volume with the fallback recovery key. If activation with the recovery key is successful,
 // the recovery key will be added to the root user keyring in the kernel with a description of the format
-// "<argv[0]>:<volumeName>:reason=<reason>" where reason is an integer that describes the recovery reason - see the
+// "secboot-recover:<sourceDevicePath>?reason=<reason>" where reason is an integer that describes the recovery reason - see the
 // RecoveryKeyUsageReason type.
 //
 // If either the PINTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
@@ -478,7 +478,7 @@ type ActivateWithTPMSealedKeyOptions struct {
 //
 // If the volume is successfully activated with the TPM sealed key and the TPM sealed key has a version of greater than 1, the
 // private part of the key used for authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is added to the root user keyring
-// in the kernel with a description of the format "<argv[0]>:<volumeName>:auth".
+// in the kernel with a description of the format "secboot-tpmauth:<sourceDevicePath>".
 //
 // If the volume is successfully activated, either with the TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
@@ -542,7 +542,7 @@ type ActivateWithRecoveryKeyOptions struct {
 // The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
 //
 // If activation with the recovery key is successful, the recovery key will be added to the root user keyring in the kernel with a
-// description of the format "<argv[0]>:<volumeName>:reason=2".
+// description of the format "secboot-recover:<sourceDevicePath>?reason=2".
 //
 // If the Tries field of options is less than zero, an error will be returned. If the ActivateOptions field of options contains the
 // "tries=" option, then an error will be returned. This option cannot be used with this function.
