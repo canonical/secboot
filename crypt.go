@@ -573,7 +573,6 @@ type RecoveryActivationData struct {
 // the ActivateVolume functions. The type of data returned is dependent on how the volume was activated - see the documentation for
 // each function, If no data is found for the specified device, a ErrNoActivationData error is returned.
 func GetActivationDataFromKernel(sourceDevicePath string) (ActivationData, error) {
-	fmt.Println("GetActivationDataFromKernel, sourceDevicePath:", sourceDevicePath)
 	var userKeys []int
 
 	sz, err := unix.KeyctlBuffer(unix.KEYCTL_READ, userKeyring, nil, 0)
