@@ -70,7 +70,7 @@ import (
 //
 // On success, the unsealed cleartext key is returned as the first return value, and the private part of the key used for
 // authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is returned as the second return value.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []byte, authKey []byte, err error) {
+func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []byte, authKey TPMPolicyAuthKey, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {

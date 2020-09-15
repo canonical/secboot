@@ -156,7 +156,7 @@ func (s *compatTestSuiteBase) testUnsealCommon(c *C, pin string) {
 	c.Assert(err, IsNil)
 	c.Check(key, DeepEquals, expectedKey)
 
-	var expectedAuthPrivateKey []byte
+	var expectedAuthPrivateKey secboot.TPMPolicyAuthKey
 	authKeyPath := s.absPath("authKey")
 	if _, err := os.Stat(authKeyPath); err == nil {
 		expectedAuthPrivateKey, err = ioutil.ReadFile(authKeyPath)

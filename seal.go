@@ -155,7 +155,7 @@ type KeyCreationParams struct {
 // UpdateKeyPCRProtectionPolicy. This key doesn't need to be stored anywhere, and certainly mustn't be stored outside of the encrypted
 // volume protected with this sealed key file. The key is stored encrypted inside this sealed key file and returned from future calls
 // to SealedKeyObject.UnsealFromTPM.
-func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCreationParams) (authKey []byte, err error) {
+func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCreationParams) (authKey TPMPolicyAuthKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
@@ -390,6 +390,6 @@ func UpdateKeyPCRProtectionPolicyV0(tpm *TPMConnection, keyPath, policyUpdatePat
 //
 // On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
 // computed from the supplied PCRProtectionProfile.
-func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath string, authKey []byte, pcrProfile *PCRProtectionProfile) error {
+func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath string, authKey TPMPolicyAuthKey, pcrProfile *PCRProtectionProfile) error {
 	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, keyPath, authKey, pcrProfile, tpm.HmacSession())
 }

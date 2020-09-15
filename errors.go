@@ -52,6 +52,10 @@ var (
 
 	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
 	ErrNoTPM2Device = errors.New("no TPM2 device is available")
+
+	// ErrNoActivationData is returned from GetActivationDataFromKernel if no activation data was found in the user keyring for
+	// the specified block device.
+	ErrNoActivationData = errors.New("no activation data found for the specified device")
 )
 
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists

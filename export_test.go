@@ -262,7 +262,7 @@ func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
 	return s.String()
 }
 
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey []byte, session tpm2.SessionContext) error {
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey TPMPolicyAuthKey, session tpm2.SessionContext) error {
 	kf, err := os.Open(keyFile)
 	if err != nil {
 		return err

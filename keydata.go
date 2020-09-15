@@ -56,9 +56,12 @@ const (
 	AuthModePIN
 )
 
+// TPMPolicyAuthKey corresponds to the private part of the key used for signing updates to the authorization policy for a sealed key.
+type TPMPolicyAuthKey []byte
+
 type sealedData struct {
 	Key            []byte
-	AuthPrivateKey tpm2.ECCParameter
+	AuthPrivateKey TPMPolicyAuthKey
 }
 
 type afSplitDataRawHdr struct {
@@ -642,7 +645,7 @@ func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile io.Reader, authData 
 			return nil, nil, nil, keyFileError{errors.New("mismatched metadata versions")}
 		}
 		authKey = policyUpdateData.authKey
-	case []byte:
+	case TPMPolicyAuthKey:
 		if len(a) > 0 {
 			// If we were called with a byte slice, then we're expecting to load the current keydata version and the byte
 			// slice is the private part of the elliptic auth key.
