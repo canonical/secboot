@@ -21,12 +21,6 @@
 			"revisionTime": "2020-09-08T16:50:21Z"
 		},
 		{
-			"checksumSHA1": "eDjzake0GpHm9kfTH7FMUWX8zVA=",
-			"path": "github.com/chrisccoulson/tcglog-parser",
-			"revision": "7b0f085a85398d368e10382a21a44ec2226c35b3",
-			"revisionTime": "2020-02-28T14:36:39Z"
-		},
-		{
 			"checksumSHA1": "kmcZh6191ZYy/+G/tIWFZoVEkGs=",
 			"path": "github.com/godbus/dbus",
 			"revision": "06fc4b473149e499166adbb9e31c7365a8ea146f",
