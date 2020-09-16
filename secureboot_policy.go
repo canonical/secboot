@@ -60,7 +60,6 @@ const (
 	dbxFilename     = "dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f"       // Filename in efivarfs for accessing the EFI forbidden signature database
 	mokListFilename = "MokListRT-605dab50-e046-4300-abb6-3dd810dd8b23" // Filename in efivarfs for accessing a runtime copy of the shim MOK database
 
-	uefiDriverPCR = 2 // UEFI Drivers and UEFI Applications PCR
 	secureBootPCR = 7 // Secure Boot Policy Measurements PCR
 
 	returningFromEfiApplicationEvent = "Returning from EFI Application from Boot Option" // EV_EFI_ACTION index 2: "Attempt to execute code from Boot Option was unsuccessful"
@@ -515,50 +514,6 @@ func buildSignatureDbUpdateList(keystores []string) ([]*secureBootDbUpdate, erro
 	return updates, nil
 }
 
-// secureBootVerificationEvent corresponds to a EV_EFI_VARIABLE_AUTHORITY event and an indicator of whether the event
-// was recorded before the transition to OS-present.
-type secureBootVerificationEvent struct {
-	*tcglog.Event
-	measuredInPreOS bool
-}
-
-// identifyInitialOSLaunchVerificationEvent finds the secure boot verification event associated with the verification of the initial
-// OS EFI image.
-func identifyInitialOSLaunchVerificationEvent(events []*tcglog.Event) (*secureBootVerificationEvent, error) {
-	preOS := true
-	var lastEvent *tcglog.Event
-	var lastEventIsPreOS bool
-
-	for _, e := range events {
-		if e.EventType == tcglog.EventTypeSeparator && e.PCRIndex != secureBootPCR {
-			preOS = false
-			continue
-		}
-
-		switch e.PCRIndex {
-		case bootManagerCodePCR:
-			if e.EventType != tcglog.EventTypeEFIBootServicesApplication {
-				continue
-			}
-			if preOS {
-				continue
-			}
-			if lastEvent == nil {
-				return nil, errors.New("boot manager image load event occurred without a preceding verification event")
-			}
-			return &secureBootVerificationEvent{lastEvent, lastEventIsPreOS}, nil
-		case secureBootPCR:
-			if e.EventType != tcglog.EventTypeEFIVariableAuthority {
-				continue
-			}
-			lastEvent = e
-			lastEventIsPreOS = preOS
-		}
-	}
-
-	return nil, errors.New("boot manager image load event not found")
-}
-
 // isSecureBootConfigMeasurementEvent determines if event corresponds to the measurement of a secure boot configuration.
 func isSecureBootConfigMeasurementEvent(event *tcglog.Event, guid *tcglog.EFIGUID, name string) bool {
 	if event.PCRIndex != secureBootPCR {
@@ -650,9 +605,8 @@ type secureBootPolicyGen struct {
 	pcrAlgorithm  tpm2.HashAlgorithmId
 	loadSequences []*EFIImageLoadEvent
 
-	events                     []*tcglog.Event
-	initialOSVerificationEvent *secureBootVerificationEvent
-	sigDbUpdates               []*secureBootDbUpdate
+	events       []*tcglog.Event
+	sigDbUpdates []*secureBootDbUpdate
 }
 
 // secureBootPolicyGenBranch represents a branch of a PCRProtectionProfile. It contains its own PCRProtectionProfile in to which
@@ -807,13 +761,18 @@ func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(updates []*secure
 // these in to this branch. For events corresponding to the measurement of EFI signature databases, measurements are computed based
 // on the current contents of each database with the supplied updates applied.
 //
-// Processing of the list of events stops when the verification event associated with the loading of the initial OS EFI executable
-// is encountered.
-func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, initialOSVerificationEvent *secureBootVerificationEvent, sigDbUpdates []*secureBootDbUpdate, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
-	for len(events) > 0 && events[0] != initialOSVerificationEvent.Event {
+// Processing of the list of events stops when transitioning from pre-OS to OS-present (ie, a EV_SEPARATOR event is encountered in a
+// PCR < 7).
+func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, sigDbUpdates []*secureBootDbUpdate, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
+	osPresent := false
+	seenSecureBootPCRSeparator := false
+
+	for len(events) > 0 {
 		e := events[0]
 		events = events[1:]
 		switch {
+		case e.PCRIndex < secureBootPCR && e.EventType == tcglog.EventTypeSeparator:
+			osPresent = true
 		case isKEKMeasurementEvent(e):
 			if err := b.processKEKMeasurementEvent(sigDbUpdates, sigDbUpdateQuirkMode); err != nil {
 				return xerrors.Errorf("cannot process KEK measurement event: %w", err)
@@ -830,20 +789,15 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, i
 			b.extendFirmwareVerificationMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
 		case e.PCRIndex == secureBootPCR:
 			b.extendMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
+			if e.EventType == tcglog.EventTypeSeparator {
+				seenSecureBootPCRSeparator = true
+			}
+		}
+
+		if osPresent && seenSecureBootPCRSeparator {
+			break
 		}
 	}
-
-	if len(events) == 0 {
-		return nil
-	}
-
-	if !initialOSVerificationEvent.measuredInPreOS {
-		return nil
-	}
-
-	// The verification event associated with the initial OS load event was recorded before the transition to OS-present, which means
-	// it was used to authenticate a UEFI driver or sysprep application load, so we need to keep it in the profile.
-	b.extendFirmwareVerificationMeasurement(tpm2.Digest(initialOSVerificationEvent.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
 
 	return nil
 }
@@ -1148,7 +1102,7 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, sigDbUpdateQuir
 	var roots []*secureBootPolicyGenBranch
 	for i := 0; i <= len(g.sigDbUpdates); i++ {
 		branch := &secureBootPolicyGenBranch{gen: g, profile: NewPCRProtectionProfile(), dbUpdateLevel: i}
-		if err := branch.processPreOSEvents(g.events, g.initialOSVerificationEvent, g.sigDbUpdates[0:i], sigDbUpdateQuirkMode); err != nil {
+		if err := branch.processPreOSEvents(g.events, g.sigDbUpdates[0:i], sigDbUpdateQuirkMode); err != nil {
 			return xerrors.Errorf("cannot process pre-OS events from event log: %w", err)
 		}
 		roots = append(roots, branch)
@@ -1389,13 +1343,7 @@ func AddEFISecureBootPolicyProfile(profile *PCRProtectionProfile, params *EFISec
 		return xerrors.Errorf("cannot build list of UEFI signature DB updates: %w", err)
 	}
 
-	// Find the verification event corresponding to the load of the first OS binary.
-	initialOSVerificationEvent, err := identifyInitialOSLaunchVerificationEvent(events)
-	if err != nil {
-		return xerrors.Errorf("cannot identify initial OS launch verification event: %w", err)
-	}
-
-	gen := &secureBootPolicyGen{params.PCRAlgorithm, params.LoadSequences, events, initialOSVerificationEvent, sigDbUpdates}
+	gen := &secureBootPolicyGen{params.PCRAlgorithm, params.LoadSequences, events, sigDbUpdates}
 
 	profile1 := NewPCRProtectionProfile()
 	if err := gen.run(profile1, sigDbUpdateQuirkModeNone); err != nil {

@@ -310,77 +310,6 @@ func TestDecodeSecureBootDb(t *testing.T) {
 	}
 }
 
-func TestIdentifyInitialOSLaunchVerificationEvent(t *testing.T) {
-	for _, data := range []struct {
-		desc    string
-		logPath string
-		index   int
-		err     string
-	}{
-		{
-			desc:    "SecureBootEnabled",
-			logPath: "testdata/eventlog1.bin",
-			index:   24,
-		},
-		{
-			desc:    "SecureBootDisabled",
-			logPath: "testdata/eventlog3.bin",
-			err:     "boot manager image load event occurred without a preceding verification event",
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			f, err := os.Open(data.logPath)
-			if err != nil {
-				t.Fatalf("Open failed: %v", err)
-			}
-			defer f.Close()
-
-			log, err := tcglog.NewLog(f, tcglog.LogOptions{})
-			if err != nil {
-				t.Fatalf("NewLog failed: %v", err)
-			}
-
-			var events []*tcglog.Event
-			for {
-				e, err := log.NextEvent()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					t.Fatalf("Log parsing failed: %v", err)
-				}
-				events = append(events, e)
-			}
-
-			event, err := IdentifyInitialOSLaunchVerificationEvent(events)
-			if data.err == "" {
-				if err != nil {
-					t.Fatalf("IdentifyInitialOSLaunchVerificationEvent failed: %v", err)
-				}
-				if events[data.index] != event.Event {
-					t.Errorf("incorrect event detected")
-				}
-				if event.PCRIndex != 7 {
-					t.Errorf("Detected event has wrong PCR index")
-				}
-				if event.EventType != tcglog.EventTypeEFIVariableAuthority {
-					t.Errorf("Detected event has wrong type")
-				}
-				if event.MeasuredInPreOS() {
-					t.Errorf("Detected pre-OS event")
-				}
-			} else {
-				if err == nil {
-					t.Fatalf("Expected an error")
-				}
-				if err.Error() != data.err {
-					t.Errorf("Unexpected error: %v", err)
-				}
-			}
-		})
-	}
-}
-
 func TestComputeDbUpdate(t *testing.T) {
 	for _, data := range []struct {
 		desc          string
@@ -1407,6 +1336,43 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 				},
 			},
 			err: "cannot compute secure boot policy profile: no bootable paths with current EFI signature database",
+		},
+		{
+			// Test with a classic style boot chain with grub and kernel authenticated using the shim vendor cert, using
+			// an event log where the order of EV_EFI_VARIABLE_AUTHORITY and EV_EFI_BOOT_SERVICES_APPLICATION events are
+			// misordered according to the spec, and where the EV_SEPARATOR event for PCR7 is measured as part of the transition
+			// to OS-present as opposed to immediately before the handoff to BDS.
+			desc:    "Classic/2",
+			logPath: "testdata/eventlog4.bin",
+			efivars: "testdata/efivars2",
+			params: EFISecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*EFIImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*EFIImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*EFIImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: decodeHexStringT(t, "b00b060d82d146bc21cf22576f7d468dce3b898ce01e5ca5b7cf93cf02bbd2e8"),
+					},
+				},
+			},
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {

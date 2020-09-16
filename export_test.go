@@ -41,31 +41,30 @@ const (
 
 // Export variables and unexported functions for testing
 var (
-	ComputeDbUpdate                          = computeDbUpdate
-	ComputeDynamicPolicy                     = computeDynamicPolicy
-	ComputePeImageDigest                     = computePeImageDigest
-	ComputePolicyORData                      = computePolicyORData
-	ComputeSnapModelDigest                   = computeSnapModelDigest
-	ComputeStaticPolicy                      = computeStaticPolicy
-	CreatePinNVIndex                         = createPinNVIndex
-	CreatePublicAreaForRSASigningKey         = createPublicAreaForRSASigningKey
-	DecodeSecureBootDb                       = decodeSecureBootDb
-	DecodeWinCertificate                     = decodeWinCertificate
-	EFICertTypePkcs7Guid                     = efiCertTypePkcs7Guid
-	EFICertX509Guid                          = efiCertX509Guid
-	EnsureLockNVIndex                        = ensureLockNVIndex
-	ExecutePolicySession                     = executePolicySession
-	IdentifyInitialOSLaunchVerificationEvent = identifyInitialOSLaunchVerificationEvent
-	IncrementDynamicPolicyCounter            = incrementDynamicPolicyCounter
-	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
-	IsStaticPolicyDataError                  = isStaticPolicyDataError
-	LockNVIndexAttrs                         = lockNVIndexAttrs
-	PerformPinChange                         = performPinChange
-	ReadAndValidateLockNVIndexPublic         = readAndValidateLockNVIndexPublic
-	ReadDynamicPolicyCounter                 = readDynamicPolicyCounter
-	ReadShimVendorCert                       = readShimVendorCert
-	WinCertTypePKCSSignedData                = winCertTypePKCSSignedData
-	WinCertTypeEfiGuid                       = winCertTypeEfiGuid
+	ComputeDbUpdate                  = computeDbUpdate
+	ComputeDynamicPolicy             = computeDynamicPolicy
+	ComputePeImageDigest             = computePeImageDigest
+	ComputePolicyORData              = computePolicyORData
+	ComputeSnapModelDigest           = computeSnapModelDigest
+	ComputeStaticPolicy              = computeStaticPolicy
+	CreatePinNVIndex                 = createPinNVIndex
+	CreatePublicAreaForRSASigningKey = createPublicAreaForRSASigningKey
+	DecodeSecureBootDb               = decodeSecureBootDb
+	DecodeWinCertificate             = decodeWinCertificate
+	EFICertTypePkcs7Guid             = efiCertTypePkcs7Guid
+	EFICertX509Guid                  = efiCertX509Guid
+	EnsureLockNVIndex                = ensureLockNVIndex
+	ExecutePolicySession             = executePolicySession
+	IncrementDynamicPolicyCounter    = incrementDynamicPolicyCounter
+	IsDynamicPolicyDataError         = isDynamicPolicyDataError
+	IsStaticPolicyDataError          = isStaticPolicyDataError
+	LockNVIndexAttrs                 = lockNVIndexAttrs
+	PerformPinChange                 = performPinChange
+	ReadAndValidateLockNVIndexPublic = readAndValidateLockNVIndexPublic
+	ReadDynamicPolicyCounter         = readDynamicPolicyCounter
+	ReadShimVendorCert               = readShimVendorCert
+	WinCertTypePKCSSignedData        = winCertTypePKCSSignedData
+	WinCertTypeEfiGuid               = winCertTypeEfiGuid
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -84,12 +83,6 @@ func (s *EFISignatureData) Owner() *tcglog.EFIGUID {
 
 func (s *EFISignatureData) Data() []byte {
 	return s.data
-}
-
-type SecureBootVerificationEvent = secureBootVerificationEvent
-
-func (e *SecureBootVerificationEvent) MeasuredInPreOS() bool {
-	return e.measuredInPreOS
 }
 
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
