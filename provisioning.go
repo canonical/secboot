@@ -336,18 +336,9 @@ func ProvisionStatus(tpm *TPMConnection) (ProvisionStatusAttributes, error) {
 		out |= AttrLockoutAuthSet
 	}
 
-	//lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session)
-	//switch {
-	//case err != nil && !tpm2.IsResourceUnavailableError(err, lockNVHandle):
-	//	// Unexpected error
-	//	return 0, err
-	//case tpm2.IsResourceUnavailableError(err, lockNVHandle):
-	//	// Nothing to do
-	//default:
-	//	if _, err := readAndValidateLockNVIndexPublic(tpm.TPMContext, lockIndex, session); err == nil {
-	//		out |= AttrValidLockNVIndex
-	//	}
-	//}
+	if _, err := validateLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err == nil {
+		out |= AttrValidLockNVIndex
+	}
 
 	return out, nil
 }

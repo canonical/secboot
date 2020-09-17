@@ -510,7 +510,7 @@ func computeLockNVIndexNames() (tpm2.Name, tpm2.Name, error) {
 // Authorization policies for sealed keys must assert the presence of both of these NV indices using the names of the initialized
 // indices without the read lock enabled. Enabling the read lock on index 1 by calling LockAccessToSealedKeys will disable access to
 // these keys.
-// 
+//
 // It isn't possible to recreate these indices in their unlocked state. Although they can be recovered if they are undefined
 // accidentally, they will not return to their unlocked state until the next TPM reset or restart.
 //
