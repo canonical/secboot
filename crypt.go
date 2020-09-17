@@ -45,7 +45,16 @@ const userKeyring = -4
 var (
 	runDir                = "/run"
 	systemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
+
+	defaultKeyringPrefix = "secboot"
 )
+
+func keyringPrefixOrDefault(prefix string) string {
+	if prefix == "" {
+		return defaultKeyringPrefix
+	}
+	return prefix
+}
 
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
 type RecoveryKey [16]byte
@@ -271,7 +280,7 @@ const (
 	RecoveryKeyUsageReasonPINFail
 )
 
-func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, reason RecoveryKeyUsageReason, activateOptions []string) error {
+func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, reason RecoveryKeyUsageReason, activateOptions []string, keyringPrefix string) error {
 	if tries == 0 {
 		return errors.New("no recovery key tries permitted")
 	}
@@ -305,9 +314,9 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		if _, err := unix.AddKey("user", fmt.Sprintf("secboot:%s?type=recovery&reason=%d", sourceDevicePath, reason), key[:], userKeyring); err != nil {
-			lastErr = xerrors.Errorf("cannot add recovery key to user keyring: %w", err)
-		}
+		// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we
+		// close the volume again.
+		unix.AddKey("user", fmt.Sprintf("%s:%s?type=recovery&reason=%d", keyringPrefixOrDefault(keyringPrefix), sourceDevicePath, reason), key[:], userKeyring)
 		break
 	}
 
@@ -348,7 +357,7 @@ func isLockAccessError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, pinReader io.Reader, pinTries int, lock bool, activateOptions []string) error {
+func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, pinReader io.Reader, pinTries int, lock bool, activateOptions []string, keyringPrefix string) error {
 	var lockErr error
 	sealedKey, authPrivateKey, err := func() ([]byte, TPMPolicyAuthKey, error) {
 		defer func() {
@@ -409,7 +418,7 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 
 	// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we
 	// close the volume again.
-	unix.AddKey("user", fmt.Sprintf("secboot:%s?type=tpm", sourceDevicePath), authPrivateKey, userKeyring)
+	unix.AddKey("user", fmt.Sprintf("%s:%s?type=tpm", keyringPrefixOrDefault(keyringPrefix), sourceDevicePath), authPrivateKey, userKeyring)
 
 	return nil
 }
@@ -444,6 +453,9 @@ type ActivateWithTPMSealedKeyOptions struct {
 	// LockSealedKeyAccess controls whether LockAccessToSealedKeys should be called after unsealing the TPM sealed key. It is called if
 	// this is set to true, and not called if this is set to false.
 	LockSealedKeyAccess bool
+
+	// KeyringPrefix is the prefix used for the description of any kernel keys created during activation.
+	KeyringPrefix string
 }
 
 // ActivateVolumeWithTPMSealedKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
@@ -495,7 +507,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		return false, err
 	}
 
-	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, pinReader, options.PINTries, options.LockSealedKeyAccess, activateOptions); err != nil {
+	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, pinReader, options.PINTries, options.LockSealedKeyAccess, activateOptions, options.KeyringPrefix); err != nil {
 		reason := RecoveryKeyUsageReasonUnexpectedError
 		switch {
 		case isLockAccessError(err):
@@ -515,7 +527,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 			// with the recovery key is successful, then it's safe to assume that it failed because the key unsealed from the TPM is incorrect.
 			reason = RecoveryKeyUsageReasonInvalidKeyFile
 		}
-		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, activateOptions)
+		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, activateOptions, options.KeyringPrefix)
 		return rErr == nil, &ActivateWithTPMSealedKeyError{err, rErr}
 	}
 
@@ -530,6 +542,9 @@ type ActivateWithRecoveryKeyOptions struct {
 
 	// ActivateOptions provides a mechanism to pass additional options to systemd-cryptsetup.
 	ActivateOptions []string
+
+	// KeyringPrefix is the prefix used for the description of any kernel keys created during activation.
+	KeyringPrefix string
 }
 
 // ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
@@ -556,7 +571,7 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 		return err
 	}
 
-	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryKeyUsageReasonRequested, activateOptions)
+	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryKeyUsageReasonRequested, activateOptions, options.KeyringPrefix)
 }
 
 // ActivationData corresponds to some data added to the user keyring by one of the ActivateVolume functions.
@@ -569,12 +584,13 @@ type RecoveryActivationData struct {
 }
 
 // GetActivationDataFromKernel retrieves data that was added to the current user's user keyring by ActivateVolumeWithTPMSealedKey or
-// ActivateVolumeWithRecoveryKey for the specified source block device. The block device path must match the path passed to one of
-// the ActivateVolume functions. The type of data returned is dependent on how the volume was activated - see the documentation for
-// each function, If no data is found for the specified device, a ErrNoActivationData error is returned.
+// ActivateVolumeWithRecoveryKey for the specified source block device, using the prefix that was passed to either of those functions.
+// The block device path must match the path passed to one of the ActivateVolume functions. The type of data returned is dependent on
+// how the volume was activated - see the documentation for each function, If no data is found for the specified device, a
+// ErrNoActivationData error is returned.
 //
 // If remove is true, this function will unlink the key from the user's user keyring.
-func GetActivationDataFromKernel(sourceDevicePath string, remove bool) (ActivationData, error) {
+func GetActivationDataFromKernel(prefix, sourceDevicePath string, remove bool) (ActivationData, error) {
 	var userKeys []int
 
 	sz, err := unix.KeyctlBuffer(unix.KEYCTL_READ, userKeyring, nil, 0)
@@ -602,7 +618,7 @@ func GetActivationDataFromKernel(sourceDevicePath string, remove bool) (Activati
 		sz = n
 	}
 
-	re := regexp.MustCompile(`^user;[[:digit:]]+;[[:digit:]]+;[[:xdigit:]]+;secboot:([^\?]+)\??(.*)`)
+	re := regexp.MustCompile(fmt.Sprintf(`^user;[[:digit:]]+;[[:digit:]]+;[[:xdigit:]]+;%s:([^\?]+)\??(.*)`, keyringPrefixOrDefault(prefix)))
 	for _, id := range userKeys {
 		desc, err := unix.KeyctlString(unix.KEYCTL_DESCRIBE, id)
 		if err != nil {
