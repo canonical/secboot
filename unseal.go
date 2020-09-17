@@ -112,10 +112,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 	if err := executePolicySession(tpm.TPMContext, policySession, k.data.version, k.data.staticPolicyData, k.data.dynamicPolicyData, pin, hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
-		case isDynamicPolicyDataError(err):
-			// TODO: Add a separate error for this
-			return nil, nil, InvalidKeyFileError{err.Error()}
-		case isStaticPolicyDataError(err):
+		case isPolicyDataError(err):
 			return nil, nil, InvalidKeyFileError{err.Error()}
 		case isAuthFailError(err, tpm2.CommandPolicySecret, 1):
 			return nil, nil, ErrPINFail

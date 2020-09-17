@@ -59,8 +59,7 @@ var (
 	ExecutePolicySession                     = executePolicySession
 	IdentifyInitialOSLaunchVerificationEvent = identifyInitialOSLaunchVerificationEvent
 	IncrementPcrPolicyCounter                = incrementPcrPolicyCounter
-	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
-	IsStaticPolicyDataError                  = isStaticPolicyDataError
+	IsPolicyDataError                        = isPolicyDataError
 	LockNVIndexAttrs                         = lockNVIndexAttrs
 	PerformPinChange                         = performPinChange
 	ReadAndValidateLockNVIndexPublic         = readAndValidateLockNVIndexPublic

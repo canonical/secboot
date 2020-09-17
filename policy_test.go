@@ -1451,7 +1451,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1493,7 +1493,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "xxx",
 				},
 			}}, nil)
-		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1635,7 +1635,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1756,7 +1756,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if !IsDynamicPolicyDataError(err) || err.Error() != "the PCR policy has been revoked" {
+		if !IsPolicyDataError(err) || err.Error() != "the PCR policy has been revoked" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1805,7 +1805,7 @@ func TestExecutePolicy(t *testing.T) {
 				t.Fatalf("NVReadLock failed: %v", err)
 			}
 		})
-		if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) || IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
+		if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1848,7 +1848,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.SetPcrPolicyCounterHandle(0x40ffffff)
 		})
-		if !IsStaticPolicyDataError(err) || err.Error() != "invalid handle for PCR policy counter" {
+		if !IsPolicyDataError(err) || err.Error() != "invalid handle for PCR policy counter" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1891,7 +1891,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.SetPcrPolicyCounterHandle(s.PcrPolicyCounterHandle() + 1)
 		})
-		if !IsStaticPolicyDataError(err) || err.Error() != "no PCR policy counter found" {
+		if !IsPolicyDataError(err) || err.Error() != "no PCR policy counter found" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1935,7 +1935,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.AuthPublicKey().NameAlg = tpm2.HashAlgorithmId(tpm2.AlgorithmSM4)
 		})
-		if !IsStaticPolicyDataError(err) || err.Error() != "public area of dynamic authorization policy signing key has an unsupported "+
+		if !IsPolicyDataError(err) || err.Error() != "public area of dynamic authorization policy signing key has an unsupported "+
 			"name algorithm" {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -1986,7 +1986,7 @@ func TestExecutePolicy(t *testing.T) {
 		})
 		// Even though this error is caused by broken static metadata, we get a dynamicPolicyDataError error because the signature
 		// verification fails. Validation with validateKeyData will detect the real issue though.
-		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2049,7 +2049,7 @@ func TestExecutePolicy(t *testing.T) {
 			d.AuthorizedPolicySignature().Signature.ECDSA().SignatureR = sigR.Bytes()
 			d.AuthorizedPolicySignature().Signature.ECDSA().SignatureS = sigS.Bytes()
 		})
-		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2160,7 +2160,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			d.SetPolicyCount(d.PolicyCount() + 1)
 		})
-		if !IsDynamicPolicyDataError(err) || err.Error() != "the PCR policy is invalid" {
+		if !IsPolicyDataError(err) || err.Error() != "the PCR policy is invalid" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2256,7 +2256,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			d.PCROrData()[0].Next = 1000
 		})
-		if !IsDynamicPolicyDataError(err) || err.Error() != "the PCR policy is invalid" {
+		if !IsPolicyDataError(err) || err.Error() != "the PCR policy is invalid" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2308,7 +2308,7 @@ func TestExecutePolicy(t *testing.T) {
 			x := int32(-10)
 			d.PCROrData()[0].Next = *(*uint32)(unsafe.Pointer(&x))
 		})
-		if !IsDynamicPolicyDataError(err) || err.Error() != "the PCR policy is invalid" {
+		if !IsPolicyDataError(err) || err.Error() != "the PCR policy is invalid" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2390,7 +2390,7 @@ func TestExecutePolicy(t *testing.T) {
 			s.SetPcrPolicyCounterHandle(policyCounterPub.Index)
 			d.SetPolicyCount(policyCount)
 		})
-		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
