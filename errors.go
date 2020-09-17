@@ -118,7 +118,7 @@ type InvalidKeyDataErrorType int
 
 const (
 	// InvalidKeyDataErrorFatal indicates that the error was detected by software and is definitely caused by invalid key data.
-	InvalidKeyDataErrorFatal = iota + 1
+	InvalidKeyDataErrorFatal InvalidKeyDataErrorType = iota + 1
 
 	// InvalidKeyDataErrorTPMLoad indicates that the error was detected when loading the sealed key object in to the TPM, and may
 	// indicate that the key data is invalid, or may indicate that the object at the persistent handle reserved for the storage

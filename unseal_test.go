@@ -226,7 +226,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 			}
 		})
 		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorTPMLoad ||
-			err.Error() != "invalid key data: cannot load sealed key object in to TPM: bad sealed key object or TPM owner changed" {
+			err.Error() != "invalid key data: cannot load sealed key object in to TPM: bad sealed key object or parent object" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

@@ -260,3 +260,19 @@ func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
 	}
 	return s.String()
 }
+
+func (k *SealedKeyObject) SetVersion(version uint32) {
+	k.data.version = version
+}
+
+func (k *SealedKeyObject) KeyPublic() *tpm2.Public {
+	return k.data.keyPublic
+}
+
+func (k *SealedKeyObject) SetPCRPolicyCounterHandle(h tpm2.Handle) {
+	k.data.staticPolicyData.pcrPolicyCounterHandle = h
+}
+
+func (k *SealedKeyObject) AuthPublicKey() *tpm2.Public {
+	return k.data.staticPolicyData.authPublicKey
+}

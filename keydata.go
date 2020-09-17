@@ -409,7 +409,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 			invalidObject = true
 		}
 		if invalidObject {
-			return nil, keyDataLoadError{errors.New("cannot load sealed key object in to TPM: bad sealed key object or TPM owner changed")}
+			return nil, keyDataLoadError{errors.New("cannot load sealed key object in to TPM: bad sealed key object or parent object")}
 		}
 		return nil, xerrors.Errorf("cannot load sealed key object in to TPM: %w", err)
 	}
