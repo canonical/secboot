@@ -163,7 +163,7 @@ func incrementDynamicPolicyCounter(tpm *tpm2.TPMContext, nvPublic *tpm2.NVPublic
 		Signature: tpm2.SignatureU{
 			Data: &tpm2.SignatureRSAPSS{
 				Hash: signDigest,
-				Sig:  tpm2.PublicKeyRSA(sig)}}}
+				Sig:  sig}}}
 
 	// Execute the policy assertions
 	if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
@@ -352,7 +352,7 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 		Signature: tpm2.SignatureU{
 			Data: &tpm2.SignatureRSAPSS{
 				Hash: signDigest,
-				Sig:  tpm2.PublicKeyRSA(sig)}}}
+				Sig:  sig}}}
 
 	// Execute the policy assertions
 	if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVWrite); err != nil {
