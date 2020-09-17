@@ -327,7 +327,6 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 	case isKeyDataError(err):
 		return InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: err.Error()}
 	case err != nil:
-		// FIXME: Turn the missing lock NV index in to ErrProvisioning
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
 

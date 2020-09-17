@@ -234,3 +234,36 @@ func (s *keyDataSuite) TestValidateInvalidAuthPrivateKey(c *C) {
 	c.Assert(ok, Equals, true)
 	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
 }
+
+func (s *keyDataSuite) TestValidateNoLockIndex(c *C) {
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
+	index, err := s.TPM.CreateResourceContextFromTPM(LockNVHandle)
+	c.Assert(err, IsNil)
+	c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), index, nil), IsNil)
+
+	err = k.Validate(s.TPM, s.authPrivateKey)
+	c.Check(err, ErrorMatches, "invalid key data: no lock NV index")
+	ierr, ok := err.(InvalidKeyDataError)
+	c.Assert(ok, Equals, true)
+	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+}
+
+func (s *keyDataSuite) TestValidateInvalidLockIndex(c *C) {
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
+	for _, h := range []tpm2.Handle{LockNVHandle, LockNVDataHandle} {
+		index, err := s.TPM.CreateResourceContextFromTPM(h)
+		c.Assert(err, IsNil)
+		c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), index, nil), IsNil)
+	}
+	c.Assert(ProvisionTPM(s.TPM, ProvisionModeWithoutLockout, nil), IsNil)
+
+	err = k.Validate(s.TPM, s.authPrivateKey)
+	c.Check(err, ErrorMatches, "invalid key data: the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
+	ierr, ok := err.(InvalidKeyDataError)
+	c.Assert(ok, Equals, true)
+	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+}

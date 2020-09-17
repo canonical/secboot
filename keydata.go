@@ -446,15 +446,16 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 
 	// Obtain a ResourceContext for the lock NV index and validate it.
 	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
-	if err != nil {
+	switch {
+	case tpm2.IsResourceUnavailableError(err, lockNVHandle):
+		return nil, keyDataError{errors.New("no lock NV index")}
+	case err != nil:
 		return nil, xerrors.Errorf("cannot create context for lock NV index: %v", err)
 	}
 	lockIndexPub, err := readAndValidateLockNVIndexPublic(tpm, lockIndex, session)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot determine if NV index at %v is global lock index: %w", lockNVHandle, err)
-	}
-	if lockIndexPub == nil {
-		return nil, xerrors.Errorf("NV index at %v is not a valid global lock index", lockNVHandle)
+		// The TPM needs provisioning, but this key is unrecoverable anyway
+		return nil, keyDataError{xerrors.Errorf("cannot determine if NV index at %v is global lock index: %w", lockNVHandle, err)}
 	}
 	lockIndexName, err := lockIndexPub.Name()
 	if err != nil {
