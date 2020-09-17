@@ -71,16 +71,6 @@ import (
 // On success, the unsealed cleartext key is returned as the first return value, and the private part of the key used for
 // authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is returned as the second return value.
 func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []byte, authKey TPMPolicyAuthKey, err error) {
-	// Check if the TPM is in lockout mode
-	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot fetch properties from TPM: %w", err)
-	}
-
-	if tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrInLockout > 0 {
-		return nil, nil, ErrTPMLockout
-	}
-
 	// Use the HMAC session created when the connection was opened for parameter encryption rather than creating a new one.
 	hmacSession := tpm.HmacSession()
 
@@ -133,6 +123,8 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 			return nil, nil, InvalidKeyFileError{err.Error()}
 		case isAuthFailError(err, tpm2.CommandPolicySecret, 1):
 			return nil, nil, ErrPINFail
+		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandPolicySecret):
+			return nil, nil, ErrTPMLockout
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
 			return nil, nil, ErrTPMProvisioning
 		case tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV):
