@@ -314,8 +314,18 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we
-		// close the volume again.
+		// Add a key to the calling user's user keyring with default 0x3f010000 permissions (these defaults are hardcoded in the kernel).
+		// This permission flags define the following permissions:
+		// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
+		// Possessor permissions only apply to a process with a searchable link to the key from one of its own keyrings - just having the
+		// same UID is not sufficient. Read permission is required to read the contents of the key (view permission only permits viewing
+		// of the description and other public metadata that isn't the key payload).//
+		//
+		// Note that by default, systemd starts services with a private session keyring which does not contain a link to the user keyring.
+		// Therefore these services cannot access the contents of keys in the root user's user keyring if those keys only permit
+		// possessor-read.
+		//
+		// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we close the volume again.
 		unix.AddKey("user", fmt.Sprintf("%s:%s?type=recovery&reason=%d", keyringPrefixOrDefault(keyringPrefix), sourceDevicePath, reason), key[:], userKeyring)
 		break
 	}
@@ -416,8 +426,18 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 
-	// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we
-	// close the volume again.
+	// Add a key to the calling user's user keyring with default 0x3f010000 permissions (these defaults are hardcoded in the kernel).
+	// This permission flags define the following permissions:
+	// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
+	// Possessor permissions only apply to a process with a searchable link to the key from one of its own keyrings - just having the
+	// same UID is not sufficient. Read permission is required to read the contents of the key (view permission only permits viewing
+	// of the description and other public metadata that isn't the key payload).//
+	//
+	// Note that by default, systemd starts services with a private session keyring which does not contain a link to the user keyring.
+	// Therefore these services cannot access the contents of keys in the root user's user keyring if those keys only permit
+	// possessor-read.
+	//
+	// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we close the volume again.
 	unix.AddKey("user", fmt.Sprintf("%s:%s?type=tpm", keyringPrefixOrDefault(keyringPrefix), sourceDevicePath), authPrivateKey, userKeyring)
 
 	return nil
