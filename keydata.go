@@ -649,8 +649,7 @@ func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile io.Reader, authData 
 		if len(a) > 0 {
 			// If we were called with a byte slice, then we're expecting to load the current keydata version and the byte
 			// slice is the private part of the elliptic auth key.
-			authKey, err = createPrivateKeyFromTPM(data.staticPolicyData.authPublicKey,
-				&tpm2.Sensitive{Type: tpm2.ObjectTypeECC, Sensitive: tpm2.SensitiveCompositeU{Data: tpm2.ECCParameter(a)}})
+			authKey, err = createECDSAPrivateKeyFromTPM(data.staticPolicyData.authPublicKey, tpm2.ECCParameter(a))
 			if err != nil {
 				return nil, nil, nil, keyFileError{xerrors.Errorf("cannot create auth key: %w", err)}
 			}

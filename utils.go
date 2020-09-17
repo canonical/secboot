@@ -21,7 +21,6 @@ package secboot
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"errors"
@@ -167,8 +166,8 @@ func createTPMPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
 				Y: bigIntToBytesZeroExtended(key.Y, key.Params().BitSize/8)}}}
 }
 
-func createPrivateKeyFromTPM(public *tpm2.Public, sensitive *tpm2.Sensitive) (crypto.PrivateKey, error) {
-	if public.Type != tpm2.ObjectTypeECC || sensitive.Type != tpm2.ObjectTypeECC {
+func createECDSAPrivateKeyFromTPM(public *tpm2.Public, private tpm2.ECCParameter) (*ecdsa.PrivateKey, error) {
+	if public.Type != tpm2.ObjectTypeECC {
 		return nil, errors.New("unsupported type")
 	}
 
@@ -191,7 +190,7 @@ func createPrivateKeyFromTPM(public *tpm2.Public, sensitive *tpm2.Sensitive) (cr
 			Curve: curve,
 			X:     new(big.Int).SetBytes(public.Unique.ECC().X),
 			Y:     new(big.Int).SetBytes(public.Unique.ECC().Y)},
-		D: new(big.Int).SetBytes(sensitive.Sensitive.ECC())}, nil
+		D: new(big.Int).SetBytes(private)}, nil
 }
 
 // digestListContains indicates whether the specified digest is present in the list of digests.
