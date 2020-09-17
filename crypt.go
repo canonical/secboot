@@ -319,7 +319,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 		// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
 		// Possessor permissions only apply to a process with a searchable link to the key from one of its own keyrings - just having the
 		// same UID is not sufficient. Read permission is required to read the contents of the key (view permission only permits viewing
-		// of the description and other public metadata that isn't the key payload).//
+		// of the description and other public metadata that isn't the key payload).
 		//
 		// Note that by default, systemd starts services with a private session keyring which does not contain a link to the user keyring.
 		// Therefore these services cannot access the contents of keys in the root user's user keyring if those keys only permit
@@ -431,7 +431,7 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 	// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
 	// Possessor permissions only apply to a process with a searchable link to the key from one of its own keyrings - just having the
 	// same UID is not sufficient. Read permission is required to read the contents of the key (view permission only permits viewing
-	// of the description and other public metadata that isn't the key payload).//
+	// of the description and other public metadata that isn't the key payload).
 	//
 	// Note that by default, systemd starts services with a private session keyring which does not contain a link to the user keyring.
 	// Therefore these services cannot access the contents of keys in the root user's user keyring if those keys only permit
