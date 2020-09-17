@@ -225,12 +225,18 @@ func (ctb *cryptTestBase) checkRecoveryActivationData(c *C, path string, reason 
 		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
 	}
 
-	data, err := GetActivationDataFromKernel(path)
+	data, err := GetActivationDataFromKernel(path, false)
 	c.Assert(err, IsNil)
 	recoveryData, ok := data.(*RecoveryActivationData)
 	c.Assert(ok, Equals, true)
 	c.Check(recoveryData.Key[:], DeepEquals, ctb.recoveryKey)
 	c.Check(recoveryData.Reason, Equals, reason)
+
+	data, err = GetActivationDataFromKernel(path, true)
+	c.Check(err, IsNil)
+	c.Check(data, NotNil)
+	_, err = GetActivationDataFromKernel(path, true)
+	c.Check(err, Equals, ErrNoActivationData)
 }
 
 type cryptTPMTestBase struct {
@@ -271,11 +277,17 @@ func (ctb *cryptTPMTestBase) checkTPMPolicyAuthKey(c *C, path string) {
 		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
 	}
 
-	data, err := GetActivationDataFromKernel(path)
+	data, err := GetActivationDataFromKernel(path, false)
 	c.Assert(err, IsNil)
 	authKey, ok := data.(TPMPolicyAuthKey)
 	c.Check(ok, Equals, true)
 	c.Check(authKey, DeepEquals, ctb.authPrivateKey)
+
+	data, err = GetActivationDataFromKernel(path, true)
+	c.Check(err, IsNil)
+	c.Check(data, NotNil)
+	_, err = GetActivationDataFromKernel(path, true)
+	c.Check(err, Equals, ErrNoActivationData)
 }
 
 type cryptTPMSuite struct {

@@ -568,11 +568,13 @@ type RecoveryActivationData struct {
 	Reason RecoveryKeyUsageReason
 }
 
-// GetActivationDataFromKernel retrieves data that was added to the user keyring by ActivateVolumeWithTPMSealedKey or
+// GetActivationDataFromKernel retrieves data that was added to the current user's user keyring by ActivateVolumeWithTPMSealedKey or
 // ActivateVolumeWithRecoveryKey for the specified source block device. The block device path must match the path passed to one of
 // the ActivateVolume functions. The type of data returned is dependent on how the volume was activated - see the documentation for
 // each function, If no data is found for the specified device, a ErrNoActivationData error is returned.
-func GetActivationDataFromKernel(sourceDevicePath string) (ActivationData, error) {
+//
+// If remove is true, this function will unlink the key from the user's user keyring.
+func GetActivationDataFromKernel(sourceDevicePath string, remove bool) (ActivationData, error) {
 	var userKeys []int
 
 	sz, err := unix.KeyctlBuffer(unix.KEYCTL_READ, userKeyring, nil, 0)
@@ -622,6 +624,11 @@ func GetActivationDataFromKernel(sourceDevicePath string) (ActivationData, error
 		_, err = unix.KeyctlBuffer(unix.KEYCTL_READ, id, payload, 0)
 		if err != nil {
 			return nil, xerrors.Errorf("cannot read key payload: %w", err)
+		}
+
+		if remove {
+			// XXX: What should we do if unlinking fails?
+			unix.KeyctlInt(unix.KEYCTL_UNLINK, id, userKeyring, 0, 0)
 		}
 
 		params := make(map[string]string)
