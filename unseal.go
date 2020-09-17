@@ -137,6 +137,8 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 		return nil, nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}
 	case isAuthFailError(err, tpm2.CommandUnseal, 1):
 		return nil, nil, ErrPINFail
+	case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandUnseal):
+		return nil, nil, ErrTPMLockout
 	case err != nil:
 		return nil, nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}

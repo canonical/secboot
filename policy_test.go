@@ -1848,7 +1848,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.SetPcrPolicyCounterHandle(0x40ffffff)
 		})
-		if !IsPolicyDataError(err) || err.Error() != "invalid handle for PCR policy counter" {
+		if !IsPolicyDataError(err) || err.Error() != "invalid handle type for PCR policy counter" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
