@@ -146,7 +146,7 @@ func performPinChange(tpm *tpm2.TPMContext, keyPrivate tpm2.Private, keyPublic *
 //
 // If the file at the specified path cannot be opened, then a wrapped *os.PathError error will be returned.
 //
-// If the supplied key data file fails validation checks, an InvalidKeyFileError error will be returned.
+// If the supplied key data file fails validation checks, an InvalidKeyDataError error will be returned.
 //
 // If oldPIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be incremented.
 func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
@@ -171,9 +171,9 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	data, _, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
 	switch {
 	case isKeyDataLoadError(err):
-		return InvalidKeyFileError{Type: InvalidKeyFileErrorTPMLoad, msg: err.Error()}
+		return InvalidKeyDataError{Type: InvalidKeyDataErrorTPMLoad, msg: err.Error()}
 	case isKeyDataError(err):
-		return InvalidKeyFileError{Type: InvalidKeyFileErrorFatal, msg: err.Error()}
+		return InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: err.Error()}
 	case err != nil:
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}

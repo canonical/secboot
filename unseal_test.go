@@ -225,8 +225,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok || err.(InvalidKeyFileError).Type != InvalidKeyFileErrorTPMLoad ||
-			err.Error() != "invalid key data file: cannot load sealed key object in to TPM: bad sealed key object or TPM owner changed" {
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorTPMLoad ||
+			err.Error() != "invalid key data: cannot load sealed key object in to TPM: bad sealed key object or TPM owner changed" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

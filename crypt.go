@@ -270,10 +270,10 @@ const (
 	// TPM is not correctly provisioned.
 	RecoveryKeyUsageReasonTPMProvisioningError
 
-	// RecoveryKeyUsageReasonInvalidKeyFile indicates that a volume had to be activated with the fallback recovery key because the TPM
-	// sealed key file is invalid. Note that attempts to resolve this by creating a new file with SealKeyToTPM may indicate that the TPM
+	// RecoveryKeyUsageReasonInvalidKeyData indicates that a volume had to be activated with the fallback recovery key because the TPM
+	// sealed key data is invalid. Note that attempts to resolve this by creating a new file with SealKeyToTPM may indicate that the TPM
 	// is also not correctly provisioned.
-	RecoveryKeyUsageReasonInvalidKeyFile
+	RecoveryKeyUsageReasonInvalidKeyData
 
 	// RecoveryKeyUsageReasonPINFail indicates that a volume had to be activated with the fallback recovery key because the correct PIN
 	// was not provided.
@@ -334,14 +334,14 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 }
 
 func isTPMLoadError(err error) bool {
-	var e InvalidKeyFileError
-	return xerrors.As(err, &e) && e.Type == InvalidKeyFileErrorTPMLoad
+	var e InvalidKeyDataError
+	return xerrors.As(err, &e) && e.Type == InvalidKeyDataErrorTPMLoad
 }
 
 func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, []byte, error) {
 	sealedKey, authPrivateKey, err := k.UnsealFromTPM(tpm, pin)
 	if err == ErrTPMProvisioning || isTPMLoadError(err) {
-		// ErrTPMProvisioning or InvalidKeyFileError in this context might indicate that there isn't a valid persistent SRK. Have a go
+		// ErrTPMProvisioning or InvalidKeyDataError in this context might indicate that there isn't a valid persistent SRK. Have a go
 		// at creating one now and then retrying the unseal operation - if the proper SRK was evicted, the TPM owner hasn't changed, the
 		// storage hierarchy still has a null authorization value, and the TPM sealed object is still valid, then this will allow us to
 		// unseal the key without requiring any type of manual recovery. Ignore provisioning errors here and retry unsealing afterwards -
@@ -458,8 +458,8 @@ func makeActivateOptions(in []string) ([]string, error) {
 	return append(out, "tries=1"), nil
 }
 
-func isInvalidKeyFileError(err error) bool {
-	var e InvalidKeyFileError
+func isInvalidKeyDataError(err error) bool {
+	var e InvalidKeyDataError
 	return xerrors.As(err, &e)
 }
 
@@ -550,10 +550,10 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 			reason = RecoveryKeyUsageReasonTPMLockout
 		case xerrors.Is(err, ErrTPMProvisioning):
 			reason = RecoveryKeyUsageReasonTPMProvisioningError
-		case isInvalidKeyFileError(err):
-			reason = RecoveryKeyUsageReasonInvalidKeyFile
+		case isInvalidKeyDataError(err):
+			reason = RecoveryKeyUsageReasonInvalidKeyData
 		case isInvalidPolicyDataError(err):
-			reason = RecoveryKeyUsageReasonInvalidKeyFile
+			reason = RecoveryKeyUsageReasonInvalidKeyData
 		case xerrors.Is(err, requiresPinErr):
 			reason = RecoveryKeyUsageReasonPINFail
 		case xerrors.Is(err, ErrPINFail):
@@ -561,7 +561,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		case isExecError(err, systemdCryptsetupPath):
 			// systemd-cryptsetup only provides 2 exit codes - success or fail - so we don't know the reason it failed yet. If activation
 			// with the recovery key is successful, then it's safe to assume that it failed because the key unsealed from the TPM is incorrect.
-			reason = RecoveryKeyUsageReasonInvalidKeyFile
+			reason = RecoveryKeyUsageReasonInvalidKeyData
 		}
 		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, activateOptions, options.KeyringPrefix)
 		return rErr == nil, &ActivateWithTPMSealedKeyError{err, rErr}

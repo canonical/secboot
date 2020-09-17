@@ -113,27 +113,27 @@ func isTPMVerificationError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// InvalidKeyFileErrorType corresponds to the type of error detailed by InvalidKeyFileError.
-type InvalidKeyFileErrorType int
+// InvalidKeyDataErrorType corresponds to the type of error detailed by InvalidKeyDataError.
+type InvalidKeyDataErrorType int
 
 const (
-	// InvalidKeyFileErrorFatal indicates that the error was detected by software and is definitely caused by invalid key data.
-	InvalidKeyFileErrorFatal = iota + 1
+	// InvalidKeyDataErrorFatal indicates that the error was detected by software and is definitely caused by invalid key data.
+	InvalidKeyDataErrorFatal = iota + 1
 
-	// InvalidKeyFileErrorTPMLoad indicates that the error was detected when loading the sealed key object in to the TPM, and may
+	// InvalidKeyDataErrorTPMLoad indicates that the error was detected when loading the sealed key object in to the TPM, and may
 	// indicate that the key data is invalid, or may indicate that the object at the persistent handle reserved for the storage
 	// root key is not the creation parent of the sealed key object. In this case, calling ProvisionTPM may rectify this problem.
-	InvalidKeyFileErrorTPMLoad
+	InvalidKeyDataErrorTPMLoad
 )
 
-// InvalidKeyFileError indicates that the provided key data file is invalid.
-type InvalidKeyFileError struct {
-	Type InvalidKeyFileErrorType
+// InvalidKeyDataError indicates that the provided key data is invalid.
+type InvalidKeyDataError struct {
+	Type InvalidKeyDataErrorType
 	msg  string
 }
 
-func (e InvalidKeyFileError) Error() string {
-	return "invalid key data file: " + e.msg
+func (e InvalidKeyDataError) Error() string {
+	return "invalid key data: " + e.msg
 }
 
 type InvalidPolicyDataError string

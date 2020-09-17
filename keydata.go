@@ -728,26 +728,26 @@ func (k *SealedKeyObject) PCRPolicyCounterHandle() tpm2.Handle {
 // Validate performs some checks on the SealedKeyObject. The key used for authorizing PCR policy updates can be optionally provided as
 // authKey in order to validate that it is associated with this sealed key object.
 //
-// On success, no error is returned. If a InvalidKeyFileError error is returned, then this indicates that the SealedKeyObject is
+// On success, no error is returned. If a InvalidKeyDataError error is returned, then this indicates that the SealedKeyObject is
 // invalid and must be recreated in order to perform some operations on it.
 func (k *SealedKeyObject) Validate(tpm *TPMConnection, authKey TPMPolicyAuthKey) error {
 	key, err := k.data.decodeAuthKeyFromBytes(authKey)
 	if err != nil {
-		return InvalidKeyFileError{Type: InvalidKeyFileErrorFatal, msg: fmt.Sprintf("cannot decode dynamic auth policy signing key: %v", err)}
+		return InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: fmt.Sprintf("cannot decode dynamic auth policy signing key: %v", err)}
 	}
 	_, err = k.data.validate(tpm.TPMContext, key, tpm.HmacSession())
 	switch {
 	case isKeyDataLoadError(err):
-		return InvalidKeyFileError{Type: InvalidKeyFileErrorTPMLoad, msg: err.Error()}
+		return InvalidKeyDataError{Type: InvalidKeyDataErrorTPMLoad, msg: err.Error()}
 	case isKeyDataError(err):
-		return InvalidKeyFileError{Type: InvalidKeyFileErrorFatal, msg: err.Error()}
+		return InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: err.Error()}
 	default:
 		return err
 	}
 }
 
 // ReadSealedKeyObject loads a sealed key data file created by SealKeyToTPM from the specified path. If the file cannot be opened,
-// a wrapped *os.PathError error is returned. If the key data file cannot be deserialized successfully, a InvalidKeyFileError error
+// a wrapped *os.PathError error is returned. If the key data file cannot be deserialized successfully, a InvalidKeyDataError error
 // will be returned.
 func ReadSealedKeyObject(path string) (*SealedKeyObject, error) {
 	// Open the key data file
@@ -759,7 +759,7 @@ func ReadSealedKeyObject(path string) (*SealedKeyObject, error) {
 
 	data, err := decodeKeyData(f)
 	if err != nil {
-		return nil, InvalidKeyFileError{Type: InvalidKeyFileErrorFatal, msg: err.Error()}
+		return nil, InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: err.Error()}
 	}
 
 	return &SealedKeyObject{data: data}, nil
