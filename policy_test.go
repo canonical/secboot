@@ -1451,7 +1451,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions for PCR policy: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1493,7 +1493,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "xxx",
 				},
 			}}, nil)
-		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions for PCR policy: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1635,7 +1635,7 @@ func TestExecutePolicy(t *testing.T) {
 					data:  "foo",
 				},
 			}}, nil)
-		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions: current session digest not found in policy data" {
+		if !IsPolicyDataError(err) || err.Error() != "cannot complete OR assertions for PCR policy: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1848,7 +1848,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.SetPcrPolicyCounterHandle(0x40ffffff)
 		})
-		if !IsPolicyDataError(err) || err.Error() != "invalid handle type for PCR policy counter" {
+		if !IsKeyDataError(err) || err.Error() != "invalid handle type for PCR policy counter" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1891,7 +1891,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.SetPcrPolicyCounterHandle(s.PcrPolicyCounterHandle() + 1)
 		})
-		if !IsPolicyDataError(err) || err.Error() != "no PCR policy counter found" {
+		if !IsKeyDataError(err) || err.Error() != "no PCR policy counter found" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -1935,7 +1935,7 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.AuthPublicKey().NameAlg = tpm2.HashAlgorithmId(tpm2.AlgorithmSM4)
 		})
-		if !IsPolicyDataError(err) || err.Error() != "public area of dynamic authorization policy signing key has an unsupported "+
+		if !IsKeyDataError(err) || err.Error() != "public area of dynamic authorization policy signing key has an unsupported "+
 			"name algorithm" {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -1984,7 +1984,7 @@ func TestExecutePolicy(t *testing.T) {
 			}
 			s.AuthPublicKey().Unique.Data = &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}
 		})
-		// Even though this error is caused by broken static metadata, we get a dynamicPolicyDataError error because the signature
+		// Even though this error is caused by broken static metadata, we get a policyDataError error because the signature
 		// verification fails. Validation with validateKeyData will detect the real issue though.
 		if !IsPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
 			t.Errorf("Unexpected error: %v", err)

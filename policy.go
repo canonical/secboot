@@ -962,15 +962,16 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.CommandPolicyGetDigest):
 			return xerrors.Errorf("cannot execute OR assertions: %w", err)
 		case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1):
-			// The tree of PCR policy digests is invalid (it doesn't have a value that matches the current state)
-			return policyDataError{errors.New("cannot complete OR assertions for PCR policy: unexpected PCR values")}
+			// The tree of policy digests is invalid
+			return policyDataError{errors.New("cannot complete OR assertions for PCR policy: invalid metadata")}
 		}
-		return policyDataError{xerrors.Errorf("cannot complete OR assertions: %w", err)}
+		// The tree of policy digests doesn't contain an entry for the current digest
+		return policyDataError{xerrors.Errorf("cannot complete OR assertions for PCR policy: %w", err)}
 	}
 
 	pcrPolicyCounterHandle := staticInput.pcrPolicyCounterHandle
 	if (pcrPolicyCounterHandle != tpm2.HandleNull || version == 0) && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
-		return policyDataError{errors.New("invalid handle type for PCR policy counter")}
+		return keyDataError{errors.New("invalid handle type for PCR policy counter")}
 	}
 
 	var policyCounter tpm2.ResourceContext
@@ -979,8 +980,8 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		policyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
 		switch {
 		case tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle):
-			// If there is no NV index at the expected handle then the key file is invalid and must be recreated.
-			return policyDataError{errors.New("no PCR policy counter found")}
+			// If there is no NV index at the expected handle then the key data is invalid.
+			return keyDataError{errors.New("no PCR policy counter found")}
 		case err != nil:
 			return xerrors.Errorf("cannot obtain context for PCR policy counter: %w", err)
 		}
@@ -992,8 +993,8 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 				return xerrors.Errorf("cannot read public area for PCR policy counter: %w", err)
 			}
 			if !policyCounterPub.NameAlg.Supported() {
-				//If the NV index has an unsupported name algorithm, then this key file is invalid and must be recreated.
-				return policyDataError{errors.New("PCR policy counter has an unsupported name algorithm")}
+				// If the NV index has an unsupported name algorithm, then the key data is invalid.
+				return keyDataError{errors.New("PCR policy counter has an unsupported name algorithm")}
 			}
 
 			revocationCheckSession, err = tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, policyCounterPub.NameAlg)
@@ -1011,7 +1012,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 			if err := tpm.PolicyOR(revocationCheckSession, staticInput.v0PinIndexAuthPolicies); err != nil {
 				if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
 					// staticInput.v0PinIndexAuthPolicies is invalid.
-					return policyDataError{errors.New("authorization policy metadata for PCR policy counter is invalid")}
+					return keyDataError{errors.New("authorization policy metadata for PCR policy counter is invalid")}
 				}
 				return xerrors.Errorf("cannot execute assertion for PCR policy revocation check: %w", err)
 			}
@@ -1022,11 +1023,12 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 		if err := tpm.PolicyNV(policyCounter, policyCounter, policySession, operandB, 0, tpm2.OpUnsignedLE, revocationCheckSession); err != nil {
 			switch {
 			case tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV):
-				// The PCR policy has been revoked.
+				// The PCR policy has been revoked. Note that this could happen if the keydata / NV index is invalid, but it's worth
+				// not assuming that for now (SealedKeyObject.Validate can detect this)
 				return policyDataError{errors.New("the PCR policy has been revoked")}
 			case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1):
-				// Either staticInput.v0PinIndexAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
-				return policyDataError{errors.New("invalid PCR policy counter or associated authorization policy metadata")}
+				// Either staticInput.v0PinIndexAuthPolicies is invalid or the NV index isn't what's expected, so the key data is invalid.
+				return keyDataError{errors.New("invalid PCR policy counter or associated authorization policy metadata")}
 			}
 			return xerrors.Errorf("PCR policy revocation check failed: %w", err)
 		}
@@ -1034,13 +1036,13 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 
 	authPublicKey := staticInput.authPublicKey
 	if !authPublicKey.NameAlg.Supported() {
-		return policyDataError{errors.New("public area of dynamic authorization policy signing key has an unsupported name algorithm")}
+		return keyDataError{errors.New("public area of dynamic authorization policy signing key has an unsupported name algorithm")}
 	}
 	authorizeKey, err := tpm.LoadExternal(nil, authPublicKey, tpm2.HandleOwner)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
 			// staticInput.AuthPublicKey is invalid
-			return policyDataError{errors.New("public area of dynamic authorization policy signing key is invalid")}
+			return keyDataError{errors.New("public area of dynamic authorization policy signing key is invalid")}
 		}
 		return xerrors.Errorf("cannot load public area for dynamic authorization policy signing key: %w", err)
 	}
@@ -1061,7 +1063,8 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, h.Sum(nil), dynamicInput.authorizedPolicySignature)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
-			// dynamicInput.AuthorizedPolicySignature or the computed policy ref is invalid.
+			// dynamicInput.AuthorizedPolicySignature, the signing key, or the PCR policy counter is invalid. Assume it is the former
+			// for now (SealedKeyObject.Validate can detect the others).
 			return policyDataError{errors.New("cannot verify PCR policy signature")}
 		}
 		return xerrors.Errorf("cannot verify PCR policy signature: %w", err)

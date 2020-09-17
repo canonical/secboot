@@ -321,10 +321,12 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 	defer keyFile.Close()
 
 	data, authKey, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm, keyFile, authData, session)
-	if err != nil {
-		if isKeyFileError(err) {
-			return InvalidKeyFileError{err.Error()}
-		}
+	switch {
+	case isKeyDataLoadError(err):
+		return InvalidKeyFileError{Type: InvalidKeyFileErrorTPMLoad, msg: err.Error()}
+	case isKeyDataError(err):
+		return InvalidKeyFileError{Type: InvalidKeyFileErrorFatal, msg: err.Error()}
+	case err != nil:
 		// FIXME: Turn the missing lock NV index in to ErrProvisioning
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}

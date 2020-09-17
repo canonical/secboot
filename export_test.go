@@ -59,6 +59,7 @@ var (
 	ExecutePolicySession                     = executePolicySession
 	IdentifyInitialOSLaunchVerificationEvent = identifyInitialOSLaunchVerificationEvent
 	IncrementPcrPolicyCounter                = incrementPcrPolicyCounter
+	IsKeyDataError                           = isKeyDataError
 	IsPolicyDataError                        = isPolicyDataError
 	LockNVIndexAttrs                         = lockNVIndexAttrs
 	PerformPinChange                         = performPinChange

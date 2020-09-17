@@ -225,8 +225,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot load sealed key object in to TPM: bad "+
-			"sealed key object or TPM owner changed" {
+		if _, ok := err.(InvalidKeyFileError); !ok || err.(InvalidKeyFileError).Type != InvalidKeyFileErrorTPMLoad ||
+			err.Error() != "invalid key data file: cannot load sealed key object in to TPM: bad sealed key object or TPM owner changed" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -243,8 +243,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
-			"assertions: cannot complete OR assertions: current session digest not found in policy data" {
+		if _, ok := err.(InvalidPolicyDataError); !ok || err.Error() != "invalid authorization policy data: cannot complete authorization "+
+			"policy assertions: cannot complete OR assertions for PCR policy: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -273,8 +273,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Fatalf("UpdateKeyPCRProtectionPolicy failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
-			"assertions: the PCR policy has been revoked" {
+		if _, ok := err.(InvalidPolicyDataError); !ok || err.Error() != "invalid authorization policy data: cannot complete authorization "+
+			"policy assertions: the PCR policy has been revoked" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

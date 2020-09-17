@@ -333,9 +333,14 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 	return lastErr
 }
 
+func isTPMLoadError(err error) bool {
+	var e InvalidKeyFileError
+	return xerrors.As(err, &e) && e.Type == InvalidKeyFileErrorTPMLoad
+}
+
 func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, []byte, error) {
 	sealedKey, authPrivateKey, err := k.UnsealFromTPM(tpm, pin)
-	if err == ErrTPMProvisioning {
+	if err == ErrTPMProvisioning || isTPMLoadError(err) {
 		// ErrTPMProvisioning or InvalidKeyFileError in this context might indicate that there isn't a valid persistent SRK. Have a go
 		// at creating one now and then retrying the unseal operation - if the proper SRK was evicted, the TPM owner hasn't changed, the
 		// storage hierarchy still has a null authorization value, and the TPM sealed object is still valid, then this will allow us to
@@ -453,6 +458,16 @@ func makeActivateOptions(in []string) ([]string, error) {
 	return append(out, "tries=1"), nil
 }
 
+func isInvalidKeyFileError(err error) bool {
+	var e InvalidKeyFileError
+	return xerrors.As(err, &e)
+}
+
+func isInvalidPolicyDataError(err error) bool {
+	var e InvalidPolicyDataError
+	return xerrors.As(err, &e)
+}
+
 // ActivateWithTPMSealedKeyOptions provides options to ActivateVolumeWtthTPMSealedKey.
 type ActivateWithTPMSealedKeyOptions struct {
 	// PINTries specifies the maximum number of times that unsealing with a PIN should be attempted before failing with an error and
@@ -536,6 +551,8 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		case xerrors.Is(err, ErrTPMProvisioning):
 			reason = RecoveryKeyUsageReasonTPMProvisioningError
 		case isInvalidKeyFileError(err):
+			reason = RecoveryKeyUsageReasonInvalidKeyFile
+		case isInvalidPolicyDataError(err):
 			reason = RecoveryKeyUsageReasonInvalidKeyFile
 		case xerrors.Is(err, requiresPinErr):
 			reason = RecoveryKeyUsageReasonPINFail

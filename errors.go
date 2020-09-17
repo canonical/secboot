@@ -113,20 +113,33 @@ func isTPMVerificationError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// InvalidKeyFileError indicates that the provided key data file is invalid. This error may also be returned in some
-// scenarious where the TPM is incorrectly provisioned, but it isn't possible to determine whether the error is with
-// the provisioning status or because the key data file is invalid.
+// InvalidKeyFileErrorType corresponds to the type of error detailed by InvalidKeyFileError.
+type InvalidKeyFileErrorType int
+
+const (
+	// InvalidKeyFileErrorFatal indicates that the error was detected by software and is definitely caused by invalid key data.
+	InvalidKeyFileErrorFatal = iota + 1
+
+	// InvalidKeyFileErrorTPMLoad indicates that the error was detected when loading the sealed key object in to the TPM, and may
+	// indicate that the key data is invalid, or may indicate that the object at the persistent handle reserved for the storage
+	// root key is not the creation parent of the sealed key object. In this case, calling ProvisionTPM may rectify this problem.
+	InvalidKeyFileErrorTPMLoad
+)
+
+// InvalidKeyFileError indicates that the provided key data file is invalid.
 type InvalidKeyFileError struct {
-	msg string
+	Type InvalidKeyFileErrorType
+	msg  string
 }
 
 func (e InvalidKeyFileError) Error() string {
-	return fmt.Sprintf("invalid key data file: %s", e.msg)
+	return "invalid key data file: " + e.msg
 }
 
-func isInvalidKeyFileError(err error) bool {
-	var e InvalidKeyFileError
-	return xerrors.As(err, &e)
+type InvalidPolicyDataError string
+
+func (e InvalidPolicyDataError) Error() string {
+	return "invalid authorization policy data: " + string(e)
 }
 
 // LockAccessToSealedKeysError is returned from ActivateVolumeWithTPMSealedKey if an error occurred whilst trying to lock access
