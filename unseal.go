@@ -101,6 +101,8 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 			return nil, nil, ErrPINFail
 		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandPolicySecret):
 			return nil, nil, ErrTPMLockout
+		case tpm2.IsResourceUnavailableError(err, k.data.staticPolicyData.pcrPolicyCounterHandle):
+			return nil, nil, InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: "no PCR policy counter found"}
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
 			// This is technically a provisioning error, but the current index can't be recreated. This key
 			// can never be recovered even after re-provisioning.

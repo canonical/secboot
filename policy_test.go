@@ -1891,7 +1891,8 @@ func TestExecutePolicy(t *testing.T) {
 			}}, func(s *StaticPolicyData, d *DynamicPolicyData) {
 			s.SetPcrPolicyCounterHandle(s.PcrPolicyCounterHandle() + 1)
 		})
-		if !IsKeyDataError(err) || err.Error() != "no PCR policy counter found" {
+		if !tpm2.IsResourceUnavailableError(err, policyCounterPub.Index+1) ||
+			err.Error() != "cannot obtain context for PCR policy counter: a resource at handle 0x0181ff01 is not available on the TPM" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {

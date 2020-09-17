@@ -978,11 +978,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	if pcrPolicyCounterHandle != tpm2.HandleNull {
 		var err error
 		policyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
-		switch {
-		case tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle):
-			// If there is no NV index at the expected handle then the key data is invalid.
-			return keyDataError{errors.New("no PCR policy counter found")}
-		case err != nil:
+		if err != nil {
 			return xerrors.Errorf("cannot obtain context for PCR policy counter: %w", err)
 		}
 

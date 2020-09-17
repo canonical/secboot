@@ -242,6 +242,7 @@ func (s *keyDataSuite) TestValidateNoLockIndex(c *C) {
 	index, err := s.TPM.CreateResourceContextFromTPM(LockNVHandle)
 	c.Assert(err, IsNil)
 	c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), index, nil), IsNil)
+	defer s.ClearTPMWithPlatformAuth(c)
 
 	err = k.Validate(s.TPM, s.authPrivateKey)
 	c.Check(err, ErrorMatches, "invalid key data: no lock NV index")

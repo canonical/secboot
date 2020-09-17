@@ -455,6 +455,17 @@ func ResetTPMSimulator(tpm *secboot.TPMConnection, tcti *tpm2.TctiMssim) (*secbo
 	return OpenTPMSimulatorForTesting()
 }
 
+// ClearTPMWithPlatformAuth clear the TPM with the platform hierarchy.
+func ClearTPMWithPlatformAuth(tpm *secboot.TPMConnection) error {
+	if err := tpm.ClearControl(tpm.PlatformHandleContext(), false, nil); err != nil {
+		return fmt.Errorf("ClearControl failed: %v", err)
+	}
+	if err := tpm.Clear(tpm.PlatformHandleContext(), nil); err != nil {
+		return fmt.Errorf("Clear failed: %v", err)
+	}
+	return nil
+}
+
 func OpenTPMSimulatorForTesting() (*secboot.TPMConnection, *tpm2.TctiMssim, error) {
 	if !UseMssim {
 		return nil, nil, nil

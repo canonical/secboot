@@ -309,4 +309,69 @@ func TestUnsealErrorHandling(t *testing.T) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
+
+	t.Run("NoLockNVIndex", func(t *testing.T) {
+		tpm, _ := openTPMSimulatorForTesting(t)
+		defer func() {
+			clearTPMWithPlatformAuth(t, tpm)
+			closeTPM(t, tpm)
+		}()
+
+		err := run(t, tpm, func(keyFile string, _ []byte) {
+			index, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
+			if err != nil {
+				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+			}
+			if tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
+				t.Fatalf("NVUndefineSpace failed: %v", err)
+			}
+		})
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorFatal ||
+			err.Error() != "invalid key data: a required NV index is missing from the TPM" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("InvalidLockNVIndex", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		err := run(t, tpm, func(keyFile string, _ []byte) {
+			for _, h := range []tpm2.Handle{LockNVHandle, LockNVDataHandle} {
+				index, err := tpm.CreateResourceContextFromTPM(h)
+				if err != nil {
+					t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+				}
+				if tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
+					t.Fatalf("NVUndefineSpace failed: %v", err)
+				}
+			}
+			if err := ProvisionTPM(tpm, ProvisionModeWithoutLockout, nil); err != nil {
+				t.Fatalf("ProvisionTPM failed: %v", err)
+			}
+		})
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorFatal ||
+			err.Error() != "invalid key data: the authorization policy check failed during unsealing" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("NoPCRPolicyCounter", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		err := run(t, tpm, func(keyFile string, _ []byte) {
+			index, err := tpm.CreateResourceContextFromTPM(0x0181fff0)
+			if err != nil {
+				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+			}
+			if tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
+				t.Fatalf("NVUndefineSpace failed: %v", err)
+			}
+		})
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorFatal ||
+			err.Error() != "invalid key data: no PCR policy counter found" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
 }
