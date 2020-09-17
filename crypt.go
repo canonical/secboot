@@ -336,14 +336,13 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, []byte, error) {
 	sealedKey, authPrivateKey, err := k.UnsealFromTPM(tpm, pin)
 	if err == ErrTPMProvisioning {
-		// ErrTPMProvisioning in this context might indicate that there isn't a valid persistent SRK. Have a go at creating one now and then
-		// retrying the unseal operation - if the previous SRK was evicted, the TPM owner hasn't changed and the storage hierarchy still
-		// has a null authorization value, then this will allow us to unseal the key without requiring any type of manual recovery. If the
-		// storage hierarchy has a non-null authorization value, ProvionTPM will fail. If the TPM owner has changed, ProvisionTPM might
-		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
-		if pErr := ProvisionTPM(tpm, ProvisionModeWithoutLockout, nil); pErr == nil {
-			sealedKey, authPrivateKey, err = k.UnsealFromTPM(tpm, pin)
-		}
+		// ErrTPMProvisioning or InvalidKeyFileError in this context might indicate that there isn't a valid persistent SRK. Have a go
+		// at creating one now and then retrying the unseal operation - if the proper SRK was evicted, the TPM owner hasn't changed, the
+		// storage hierarchy still has a null authorization value, and the TPM sealed object is still valid, then this will allow us to
+		// unseal the key without requiring any type of manual recovery. Ignore provisioning errors here and retry unsealing afterwards -
+		// it's worth retrying even if provisioning failed, just in case it did enough to allow unsealing to succeed.
+		ProvisionTPM(tpm, ProvisionModeWithoutLockout, nil)
+		sealedKey, authPrivateKey, err = k.UnsealFromTPM(tpm, pin)
 	}
 	return sealedKey, authPrivateKey, err
 }
