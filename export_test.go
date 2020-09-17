@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"fmt"
-	"os"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
@@ -260,15 +259,4 @@ func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
 		}
 	}
 	return s.String()
-}
-
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey TPMPolicyAuthKey, session tpm2.SessionContext) error {
-	kf, err := os.Open(keyFile)
-	if err != nil {
-		return err
-	}
-	defer kf.Close()
-
-	_, _, _, err = decodeAndValidateKeyData(tpm, kf, authPrivateKey, session)
-	return err
 }

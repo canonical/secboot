@@ -52,9 +52,14 @@ func (s *keyDataSuite) TestValidateAfterLock(c *C) {
 	c.Assert(err, IsNil)
 	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pcrPolicyCounter)
 
-	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, authPrivateKey, s.TPM.HmacSession()), IsNil)
+	k, err := ReadSealedKeyObject(keyFile)
+	c.Assert(err, IsNil)
+	c.Check(k.Validate(s.TPM, authPrivateKey), IsNil)
 
 	c.Assert(LockAccessToSealedKeys(s.TPM), IsNil)
 	defer s.ResetTPMSimulator(c)
-	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, authPrivateKey, s.TPM.HmacSession()), IsNil)
+
+	k, err = ReadSealedKeyObject(keyFile)
+	c.Assert(err, IsNil)
+	c.Check(k.Validate(s.TPM, authPrivateKey), IsNil)
 }

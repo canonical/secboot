@@ -66,8 +66,12 @@ func TestSealKeyToTPM(t *testing.T) {
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-		if err := ValidateKeyDataFile(tpm.TPMContext, keyFile, authPrivateKey, tpm.HmacSession()); err != nil {
-			t.Errorf("ValidateKeyDataFile failed: %v", err)
+		k, err := ReadSealedKeyObject(keyFile)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
+		if err := k.Validate(tpm, authPrivateKey); err != nil {
+			t.Errorf("Validate failed: %v", err)
 		}
 	}
 
