@@ -77,32 +77,28 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 	// Load the key data
 	keyObject, err := k.data.load(tpm.TPMContext, hmacSession)
 	switch {
+	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
+		return nil, nil, ErrTPMProvisioning
 	case isKeyFileError(err):
 		// A keyFileError can be as a result of an improperly provisioned TPM - detect if the object at tcg.SRKHandle is a valid primary key
-		// with the correct attributes. If it's not, then it's definitely a provisioning error. If it is, then it could still be a
-		// provisioning error because we don't know if the object was created with the same template that ProvisionTPM uses. In that case,
-		// we'll just assume an invalid key file
+		// with the correct attributes. If it's not, then it's definitely a provisioning error because the object at tcg.SRKHandle is not
+		// the one that we provisioned the TPM with. If it is, then it could still be a provisioning error because we don't know if the
+		// object was created with the same template that ProvisionTPM uses, but in this case, we can't tell the difference between an
+		// invalid key file or a provisioning error.
 		srk, err2 := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-		switch {
-		case tpm2.IsResourceUnavailableError(err2, tcg.SRKHandle):
-			return nil, nil, ErrTPMProvisioning
-		case err2 != nil:
+		if err2 != nil {
 			return nil, nil, xerrors.Errorf("cannot create context for SRK: %w", err2)
 		}
 		ok, err2 := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, tcg.SRKTemplate, tpm.HmacSession())
 		switch {
 		case err2 != nil:
-			return nil, nil, xerrors.Errorf("cannot determine if object at 0x%08x is a primary key in the storage hierarchy: %w", tcg.SRKHandle, err2)
+			return nil, nil, xerrors.Errorf("cannot determine if object at %v is a primary key in the storage hierarchy: %w", tcg.SRKHandle, err2)
 		case !ok:
 			return nil, nil, ErrTPMProvisioning
 		}
-		// This is probably a broken key file, but it could still be a provisioning error because we don't know if the SRK object was
-		// created with the same template that ProvisionTPM uses.
 		return nil, nil, InvalidKeyFileError{err.Error()}
-	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
-		return nil, nil, ErrTPMProvisioning
 	case err != nil:
-		return nil, nil, err
+		return nil, nil, xerrors.Errorf("cannot load sealed key in to TPM: %w", err)
 	}
 	defer tpm.FlushContext(keyObject)
 
