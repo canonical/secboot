@@ -48,7 +48,7 @@ func NewTPMKeyUnsealer(tpm *TPMConnection, keyPath string, pinReader io.Reader, 
 	}, nil
 }
 
-func (u *TPMKeyUnsealer) UnsealKey(volumeName, sourceDevicePath string) (key, resealAuthKey []byte, err error) {
+func (u *TPMKeyUnsealer) UnsealKey(volumeName, sourceDevicePath string, p Prompter) (key, resealAuthKey []byte, err error) {
 	var lockErr error
 	tpm := u.tpm
 	sealedKey, authPrivateKey, err := func() ([]byte, TPMPolicyAuthKey, error) {
@@ -78,9 +78,7 @@ func (u *TPMKeyUnsealer) UnsealKey(volumeName, sourceDevicePath string) (key, re
 		for ; pinTries > 0; pinTries-- {
 			var pin string
 			if k.AuthMode2F() == AuthModePIN {
-				r := u.pinReader
-				u.pinReader = nil
-				pin, err = getPassword(sourceDevicePath, "PIN", r)
+				pin, err = p.PromptFor2FA(sourceDevicePath, "PIN")
 				if err != nil {
 					return nil, nil, xerrors.Errorf("cannot obtain PIN: %w", err)
 				}

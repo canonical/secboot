@@ -217,6 +217,35 @@ func activate(volumeName, sourceDevicePath string, key []byte, options []string)
 	return wrapExecError(cmd, cmd.Wait())
 }
 
+// A Prompter can be used to prompt the user for secrets necessary
+// to unlock a disk.
+type Prompter interface {
+	PromptFor2FA(sourceDevicePath, description string) (string, error)
+
+	PromptForRecoveryKey(sourceDevicePath string) (string, error)
+}
+
+// SystemPrompter implements Prompter reading once if set from the
+// dedicated io.Reader or otherwise using systemd-ask-password.
+type SystemPrompter struct {
+	ReaderFor2FA         io.Reader
+	ReaderForRecoveryKey io.Reader
+}
+
+func (p *SystemPrompter) PromptFor2FA(sourceDevicePath, description string) (string, error) {
+	// consumed once
+	r := p.ReaderFor2FA
+	p.ReaderFor2FA = nil
+	return getPassword(sourceDevicePath, description, r)
+}
+
+func (p *SystemPrompter) PromptForRecoveryKey(sourceDevicePath string) (string, error) {
+	// consumed once
+	r := p.ReaderForRecoveryKey
+	p.ReaderForRecoveryKey = nil
+	return getPassword(sourceDevicePath, "recovery key", r)
+}
+
 func askPassword(sourceDevicePath, msg string) (string, error) {
 	cmd := exec.Command(
 		"systemd-ask-password",
@@ -281,7 +310,7 @@ const (
 	RecoveryKeyUsageReasonPassphraseFail
 )
 
-func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, reason RecoveryKeyUsageReason, activateOptions []string, keyringPrefix string) error {
+func activateWithRecoveryKey(volumeName, sourceDevicePath string, p Prompter, tries int, reason RecoveryKeyUsageReason, activateOptions []string, keyringPrefix string) error {
 	if tries == 0 {
 		return errors.New("no recovery key tries permitted")
 	}
@@ -291,10 +320,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 	for ; tries > 0; tries-- {
 		lastErr = nil
 
-		r := keyReader
-		keyReader = nil
-
-		passphrase, err := getPassword(sourceDevicePath, "recovery key", r)
+		passphrase, err := p.PromptForRecoveryKey(sourceDevicePath)
 		if err != nil {
 			return xerrors.Errorf("cannot obtain recovery key: %w", err)
 		}
@@ -386,11 +412,11 @@ type ActivateVolumeOptions struct {
 }
 
 type KeyUnsealer interface {
-	UnsealKey(volumeName, sourceDevicePath string) (key, resealToken []byte, err error)
+	UnsealKey(volumeName, sourceDevicePath string, p Prompter) (key, resealToken []byte, err error)
 	UnderstoodError(e error, isCryptsetupError bool) (ok bool, reason RecoveryKeyUsageReason, err error)
 }
 
-func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer KeyUnsealer, options *ActivateVolumeOptions) (bool, error) {
+func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer KeyUnsealer, p Prompter, options *ActivateVolumeOptions) (bool, error) {
 	if options.RecoveryKeyTries < 0 {
 		return false, errors.New("invalid RecoveryKeyTries")
 	}
@@ -400,7 +426,7 @@ func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer
 		return false, err
 	}
 
-	key, resealToken, err := unsealer.UnsealKey(volumeName, sourceDevicePath)
+	key, resealToken, err := unsealer.UnsealKey(volumeName, sourceDevicePath, p)
 	if err == nil {
 		err = activate(volumeName, sourceDevicePath, key, activateOptions)
 		if err != nil {
@@ -416,7 +442,7 @@ func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer
 		if !ok {
 			reason = RecoveryKeyUsageReasonUnexpectedError
 		}
-		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, activateOptions, options.KeyringPrefix)
+		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, p, options.RecoveryKeyTries, reason, activateOptions, options.KeyringPrefix)
 		return rErr == nil, &ActivateWithTPMSealedKeyError{err, rErr}
 	}
 
@@ -480,7 +506,9 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 	if err != nil {
 		return false, err
 	}
-	return ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath, keyUnsealer, options)
+
+	p := &SystemPrompter{ReaderFor2FA: passphraseReader}
+	return ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath, keyUnsealer, p, options)
 }
 
 // ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
@@ -507,7 +535,8 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 		return err
 	}
 
-	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.RecoveryKeyTries, RecoveryKeyUsageReasonRequested, activateOptions, options.KeyringPrefix)
+	p := &SystemPrompter{ReaderForRecoveryKey: keyReader}
+	return activateWithRecoveryKey(volumeName, sourceDevicePath, p, options.RecoveryKeyTries, RecoveryKeyUsageReasonRequested, activateOptions, options.KeyringPrefix)
 }
 
 // ActivationData corresponds to some data added to the user keyring by one of the ActivateVolume functions.
