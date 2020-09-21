@@ -21,17 +21,20 @@ package secboot_test
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"syscall"
 	"testing"
 
+	"golang.org/x/xerrors"
+
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
-
-	"golang.org/x/xerrors"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 func getTestPCRProfile() *PCRProtectionProfile {
@@ -51,7 +54,7 @@ func TestSealKeyToTPM(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	run := func(t *testing.T, tpm *TPMConnection, params *KeyCreationParams) {
+	run := func(t *testing.T, tpm *TPMConnection, params *KeyCreationParams) (authKeyBytes []byte) {
 		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPM_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
@@ -69,6 +72,8 @@ func TestSealKeyToTPM(t *testing.T) {
 		if err := ValidateKeyDataFile(tpm.TPMContext, keyFile, authPrivateKey, tpm.HmacSession()); err != nil {
 			t.Errorf("ValidateKeyDataFile failed: %v", err)
 		}
+
+		return authPrivateKey
 	}
 
 	t.Run("Standard", func(t *testing.T) {
@@ -113,6 +118,20 @@ func TestSealKeyToTPM(t *testing.T) {
 		defer closeTPM(t, tpm)
 		run(t, tpm, &KeyCreationParams{PINHandle: 0x01810000})
 	})
+
+	t.Run("WithProvidedAuthKey", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
+		if err != nil {
+			t.Fatalf("GenerateKey failed: %v", err)
+		}
+		pkb := run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000, AuthKey: authKey})
+		if !bytes.Equal(pkb, authKey.D.Bytes()) {
+			t.Fatalf("AuthKey private part bytes do not match provided one")
+		}
+	})
+
 }
 
 func TestSealKeyToTPMErrorHandling(t *testing.T) {
