@@ -216,7 +216,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	// Create an asymmetric key for signing authorization policy updates, and authorizing dynamic authorization policy revocations.
 	goAuthKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot generate RSA key pair for signing dynamic authorization policies: %w", err)
+		return nil, xerrors.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
 	}
 	authPublicKey := createTPMPublicAreaForECDSAKey(&goAuthKey.PublicKey)
 	authKeyName, err := authPublicKey.Name()
