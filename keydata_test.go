@@ -94,7 +94,7 @@ func (s *keyDataSuite) TestValidateInvalidVersion(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: invalid metadata version")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidKeyPublic1(c *C) {
@@ -107,7 +107,7 @@ func (s *keyDataSuite) TestValidateInvalidKeyPublic1(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: sealed key object has the wrong type")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidKeyPublic2(c *C) {
@@ -120,7 +120,7 @@ func (s *keyDataSuite) TestValidateInvalidKeyPublic2(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: sealed key object has the wrong attributes")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateLoadFail(c *C) {
@@ -133,7 +133,7 @@ func (s *keyDataSuite) TestValidateLoadFail(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: cannot load sealed key object in to TPM: bad sealed key object or parent object")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorTPMLoad)
+	c.Check(ierr.RetryProvision, Equals, true)
 }
 
 func (s *keyDataSuite) TestValidateInvalidPCRPolicyCounterHandle1(c *C) {
@@ -146,7 +146,7 @@ func (s *keyDataSuite) TestValidateInvalidPCRPolicyCounterHandle1(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: PCR policy counter handle is invalid")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidPCRPolicyCounterHandle2(c *C) {
@@ -161,7 +161,7 @@ func (s *keyDataSuite) TestValidateInvalidPCRPolicyCounterHandle2(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidPCRPolicyCounterHandle3(c *C) {
@@ -176,7 +176,7 @@ func (s *keyDataSuite) TestValidateInvalidPCRPolicyCounterHandle3(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: PCR policy counter is unavailable")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
@@ -189,7 +189,7 @@ func (s *keyDataSuite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: cannot compute name of dynamic authorization policy key: unsupported name algorithm: TPM_ALG_NULL")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidAuthPublicKeyType(c *C) {
@@ -202,7 +202,7 @@ func (s *keyDataSuite) TestValidateInvalidAuthPublicKeyType(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: cannot decode dynamic auth policy signing key: unsupported type")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidAuthPublicKey(c *C) {
@@ -218,7 +218,7 @@ func (s *keyDataSuite) TestValidateInvalidAuthPublicKey(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidAuthPrivateKey(c *C) {
@@ -232,7 +232,7 @@ func (s *keyDataSuite) TestValidateInvalidAuthPrivateKey(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: dynamic authorization policy signing private key doesn't match public key")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateNoLockIndex(c *C) {
@@ -248,7 +248,7 @@ func (s *keyDataSuite) TestValidateNoLockIndex(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: no lock NV index")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }
 
 func (s *keyDataSuite) TestValidateInvalidLockIndex(c *C) {
@@ -266,5 +266,5 @@ func (s *keyDataSuite) TestValidateInvalidLockIndex(c *C) {
 	c.Check(err, ErrorMatches, "invalid key data: the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 	ierr, ok := err.(InvalidKeyDataError)
 	c.Assert(ok, Equals, true)
-	c.Check(ierr.Type, Equals, InvalidKeyDataErrorFatal)
+	c.Check(ierr.RetryProvision, Equals, false)
 }

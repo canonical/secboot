@@ -335,7 +335,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 
 func isTPMLoadError(err error) bool {
 	var e InvalidKeyDataError
-	return xerrors.As(err, &e) && e.Type == InvalidKeyDataErrorTPMLoad
+	return xerrors.As(err, &e) && e.RetryProvision
 }
 
 func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, []byte, error) {

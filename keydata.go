@@ -734,14 +734,14 @@ func (k *SealedKeyObject) PCRPolicyCounterHandle() tpm2.Handle {
 func (k *SealedKeyObject) Validate(tpm *TPMConnection, authKey TPMPolicyAuthKey) error {
 	key, err := k.data.decodeAuthKeyFromBytes(authKey)
 	if err != nil {
-		return InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: fmt.Sprintf("cannot decode dynamic auth policy signing key: %v", err)}
+		return InvalidKeyDataError{RetryProvision: false, msg: fmt.Sprintf("cannot decode dynamic auth policy signing key: %v", err)}
 	}
 	_, err = k.data.validate(tpm.TPMContext, key, tpm.HmacSession())
 	switch {
 	case isKeyDataLoadError(err):
-		return InvalidKeyDataError{Type: InvalidKeyDataErrorTPMLoad, msg: err.Error()}
+		return InvalidKeyDataError{RetryProvision: true, msg: err.Error()}
 	case isKeyDataError(err):
-		return InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: err.Error()}
+		return InvalidKeyDataError{RetryProvision: false, msg: err.Error()}
 	default:
 		return err
 	}
@@ -760,7 +760,7 @@ func ReadSealedKeyObject(path string) (*SealedKeyObject, error) {
 
 	data, err := decodeKeyData(f)
 	if err != nil {
-		return nil, InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: err.Error()}
+		return nil, InvalidKeyDataError{RetryProvision: false, msg: err.Error()}
 	}
 
 	return &SealedKeyObject{data: data}, nil

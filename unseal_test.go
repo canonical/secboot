@@ -225,7 +225,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorTPMLoad ||
+		if _, ok := err.(InvalidKeyDataError); !ok || !err.(InvalidKeyDataError).RetryProvision ||
 			err.Error() != "invalid key data: cannot load sealed key object in to TPM: bad sealed key object or parent object" {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -326,7 +326,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Fatalf("NVUndefineSpace failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorFatal ||
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).RetryProvision ||
 			err.Error() != "invalid key data: a required NV index is missing from the TPM" {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -350,7 +350,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Fatalf("ProvisionTPM failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorFatal ||
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).RetryProvision ||
 			err.Error() != "invalid key data: the authorization policy check failed during unsealing" {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -369,7 +369,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Fatalf("NVUndefineSpace failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).Type != InvalidKeyDataErrorFatal ||
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).RetryProvision ||
 			err.Error() != "invalid key data: no PCR policy counter found" {
 			t.Errorf("Unexpected error: %v", err)
 		}

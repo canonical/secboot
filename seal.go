@@ -323,9 +323,9 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 	data, authKey, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm, keyFile, authData, session)
 	switch {
 	case isKeyDataLoadError(err):
-		return InvalidKeyDataError{Type: InvalidKeyDataErrorTPMLoad, msg: err.Error()}
+		return InvalidKeyDataError{RetryProvision: true, msg: err.Error()}
 	case isKeyDataError(err):
-		return InvalidKeyDataError{Type: InvalidKeyDataErrorFatal, msg: err.Error()}
+		return InvalidKeyDataError{RetryProvision: false, msg: err.Error()}
 	case err != nil:
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
