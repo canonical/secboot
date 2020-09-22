@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -51,7 +50,7 @@ var (
 	ComputePolicyORData                      = computePolicyORData
 	ComputeSnapModelDigest                   = computeSnapModelDigest
 	ComputeStaticPolicy                      = computeStaticPolicy
-	CreatePublicAreaForECDSAKey              = createPublicAreaForECDSAKey
+	CreateTPMPublicAreaForECDSAKey           = createTPMPublicAreaForECDSAKey
 	DecodeSecureBootDb                       = decodeSecureBootDb
 	DecodeWinCertificate                     = decodeWinCertificate
 	EFICertTypePkcs7Guid                     = efiCertTypePkcs7Guid
@@ -263,23 +262,13 @@ func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
 	return s.String()
 }
 
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile, privateFile string, session tpm2.SessionContext) error {
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey TPMPolicyAuthKey, session tpm2.SessionContext) error {
 	kf, err := os.Open(keyFile)
 	if err != nil {
 		return err
 	}
 	defer kf.Close()
 
-	var pf io.Reader
-	if privateFile != "" {
-		f, err := os.Open(privateFile)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		pf = f
-	}
-
-	_, _, _, err = decodeAndValidateKeyData(tpm, kf, pf, session)
+	_, _, _, err = decodeAndValidateKeyData(tpm, kf, authPrivateKey, session)
 	return err
 }

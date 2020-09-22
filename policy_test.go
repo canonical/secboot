@@ -107,7 +107,7 @@ func TestIncrementPcrPolicyCounter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -391,7 +391,7 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 			t.Fatalf("GenerateKey failed: %v", err)
 		}
 
-		keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+		keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 		keyName, err := keyPublic.Name()
 		if err != nil {
 			t.Errorf("Cannot compute key name: %v", err)
@@ -510,7 +510,7 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 	if err != nil {
 		t.Fatalf("ParsePKCS1PrivateKey failed: %v", err)
 	}
-	publicKey := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	publicKey := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	publicKeyName, _ := publicKey.Name()
 
 	pcrPolicyCounterAuthPolicies, _ := ComputePcrPolicyCounterAuthPolicies(tpm2.HashAlgorithmSHA256, publicKeyName)
@@ -1164,7 +1164,7 @@ func TestExecutePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -1211,7 +1211,7 @@ func TestExecutePolicy(t *testing.T) {
 			policyCounterName, _ = data.policyCounterPub.Name()
 		}
 
-		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreatePublicAreaForECDSAKey(&key.PublicKey), data.policyCounterPub, lockIndex.Name()))
+		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreateTPMPublicAreaForECDSAKey(&key.PublicKey), data.policyCounterPub, lockIndex.Name()))
 		if err != nil {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
@@ -2420,7 +2420,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)

@@ -53,7 +53,8 @@ func TestUnsealWithNo2FA(t *testing.T) {
 
 		keyFile := tmpDir + "/keydata"
 
-		if err := SealKeyToTPM(tpm, key, keyFile, "", params); err != nil {
+		authKey, err := SealKeyToTPM(tpm, key, keyFile, params)
+		if err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
@@ -63,13 +64,16 @@ func TestUnsealWithNo2FA(t *testing.T) {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		keyUnsealed, err := k.UnsealFromTPM(tpm, "")
+		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm, "")
 		if err != nil {
 			t.Fatalf("UnsealFromTPM failed: %v", err)
 		}
 
 		if !bytes.Equal(key, keyUnsealed) {
 			t.Errorf("TPM returned the wrong key")
+		}
+		if !bytes.Equal(authKey, authKeyUnsealed) {
+			t.Errorf("TPM returned the wrong auth key")
 		}
 	}
 
@@ -105,7 +109,7 @@ func TestUnsealWithPIN(t *testing.T) {
 
 	keyFile := tmpDir + "/keydata"
 
-	if err := SealKeyToTPM(tpm, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0}); err != nil {
+	if _, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0}); err != nil {
 		t.Fatalf("SealKeyToTPM failed: %v", err)
 	}
 	defer undefineKeyNVSpace(t, tpm, keyFile)
@@ -121,7 +125,7 @@ func TestUnsealWithPIN(t *testing.T) {
 		t.Fatalf("ReadSealedKeyObject failed: %v", err)
 	}
 
-	keyUnsealed, err := k.UnsealFromTPM(tpm, testPIN)
+	keyUnsealed, _, err := k.UnsealFromTPM(tpm, testPIN)
 	if err != nil {
 		t.Fatalf("UnsealFromTPM failed: %v", err)
 	}
@@ -135,7 +139,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	run := func(t *testing.T, tpm *TPMConnection, fn func(string, string)) error {
+	run := func(t *testing.T, tpm *TPMConnection, fn func(string, []byte)) error {
 		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
 			t.Errorf("ProvisionTPM failed: %v", err)
 		}
@@ -147,21 +151,21 @@ func TestUnsealErrorHandling(t *testing.T) {
 		defer os.RemoveAll(tmpDir)
 
 		keyFile := tmpDir + "/keydata"
-		policyUpdateFile := tmpDir + "/keypolicyupdatedata"
 
-		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0}); err != nil {
+		authKey, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
+		if err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-		fn(keyFile, policyUpdateFile)
+		fn(keyFile, authKey)
 
 		k, err := ReadSealedKeyObject(keyFile)
 		if err != nil {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		_, err = k.UnsealFromTPM(tpm, "")
+		_, _, err = k.UnsealFromTPM(tpm, "")
 		return err
 	}
 
@@ -169,7 +173,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, tpm, func(_ string, _ []byte) {
 			// Put the TPM in DA lockout mode
 			if err := tpm.DictionaryAttackParameters(tpm.LockoutHandleContext(), 0, 7200, 86400, nil); err != nil {
 				t.Errorf("DictionaryAttackParameters failed: %v", err)
@@ -184,7 +188,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, tpm, func(_ string, _ []byte) {
 			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK: %v", err)
@@ -202,7 +206,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, tpm, func(_ string, _ []byte) {
 			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK: %v", err)
@@ -231,7 +235,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		tpm, _ := openTPMSimulatorForTesting(t)
 		defer closeTPM(t, tpm)
 
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, tpm, func(_ string, _ []byte) {
 			if _, err := tpm.PCREvent(tpm.PCRHandleContext(7), tpm2.Event("foo"), nil); err != nil {
 				t.Errorf("PCREvent failed: %v", err)
 			}
@@ -249,7 +253,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		err := run(t, tpm, func(keyFile, policyUpdateFile string) {
+		err := run(t, tpm, func(keyFile string, authKey []byte) {
 			src, err := os.Open(keyFile)
 			if err != nil {
 				t.Fatalf("Open failed: %v", err)
@@ -265,7 +269,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 
 			io.Copy(dst, src)
 
-			if err := UpdateKeyPCRProtectionPolicy(tpm, newKeyFile, policyUpdateFile, getTestPCRProfile()); err != nil {
+			if err := UpdateKeyPCRProtectionPolicy(tpm, newKeyFile, authKey, getTestPCRProfile()); err != nil {
 				t.Fatalf("UpdateKeyPCRProtectionPolicy failed: %v", err)
 			}
 		})
@@ -282,7 +286,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 			closeTPM(t, tpm)
 		}()
 
-		err := run(t, tpm, func(_, _ string) {
+		err := run(t, tpm, func(_ string, _ []byte) {
 			if err := LockAccessToSealedKeys(tpm); err != nil {
 				t.Errorf("LockAccessToSealedKeys failed: %v", err)
 			}
@@ -296,7 +300,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		err := run(t, tpm, func(keyFile, _ string) {
+		err := run(t, tpm, func(keyFile string, _ []byte) {
 			if err := ChangePIN(tpm, keyFile, &testPINParams, "", "1234"); err != nil {
 				t.Errorf("ChangePIN failed: %v", err)
 			}

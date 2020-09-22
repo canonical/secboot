@@ -51,7 +51,7 @@ func TestSealKeyToTPM(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	run := func(t *testing.T, tpm *TPMConnection, withPolicyUpdateFile bool, params *KeyCreationParams) {
+	run := func(t *testing.T, tpm *TPMConnection, params *KeyCreationParams) {
 		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPM_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
@@ -59,37 +59,28 @@ func TestSealKeyToTPM(t *testing.T) {
 		defer os.RemoveAll(tmpDir)
 
 		keyFile := tmpDir + "/keydata"
-		policyUpdateFile := ""
-		if withPolicyUpdateFile {
-			policyUpdateFile = tmpDir + "/keypolicyupdatedata"
-		}
 
-		if err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, params); err != nil {
+		authPrivateKey, err := SealKeyToTPM(tpm, key, keyFile, params)
+		if err != nil {
 			t.Errorf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-		if err := ValidateKeyDataFile(tpm.TPMContext, keyFile, policyUpdateFile, tpm.HmacSession()); err != nil {
+		if err := ValidateKeyDataFile(tpm.TPMContext, keyFile, authPrivateKey, tpm.HmacSession()); err != nil {
 			t.Errorf("ValidateKeyDataFile failed: %v", err)
 		}
 	}
 
-	t.Run("BothFiles", func(t *testing.T) {
+	t.Run("Standard", func(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
-	})
-
-	t.Run("NoPrivFile", func(t *testing.T) {
-		tpm := openTPMForTesting(t)
-		defer closeTPM(t, tpm)
-		run(t, tpm, false, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("DifferentPCRPolicyCounterHandle", func(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
+		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
 	})
 
 	t.Run("SealAfterProvision", func(t *testing.T) {
@@ -99,7 +90,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
 			t.Errorf("Failed to provision TPM for test: %v", err)
 		}
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("NoSRK", func(t *testing.T) {
@@ -114,19 +105,19 @@ func TestSealKeyToTPM(t *testing.T) {
 			t.Errorf("EvictControl failed: %v", err)
 		}
 
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("NilPCRProfile", func(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		run(t, tpm, false, &KeyCreationParams{PCRPolicyCounterHandle: 0x01810000})
+		run(t, tpm, &KeyCreationParams{PCRPolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("NoPCRPolicyCounterHandle", func(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	})
 }
 
@@ -152,21 +143,16 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		defer os.RemoveAll(tmpDir)
 
 		keyFile := tmpDir + "/keydata"
-		policyUpdateFile := tmpDir + "/keypolicyupdatedata"
 
 		origKeyFileInfo, _ := os.Stat(keyFile)
-		origPolicyUpdateFileInfo, _ := os.Stat(policyUpdateFile)
 		var policyCounter tpm2.ResourceContext
 		if params != nil {
 			policyCounter, _ = tpm.CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
 		}
 
-		err := SealKeyToTPM(tpm, key, keyFile, policyUpdateFile, params)
+		_, err := SealKeyToTPM(tpm, key, keyFile, params)
 
 		if fi, err := os.Stat(keyFile); err == nil && (origKeyFileInfo == nil || origKeyFileInfo.ModTime() != fi.ModTime()) {
-			t.Errorf("SealKeyToTPM created a key file")
-		}
-		if fi, err := os.Stat(policyUpdateFile); err == nil && (origPolicyUpdateFileInfo == nil || origPolicyUpdateFileInfo.ModTime() != fi.ModTime()) {
 			t.Errorf("SealKeyToTPM created a key file")
 		}
 		if params != nil {
@@ -252,7 +238,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		}
 	})
 
-	t.Run("FileExists/1", func(t *testing.T) {
+	t.Run("FileExists", func(t *testing.T) {
 		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPMErrors_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
@@ -265,23 +251,6 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 		var e *os.PathError
 		if !xerrors.As(err, &e) || e.Path != tmpDir+"/keydata" || e.Err != syscall.EEXIST {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
-
-	t.Run("FileExists/2", func(t *testing.T) {
-		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPMErrors_")
-		if err != nil {
-			t.Fatalf("Creating temporary directory failed: %v", err)
-		}
-		f, err := os.OpenFile(tmpDir+"/keypolicyupdatedata", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if err != nil {
-			t.Fatalf("OpenFile failed: %v", err)
-		}
-		defer f.Close()
-		err = run(t, tmpDir, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
-		var e *os.PathError
-		if !xerrors.As(err, &e) || e.Path != tmpDir+"/keypolicyupdatedata" || e.Err != syscall.EEXIST {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
