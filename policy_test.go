@@ -251,28 +251,36 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 		desc                string
 		alg                 tpm2.HashAlgorithmId
 		pcrPolicyCounterPub *tpm2.NVPublic
+		legacyLockIndexName tpm2.Name
 		policy              tpm2.Digest
 	}{
 		{
 			desc:                "SHA256",
 			alg:                 tpm2.HashAlgorithmSHA256,
 			pcrPolicyCounterPub: pcrPolicyCounterPub,
-			policy:              decodeHexStringT(t, "c5254ead173361569199cee1479ff329d1b4f0d329c794d7c362e0ed6aa43dbe"),
+			policy:              decodeHexStringT(t, "7ee3989de946cacba5d30e91507ac44d5dfc304a1c31bd1fc62fedab93f22d73"),
 		},
 		{
 			desc:                "SHA1",
 			alg:                 tpm2.HashAlgorithmSHA1,
 			pcrPolicyCounterPub: pcrPolicyCounterPub,
-			policy:              decodeHexStringT(t, "e502a0d62dfc7a61ccf1b3e7814729532761171a"),
+			policy:              decodeHexStringT(t, "132a4592464c20eaab89e752cd2322ed685776ed"),
 		},
 		{
 			desc:   "NoPolicyCounter",
 			alg:    tpm2.HashAlgorithmSHA256,
-			policy: decodeHexStringT(t, "594b23bea81ac48f593fdb179e35f74a23ca002d97415fc1a95b424b59fcdf28"),
+			policy: decodeHexStringT(t, "6733425c4b14ce4363bdfe7f65c91f64ee857a5524a2c4ba4fd2706e4454352b"),
+		},
+		{
+			desc:                "WithLegacyLockNVIndex",
+			alg:                 tpm2.HashAlgorithmSHA256,
+			pcrPolicyCounterPub: pcrPolicyCounterPub,
+			legacyLockIndexName: legacyLockName,
+			policy:              decodeHexStringT(t, "c5254ead173361569199cee1479ff329d1b4f0d329c794d7c362e0ed6aa43dbe"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			dataout, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(publicKey, data.pcrPolicyCounterPub, legacyLockName))
+			dataout, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(publicKey, data.pcrPolicyCounterPub, data.legacyLockIndexName))
 			if err != nil {
 				t.Fatalf("ComputeStaticPolicy failed: %v", err)
 			}
