@@ -374,22 +374,7 @@ func isKeyDataError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-type keyDataLoadError struct {
-	err error
-}
-
-func (e keyDataLoadError) Error() string {
-	return e.err.Error()
-}
-
-func (e keyDataLoadError) Unwrap() error {
-	return e.err
-}
-
-func isKeyDataLoadError(err error) bool {
-	var e keyDataLoadError
-	return xerrors.As(err, &e)
-}
+var errInvalidTPMSealedObject = errors.New("bad sealed key object or parent object")
 
 // load loads the TPM sealed object associated with this keyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
@@ -409,7 +394,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 			invalidObject = true
 		}
 		if invalidObject {
-			return nil, keyDataLoadError{errors.New("cannot load sealed key object in to TPM: bad sealed key object or parent object")}
+			err = errInvalidTPMSealedObject
 		}
 		return nil, xerrors.Errorf("cannot load sealed key object in to TPM: %w", err)
 	}
@@ -738,7 +723,7 @@ func (k *SealedKeyObject) Validate(tpm *TPMConnection, authKey TPMPolicyAuthKey)
 	}
 	_, err = k.data.validate(tpm.TPMContext, key, tpm.HmacSession())
 	switch {
-	case isKeyDataLoadError(err):
+	case xerrors.Is(err, errInvalidTPMSealedObject):
 		return InvalidKeyDataError{RetryProvision: true, msg: err.Error()}
 	case isKeyDataError(err):
 		return InvalidKeyDataError{RetryProvision: false, msg: err.Error()}

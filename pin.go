@@ -170,7 +170,7 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	// Read and validate the key data file
 	data, _, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm.TPMContext, keyFile, nil, tpm.HmacSession())
 	switch {
-	case isKeyDataLoadError(err):
+	case xerrors.Is(err, errInvalidTPMSealedObject):
 		return InvalidKeyDataError{RetryProvision: true, msg: err.Error()}
 	case isKeyDataError(err):
 		return InvalidKeyDataError{RetryProvision: false, msg: err.Error()}

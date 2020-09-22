@@ -74,7 +74,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 	switch {
 	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
 		return nil, nil, ErrTPMProvisioning
-	case isKeyDataLoadError(err):
+	case xerrors.Is(err, errInvalidTPMSealedObject):
 		return nil, nil, InvalidKeyDataError{RetryProvision: true, msg: err.Error()}
 	case err != nil:
 		return nil, nil, xerrors.Errorf("cannot load sealed key in to TPM: %w", err)
