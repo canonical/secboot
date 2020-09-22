@@ -50,7 +50,8 @@ func (s *compatTestV0Suite) TestSealKeyToTPM(c *C) {
 	key := make([]byte, 64)
 	rand.Read(key)
 	profile := secboot.NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7)
-	c.Check(secboot.SealKeyToTPM(s.TPM, key, c.MkDir()+"/key", "", &secboot.KeyCreationParams{PCRProfile: profile, PCRPolicyCounterHandle: 0x01810001}), IsNil)
+	_, err := secboot.SealKeyToTPM(s.TPM, key, c.MkDir()+"/key", &secboot.KeyCreationParams{PCRProfile: profile, PCRPolicyCounterHandle: 0x01810001})
+	c.Check(err, IsNil)
 	// TODO: Validate the key file when we have an API for this
 }
 
@@ -58,7 +59,8 @@ func (s *compatTestV0Suite) testSealKeyToTPMWithLockIndexProvisionError(c *C) {
 	key := make([]byte, 64)
 	rand.Read(key)
 	profile := secboot.NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7)
-	c.Check(secboot.SealKeyToTPM(s.TPM, key, c.MkDir()+"/key", "", &secboot.KeyCreationParams{PCRProfile: profile, PCRPolicyCounterHandle: 0x01810001}), ErrorMatches, "the TPM is not correctly provisioned")
+	_, err := secboot.SealKeyToTPM(s.TPM, key, c.MkDir()+"/key", &secboot.KeyCreationParams{PCRProfile: profile, PCRPolicyCounterHandle: 0x01810001})
+	c.Check(err, ErrorMatches, "the TPM is not correctly provisioned")
 }
 
 func (s *compatTestV0Suite) TestSealKeyToTPMWithLockIndexProvisionError1(c *C) {
@@ -214,7 +216,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	s.testUpdateKeyPCRProtectionPolicy(c, profile)
+	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, s.absPath("key"), s.absPath("pud"), profile), IsNil)
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
@@ -222,7 +224,11 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	s.testUpdateKeyPCRProtectionPolicyRevokes(c, profile, s.absPath("pcrSequence.1"))
+	key2 := s.copyFile(c, s.absPath("key"))
+
+	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, key2, s.absPath("pud"), profile), IsNil)
+	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
+	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
@@ -230,11 +236,14 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
+	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, s.absPath("key"), s.absPath("pud"), profile), IsNil)
+
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "7 11 %x\n", testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	fmt.Fprintf(&b, "12 11 %x\n", testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
+	s.replayPCRSequenceFromReader(c, &b)
 
-	s.testUpdateKeyPCRProtectionPolicyAndUnseal(c, profile, &b)
+	s.testUnsealCommon(c, "")
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
@@ -244,7 +253,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	s.testUpdateKeyPCRProtectionPolicy(c, profile)
+	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, s.absPath("key"), s.absPath("pud"), profile), IsNil)
 }
 
 func (s *compatTestV0Suite) TestUnsealAfterLock(c *C) {

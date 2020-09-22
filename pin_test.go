@@ -112,7 +112,8 @@ func (s *pinSuite) SetUpTest(c *C) {
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
 
-	c.Assert(SealKeyToTPM(s.TPM, s.key, s.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: s.pcrPolicyCounterHandle}), IsNil)
+	_, err := SealKeyToTPM(s.TPM, s.key, s.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: s.pcrPolicyCounterHandle})
+	c.Assert(err, IsNil)
 	policyCounter, err := s.TPM.CreateResourceContextFromTPM(s.pcrPolicyCounterHandle)
 	c.Assert(err, IsNil)
 	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), policyCounter)
@@ -127,7 +128,7 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 		c.Check(k.AuthMode2F(), Equals, AuthModePIN)
 	}
 
-	key, err := k.UnsealFromTPM(s.TPM, pin)
+	key, _, err := k.UnsealFromTPM(s.TPM, pin)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, s.key)
 }

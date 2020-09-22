@@ -43,7 +43,7 @@ func TestIncrementPcrPolicyCounter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -172,48 +172,6 @@ func TestEnsureLockNVIndices(t *testing.T) {
 	})
 }
 
-//func TestEnsureLockNVIndex(t *testing.T) {
-//	tpm := openTPMForTesting(t)
-//	defer closeTPM(t, tpm)
-//
-//	undefineLockNVIndices(t, tpm)
-//	if err := EnsureLockNVIndex(tpm.TPMContext, tpm.HmacSession()); err != nil {
-//		t.Errorf("EnsureLockNVIndex failed: %v", err)
-//	}
-//	defer func() {
-//		index, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
-//		if err != nil {
-//			t.Errorf("CreateResourceContextFromTPM failed: %v", err)
-//		}
-//		undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-//		index, err = tpm.CreateResourceContextFromTPM(LockNVDataHandle)
-//		if err != nil {
-//			t.Errorf("CreateResourceContextFromTPM failed: %v", err)
-//		}
-//		undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-//	}()
-//
-//	validateLockNVIndex(t, tpm.TPMContext)
-//
-//	index, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
-//	if err != nil {
-//		t.Fatalf("No lock NV index created")
-//	}
-//	origName := index.Name()
-//
-//	if err := EnsureLockNVIndex(tpm.TPMContext, tpm.HmacSession()); err != nil {
-//		t.Errorf("EnsureLockNVIndex failed: %v", err)
-//	}
-//
-//	index, err = tpm.CreateResourceContextFromTPM(LockNVHandle)
-//	if err != nil {
-//		t.Fatalf("No lock NV index created")
-//	}
-//	if !bytes.Equal(index.Name(), origName) {
-//		t.Errorf("lock NV index shouldn't have been recreated")
-//	}
-//}
-
 func TestComputeStaticPolicy(t *testing.T) {
 	block, _ := pem.Decode([]byte(`
 -----BEGIN EC PRIVATE KEY-----
@@ -225,7 +183,7 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 	if err != nil {
 		t.Fatalf("ParsePKCS1PrivateKey failed: %v", err)
 	}
-	publicKey := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	publicKey := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	publicKeyName, _ := publicKey.Name()
 
 	pcrPolicyCounterAuthPolicies, _ := ComputePcrPolicyCounterAuthPolicies(tpm2.HashAlgorithmSHA256, publicKeyName)
@@ -887,7 +845,7 @@ func TestExecutePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
@@ -929,7 +887,7 @@ func TestExecutePolicy(t *testing.T) {
 			policyCounterName, _ = data.policyCounterPub.Name()
 		}
 
-		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreatePublicAreaForECDSAKey(&key.PublicKey), data.policyCounterPub, nil))
+		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreateTPMPublicAreaForECDSAKey(&key.PublicKey), data.policyCounterPub, nil))
 		if err != nil {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
@@ -2130,7 +2088,7 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
-	keyPublic := CreatePublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		t.Fatalf("Cannot compute key name: %v", err)
