@@ -44,16 +44,17 @@ func (s *keyDataSuite) TestValidateAfterLock(c *C) {
 	dir := c.MkDir()
 	keyFile := dir + "/keydata"
 
-	pinHandle := tpm2.Handle(0x0181fff0)
+	pcrPolicyCounterHandle := tpm2.Handle(0x0181fff0)
 
-	c.Assert(SealKeyToTPM(s.TPM, key, keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.Handle(0x0181fff0)}), IsNil)
-	pinIndex, err := s.TPM.CreateResourceContextFromTPM(pinHandle)
+	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: pcrPolicyCounterHandle})
 	c.Assert(err, IsNil)
-	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pinIndex)
+	pcrPolicyCounter, err := s.TPM.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
+	c.Assert(err, IsNil)
+	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pcrPolicyCounter)
 
-	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, "", s.TPM.HmacSession()), IsNil)
+	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, authPrivateKey, s.TPM.HmacSession()), IsNil)
 
 	c.Assert(LockAccessToSealedKeys(s.TPM), IsNil)
 	defer s.ResetTPMSimulator(c)
-	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, "", s.TPM.HmacSession()), IsNil)
+	c.Check(ValidateKeyDataFile(s.TPM.TPMContext, keyFile, authPrivateKey, s.TPM.HmacSession()), IsNil)
 }

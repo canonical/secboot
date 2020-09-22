@@ -452,7 +452,7 @@ func ensureLockNVIndex(tpm *tpm2.TPMContext, session tpm2.SessionContext) error 
 		return xerrors.Errorf("cannot create signing key for initializing NV index: %w", err)
 	}
 
-	keyPublic := createPublicAreaForECDSAKey(&key.PublicKey)
+	keyPublic := createTPMPublicAreaForECDSAKey(&key.PublicKey)
 	keyName, err := keyPublic.Name()
 	if err != nil {
 		return xerrors.Errorf("cannot compute name of signing key for initializing NV index: %w", err)
