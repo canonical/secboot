@@ -303,7 +303,7 @@ func (k *SealedKeyObject) ChangePIN(tpm *TPMConnection, oldPIN, newPIN string) e
 		return nil
 	}
 
-	if err := k.data.writeToFileAtomic(k.path); err != nil {
+	if err := k.commitAtomic(); err != nil {
 		return xerrors.Errorf("cannot write sealed key data file: %v", err)
 	}
 

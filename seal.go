@@ -24,6 +24,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -305,6 +306,9 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		staticPolicyData:  staticPolicyData,
 		dynamicPolicyData: dynamicPolicyData}
 
+	if err := binary.Write(keyFile, binary.BigEndian, keyDataHeader); err != nil {
+		return xerrors.Errorf("cannot write header for key data file: %w", err)
+	}
 	if err := data.write(keyFile); err != nil {
 		return xerrors.Errorf("cannot write key data file: %w", err)
 	}
@@ -381,7 +385,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *TPMConnection, policyUp
 	// Atomically update the key data file
 	k.data.dynamicPolicyData = policyData
 
-	if err := k.data.writeToFileAtomic(k.path); err != nil {
+	if err := k.commitAtomic(); err != nil {
 		return xerrors.Errorf("cannot write key data file: %v", err)
 	}
 
