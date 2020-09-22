@@ -183,7 +183,13 @@ func (s *pinSuite) SetUpTest(c *C) {
 	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pinIndex)
 }
 
-func (s *pinSuite) checkPIN(c *C, pin string) {
+func (s *pinSuite) checkPIN(c *C, k *SealedKeyObject, pin string) {
+	if pin == "" {
+		c.Check(k.AuthMode2F(), Equals, AuthModeNone)
+	} else {
+		c.Check(k.AuthMode2F(), Equals, AuthModePIN)
+	}
+
 	k, err := ReadSealedKeyObject(s.keyFile)
 	c.Assert(err, IsNil)
 	if pin == "" {
@@ -206,20 +212,26 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 }
 
 func (s *pinSuite) TestSetAndClearPIN(c *C) {
-	testPIN := "1234"
-	c.Check(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
-	s.checkPIN(c, testPIN)
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
 
-	c.Check(ChangePIN(s.TPM, s.keyFile, testPIN, ""), IsNil)
-	s.checkPIN(c, "")
+	testPIN := "1234"
+	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
+	s.checkPIN(c, k, testPIN)
+
+	c.Check(k.ChangePIN(s.TPM, testPIN, ""), IsNil)
+	s.checkPIN(c, k, "")
 }
 
 func (s *pinSuite) TestChangePINDoesntUpdateFileIfAuthModeDoesntChange(c *C) {
 	fi1, err := os.Stat(s.keyFile)
 	c.Assert(err, IsNil)
 
-	c.Check(ChangePIN(s.TPM, s.keyFile, "", ""), IsNil)
-	s.checkPIN(c, "")
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
+	c.Check(k.ChangePIN(s.TPM, "", ""), IsNil)
+	s.checkPIN(c, k, "")
 
 	fi2, err := os.Stat(s.keyFile)
 	c.Assert(err, IsNil)
@@ -233,7 +245,12 @@ type testChangePINErrorHandlingData struct {
 }
 
 func (s *pinSuite) testChangePINErrorHandling(c *C, data *testChangePINErrorHandlingData) {
-	c.Check(ChangePIN(s.TPM, data.keyFile, "", "1234"), data.errChecker, data.errCheckerArgs...)
+	k, err := ReadSealedKeyObject(data.keyFile)
+	if err != nil {
+		c.Check(err, data.errChecker, data.errCheckerArgs...)
+		return
+	}
+	c.Check(k.ChangePIN(s.TPM, "", "1234"), data.errChecker, data.errCheckerArgs...)
 }
 
 func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
@@ -247,7 +264,9 @@ func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
 }
 
 func (s *pinSuite) TestChangePINErrorHandling2(c *C) {
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     Equals,
@@ -270,6 +289,6 @@ func (s *pinSuite) TestChangePINErrorHandling4(c *C) {
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"invalid key data file: cannot validate key data: PIN NV index is unavailable"},
+		errCheckerArgs: []interface{}{"invalid key data file: PIN NV index is unavailable"},
 	})
 }

@@ -463,35 +463,9 @@ func isKeyFileError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// decodeAndValidateKeyData will deserialize keyData and keyPolicyUpdateData from the provided io.Readers and then perform some correctness
-// checking. On success, it returns the keyData, keyPolicyUpdateData and the validated public area of the PIN NV index.
-func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile, keyPolicyUpdateFile io.Reader, session tpm2.SessionContext) (*keyData, *keyPolicyUpdateData, *tpm2.NVPublic, error) {
-	// Read the key data
-	data, err := decodeKeyData(keyFile)
-	if err != nil {
-		return nil, nil, nil, keyFileError{xerrors.Errorf("cannot read key data: %w", err)}
-	}
-
-	var policyUpdateData *keyPolicyUpdateData
-	if keyPolicyUpdateFile != nil {
-		var err error
-		policyUpdateData, err = decodeKeyPolicyUpdateData(keyPolicyUpdateFile)
-		if err != nil {
-			return nil, nil, nil, keyFileError{xerrors.Errorf("cannot read dynamic policy update data: %w", err)}
-		}
-	}
-
-	pinNVPublic, err := data.validate(tpm, policyUpdateData, session)
-	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot validate key data: %w", err)
-	}
-
-	return data, policyUpdateData, pinNVPublic, nil
-}
-
-// SealedKeyObject corresponds to a sealed key data file and exists to provide access to some read only operations on the underlying
-// file without having to read and deserialize the key data file more than once.
+// SealedKeyObject corresponds to a sealed key data file.
 type SealedKeyObject struct {
+	path string
 	data *keyData
 }
 
@@ -521,5 +495,5 @@ func ReadSealedKeyObject(path string) (*SealedKeyObject, error) {
 		return nil, InvalidKeyFileError{err.Error()}
 	}
 
-	return &SealedKeyObject{data: data}, nil
+	return &SealedKeyObject{path: path, data: data}, nil
 }
