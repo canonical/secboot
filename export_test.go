@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"fmt"
-	"os"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/chrisccoulson/tcglog-parser"
@@ -59,8 +58,8 @@ var (
 	ExecutePolicySession                     = executePolicySession
 	IdentifyInitialOSLaunchVerificationEvent = identifyInitialOSLaunchVerificationEvent
 	IncrementPcrPolicyCounter                = incrementPcrPolicyCounter
-	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
-	IsStaticPolicyDataError                  = isStaticPolicyDataError
+	IsKeyDataError                           = isKeyDataError
+	IsPolicyDataError                        = isPolicyDataError
 	LockNVIndexAttrs                         = lockNVIndexAttrs
 	PerformPinChange                         = performPinChange
 	ReadAndValidateLockNVIndexPublic         = readAndValidateLockNVIndexPublic
@@ -262,13 +261,18 @@ func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
 	return s.String()
 }
 
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey TPMPolicyAuthKey, session tpm2.SessionContext) error {
-	kf, err := os.Open(keyFile)
-	if err != nil {
-		return err
-	}
-	defer kf.Close()
+func (k *SealedKeyObject) SetVersion(version uint32) {
+	k.data.version = version
+}
 
-	_, _, _, err = decodeAndValidateKeyData(tpm, kf, authPrivateKey, session)
-	return err
+func (k *SealedKeyObject) KeyPublic() *tpm2.Public {
+	return k.data.keyPublic
+}
+
+func (k *SealedKeyObject) SetPCRPolicyCounterHandle(h tpm2.Handle) {
+	k.data.staticPolicyData.pcrPolicyCounterHandle = h
+}
+
+func (k *SealedKeyObject) AuthPublicKey() *tpm2.Public {
+	return k.data.staticPolicyData.authPublicKey
 }

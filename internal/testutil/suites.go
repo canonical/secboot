@@ -112,6 +112,10 @@ func (b *TPMTestBase) SetHierarchyAuth(c *C, hierarchy tpm2.Handle) {
 	})
 }
 
+func (b *TPMTestBase) ClearTPMWithPlatformAuth(c *C) {
+	c.Assert(ClearTPMWithPlatformAuth(b.TPM), IsNil)
+}
+
 type TPMSimulatorTestBase struct {
 	TPMTestBase
 	tcti *tpm2.TctiMssim

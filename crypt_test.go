@@ -660,7 +660,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 2,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyData,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() +
 			" failed: exit status 1\\) but activation with recovery key was successful"},
@@ -795,11 +795,11 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyData,
 		errChecker:        ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
-			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
-			"activation with recovery key was successful"},
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid authorization policy data: cannot " +
+			"complete authorization policy assertions: cannot complete OR assertions for PCR policy: current session digest not found in " +
+			"policy data\\) but activation with recovery key was successful"},
 	})
 }
 
@@ -815,11 +815,11 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyData,
 		errChecker:        ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
-			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
-			"activation with recovery key was successful"},
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid authorization policy data: cannot " +
+			"complete authorization policy assertions: cannot complete OR assertions for PCR policy: current session digest not found in " +
+			"policy data\\) but activation with recovery key was successful"},
 	})
 }
 

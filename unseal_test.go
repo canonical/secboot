@@ -225,8 +225,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot load sealed key object in to TPM: bad "+
-			"sealed key object or TPM owner changed" {
+		if _, ok := err.(InvalidKeyDataError); !ok || !err.(InvalidKeyDataError).RetryProvision ||
+			err.Error() != "invalid key data: cannot load sealed key object in to TPM: bad sealed key object or parent object" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -243,8 +243,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
-			"assertions: cannot complete OR assertions: current session digest not found in policy data" {
+		if _, ok := err.(InvalidPolicyDataError); !ok || err.Error() != "invalid authorization policy data: cannot complete authorization "+
+			"policy assertions: cannot complete OR assertions for PCR policy: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -273,8 +273,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Fatalf("UpdateKeyPCRProtectionPolicy failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
-			"assertions: the PCR policy has been revoked" {
+		if _, ok := err.(InvalidPolicyDataError); !ok || err.Error() != "invalid authorization policy data: cannot complete authorization "+
+			"policy assertions: the PCR policy has been revoked" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -306,6 +306,71 @@ func TestUnsealErrorHandling(t *testing.T) {
 			}
 		})
 		if err != ErrPINFail {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("NoLockNVIndex", func(t *testing.T) {
+		tpm, _ := openTPMSimulatorForTesting(t)
+		defer func() {
+			clearTPMWithPlatformAuth(t, tpm)
+			closeTPM(t, tpm)
+		}()
+
+		err := run(t, tpm, func(keyFile string, _ []byte) {
+			index, err := tpm.CreateResourceContextFromTPM(LockNVHandle)
+			if err != nil {
+				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+			}
+			if tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
+				t.Fatalf("NVUndefineSpace failed: %v", err)
+			}
+		})
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).RetryProvision ||
+			err.Error() != "invalid key data: a required NV index is missing from the TPM" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("InvalidLockNVIndex", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		err := run(t, tpm, func(keyFile string, _ []byte) {
+			for _, h := range []tpm2.Handle{LockNVHandle, LockNVDataHandle} {
+				index, err := tpm.CreateResourceContextFromTPM(h)
+				if err != nil {
+					t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+				}
+				if tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
+					t.Fatalf("NVUndefineSpace failed: %v", err)
+				}
+			}
+			if err := ProvisionTPM(tpm, ProvisionModeWithoutLockout, nil); err != nil {
+				t.Fatalf("ProvisionTPM failed: %v", err)
+			}
+		})
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).RetryProvision ||
+			err.Error() != "invalid key data: the authorization policy check failed during unsealing" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("NoPCRPolicyCounter", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		err := run(t, tpm, func(keyFile string, _ []byte) {
+			index, err := tpm.CreateResourceContextFromTPM(0x0181fff0)
+			if err != nil {
+				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+			}
+			if tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
+				t.Fatalf("NVUndefineSpace failed: %v", err)
+			}
+		})
+		if _, ok := err.(InvalidKeyDataError); !ok || err.(InvalidKeyDataError).RetryProvision ||
+			err.Error() != "invalid key data: no PCR policy counter found" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

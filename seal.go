@@ -321,11 +321,12 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 	defer keyFile.Close()
 
 	data, authKey, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm, keyFile, authData, session)
-	if err != nil {
-		if isKeyFileError(err) {
-			return InvalidKeyFileError{err.Error()}
-		}
-		// FIXME: Turn the missing lock NV index in to ErrProvisioning
+	switch {
+	case xerrors.Is(err, errInvalidTPMSealedObject):
+		return InvalidKeyDataError{RetryProvision: true, msg: err.Error()}
+	case isKeyDataError(err):
+		return InvalidKeyDataError{RetryProvision: false, msg: err.Error()}
+	case err != nil:
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
 
@@ -366,7 +367,7 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 //
 // If either file cannot be opened, a wrapped *os.PathError error will be returned.
 //
-// If either file cannot be deserialized correctly or validation of the files fails, a InvalidKeyFileError error will be returned.
+// If either file cannot be deserialized correctly or validation of the files fails, a InvalidKeyDataError error will be returned.
 //
 // On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
 // computed from the supplied PCRProtectionProfile.
@@ -386,7 +387,7 @@ func UpdateKeyPCRProtectionPolicyV0(tpm *TPMConnection, keyPath, policyUpdatePat
 //
 // If the file cannot be opened, a wrapped *os.PathError error will be returned.
 //
-// If the file cannot be deserialized correctly or validation of the file fails, a InvalidKeyFileError error will be returned.
+// If the file cannot be deserialized correctly or validation of the file fails, a InvalidKeyDataError error will be returned.
 //
 // On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
 // computed from the supplied PCRProtectionProfile.

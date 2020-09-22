@@ -128,18 +128,15 @@ func undefineKeyNVSpace(t *testing.T, tpm *TPMConnection, path string) {
 	}
 	rc, err := tpm.CreateResourceContextFromTPM(h)
 	if err != nil {
-		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+		return
 	}
 	undefineNVSpace(t, tpm, rc, tpm.OwnerHandleContext())
 }
 
 // clearTPMWithPlatformAuth clears the TPM with platform hierarchy authorization - something that we can only do on the simulator
 func clearTPMWithPlatformAuth(t *testing.T, tpm *TPMConnection) {
-	if err := tpm.ClearControl(tpm.PlatformHandleContext(), false, nil); err != nil {
-		t.Fatalf("ClearControl failed: %v", err)
-	}
-	if err := tpm.Clear(tpm.PlatformHandleContext(), nil); err != nil {
-		t.Fatalf("Clear failed: %v", err)
+	if err := testutil.ClearTPMWithPlatformAuth(tpm); err != nil {
+		t.Fatalf("ClearTPMWithPlatformAuth failed: %v", err)
 	}
 }
 

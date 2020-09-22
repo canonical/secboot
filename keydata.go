@@ -357,6 +357,25 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 	return
 }
 
+type keyDataError struct {
+	err error
+}
+
+func (e keyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e keyDataError) Unwrap() error {
+	return e.err
+}
+
+func isKeyDataError(err error) bool {
+	var e keyDataError
+	return xerrors.As(err, &e)
+}
+
+var errInvalidTPMSealedObject = errors.New("bad sealed key object or parent object")
+
 // load loads the TPM sealed object associated with this keyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
 func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
@@ -375,7 +394,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 			invalidObject = true
 		}
 		if invalidObject {
-			return nil, keyFileError{errors.New("cannot load sealed key object in to TPM: bad sealed key object or TPM owner changed")}
+			err = errInvalidTPMSealedObject
 		}
 		return nil, xerrors.Errorf("cannot load sealed key object in to TPM: %w", err)
 	}
@@ -387,7 +406,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 // for the PCR policy counter.
 func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
 	if d.version > currentMetadataVersion {
-		return nil, keyFileError{errors.New("invalid metadata version")}
+		return nil, keyDataError{errors.New("invalid metadata version")}
 	}
 
 	sealedKeyTemplate := makeSealedKeyTemplate()
@@ -396,10 +415,10 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 
 	// Perform some initial checks on the sealed data object's public area
 	if keyPublic.Type != sealedKeyTemplate.Type {
-		return nil, keyFileError{errors.New("sealed key object has the wrong type")}
+		return nil, keyDataError{errors.New("sealed key object has the wrong type")}
 	}
 	if keyPublic.Attrs != sealedKeyTemplate.Attrs {
-		return nil, keyFileError{errors.New("sealed key object has the wrong attributes")}
+		return nil, keyDataError{errors.New("sealed key object has the wrong attributes")}
 	}
 
 	// Load the sealed data object in to the TPM for integrity checking
@@ -412,15 +431,16 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 
 	// Obtain a ResourceContext for the lock NV index and validate it.
 	lockIndex, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
-	if err != nil {
+	switch {
+	case tpm2.IsResourceUnavailableError(err, lockNVHandle):
+		return nil, keyDataError{errors.New("no lock NV index")}
+	case err != nil:
 		return nil, xerrors.Errorf("cannot create context for lock NV index: %v", err)
 	}
 	lockIndexPub, err := readAndValidateLockNVIndexPublic(tpm, lockIndex, session)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot determine if NV index at %v is global lock index: %w", lockNVHandle, err)
-	}
-	if lockIndexPub == nil {
-		return nil, xerrors.Errorf("NV index at %v is not a valid global lock index", lockNVHandle)
+		// The TPM needs provisioning, but this key is unrecoverable anyway
+		return nil, keyDataError{xerrors.Errorf("cannot determine if NV index at %v is global lock index: %w", lockNVHandle, err)}
 	}
 	lockIndexName, err := lockIndexPub.Name()
 	if err != nil {
@@ -433,7 +453,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	// revocation, and also for PIN integration with v0 metadata only.
 	pcrPolicyCounterHandle := d.staticPolicyData.pcrPolicyCounterHandle
 	if (pcrPolicyCounterHandle != tpm2.HandleNull || d.version == 0) && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
-		return nil, keyFileError{errors.New("PCR policy counter handle is invalid")}
+		return nil, keyDataError{errors.New("PCR policy counter handle is invalid")}
 	}
 
 	var pcrPolicyCounter tpm2.ResourceContext
@@ -441,7 +461,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
 			if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
-				return nil, keyFileError{errors.New("PCR policy counter is unavailable")}
+				return nil, keyDataError{errors.New("PCR policy counter is unavailable")}
 			}
 			return nil, xerrors.Errorf("cannot create context for PCR policy counter: %w", err)
 		}
@@ -456,7 +476,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	authPublicKey := d.staticPolicyData.authPublicKey
 	authKeyName, err := authPublicKey.Name()
 	if err != nil {
-		return nil, keyFileError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
+		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}
 	var expectedAuthKeyType tpm2.ObjectTypeId
 	var expectedAuthKeyScheme tpm2.AsymSchemeId
@@ -469,22 +489,22 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 		expectedAuthKeyScheme = tpm2.AsymSchemeECDSA
 	}
 	if authPublicKey.Type != expectedAuthKeyType {
-		return nil, keyFileError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
+		return nil, keyDataError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
 	}
 	authKeyScheme := authPublicKey.Params.AsymDetail().Scheme
 	if authKeyScheme.Scheme != tpm2.AsymSchemeNull {
 		if authKeyScheme.Scheme != expectedAuthKeyScheme {
-			return nil, keyFileError{errors.New("dynamic authorization policy signing key has unexpected scheme")}
+			return nil, keyDataError{errors.New("dynamic authorization policy signing key has unexpected scheme")}
 		}
 		if authKeyScheme.Details.Any().HashAlg != authPublicKey.NameAlg {
-			return nil, keyFileError{errors.New("dynamic authorization policy signing key algorithm must match name algorithm")}
+			return nil, keyDataError{errors.New("dynamic authorization policy signing key algorithm must match name algorithm")}
 		}
 	}
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
 	trial, err := tpm2.ComputeAuthPolicy(keyPublic.NameAlg)
 	if err != nil {
-		return nil, keyFileError{xerrors.Errorf("cannot determine if static authorization policy matches sealed key object: %w", err)}
+		return nil, keyDataError{xerrors.Errorf("cannot determine if static authorization policy matches sealed key object: %w", err)}
 	}
 
 	trial.PolicyAuthorize(pcrPolicyRef, authKeyName)
@@ -497,7 +517,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	trial.PolicyNV(lockIndexName, nil, 0, tpm2.OpEq)
 
 	if !bytes.Equal(trial.GetDigest(), keyPublic.AuthPolicy) {
-		return nil, keyFileError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
+		return nil, keyDataError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
 	}
 
 	// Read the public area of the PCR policy counter
@@ -514,21 +534,21 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 		pcrPolicyCounterAuthPolicies := d.staticPolicyData.v0PinIndexAuthPolicies
 		expectedPcrPolicyCounterAuthPolicies, err := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authKeyName)
 		if err != nil {
-			return nil, keyFileError{xerrors.Errorf("cannot determine if PCR policy counter has a valid authorization policy: %w", err)}
+			return nil, keyDataError{xerrors.Errorf("cannot determine if PCR policy counter has a valid authorization policy: %w", err)}
 		}
 		if len(pcrPolicyCounterAuthPolicies)-1 != len(expectedPcrPolicyCounterAuthPolicies) {
-			return nil, keyFileError{errors.New("unexpected number of OR policy digests for PCR policy counter")}
+			return nil, keyDataError{errors.New("unexpected number of OR policy digests for PCR policy counter")}
 		}
 		for i, expected := range expectedPcrPolicyCounterAuthPolicies {
 			if !bytes.Equal(expected, pcrPolicyCounterAuthPolicies[i+1]) {
-				return nil, keyFileError{errors.New("unexpected OR policy digest for PCR policy counter")}
+				return nil, keyDataError{errors.New("unexpected OR policy digest for PCR policy counter")}
 			}
 		}
 
 		trial, _ = tpm2.ComputeAuthPolicy(pcrPolicyCounterPub.NameAlg)
 		trial.PolicyOR(pcrPolicyCounterAuthPolicies)
 		if !bytes.Equal(pcrPolicyCounterPub.AuthPolicy, trial.GetDigest()) {
-			return nil, keyFileError{errors.New("PCR policy counter has unexpected authorization policy")}
+			return nil, keyDataError{errors.New("PCR policy counter has unexpected authorization policy")}
 		}
 	}
 
@@ -541,19 +561,19 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 			N: new(big.Int).SetBytes(authPublicKey.Unique.RSA()),
 			E: int(authPublicKey.Params.RSADetail().Exponent)}
 		if k.E != goAuthPublicKey.E || k.N.Cmp(goAuthPublicKey.N) != 0 {
-			return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
+			return nil, keyDataError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
 		}
 	case *ecdsa.PrivateKey:
 		if d.version == 0 {
-			return nil, keyFileError{errors.New("unexpected dynamic authorization policy signing private key type")}
+			return nil, keyDataError{errors.New("unexpected dynamic authorization policy signing private key type")}
 		}
 		expectedX, expectedY := k.Curve.ScalarBaseMult(k.D.Bytes())
 		if expectedX.Cmp(k.X) != 0 || expectedY.Cmp(k.Y) != 0 {
-			return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
+			return nil, keyDataError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
 		}
 	case nil:
 	default:
-		return nil, keyFileError{errors.New("unexpected dynamic authorization policy signing private key type")}
+		return nil, keyDataError{errors.New("unexpected dynamic authorization policy signing private key type")}
 	}
 
 	return pcrPolicyCounterPub, nil
@@ -586,6 +606,35 @@ func (d *keyData) writeToFileAtomic(dest string) error {
 	return nil
 }
 
+// decodeAuthKeyFromReader decodes the dynamic authorization policy signing key from r. It expects that the data
+// read from r is deserialized in to a keyPolicyUpdateData structure.
+func (d *keyData) decodeAuthKeyFromReader(r io.Reader) (crypto.PrivateKey, error) {
+	if r == nil {
+		return nil, nil
+	}
+	policyUpdateData, err := decodeKeyPolicyUpdateData(r)
+	if err != nil {
+		return nil, err
+	}
+	if policyUpdateData.version != d.version {
+		return nil, errors.New("mismatched metadata versions")
+	}
+	return policyUpdateData.authKey, nil
+}
+
+// decodeAuthKeyFromBytes decodes the dynamic authorization policy signing key from r. It expects that this contains
+// the private part of an elliptic curve key.
+func (d *keyData) decodeAuthKeyFromBytes(authKey TPMPolicyAuthKey) (crypto.PrivateKey, error) {
+	if len(authKey) == 0 {
+		return nil, nil
+	}
+	key, err := createECDSAPrivateKeyFromTPM(d.staticPolicyData.authPublicKey, tpm2.ECCParameter(authKey))
+	if err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
 // decodeKeyData deserializes keyData from the provided io.Reader.
 func decodeKeyData(r io.Reader) (*keyData, error) {
 	var header uint32
@@ -604,23 +653,6 @@ func decodeKeyData(r io.Reader) (*keyData, error) {
 	return &d, nil
 }
 
-type keyFileError struct {
-	err error
-}
-
-func (e keyFileError) Error() string {
-	return e.err.Error()
-}
-
-func (e keyFileError) Unwrap() error {
-	return e.err
-}
-
-func isKeyFileError(err error) bool {
-	var e keyFileError
-	return xerrors.As(err, &e)
-}
-
 // decodeAndValidateKeyData will deserialize keyData from the provided io.Reader and then perform some correctness checking. On
 // success, it returns the keyData, dynamic authorization policy signing key (if authData is provided) and the validated public area
 // of the PCR policy counter index.
@@ -628,31 +660,21 @@ func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile io.Reader, authData 
 	// Read the key data
 	data, err := decodeKeyData(keyFile)
 	if err != nil {
-		return nil, nil, nil, keyFileError{xerrors.Errorf("cannot read key data: %w", err)}
+		return nil, nil, nil, keyDataError{xerrors.Errorf("cannot read key data: %w", err)}
 	}
 
 	var authKey crypto.PrivateKey
 
 	switch a := authData.(type) {
 	case io.Reader:
-		// If we were called with an io.Reader, then we're expecting to load a legacy version-0 keydata and associated
-		// private key file.
-		policyUpdateData, err := decodeKeyPolicyUpdateData(a)
+		authKey, err = data.decodeAuthKeyFromReader(a)
 		if err != nil {
-			return nil, nil, nil, keyFileError{xerrors.Errorf("cannot read dynamic policy update data: %w", err)}
+			return nil, nil, nil, keyDataError{xerrors.Errorf("cannot decode dynamic auth policy signing key data: %w", err)}
 		}
-		if policyUpdateData.version != data.version {
-			return nil, nil, nil, keyFileError{errors.New("mismatched metadata versions")}
-		}
-		authKey = policyUpdateData.authKey
 	case TPMPolicyAuthKey:
-		if len(a) > 0 {
-			// If we were called with a byte slice, then we're expecting to load the current keydata version and the byte
-			// slice is the private part of the elliptic auth key.
-			authKey, err = createECDSAPrivateKeyFromTPM(data.staticPolicyData.authPublicKey, tpm2.ECCParameter(a))
-			if err != nil {
-				return nil, nil, nil, keyFileError{xerrors.Errorf("cannot create auth key: %w", err)}
-			}
+		authKey, err = data.decodeAuthKeyFromBytes(a)
+		if err != nil {
+			return nil, nil, nil, keyDataError{xerrors.Errorf("cannot decode dynamic auth policy signing key: %w", err)}
 		}
 	case nil:
 	default:
@@ -689,8 +711,29 @@ func (k *SealedKeyObject) PCRPolicyCounterHandle() tpm2.Handle {
 	return k.data.staticPolicyData.pcrPolicyCounterHandle
 }
 
+// Validate performs some checks on the SealedKeyObject. The key used for authorizing PCR policy updates can be optionally provided as
+// authKey in order to validate that it is associated with this sealed key object.
+//
+// On success, no error is returned. If a InvalidKeyDataError error is returned, then this indicates that the SealedKeyObject is
+// invalid and must be recreated in order to perform some operations on it.
+func (k *SealedKeyObject) Validate(tpm *TPMConnection, authKey TPMPolicyAuthKey) error {
+	key, err := k.data.decodeAuthKeyFromBytes(authKey)
+	if err != nil {
+		return InvalidKeyDataError{RetryProvision: false, msg: fmt.Sprintf("cannot decode dynamic auth policy signing key: %v", err)}
+	}
+	_, err = k.data.validate(tpm.TPMContext, key, tpm.HmacSession())
+	switch {
+	case xerrors.Is(err, errInvalidTPMSealedObject):
+		return InvalidKeyDataError{RetryProvision: true, msg: err.Error()}
+	case isKeyDataError(err):
+		return InvalidKeyDataError{RetryProvision: false, msg: err.Error()}
+	default:
+		return err
+	}
+}
+
 // ReadSealedKeyObject loads a sealed key data file created by SealKeyToTPM from the specified path. If the file cannot be opened,
-// a wrapped *os.PathError error is returned. If the key data file cannot be deserialized successfully, a InvalidKeyFileError error
+// a wrapped *os.PathError error is returned. If the key data file cannot be deserialized successfully, a InvalidKeyDataError error
 // will be returned.
 func ReadSealedKeyObject(path string) (*SealedKeyObject, error) {
 	// Open the key data file
@@ -702,7 +745,7 @@ func ReadSealedKeyObject(path string) (*SealedKeyObject, error) {
 
 	data, err := decodeKeyData(f)
 	if err != nil {
-		return nil, InvalidKeyFileError{err.Error()}
+		return nil, InvalidKeyDataError{RetryProvision: false, msg: err.Error()}
 	}
 
 	return &SealedKeyObject{data: data}, nil
