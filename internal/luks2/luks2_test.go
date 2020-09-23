@@ -382,8 +382,7 @@ func (s *luks2Suite) testFormat(c *C, data *testFormatData) {
 
 	c.Check(info.Metadata.Tokens, HasLen, 0)
 
-	releaseLock()
-	testutil.CheckLUKS2Passphrase(c, devicePath, data.key)
+	c.Check(TestPassphrase(devicePath, -1, data.key), IsNil)
 }
 
 func (s *luks2Suite) TestFormat1(c *C) {
@@ -455,8 +454,7 @@ func (s *luks2Suite) testAddKey(c *C, data *testAddKeyData) {
 		c.Check(keyslot.KDF.Memory, Equals, 32)
 	}
 
-	releaseLock()
-	testutil.CheckLUKS2Passphrase(c, devicePath, data.key)
+	c.Check(TestPassphrase(devicePath, -1, data.key), IsNil)
 }
 
 func (s *luks2Suite) TestAddKey1(c *C) {
@@ -492,8 +490,7 @@ func (s *luks2Suite) TestAddKeyWithIncorrectExistingKey(c *C) {
 	_, ok := info.Metadata.Keyslots[0]
 	c.Check(ok, Equals, true)
 
-	releaseLock()
-	testutil.CheckLUKS2Passphrase(c, devicePath, masterKey)
+	c.Check(TestPassphrase(devicePath, -1, masterKey), IsNil)
 }
 
 type testImportTokenData struct {
@@ -647,8 +644,7 @@ func (s *luks2Suite) testKillSlot(c *C, data *testKillSlotData) {
 	_, ok = info.Metadata.Keyslots[data.slotId]
 	c.Check(ok, Equals, false)
 
-	releaseLock()
-	testutil.CheckLUKS2Passphrase(c, devicePath, data.testKey)
+	c.Check(TestPassphrase(devicePath, -1, data.testKey), IsNil)
 }
 
 func (s *luks2Suite) TestKillSlot1(c *C) {
@@ -694,9 +690,8 @@ func (s *luks2Suite) TestKillSlotWithWrongPassphrase(c *C) {
 
 	c.Check(KillSlot(devicePath, 1, key2), ErrorMatches, "No key available with this passphrase.")
 
-	releaseLock()
-	testutil.CheckLUKS2Passphrase(c, devicePath, key1)
-	testutil.CheckLUKS2Passphrase(c, devicePath, key2)
+	c.Check(TestPassphrase(devicePath, -1, key1), IsNil)
+	c.Check(TestPassphrase(devicePath, -1, key2), IsNil)
 }
 
 func (s *luks2Suite) TestKillNonExistantSlot(c *C) {
@@ -711,8 +706,7 @@ func (s *luks2Suite) TestKillNonExistantSlot(c *C) {
 
 	c.Check(KillSlot(devicePath, 8, key), ErrorMatches, "Keyslot 8 is not active.")
 
-	releaseLock()
-	testutil.CheckLUKS2Passphrase(c, devicePath, key)
+	c.Check(TestPassphrase(devicePath, -1, key), IsNil)
 }
 
 type testSetKeyslotPriorityData struct {

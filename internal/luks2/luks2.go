@@ -966,3 +966,13 @@ func SetKeyslotPriority(devicePath string, slot int, priority string) error {
 
 	return nil
 }
+
+func TestPassphrase(devicePath string, slot int, key []byte) error {
+	cmd := exec.Command("cryptsetup", "--disable-locks", "open", "--test-passphrase", "--key-file", "-", "--key-slot", strconv.Itoa(slot), devicePath)
+	cmd.Stdin = bytes.NewReader(key)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return osutil.OutputErr(output, err)
+	}
+
+	return nil
+}

@@ -27,6 +27,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -109,45 +110,7 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 	return policyData, nil
 }
 
-// KeyCreationParams provides arguments for SealKeyToTPM.
-type KeyCreationParams struct {
-	// PCRProfile defines the profile used to generate a PCR protection policy for the newly created sealed key file.
-	PCRProfile *PCRProtectionProfile
-
-	// PINHandle is the handle at which to create a NV index for PIN support. The handle must be a valid NV index handle (MSO == 0x01)
-	// and the choice of handle should take in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and
-	// localities" specification. It is recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
-	PINHandle tpm2.Handle
-}
-
-// SealKeyToTPM seals the supplied disk encryption key to the storage hierarchy of the TPM. The sealed key object and associated
-// metadata that is required during early boot in order to unseal the key again and unlock the associated encrypted volume is written
-// to a file at the path specified by keyPath. Additional data that is required in order to update the authorization policy for the
-// sealed key is written to a file at the path specified by policyUpdatePath. This file must live inside the encrypted volume
-// protected by the sealed key.
-//
-// The supplied key must be 64-bytes long. An error will be returned if it isn't.
-//
-// This function requires knowledge of the authorization value for the storage hierarchy, which must be provided by calling
-// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the provided authorization value is incorrect,
-// a AuthFailError error will be returned.
-//
-// If the TPM is not correctly provisioned, a ErrTPMProvisioning error will be returned. In this case, ProvisionTPM must be called
-// before proceeding.
-//
-// This function expects there to be no files at the specified paths. If either path references a file that already exists, a wrapped
-// *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
-// either file cannot be created and opened for writing.
-//
-// This function will create a NV index at the handle specified by the PINHandle field of the params argument. If the handle is already
-// in use, a TPMResourceExistsError error will be returned. In this case, the caller will need to either choose a different handle or
-// undefine the existing one. The handle must be a valid NV index handle (MSO == 0x01), and the choice of handle should take in to
-// consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is recommended
-// that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
-//
-// The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
-// argument.
-func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath string, params *KeyCreationParams) error {
+func sealKeyToTPMCommon(tpm *TPMConnection, key []byte, w io.Writer, pudf *os.File, params *KeyCreationParams) error {
 	// params is mandatory.
 	if params == nil {
 		return errors.New("no KeyCreationParams provided")
@@ -191,35 +154,6 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	}
 
 	succeeded := false
-
-	// Create destination files
-	keyFile, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return xerrors.Errorf("cannot create key data file: %w", err)
-	}
-	defer func() {
-		keyFile.Close()
-		if succeeded {
-			return
-		}
-		os.Remove(keyPath)
-	}()
-
-	var policyUpdateFile *os.File
-	if policyUpdatePath != "" {
-		var err error
-		policyUpdateFile, err = os.OpenFile(policyUpdatePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if err != nil {
-			return xerrors.Errorf("cannot create private data file: %w", err)
-		}
-		defer func() {
-			policyUpdateFile.Close()
-			if succeeded {
-				return
-			}
-			os.Remove(policyUpdatePath)
-		}()
-	}
 
 	// Create an asymmetric key for signing authorization policy updates, and authorizing dynamic authorization policy revocations.
 	authKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -306,14 +240,11 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 		staticPolicyData:  staticPolicyData,
 		dynamicPolicyData: dynamicPolicyData}
 
-	if err := binary.Write(keyFile, binary.BigEndian, keyDataHeader); err != nil {
-		return xerrors.Errorf("cannot write header for key data file: %w", err)
-	}
-	if err := data.write(keyFile); err != nil {
-		return xerrors.Errorf("cannot write key data file: %w", err)
+	if err := data.write(w); err != nil {
+		return xerrors.Errorf("cannot write key data: %w", err)
 	}
 
-	if policyUpdateFile != nil {
+	if pudf != nil {
 		policyUpdateData := keyPolicyUpdateData{
 			version:        currentMetadataVersion,
 			authKey:        authKey,
@@ -322,13 +253,95 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 			creationTicket: creationTicket}
 
 		// Marshal the private data to disk
-		if err := policyUpdateData.write(policyUpdateFile); err != nil {
+		if err := policyUpdateData.write(pudf); err != nil {
 			return xerrors.Errorf("cannot write dynamic authorization policy update data file: %w", err)
 		}
 	}
 
 	if err := incrementDynamicPolicyCounter(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
 		return xerrors.Errorf("cannot increment dynamic policy counter: %w", err)
+	}
+
+	succeeded = true
+	return nil
+}
+
+// KeyCreationParams provides arguments for SealKeyToTPM.
+type KeyCreationParams struct {
+	// PCRProfile defines the profile used to generate a PCR protection policy for the newly created sealed key file.
+	PCRProfile *PCRProtectionProfile
+
+	// PINHandle is the handle at which to create a NV index for PIN support. The handle must be a valid NV index handle (MSO == 0x01)
+	// and the choice of handle should take in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and
+	// localities" specification. It is recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
+	PINHandle tpm2.Handle
+}
+
+// SealKeyToTPM seals the supplied disk encryption key to the storage hierarchy of the TPM. The sealed key object and associated
+// metadata that is required during early boot in order to unseal the key again and unlock the associated encrypted volume is written
+// to a file at the path specified by keyPath. Additional data that is required in order to update the authorization policy for the
+// sealed key is written to a file at the path specified by policyUpdatePath. This file must live inside the encrypted volume
+// protected by the sealed key.
+//
+// The supplied key must be 64-bytes long. An error will be returned if it isn't.
+//
+// This function requires knowledge of the authorization value for the storage hierarchy, which must be provided by calling
+// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the provided authorization value is incorrect,
+// a AuthFailError error will be returned.
+//
+// If the TPM is not correctly provisioned, a ErrTPMProvisioning error will be returned. In this case, ProvisionTPM must be called
+// before proceeding.
+//
+// This function expects there to be no files at the specified paths. If either path references a file that already exists, a wrapped
+// *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
+// either file cannot be created and opened for writing.
+//
+// This function will create a NV index at the handle specified by the PINHandle field of the params argument. If the handle is already
+// in use, a TPMResourceExistsError error will be returned. In this case, the caller will need to either choose a different handle or
+// undefine the existing one. The handle must be a valid NV index handle (MSO == 0x01), and the choice of handle should take in to
+// consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is recommended
+// that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
+//
+// The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
+// argument.
+func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath string, params *KeyCreationParams) error {
+	succeeded := false
+
+	// Create destination files
+	keyFile, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return xerrors.Errorf("cannot create key data file: %w", err)
+	}
+	defer func() {
+		keyFile.Close()
+		if succeeded {
+			return
+		}
+		os.Remove(keyPath)
+	}()
+
+	var policyUpdateFile *os.File
+	if policyUpdatePath != "" {
+		var err error
+		policyUpdateFile, err = os.OpenFile(policyUpdatePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return xerrors.Errorf("cannot create private data file: %w", err)
+		}
+		defer func() {
+			policyUpdateFile.Close()
+			if succeeded {
+				return
+			}
+			os.Remove(policyUpdatePath)
+		}()
+	}
+
+	if err := binary.Write(keyFile, binary.BigEndian, keyDataHeader); err != nil {
+		return xerrors.Errorf("cannot write key data file header: %w", err)
+	}
+
+	if err := sealKeyToTPMCommon(tpm, key, keyFile, policyUpdateFile, params); err != nil {
+		return err
 	}
 
 	succeeded = true

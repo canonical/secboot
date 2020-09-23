@@ -46,6 +46,7 @@ var (
 	slotTypeKey      = "secboot-type"    // The key used to identify the type of secboot keyslot associated with a token
 	masterSlotType   = "master-detached" // Used to idenfity a master keyslot with detached metadata
 	recoverySlotType = "recovery"        // Used to identify a recovery keyslot
+	tpmSlotType      = "tpm"
 
 	luks2Activate = luks2.Activate
 )
@@ -248,7 +249,7 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 			lockErr = LockAccessToSealedKeys(tpm)
 		}()
 
-		k, err := ReadSealedKeyObject(keyPath)
+		k, err := ReadSealedKeyObjectFromFile(keyPath)
 		if err != nil {
 			return nil, xerrors.Errorf("cannot read sealed key object: %w", err)
 		}
@@ -566,5 +567,127 @@ func SetLUKS2ContainerMasterKey(devicePath string, existingKey, newKey []byte) e
 		return xerrors.Errorf("cannot set priority of new keyslot: %w", err)
 	}
 
+	return nil
+}
+
+// SealLUKS2MasterKeyToTPM seals the supplied master key to the storage hierarchy of the TPM. The supplied key must match any existing
+// master key that wasn't added by SetLUKS2ContainerRecovery key for the specified device. The sealed key object and associated
+// metadata that is required during early boot in order to unseal the key again and unlock the encrypted volume is written to a LUKS2
+// token for the corresponding keyslot on the specified device. Additional data that is required in order to update the authorization
+// policy for the sealed key is written to a file at the path specified by policyUpdatePath. This file must live inside the encrypted
+// volume.
+//
+// This function requires knowledge of the authorization value for the storage hierarchy, which must be provided by calling
+// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the provided authorization value is incorrect,
+// a AuthFailError error will be returned.
+//
+// If the TPM is not correctly provisioned, a ErrTPMProvisioning error will be returned. In this case, ProvisionTPM must be called
+// before proceeding.
+//
+// This function expects there to be no file at the specified path. If the path references a file that already exists, a wrapped
+// *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
+// the file cannot be created and opened for writing.
+//
+// This function will create a NV index at the handle specified by the PINHandle field of the params argument. If the handle is already
+// in use, a TPMResourceExistsError error will be returned. In this case, the caller will need to either choose a different handle or
+// undefine the existing one. The handle must be a valid NV index handle (MSO == 0x01), and the choice of handle should take in to
+// consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is recommended
+// that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
+//
+// The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
+// argument.
+//
+// If an existing keyslot is protected by a TPM sealed key and it is not the keyslot that is associated with the supplied key, this
+// function will remove it.
+func SealLUKS2MasterKeyToTPM(tpm *TPMConnection, devicePath string, key []byte, policyUpdatePath string, params *KeyCreationParams) error {
+	releaseLock, err := luks2.AcquireLock(devicePath, luks2.LockModeExclusive)
+	if err != nil {
+		return xerrors.Errorf("cannot acquire lock: %w", err)
+	}
+	defer releaseLock()
+
+	info, err := luks2.DecodeHdr(devicePath)
+	if err != nil {
+		return xerrors.Errorf("cannot decode LUKS2 header: %w", err)
+	}
+
+	targetTokenId := -1
+	for k, v := range info.Metadata.Tokens {
+		if v.Type != tokenType {
+			continue
+		}
+		if s := v.Params[slotTypeKey]; s == recoverySlotType {
+			continue
+		}
+		if len(v.Keyslots) > 0 {
+			if err := luks2.TestPassphrase(devicePath, v.Keyslots[0], key); err == nil {
+				targetTokenId = int(k)
+				break
+			}
+		}
+	}
+
+	if targetTokenId == -1 {
+		return errors.New("cannot find matching master key")
+	}
+
+	existingTpmTokenId := -1
+	for k, v := range info.Metadata.Tokens {
+		if v.Type != tokenType {
+			continue
+		}
+		if s := v.Params[slotTypeKey]; s == tpmSlotType {
+			existingTpmTokenId = int(k)
+			break
+		}
+	}
+
+	var sealedKeyObject bytes.Buffer
+
+	succeeded := true
+	var policyUpdateFile *os.File
+	if policyUpdatePath != "" {
+		var err error
+		policyUpdateFile, err = os.OpenFile(policyUpdatePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return xerrors.Errorf("cannot create private data file: %w", err)
+		}
+		defer func() {
+			policyUpdateFile.Close()
+			if succeeded {
+				return
+			}
+			os.Remove(policyUpdatePath)
+		}()
+	}
+
+	if err := sealKeyToTPMCommon(tpm, key, &sealedKeyObject, policyUpdateFile, params); err != nil {
+		return err
+	}
+
+	token := makeTokenForKeyslot(tpmSlotType, info.Metadata.Tokens[targetTokenId].Keyslots[0])
+	token.Params["secboot-tpm-data"] = sealedKeyObject.Bytes()
+
+	if err := luks2.ImportToken(devicePath, token); err != nil {
+		return xerrors.Errorf("cannot import new token: %w", err)
+	}
+
+	if err := luks2.RemoveToken(devicePath, targetTokenId); err != nil {
+		return xerrors.Errorf("cannot delete old token: %w", err)
+	}
+
+	if existingTpmTokenId != -1 && existingTpmTokenId != targetTokenId {
+		if err := luks2.RemoveToken(devicePath, existingTpmTokenId); err != nil {
+			return xerrors.Errorf("cannot delete old token: %w", err)
+		}
+
+		if len(info.Metadata.Tokens[existingTpmTokenId].Keyslots) > 0 {
+			if err := luks2.KillSlot(devicePath, info.Metadata.Tokens[existingTpmTokenId].Keyslots[0], key); err != nil {
+				return xerrors.Errorf("cannot delete old TPM key slot: %w", err)
+			}
+		}
+	}
+
+	succeeded = true
 	return nil
 }

@@ -211,7 +211,7 @@ func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
 }
 
 func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile, privateFile string, session tpm2.SessionContext) error {
-	k, err := ReadSealedKeyObject(keyFile)
+	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	if err != nil {
 		return err
 	}

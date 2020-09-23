@@ -190,7 +190,7 @@ func (s *pinSuite) checkPIN(c *C, k *SealedKeyObject, pin string) {
 		c.Check(k.AuthMode2F(), Equals, AuthModePIN)
 	}
 
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 	if pin == "" {
 		c.Check(k.AuthMode2F(), Equals, AuthModeNone)
@@ -212,7 +212,7 @@ func (s *pinSuite) checkPIN(c *C, k *SealedKeyObject, pin string) {
 }
 
 func (s *pinSuite) TestSetAndClearPIN(c *C) {
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	testPIN := "1234"
@@ -227,7 +227,7 @@ func (s *pinSuite) TestChangePINDoesntUpdateFileIfAuthModeDoesntChange(c *C) {
 	fi1, err := os.Stat(s.keyFile)
 	c.Assert(err, IsNil)
 
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	c.Check(k.ChangePIN(s.TPM, "", ""), IsNil)
@@ -245,7 +245,7 @@ type testChangePINErrorHandlingData struct {
 }
 
 func (s *pinSuite) testChangePINErrorHandling(c *C, data *testChangePINErrorHandlingData) {
-	k, err := ReadSealedKeyObject(data.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(data.keyFile)
 	if err != nil {
 		c.Check(err, data.errChecker, data.errCheckerArgs...)
 		return
@@ -264,7 +264,7 @@ func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
 }
 
 func (s *pinSuite) TestChangePINErrorHandling2(c *C) {
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 	c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
@@ -278,7 +278,7 @@ func (s *pinSuite) TestChangePINErrorHandling3(c *C) {
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        "/path/to/nothing",
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot open key data file: open /path/to/nothing: no such file or directory"},
+		errCheckerArgs: []interface{}{"cannot open file: open /path/to/nothing: no such file or directory"},
 	})
 }
 

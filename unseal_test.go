@@ -56,9 +56,9 @@ func TestUnsealWithNo2FA(t *testing.T) {
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-		k, err := ReadSealedKeyObject(keyFile)
+		k, err := ReadSealedKeyObjectFromFile(keyFile)
 		if err != nil {
-			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+			t.Fatalf("ReadSealedKeyObjectFromFile failed: %v", err)
 		}
 
 		keyUnsealed, err := k.UnsealFromTPM(tpm, "")
@@ -104,9 +104,9 @@ func TestUnsealWithPIN(t *testing.T) {
 	}
 	defer undefineKeyNVSpace(t, tpm, keyFile)
 
-	k, err := ReadSealedKeyObject(keyFile)
+	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	if err != nil {
-		t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		t.Fatalf("ReadSealedKeyObjectFromFile failed: %v", err)
 	}
 
 	testPIN := "1234"
@@ -148,9 +148,9 @@ func TestUnsealErrorHandling(t *testing.T) {
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-		k, err := ReadSealedKeyObject(keyFile)
+		k, err := ReadSealedKeyObjectFromFile(keyFile)
 		if err != nil {
-			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+			t.Fatalf("ReadSealedKeyObjectFromFile failed: %v", err)
 		}
 
 		fn(keyFile, policyUpdateFile)
@@ -244,9 +244,9 @@ func TestUnsealErrorHandling(t *testing.T) {
 		defer closeTPM(t, tpm)
 
 		err := run(t, tpm, func(keyFile, policyUpdateFile string) {
-			k, err := ReadSealedKeyObject(keyFile)
+			k, err := ReadSealedKeyObjectFromFile(keyFile)
 			if err != nil {
-				t.Fatalf("ReadSealedKeyObject failed: %v", err)
+				t.Fatalf("ReadSealedKeyObjectFromFile failed: %v", err)
 			}
 			if err := k.UpdatePCRProtectionPolicy(tpm, policyUpdateFile, getTestPCRProfile()); err != nil {
 				t.Fatalf("UpdatePCRProtectionPolicy failed: %v", err)
@@ -280,9 +280,9 @@ func TestUnsealErrorHandling(t *testing.T) {
 		defer closeTPM(t, tpm)
 
 		err := run(t, tpm, func(keyFile, _ string) {
-			k, err := ReadSealedKeyObject(keyFile)
+			k, err := ReadSealedKeyObjectFromFile(keyFile)
 			if err != nil {
-				t.Fatalf("ReadSealedKeyObject failed: %v", err)
+				t.Fatalf("ReadSealedKeyObjectFromFile failed: %v", err)
 			}
 			if err := k.ChangePIN(tpm, "", "1234"); err != nil {
 				t.Errorf("ChangePIN failed: %v", err)

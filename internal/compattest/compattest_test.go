@@ -133,7 +133,7 @@ func (s *compatTestSuiteBase) replayPCRSequenceFromFile(c *C, path string) {
 func (s *compatTestSuiteBase) testUnseal(c *C, pcrEventsFile string) {
 	s.replayPCRSequenceFromFile(c, pcrEventsFile)
 
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
 
@@ -147,31 +147,31 @@ func (s *compatTestSuiteBase) testUnseal(c *C, pcrEventsFile string) {
 }
 
 func (s *compatTestSuiteBase) TestChangePIN(c *C) {
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
 
 	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
-	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err = secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
 
 	c.Check(k.ChangePIN(s.TPM, testPIN, ""), IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
-	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err = secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
 }
 
 func (s *compatTestSuiteBase) testUnsealWithPIN(c *C, pcrEventsFile string) {
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 
 	s.replayPCRSequenceFromFile(c, pcrEventsFile)
 
-	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err = secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
 
@@ -185,16 +185,16 @@ func (s *compatTestSuiteBase) testUnsealWithPIN(c *C, pcrEventsFile string) {
 }
 
 func (s *compatTestSuiteBase) testUpdatePCRProtectionPolicy(c *C, pcrProfile *secboot.PCRProtectionProfile) {
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.absPath("pud"), pcrProfile), IsNil)
 }
 
 func (s *compatTestSuiteBase) testUpdatePCRProtectionPolicyRevokes(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEventsFile string) {
-	kOrig, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	kOrig, err := secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.absPath("pud"), pcrProfile), IsNil)
 
@@ -205,13 +205,13 @@ func (s *compatTestSuiteBase) testUpdatePCRProtectionPolicyRevokes(c *C, pcrProf
 }
 
 func (s *compatTestSuiteBase) testUpdatePCRProtectionPolicyAndUnseal(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEvents io.Reader) {
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.absPath("pud"), pcrProfile), IsNil)
 
 	s.replayPCRSequenceFromReader(c, pcrEvents)
 
-	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err = secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 
 	key, err := k.UnsealFromTPM(s.TPM, "")
@@ -228,7 +228,7 @@ func (s *compatTestSuiteBase) testUnsealAfterLock(c *C, pcrEventsFile string) {
 
 	s.replayPCRSequenceFromFile(c, pcrEventsFile)
 
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 
 	_, err = k.UnsealFromTPM(s.TPM, "")

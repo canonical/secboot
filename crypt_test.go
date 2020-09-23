@@ -333,7 +333,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *tes
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
 	// Test with a single PIN attempt.
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	testPIN := "1234"
@@ -346,7 +346,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN2(c *C) {
 	// Test with 2 PIN attempts.
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	testPIN := "1234"
@@ -390,7 +390,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(c *C) {
 	// Test with the correct PIN provided via the io.Reader.
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	testPIN := "1234"
@@ -404,7 +404,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader2(c *C) {
 	// Test with the correct PIN provided via the io.Reader when the file doesn't end in a newline.
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	testPIN := "1234"
@@ -418,7 +418,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader2(
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader3(c *C) {
 	// Test falling back to asking for a PIN if the wrong PIN is provided via the io.Reader.
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	testPIN := "1234"
@@ -433,7 +433,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader3(
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader4(c *C) {
 	// Test falling back to asking for a PIN without using a try if the io.Reader has no contents.
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	testPIN := "1234"
@@ -603,7 +603,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 	// Test that recovery fallback works if the wrong PIN is supplied.
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	testPIN := "1234"
@@ -627,7 +627,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 
 func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
 	// Test that recovery fallback works if a PIN is set but no PIN attempts are permitted.
-	k, err := ReadSealedKeyObject(s.keyFile)
+	k, err := ReadSealedKeyObjectFromFile(s.keyFile)
 	c.Assert(err, IsNil)
 
 	c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
@@ -1158,7 +1158,7 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	c.Check(int(token.Keyslots[0]), Equals, 0)
 	c.Check(token.Params["secboot-type"], Equals, "master-detached")
 
-	testutil.CheckLUKS2Passphrase(c, devicePath, data.key)
+	c.Check(luks2.TestPassphrase(devicePath, -1, data.key), IsNil)
 }
 
 func (s *cryptSuite) TestInitializeLUKS2Container1(c *C) {
@@ -1226,7 +1226,7 @@ func (s *cryptSuite) TestSetLUKS2ContainerRecoveryKey(c *C) {
 		c.Assert(keyslot.KDF, NotNil)
 		c.Check(keyslot.KDF.Type, Equals, "argon2i")
 
-		testutil.CheckLUKS2Passphrase(c, devicePath, recoveryKey[:])
+		c.Check(luks2.TestPassphrase(devicePath, -1, recoveryKey[:]), IsNil)
 	}
 }
 
@@ -1270,8 +1270,8 @@ func (s *cryptSuite) TestChangeLUKS2ContainerRecoveryKey(c *C) {
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, "argon2i")
 
-	testutil.CheckLUKS2Passphrase(c, devicePath, key)
-	testutil.CheckLUKS2Passphrase(c, devicePath, recoveryKey2[:])
+	c.Check(luks2.TestPassphrase(devicePath, -1, key), IsNil)
+	c.Check(luks2.TestPassphrase(devicePath, -1, recoveryKey2[:]), IsNil)
 }
 
 func (s *cryptSuite) TestSetLUKS2ContainerMasterKey(c *C) {
@@ -1316,7 +1316,7 @@ func (s *cryptSuite) TestSetLUKS2ContainerMasterKey(c *C) {
 		c.Check(keyslot.KDF.Time, Equals, 4)
 		c.Check(keyslot.KDF.Memory, Equals, 32)
 
-		testutil.CheckLUKS2Passphrase(c, devicePath, key)
+		c.Check(luks2.TestPassphrase(devicePath, -1, key), IsNil)
 	}
 }
 
@@ -1357,5 +1357,5 @@ func (s *cryptSuite) TestChangeLUKS2ContainerMasterKey(c *C) {
 	c.Check(keyslot.KDF.Time, Equals, 4)
 	c.Check(keyslot.KDF.Memory, Equals, 32)
 
-	testutil.CheckLUKS2Passphrase(c, devicePath, newKey)
+	c.Check(luks2.TestPassphrase(devicePath, -1, newKey), IsNil)
 }

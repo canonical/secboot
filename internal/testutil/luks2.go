@@ -20,7 +20,6 @@
 package testutil
 
 import (
-	"bytes"
 	"fmt"
 	"os/exec"
 
@@ -59,10 +58,4 @@ exec %[1]s "$@" </dev/stdin
 	c.Assert(err, IsNil)
 
 	return snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupWrapperBottom, cryptsetup))
-}
-
-func CheckLUKS2Passphrase(c *C, path string, key []byte) {
-	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", path)
-	cmd.Stdin = bytes.NewReader(key)
-	c.Check(cmd.Run(), IsNil)
 }
