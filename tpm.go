@@ -117,6 +117,10 @@ func (t *TPMConnection) Close() error {
 	return t.TPMContext.Close()
 }
 
+func (t *TPMConnection) Lock() error {
+	return LockAccessToSealedKeys(t)
+}
+
 // createTransientEk creates a new primary key in the endorsement hierarchy using the default RSA2048 EK template.
 func createTransientEk(tpm *tpm2.TPMContext) (tpm2.ResourceContext, error) {
 	session, err := tpm.StartAuthSession(nil, tpm.EndorsementHandleContext(), tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256)

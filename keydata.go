@@ -24,7 +24,6 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -33,7 +32,6 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
@@ -441,6 +439,12 @@ type sealedKeyObjectStorage interface {
 	commitAtomic(data *keyData) error
 }
 
+type sealedKeyObjectStorageReadOnly struct{}
+
+func (s sealedKeyObjectStorageReadOnly) commitAtomic(data *keyData) error {
+	return errors.New("cannot commit updates for read only object")
+}
+
 type sealedKeyObjectStorageFile string
 
 func (s sealedKeyObjectStorageFile) commitAtomic(data *keyData) error {
@@ -460,57 +464,6 @@ func (s sealedKeyObjectStorageFile) commitAtomic(data *keyData) error {
 
 	if err := f.Commit(); err != nil {
 		return xerrors.Errorf("cannot atomically replace file: %w", err)
-	}
-
-	return nil
-}
-
-type sealedKeyObjectStorageLUKS2 string
-
-func (s sealedKeyObjectStorageLUKS2) commitAtomic(data *keyData) error {
-	release, err := luks2.AcquireLock(string(s), luks2.LockModeExclusive)
-	if err != nil {
-		return xerrors.Errorf("cannot acquire lock: %w", err)
-	}
-	defer release()
-
-	info, err := luks2.DecodeHdr(string(s))
-	if err != nil {
-		return xerrors.Errorf("cannot decode header: %w", err)
-	}
-
-	existingTokenId := -1
-	for k, v := range info.Metadata.Tokens {
-		if v.Type != tokenType {
-			continue
-		}
-		if s := v.Params[slotTypeKey]; s == tpmSlotType {
-			existingTokenId = int(k)
-			break
-		}
-	}
-
-	if existingTokenId == -1 {
-		return errors.New("existing token was deleted")
-	}
-	if len(info.Metadata.Tokens[existingTokenId].Keyslots) == 0 {
-		return errors.New("existing token is not associated with a keyslot")
-	}
-
-	var buf bytes.Buffer
-	if err := data.write(&buf); err != nil {
-		return xerrors.Errorf("cannot encode data: %w", err)
-	}
-
-	token := makeTokenForKeyslot(tpmSlotType, info.Metadata.Tokens[existingTokenId].Keyslots[0])
-	token.Params["secboot-tpm-data"] = buf.Bytes()
-
-	if err := luks2.ImportToken(string(s), token); err != nil {
-		return xerrors.Errorf("cannot import new token: %w", err)
-	}
-
-	if err := luks2.RemoveToken(string(s), existingTokenId); err != nil {
-		return xerrors.Errorf("cannot delete old token: %w", err)
 	}
 
 	return nil
@@ -562,51 +515,4 @@ func ReadSealedKeyObjectFromFile(path string) (*SealedKeyObject, error) {
 	}
 
 	return &SealedKeyObject{storage: sealedKeyObjectStorageFile(path), data: data}, nil
-}
-
-// ReadSealedKeyObjectFromLUKS2 loads a sealed key data object from the specified LUKS2 container. If the container cannot be
-// opened, a wrapped *os.PathError error is returned. If the key data cannot be found or deserialized successfully, a
-// InvalidKeyFileError error will be returned.
-func ReadSealedKeyObjectFromLUKS2(devicePath string) (*SealedKeyObject, error) {
-	release, err := luks2.AcquireLock(devicePath, luks2.LockModeShared)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot acquire lock: %w", err)
-	}
-	defer release()
-
-	info, err := luks2.DecodeHdr(devicePath)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot decode header: %w", err)
-	}
-
-	var r io.Reader
-
-	for _, v := range info.Metadata.Tokens {
-		if v.Type != tokenType {
-			continue
-		}
-		if s := v.Params[slotTypeKey]; s != tpmSlotType {
-			continue
-		}
-		d, ok := v.Params["secboot-tpm-data"]
-		if !ok {
-			continue
-		}
-		s, ok := d.(string)
-		if !ok {
-			r = base64.NewDecoder(base64.StdEncoding, bytes.NewReader([]byte(s)))
-			break
-		}
-	}
-
-	if r == nil {
-		return nil, errors.New("no valid TPM token found")
-	}
-
-	data, err := decodeKeyData(r)
-	if err != nil {
-		return nil, InvalidKeyFileError{err.Error()}
-	}
-
-	return &SealedKeyObject{storage: sealedKeyObjectStorageLUKS2(devicePath), data: data}, nil
 }

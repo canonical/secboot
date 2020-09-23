@@ -520,8 +520,8 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling3(c *C) {
 		success:          true,
 		recoveryReason:   RecoveryKeyUsageReasonTPMLockout,
 		errChecker:       ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) but " +
-			"activation with recovery key was successful"},
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the keystore is temporarily unavailable " +
+			"for recovering keys\\) but activation with recovery key was successful"},
 	})
 }
 
@@ -545,7 +545,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
 		success:        true,
 		recoveryReason: RecoveryKeyUsageReasonTPMProvisioningError,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is not correctly " +
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the keystore is not correctly " +
 			"provisioned\\) but activation with recovery key was successful"},
 	})
 }
@@ -578,8 +578,8 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		success:    false,
 		errChecker: ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) " +
-			"and activation with recovery key failed \\(no recovery key tries permitted\\)"},
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the keystore is temporarily unavailable " +
+			"for recovering keys\\) and activation with recovery key failed \\(no recovery key tries permitted\\)"},
 	})
 }
 
@@ -596,8 +596,8 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
 		activateCalls:    1,
 		success:          false,
 		errChecker:       ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) " +
-			"and activation with recovery key failed \\(cannot activate volume: exit status 0\\)"},
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the keystore is temporarily unavailable " +
+			"for recovering keys\\) and activation with recovery key failed \\(cannot activate volume: exit status 0\\)"},
 	})
 }
 
@@ -620,7 +620,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 		success:        true,
 		recoveryReason: RecoveryKeyUsageReasonPINFail,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the provided PIN is incorrect\\) but " +
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the supplied PIN is incorrect\\) but " +
 			"activation with recovery key was successful"},
 	})
 }
@@ -699,8 +699,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		success:          true,
 		recoveryReason:   RecoveryKeyUsageReasonInvalidKeyFile,
 		errChecker:       ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
-			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the key data is invalid\\) but " +
 			"activation with recovery key was successful"},
 	})
 }

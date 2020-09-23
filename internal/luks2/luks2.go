@@ -716,8 +716,6 @@ func DecodeHdr(path string) (*HdrInfo, error) {
 		secondaryHdr, secondaryJSON, _ = decodeAndCheckHeader(f, int64(primaryHdr.HdrSize), false)
 	}
 
-	// TODO: Check both JSON areas
-
 	var hdr *binaryHdr
 	var jsonData []byte
 	switch {
