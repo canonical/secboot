@@ -125,8 +125,11 @@ type KeyCreationParams struct {
 	// recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
 	PCRPolicyCounterHandle tpm2.Handle
 
-	// AuthKey can be set to chose an auhorisation key. Otherwise
-	// one is generated.
+	// AuthKey can be set to chose an auhorisation key whose
+	// private part will be used for authorizing PCR policy
+	// updates with UpdateKeyPCRProtectionPolicy
+	// If set a key from elliptic.P256 must be used,
+	// if not set one is generated.
 	AuthKey *ecdsa.PrivateKey
 }
 
@@ -166,6 +169,10 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
+	}
+
+	if params.AuthKey != nil && params.AuthKey.Curve != elliptic.P256() {
+		return nil, errors.New("provided AuthKey must be from elliptictic.P256, no other curve is supported")
 	}
 
 	// Use the HMAC session created when the connection was opened rather than creating a new one.

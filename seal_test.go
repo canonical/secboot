@@ -137,7 +137,6 @@ func TestSealKeyToTPM(t *testing.T) {
 			t.Fatalf("AuthKey private part bytes do not match provided one")
 		}
 	})
-
 }
 
 func TestSealKeyToTPMErrorHandling(t *testing.T) {
@@ -314,6 +313,20 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Fatalf("Expected an error")
 		}
 		if err.Error() != "cannot compute dynamic authorization policy: PCR protection profile contains digests for unsupported PCRs" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("WrongCurve", func(t *testing.T) {
+		authKey, err := ecdsa.GenerateKey(elliptic.P384(), testutil.RandReader)
+		if err != nil {
+			t.Fatalf("GenerateKey failed: %v", err)
+		}
+		err = run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000, AuthKey: authKey})
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "provided AuthKey must be from elliptictic.P256, no other curve is supported" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
