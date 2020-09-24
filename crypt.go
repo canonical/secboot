@@ -140,9 +140,9 @@ func (e KeyDecodeError) Error() string {
 	return "the key data could not be decoded: " + string(e)
 }
 
-// KeyProtectorHandler provides an abstraction to facilitate unsealing a disk encryption key using an implementation specific
+// LUKS2KeyHandler provides an abstraction to facilitate unsealing a disk encryption key using an implementation specific
 // keystore backend.
-type KeyProtectorHandler interface {
+type LUKS2KeyHandler interface {
 	// NewKeyHandle implementations decode the provided token parameters which describe how to unseal a key in an implementation
 	// specific way, and return a KeyHandla. If a key handle can't be decoded from the supplied token parameters, implementations
 	// should return a
@@ -151,9 +151,9 @@ type KeyProtectorHandler interface {
 	// TODO: Add interface for decoding keyring entries to their correct go type (will be used by GetActivationDataFromKernel)
 }
 
-type tpmKeyProtectorHandler struct{}
+type tpmLUKS2KeyHandler struct{}
 
-func (p tpmKeyProtectorHandler) NewKeyHandle(tokenParams map[string]interface{}) (KeyHandle, error) {
+func (p tpmLUKS2KeyHandler) NewKeyHandle(tokenParams map[string]interface{}) (KeyHandle, error) {
 	s, ok := tokenParams[tpmSlotDataKey].(string)
 	if !ok {
 		return nil, KeyDecodeError("no key data")
@@ -168,10 +168,10 @@ func (p tpmKeyProtectorHandler) NewKeyHandle(tokenParams map[string]interface{})
 	return &tpmKeyHandle{k: &SealedKeyObject{storage: sealedKeyObjectStorageReadOnly{}, data: data}}, nil
 }
 
-// keyProtectorHandlers is a map of known key protector handlers
-// TODO: Provide an API to allow external KeyProtectorHandler implementations, and allow the TPM code to move in to a separate
+// luks2KeyHandlers is a map of known key protector handlers
+// TODO: Provide an API to allow external LUKS2KeyHandler implementations, and allow the TPM code to move in to a separate
 // subpackage.
-var keyProtectorHandlers = map[string]KeyProtectorHandler{"tpm": &tpmKeyProtectorHandler{}}
+var luks2KeyHandlers = map[string]LUKS2KeyHandler{"tpm": &tpmLUKS2KeyHandler{}}
 
 // RecoveryKeyUsageReason indicates the reason that a volume had to be activated with the fallback recovery key instead of the TPM
 // sealed key.
@@ -751,7 +751,7 @@ func ActivateLUKS2Volume(stores KeyStores, volumeName, sourceDevicePath string, 
 			// Token is missing a valid "secboot-type" field.
 			continue
 		}
-		handler, ok := keyProtectorHandlers[s]
+		handler, ok := luks2KeyHandlers[s]
 		if !ok {
 			// No handler for this type
 			continue
