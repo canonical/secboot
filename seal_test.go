@@ -43,7 +43,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 			t.Errorf("Failed to provision TPM for test: %v", err)
 		}
 	}()
@@ -93,10 +93,10 @@ func TestSealKeyToTPM(t *testing.T) {
 	})
 
 	t.Run("SealAfterProvision", func(t *testing.T) {
-		// SealKeyToTPM behaves slightly different if called immediately after ProvisionTPM with the same TPMConnection
+		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same TPMConnection
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 			t.Errorf("Failed to provision TPM for test: %v", err)
 		}
 		run(t, tpm, true, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: 0x01810000})
@@ -128,7 +128,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Errorf("Failed to provision TPM for test: %v", err)
 	}
 
@@ -212,7 +212,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
 				t.Errorf("NVUndefineSpace failed: %v", err)
 			}
-			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+			if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 				t.Errorf("Failed to re-provision TPM after test: %v", err)
 			}
 		}()
@@ -237,7 +237,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
 				t.Errorf("NVUndefineSpace failed: %v", err)
 			}
-			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+			if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 				t.Errorf("Failed to re-provision TPM after test: %v", err)
 			}
 		}()

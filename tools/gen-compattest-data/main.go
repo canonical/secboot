@@ -169,7 +169,7 @@ func run() int {
 		return 1
 	}
 
-	if err := secboot.ProvisionTPM(tpm, secboot.ProvisionModeFull, []byte("1234")); err != nil {
+	if err := tpm.EnsureProvisioned(secboot.ProvisionModeFull, []byte("1234")); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot provision TPM: %v\n", err)
 		return 1
 	}
