@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/tcti"
 	"github.com/snapcore/secboot/internal/truststore"
@@ -152,8 +153,8 @@ func verifyEk(cert *x509.Certificate, ek tpm2.ResourceContext) error {
 
 	// Insert the RSA public key in to the EK template to compute the name of the EK object we expected to read back from the TPM.
 	var ekPublic *tpm2.Public
-	b, _ := tpm2.MarshalToBytes(tcg.EKTemplate)
-	tpm2.UnmarshalFromBytes(b, &ekPublic)
+	b, _ := mu.MarshalToBytes(tcg.EKTemplate)
+	mu.UnmarshalFromBytes(b, &ekPublic)
 
 	// The default exponent of 2^^16-1 is indicated by the value of 0 in the public area.
 	if pubKey.E != 65537 {
@@ -749,7 +750,7 @@ func saveEkCertificateChain(data *ekCertData, dest string) error {
 	}
 	defer f.Cancel()
 
-	if _, err := tpm2.MarshalToWriter(f, data); err != nil {
+	if _, err := mu.MarshalToWriter(f, data); err != nil {
 		return xerrors.Errorf("cannot marshal cert chain: %w", err)
 	}
 
@@ -820,7 +821,7 @@ func EncodeEKCertificateChain(ekCert *x509.Certificate, parents []*x509.Certific
 		data.Parents = append(data.Parents, c.Raw)
 	}
 
-	if _, err := tpm2.MarshalToWriter(w, &data); err != nil {
+	if _, err := mu.MarshalToWriter(w, &data); err != nil {
 		return xerrors.Errorf("cannot marshal cert chain: %w", err)
 	}
 
@@ -912,7 +913,7 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 
 	var certData *ekCertData
 	// Unmarshal supplied EK cert data
-	if _, err := tpm2.UnmarshalFromReader(ekCertDataReader, &certData); err != nil {
+	if _, err := mu.UnmarshalFromReader(ekCertDataReader, &certData); err != nil {
 		return nil, EKCertVerificationError{fmt.Sprintf("cannot unmarshal supplied EK certificate data: %v", err)}
 	}
 	if len(certData.Cert) == 0 {

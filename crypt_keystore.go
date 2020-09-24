@@ -148,7 +148,7 @@ func (s *tpmKeyStore) RecoverKey(handle KeyHandle, pin string) ([]byte, error) {
 		// has a null authorization value, then this will allow us to unseal the key without requiring any type of manual recovery. If the
 		// storage hierarchy has a non-null authorization value, ProvionTPM will fail. If the TPM owner has changed, ProvisionTPM might
 		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
-		if pErr := ProvisionTPM(s.tpm, ProvisionModeWithoutLockout, nil); pErr == nil {
+		if pErr := s.tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); pErr == nil || pErr == ErrTPMProvisioningRequiresLockout {
 			key, err = h.k.UnsealFromTPM(s.tpm, pin)
 		}
 	}

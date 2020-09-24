@@ -3,16 +3,22 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "s0Ow9uk/0H2Pmfq4JAGpzy5x6T0=",
+			"checksumSHA1": "inZOuvF07VvZnsj1HvApM8Uf7qY=",
 			"path": "github.com/canonical/go-tpm2",
-			"revision": "aaf158ed20ca23c48b446f78fb0bbaf4055e7123",
-			"revisionTime": "2020-05-14T15:04:06Z"
+			"revision": "fb781d04d0dea72f916cc68b637b7be6bcb3ccd4",
+			"revisionTime": "2020-08-24T18:49:43Z"
 		},
 		{
 			"checksumSHA1": "bT/rC7K8St3lNRXf/XJGpB4wNJU=",
 			"path": "github.com/canonical/go-tpm2/internal",
 			"revision": "16307201a54dc51583440f9416cfa836bcf0b3fc",
 			"revisionTime": "2020-04-16T00:17:14Z"
+		},
+		{
+			"checksumSHA1": "fGle5W3B2jSAsLeOQnRbGG7uyV8=",
+			"path": "github.com/canonical/go-tpm2/mu",
+			"revision": "8f372d7de1b07c887e388874555d48f9161feaed",
+			"revisionTime": "2020-08-24T11:54:14Z"
 		},
 		{
 			"checksumSHA1": "eDjzake0GpHm9kfTH7FMUWX8zVA=",
@@ -145,10 +151,10 @@
 			"revisionTime": "2020-04-20T18:59:55Z"
 		},
 		{
-			"checksumSHA1": "f01gqazrvoATUzX2njKnzd+c1O0=",
+			"checksumSHA1": "TOoWW8rGy9VaSreHsF41wC9AKZo=",
 			"path": "github.com/snapcore/snapd/snap",
-			"revision": "cba748d1244e6861a5e407f7abe90fb2f76b6f80",
-			"revisionTime": "2020-04-20T18:59:55Z"
+			"revision": "fb087b94699cd51acf7b3fe14585c3b24f37873e",
+			"revisionTime": "2020-08-27T07:31:38Z"
 		},
 		{
 			"checksumSHA1": "o5TwzS0cwJNV8HNIIZrRfZPANLU=",

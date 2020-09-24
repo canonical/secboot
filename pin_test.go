@@ -172,7 +172,7 @@ func (s *pinSuite) SetUpSuite(c *C) {
 
 func (s *pinSuite) SetUpTest(c *C) {
 	s.TPMTestBase.SetUpTest(c)
-	c.Assert(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
