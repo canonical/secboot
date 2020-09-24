@@ -148,12 +148,17 @@ type LUKS2KeyHandler interface {
 	// should return a
 	NewKeyHandle(tokenParams map[string]interface{}) (KeyHandle, error)
 
-	// TODO: Add interface for decoding keyring entries to their correct go type (will be used by GetActivationDataFromKernel)
+	// MakeKeyringDataForKey returns the data that should be added to the kernel keyring in the event that the specified key
+	// is used to activate a device.
+	MakeKeyringDataForKey(handle KeyHandle, key []byte) (map[string]string, []byte)
+
+	// DecodeKeyringData is used by GetActivationDataFromKernel to decode a key from the kernel keyring to the appropriate type.
+	DecodeKeyringData(params map[string]string, payload []byte) (interface{}, error)
 }
 
 type tpmLUKS2KeyHandler struct{}
 
-func (p tpmLUKS2KeyHandler) NewKeyHandle(tokenParams map[string]interface{}) (KeyHandle, error) {
+func (h *tpmLUKS2KeyHandler) NewKeyHandle(tokenParams map[string]interface{}) (KeyHandle, error) {
 	s, ok := tokenParams[tpmSlotDataKey].(string)
 	if !ok {
 		return nil, KeyDecodeError("no key data")
@@ -166,6 +171,16 @@ func (p tpmLUKS2KeyHandler) NewKeyHandle(tokenParams map[string]interface{}) (Ke
 	}
 
 	return &tpmKeyHandle{k: &SealedKeyObject{storage: sealedKeyObjectStorageReadOnly{}, data: data}}, nil
+}
+
+func (h *tpmLUKS2KeyHandler) MakeKeyringDataForKey(handle KeyHandle, key []byte) (map[string]string, []byte) {
+	// TODO: Return the policy auth key as the payload
+	return nil, nil
+}
+
+func (h *tpmLUKS2KeyHandler) DecodeKeyringData(params map[string]string, payload []byte) (interface{}, error) {
+	// TODO: Decode to TPMPolicyAuthKey
+	return nil, errors.New("not implemented")
 }
 
 // luks2KeyHandlers is a map of known key protector handlers
@@ -430,7 +445,8 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 }
 
 type keyRecoverContext struct {
-	handle   KeyHandle
+	key      KeyHandle
+	handler  LUKS2KeyHandler
 	slotType string
 	slotId   int
 	err      error
@@ -490,7 +506,7 @@ func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volum
 				return nil, err
 			}
 
-			return nil, nil
+			return key, nil
 		}
 
 		hasSlotWithPIN := false
@@ -501,12 +517,12 @@ func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volum
 				continue
 			}
 
-			if c.handle.PINRequired() {
+			if c.key.PINRequired() {
 				hasSlotWithPIN = true
 				continue
 			}
 
-			key, err := recoverAndActivate(c.handle, "")
+			key, err := recoverAndActivate(c.key, "")
 			if err == nil {
 				return key, c, nil
 			}
@@ -528,11 +544,11 @@ func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volum
 					continue
 				}
 
-				if !c.handle.PINRequired() {
+				if !c.key.PINRequired() {
 					continue
 				}
 
-				key, err := recoverAndActivate(c.handle, pin)
+				key, err := recoverAndActivate(c.key, pin)
 				if err == nil {
 					return key, c, nil
 				}
@@ -560,11 +576,25 @@ func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volum
 		}
 	}
 
-	if c != nil && c.err == nil {
-		c.handle.DidUseForDevice(sourceDevicePath)
+	if c == nil || c.err != nil {
+		return false, nil
+	}
+
+	params, payload := c.handler.MakeKeyringDataForKey(c.key, key)
+	if payload == nil {
 		return true, nil
 	}
-	return false, nil
+
+	var desc bytes.Buffer
+	// TODO: Feed a prefix through here
+	fmt.Fprintf(&desc, "secboot:%s?type=%s", sourceDevicePath, c.slotType)
+	if params != nil {
+		for k, v := range params {
+			fmt.Fprintf(&desc, "&%s=%s", k, v)
+		}
+	}
+	unix.AddKey("user", desc.String(), payload, userKeyring)
+	return true, nil
 }
 
 type LUKS2KeyStoreProtectedKeyError struct {
@@ -756,8 +786,8 @@ func ActivateLUKS2Volume(stores KeyStores, volumeName, sourceDevicePath string, 
 			// No handler for this type
 			continue
 		}
-		handle, err := handler.NewKeyHandle(v.Params)
-		contexts = append(contexts, &keyRecoverContext{handle: handle, slotType: s, slotId: v.Keyslots[0], err: err})
+		key, err := handler.NewKeyHandle(v.Params)
+		contexts = append(contexts, &keyRecoverContext{key: key, handler: handler, slotType: s, slotId: v.Keyslots[0], err: err})
 	}
 
 	activated, err := activateWithKeyStore(stores, contexts, volumeName, sourceDevicePath, pinReader, options.PINTries, options.LockKeyStores, options.ActivateOptions)

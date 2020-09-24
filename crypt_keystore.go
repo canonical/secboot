@@ -97,10 +97,6 @@ func isKeyRecoverError(err error, code KeyRecoverErrorCode) bool {
 // KeyHandle corresponds to a key that can be recovered by a corresponding KeyStore.
 type KeyHandle interface {
 	PINRequired() bool // Indicates whether a PIN is required to recover this key.
-
-	// DidUseForDevice indicates that this key was used to activate a volume with the specified device path.
-	// Implementations can use this to add data to the kernel keyring if required.
-	DidUseForDevice(devicePath string)
 }
 
 // KeyStore corresponds to a device from which keys can be recovered.
@@ -116,15 +112,11 @@ type KeyStores []KeyStore
 
 type tpmKeyHandle struct {
 	k *SealedKeyObject
-	// TODO: Add a field for the policy authorization key
+	// TODO: Add a field for the policy authorization key that can be used by tpmLUKS2KeyHandler.DidUseKeyForDevice.
 }
 
 func (c *tpmKeyHandle) PINRequired() bool {
 	return c.k.AuthMode2F() == AuthModePIN
-}
-
-func (c *tpmKeyHandle) DidUseForDevice(devicePath string) {
-	// TODO: Add the auth private key to the keyring in a format that can be decoded by GetActivationDataFromKernel later on
 }
 
 type tpmKeyStore struct {
