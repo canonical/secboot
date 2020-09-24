@@ -20,8 +20,13 @@
 package secboot
 
 import (
+	"errors"
+
 	"golang.org/x/xerrors"
 )
+
+// ErrUnsupportedKeyHandle is returned from a KeyStore that doesn't handle the supplied KeyHandle type.
+var ErrUnsupportedKeyHandle = errors.New("the supplied key handle is not supported by the key store")
 
 // KeyRecoverErrorCode describes an error returned from KeyStore.Recover.
 type KeyRecoverErrorCode int
@@ -44,10 +49,6 @@ const (
 
 	// KeyRecoverPINFailError indicates that a key store couldn't recover a key because the supplied PIN was incorrect.
 	KeyRecoverPINFailError
-
-	// KeyRecoverIncorrectKeyError indicates that a key store appeared to successfully recover a key, but that key is not
-	// a valid key to activate the LUKS volume.
-	KeyRecoverIncorrectKeyError
 )
 
 // KeyRecoverError is returned from KeyRecoverContext implementations to indicate the reason that a key could not be recovered.

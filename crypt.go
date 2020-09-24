@@ -436,6 +436,11 @@ type keyRecoverContext struct {
 	err      error
 }
 
+var (
+	errIncorrectKey = errors.New("the recovered key is incorrect")
+	errNoKeystore = errors.New("no keystore was provided to recover this key")
+)
+
 func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volumeName, sourceDevicePath string, pinReader io.Reader,
 	pinTries int, lockStores bool, activateOptions []string) (bool, error) {
 	var lockErr error
@@ -451,15 +456,21 @@ func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volum
 
 		recoverAndActivate := func(handle KeyHandle, pin string) ([]byte, error) {
 			var key []byte
+			handled := false
 			for _, s := range stores {
 				var err error
 				key, err = s.RecoverKey(handle, pin)
-				if err == ErrUnsupportedKeyHandle {
-					continue
-				}
-				if err != nil {
+				if err != nil && err != ErrUnsupportedKeyHandle {
 					return nil, err
 				}
+				if err == nil {
+					handled = true
+					break
+				}
+			}
+
+			if !handled {
+				return nil, errNoKeystore
 			}
 
 			// If lockStores is true, defer activation until we know that locking was successful. In this case, return the key for
@@ -474,7 +485,7 @@ func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volum
 			// TODO: Specify keyslot
 			if err := luks2Activate(volumeName, sourceDevicePath, key, activateOptions); err != nil {
 				if isExitError(err) {
-					return nil, WrapKeyRecoverError(KeyRecoverIncorrectKeyError, nil)
+					return nil, errIncorrectKey
 				}
 				return nil, err
 			}
@@ -545,7 +556,7 @@ func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volum
 		// Activation is deferred in this case
 		c.err = luks2Activate(volumeName, sourceDevicePath, key, activateOptions)
 		if isExitError(c.err) {
-			c.err = WrapKeyRecoverError(KeyRecoverIncorrectKeyError, nil)
+			c.err = errIncorrectKey
 		}
 	}
 

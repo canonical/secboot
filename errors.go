@@ -52,8 +52,6 @@ var (
 
 	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
 	ErrNoTPM2Device = errors.New("no TPM2 device is available")
-
-	ErrUnsupportedKeyHandle = errors.New("the supplied key handle is not supported by the key store")
 )
 
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists
