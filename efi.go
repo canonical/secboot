@@ -38,26 +38,9 @@ type EFIImage interface {
 	Open() (interface {
 		io.ReaderAt
 		io.Closer
-		Size() (int64, error)
+		Size() int64
 	}, error) // Open a handle to the image for reading
 }
-
-type snapFileEFIImageHandle struct {
-	h interface {
-		io.ReaderAt
-		io.Closer
-	}
-}
-
-func (h *snapFileEFIImageHandle) ReadAt(p []byte, off int64) (int, error) {
-	return h.h.ReadAt(p, off)
-}
-
-func (h *snapFileEFIImageHandle) Close() error {
-	return h.h.Close()
-}
-
-func (h *snapFileEFIImageHandle) Size() (int64, error) { panic("not implemented") }
 
 // SnapFileEFIImage corresponds to a binary contained within a snap file that is loaded, verified and executed before ExitBootServices.
 type SnapFileEFIImage struct {
@@ -73,25 +56,18 @@ func (f SnapFileEFIImage) String() string {
 func (f SnapFileEFIImage) Open() (interface {
 	io.ReaderAt
 	io.Closer
-	Size() (int64, error)
+	Size() int64
 }, error) {
-	h, err := f.Container.RandomAccessFile(f.FileName)
-	if err != nil {
-		return nil, err
-	}
-	return &snapFileEFIImageHandle{h}, nil
+	return f.Container.RandomAccessFile(f.FileName)
 }
 
 type fileEFIImageHandle struct {
 	*os.File
+	size int64
 }
 
-func (h *fileEFIImageHandle) Size() (int64, error) {
-	fi, err := h.Stat()
-	if err != nil {
-		return 0, err
-	}
-	return fi.Size(), nil
+func (h *fileEFIImageHandle) Size() int64 {
+	return h.size
 }
 
 // FileEFIImage corresponds to a file on disk that is loaded, verified and executed before ExitBootServices.
@@ -104,13 +80,18 @@ func (p FileEFIImage) String() string {
 func (p FileEFIImage) Open() (interface {
 	io.ReaderAt
 	io.Closer
-	Size() (int64, error)
+	Size() int64
 }, error) {
 	f, err := os.Open(string(p))
 	if err != nil {
 		return nil, err
 	}
-	return &fileEFIImageHandle{f}, nil
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return &fileEFIImageHandle{File: f, size: fi.Size()}, nil
 }
 
 // EFIImageLoadEventSource corresponds to the source of a EFIImageLoadEvent.

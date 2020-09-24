@@ -30,6 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
 )
@@ -76,7 +77,7 @@ func validateLockNVIndex(t *testing.T, tpm *tpm2.TPMContext) {
 	var version uint8
 	var keyName tpm2.Name
 	var clock uint64
-	if _, err := tpm2.UnmarshalFromBytes(data, &version, &keyName, &clock); err != nil {
+	if _, err := mu.UnmarshalFromBytes(data, &version, &keyName, &clock); err != nil {
 		t.Fatalf("UnmarshalFromBytes failed: %v", err)
 	}
 
@@ -343,7 +344,7 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 		var version uint8
 		var keyName tpm2.Name
 		var clock uint64
-		if _, err := tpm2.UnmarshalFromBytes(data, &version, &keyName, &clock); err != nil {
+		if _, err := mu.UnmarshalFromBytes(data, &version, &keyName, &clock); err != nil {
 			t.Fatalf("UnmarshalFromBytes failed: %v", err)
 		}
 
@@ -352,7 +353,7 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 			t.Fatalf("ReadClock failed: %v", err)
 		}
 
-		data, err = tpm2.MarshalToBytes(version, keyName, time.ClockInfo.Clock+3600000)
+		data, err = mu.MarshalToBytes(version, keyName, time.ClockInfo.Clock+3600000)
 		if err != nil {
 			t.Errorf("MarshalToBytes failed: %v", err)
 		}
@@ -472,7 +473,7 @@ func TestReadAndValidateLockNVIndexPublic(t *testing.T) {
 			t.Errorf("NVWrite failed: %v", err)
 		}
 
-		data, err := tpm2.MarshalToBytes(uint8(0), keyName, time.ClockInfo.Clock)
+		data, err := mu.MarshalToBytes(uint8(0), keyName, time.ClockInfo.Clock)
 		if err != nil {
 			t.Fatalf("MarshalToBytes failed: %v", err)
 		}

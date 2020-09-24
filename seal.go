@@ -29,6 +29,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
@@ -271,7 +272,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath, policyUpdatePath stri
 	// Have the digest of the private data recorded in the creation data for the sealed data object.
 	authKeyBytes := x509.MarshalPKCS1PrivateKey(authKey)
 	h := crypto.SHA256.New()
-	if _, err := tpm2.MarshalToWriter(h, authKeyBytes); err != nil {
+	if _, err := mu.MarshalToWriter(h, authKeyBytes); err != nil {
 		panic(fmt.Sprintf("cannot marshal dynamic authorization policy update data: %v", err))
 	}
 	creationInfo := h.Sum(nil)
