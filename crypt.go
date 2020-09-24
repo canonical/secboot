@@ -134,9 +134,10 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
-func isKeyRecoverError(err error, code KeyRecoverErrorCode) bool {
-	var e *KeyRecoverError
-	return xerrors.As(err, &e) && e.Code == code
+type KeyDecodeError string
+
+func (e KeyDecodeError) Error() string {
+	return "the key data could not be decoded: " + string(e)
 }
 
 // KeyProtectorHandler provides an abstraction to facilitate unsealing a disk encryption key using an implementation specific
@@ -405,7 +406,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 			return false, LockAccessToSealedKeysError(err.Error())
 		case isKeyRecoverError(err, KeyRecoverKeyStoreTemporarilyUnavailableError):
 			reason = RecoveryKeyUsageReasonTPMLockout
-		case isKeyRecoverError(err, KeyRecoverKeyStoreProvisioningError):
+		case isKeyRecoverError(err, KeyRecoverKeyStoreResourcesUnavailableError):
 			reason = RecoveryKeyUsageReasonTPMProvisioningError
 		case isKeyRecoverError(err, KeyRecoverInvalidKeyDataError):
 			reason = RecoveryKeyUsageReasonInvalidKeyFile

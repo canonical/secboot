@@ -23,38 +23,29 @@ import (
 	"golang.org/x/xerrors"
 )
 
-type KeyDecodeError string
-
-func (e KeyDecodeError) Error() string {
-	return "the key data could not be decoded: " + string(e)
-}
-
-// KeyRecoverErrorCode corresponds to an error returned from KeyRecoverContext.Recover.
+// KeyRecoverErrorCode describes an error returned from KeyStore.Recover.
 type KeyRecoverErrorCode int
 
 const (
 	// KeyRecoverUnexpectedError indicates an error that was unexpected and doesn't have a more appropriate error code.
 	KeyRecoverUnexpectedError KeyRecoverErrorCode = iota + 1
 
-	// KeyRecoverNoSuitableKeyStoreError indicates that a key protector was asked to recover a key without being
-	// provided a suitable connection to a keystore backend.
-	KeyRecoverNoSuitableKeyStoreError
-
 	// KeyRecoverKeyStoreTemporarilyUnavailableError indicates that the keystore backend is temporarily unable to recover
 	// a key. In the case of a TPM, this could be because the TPM's dictionary attack protection has been triggered.
 	KeyRecoverKeyStoreTemporarilyUnavailableError
 
-	// KeyRecoverKeyStoreProvisioningError indicates that a key protector was asked to recover a key using a keystore that
-	// isn't properly provisioned.
-	KeyRecoverKeyStoreProvisioningError
+	// KeyRecoverKeyStoreResourcesUnavailableError indicates that a key store doesn't contain the resources required to
+	// recover a key. In the case of a TPM, this could be because the TPM is not correctly provisioned.
+	KeyRecoverKeyStoreResourcesUnavailableError
 
-	// KeyRecoverInvalidKeyDataError indicates that a key protector couldn't recover a key because the provided data was invalid.
+	// KeyRecoverInvalidKeyDataError indicates that a key store couldn't recover a key because the data provided with the
+	// key handle was invalid.
 	KeyRecoverInvalidKeyDataError
 
-	// KeyRecoverPINFailError indicates that a key protector couldn't recover a key because the supplied PIN was incorrect.
+	// KeyRecoverPINFailError indicates that a key store couldn't recover a key because the supplied PIN was incorrect.
 	KeyRecoverPINFailError
 
-	// KeyRecoverIncorrectKeyError indicates that a key protector appeared to successfully recover a key, but that key is not
+	// KeyRecoverIncorrectKeyError indicates that a key store appeared to successfully recover a key, but that key is not
 	// a valid key to activate the LUKS volume.
 	KeyRecoverIncorrectKeyError
 )
@@ -76,11 +67,9 @@ func (e *KeyRecoverError) Error() string {
 	switch e.Code {
 	case KeyRecoverUnexpectedError:
 		prefix = "unexpected error"
-	case KeyRecoverNoSuitableKeyStoreError:
-		prefix = "no suitable keystore connection was provided for this key"
 	case KeyRecoverKeyStoreTemporarilyUnavailableError:
 		prefix = "the keystore is temporarily unavailable for recovering keys"
-	case KeyRecoverKeyStoreProvisioningError:
+	case KeyRecoverKeyStoreResourcesUnavailableError:
 		prefix = "the keystore is not correctly provisioned"
 	case KeyRecoverInvalidKeyDataError:
 		prefix = "the key data is invalid"
@@ -97,6 +86,11 @@ func (e *KeyRecoverError) Error() string {
 
 func (e *KeyRecoverError) Unwrap() error {
 	return e.err
+}
+
+func isKeyRecoverError(err error, code KeyRecoverErrorCode) bool {
+	var e *KeyRecoverError
+	return xerrors.As(err, &e) && e.Code == code
 }
 
 // KeyHandle corresponds to a key that can be recovered by a corresponding KeyStore.
@@ -162,7 +156,7 @@ func (s *tpmKeyStore) RecoverKey(handle KeyHandle, pin string) ([]byte, error) {
 	case xerrors.Is(err, ErrTPMLockout):
 		return nil, WrapKeyRecoverError(KeyRecoverKeyStoreTemporarilyUnavailableError, nil)
 	case xerrors.Is(err, ErrTPMProvisioning):
-		return nil, WrapKeyRecoverError(KeyRecoverKeyStoreProvisioningError, nil)
+		return nil, WrapKeyRecoverError(KeyRecoverKeyStoreResourcesUnavailableError, nil)
 	case isInvalidKeyFileError(err):
 		return nil, WrapKeyRecoverError(KeyRecoverInvalidKeyDataError, err)
 	case xerrors.Is(err, ErrPINFail):
