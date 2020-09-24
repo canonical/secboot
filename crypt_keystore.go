@@ -51,7 +51,7 @@ const (
 	KeyRecoverPINFailError
 )
 
-// KeyRecoverError is returned from KeyRecoverContext implementations to indicate the reason that a key could not be recovered.
+// KeyRecoverError is returned from KeyStore implementations to indicate the reason that a key could not be recovered.
 type KeyRecoverError struct {
 	Code KeyRecoverErrorCode
 	err  error

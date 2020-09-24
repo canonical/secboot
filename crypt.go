@@ -145,7 +145,7 @@ func (e KeyDecodeError) Error() string {
 type LUKS2KeyHandler interface {
 	// NewKeyHandle implementations decode the provided token parameters which describe how to unseal a key in an implementation
 	// specific way, and return a KeyHandla. If a key handle can't be decoded from the supplied token parameters, implementations
-	// should return a
+	// should return a KeyDecodeError error if the supplied parameters are invalid.
 	NewKeyHandle(tokenParams map[string]interface{}) (KeyHandle, error)
 
 	// MakeKeyringDataForKey returns the data that should be added to the kernel keyring in the event that the specified key
@@ -593,6 +593,19 @@ func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volum
 			fmt.Fprintf(&desc, "&%s=%s", k, v)
 		}
 	}
+
+	// Add a key to the calling user's user keyring with default 0x3f010000 permissions (these defaults are hardcoded in the kernel).
+	// This permission flags define the following permissions:
+	// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
+	// Possessor permissions only apply to a process with a searchable link to the key from one of its own keyrings - just having the
+	// same UID is not sufficient. Read permission is required to read the contents of the key (view permission only permits viewing
+	// of the description and other public metadata that isn't the key payload).
+	//
+	// Note that by default, systemd starts services with a private session keyring which does not contain a link to the user keyring.
+	// Therefore these services cannot access the contents of keys in the root user's user keyring if those keys only permit
+	// possessor-read.
+	//
+	// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we close the volume again.
 	unix.AddKey("user", desc.String(), payload, userKeyring)
 	return true, nil
 }
