@@ -172,6 +172,200 @@ func TestEnsureLockNVIndices(t *testing.T) {
 	})
 }
 
+func TestEnsureLockNVIndicesSecurity(t *testing.T) {
+	tpm, tcti := openTPMSimulatorForTesting(t)
+	defer func() {
+		clearTPMWithPlatformAuth(t, tpm)
+		closeTPM(t, tpm)
+	}()
+
+	// Ensure we start with valid indices
+	if err := EnsureLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
+		t.Fatalf("EnsureLockNVIndices failed: %v", err)
+	}
+
+	// Create policy data
+	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
+	if err != nil {
+		t.Fatalf("GenerateKey failed: %v", err)
+	}
+	publicKey := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
+	staticData, policy, err := ComputeStaticPolicy(tpm2.HashAlgorithmSHA256, NewStaticPolicyComputeParams(publicKey, nil, nil))
+	if err != nil {
+		t.Fatalf("ComputeStaticPolicy failed: %v", err)
+	}
+	pcrDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, nil, nil)
+	dynamicData, err := ComputeDynamicPolicy(CurrentMetadataVersion, tpm2.HashAlgorithmSHA256, NewDynamicPolicyComputeParams(key, tpm2.HashAlgorithmSHA256, nil, tpm2.DigestList{pcrDigest}, nil, 0))
+	if err != nil {
+		t.Fatalf("ComputeDynamicPolicy failed: %v", err)
+	}
+
+	// Get the NV index public templates
+	bootstrapPub, index1Pub, index2Pub, err := ComputeLockNVIndexPublicAreas()
+	if err != nil {
+		t.Fatalf("ComputeLockNVIndexPublicAreas failed: %v", err)
+	}
+
+	testPolicy := func(succeeds bool) {
+		session, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
+		if err != nil {
+			t.Fatalf("StartAuthSession failed: %v", err)
+		}
+		defer flushContext(t, tpm, session)
+
+		err = ExecutePolicySession(tpm.TPMContext, session, CurrentMetadataVersion, staticData, dynamicData, "", tpm.HmacSession())
+		if succeeds {
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			digest, err := tpm.PolicyGetDigest(session)
+			if err != nil {
+				t.Errorf("PolicyGetDigest failed: %v", err)
+			}
+			if !bytes.Equal(digest, policy) {
+				t.Errorf("Unexpected session digest")
+			}
+		} else {
+			// Just check the session digest here - executePolicySession will only return an error once index 1 is read locked
+			digest, err := tpm.PolicyGetDigest(session)
+			if err != nil {
+				t.Errorf("PolicyGetDigest failed: %v", err)
+			}
+			if bytes.Equal(digest, policy) {
+				t.Errorf("Unexpected session digest")
+			}
+		}
+	}
+
+	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
+	// Policy should succeed after a reset
+	testPolicy(true)
+
+	if err := LockAccessToSealedKeys(tpm); err != nil {
+		t.Errorf("LockAccessToSealedKeys failed: %v", err)
+	}
+	// Policy should fail after LockAccessToSealedKeys
+	testPolicy(false)
+
+	// Delete index 1
+	index1, err := tpm.CreateResourceContextFromTPM(LockNVHandle1)
+	if err != nil {
+		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+	}
+	if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index1, nil); err != nil {
+		t.Errorf("NVUndefineSpace failed: %v", err)
+	}
+	// Policy should fail after deleting index 1
+	testPolicy(false)
+
+	// Redefine index 1
+	index1, err = tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, index1Pub, nil)
+	if err != nil {
+		t.Fatalf("NVDefineSpace failed: %v", err)
+	}
+	// Policy should still fail after recreating index 1
+	testPolicy(false)
+
+	// We can't reinitialize index 1 without an assertion that requires the bootstrap index
+	if err := tpm.NVWrite(index1, index1, nil, 0, nil); err == nil {
+		t.Errorf("NVWrite should have failed")
+	}
+
+	// Delete index 2 to create the bootstrap index
+	index2, err := tpm.CreateResourceContextFromTPM(LockNVHandle2)
+	if err != nil {
+		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+	}
+	if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index2, nil); err != nil {
+		t.Errorf("NVUndefineSpace failed: %v", err)
+	}
+	// Policy is still going to fail, but make sure
+	testPolicy(false)
+
+	// Create the bootstrap index at the handle for index 2
+	index2, err = tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, bootstrapPub, nil)
+	if err != nil {
+		t.Fatalf("NVDefineSpace failed: %v", err)
+	}
+	// Policy should still fail after creating the bootstrap index
+	testPolicy(false)
+
+	// Initialize the bootstrap index. Requires no special auth
+	if err := tpm.NVWrite(index2, index2, nil, 0, nil); err != nil {
+		t.Errorf("NVWrite failed: %v", err)
+	}
+	// Policy should still fail after initializing the bootstrap index
+	testPolicy(false)
+
+	// Start a policy session
+	session, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
+	if err != nil {
+		t.Fatalf("StartAuthSession failed: %v", err)
+	}
+	session = session.WithAttrs(tpm2.AttrContinueSession)
+	reset := false
+	defer func() {
+		if reset {
+			return
+		}
+		flushContext(t, tpm, session)
+	}()
+
+	// Initialize index 1
+	if _, _, err := tpm.PolicySecret(index2, session, nil, nil, 0, nil); err != nil {
+		t.Errorf("PolicySecret failed: %v", err)
+	}
+	if err := tpm.NVWrite(index1, index1, nil, 0, session); err != nil {
+		t.Errorf("NVWrite failed: %v", err)
+	}
+	// Policy should still fail after initializing index 1
+	testPolicy(false)
+
+	// Delete the bootstrap index in order to recreate index 2
+	if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index2, nil); err != nil {
+		t.Errorf("NVUndefineSpace failed: %v", err)
+	}
+	index2, err = tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, index2Pub, nil)
+	if err != nil {
+		t.Fatalf("NVDefineSpace failed: %v", err)
+	}
+	// Policy should still fail after recreating index 2
+	testPolicy(false)
+
+	// Try to initialize index 2 (should fail)
+	if _, _, err := tpm.PolicySecret(index1, session, nil, nil, 0, nil); err != nil {
+		t.Errorf("PolicySecret failed: %v", err)
+	}
+	if err := tpm.NVWrite(index2, index2, nil, 0, session); err == nil {
+		t.Errorf("NVWrite should have failed")
+	}
+	// Policy should still fail after initializing index 1
+	testPolicy(false)
+
+	// Enable the read lock on index 1
+	if err := tpm.NVReadLock(index1, index1, nil); err != nil {
+		t.Errorf("NVReadLock failed: %v", err)
+	}
+
+	// Try to initialize index 2 again (should succeed)
+	if err := tpm.PolicyRestart(session); err != nil {
+		t.Errorf("PolicyRestart failed: %v", err)
+	}
+	if _, _, err := tpm.PolicySecret(index1, session, nil, nil, 0, nil); err != nil {
+		t.Errorf("PolicySecret failed: %v", err)
+	}
+	if err := tpm.NVWrite(index2, index2, nil, 0, session); err != nil {
+		t.Errorf("NVWrite failed")
+	}
+	// Policy should still fail after initializing index 2
+	testPolicy(false)
+
+	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
+	reset = true
+	// Policy should succeed after a reset
+	testPolicy(true)
+}
+
 func TestComputeStaticPolicy(t *testing.T) {
 	block, _ := pem.Decode([]byte(`
 -----BEGIN EC PRIVATE KEY-----

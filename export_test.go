@@ -42,6 +42,7 @@ const (
 var (
 	ComputeDbUpdate                          = computeDbUpdate
 	ComputeDynamicPolicy                     = computeDynamicPolicy
+	ComputeLockNVIndexPublicAreas            = computeLockNVIndexPublicAreas
 	CreatePcrPolicyCounter                   = createPcrPolicyCounter
 	ComputePcrPolicyCounterAuthPolicies      = computePcrPolicyCounterAuthPolicies
 	ComputePcrPolicyRefFromCounterContext    = computePcrPolicyRefFromCounterContext
