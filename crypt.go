@@ -438,7 +438,7 @@ type keyRecoverContext struct {
 
 var (
 	errIncorrectKey = errors.New("the recovered key is incorrect")
-	errNoKeystore = errors.New("no keystore was provided to recover this key")
+	errNoKeystore   = errors.New("no keystore was provided to recover this key")
 )
 
 func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volumeName, sourceDevicePath string, pinReader io.Reader,
