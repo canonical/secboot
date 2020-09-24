@@ -201,7 +201,7 @@ func TestEnsureLockNVIndicesSecurity(t *testing.T) {
 	}
 
 	// Get the NV index public templates
-	bootstrapPub, index1Pub, index2Pub, err := ComputeLockNVIndexPublicAreas()
+	bootstrapPub, index1Pub, index2Pub, err := ComputeLockNVIndexTemplates()
 	if err != nil {
 		t.Fatalf("ComputeLockNVIndexPublicAreas failed: %v", err)
 	}

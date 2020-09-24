@@ -393,10 +393,24 @@ func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyN
 	return public, nil
 }
 
-// computeLockNVIndexPublicAreas computes the public areas used to define the NV indices used for locking access to sealed keys. It
-// returns 3 public areas - the first one is for a bootstrap index, which is required to initialize the first index. See the
-// description of ensureLockNVIndices to see the sequence for initializing these indices.
-func computeLockNVIndexPublicAreas() (bootstrap *tpm2.NVPublic, index1 *tpm2.NVPublic, index2 *tpm2.NVPublic, err error) {
+// computeLockNVIndexTemplates computes the templates used to define the 2 NV indices used for locking access to sealed keys. It
+// returns 3 templates - The templates have authorization policies that enforce a specific initialization order:
+// - The first template is for a bootstrap index, which should be defined first. This has TPMA_NV_AUTHREAD and TPMA_NV_AUTHWRITE
+//   attributes set and an empty authorization policy.
+// - An empty write should be performed to initialize the bootstrap index.
+// - The second template is for index 1, which should be defined next. This has TPMA_NV_AUTHREAD, TPMA_NV_POLICY_WRITE and
+//   TPMA_NV_READ_STCLEAR attributes and an authorization policy that can only be satisfied by the presence of the previously
+//   created and initialized bootstrap index.
+// - An empty write should be performed to initialize index 1, using a policy session that contains a TPM2_PolicySecret assertion
+//   against the bootstrap index.
+// - The bootstrap index should be undefined. The third template is for index 2, which should be defined next. This is defined at
+//   the same handle as the bootstrap index. It has TPMA_NV_AUTHREAD and TPMA_NV_POLICY_WRITE attributes set and an authorization
+//   policy that can only be satisfied by the presence of the previously created and initialized index 1 with its read lock enabled.
+// - The read lock for index 1 should be enabled.
+// - An empty write should be performed to initialize index 2, using a policy session that contains a TPM2_PolicySecret assertion
+//   against index 1.
+// See the description of ensureLockNVIndices for a more complete explanation.
+func computeLockNVIndexTemplates() (bootstrap *tpm2.NVPublic, index1 *tpm2.NVPublic, index2 *tpm2.NVPublic, err error) {
 	bootstrap = &tpm2.NVPublic{
 		Index:   lockNVHandle2,
 		NameAlg: tpm2.HashAlgorithmSHA256,
@@ -442,11 +456,13 @@ func computeLockNVIndexPublicAreas() (bootstrap *tpm2.NVPublic, index1 *tpm2.NVP
 // sealed keys. These names are not unique, and the presence of indices with these names should be asserted in any authorization
 // policy that wants to benefit from locking.
 func computeLockNVIndexNames() (tpm2.Name, tpm2.Name, error) {
-	_, index1, index2, err := computeLockNVIndexPublicAreas()
+	_, index1, index2, err := computeLockNVIndexTemplates()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute public areas for indices: %w", err)
 	}
 
+	// index1 and index2 are the creation templates. Require that the indices are initalized (written to)
+	// by computing their names with the TPMA_NV_WRITTEN attribute set.
 	index1.Attrs |= tpm2.AttrNVWritten
 	index2.Attrs |= tpm2.AttrNVWritten
 
@@ -534,7 +550,7 @@ func ensureLockNVIndices(tpm *tpm2.TPMContext, session tpm2.SessionContext) erro
 		return nil
 	}
 
-	bootstrapPub, index1Pub, index2Pub, err := computeLockNVIndexPublicAreas()
+	bootstrapPub, index1Pub, index2Pub, err := computeLockNVIndexTemplates()
 	if err != nil {
 		return xerrors.Errorf("cannot compute public areas for indices: %w", err)
 	}
