@@ -33,7 +33,7 @@ import (
 
 type snapModelTestBase struct{}
 
-func (tb *snapModelTestBase) makeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) *asserts.Model {
+func (tb *snapModelTestBase) makeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) SnapModel {
 	template := map[string]interface{}{
 		"type":              "model",
 		"architecture":      "amd64",
@@ -59,7 +59,7 @@ func (tb *snapModelTestBase) makeMockCore20ModelAssertion(c *C, headers map[stri
 
 	assertion, err := asserts.Assemble(template, nil, nil, []byte("AXNpZw=="))
 	c.Assert(err, IsNil)
-	return assertion.(*asserts.Model)
+	return assertion.(SnapModel)
 }
 
 type snapModelProfileSuite struct {
@@ -103,7 +103,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile1(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
@@ -129,7 +129,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile2(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
@@ -155,7 +155,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile3(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "other-brand",
 					"series":       "16",
@@ -181,7 +181,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile4(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
@@ -207,7 +207,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile5(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "28",
@@ -233,7 +233,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile6(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA1,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
@@ -259,7 +259,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile7(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     14,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
@@ -285,7 +285,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile8(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
@@ -326,7 +326,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile9(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
@@ -367,7 +367,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile10(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-bran",
 					"series":       "l16",
@@ -393,7 +393,7 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile11(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []*asserts.Model{
+			Models: []SnapModel{
 				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
@@ -427,7 +427,7 @@ func (s *snapModelMeasureSuite) SetUpTest(c *C) {
 
 type testMeasureSnapModelToTPMTestData struct {
 	pcrIndex int
-	model    *asserts.Model
+	model    SnapModel
 }
 
 func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMeasureSnapModelToTPMTestData) {

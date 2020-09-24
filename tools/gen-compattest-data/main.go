@@ -100,7 +100,7 @@ func computePCRProtectionProfile() (*secboot.PCRProtectionProfile, error) {
 	smParams := secboot.SnapModelProfileParams{
 		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 		PCRIndex:     12,
-		Models:       []*asserts.Model{model.(*asserts.Model)},
+		Models:       []secboot.SnapModel{model.(secboot.SnapModel)},
 	}
 
 	if err := secboot.AddSnapModelProfile(profile, &smParams); err != nil {
@@ -169,7 +169,7 @@ func run() int {
 		return 1
 	}
 
-	if err := secboot.ProvisionTPM(tpm, secboot.ProvisionModeFull, []byte("1234")); err != nil {
+	if err := tpm.EnsureProvisioned(secboot.ProvisionModeFull, []byte("1234")); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot provision TPM: %v\n", err)
 		return 1
 	}

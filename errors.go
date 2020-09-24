@@ -29,9 +29,14 @@ import (
 )
 
 var (
-	// ErrTPMClearRequiresPPI is returned from ProvisionTPM and indicates that clearing the TPM must be performed via
+	// ErrTPMClearRequiresPPI is returned from TPMConnection.EnsureProvisioned and indicates that clearing the TPM must be performed via
 	// the Physical Presence Interface.
 	ErrTPMClearRequiresPPI = errors.New("clearing the TPM requires the use of the Physical Presence Interface")
+
+	// ErrTPMProvisioningRequiresLockout is returned from TPMConnection.EnsureProvisioned when fully provisioning the TPM requires
+	// the use of the lockout hierarchy. In this case, the provisioning steps that can be performed without the use of the lockout
+	// hierarchy are completed.
+	ErrTPMProvisioningRequiresLockout = errors.New("provisioning the TPM requires the use of the lockout hierarchy")
 
 	// ErrTPMProvisioning indicates that the TPM is not provisioned correctly for the requested operation. Please note that other errors
 	// that can be returned may also be caused by incomplete provisioning, as it is not always possible to detect incomplete or
