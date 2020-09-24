@@ -339,7 +339,6 @@ func TestEnsureLockNVIndicesSecurity(t *testing.T) {
 	if err := tpm.NVWrite(index2, index2, nil, 0, session); err == nil {
 		t.Errorf("NVWrite should have failed")
 	}
-	// Policy should still fail after initializing index 1
 	testPolicy(false)
 
 	// Enable the read lock on index 1
