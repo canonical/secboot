@@ -139,112 +139,38 @@ func isKeyRecoverError(err error, code KeyRecoverErrorCode) bool {
 	return xerrors.As(err, &e) && e.Code == code
 }
 
-// KeyRecoverContext is created by an implementer of KeyProtectorHandler and corresponds to a single key.
-type KeyRecoverContext interface {
-	PINRequired() bool // Indicate whether a PIN is required in order to recover the key associated with this context
-
-	// Recover will attempt to recover the key associated with this context using the supplied PIN and one
-	// of the provided keystores.
-	Recover(stores Keystores, pin string) ([]byte, error)
-
-	// DidUseKeyForDevice indicates that the key associated with this context was used to activate a volume with the
-	// specified device path. Implementations can use this to add data to the kernel keyring if required.
-	DidUseKeyForDevice(devicePath string)
-}
-
-type tpmKeyRecoverContext struct {
-	k *SealedKeyObject
-	// TODO: Add a field for the policy authorization key
-}
-
-func (c *tpmKeyRecoverContext) PINRequired() bool {
-	return c.k.AuthMode2F() == AuthModePIN
-}
-
-func (c *tpmKeyRecoverContext) Recover(stores Keystores, pin string) ([]byte, error) {
-	var tpm *TPMConnection
-	for _, s := range stores {
-		t, ok := s.(*TPMConnection)
-		if ok {
-			tpm = t
-			break
-		}
-	}
-
-	if tpm == nil {
-		return nil, WrapKeyRecoverError(KeyRecoverNoSuitableKeystoreError, nil)
-	}
-
-	key, err := c.k.UnsealFromTPM(tpm, pin)
-	if err == ErrTPMProvisioning {
-		// ErrTPMProvisioning in this context might indicate that there isn't a valid persistent SRK. Have a go at creating one now and then
-		// retrying the unseal operation - if the previous SRK was evicted, the TPM owner hasn't changed and the storage hierarchy still
-		// has a null authorization value, then this will allow us to unseal the key without requiring any type of manual recovery. If the
-		// storage hierarchy has a non-null authorization value, ProvionTPM will fail. If the TPM owner has changed, ProvisionTPM might
-		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
-		if pErr := ProvisionTPM(tpm, ProvisionModeWithoutLockout, nil); pErr == nil {
-			key, err = c.k.UnsealFromTPM(tpm, pin)
-		}
-	}
-
-	switch {
-	case xerrors.Is(err, ErrTPMLockout):
-		return nil, WrapKeyRecoverError(KeyRecoverKeystoreTemporarilyUnavailableError, nil)
-	case xerrors.Is(err, ErrTPMProvisioning):
-		return nil, WrapKeyRecoverError(KeyRecoverKeystoreProvisioningError, nil)
-	case isInvalidKeyFileError(err):
-		return nil, WrapKeyRecoverError(KeyRecoverInvalidKeyDataError, err)
-	case xerrors.Is(err, ErrPINFail):
-		return nil, WrapKeyRecoverError(KeyRecoverPINFailError, nil)
-	case err != nil:
-		return nil, WrapKeyRecoverError(KeyRecoverUnexpectedError, err)
-	}
-
-	return key, nil
-}
-
-func (c *tpmKeyRecoverContext) DidUseKeyForDevice(devicePath string) {
-	// TODO: Add the auth private key to the keyring in a format that can be decoded by GetActivationDataFromKernel later on
-}
-
 // KeyProtectorHandler provides an abstraction to facilitate unsealing a disk encryption key using an implementation specific
 // keystore backend.
 type KeyProtectorHandler interface {
-	// DecodeToken implementations decode the provided token parameters which describe how to unseal a key in an implementation
-	// specific way, and return a KeyRecoverContext
-	DecodeToken(tokenParams map[string]interface{}) (KeyRecoverContext, error)
+	// NewKeyHandle implementations decode the provided token parameters which describe how to unseal a key in an implementation
+	// specific way, and return a KeyHandla. If a key handle can't be decoded from the supplied token parameters, implementations
+	// should return a
+	NewKeyHandle(tokenParams map[string]interface{}) (KeyHandle, error)
 
 	// TODO: Add interface for decoding keyring entries to their correct go type (will be used by GetActivationDataFromKernel)
 }
 
 type tpmKeyProtectorHandler struct{}
 
-func (p tpmKeyProtectorHandler) DecodeToken(tokenParams map[string]interface{}) (KeyRecoverContext, error) {
+func (p tpmKeyProtectorHandler) NewKeyHandle(tokenParams map[string]interface{}) (KeyHandle, error) {
 	s, ok := tokenParams[tpmSlotDataKey].(string)
 	if !ok {
-		return nil, WrapKeyRecoverError(KeyRecoverInvalidKeyDataError, errors.New("no key data"))
+		return nil, KeyDecodeError("no key data")
 	}
 
 	r := base64.NewDecoder(base64.StdEncoding, bytes.NewReader([]byte(s)))
 	data, err := decodeKeyData(r)
 	if err != nil {
-		return nil, WrapKeyRecoverError(KeyRecoverInvalidKeyDataError, err)
+		return nil, KeyDecodeError(err.Error())
 	}
 
-	return &tpmKeyRecoverContext{k: &SealedKeyObject{storage: sealedKeyObjectStorageReadOnly{}, data: data}}, nil
+	return &tpmKeyHandle{k: &SealedKeyObject{storage: sealedKeyObjectStorageReadOnly{}, data: data}}, nil
 }
 
 // keyProtectorHandlers is a map of known key protector handlers
 // TODO: Provide an API to allow external KeyProtectorHandler implementations, and allow the TPM code to move in to a separate
 // subpackage.
 var keyProtectorHandlers = map[string]KeyProtectorHandler{"tpm": &tpmKeyProtectorHandler{}}
-
-// Keystore corresponds to a connection to a keystore, such as a TPM.
-type Keystore interface {
-	Lock() error
-}
-
-type Keystores []Keystore
 
 // RecoveryKeyUsageReason indicates the reason that a volume had to be activated with the fallback recovery key instead of the TPM
 // sealed key.
@@ -350,9 +276,11 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath string,
 			lockErr = LockAccessToSealedKeys(tpm)
 		}()
 
-		ctxt := &tpmKeyRecoverContext{k}
+		store := NewTPMKeyStore(tpm)
+		handle := &tpmKeyHandle{k: k}
+
 		switch {
-		case pinTries == 0 && ctxt.PINRequired():
+		case pinTries == 0 && handle.PINRequired():
 			return nil, requiresPinErr
 		case pinTries == 0:
 			pinTries = 1
@@ -363,7 +291,7 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath string,
 
 		for ; pinTries > 0; pinTries-- {
 			var pin string
-			if ctxt.PINRequired() {
+			if handle.PINRequired() {
 				r := pinReader
 				pinReader = nil
 				pin, err = getPassword(sourceDevicePath, "PIN", r)
@@ -372,8 +300,8 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath string,
 				}
 			}
 
-			key, err = ctxt.Recover(Keystores{tpm}, pin)
-			if err != nil && (!isKeyRecoverError(err, KeyRecoverPINFailError) || !ctxt.PINRequired()) {
+			key, err = store.RecoverKey(handle, pin)
+			if err != nil && (!isKeyRecoverError(err, KeyRecoverPINFailError) || !handle.PINRequired()) {
 				break
 			}
 		}
@@ -475,9 +403,9 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		switch {
 		case isLockAccessError(err):
 			return false, LockAccessToSealedKeysError(err.Error())
-		case isKeyRecoverError(err, KeyRecoverKeystoreTemporarilyUnavailableError):
+		case isKeyRecoverError(err, KeyRecoverKeyStoreTemporarilyUnavailableError):
 			reason = RecoveryKeyUsageReasonTPMLockout
-		case isKeyRecoverError(err, KeyRecoverKeystoreProvisioningError):
+		case isKeyRecoverError(err, KeyRecoverKeyStoreProvisioningError):
 			reason = RecoveryKeyUsageReasonTPMProvisioningError
 		case isKeyRecoverError(err, KeyRecoverInvalidKeyDataError):
 			reason = RecoveryKeyUsageReasonInvalidKeyFile
@@ -500,17 +428,17 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 	return true, nil
 }
 
-type keyRecoverState struct {
-	context KeyRecoverContext
+type keyRecoverContext struct {
+	handle   KeyHandle
 	slotType string
-	slotId  int
-	err     error
+	slotId   int
+	err      error
 }
 
-func activateWithKeyProtectorContext(stores Keystores, contexts []*keyRecoverState, volumeName, sourceDevicePath string,
-	pinReader io.Reader, pinTries int, lockStores bool, activateOptions []string) (bool, error) {
+func activateWithKeyStore(stores KeyStores, contexts []*keyRecoverContext, volumeName, sourceDevicePath string, pinReader io.Reader,
+	pinTries int, lockStores bool, activateOptions []string) (bool, error) {
 	var lockErr error
-	key, c, err := func() ([]byte, *keyRecoverState, error) {
+	key, c, err := func() ([]byte, *keyRecoverContext, error) {
 		defer func() {
 			if !lockStores {
 				return
@@ -520,10 +448,17 @@ func activateWithKeyProtectorContext(stores Keystores, contexts []*keyRecoverSta
 			}
 		}()
 
-		recoverAndActivate := func(context KeyRecoverContext, pin string) ([]byte, error) {
-			key, err := context.Recover(stores, pin)
-			if err != nil {
-				return nil, err
+		recoverAndActivate := func(handle KeyHandle, pin string) ([]byte, error) {
+			var key []byte
+			for _, s := range stores {
+				var err error
+				key, err = s.RecoverKey(handle, pin)
+				if err == ErrUnsupportedKeyHandle {
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			// If lockStores is true, defer activation until we know that locking was successful. In this case, return the key for
@@ -554,12 +489,12 @@ func activateWithKeyProtectorContext(stores Keystores, contexts []*keyRecoverSta
 				continue
 			}
 
-			if c.context.PINRequired() {
+			if c.handle.PINRequired() {
 				hasSlotWithPIN = true
 				continue
 			}
 
-			key, err := recoverAndActivate(c.context, "")
+			key, err := recoverAndActivate(c.handle, "")
 			if err == nil {
 				return key, c, nil
 			}
@@ -581,11 +516,11 @@ func activateWithKeyProtectorContext(stores Keystores, contexts []*keyRecoverSta
 					continue
 				}
 
-				if !c.context.PINRequired() {
+				if !c.handle.PINRequired() {
 					continue
 				}
 
-				key, err := recoverAndActivate(c.context, pin)
+				key, err := recoverAndActivate(c.handle, pin)
 				if err == nil {
 					return key, c, nil
 				}
@@ -614,19 +549,63 @@ func activateWithKeyProtectorContext(stores Keystores, contexts []*keyRecoverSta
 	}
 
 	if c != nil && c.err == nil {
-		c.context.DidUseKeyForDevice(sourceDevicePath)
+		c.handle.DidUseForDevice(sourceDevicePath)
 		return true, nil
 	}
 	return false, nil
 }
 
-func makeActivateLUKS2VolumeError(contexts []*keyRecoverState) (out *ActivateLUKS2VolumeError) {
+type LUKS2KeyStoreProtectedKeyError struct {
+	KeyslotID int
+	Backend   string
+	err       error
+}
+
+func (e *LUKS2KeyStoreProtectedKeyError) Error() string {
+	return fmt.Sprintf("keyslot ID %d (%s) error: %s", e.KeyslotID, e.Backend, e.err.Error())
+}
+
+func (e *LUKS2KeyStoreProtectedKeyError) Unwrap() error {
+	return e.err
+}
+
+// ActivateLUKS2VolumeError is returned from ActivateLUKS2Volume if activation fails.
+type ActivateLUKS2VolumeError struct {
+	// KeyStoreProtectedKeyErrs details the errors that occurred during activation with each of the keystore protected keyslots.
+	KeyStoreProtectedKeyErrs []*LUKS2KeyStoreProtectedKeyError
+
+	// RecoveryKeyUsageErr details the error that occurred during activation with the fallback recovery key, if activation with the recovery key
+	// was also unsuccessful.
+	RecoveryKeyUsageErr error
+}
+
+func (e *ActivateLUKS2VolumeError) Error() string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "cannot activate with keystore protected keys ( ")
+	for i, err := range e.KeyStoreProtectedKeyErrs {
+		if i == 0 {
+			fmt.Fprintf(&buf, ", ")
+		}
+		fmt.Fprintf(&buf, "(%v)", err)
+	}
+	fmt.Fprintf(&buf, " )")
+
+	if e.RecoveryKeyUsageErr != nil {
+		fmt.Fprintf(&buf, " and activation with recovery key failed (%v)", e.RecoveryKeyUsageErr)
+	} else {
+		fmt.Fprintf(&buf, " but activation with recovery key was successful")
+	}
+
+	return buf.String()
+}
+
+func makeActivateLUKS2VolumeError(contexts []*keyRecoverContext) (out *ActivateLUKS2VolumeError) {
 	out = &ActivateLUKS2VolumeError{}
 	for _, c := range contexts {
 		if c.err == nil {
 			continue
 		}
-		out.KeystoreProtectedKeyErrs = append(out.KeystoreProtectedKeyErrs, &LUKS2KeystoreProtectedKeyError{KeyslotID: c.slotId, Backend: c.slotType, err: c.err})
+		out.KeyStoreProtectedKeyErrs = append(out.KeyStoreProtectedKeyErrs, &LUKS2KeyStoreProtectedKeyError{KeyslotID: c.slotId, Backend: c.slotType, err: c.err})
 	}
 	return
 }
@@ -647,9 +626,9 @@ type ActivateVolumeOptions struct {
 	// ActivateOptions provides a mechanism to pass additional options to systemd-cryptsetup.
 	ActivateOptions []string
 
-	// LockKeystores controls whether it should be possible to unseal any other keystore protected keys after the volume is activated
+	// LockKeyStores controls whether it should be possible to unseal any other keystore protected keys after the volume is activated
 	// or if activation fails. If set to true, it will not be possible to unseal any other keystore protected keys.
-	LockKeystores bool
+	LockKeyStores bool
 }
 
 // ActivateLUKS2Volume attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the supplied
@@ -668,12 +647,12 @@ type ActivateVolumeOptions struct {
 // The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup. If this contains
 // the "tries=" option, then an error will be returned. This option cannot be used with this function.
 //
-// If the LockKeystores field of options is true, then this function will call the Keystore.Lock method on each keystore before
+// If the LockKeyStores field of options is true, then this function will call the KeyStore.Lock method on each keystore before
 // returning, regardless of whether the volume was activated successfully or not. If any of these calls fail, then a
-// LockAccessToSealedKeysError error will be returned. The volume will not be activated unless all calls to Keystore.Lock return
+// LockAccessToSealedKeysError error will be returned. The volume will not be activated unless all calls to KeyStore.Lock return
 // without an error.
 //
-// If the LockKeystores field of options is true, then this function will stop processing after the first keyslot it successfully
+// If the LockKeyStores field of options is true, then this function will stop processing after the first keyslot it successfully
 // recovers from a keystore. If the recovered key is incorrect, then activation will fail without attempting any more keyslots.
 //
 // If activation does not succeed with any keystore protected keys, this function will attempt to activate the volume with the
@@ -683,19 +662,19 @@ type ActivateVolumeOptions struct {
 //
 // If activation does not succeed with any kestore protected keys, a *ActivateLUKS2VolumeError error will be returned, even if the
 // subsequent fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will be
-// nil, and the KeystoreProtectedKeyErrs slice will contain the original errors. If activation with the fallback recovery key also
+// nil, and the KeyStoreProtectedKeyErrs slice will contain the original errors. If activation with the fallback recovery key also
 // fails, the RecoveryKeyUsageErr field of the returned error will also contain details of the error encountered during recovery key
 // activation.
 //
 // If the volume is successfully activated, this function returns true. If it is not successfully activated, then this function
 // returns false.
-func ActivateLUKS2Volume(stores Keystores, volumeName, sourceDevicePath string, pinReader io.Reader, options *ActivateVolumeOptions) (bool, error) {
+func ActivateLUKS2Volume(stores KeyStores, volumeName, sourceDevicePath string, pinReader io.Reader, options *ActivateVolumeOptions) (bool, error) {
 	if options.PINTries < 0 {
-		// This is safer than returning an error particularly when LockKeystores is set
+		// This is safer than returning an error particularly when LockKeyStores is set
 		panic("invalid PINTries")
 	}
 	if options.RecoveryKeyTries < 0 {
-		// This is safer than returning an error particularly when LockKeystores is set
+		// This is safer than returning an error particularly when LockKeyStores is set
 		panic("invalid RecoveryKeyTries")
 	}
 
@@ -704,7 +683,7 @@ func ActivateLUKS2Volume(stores Keystores, volumeName, sourceDevicePath string, 
 	info, err := func() (*luks2.HdrInfo, error) {
 		succeeded := false
 		defer func() {
-			if !options.LockKeystores || succeeded {
+			if !options.LockKeyStores || succeeded {
 				return
 			}
 			for _, s := range stores {
@@ -731,8 +710,8 @@ func ActivateLUKS2Volume(stores Keystores, volumeName, sourceDevicePath string, 
 		return false, err
 	}
 
-	// Iterate tokens and create unseal contexts for them
-	var contexts []*keyRecoverState
+	// Iterate tokens and create key handles for them
+	var contexts []*keyRecoverContext
 	hasRecoverySlot := false
 
 	for _, v := range info.Metadata.Tokens {
@@ -765,18 +744,18 @@ func ActivateLUKS2Volume(stores Keystores, volumeName, sourceDevicePath string, 
 			// No handler for this type
 			continue
 		}
-		context, err := handler.DecodeToken(v.Params)
-		contexts = append(contexts, &keyRecoverState{context: context, slotType: s, slotId: v.Keyslots[0], err: err})
+		handle, err := handler.NewKeyHandle(v.Params)
+		contexts = append(contexts, &keyRecoverContext{handle: handle, slotType: s, slotId: v.Keyslots[0], err: err})
 	}
 
-	activated, err := activateWithKeyProtectorContext(stores, contexts, volumeName, sourceDevicePath, pinReader, options.PINTries, options.LockKeystores, options.ActivateOptions)
+	activated, err := activateWithKeyStore(stores, contexts, volumeName, sourceDevicePath, pinReader, options.PINTries, options.LockKeyStores, options.ActivateOptions)
 	switch {
 	case isLockAccessError(err):
 		// TODO: Maybe rename this error?
 		return false, LockAccessToSealedKeysError(err.Error())
 	case err != nil:
 		// This is an unexpected error. Most errors are tracked per keyslot and aren't returned here.
-		return false, xerrors.Errorf("cannot activate volume with key protector: %w", err)
+		return false, xerrors.Errorf("cannot activate volume with key stores: %w", err)
 	case activated:
 		// Activation was successful - nothing else to do!
 		return true, nil

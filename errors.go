@@ -20,7 +20,6 @@
 package secboot
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -53,6 +52,8 @@ var (
 
 	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
 	ErrNoTPM2Device = errors.New("no TPM2 device is available")
+
+	ErrUnsupportedKeyHandle = errors.New("the supplied key handle is not supported by the key store")
 )
 
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists
@@ -151,118 +152,4 @@ func (e *ActivateWithTPMSealedKeyError) Error() string {
 		return fmt.Sprintf("cannot activate with TPM sealed key (%v) and activation with recovery key failed (%v)", e.TPMErr, e.RecoveryKeyUsageErr)
 	}
 	return fmt.Sprintf("cannot activate with TPM sealed key (%v) but activation with recovery key was successful", e.TPMErr)
-}
-
-// KeyRecoverErrorCode corresponds to an error returned from KeyRecoverContext.Recover.
-type KeyRecoverErrorCode int
-
-const (
-	// KeyRecoverUnexpectedError indicates an error that was unexpected and doesn't have a more appropriate error code.
-	KeyRecoverUnexpectedError KeyRecoverErrorCode = iota + 1
-
-	// KeyRecoverNoSuitableKeystoreError indicates that a key protector was asked to recover a key without being
-	// provided a suitable connection to a keystore backend.
-	KeyRecoverNoSuitableKeystoreError
-
-	// KeyRecoverKeystoreTemporarilyUnavailableError indicates that the keystore backend is temporarily unable to recover
-	// a key. In the case of a TPM, this could be because the TPM's dictionary attack protection has been triggered.
-	KeyRecoverKeystoreTemporarilyUnavailableError
-
-	// KeyRecoverKeystoreProvisioningError indicates that a key protector was asked to recover a key using a keystore that
-	// isn't properly provisioned.
-	KeyRecoverKeystoreProvisioningError
-
-	// KeyRecoverInvalidKeyDataError indicates that a key protector couldn't recover a key because the provided data was invalid.
-	KeyRecoverInvalidKeyDataError
-
-	// KeyRecoverPINFailError indicates that a key protector couldn't recover a key because the supplied PIN was incorrect.
-	KeyRecoverPINFailError
-
-	// KeyRecoverIncorrectKeyError indicates that a key protector appeared to successfully recover a key, but that key is not
-	// a valid key to activate the LUKS volume.
-	KeyRecoverIncorrectKeyError
-)
-
-// KeyRecoverError is returned from KeyRecoverContext implementations to indicate the reason that a key could not be recovered.
-type KeyRecoverError struct {
-	Code KeyRecoverErrorCode
-	err  error
-}
-
-// WrapKeyRecoverError wraps the supplied error with a KeyRecoverError with the supplied error code. The err argument can be nil
-// if there is no need to provide any additional context.
-func WrapKeyRecoverError(code KeyRecoverErrorCode, err error) error {
-	return &KeyRecoverError{Code: code, err: err}
-}
-
-func (e *KeyRecoverError) Error() string {
-	var prefix string
-	switch e.Code {
-	case KeyRecoverUnexpectedError:
-		prefix = "unexpected error"
-	case KeyRecoverNoSuitableKeystoreError:
-		prefix = "no suitable keystore connection was provided for this key"
-	case KeyRecoverKeystoreTemporarilyUnavailableError:
-		prefix = "the keystore is temporarily unavailable for recovering keys"
-	case KeyRecoverKeystoreProvisioningError:
-		prefix = "the keystore is not correctly provisioned"
-	case KeyRecoverInvalidKeyDataError:
-		prefix = "the key data is invalid"
-	case KeyRecoverPINFailError:
-		prefix = "the supplied PIN is incorrect"
-	}
-
-	if e.err == nil {
-		return prefix
-	}
-
-	return prefix + ": " + e.err.Error()
-}
-
-func (e *KeyRecoverError) Unwrap() error {
-	return e.err
-}
-
-type LUKS2KeystoreProtectedKeyError struct {
-	KeyslotID int
-	Backend   string
-	err       error
-}
-
-func (e *LUKS2KeystoreProtectedKeyError) Error() string {
-	return fmt.Sprintf("keyslot ID %d (%s) error: %s", e.KeyslotID, e.Backend, e.err.Error())
-}
-
-func (e *LUKS2KeystoreProtectedKeyError) Unwrap() error {
-	return e.err
-}
-
-// ActivateLUKS2VolumeError is returned from ActivateLUKS2Volume if activation fails.
-type ActivateLUKS2VolumeError struct {
-	// KeystoreProtectedKeyErrs details the errors that occurred during activation with each of the keystore protected keyslots.
-	KeystoreProtectedKeyErrs []*LUKS2KeystoreProtectedKeyError
-
-	// RecoveryKeyUsageErr details the error that occurred during activation with the fallback recovery key, if activation with the recovery key
-	// was also unsuccessful.
-	RecoveryKeyUsageErr      error
-}
-
-func (e *ActivateLUKS2VolumeError) Error() string {
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "cannot activate with keystore protected keys ( ")
-	for i, err := range e.KeystoreProtectedKeyErrs {
-		if i == 0 {
-			fmt.Fprintf(&buf, ", ")
-		}
-		fmt.Fprintf(&buf, "(%v)", err)
-	}
-	fmt.Fprintf(&buf, " )")
-
-	if e.RecoveryKeyUsageErr != nil {
-		fmt.Fprintf(&buf, " and activation with recovery key failed (%v)", e.RecoveryKeyUsageErr)
-	} else {
-		fmt.Fprintf(&buf, " but activation with recovery key was successful")
-	}
-
-	return buf.String()
 }
