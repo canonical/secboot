@@ -220,9 +220,9 @@ func activate(volumeName, sourceDevicePath string, key []byte, options []string)
 // A Prompter can be used to prompt the user for secrets necessary
 // to unlock a disk.
 type Prompter interface {
-	PromptForPassphrase(sourceDevicePath, description string) (string, error)
+	PromptForPassphrase(volumeName, sourceDevicePath, description string) (string, error)
 
-	PromptForRecoveryKey(sourceDevicePath string) (string, error)
+	PromptForRecoveryKey(volumeName, sourceDevicePath string) (string, error)
 }
 
 // SystemPrompter implements Prompter reading once if set from the
@@ -232,14 +232,14 @@ type SystemPrompter struct {
 	RecoveryKey io.Reader
 }
 
-func (p *SystemPrompter) PromptForPassphrase(sourceDevicePath, description string) (string, error) {
+func (p *SystemPrompter) PromptForPassphrase(volumeName, sourceDevicePath, description string) (string, error) {
 	// consumed once
 	r := p.Passphrase
 	p.Passphrase = nil
 	return getPassword(sourceDevicePath, description, r)
 }
 
-func (p *SystemPrompter) PromptForRecoveryKey(sourceDevicePath string) (string, error) {
+func (p *SystemPrompter) PromptForRecoveryKey(volumeName, sourceDevicePath string) (string, error) {
 	// consumed once
 	r := p.RecoveryKey
 	p.RecoveryKey = nil
@@ -320,7 +320,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, p Prompter, tr
 	for ; tries > 0; tries-- {
 		lastErr = nil
 
-		passphrase, err := p.PromptForRecoveryKey(sourceDevicePath)
+		passphrase, err := p.PromptForRecoveryKey(volumeName, sourceDevicePath)
 		if err != nil {
 			return xerrors.Errorf("cannot obtain recovery key: %w", err)
 		}
@@ -411,12 +411,60 @@ type ActivateVolumeOptions struct {
 	KeyringPrefix string
 }
 
+// A KeyUnsealer is used to recover protected keys to activate LUKS encrypted volumes.
+// It is provided with information about the volume, and a Prompter to possibly
+// promt for further required user secrets.
 type KeyUnsealer interface {
-	UnsealKey(volumeName, sourceDevicePath string, p Prompter) (key, resealToken []byte, err error)
+	UnsealKey(volumeName, sourceDevicePath string, p Prompter, options *ActivateVolumeOptions) (key, activationData []byte, err error)
+	ActivationDataType() string
+	// XXX we shouldn't need this method if we clean up the error story a bit more
 	UnderstoodError(e error, isCryptsetupError bool) (ok bool, reason RecoveryKeyUsageReason, err error)
 }
 
+// ActivateVolumeWithKeyUnsealer attempts to activate the LUKS
+// encrypted volume at sourceDevicePath and create a mapping with the
+// name volumeName, using a key recovered using the provided
+// KeyUnsealer. This makes use of systemd-cryptsetup.
+//
+// The ActivateOptions field of options can be used to specify
+// additional options to pass to systemd-cryptsetup.
+//
+// The provided options will also be passed to the unsealer, as well
+// as the prompter for it to prompt for any further required user
+// passphrase.
+//
+// If recovering the key or activating with it fails this function
+// will attempt to activate it with the fallback recovery key
+// instead. The fallback recovery key will be requested using the
+// provided Prompter. The RecoveryKeyTries field of options specifies
+// how many attempts should be made to activate the volume with the
+// recovery key before failing. If this is set to 0, then no attempts
+// will be made to activate the encrypted volume with the fallback
+// recovery key.  If activation with the recovery key is successful,
+// calling GetActivationDataFromKernel will return a
+// *RecoveryActivationData containing the recovery key and the reason
+// that the recovery key was requested.
+//
+// If either the PassphraseTries or RecoveryKeyTries fields of options
+// are less than zero, an error will be returned. If the
+// ActivateOptions field of options contains the "tries=" option, then
+// an error will be returned. This option cannot be used with this
+// function.
+//
+// If recovering the key or activating with it fails, an error will be
+// returned even even if the subsequent fallback recovery activation
+// is successful. XXX generalize ActivateWithTPMSealedKeyError
+//
+// If the volume is successfully activated data specific to the unsealer
+// might be stored to be retrieved via GetActivationDataFromKernel.
+//
+// If the volume is successfully activated, either with the recovered
+// key or the fallback recovery key, this function returns true.  If
+// it is not successfully activated, then this function returns false.
 func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer KeyUnsealer, p Prompter, options *ActivateVolumeOptions) (bool, error) {
+	if options.PassphraseTries < 0 {
+		return false, errors.New("invalid PassphraseTries")
+	}
 	if options.RecoveryKeyTries < 0 {
 		return false, errors.New("invalid RecoveryKeyTries")
 	}
@@ -426,7 +474,7 @@ func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer
 		return false, err
 	}
 
-	key, resealToken, err := unsealer.UnsealKey(volumeName, sourceDevicePath, p)
+	key, activationData, err := unsealer.UnsealKey(volumeName, sourceDevicePath, p, options)
 	if err == nil {
 		err = activate(volumeName, sourceDevicePath, key, activateOptions)
 		if err != nil {
@@ -446,7 +494,7 @@ func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer
 		return rErr == nil, &ActivateWithTPMSealedKeyError{err, rErr}
 	}
 
-	if len(resealToken) != 0 {
+	if len(activationData) != 0 {
 		// Add a key to the calling user's user keyring with default 0x3f010000 permissions (these defaults are hardcoded in the kernel).
 		// This permission flags define the following permissions:
 		// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
@@ -459,7 +507,7 @@ func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer
 		// possessor-read.
 		//
 		// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we close the volume again.
-		unix.AddKey("user", fmt.Sprintf("%s:%s?type=reseal", keyringPrefixOrDefault(options.KeyringPrefix), sourceDevicePath), resealToken, userKeyring)
+		unix.AddKey("user", fmt.Sprintf("%s:%s?type=%s", keyringPrefixOrDefault(options.KeyringPrefix), sourceDevicePath, unsealer.ActivationDataType()), activationData, userKeyring)
 	}
 
 	return true, nil
@@ -502,11 +550,7 @@ func ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath string, unsealer
 // If the volume is successfully activated, either with the TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
 func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, passphraseReader io.Reader, options *ActivateVolumeOptions) (bool, error) {
-	keyUnsealer, err := NewTPMKeyUnsealer(tpm, keyPath, passphraseReader, options.PassphraseTries, options.LockSealedKeys)
-	if err != nil {
-		return false, err
-	}
-
+	keyUnsealer := NewTPMKeyUnsealer(tpm, keyPath)
 	p := &SystemPrompter{Passphrase: passphraseReader}
 	return ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath, keyUnsealer, p, options)
 }
@@ -630,7 +674,7 @@ func GetActivationDataFromKernel(prefix, sourceDevicePath string, remove bool) (
 			return nil, errors.New("invalid description (no type)")
 		}
 		switch t {
-		case "reseal": // XXX return type is to specific
+		case "tpm":
 			return TPMPolicyAuthKey(payload), nil
 		case "recovery":
 			reason, ok := params["reason"]

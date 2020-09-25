@@ -520,6 +520,32 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPI
 	})
 }
 
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithKeyUnsealerHappy(c *C) {
+	testPIN := "1234"
+	c.Assert(ioutil.WriteFile(filepath.Join(s.dir, "pinfile"), []byte(testPIN), 0644), IsNil)
+
+	r, err := os.Open(filepath.Join(s.dir, "pinfile"))
+	c.Assert(err, IsNil)
+	defer r.Close()
+
+	options := ActivateVolumeOptions{PassphraseTries: 1}
+	p := &SystemPrompter{Passphrase: r}
+	unsealer := NewTPMKeyUnsealer(s.TPM, s.keyFile)
+	success, err := ActivateVolumeWithKeyUnsealer("data", "/dev/sda1", unsealer, p, &options)
+	c.Check(success, Equals, true)
+	c.Assert(err, IsNil)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+	c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
+	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+
+	s.checkTPMPolicyAuthKey(c, "", "/dev/sda1")
+}
+
 type testActivateVolumeWithTPMSealedKeyErrorHandlingData struct {
 	pinTries          int
 	recoveryKeyTries  int
