@@ -124,6 +124,13 @@ type KeyCreationParams struct {
 	// in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is
 	// recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
 	PCRPolicyCounterHandle tpm2.Handle
+
+	// AuthKey can be set to chose an auhorisation key whose
+	// private part will be used for authorizing PCR policy
+	// updates with UpdateKeyPCRProtectionPolicy
+	// If set a key from elliptic.P256 must be used,
+	// if not set one is generated.
+	AuthKey *ecdsa.PrivateKey
 }
 
 // SealKeyToTPM seals the supplied disk encryption key to the storage hierarchy of the TPM. The sealed key object and associated
@@ -155,10 +162,17 @@ type KeyCreationParams struct {
 // UpdateKeyPCRProtectionPolicy. This key doesn't need to be stored anywhere, and certainly mustn't be stored outside of the encrypted
 // volume protected with this sealed key file. The key is stored encrypted inside this sealed key file and returned from future calls
 // to SealedKeyObject.UnsealFromTPM.
+//
+// The authorization key can also be chosen and provided by setting
+// AuthKey in the params argument.
 func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCreationParams) (authKey TPMPolicyAuthKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
+	}
+
+	if params.AuthKey != nil && params.AuthKey.Curve != elliptic.P256() {
+		return nil, errors.New("provided AuthKey must be from elliptic.P256, no other curve is supported")
 	}
 
 	// Use the HMAC session created when the connection was opened rather than creating a new one.
@@ -213,10 +227,19 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 		os.Remove(keyPath)
 	}()
 
-	// Create an asymmetric key for signing authorization policy updates, and authorizing dynamic authorization policy revocations.
-	goAuthKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
+	var goAuthKey *ecdsa.PrivateKey
+	// Use the provided authorization key,
+	// otherwise create an asymmetric key for signing
+	// authorization policy updates, and authorizing dynamic
+	// authorization policy revocations.
+	if params.AuthKey != nil {
+		goAuthKey = params.AuthKey
+	} else {
+		var err error
+		goAuthKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
+		}
 	}
 	authPublicKey := createTPMPublicAreaForECDSAKey(&goAuthKey.PublicKey)
 	authKeyName, err := authPublicKey.Name()
