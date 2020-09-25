@@ -78,7 +78,7 @@ func (u *TPMKeyUnsealer) UnsealKey(volumeName, sourceDevicePath string, p Prompt
 		for ; pinTries > 0; pinTries-- {
 			var pin string
 			if k.AuthMode2F() == AuthModePIN {
-				pin, err = p.PromptFor2FA(sourceDevicePath, "PIN")
+				pin, err = p.PromptForPassphrase(sourceDevicePath, "PIN")
 				if err != nil {
 					return nil, nil, xerrors.Errorf("cannot obtain PIN: %w", err)
 				}

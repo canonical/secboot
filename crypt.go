@@ -220,7 +220,7 @@ func activate(volumeName, sourceDevicePath string, key []byte, options []string)
 // A Prompter can be used to prompt the user for secrets necessary
 // to unlock a disk.
 type Prompter interface {
-	PromptFor2FA(sourceDevicePath, description string) (string, error)
+	PromptForPassphrase(sourceDevicePath, description string) (string, error)
 
 	PromptForRecoveryKey(sourceDevicePath string) (string, error)
 }
@@ -228,21 +228,21 @@ type Prompter interface {
 // SystemPrompter implements Prompter reading once if set from the
 // dedicated io.Reader or otherwise using systemd-ask-password.
 type SystemPrompter struct {
-	ReaderFor2FA         io.Reader
-	ReaderForRecoveryKey io.Reader
+	Passphrase  io.Reader
+	RecoveryKey io.Reader
 }
 
-func (p *SystemPrompter) PromptFor2FA(sourceDevicePath, description string) (string, error) {
+func (p *SystemPrompter) PromptForPassphrase(sourceDevicePath, description string) (string, error) {
 	// consumed once
-	r := p.ReaderFor2FA
-	p.ReaderFor2FA = nil
+	r := p.Passphrase
+	p.Passphrase = nil
 	return getPassword(sourceDevicePath, description, r)
 }
 
 func (p *SystemPrompter) PromptForRecoveryKey(sourceDevicePath string) (string, error) {
 	// consumed once
-	r := p.ReaderForRecoveryKey
-	p.ReaderForRecoveryKey = nil
+	r := p.RecoveryKey
+	p.RecoveryKey = nil
 	return getPassword(sourceDevicePath, "recovery key", r)
 }
 
@@ -507,7 +507,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		return false, err
 	}
 
-	p := &SystemPrompter{ReaderFor2FA: passphraseReader}
+	p := &SystemPrompter{Passphrase: passphraseReader}
 	return ActivateVolumeWithKeyUnsealer(volumeName, sourceDevicePath, keyUnsealer, p, options)
 }
 
@@ -535,7 +535,7 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 		return err
 	}
 
-	p := &SystemPrompter{ReaderForRecoveryKey: keyReader}
+	p := &SystemPrompter{RecoveryKey: keyReader}
 	return activateWithRecoveryKey(volumeName, sourceDevicePath, p, options.RecoveryKeyTries, RecoveryKeyUsageReasonRequested, activateOptions, options.KeyringPrefix)
 }
 
