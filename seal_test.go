@@ -326,7 +326,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "provided AuthKey must be from elliptictic.P256, no other curve is supported" {
+		if err.Error() != "provided AuthKey must be from elliptic.P256, no other curve is supported" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

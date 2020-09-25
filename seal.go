@@ -172,7 +172,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	}
 
 	if params.AuthKey != nil && params.AuthKey.Curve != elliptic.P256() {
-		return nil, errors.New("provided AuthKey must be from elliptictic.P256, no other curve is supported")
+		return nil, errors.New("provided AuthKey must be from elliptic.P256, no other curve is supported")
 	}
 
 	// Use the HMAC session created when the connection was opened rather than creating a new one.
