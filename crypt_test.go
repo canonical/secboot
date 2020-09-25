@@ -309,10 +309,10 @@ type testActivateVolumeWithTPMSealedKeyNo2FAData struct {
 
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, data *testActivateVolumeWithTPMSealedKeyNo2FAData) {
 	options := ActivateVolumeOptions{
-		UserPassphraseTries: data.pinTries,
-		RecoveryKeyTries:    data.recoveryKeyTries,
-		ActivateOptions:     data.activateOptions,
-		KeyringPrefix:       data.keyringPrefix}
+		PassphraseTries:  data.pinTries,
+		RecoveryKeyTries: data.recoveryKeyTries,
+		ActivateOptions:  data.activateOptions,
+		KeyringPrefix:    data.keyringPrefix}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, data.volumeName, data.sourceDevicePath, s.keyFile, nil, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -336,7 +336,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA1(c *C) 
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA2(c *C) {
-	// Test with a non-zero UserPassphraseTries when a PIN isn't set.
+	// Test with a non-zero PassphraseTries when a PIN isn't set.
 	s.testActivateVolumeWithTPMSealedKeyNo2FA(c, &testActivateVolumeWithTPMSealedKeyNo2FAData{
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
@@ -399,7 +399,7 @@ type testActivateVolumeWithTPMSealedKeyAndPINData struct {
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.pins, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateVolumeOptions{UserPassphraseTries: data.pinTries}
+	options := ActivateVolumeOptions{PassphraseTries: data.pinTries}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, nil, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -454,7 +454,7 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPI
 	c.Assert(err, IsNil)
 	defer r.Close()
 
-	options := ActivateVolumeOptions{UserPassphraseTries: data.pinTries}
+	options := ActivateVolumeOptions{PassphraseTries: data.pinTries}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, r, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -537,10 +537,10 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
 
 	options := ActivateVolumeOptions{
-		UserPassphraseTries: data.pinTries,
-		RecoveryKeyTries:    data.recoveryKeyTries,
-		ActivateOptions:     data.activateOptions,
-		KeyringPrefix:       data.keyringPrefix}
+		PassphraseTries:  data.pinTries,
+		RecoveryKeyTries: data.recoveryKeyTries,
+		ActivateOptions:  data.activateOptions,
+		KeyringPrefix:    data.keyringPrefix}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, nil, &options)
 	c.Check(err, data.errChecker, data.errCheckerArgs...)
 	c.Check(success, Equals, data.success)
@@ -571,11 +571,11 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
-	// Test with an invalid value for UserPassphraseTries.
+	// Test with an invalid value for PassphraseTries.
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		pinTries:       -1,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"invalid UserPassphraseTries"},
+		errCheckerArgs: []interface{}{"invalid PassphraseTries"},
 	})
 }
 
@@ -705,7 +705,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonUserPassphraseFail,
+		recoveryReason:    RecoveryKeyUsageReasonPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the provided PIN is incorrect\\) but " +
 			"activation with recovery key was successful"},
@@ -720,7 +720,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonUserPassphraseFail,
+		recoveryReason:    RecoveryKeyUsageReasonPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(no PIN tries permitted when a PIN is required\\) but " +
 			"activation with recovery key was successful"},

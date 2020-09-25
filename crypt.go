@@ -275,10 +275,10 @@ const (
 	// is also not correctly provisioned.
 	RecoveryKeyUsageReasonInvalidKeyFile
 
-	// RecoveryKeyUsageReasonUserPassphraseFail indicates that a
+	// RecoveryKeyUsageReasonPassphraseFail indicates that a
 	// volume had to be activated with the fallback recovery key
 	// because the correct user passphrase/PIN was not provided.
-	RecoveryKeyUsageReasonUserPassphraseFail
+	RecoveryKeyUsageReasonPassphraseFail
 )
 
 func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, reason RecoveryKeyUsageReason, activateOptions []string, keyringPrefix string) error {
@@ -458,35 +458,36 @@ func makeActivateOptions(in []string) ([]string, error) {
 // ActivateVolumeOptions provides options to the ActivateVolumeWith*
 // family of functions.
 type ActivateVolumeOptions struct {
-	// UserPassphraseTries specifies the maximum number of times
+	// PassphraseTries specifies the maximum number of times
 	// that unsealing with a user passphrase should be attempted
 	// before failing with an error and falling back to activating
-	// with the recovery key if RecoveryKeyTries is greater than
-	// zero. Setting this to zero disables unsealing with a user
+	// with the recovery key (see RecoveryKeyTries).
+	// Setting this to zero disables unsealing with a user
 	// passphrase - in this case, an error will be returned if the
 	// sealed key object indicates that a user passphrase has been
-	// set. With a TPM attempts to unseal with a user passphrase
-	// will stop if the TPM enters dictionary attack lockout mode
-	// before this limit is reached.
-	// It is unused by ActivateWithRecoveryKey.
-	UserPassphraseTries int
+	// set.
+	// With a TPM, attempts to unseal will stop if the TPM enters
+	// dictionary attack lockout mode before this limit is
+	// reached.
+	// It is ignored by ActivateWithRecoveryKey.
+	PassphraseTries int
 
 	// RecoveryKeyTries specifies the maximum number of times that
 	// activation with the fallback recovery key should be
-	// attempted.  It is considered directly by
-	// ActivateWithRecoveryKey and when falling in the other
-	// cases, for example failed TPM unsealing.  Setting this to
-	// zero will disable attempts to activate with the fallback
-	// recovery key.
+	// attempted.
+	// It is used directly by ActivateWithRecoveryKey and
+	// indirectly with other methods upon failure, for example
+	// failed TPM unsealing.  Setting this to zero will disable
+	// attempts to activate with the fallback recovery key.
 	RecoveryKeyTries int
 
 	// ActivateOptions provides a mechanism to pass additional
 	// options to systemd-cryptsetup.
 	ActivateOptions []string
 
-	// LockSealedKeys controls whether access to the keys locked
-	// after unsealing. That means calling LockAccessToSealedKeys
-	// in TPM case.
+	// LockSealedKeys controls whether access to the keys is
+	// locked after unsealing by calling LockAccessToSealedKeys in
+	// TPM case for example.
 	LockSealedKeys bool
 
 	// KeyringPrefix is the prefix used for the description of any
@@ -498,7 +499,7 @@ type ActivateVolumeOptions struct {
 // name volumeName, using the TPM sealed key object at the specified keyPath. This makes use of systemd-cryptsetup.
 //
 // If the TPM sealed key object has a user passphrase/PIN defined, then this function will use systemd-ask-password to request it. If passphraseReader is not
-// nil, then an attempt to read the user passphrase/PIN from this will be made instead by reading all characters until the first newline. The UserPassphraseTries
+// nil, then an attempt to read the user passphrase/PIN from this will be made instead by reading all characters until the first newline. The PassphraseTries
 // field of options defines how many attempts should be made to obtain the correct passphrase before failing.
 //
 // The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
@@ -513,7 +514,7 @@ type ActivateVolumeOptions struct {
 // calling GetActivationDataFromKernel will return a *RecoveryActivationData containing the recovery key and the reason that the
 // recovery key was requested.
 //
-// If either the UserPassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
 // field of options contains the "tries=" option, then an error will be returned. This option cannot be used with this function.
 //
 // If the LockSealedKeyAccess field of options is true and the call to LockAccessToSealedKeys fails, a LockAccessToSealedKeysError
@@ -531,8 +532,8 @@ type ActivateVolumeOptions struct {
 // If the volume is successfully activated, either with the TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
 func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, passphraseReader io.Reader, options *ActivateVolumeOptions) (bool, error) {
-	if options.UserPassphraseTries < 0 {
-		return false, errors.New("invalid UserPassphraseTries")
+	if options.PassphraseTries < 0 {
+		return false, errors.New("invalid PassphraseTries")
 	}
 	if options.RecoveryKeyTries < 0 {
 		return false, errors.New("invalid RecoveryKeyTries")
@@ -543,7 +544,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		return false, err
 	}
 
-	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, passphraseReader, options.UserPassphraseTries, options.LockSealedKeys, activateOptions, options.KeyringPrefix); err != nil {
+	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, passphraseReader, options.PassphraseTries, options.LockSealedKeys, activateOptions, options.KeyringPrefix); err != nil {
 		reason := RecoveryKeyUsageReasonUnexpectedError
 		switch {
 		case isLockAccessError(err):
@@ -555,9 +556,9 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		case isInvalidKeyFileError(err):
 			reason = RecoveryKeyUsageReasonInvalidKeyFile
 		case xerrors.Is(err, requiresPinErr):
-			reason = RecoveryKeyUsageReasonUserPassphraseFail
+			reason = RecoveryKeyUsageReasonPassphraseFail
 		case xerrors.Is(err, ErrPINFail):
-			reason = RecoveryKeyUsageReasonUserPassphraseFail
+			reason = RecoveryKeyUsageReasonPassphraseFail
 		case isExecError(err, systemdCryptsetupPath):
 			// systemd-cryptsetup only provides 2 exit codes - success or fail - so we don't know the reason it failed yet. If activation
 			// with the recovery key is successful, then it's safe to assume that it failed because the key unsealed from the TPM is incorrect.
