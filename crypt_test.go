@@ -308,11 +308,11 @@ type testActivateVolumeWithTPMSealedKeyNo2FAData struct {
 }
 
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, data *testActivateVolumeWithTPMSealedKeyNo2FAData) {
-	options := ActivateWithTPMSealedKeyOptions{
-		PINTries:         data.pinTries,
-		RecoveryKeyTries: data.recoveryKeyTries,
-		ActivateOptions:  data.activateOptions,
-		KeyringPrefix:    data.keyringPrefix}
+	options := ActivateVolumeOptions{
+		UserPassphraseTries: data.pinTries,
+		RecoveryKeyTries:    data.recoveryKeyTries,
+		ActivateOptions:     data.activateOptions,
+		KeyringPrefix:       data.keyringPrefix}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, data.volumeName, data.sourceDevicePath, s.keyFile, nil, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -336,7 +336,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA1(c *C) 
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA2(c *C) {
-	// Test with a non-zero PINTries when a PIN isn't set.
+	// Test with a non-zero UserPassphraseTries when a PIN isn't set.
 	s.testActivateVolumeWithTPMSealedKeyNo2FA(c, &testActivateVolumeWithTPMSealedKeyNo2FAData{
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
@@ -399,7 +399,7 @@ type testActivateVolumeWithTPMSealedKeyAndPINData struct {
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.pins, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries}
+	options := ActivateVolumeOptions{UserPassphraseTries: data.pinTries}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, nil, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -454,7 +454,7 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPI
 	c.Assert(err, IsNil)
 	defer r.Close()
 
-	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries}
+	options := ActivateVolumeOptions{UserPassphraseTries: data.pinTries}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, r, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -536,11 +536,11 @@ type testActivateVolumeWithTPMSealedKeyErrorHandlingData struct {
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, data *testActivateVolumeWithTPMSealedKeyErrorHandlingData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateWithTPMSealedKeyOptions{
-		PINTries:         data.pinTries,
-		RecoveryKeyTries: data.recoveryKeyTries,
-		ActivateOptions:  data.activateOptions,
-		KeyringPrefix:    data.keyringPrefix}
+	options := ActivateVolumeOptions{
+		UserPassphraseTries: data.pinTries,
+		RecoveryKeyTries:    data.recoveryKeyTries,
+		ActivateOptions:     data.activateOptions,
+		KeyringPrefix:       data.keyringPrefix}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, nil, &options)
 	c.Check(err, data.errChecker, data.errCheckerArgs...)
 	c.Check(success, Equals, data.success)
@@ -571,11 +571,11 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
-	// Test with an invalid value for PINTries.
+	// Test with an invalid value for UserPassphraseTries.
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		pinTries:       -1,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"invalid PINTries"},
+		errCheckerArgs: []interface{}{"invalid UserPassphraseTries"},
 	})
 }
 
@@ -705,7 +705,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonPINFail,
+		recoveryReason:    RecoveryKeyUsageReasonUserPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the provided PIN is incorrect\\) but " +
 			"activation with recovery key was successful"},
@@ -720,7 +720,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonPINFail,
+		recoveryReason:    RecoveryKeyUsageReasonUserPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(no PIN tries permitted when a PIN is required\\) but " +
 			"activation with recovery key was successful"},
@@ -793,7 +793,7 @@ type testActivateVolumeWithRecoveryKeyData struct {
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateWithRecoveryKeyOptions{Tries: data.tries, ActivateOptions: data.activateOptions, KeyringPrefix: data.keyringPrefix}
+	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries, ActivateOptions: data.activateOptions, KeyringPrefix: data.keyringPrefix}
 	c.Assert(ActivateVolumeWithRecoveryKey(data.volumeName, data.sourceDevicePath, nil, &options), IsNil)
 
 	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
@@ -915,7 +915,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 	c.Assert(err, IsNil)
 	defer r.Close()
 
-	options := ActivateWithRecoveryKeyOptions{Tries: data.tries}
+	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries}
 	c.Assert(ActivateVolumeWithRecoveryKey("data", "/dev/sda1", r, &options), IsNil)
 
 	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
@@ -1112,7 +1112,7 @@ type testActivateVolumeWithRecoveryKeyErrorHandlingData struct {
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *testActivateVolumeWithRecoveryKeyErrorHandlingData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateWithRecoveryKeyOptions{Tries: data.tries, ActivateOptions: data.activateOptions}
+	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries, ActivateOptions: data.activateOptions}
 	c.Check(ActivateVolumeWithRecoveryKey("data", "/dev/sda1", nil, &options), data.errChecker, data.errCheckerArgs...)
 
 	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
@@ -1132,11 +1132,11 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling1(c *C) {
-	// Test with an invalid Tries value.
+	// Test with an invalid RecoveryKeyTries value.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:          -1,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"invalid Tries"},
+		errCheckerArgs: []interface{}{"invalid RecoveryKeyTries"},
 	})
 }
 
