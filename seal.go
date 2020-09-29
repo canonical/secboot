@@ -196,16 +196,9 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	}
 
 	// Validate that the TPM has either new-style lock NV indices or legacy-style lock NV index.
-	legacyLockIndexPub, err := validateLockNVIndices(tpm.TPMContext, session)
+	keysLockSol, err := validateLockNVIndices(tpm.TPMContext, session)
 	if err != nil {
 		return nil, ErrTPMProvisioning
-	}
-	var legacyLockIndexName tpm2.Name
-	if legacyLockIndexPub != nil {
-		legacyLockIndexName, err = legacyLockIndexPub.Name()
-		if err != nil {
-			return nil, xerrors.Errorf("cannot compute name of legacy global lock NV index: %w", err)
-		}
 	}
 
 	succeeded := false
@@ -273,7 +266,8 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	staticPolicyData, authPolicy, err := computeStaticPolicy(template.NameAlg, &staticPolicyComputeParams{
 		key:                 authPublicKey,
 		pcrPolicyCounterPub: pcrPolicyCounterPub,
-		legacyLockIndexName: legacyLockIndexName})
+		keysLockSol:         keysLockSol,
+	})
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute static authorization policy: %w", err)
 	}

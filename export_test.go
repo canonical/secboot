@@ -216,7 +216,21 @@ func NewDynamicPolicyComputeParams(key *ecdsa.PrivateKey, signAlg tpm2.HashAlgor
 }
 
 func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, legacyLockIndexName tpm2.Name) *staticPolicyComputeParams {
-	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub, legacyLockIndexName: legacyLockIndexName}
+	var keysLockSol keysLockSolution
+	if len(legacyLockIndexName) > 0 {
+		keysLockSol = &legacyKeysLockSolution{lockIndexName: legacyLockIndexName}
+	} else {
+		index1Name, index2Name, err := computeLockNVIndexNames()
+		if err != nil {
+			panic(err)
+		}
+		keysLockSol = &twoIndicesKeysLockSolution{
+			lockIndex1Name: index1Name,
+			lockIndex2Name: index2Name,
+		}
+	}
+
+	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub, keysLockSol: keysLockSol}
 }
 
 func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {

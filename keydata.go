@@ -399,16 +399,9 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	// It's loaded ok, so we know that the private and public parts are consistent.
 	tpm.FlushContext(keyContext)
 
-	legacyLockIndexPub, err := validateLockNVIndices(tpm, session)
+	keysLockSol, err := validateLockNVIndices(tpm, session)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot validate lock NV indices: %w", err)
-	}
-	var legacyLockIndexName tpm2.Name
-	if legacyLockIndexPub != nil {
-		legacyLockIndexName, err = legacyLockIndexPub.Name()
-		if err != nil {
-			return nil, xerrors.Errorf("cannot compute lock NV index name: %w", err)
-		}
 	}
 
 	// Obtain a ResourceContext for the PCR policy counter. Go-tpm2 calls TPM2_NV_ReadPublic twice here. The second time is with a
@@ -478,16 +471,9 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 		// v1 metadata and later
 		trial.PolicyAuthValue()
 	}
-	if len(legacyLockIndexName) > 0 {
-		trial.PolicyNV(legacyLockIndexName, nil, 0, tpm2.OpEq)
-	} else {
-		lockIndex1Name, lockIndex2Name, err := computeLockNVIndexNames()
-		if err != nil {
-			return nil, xerrors.Errorf("cannot compute expected names of lock NV indices: %w", err)
-		}
-		trial.PolicyNV(lockIndex1Name, nil, 0, tpm2.OpEq)
-		trial.PolicyNV(lockIndex2Name, nil, 0, tpm2.OpEq)
-	}
+
+	// apply the keys lock policy facet under trial
+	keysLockSol.tryPolicy(trial)
 
 	if !bytes.Equal(trial.GetDigest(), keyPublic.AuthPolicy) {
 		return nil, keyFileError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
