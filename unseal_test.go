@@ -35,7 +35,7 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestUnsealWithPIN(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
 
@@ -130,8 +130,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 	rand.Read(key)
 
 	run := func(t *testing.T, tpm *TPMConnection, fn func(string, string)) error {
-		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-			t.Errorf("ProvisionTPM failed: %v", err)
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("EnsureProvisioned failed: %v", err)
 		}
 
 		tmpDir, err := ioutil.TempDir("", "_TestUnsealErrorHandling_")
