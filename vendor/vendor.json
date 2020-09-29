@@ -19,12 +19,12 @@
 			"path": "github.com/canonical/go-tpm2/mu",
 			"revision": "8f372d7de1b07c887e388874555d48f9161feaed",
 			"revisionTime": "2020-08-24T11:54:14Z"
-		},
-		{
-			"checksumSHA1": "eDjzake0GpHm9kfTH7FMUWX8zVA=",
-			"path": "github.com/chrisccoulson/tcglog-parser",
-			"revision": "7b0f085a85398d368e10382a21a44ec2226c35b3",
-			"revisionTime": "2020-02-28T14:36:39Z"
+        },
+        {
+			"checksumSHA1": "QGwWyf2f/5+FacNj2iKpjp8N5hg=",
+			"path": "github.com/canonical/tcglog-parser",
+			"revision": "12a3a7bcf5a14486e838fea211e8d4aa280e9671",
+			"revisionTime": "2020-09-08T16:50:21Z"
 		},
 		{
 			"checksumSHA1": "kmcZh6191ZYy/+G/tIWFZoVEkGs=",
