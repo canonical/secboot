@@ -29,6 +29,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 
 	"golang.org/x/xerrors"
 )
@@ -87,16 +88,16 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 
 	pub.Unique = template.Unique
 
-	pubBytes, _ := tpm2.MarshalToBytes(pub)
-	templateBytes, _ := tpm2.MarshalToBytes(template)
+	pubBytes, _ := mu.MarshalToBytes(pub)
+	templateBytes, _ := mu.MarshalToBytes(template)
 	if !bytes.Equal(pubBytes, templateBytes) {
 		// For RSA keys, the default exponent (2^^16 - 1) is normally indicated by the value 0, but handle a TPM that actually
 		// returns 65537 by trying again.
 		if template.Type == tpm2.ObjectTypeRSA && template.Params.RSADetail().Exponent == 0 {
 			var templateCopy *tpm2.Public
-			tpm2.UnmarshalFromBytes(templateBytes, &templateCopy)
+			mu.UnmarshalFromBytes(templateBytes, &templateCopy)
 			templateCopy.Params.RSADetail().Exponent = 65537
-			templateBytes, _ = tpm2.MarshalToBytes(templateCopy)
+			templateBytes, _ = mu.MarshalToBytes(templateCopy)
 			if !bytes.Equal(pubBytes, templateBytes) {
 				return false, nil
 			}
@@ -113,7 +114,7 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 	h.Write(hierarchy.Name())
 	h.Write(object.Name())
 
-	expectedQualifiedName, _ := tpm2.MarshalToBytes(pub.NameAlg, tpm2.RawBytes(h.Sum(nil)))
+	expectedQualifiedName, _ := mu.MarshalToBytes(pub.NameAlg, mu.RawBytes(h.Sum(nil)))
 	if !bytes.Equal(expectedQualifiedName, qualifiedName) {
 		return false, nil
 	}

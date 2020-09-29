@@ -138,8 +138,8 @@ func TestConnectToDefaultTPM(t *testing.T) {
 			tpm := connectAndClear(t)
 			defer closeTPM(t, tpm)
 
-			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-				t.Fatalf("ProvisionTPM failed: %v", err)
+			if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+				t.Fatalf("EnsureProvisioned failed: %v", err)
 			}
 		}()
 
@@ -345,8 +345,8 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 			tpm := connectAndClear(t)
 			defer closeTPM(t, tpm)
 
-			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-				t.Fatalf("ProvisionTPM failed: %v", err)
+			if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+				t.Fatalf("EnsureProvisioned failed: %v", err)
 			}
 		}()
 

@@ -36,7 +36,7 @@ type keyDataSuite struct {
 var _ = Suite(&keyDataSuite{})
 
 func (s *keyDataSuite) TestValidateAfterLock(c *C) {
-	c.Assert(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 
 	key := make([]byte, 64)
 	rand.Read(key)

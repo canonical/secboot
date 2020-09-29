@@ -36,7 +36,7 @@ func TestPerformPinChange(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Errorf("Failed to provision TPM for test: %v", err)
 	}
 
@@ -106,7 +106,7 @@ func (s *pinSuite) SetUpSuite(c *C) {
 
 func (s *pinSuite) SetUpTest(c *C) {
 	s.TPMTestBase.SetUpTest(c)
-	c.Assert(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"

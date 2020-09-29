@@ -33,6 +33,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
@@ -73,31 +74,28 @@ type afSplitDataRawHdr struct {
 // afSlitDataRaw is the on-disk version of afSplitData.
 type afSplitDataRaw struct {
 	Hdr  afSplitDataRawHdr
-	Data tpm2.RawBytes
+	Data mu.RawBytes
 }
 
-func (d *afSplitDataRaw) Marshal(w io.Writer) (nbytes int, err error) {
-	return tpm2.MarshalToWriter(w, d.Hdr, d.Data)
+func (d *afSplitDataRaw) Marshal(w io.Writer) error {
+	_, err := mu.MarshalToWriter(w, d.Hdr, d.Data)
+	return err
 }
 
-func (d *afSplitDataRaw) Unmarshal(r io.Reader) (nbytes int, err error) {
+func (d *afSplitDataRaw) Unmarshal(r mu.Reader) error {
 	var h afSplitDataRawHdr
-	n, err := tpm2.UnmarshalFromReader(r, &h)
-	nbytes += n
-	if err != nil {
-		return nbytes, xerrors.Errorf("cannot unmarshal header: %w", err)
+	if _, err := mu.UnmarshalFromReader(r, &h); err != nil {
+		return xerrors.Errorf("cannot unmarshal header: %w", err)
 	}
 
 	data := make([]byte, h.Size)
-	n, err = io.ReadFull(r, data)
-	nbytes += n
-	if err != nil {
-		return nbytes, xerrors.Errorf("cannot read data: %w", err)
+	if _, err := io.ReadFull(r, data); err != nil {
+		return xerrors.Errorf("cannot read data: %w", err)
 	}
 
 	d.Hdr = h
 	d.Data = data
-	return
+	return nil
 }
 
 func (d *afSplitDataRaw) data() *afSplitData {
@@ -175,34 +173,30 @@ type keyPolicyUpdateData struct {
 	creationTicket *tpm2.TkCreation
 }
 
-func (d *keyPolicyUpdateData) Marshal(w io.Writer) (nbytes int, err error) {
+func (d *keyPolicyUpdateData) Marshal(w io.Writer) error {
 	panic("not implemented")
 }
 
-func (d *keyPolicyUpdateData) Unmarshal(r io.Reader) (nbytes int, err error) {
+func (d *keyPolicyUpdateData) Unmarshal(r mu.Reader) error {
 	var version uint32
-	n, err := tpm2.UnmarshalFromReader(r, &version)
-	nbytes += n
-	if err != nil {
-		return nbytes, xerrors.Errorf("cannot unmarshal version number: %w", err)
+	if _, err := mu.UnmarshalFromReader(r, &version); err != nil {
+		return xerrors.Errorf("cannot unmarshal version number: %w", err)
 	}
 
 	switch version {
 	case 0:
 		var raw keyPolicyUpdateDataRaw_v0
-		n, err := tpm2.UnmarshalFromReader(r, &raw)
-		nbytes += n
-		if err != nil {
-			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
+		if _, err := mu.UnmarshalFromReader(r, &raw); err != nil {
+			return xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
 
 		authKey, err := x509.ParsePKCS1PrivateKey(raw.AuthKey)
 		if err != nil {
-			return nbytes, xerrors.Errorf("cannot parse dynamic authorization policy signing key: %w", err)
+			return xerrors.Errorf("cannot parse dynamic authorization policy signing key: %w", err)
 		}
 
 		h := crypto.SHA256.New()
-		if _, err := tpm2.MarshalToWriter(h, raw.AuthKey); err != nil {
+		if _, err := mu.MarshalToWriter(h, raw.AuthKey); err != nil {
 			panic(fmt.Sprintf("cannot marshal dynamic authorization policy signing key: %v", err))
 		}
 
@@ -213,15 +207,15 @@ func (d *keyPolicyUpdateData) Unmarshal(r io.Reader) (nbytes int, err error) {
 			creationData:   raw.CreationData,
 			creationTicket: raw.CreationTicket}
 	default:
-		return nbytes, fmt.Errorf("unexpected version number (%d)", version)
+		return fmt.Errorf("unexpected version number (%d)", version)
 	}
-	return
+	return nil
 }
 
 // decodeKeyPolicyUpdateData deserializes keyPolicyUpdateData from the provided io.Reader.
 func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData, error) {
 	var header uint32
-	if _, err := tpm2.UnmarshalFromReader(r, &header); err != nil {
+	if _, err := mu.UnmarshalFromReader(r, &header); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal header: %w", err)
 	}
 	if header != keyPolicyUpdateDataHeader {
@@ -229,7 +223,7 @@ func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData, error) {
 	}
 
 	var d keyPolicyUpdateData
-	if _, err := tpm2.UnmarshalFromReader(r, &d); err != nil {
+	if _, err := mu.UnmarshalFromReader(r, &d); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal data: %w", err)
 	}
 
@@ -265,11 +259,9 @@ type keyData struct {
 	dynamicPolicyData *dynamicPolicyData
 }
 
-func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
-	n, err := tpm2.MarshalToWriter(w, d.version)
-	nbytes += n
-	if err != nil {
-		return nbytes, xerrors.Errorf("cannot marshal version number: %w", err)
+func (d *keyData) Marshal(w io.Writer) error {
+	if _, err := mu.MarshalToWriter(w, d.version); err != nil {
+		return xerrors.Errorf("cannot marshal version number: %w", err)
 	}
 
 	switch d.version {
@@ -280,8 +272,9 @@ func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
 			AuthModeHint:      d.authModeHint,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v0(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
-		n, err := tpm2.MarshalToWriter(w, raw)
-		return nbytes + n, err
+		if _, err := mu.MarshalToWriter(w, raw); err != nil {
+			return xerrors.Errorf("cannot marshal raw data: %w", err)
+		}
 	case 1:
 		var tmpW bytes.Buffer
 		raw := keyDataRaw_v1{
@@ -290,35 +283,33 @@ func (d *keyData) Marshal(w io.Writer) (nbytes int, err error) {
 			AuthModeHint:      d.authModeHint,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
-		if _, err := tpm2.MarshalToWriter(&tmpW, raw); err != nil {
-			return 0, xerrors.Errorf("cannot marshal data: %w", err)
+		if _, err := mu.MarshalToWriter(&tmpW, raw); err != nil {
+			return xerrors.Errorf("cannot marshal raw data: %w", err)
 		}
 		splitData, err := makeAfSplitData(tmpW.Bytes(), 128*1024, tpm2.HashAlgorithmSHA256)
 		if err != nil {
-			return 0, xerrors.Errorf("cannot split data: %w", err)
+			return xerrors.Errorf("cannot split data: %w", err)
 		}
-		n, err := tpm2.MarshalToWriter(w, makeAfSplitDataRaw(splitData))
-		return nbytes + n, err
+		if _, err := mu.MarshalToWriter(w, makeAfSplitDataRaw(splitData)); err != nil {
+			return xerrors.Errorf("cannot marshal split data: %w", err)
+		}
 	default:
-		return 0, fmt.Errorf("unexpected version number (%d)", d.version)
+		return fmt.Errorf("unexpected version number (%d)", d.version)
 	}
+	return nil
 }
 
-func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
+func (d *keyData) Unmarshal(r mu.Reader) error {
 	var version uint32
-	n, err := tpm2.UnmarshalFromReader(r, &version)
-	nbytes += n
-	if err != nil {
-		return nbytes, xerrors.Errorf("cannot unmarshal version number: %w", err)
+	if _, err := mu.UnmarshalFromReader(r, &version); err != nil {
+		return xerrors.Errorf("cannot unmarshal version number: %w", err)
 	}
 
 	switch version {
 	case 0:
 		var raw keyDataRaw_v0
-		n, err := tpm2.UnmarshalFromReader(r, &raw)
-		nbytes += n
-		if err != nil {
-			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
+		if _, err := mu.UnmarshalFromReader(r, &raw); err != nil {
+			return xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
 		*d = keyData{
 			version:           version,
@@ -329,20 +320,18 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	case 1:
 		var splitData afSplitDataRaw
-		n, err := tpm2.UnmarshalFromReader(r, &splitData)
-		nbytes += n
-		if err != nil {
-			return nbytes, xerrors.Errorf("cannot unmarshal split data: %w", err)
+		if _, err := mu.UnmarshalFromReader(r, &splitData); err != nil {
+			return xerrors.Errorf("cannot unmarshal split data: %w", err)
 		}
 
 		merged, err := splitData.data().merge()
 		if err != nil {
-			return nbytes, xerrors.Errorf("cannot merge data: %w", err)
+			return xerrors.Errorf("cannot merge data: %w", err)
 		}
 
 		var raw keyDataRaw_v1
-		if _, err := tpm2.UnmarshalFromBytes(merged, &raw); err != nil {
-			return nbytes, xerrors.Errorf("cannot unmarshal data: %w", err)
+		if _, err := mu.UnmarshalFromBytes(merged, &raw); err != nil {
+			return xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
 		*d = keyData{
 			version:           version,
@@ -352,9 +341,9 @@ func (d *keyData) Unmarshal(r io.Reader) (nbytes int, err error) {
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	default:
-		return nbytes, fmt.Errorf("unexpected version number (%d)", version)
+		return fmt.Errorf("unexpected version number (%d)", version)
 	}
-	return
+	return nil
 }
 
 // load loads the TPM sealed object associated with this keyData in to the storage hierarchy of the TPM, and returns the newly
@@ -561,7 +550,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 
 // write serializes keyData in to the provided io.Writer.
 func (d *keyData) write(w io.Writer) error {
-	if _, err := tpm2.MarshalToWriter(w, keyDataHeader, d); err != nil {
+	if _, err := mu.MarshalToWriter(w, keyDataHeader, d); err != nil {
 		return err
 	}
 	return nil
@@ -589,7 +578,7 @@ func (d *keyData) writeToFileAtomic(dest string) error {
 // decodeKeyData deserializes keyData from the provided io.Reader.
 func decodeKeyData(r io.Reader) (*keyData, error) {
 	var header uint32
-	if _, err := tpm2.UnmarshalFromReader(r, &header); err != nil {
+	if _, err := mu.UnmarshalFromReader(r, &header); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal header: %w", err)
 	}
 	if header != keyDataHeader {
@@ -597,7 +586,7 @@ func decodeKeyData(r io.Reader) (*keyData, error) {
 	}
 
 	var d keyData
-	if _, err := tpm2.UnmarshalFromReader(r, &d); err != nil {
+	if _, err := mu.UnmarshalFromReader(r, &d); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal data: %w", err)
 	}
 
