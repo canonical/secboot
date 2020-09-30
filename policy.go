@@ -488,6 +488,17 @@ func computeLockNVIndexNames() (tpm2.Name, tpm2.Name, error) {
 // sealed key's authorization policy after the key has been unsealed, which makes its authorization policy non-satisfiable until
 // the next reset or restart. The issue with this is that it makes the feature dependent on the PCR profile.
 //
+// This feature is not designed to protect the key that you need to unseal to boot the current OS, but to protect keys that you
+// don't need and may not even be aware of in order to boot the current OS - eg, say you boot from external media on a device that
+// has an internal encrypted drive, or you insert and boot from an additional internal drive on a device that already has an
+// encrypted install. The feature is designed to protect the contents of an encrypted drive belonging to someone else from being
+// accessed by an adversary that just boots the same OS from another drive on a device, but where the OS provided by the adversary
+// is configured to permit some form of shell access with their own credentials.
+//
+// In order to do this, it needs to work universally and it needs to work without being dependent on accessing key data for the
+// keys it is meant to protect. Given that there could keys with slightly different PCR profiles, it's not really possible to make
+// the feature work universally and without being dependent on accessing key data if it relies on PCRs.
+//
 // The implementation here uses a pair of NV indices at well known handles and takes advantage of a couple of properties of NV
 // index read locks:
 // - Once enabled, they can only be disabled by a TPM reset or restart.
