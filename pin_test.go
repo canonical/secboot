@@ -90,7 +90,7 @@ func TestPerformPinChange(t *testing.T) {
 }
 
 type pinSuite struct {
-	testutil.TPMTestBase
+	testutil.TPMSimulatorTestBase
 	key                    []byte
 	pcrPolicyCounterHandle tpm2.Handle
 	keyFile                string
@@ -105,8 +105,9 @@ func (s *pinSuite) SetUpSuite(c *C) {
 }
 
 func (s *pinSuite) SetUpTest(c *C) {
-	s.TPMTestBase.SetUpTest(c)
+	s.TPMSimulatorTestBase.SetUpTest(c)
 	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	s.ResetTPMSimulator(c)
 
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"

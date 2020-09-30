@@ -258,6 +258,7 @@ func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 	s.cryptTestBase.setUpTestBase(c, &s.BaseTest)
 
 	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	s.ResetTPMSimulator(c)
 
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
