@@ -29,6 +29,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
@@ -281,7 +282,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	template.AuthPolicy = authPolicy
 
 	// Create the sensitive data
-	sealedData, err := tpm2.MarshalToBytes(sealedData{Key: key, AuthPrivateKey: goAuthKey.D.Bytes()})
+	sealedData, err := mu.MarshalToBytes(sealedData{Key: key, AuthPrivateKey: goAuthKey.D.Bytes()})
 	if err != nil {
 		panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
 	}

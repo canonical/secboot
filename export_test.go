@@ -26,7 +26,7 @@ import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/chrisccoulson/tcglog-parser"
+	"github.com/canonical/tcglog-parser"
 )
 
 // Export constants for testing
@@ -99,14 +99,14 @@ func (d *DynamicPolicyData) AuthorizedPolicySignature() *tpm2.Signature {
 	return d.authorizedPolicySignature
 }
 
-type EFISignatureData efiSignatureData
+type EFISignatureData = efiSignatureData
 
-func (s *EFISignatureData) SignatureType() *tcglog.EFIGUID {
-	return &s.signatureType
+func (s *EFISignatureData) SignatureType() tcglog.EFIGUID {
+	return s.signatureType
 }
 
-func (s *EFISignatureData) Owner() *tcglog.EFIGUID {
-	return &s.owner
+func (s *EFISignatureData) Owner() tcglog.EFIGUID {
+	return s.owner
 }
 
 func (s *EFISignatureData) Data() []byte {
@@ -139,30 +139,8 @@ func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
 	return d.v0PinIndexAuthPolicies
 }
 
-type WinCertificate interface {
-	ToWinCertificateAuthenticode() *WinCertificateAuthenticode
-	ToWinCertificateUefiGuid() *WinCertificateUefiGuid
-}
-
-type WinCertificateAuthenticode winCertificateAuthenticode
-
-func (c *winCertificateAuthenticode) ToWinCertificateAuthenticode() *WinCertificateAuthenticode {
-	return (*WinCertificateAuthenticode)(c)
-}
-
-func (c *winCertificateAuthenticode) ToWinCertificateUefiGuid() *WinCertificateUefiGuid {
-	return nil
-}
-
-type WinCertificateUefiGuid winCertificateUefiGuid
-
-func (c *winCertificateUefiGuid) ToWinCertificateAuthenticode() *WinCertificateAuthenticode {
-	return nil
-}
-
-func (c *winCertificateUefiGuid) ToWinCertificateUefiGuid() *WinCertificateUefiGuid {
-	return (*WinCertificateUefiGuid)(c)
-}
+type WinCertificateAuthenticode = winCertificateAuthenticode
+type WinCertificateUefiGuid = winCertificateUefiGuid
 
 // Export some helpers for testing.
 func GetWinCertificateType(cert winCertificate) uint16 {

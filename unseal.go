@@ -21,6 +21,7 @@ package secboot
 
 import (
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
@@ -161,7 +162,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 	}
 
 	var sealedData sealedData
-	if _, err := tpm2.UnmarshalFromBytes(keyData, &sealedData); err != nil {
+	if _, err := mu.UnmarshalFromBytes(keyData, &sealedData); err != nil {
 		return nil, nil, InvalidKeyFileError{err.Error()}
 	}
 

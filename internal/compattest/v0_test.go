@@ -29,6 +29,7 @@ import (
 	"math/rand"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
 
@@ -83,13 +84,13 @@ func (s *compatTestV0Suite) TestSealKeyToTPMWithLockIndexProvisionError2(c *C) {
 	var version uint8
 	var keyName tpm2.Name
 	var clock uint64
-	_, err = tpm2.UnmarshalFromBytes(data, &version, &keyName, &clock)
+	_, err = mu.UnmarshalFromBytes(data, &version, &keyName, &clock)
 	c.Assert(err, IsNil)
 
 	time, err := s.TPM.ReadClock()
 	c.Assert(err, IsNil)
 
-	data, err = tpm2.MarshalToBytes(version, keyName, time.ClockInfo.Clock+3600000)
+	data, err = mu.MarshalToBytes(version, keyName, time.ClockInfo.Clock+3600000)
 	c.Assert(err, IsNil)
 	c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), index, nil), IsNil)
 	pub = &tpm2.NVPublic{
@@ -199,7 +200,7 @@ func (s *compatTestV0Suite) TestUnseal2(c *C) {
 
 func (s *compatTestV0Suite) TestUnsealAfterReprovision(c *C) {
 	// Test that reprovisioning doesn't touch the legacy lock NV index if it is valid
-	c.Assert(secboot.ProvisionTPM(s.TPM, secboot.ProvisionModeWithoutLockout, nil), IsNil)
+	c.Assert(s.TPM.EnsureProvisioned(secboot.ProvisionModeWithoutLockout, nil), IsNil)
 	s.testUnseal(c, s.absPath("pcrSequence.1"))
 }
 

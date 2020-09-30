@@ -46,7 +46,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 
-		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 			t.Errorf("Failed to provision TPM for test: %v", err)
 		}
 	}()
@@ -89,10 +89,10 @@ func TestSealKeyToTPM(t *testing.T) {
 	})
 
 	t.Run("SealAfterProvision", func(t *testing.T) {
-		// SealKeyToTPM behaves slightly different if called immediately after ProvisionTPM with the same TPMConnection
+		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same TPMConnection
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 			t.Errorf("Failed to provision TPM for test: %v", err)
 		}
 		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
@@ -143,7 +143,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Errorf("Failed to provision TPM for test: %v", err)
 	}
 
@@ -215,11 +215,13 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Errorf("NVUndefineSpace failed: %v", err)
 		}
 		defer func() {
-			undefineLockNVIndices(t, tpm)
-			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-				t.Errorf("Failed to re-provision TPM after test: %v", err)
+			// XXX: This is strange - we should do this at the start of the next test
+			// that requires it rather than at the end of this test.
+			if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+				t.Errorf("Failed to provision TPM after test: %v", err)
 			}
 		}()
+
 		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000}); err != ErrTPMProvisioning {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -234,9 +236,10 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 			t.Errorf("NVUndefineSpace failed: %v", err)
 		}
 		defer func() {
-			undefineLockNVIndices(t, tpm)
-			if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-				t.Errorf("Failed to re-provision TPM after test: %v", err)
+			// XXX: This is strange - we should do this at the start of the next test
+			// that requires it rather than at the end of this test.
+			if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+				t.Errorf("Failed to provision TPM after test: %v", err)
 			}
 		}()
 		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000}); err != ErrTPMProvisioning {

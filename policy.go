@@ -30,6 +30,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 
 	"golang.org/x/xerrors"
 )
@@ -676,7 +677,7 @@ func validateLegacyLockNVIndex(tpm *tpm2.TPMContext, index, dataIndex tpm2.Resou
 	var version uint8
 	var keyName tpm2.Name
 	var clock uint64
-	if _, err := tpm2.UnmarshalFromBytes(data, &version, &keyName, &clock); err != nil {
+	if _, err := mu.UnmarshalFromBytes(data, &version, &keyName, &clock); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal policy data: %w", err)
 	}
 

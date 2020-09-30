@@ -37,7 +37,7 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	tpm, tcti := openTPMSimulatorForTesting(t)
 	defer func() { closeTPM(t, tpm) }()
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
 	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
@@ -95,7 +95,7 @@ func TestUnsealWithPIN(t *testing.T) {
 	tpm, tcti := openTPMSimulatorForTesting(t)
 	defer func() { closeTPM(t, tpm) }()
 
-	if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
 	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
@@ -147,8 +147,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 			tpm, _ = resetTPMSimulator(t, tpm, tcti)
 			closeTPM(t, tpm)
 		}()
-		if err := ProvisionTPM(tpm, ProvisionModeFull, nil); err != nil {
-			t.Errorf("ProvisionTPM failed: %v", err)
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("EnsureProvisioned failed: %v", err)
 		}
 		tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 

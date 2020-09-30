@@ -29,7 +29,7 @@ import (
 	"sort"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/chrisccoulson/tcglog-parser"
+	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/pe1.14"
 
@@ -179,10 +179,7 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image EFIImage) (tpm2.Digest
 	// greater than sumOfBytesHashed, the file contains extra data that must be added to the hash. This data begins at the
 	// sumOfBytesHashed file offset, and its length is:
 	// fileSize – (certTable.Size + sumOfBytesHashed)
-	fileSize, err := r.Size()
-	if err != nil {
-		return nil, xerrors.Errorf("cannot obtain image size: %w", err)
-	}
+	fileSize := r.Size()
 
 	if fileSize > sumOfBytesHashed {
 		var certSize int64
@@ -261,9 +258,9 @@ func AddEFIBootManagerProfile(profile *PCRProtectionProfile, params *EFIBootMana
 	if err != nil {
 		return xerrors.Errorf("cannot open TCG event log: %w", err)
 	}
-	log, err := tcglog.NewLog(eventLog, tcglog.LogOptions{})
+	log, err := tcglog.ParseLog(eventLog, &tcglog.LogOptions{})
 	if err != nil {
-		return xerrors.Errorf("cannot parse TCG event log header: %w", err)
+		return xerrors.Errorf("cannot parse TCG event log: %w", err)
 	}
 
 	if !log.Algorithms.Contains(tcglog.AlgorithmId(params.PCRAlgorithm)) {
@@ -275,15 +272,7 @@ func AddEFIBootManagerProfile(profile *PCRProtectionProfile, params *EFIBootMana
 	// Replay the event log until we see the transition from "pre-OS" to "OS-present". The event log may contain measurements
 	// for system preparation applications, and spec-compliant firmware should measure a EV_EFI_ACTION “Calling EFI Application
 	// from Boot Option” event before the EV_SEPARATOR event, but not all firmware does this.
-	for {
-		event, err := log.NextEvent()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return xerrors.Errorf("cannot parse TCG event log: %w", err)
-		}
-
+	for _, event := range log.Events {
 		if event.PCRIndex != bootManagerCodePCR {
 			continue
 		}
