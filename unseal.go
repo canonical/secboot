@@ -134,8 +134,8 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 			return nil, nil, InvalidKeyFileError{err.Error()}
 		case isAuthFailError(err, tpm2.CommandPolicySecret, 1):
 			return nil, nil, ErrPINFail
-		case tpm2.IsResourceUnavailableError(err, lockNVHandle1) || tpm2.IsResourceUnavailableError(err, lockNVHandle2):
-			return nil, nil, ErrTPMProvisioning
+		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
+			return nil, nil, InvalidKeyFileError{"no lock NV index is present"}
 		case tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV):
 			return nil, nil, ErrSealedKeyAccessLocked
 		}

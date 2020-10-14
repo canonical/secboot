@@ -399,15 +399,23 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	// It's loaded ok, so we know that the private and public parts are consistent.
 	tpm.FlushContext(keyContext)
 
-	legacyLockIndexPub, err := validateLockNVIndices(tpm, session)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot validate lock NV indices: %w", err)
-	}
 	var legacyLockIndexName tpm2.Name
-	if legacyLockIndexPub != nil {
-		legacyLockIndexName, err = legacyLockIndexPub.Name()
+	if d.version == 0 {
+		index, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
-			return nil, xerrors.Errorf("cannot compute lock NV index name: %w", err)
+			if tpm2.IsResourceUnavailableError(err, lockNVHandle) {
+				return nil, keyFileError{errors.New("lock NV index is unavailable")}
+			}
+			return nil, xerrors.Errorf("cannot create context for lock NV index: %w", err)
+		}
+		indexPub, _, err := tpm.NVReadPublic(index, session.IncludeAttrs(tpm2.AttrAudit))
+		if err != nil {
+			return nil, xerrors.Errorf("cannot read public area of lock NV index: %w", err)
+		}
+		indexPub.Attrs &^= tpm2.AttrNVReadLocked
+		legacyLockIndexName, err = indexPub.Name()
+		if err != nil {
+			return nil, xerrors.Errorf("cannot compute name of lock NV index: %w", err)
 		}
 	}
 
@@ -474,19 +482,10 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	trial.PolicyAuthorize(pcrPolicyRef, authKeyName)
 	if d.version == 0 {
 		trial.PolicySecret(pcrPolicyCounter.Name(), nil)
+		trial.PolicyNV(legacyLockIndexName, nil, 0, tpm2.OpEq)
 	} else {
 		// v1 metadata and later
 		trial.PolicyAuthValue()
-	}
-	if len(legacyLockIndexName) > 0 {
-		trial.PolicyNV(legacyLockIndexName, nil, 0, tpm2.OpEq)
-	} else {
-		lockIndex1Name, lockIndex2Name, err := computeLockNVIndexNames()
-		if err != nil {
-			return nil, xerrors.Errorf("cannot compute expected names of lock NV indices: %w", err)
-		}
-		trial.PolicyNV(lockIndex1Name, nil, 0, tpm2.OpEq)
-		trial.PolicyNV(lockIndex2Name, nil, 0, tpm2.OpEq)
 	}
 
 	if !bytes.Equal(trial.GetDigest(), keyPublic.AuthPolicy) {

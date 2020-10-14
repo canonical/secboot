@@ -206,47 +206,6 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		}
 	})
 
-	t.Run("Provisioning/1", func(t *testing.T) {
-		index, err := tpm.CreateResourceContextFromTPM(LockNVHandle1)
-		if err != nil {
-			t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-		}
-		if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
-			t.Errorf("NVUndefineSpace failed: %v", err)
-		}
-		defer func() {
-			// XXX: This is strange - we should do this at the start of the next test
-			// that requires it rather than at the end of this test.
-			if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
-				t.Errorf("Failed to provision TPM after test: %v", err)
-			}
-		}()
-
-		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000}); err != ErrTPMProvisioning {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
-
-	t.Run("Provisioning/2", func(t *testing.T) {
-		index, err := tpm.CreateResourceContextFromTPM(LockNVHandle2)
-		if err != nil {
-			t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-		}
-		if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, nil); err != nil {
-			t.Errorf("NVUndefineSpace failed: %v", err)
-		}
-		defer func() {
-			// XXX: This is strange - we should do this at the start of the next test
-			// that requires it rather than at the end of this test.
-			if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
-				t.Errorf("Failed to provision TPM after test: %v", err)
-			}
-		}()
-		if err := run(t, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000}); err != ErrTPMProvisioning {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
-
 	t.Run("FileExists", func(t *testing.T) {
 		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPMErrors_")
 		if err != nil {

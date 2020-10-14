@@ -114,25 +114,17 @@ func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, t
 // If mode is ProvisionModeFull or ProvisionModeWithoutLockout, this function will not affect the ability to recover sealed keys that
 // can currently be recovered.
 //
-// In all modes, this function performs operations that require the use of the storage and endorsement hierarchies (creation of
-// primary keys and NV indices, detailed below). If mode is ProvisionModeFull or ProvisionModeWithoutLockout, then knowledge of the
-// authorization values for those hierarchies is required. Whilst these will be empty after clearing the TPM, if they have been set
+// In all modes, this function will create and persist both a storage root key and an endorsement key. Both of these will be created
+// using the RSA templates defined in and persisted at the handles specified in the "TCG EK Credential Profile for TPM Family 2.0"
+// and "TCG TPM v2.0 Provisioning Guidance" specifications. If there are any objects already stored at the locations required for
+// either primary key, then this function will evict them automatically from the TPM. These operations both require the use of the
+// storage and endorsement hierarchies. If mode is ProvisionModeFull or ProvisionModeWithoutLockout, then knowledge of the
+// authorization values for these hierarchies is required. Whilst these will be empty after clearing the TPM, if they have been set
 // since clearing the TPM then they will need to be provided by calling TPMConnection.EndorsementHandleContext().SetAuthValue() and
 // TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the wrong value is provided for either
 // authorization, then a AuthFailError error will be returned. If the correct authorization values are not known, then the only way
 // to recover from this is to clear the TPM either by calling this function with mode set to ProvisionModeClear (and providing the
 // correct authorization value for the lockout hierarchy), or by using the physical presence interface.
-//
-// In all modes, this function will create and persist both a storage root key and an endorsement key. Both of these will be created
-// using the RSA templates defined in and persisted at the handles specified in the "TCG EK Credential Profile for TPM Family 2.0"
-// and "TCG TPM v2.0 Provisioning Guidance" specifications. If there are any objects already stored at the locations required for
-// either primary key, then this function will evict them automatically from the TPM.
-//
-// In all modes, this function will also create a pair of NV indices used for locking access to sealed key objects, if necessary.
-// These indices will be created at handles 0x01801100 and 0x01801101. If there are already NV indices defined at either of the
-// required handles but they don't meet the requirements of this function, then this function will undefine them automatically in
-// order to define new indices. Note that these indices will be created in their locked state (as if LockAccessToSealedKeys has been
-// called), and so secrets protected with SealKeyToTPM cannot be recovered until the next TPM reset or restart.
 //
 // If mode is ProvisionModeWithoutLockout but the TPM indicates that use of the lockout hierarchy is required to fully provision the
 // TPM (eg, to disable owner clear, set the lockout hierarchy authorization value or configure the DA lockout parameters), then a
@@ -199,11 +191,6 @@ func (t *TPMConnection) EnsureProvisioned(mode ProvisionMode, newLockoutAuth []b
 		}
 	}
 	t.provisionedSrk = srk
-
-	// Provision new lock NV indices if required
-	if err := ensureLockNVIndices(t.TPMContext, session); err != nil {
-		return xerrors.Errorf("cannot create lock NV indices: %w", err)
-	}
 
 	if mode == ProvisionModeWithoutLockout {
 		props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1, session.IncludeAttrs(tpm2.AttrAudit))

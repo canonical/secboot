@@ -375,7 +375,8 @@ func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPat
 			if !lock {
 				return
 			}
-			lockErr = LockAccessToSealedKeys(tpm)
+			// TODO: Figure out what to do with this
+			//lockErr = LockAccessToSealedKeys(tpm)
 		}()
 
 		k, err := ReadSealedKeyObject(keyPath)

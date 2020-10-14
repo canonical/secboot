@@ -32,8 +32,7 @@ import (
 // Export constants for testing
 const (
 	CurrentMetadataVersion                = currentMetadataVersion
-	LockNVHandle1                         = lockNVHandle1
-	LockNVHandle2                         = lockNVHandle2
+	LockNVHandle                          = lockNVHandle
 	SigDbUpdateQuirkModeNone              = sigDbUpdateQuirkModeNone
 	SigDbUpdateQuirkModeDedupIgnoresOwner = sigDbUpdateQuirkModeDedupIgnoresOwner
 )
@@ -42,7 +41,6 @@ const (
 var (
 	ComputeDbUpdate                          = computeDbUpdate
 	ComputeDynamicPolicy                     = computeDynamicPolicy
-	ComputeLockNVIndexTemplates              = computeLockNVIndexTemplates
 	CreatePcrPolicyCounter                   = createPcrPolicyCounter
 	ComputePcrPolicyCounterAuthPolicies      = computePcrPolicyCounterAuthPolicies
 	ComputePcrPolicyRefFromCounterContext    = computePcrPolicyRefFromCounterContext
@@ -56,7 +54,6 @@ var (
 	DecodeWinCertificate                     = decodeWinCertificate
 	EFICertTypePkcs7Guid                     = efiCertTypePkcs7Guid
 	EFICertX509Guid                          = efiCertX509Guid
-	EnsureLockNVIndices                      = ensureLockNVIndices
 	ExecutePolicySession                     = executePolicySession
 	IdentifyInitialOSLaunchVerificationEvent = identifyInitialOSLaunchVerificationEvent
 	IncrementPcrPolicyCounter                = incrementPcrPolicyCounter
@@ -66,7 +63,6 @@ var (
 	PerformPinChange                         = performPinChange
 	ReadPcrPolicyCounter                     = readPcrPolicyCounter
 	ReadShimVendorCert                       = readShimVendorCert
-	ValidateLockNVIndices                    = validateLockNVIndices
 	WinCertTypePKCSSignedData                = winCertTypePKCSSignedData
 	WinCertTypeEfiGuid                       = winCertTypeEfiGuid
 )
@@ -215,8 +211,8 @@ func NewDynamicPolicyComputeParams(key *ecdsa.PrivateKey, signAlg tpm2.HashAlgor
 		policyCount:       policyCount}
 }
 
-func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, legacyLockIndexName tpm2.Name) *staticPolicyComputeParams {
-	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub, legacyLockIndexName: legacyLockIndexName}
+func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic) *staticPolicyComputeParams {
+	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub}
 }
 
 func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
