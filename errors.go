@@ -51,10 +51,6 @@ var (
 	// ErrPINFail is returned from SealedKeyObject.UnsealFromTPM if the provided PIN is incorrect.
 	ErrPINFail = errors.New("the provided PIN is incorrect")
 
-	// ErrSealedKeyAccessLocked is returned from SealedKeyObject.UnsealFromTPM if the sealed key object cannot be unsealed until the
-	// next TPM reset or restart.
-	ErrSealedKeyAccessLocked = errors.New("cannot access the sealed key object until the next TPM reset or restart")
-
 	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
 	ErrNoTPM2Device = errors.New("no TPM2 device is available")
 
@@ -132,14 +128,6 @@ func (e InvalidKeyFileError) Error() string {
 func isInvalidKeyFileError(err error) bool {
 	var e InvalidKeyFileError
 	return xerrors.As(err, &e)
-}
-
-// LockAccessToSealedKeysError is returned from ActivateVolumeWithTPMSealedKey if an error occurred whilst trying to lock access
-// to sealed keys created by this package.
-type LockAccessToSealedKeysError string
-
-func (e LockAccessToSealedKeysError) Error() string {
-	return "cannot lock access to sealed keys: " + string(e)
 }
 
 // ActivateWithTPMSealedKeyError is returned from ActivateVolumeWithTPMSealedKey if activation with the TPM protected key failed.

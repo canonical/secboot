@@ -156,9 +156,6 @@ func TestProvisionNewTPM(t *testing.T) {
 
 			validateEK(t, tpm.TPMContext)
 			validateSRK(t, tpm.TPMContext)
-			if _, err := ValidateLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
-				t.Errorf("ValidateLockNVIndices failed: %v", err)
-			}
 
 			// Validate the DA parameters
 			props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3)

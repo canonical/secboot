@@ -21,15 +21,10 @@ package compattest
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"encoding/binary"
 	"fmt"
-	"math/big"
 	"math/rand"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/mu"
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
 
@@ -54,140 +49,6 @@ func (s *compatTestV0Suite) TestSealKeyToTPM(c *C) {
 	_, err := secboot.SealKeyToTPM(s.TPM, key, c.MkDir()+"/key", &secboot.KeyCreationParams{PCRProfile: profile, PCRPolicyCounterHandle: 0x01810001})
 	c.Check(err, IsNil)
 	// TODO: Validate the key file when we have an API for this
-}
-
-func (s *compatTestV0Suite) testSealKeyToTPMWithLockIndexProvisionError(c *C) {
-	key := make([]byte, 64)
-	rand.Read(key)
-	profile := secboot.NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7)
-	_, err := secboot.SealKeyToTPM(s.TPM, key, c.MkDir()+"/key", &secboot.KeyCreationParams{PCRProfile: profile, PCRPolicyCounterHandle: 0x01810001})
-	c.Check(err, ErrorMatches, "the TPM is not correctly provisioned")
-}
-
-func (s *compatTestV0Suite) TestSealKeyToTPMWithLockIndexProvisionError1(c *C) {
-	// Verify that undefining the lock data NV index is detected as a provisioning error
-	index, err := s.TPM.CreateResourceContextFromTPM(0x01801101)
-	c.Assert(err, IsNil)
-	c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), index, nil), IsNil)
-	s.testSealKeyToTPMWithLockIndexProvisionError(c)
-}
-
-func (s *compatTestV0Suite) TestSealKeyToTPMWithLockIndexProvisionError2(c *C) {
-	// Verify that a legacy lock data NV index containing a time in the future is detected as a provisioning error
-	index, err := s.TPM.CreateResourceContextFromTPM(0x01801101)
-	c.Assert(err, IsNil)
-	pub, _, err := s.TPM.NVReadPublic(index)
-	c.Assert(err, IsNil)
-	data, err := s.TPM.NVRead(index, index, pub.Size, 0, nil)
-	c.Assert(err, IsNil)
-
-	var version uint8
-	var keyName tpm2.Name
-	var clock uint64
-	_, err = mu.UnmarshalFromBytes(data, &version, &keyName, &clock)
-	c.Assert(err, IsNil)
-
-	time, err := s.TPM.ReadClock()
-	c.Assert(err, IsNil)
-
-	data, err = mu.MarshalToBytes(version, keyName, time.ClockInfo.Clock+3600000)
-	c.Assert(err, IsNil)
-	c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), index, nil), IsNil)
-	pub = &tpm2.NVPublic{
-		Index:   0x01801101,
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVWriteDefine | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
-		Size:    uint16(len(data))}
-	index, err = s.TPM.NVDefineSpace(s.TPM.OwnerHandleContext(), nil, pub, nil)
-	c.Assert(err, IsNil)
-	c.Assert(s.TPM.NVWrite(index, index, data, 0, nil), IsNil)
-
-	s.testSealKeyToTPMWithLockIndexProvisionError(c)
-}
-
-func fillBytes(x *big.Int, buf []byte) []byte {
-	for i := range buf {
-		buf[i] = 0
-	}
-	b := x.Bytes()
-	copy(buf[len(buf)-len(b):], b)
-	return buf
-}
-
-func (s *compatTestV0Suite) TestSealKeyToTPMWithLockIndexProvisionError3(c *C) {
-	// Verify that a legacy lock index that has a policy that allows it to be recreated at this point in time and doesn't match the
-	// corresponding data index is detected as a provisioning error.
-	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
-	c.Assert(err, IsNil)
-	keyPub := tpm2.Public{
-		Type:    tpm2.ObjectTypeECC,
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrSign,
-		Params: tpm2.PublicParamsU{
-			Data: &tpm2.ECCParams{
-				Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
-				Scheme: tpm2.ECCScheme{
-					Scheme:  tpm2.ECCSchemeECDSA,
-					Details: tpm2.AsymSchemeU{Data: &tpm2.SigSchemeECDSA{HashAlg: tpm2.HashAlgorithmSHA256}}},
-				CurveID: tpm2.ECCCurveNIST_P256,
-				KDF:     tpm2.KDFScheme{Scheme: tpm2.KDFAlgorithmNull}}},
-		Unique: tpm2.PublicIDU{
-			Data: &tpm2.ECCPoint{
-				X: fillBytes(key.X, make([]byte, key.Params().BitSize/8)),
-				Y: fillBytes(key.Y, make([]byte, key.Params().BitSize/8))}}}
-	keyName, err := keyPub.Name()
-	c.Assert(err, IsNil)
-
-	time, err := s.TPM.ReadClock()
-	c.Assert(err, IsNil)
-	time.ClockInfo.Clock += 5000
-	clockBytes := make(tpm2.Operand, binary.Size(time.ClockInfo.Clock))
-	binary.BigEndian.PutUint64(clockBytes, time.ClockInfo.Clock+3600000000)
-
-	trial, _ := tpm2.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	trial.PolicyCommandCode(tpm2.CommandNVWrite)
-	trial.PolicyCounterTimer(clockBytes, 8, tpm2.OpUnsignedLT)
-	trial.PolicySigned(keyName, nil)
-
-	pub := tpm2.NVPublic{
-		Index:      0x01801100,
-		NameAlg:    tpm2.HashAlgorithmSHA256,
-		Attrs:      tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVReadStClear),
-		AuthPolicy: trial.GetDigest(),
-		Size:       0}
-
-	index, err := s.TPM.CreateResourceContextFromTPM(0x01801100)
-	c.Assert(err, IsNil)
-	c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), index, nil), IsNil)
-	index, err = s.TPM.NVDefineSpace(s.TPM.OwnerHandleContext(), nil, &pub, nil)
-	c.Assert(err, IsNil)
-	policySession, err := s.TPM.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
-	c.Assert(err, IsNil)
-	defer s.TPM.FlushContext(policySession)
-
-	h := tpm2.HashAlgorithmSHA256.NewHash()
-	h.Write(policySession.NonceTPM())
-	binary.Write(h, binary.BigEndian, int32(0))
-	sigR, sigS, err := ecdsa.Sign(testutil.RandReader, key, h.Sum(nil))
-	c.Assert(err, IsNil)
-	signature := tpm2.Signature{
-		SigAlg: tpm2.SigSchemeAlgECDSA,
-		Signature: tpm2.SignatureU{
-			Data: &tpm2.SignatureECDSA{
-				Hash:       tpm2.HashAlgorithmSHA256,
-				SignatureR: sigR.Bytes(),
-				SignatureS: sigS.Bytes()}}}
-
-	keyLoaded, err := s.TPM.LoadExternal(nil, &keyPub, tpm2.HandleEndorsement)
-	c.Assert(err, IsNil)
-	defer s.TPM.FlushContext(keyLoaded)
-	c.Assert(s.TPM.PolicyCommandCode(policySession, tpm2.CommandNVWrite), IsNil)
-	c.Assert(s.TPM.PolicyCounterTimer(policySession, clockBytes, 8, tpm2.OpUnsignedLT), IsNil)
-	_, _, err = s.TPM.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, &signature)
-	c.Assert(err, IsNil)
-	c.Assert(s.TPM.NVWrite(index, index, nil, 0, policySession), IsNil)
-
-	s.testSealKeyToTPMWithLockIndexProvisionError(c)
 }
 
 func (s *compatTestV0Suite) TestUnseal1(c *C) {
@@ -248,7 +109,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
-	c.Assert(secboot.LockAccessToSealedKeys(s.TPM), IsNil)
+	c.Assert(secboot.BlockPCRProtectionPolicies(s.TPM, nil), IsNil)
 
 	profile := secboot.NewPCRProtectionProfile()
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
@@ -258,5 +119,10 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
 }
 
 func (s *compatTestV0Suite) TestUnsealAfterLock(c *C) {
-	s.testUnsealAfterLock(c, s.absPath("pcrSequence.1"))
+	// Test unsealing a v0 file from a newer initramfs using the fence-style locking - this just makes
+	// the PCR values invalid so there's no reason this shouldn't work or require a compatibility test,
+	// but keep this here just to make sure.
+	c.Assert(secboot.BlockPCRProtectionPolicies(s.TPM, []int{12}), IsNil)
+	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
+	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data")
 }

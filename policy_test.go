@@ -122,249 +122,6 @@ func TestReadPcrPolicyCounter(t *testing.T) {
 	}
 }
 
-func undefineLockNVIndices(t *testing.T, tpm *TPMConnection) {
-	for _, h := range []tpm2.Handle{LockNVHandle1, LockNVHandle2} {
-		if index, err := tpm.CreateResourceContextFromTPM(h); err == nil {
-			undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-		}
-	}
-}
-
-func TestEnsureLockNVIndices(t *testing.T) {
-	tpm, _ := openTPMSimulatorForTesting(t)
-	defer func() {
-		clearTPMWithPlatformAuth(t, tpm)
-		closeTPM(t, tpm)
-	}()
-
-	run := func(t *testing.T) {
-		if err := EnsureLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
-			t.Errorf("EnsureLockNVIndices failed: %v", err)
-		}
-		if _, err := ValidateLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
-			t.Errorf("ValidateLockNVIndices failed: %v", err)
-		}
-	}
-
-	t.Run("Fresh", func(t *testing.T) {
-		clearTPMWithPlatformAuth(t, tpm)
-		run(t)
-	})
-
-	t.Run("Refresh", func(t *testing.T) {
-		if err := EnsureLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
-			t.Fatalf("EnsureLockNVIndices failed: %v", err)
-		}
-		run(t)
-	})
-
-	t.Run("DeleteExisting", func(t *testing.T) {
-		clearTPMWithPlatformAuth(t, tpm)
-		pub := tpm2.NVPublic{
-			Index:   LockNVHandle1,
-			NameAlg: tpm2.HashAlgorithmSHA256,
-			Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthRead | tpm2.AttrNVAuthWrite),
-			Size:    8}
-		if _, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, &pub, nil); err != nil {
-			t.Fatalf("NVDefineSpace failed: %v", err)
-		}
-		run(t)
-	})
-}
-
-func TestEnsureLockNVIndicesSecurity(t *testing.T) {
-	tpm, tcti := openTPMSimulatorForTesting(t)
-	defer func() {
-		clearTPMWithPlatformAuth(t, tpm)
-		closeTPM(t, tpm)
-	}()
-
-	// Ensure we start with valid indices
-	if err := EnsureLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
-		t.Fatalf("EnsureLockNVIndices failed: %v", err)
-	}
-
-	// Create policy data
-	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
-	if err != nil {
-		t.Fatalf("GenerateKey failed: %v", err)
-	}
-	publicKey := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
-	staticData, policy, err := ComputeStaticPolicy(tpm2.HashAlgorithmSHA256, NewStaticPolicyComputeParams(publicKey, nil, nil))
-	if err != nil {
-		t.Fatalf("ComputeStaticPolicy failed: %v", err)
-	}
-	pcrDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, nil, nil)
-	dynamicData, err := ComputeDynamicPolicy(CurrentMetadataVersion, tpm2.HashAlgorithmSHA256, NewDynamicPolicyComputeParams(key, tpm2.HashAlgorithmSHA256, nil, tpm2.DigestList{pcrDigest}, nil, 0))
-	if err != nil {
-		t.Fatalf("ComputeDynamicPolicy failed: %v", err)
-	}
-
-	// Get the NV index public templates
-	bootstrapPub, index1Pub, index2Pub, err := ComputeLockNVIndexTemplates()
-	if err != nil {
-		t.Fatalf("ComputeLockNVIndexPublicAreas failed: %v", err)
-	}
-
-	testPolicy := func(succeeds bool) {
-		session, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
-		if err != nil {
-			t.Fatalf("StartAuthSession failed: %v", err)
-		}
-		defer flushContext(t, tpm, session)
-
-		err = ExecutePolicySession(tpm.TPMContext, session, CurrentMetadataVersion, staticData, dynamicData, "", tpm.HmacSession())
-		if succeeds {
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-			digest, err := tpm.PolicyGetDigest(session)
-			if err != nil {
-				t.Errorf("PolicyGetDigest failed: %v", err)
-			}
-			if !bytes.Equal(digest, policy) {
-				t.Errorf("Unexpected session digest")
-			}
-		} else {
-			// Just check the session digest here - executePolicySession will only return an error once index 1 is read locked
-			digest, err := tpm.PolicyGetDigest(session)
-			if err != nil {
-				t.Errorf("PolicyGetDigest failed: %v", err)
-			}
-			if bytes.Equal(digest, policy) {
-				t.Errorf("Unexpected session digest")
-			}
-		}
-	}
-
-	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
-	// Policy should succeed after a reset
-	testPolicy(true)
-
-	if err := LockAccessToSealedKeys(tpm); err != nil {
-		t.Errorf("LockAccessToSealedKeys failed: %v", err)
-	}
-	// Policy should fail after LockAccessToSealedKeys
-	testPolicy(false)
-
-	// Delete index 1
-	index1, err := tpm.CreateResourceContextFromTPM(LockNVHandle1)
-	if err != nil {
-		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-	}
-	if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index1, nil); err != nil {
-		t.Errorf("NVUndefineSpace failed: %v", err)
-	}
-	// Policy should fail after deleting index 1
-	testPolicy(false)
-
-	// Redefine index 1
-	index1, err = tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, index1Pub, nil)
-	if err != nil {
-		t.Fatalf("NVDefineSpace failed: %v", err)
-	}
-	// Policy should still fail after recreating index 1
-	testPolicy(false)
-
-	// We can't reinitialize index 1 without an assertion that requires the bootstrap index
-	if err := tpm.NVWrite(index1, index1, nil, 0, nil); err == nil {
-		t.Errorf("NVWrite should have failed")
-	}
-
-	// Delete index 2 to create the bootstrap index
-	index2, err := tpm.CreateResourceContextFromTPM(LockNVHandle2)
-	if err != nil {
-		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-	}
-	if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index2, nil); err != nil {
-		t.Errorf("NVUndefineSpace failed: %v", err)
-	}
-	// Policy is still going to fail, but make sure
-	testPolicy(false)
-
-	// Create the bootstrap index at the handle for index 2
-	index2, err = tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, bootstrapPub, nil)
-	if err != nil {
-		t.Fatalf("NVDefineSpace failed: %v", err)
-	}
-	// Policy should still fail after creating the bootstrap index
-	testPolicy(false)
-
-	// Initialize the bootstrap index. Requires no special auth
-	if err := tpm.NVWrite(index2, index2, nil, 0, nil); err != nil {
-		t.Errorf("NVWrite failed: %v", err)
-	}
-	// Policy should still fail after initializing the bootstrap index
-	testPolicy(false)
-
-	// Start a policy session
-	session, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
-	if err != nil {
-		t.Fatalf("StartAuthSession failed: %v", err)
-	}
-	session = session.WithAttrs(tpm2.AttrContinueSession)
-	reset := false
-	defer func() {
-		if reset {
-			return
-		}
-		flushContext(t, tpm, session)
-	}()
-
-	// Initialize index 1
-	if _, _, err := tpm.PolicySecret(index2, session, nil, nil, 0, nil); err != nil {
-		t.Errorf("PolicySecret failed: %v", err)
-	}
-	if err := tpm.NVWrite(index1, index1, nil, 0, session); err != nil {
-		t.Errorf("NVWrite failed: %v", err)
-	}
-	// Policy should still fail after initializing index 1
-	testPolicy(false)
-
-	// Delete the bootstrap index in order to recreate index 2
-	if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index2, nil); err != nil {
-		t.Errorf("NVUndefineSpace failed: %v", err)
-	}
-	index2, err = tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, index2Pub, nil)
-	if err != nil {
-		t.Fatalf("NVDefineSpace failed: %v", err)
-	}
-	// Policy should still fail after recreating index 2
-	testPolicy(false)
-
-	// Try to initialize index 2 (should fail)
-	if _, _, err := tpm.PolicySecret(index1, session, nil, nil, 0, nil); err != nil {
-		t.Errorf("PolicySecret failed: %v", err)
-	}
-	if err := tpm.NVWrite(index2, index2, nil, 0, session); err == nil {
-		t.Errorf("NVWrite should have failed")
-	}
-	testPolicy(false)
-
-	// Enable the read lock on index 1
-	if err := tpm.NVReadLock(index1, index1, nil); err != nil {
-		t.Errorf("NVReadLock failed: %v", err)
-	}
-
-	// Try to initialize index 2 again (should succeed)
-	if err := tpm.PolicyRestart(session); err != nil {
-		t.Errorf("PolicyRestart failed: %v", err)
-	}
-	if _, _, err := tpm.PolicySecret(index1, session, nil, nil, 0, nil); err != nil {
-		t.Errorf("PolicySecret failed: %v", err)
-	}
-	if err := tpm.NVWrite(index2, index2, nil, 0, session); err != nil {
-		t.Errorf("NVWrite failed")
-	}
-	// Policy should still fail after initializing index 2
-	testPolicy(false)
-
-	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
-	reset = true
-	// Policy should succeed after a reset
-	testPolicy(true)
-}
-
 func TestComputeStaticPolicy(t *testing.T) {
 	block, _ := pem.Decode([]byte(`
 -----BEGIN EC PRIVATE KEY-----
@@ -390,48 +147,32 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 		AuthPolicy: trial.GetDigest(),
 		Size:       8}
 
-	legacyLockIndexPub := tpm2.NVPublic{
-		Index:      LockNVHandle1,
-		NameAlg:    tpm2.HashAlgorithmSHA256,
-		Attrs:      tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVReadStClear | tpm2.AttrNVWritten),
-		AuthPolicy: make(tpm2.Digest, tpm2.HashAlgorithmSHA256.Size()),
-		Size:       0}
-	legacyLockName, _ := legacyLockIndexPub.Name()
-
 	for _, data := range []struct {
 		desc                string
 		alg                 tpm2.HashAlgorithmId
 		pcrPolicyCounterPub *tpm2.NVPublic
-		legacyLockIndexName tpm2.Name
 		policy              tpm2.Digest
 	}{
 		{
 			desc:                "SHA256",
 			alg:                 tpm2.HashAlgorithmSHA256,
 			pcrPolicyCounterPub: pcrPolicyCounterPub,
-			policy:              decodeHexStringT(t, "7ee3989de946cacba5d30e91507ac44d5dfc304a1c31bd1fc62fedab93f22d73"),
+			policy:              decodeHexStringT(t, "8fe1ba2f9a6883bac310c9dcb86a0337cf065bba792dcb80c86a1e91056c353e"),
 		},
 		{
 			desc:                "SHA1",
 			alg:                 tpm2.HashAlgorithmSHA1,
 			pcrPolicyCounterPub: pcrPolicyCounterPub,
-			policy:              decodeHexStringT(t, "132a4592464c20eaab89e752cd2322ed685776ed"),
+			policy:              decodeHexStringT(t, "71f93798419e42275cc3e54915f46d8734563803"),
 		},
 		{
 			desc:   "NoPolicyCounter",
 			alg:    tpm2.HashAlgorithmSHA256,
-			policy: decodeHexStringT(t, "6733425c4b14ce4363bdfe7f65c91f64ee857a5524a2c4ba4fd2706e4454352b"),
-		},
-		{
-			desc:                "WithLegacyLockNVIndex",
-			alg:                 tpm2.HashAlgorithmSHA256,
-			pcrPolicyCounterPub: pcrPolicyCounterPub,
-			legacyLockIndexName: legacyLockName,
-			policy:              decodeHexStringT(t, "c5254ead173361569199cee1479ff329d1b4f0d329c794d7c362e0ed6aa43dbe"),
+			policy: decodeHexStringT(t, "375b8a3aca3df9c7fc34b4184f7d030625470d56e89480b81d2f98900f0152a3"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			dataout, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(publicKey, data.pcrPolicyCounterPub, data.legacyLockIndexName))
+			dataout, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(publicKey, data.pcrPolicyCounterPub))
 			if err != nil {
 				t.Fatalf("ComputeStaticPolicy failed: %v", err)
 			}
@@ -1029,11 +770,6 @@ func TestExecutePolicy(t *testing.T) {
 	tpm, tcti := openTPMSimulatorForTesting(t)
 	defer func() { closeTPM(t, tpm) }()
 
-	if err := EnsureLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
-		t.Errorf("ensureLockNVIndices failed: %v", err)
-	}
-	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
-
 	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	if err != nil {
 		t.Fatalf("GenerateKey failed: %v", err)
@@ -1080,7 +816,7 @@ func TestExecutePolicy(t *testing.T) {
 			policyCounterName, _ = data.policyCounterPub.Name()
 		}
 
-		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreateTPMPublicAreaForECDSAKey(&key.PublicKey), data.policyCounterPub, nil))
+		staticPolicyData, policy, err := ComputeStaticPolicy(data.alg, NewStaticPolicyComputeParams(CreateTPMPublicAreaForECDSAKey(&key.PublicKey), data.policyCounterPub))
 		if err != nil {
 			t.Fatalf("ComputeStaticPolicy failed: %v", err)
 		}
@@ -1626,55 +1362,6 @@ func TestExecutePolicy(t *testing.T) {
 				},
 			}}, nil)
 		if !IsDynamicPolicyDataError(err) || err.Error() != "the PCR policy has been revoked" {
-			t.Errorf("Unexpected error: %v", err)
-		}
-		if bytes.Equal(digest, expected) {
-			t.Errorf("Session digest shouldn't match policy digest")
-		}
-	})
-
-	t.Run("Locked", func(t *testing.T) {
-		// Test execution when access to sealed key objects has been locked (execution should fail)
-		expected, digest, err := run(t, &testData{
-			alg:  tpm2.HashAlgorithmSHA256,
-			pcrs: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
-			pcrValues: []tpm2.PCRValues{
-				{
-					tpm2.HashAlgorithmSHA256: {
-						7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "bar"),
-						12: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "foo"),
-					},
-				},
-			},
-			policyCounterPub: policyCounterPub,
-			policyCount:      policyCount,
-			pcrEvents: []pcrEvent{
-				{
-					index: 7,
-					data:  "foo",
-				},
-				{
-					index: 7,
-					data:  "bar",
-				},
-				{
-					index: 12,
-					data:  "bar",
-				},
-				{
-					index: 12,
-					data:  "foo",
-				},
-			}}, func(*StaticPolicyData, *DynamicPolicyData) {
-			lockIndex, err := tpm.CreateResourceContextFromTPM(LockNVHandle1)
-			if err != nil {
-				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-			}
-			if err := tpm.NVReadLock(lockIndex, lockIndex, nil); err != nil {
-				t.Fatalf("NVReadLock failed: %v", err)
-			}
-		})
-		if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) || IsStaticPolicyDataError(err) || IsDynamicPolicyDataError(err) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 		if bytes.Equal(digest, expected) {
@@ -2268,152 +1955,64 @@ func TestExecutePolicy(t *testing.T) {
 	})
 }
 
-func TestLockAccessToSealedKeys(t *testing.T) {
-	tpm, tcti := openTPMSimulatorForTesting(t)
-	defer func() { closeTPM(t, tpm) }()
-
-	if err := EnsureLockNVIndices(tpm.TPMContext, tpm.HmacSession()); err != nil {
-		t.Errorf("EnsureLockNVIndex failed: %v", err)
-	}
-	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
-	if err != nil {
-		t.Fatalf("GenerateKey failed: %v", err)
-	}
-	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
-	keyName, err := keyPublic.Name()
-	if err != nil {
-		t.Fatalf("Cannot compute key name: %v", err)
-	}
-
-	policyCounterPub, err := CreatePcrPolicyCounter(tpm.TPMContext, 0x0181ff00, keyName, tpm.HmacSession())
-	if err != nil {
-		t.Fatalf("CreatePcrPolicyCounter failed: %v", err)
-	}
-	policyCounter, err := tpm2.CreateNVIndexResourceContextFromPublic(policyCounterPub)
-	if err != nil {
-		t.Fatalf("CreateNVIndexResourceContextFromPublic failed: %v", err)
-	}
-	defer func() { undefineNVSpace(t, tpm, policyCounter, tpm.OwnerHandleContext()) }()
-
-	staticPolicyData, policy, err := ComputeStaticPolicy(tpm2.HashAlgorithmSHA256, NewStaticPolicyComputeParams(keyPublic, policyCounterPub, nil))
-	if err != nil {
-		t.Fatalf("ComputeStaticPolicy failed: %v", err)
-	}
-
-	policyCount, err := ReadPcrPolicyCounter(tpm.TPMContext, CurrentMetadataVersion, policyCounterPub, nil, tpm.HmacSession())
-	if err != nil {
-		t.Fatalf("readDynamicPolicyCounter failed: %v", err)
-	}
-
-	signAlg := staticPolicyData.AuthPublicKey().NameAlg
-	pcrs := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}
-	pcrDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, pcrs, tpm2.PCRValues{tpm2.HashAlgorithmSHA256: {7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")}})
-	dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, tpm2.HashAlgorithmSHA256,
-		NewDynamicPolicyComputeParams(key, signAlg, pcrs, tpm2.DigestList{pcrDigest}, policyCounter.Name(), policyCount))
-	if err != nil {
-		t.Fatalf("ComputeDynamicPolicy failed: %v", err)
-	}
-
-	for i := 0; i < 2; i++ {
-		func() {
-			tpm, tcti = resetTPMSimulator(t, tpm, tcti)
-
-			if _, err := tpm.PCREvent(tpm.PCRHandleContext(7), []byte("foo"), nil); err != nil {
-				t.Fatalf("PCREvent failed: %v", err)
-			}
-
-			policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
-			if err != nil {
-				t.Fatalf("StartAuthSession failed: %v", err)
-			}
-			defer flushContext(t, tpm, policySession)
-
-			err = ExecutePolicySession(tpm.TPMContext, policySession, CurrentMetadataVersion, staticPolicyData, dynamicPolicyData, "", tpm.HmacSession())
-			if err != nil {
-				t.Errorf("ExecutePolicySession failed: %v", err)
-			}
-
-			digest, err := tpm.PolicyGetDigest(policySession)
-			if err != nil {
-				t.Errorf("PolicyGetDigest failed: %v", err)
-			}
-
-			if !bytes.Equal(digest, policy) {
-				t.Errorf("Unexpected digests")
-			}
-
-			if err := LockAccessToSealedKeys(tpm); err != nil {
-				t.Errorf("LockAccessToSealedKeys failed: %v", err)
-			}
-
-			if err := tpm.PolicyRestart(policySession); err != nil {
-				t.Errorf("PolicyRestart failed: %v", err)
-			}
-
-			err = ExecutePolicySession(tpm.TPMContext, policySession, CurrentMetadataVersion, staticPolicyData, dynamicPolicyData, "", tpm.HmacSession())
-			if !tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV) {
-				t.Errorf("Unexpected error: %v", err)
-			}
-
-			digest, err = tpm.PolicyGetDigest(policySession)
-			if err != nil {
-				t.Errorf("PolicyGetDigest failed: %v", err)
-			}
-
-			if bytes.Equal(digest, policy) {
-				t.Errorf("Unexpected digests")
-			}
-		}()
-	}
-}
-
-func TestLockAccessToSealedKeysUnprovisioned(t *testing.T) {
-	tpm := openTPMForTesting(t)
+func TestBlockPCRProtectionPolicies(t *testing.T) {
+	// This test only test the fence style locking - the old style is tested with v0
+	// key files in internal/compattest/v0_test.go
+	tpm, _ := openTPMSimulatorForTesting(t)
 	defer closeTPM(t, tpm)
 
-	run := func(t *testing.T) {
-		if err := LockAccessToSealedKeys(tpm); err != nil {
-			t.Errorf("LockAccessToSealedKeys failed: %v", err)
-		}
+	for _, data := range []struct {
+		desc string
+		pcrs []int
+	}{
+		{
+			desc: "12",
+			pcrs: []int{12},
+		},
+		{
+			desc: "12,13",
+			pcrs: []int{12, 13},
+		},
+	} {
+		t.Run(data.desc, func(t *testing.T) {
+			pcrs := tpm2.PCRSelectionList{
+				{Hash: tpm2.HashAlgorithmSHA256, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}},
+				{Hash: tpm2.HashAlgorithmSHA1, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}}
+			_, pcrValues, err := tpm.PCRRead(pcrs)
+			if err != nil {
+				t.Fatalf("PCRRead failed: %v", err)
+			}
+
+			if err := BlockPCRProtectionPolicies(tpm, data.pcrs); err != nil {
+				t.Errorf("BlockPCRProtectionPolicies failed: %v", err)
+			}
+
+			for _, p := range pcrs {
+				h := p.Hash.NewHash()
+				h.Write(make([]byte, 4))
+				fenceHash := h.Sum(nil)
+
+				for _, s := range data.pcrs {
+					h = p.Hash.NewHash()
+					h.Write(pcrValues[p.Hash][s])
+					h.Write(fenceHash)
+					pcrValues[p.Hash][s] = h.Sum(nil)
+				}
+			}
+
+			_, pcrValues2, err := tpm.PCRRead(pcrs)
+			if err != nil {
+				t.Fatalf("PCRRead failed: %v", err)
+			}
+
+			for _, p := range pcrs {
+				for _, s := range p.Select {
+					if !bytes.Equal(pcrValues2[p.Hash][s], pcrValues[p.Hash][s]) {
+						t.Errorf("Unexpected PCR value")
+					}
+				}
+			}
+		})
 	}
 
-	t.Run("NoNVIndex", func(t *testing.T) {
-		// Test with no NV index defined.
-		undefineLockNVIndices(t, tpm)
-		run(t)
-	})
-
-	t.Run("UnrelatedNVIndex/1", func(t *testing.T) {
-		// Test with a NV index defined that has the wrong attributes.
-		undefineLockNVIndices(t, tpm)
-		public := tpm2.NVPublic{
-			Index:   LockNVHandle1,
-			NameAlg: tpm2.HashAlgorithmSHA256,
-			Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVOwnerWrite | tpm2.AttrNVOwnerRead),
-			Size:    8}
-		index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, &public, nil)
-		if err != nil {
-			t.Fatalf("NVDefineSpace failed: %v", err)
-		}
-		defer undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-		run(t)
-	})
-
-	t.Run("UnrelatedNVIndex/2", func(t *testing.T) {
-		// Test with a NV index defined with the expected attributes, but with a non-empty authorization value.
-		undefineLockNVIndices(t, tpm)
-		public := tpm2.NVPublic{
-			Index:   LockNVHandle1,
-			NameAlg: tpm2.HashAlgorithmSHA256,
-			Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVReadStClear),
-			Size:    0}
-		index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), []byte("foo"), &public, nil)
-		if err != nil {
-			t.Fatalf("NVDefineSpace failed: %v", err)
-		}
-		defer undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-		run(t)
-	})
 }

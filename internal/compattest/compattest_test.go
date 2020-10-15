@@ -199,9 +199,3 @@ func (s *compatTestSuiteBase) testUnsealErrorMatchesCommon(c *C, pattern string)
 	_, _, err = k.UnsealFromTPM(s.TPM, "")
 	c.Check(err, ErrorMatches, pattern)
 }
-
-func (s *compatTestSuiteBase) testUnsealAfterLock(c *C, pcrEventsFile string) {
-	c.Assert(secboot.LockAccessToSealedKeys(s.TPM), IsNil)
-	s.replayPCRSequenceFromFile(c, pcrEventsFile)
-	s.testUnsealErrorMatchesCommon(c, "cannot access the sealed key object until the next TPM reset or restart")
-}

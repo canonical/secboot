@@ -34,13 +34,12 @@ import (
 )
 
 func TestUnsealWithNo2FA(t *testing.T) {
-	tpm, tcti := openTPMSimulatorForTesting(t)
-	defer func() { closeTPM(t, tpm) }()
+	tpm := openTPMForTesting(t)
+	defer closeTPM(t, tpm)
 
 	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
-	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 
 	key := make([]byte, 64)
 	rand.Read(key)
@@ -92,13 +91,12 @@ func TestUnsealWithNo2FA(t *testing.T) {
 }
 
 func TestUnsealWithPIN(t *testing.T) {
-	tpm, tcti := openTPMSimulatorForTesting(t)
-	defer func() { closeTPM(t, tpm) }()
+	tpm := openTPMForTesting(t)
+	defer closeTPM(t, tpm)
 
 	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
-	tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 
 	key := make([]byte, 64)
 	rand.Read(key)
@@ -150,7 +148,6 @@ func TestUnsealErrorHandling(t *testing.T) {
 		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
 			t.Errorf("EnsureProvisioned failed: %v", err)
 		}
-		tpm, tcti = resetTPMSimulator(t, tpm, tcti)
 
 		tmpDir, err := ioutil.TempDir("", "_TestUnsealErrorHandling_")
 		if err != nil {
@@ -274,11 +271,13 @@ func TestUnsealErrorHandling(t *testing.T) {
 
 	t.Run("SealedKeyAccessLocked", func(t *testing.T) {
 		err := run(t, func(tpm *TPMConnection, _ string, _ []byte) {
-			if err := LockAccessToSealedKeys(tpm); err != nil {
-				t.Errorf("LockAccessToSealedKeys failed: %v", err)
+			if err := BlockPCRProtectionPolicies(tpm, []int{7}); err != nil {
+				t.Errorf("BlockPCRProtectionPolicies failed: %v", err)
 			}
 		})
-		if err != ErrSealedKeyAccessLocked {
+		if _, ok := err.(InvalidKeyFileError); !ok ||
+			err.Error() != "invalid key data file: cannot complete authorization policy assertions: cannot complete OR assertions: current "+
+				"session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
