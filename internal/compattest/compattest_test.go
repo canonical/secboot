@@ -130,20 +130,44 @@ func (s *compatTestSuiteBase) replayPCRSequenceFromFile(c *C, path string) {
 	s.replayPCRSequenceFromReader(c, f)
 }
 
-func (s *compatTestSuiteBase) testUnseal(c *C, pcrEventsFile string) {
-	s.replayPCRSequenceFromFile(c, pcrEventsFile)
+func (s *compatTestSuiteBase) copyFile(c *C, path string) string {
+	src, err := os.Open(path)
+	c.Assert(err, IsNil)
+	defer src.Close()
 
+	dst, err := ioutil.TempFile(s.tmpDir, filepath.Base(path))
+	c.Assert(err, IsNil)
+	defer dst.Close()
+
+	_, err = io.Copy(dst, src)
+	c.Assert(err, IsNil)
+
+	return dst.Name()
+}
+
+func (s *compatTestSuiteBase) testUnsealCommon(c *C, pin string) {
 	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
-	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
 
-	key, err := k.UnsealFromTPM(s.TPM, "")
+	key, authPrivateKey, err := k.UnsealFromTPM(s.TPM, pin)
 	c.Check(err, IsNil)
 
 	expectedKey, err := ioutil.ReadFile(s.absPath("clearKey"))
 	c.Assert(err, IsNil)
-
 	c.Check(key, DeepEquals, expectedKey)
+
+	var expectedAuthPrivateKey secboot.TPMPolicyAuthKey
+	authKeyPath := s.absPath("authKey")
+	if _, err := os.Stat(authKeyPath); err == nil {
+		expectedAuthPrivateKey, err = ioutil.ReadFile(authKeyPath)
+		c.Assert(err, IsNil)
+	}
+	c.Check(authPrivateKey, DeepEquals, expectedAuthPrivateKey)
+}
+
+func (s *compatTestSuiteBase) testUnseal(c *C, pcrEventsFile string) {
+	s.replayPCRSequenceFromFile(c, pcrEventsFile)
+	s.testUnsealCommon(c, "")
 }
 
 func (s *compatTestSuiteBase) TestChangePIN(c *C) {
@@ -164,75 +188,14 @@ func (s *compatTestSuiteBase) TestChangePIN(c *C) {
 
 func (s *compatTestSuiteBase) testUnsealWithPIN(c *C, pcrEventsFile string) {
 	c.Check(secboot.ChangePIN(s.TPM, s.absPath("key"), "", testPIN), IsNil)
-
 	s.replayPCRSequenceFromFile(c, pcrEventsFile)
-
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
-	c.Assert(err, IsNil)
-	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
-
-	key, err := k.UnsealFromTPM(s.TPM, testPIN)
-	c.Check(err, IsNil)
-
-	expectedKey, err := ioutil.ReadFile(s.absPath("clearKey"))
-	c.Assert(err, IsNil)
-
-	c.Check(key, DeepEquals, expectedKey)
+	s.testUnsealCommon(c, testPIN)
 }
 
-func (s *compatTestSuiteBase) testUpdateKeyPCRProtectionPolicy(c *C, pcrProfile *secboot.PCRProtectionProfile) {
-	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.absPath("pud"), pcrProfile), IsNil)
-}
-
-func (s *compatTestSuiteBase) testUpdateKeyPCRProtectionPolicyRevokes(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEventsFile string) {
-	tmpDir := c.MkDir()
-	keyFile, err := os.Open(s.absPath("key"))
-	c.Assert(err, IsNil)
-	defer keyFile.Close()
-
-	keyFileBackup, err := os.Create(filepath.Join(tmpDir, "key"))
-	c.Assert(err, IsNil)
-	defer keyFileBackup.Close()
-
-	_, err = io.Copy(keyFileBackup, keyFile)
-	c.Assert(err, IsNil)
-
-	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.absPath("pud"), pcrProfile), IsNil)
-
-	s.replayPCRSequenceFromFile(c, pcrEventsFile)
-
-	k, err := secboot.ReadSealedKeyObject(filepath.Join(tmpDir, "key"))
-	c.Assert(err, IsNil)
-
-	_, err = k.UnsealFromTPM(s.TPM, "")
-	c.Check(err, ErrorMatches, "invalid key data file: cannot complete authorization policy assertions: the dynamic authorization policy has been revoked")
-}
-
-func (s *compatTestSuiteBase) testUpdateKeyPCRProtectionPolicyAndUnseal(c *C, pcrProfile *secboot.PCRProtectionProfile, pcrEvents io.Reader) {
-	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.absPath("pud"), pcrProfile), IsNil)
-
-	s.replayPCRSequenceFromReader(c, pcrEvents)
-
+func (s *compatTestSuiteBase) testUnsealErrorMatchesCommon(c *C, pattern string) {
 	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
 
-	key, err := k.UnsealFromTPM(s.TPM, "")
-	c.Check(err, IsNil)
-
-	expectedKey, err := ioutil.ReadFile(s.absPath("clearKey"))
-	c.Assert(err, IsNil)
-
-	c.Check(key, DeepEquals, expectedKey)
-}
-
-func (s *compatTestSuiteBase) testUnsealAfterLock(c *C, pcrEventsFile string) {
-	c.Assert(secboot.LockAccessToSealedKeys(s.TPM), IsNil)
-
-	s.replayPCRSequenceFromFile(c, pcrEventsFile)
-
-	k, err := secboot.ReadSealedKeyObject(s.absPath("key"))
-	c.Assert(err, IsNil)
-
-	_, err = k.UnsealFromTPM(s.TPM, "")
-	c.Check(err, ErrorMatches, "cannot access the sealed key object until the next TPM reset or restart")
+	_, _, err = k.UnsealFromTPM(s.TPM, "")
+	c.Check(err, ErrorMatches, pattern)
 }

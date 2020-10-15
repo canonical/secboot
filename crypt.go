@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -44,7 +45,16 @@ const userKeyring = -4
 var (
 	runDir                = "/run"
 	systemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
+
+	defaultKeyringPrefix = "secboot"
 )
+
+func keyringPrefixOrDefault(prefix string) string {
+	if prefix == "" {
+		return defaultKeyringPrefix
+	}
+	return prefix
+}
 
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
 type RecoveryKey [16]byte
@@ -265,12 +275,13 @@ const (
 	// is also not correctly provisioned.
 	RecoveryKeyUsageReasonInvalidKeyFile
 
-	// RecoveryKeyUsageReasonPINFail indicates that a volume had to be activated with the fallback recovery key because the correct PIN
-	// was not provided.
-	RecoveryKeyUsageReasonPINFail
+	// RecoveryKeyUsageReasonPassphraseFail indicates that a
+	// volume had to be activated with the fallback recovery key
+	// because the correct user passphrase/PIN was not provided.
+	RecoveryKeyUsageReasonPassphraseFail
 )
 
-func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, reason RecoveryKeyUsageReason, activateOptions []string) error {
+func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, reason RecoveryKeyUsageReason, activateOptions []string, keyringPrefix string) error {
 	if tries == 0 {
 		return errors.New("no recovery key tries permitted")
 	}
@@ -304,17 +315,27 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		if _, err := unix.AddKey("user", fmt.Sprintf("%s:%s:reason=%d", filepath.Base(os.Args[0]), volumeName, reason), key[:], userKeyring); err != nil {
-			lastErr = xerrors.Errorf("cannot add recovery key to user keyring: %w", err)
-		}
+		// Add a key to the calling user's user keyring with default 0x3f010000 permissions (these defaults are hardcoded in the kernel).
+		// This permission flags define the following permissions:
+		// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
+		// Possessor permissions only apply to a process with a searchable link to the key from one of its own keyrings - just having the
+		// same UID is not sufficient. Read permission is required to read the contents of the key (view permission only permits viewing
+		// of the description and other public metadata that isn't the key payload).
+		//
+		// Note that by default, systemd starts services with a private session keyring which does not contain a link to the user keyring.
+		// Therefore these services cannot access the contents of keys in the root user's user keyring if those keys only permit
+		// possessor-read.
+		//
+		// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we close the volume again.
+		unix.AddKey("user", fmt.Sprintf("%s:%s?type=recovery&reason=%d", keyringPrefixOrDefault(keyringPrefix), sourceDevicePath, reason), key[:], userKeyring)
 		break
 	}
 
 	return lastErr
 }
 
-func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, error) {
-	key, err := k.UnsealFromTPM(tpm, pin)
+func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, []byte, error) {
+	sealedKey, authPrivateKey, err := k.UnsealFromTPM(tpm, pin)
 	if err == ErrTPMProvisioning {
 		// ErrTPMProvisioning in this context might indicate that there isn't a valid persistent SRK. Have a go at creating one now and then
 		// retrying the unseal operation - if the previous SRK was evicted, the TPM owner hasn't changed and the storage hierarchy still
@@ -322,88 +343,68 @@ func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byt
 		// storage hierarchy has a non-null authorization value, ProvionTPM will fail. If the TPM owner has changed, ProvisionTPM might
 		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
 		if pErr := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); pErr == nil || pErr == ErrTPMProvisioningRequiresLockout {
-			key, err = k.UnsealFromTPM(tpm, pin)
+			sealedKey, authPrivateKey, err = k.UnsealFromTPM(tpm, pin)
 		}
 	}
-	return key, err
+	return sealedKey, authPrivateKey, err
 }
 
 var requiresPinErr = errors.New("no PIN tries permitted when a PIN is required")
 
-type lockAccessError struct {
-	err error
-}
-
-func (e lockAccessError) Error() string {
-	return e.err.Error()
-}
-
-func (e lockAccessError) Unwrap() error {
-	return e.err
-}
-
-func isLockAccessError(err error) bool {
-	var e lockAccessError
-	return xerrors.As(err, &e)
-}
-
-func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, pinReader io.Reader, pinTries int, lock bool, activateOptions []string) error {
-	var lockErr error
-	key, err := func() ([]byte, error) {
-		defer func() {
-			if !lock {
-				return
-			}
-			lockErr = LockAccessToSealedKeys(tpm)
-		}()
-
-		k, err := ReadSealedKeyObject(keyPath)
-		if err != nil {
-			return nil, xerrors.Errorf("cannot read sealed key object: %w", err)
-		}
-
-		switch {
-		case pinTries == 0 && k.AuthMode2F() == AuthModePIN:
-			return nil, requiresPinErr
-		case pinTries == 0:
-			pinTries = 1
-		}
-
-		var key []byte
-
-		for ; pinTries > 0; pinTries-- {
-			var pin string
-			if k.AuthMode2F() == AuthModePIN {
-				r := pinReader
-				pinReader = nil
-				pin, err = getPassword(sourceDevicePath, "PIN", r)
-				if err != nil {
-					return nil, xerrors.Errorf("cannot obtain PIN: %w", err)
-				}
-			}
-
-			key, err = unsealKeyFromTPM(tpm, k, pin)
-			if err != nil && (err != ErrPINFail || k.AuthMode2F() != AuthModePIN) {
-				break
-			}
-		}
-
-		if err != nil {
-			return nil, xerrors.Errorf("cannot unseal key: %w", err)
-		}
-		return key, nil
-	}()
+func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, passphraseReader io.Reader, passphraseTries int, activateOptions []string, keyringPrefix string) error {
+	k, err := ReadSealedKeyObject(keyPath)
+	if err != nil {
+		return xerrors.Errorf("cannot read sealed key object: %w", err)
+	}
 
 	switch {
-	case lockErr != nil:
-		return lockAccessError{err}
-	case err != nil:
-		return err
+	case passphraseTries == 0 && k.AuthMode2F() == AuthModePIN:
+		return requiresPinErr
+	case passphraseTries == 0:
+		passphraseTries = 1
 	}
 
-	if err := activate(volumeName, sourceDevicePath, key, activateOptions); err != nil {
+	var sealedKey []byte
+	var authPrivateKey TPMPolicyAuthKey
+
+	for ; passphraseTries > 0; passphraseTries-- {
+		var pin string
+		if k.AuthMode2F() == AuthModePIN {
+			r := passphraseReader
+			passphraseReader = nil
+			pin, err = getPassword(sourceDevicePath, "PIN", r)
+			if err != nil {
+				return xerrors.Errorf("cannot obtain PIN: %w", err)
+			}
+		}
+
+		sealedKey, authPrivateKey, err = unsealKeyFromTPM(tpm, k, pin)
+		if err != nil && (err != ErrPINFail || k.AuthMode2F() != AuthModePIN) {
+			break
+		}
+	}
+
+	if err != nil {
+		return xerrors.Errorf("cannot unseal key: %w", err)
+	}
+
+	if err := activate(volumeName, sourceDevicePath, sealedKey, activateOptions); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
+
+	// Add a key to the calling user's user keyring with default 0x3f010000 permissions (these defaults are hardcoded in the kernel).
+	// This permission flags define the following permissions:
+	// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
+	// Possessor permissions only apply to a process with a searchable link to the key from one of its own keyrings - just having the
+	// same UID is not sufficient. Read permission is required to read the contents of the key (view permission only permits viewing
+	// of the description and other public metadata that isn't the key payload).
+	//
+	// Note that by default, systemd starts services with a private session keyring which does not contain a link to the user keyring.
+	// Therefore these services cannot access the contents of keys in the root user's user keyring if those keys only permit
+	// possessor-read.
+	//
+	// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we close the volume again.
+	unix.AddKey("user", fmt.Sprintf("%s:%s?type=tpm", keyringPrefixOrDefault(keyringPrefix), sourceDevicePath), authPrivateKey, userKeyring)
 
 	return nil
 }
@@ -419,63 +420,74 @@ func makeActivateOptions(in []string) ([]string, error) {
 	return append(out, "tries=1"), nil
 }
 
-// ActivateWithTPMSealedKeyOptions provides options to ActivateVolumeWtthTPMSealedKey.
-type ActivateWithTPMSealedKeyOptions struct {
-	// PINTries specifies the maximum number of times that unsealing with a PIN should be attempted before failing with an error and
-	// falling back to activating with the recovery key if RecoveryKeyTries is greater than zero. Setting this to zero disables unsealing
-	// with a PIN - in this case, an error will be returned if the sealed key object indicates that a PIN has been set. Attempts to
-	// unseal with a PIN will stop if the TPM enters dictionary attack lockout mode before this limit is reached.
-	PINTries int
+// ActivateVolumeOptions provides options to the ActivateVolumeWith*
+// family of functions.
+type ActivateVolumeOptions struct {
+	// PassphraseTries specifies the maximum number of times
+	// that unsealing with a user passphrase should be attempted
+	// before failing with an error and falling back to activating
+	// with the recovery key (see RecoveryKeyTries).
+	// Setting this to zero disables unsealing with a user
+	// passphrase - in this case, an error will be returned if the
+	// sealed key object indicates that a user passphrase has been
+	// set.
+	// With a TPM, attempts to unseal will stop if the TPM enters
+	// dictionary attack lockout mode before this limit is
+	// reached.
+	// It is ignored by ActivateWithRecoveryKey.
+	PassphraseTries int
 
-	// RecoveryKeyTries specifies the maximum number of times that activation with the fallback recovery key should be attempted
-	// if activation with the TPM sealed key fails, before failing with an error. Setting this to zero will disable attempts to activate
-	// with the fallback recovery key.
+	// RecoveryKeyTries specifies the maximum number of times that
+	// activation with the fallback recovery key should be
+	// attempted.
+	// It is used directly by ActivateWithRecoveryKey and
+	// indirectly with other methods upon failure, for example
+	// failed TPM unsealing.  Setting this to zero will disable
+	// attempts to activate with the fallback recovery key.
 	RecoveryKeyTries int
 
-	// ActivateOptions provides a mechanism to pass additional options to systemd-cryptsetup.
+	// ActivateOptions provides a mechanism to pass additional
+	// options to systemd-cryptsetup.
 	ActivateOptions []string
 
-	// LockSealedKeyAccess controls whether LockAccessToSealedKeys should be called after unsealing the TPM sealed key. It is called if
-	// this is set to true, and not called if this is set to false.
-	LockSealedKeyAccess bool
+	// KeyringPrefix is the prefix used for the description of any
+	// kernel keys created during activation.
+	KeyringPrefix string
 }
 
 // ActivateVolumeWithTPMSealedKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
 // name volumeName, using the TPM sealed key object at the specified keyPath. This makes use of systemd-cryptsetup.
 //
-// If the TPM sealed key object has a PIN defined, then this function will use systemd-ask-password to request it. If pinReader is not
-// nil, then an attempt to read the PIN from this will be made instead by reading all characters until the first newline. The PINTries
-// field of options defines how many attempts should be made to obtain the correct PIN before failing.
+// If the TPM sealed key object has a user passphrase/PIN defined, then this function will use systemd-ask-password to request it. If passphraseReader is not
+// nil, then an attempt to read the user passphrase/PIN from this will be made instead by reading all characters until the first newline. The PassphraseTries
+// field of options defines how many attempts should be made to obtain the correct passphrase before failing.
 //
 // The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
-//
-// If the LockSealedKeyAccess field of options is true, then this function will call LockAccessToSealedKeys after unsealing the key
-// and before activating the LUKS volume.
 //
 // If activation with the TPM sealed key object fails, this function will attempt to activate it with the fallback recovery key
 // instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of options specifies
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
 // will be made to activate the encrypted volume with the fallback recovery key. If activation with the recovery key is successful,
-// the recovery key will be added to the root user keyring in the kernel with a description of the format
-// "<argv[0]>:<volumeName>:reason=<reason>" where reason is an integer that describes the recovery reason - see the
-// RecoveryKeyUsageReason type.
+// calling GetActivationDataFromKernel will return a *RecoveryActivationData containing the recovery key and the reason that the
+// recovery key was requested.
 //
-// If either the PINTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
 // field of options contains the "tries=" option, then an error will be returned. This option cannot be used with this function.
-//
-// If the LockSealedKeyAccess field of options is true and the call to LockAccessToSealedKeys fails, a LockAccessToSealedKeysError
-// error will be returned. In this case, activation with either the TPM sealed key or the fallback recovery key will not be attempted.
 //
 // If activation with the TPM sealed key fails, a *ActivateWithTPMSealedKeyError error will be returned, even if the subsequent
 // fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will be nil, and the
 // TPMErr field will contain the original error. If activation with the fallback recovery key also fails, the RecoveryKeyUsageErr
 // field of the returned error will also contain details of the error encountered during recovery key activation.
 //
+// If the volume is successfully activated with the TPM sealed key and the TPM sealed key has a version of greater than 1, calling
+// GetActivationDataFromKernel will return a TPMPolicyAuthKey containing the private part of the key used for authorizing PCR policy
+// updates with UpdateKeyPCRProtectionPolicy.
+//
 // If the volume is successfully activated, either with the TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
-func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, pinReader io.Reader, options *ActivateWithTPMSealedKeyOptions) (bool, error) {
-	if options.PINTries < 0 {
-		return false, errors.New("invalid PINTries")
+func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, passphraseReader io.Reader, options *ActivateVolumeOptions) (bool, error) {
+	if options.PassphraseTries < 0 {
+		return false, errors.New("invalid PassphraseTries")
 	}
 	if options.RecoveryKeyTries < 0 {
 		return false, errors.New("invalid RecoveryKeyTries")
@@ -486,11 +498,9 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		return false, err
 	}
 
-	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, pinReader, options.PINTries, options.LockSealedKeyAccess, activateOptions); err != nil {
+	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, passphraseReader, options.PassphraseTries, activateOptions, options.KeyringPrefix); err != nil {
 		reason := RecoveryKeyUsageReasonUnexpectedError
 		switch {
-		case isLockAccessError(err):
-			return false, LockAccessToSealedKeysError(err.Error())
 		case xerrors.Is(err, ErrTPMLockout):
 			reason = RecoveryKeyUsageReasonTPMLockout
 		case xerrors.Is(err, ErrTPMProvisioning):
@@ -498,48 +508,38 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		case isInvalidKeyFileError(err):
 			reason = RecoveryKeyUsageReasonInvalidKeyFile
 		case xerrors.Is(err, requiresPinErr):
-			reason = RecoveryKeyUsageReasonPINFail
+			reason = RecoveryKeyUsageReasonPassphraseFail
 		case xerrors.Is(err, ErrPINFail):
-			reason = RecoveryKeyUsageReasonPINFail
+			reason = RecoveryKeyUsageReasonPassphraseFail
 		case isExecError(err, systemdCryptsetupPath):
 			// systemd-cryptsetup only provides 2 exit codes - success or fail - so we don't know the reason it failed yet. If activation
 			// with the recovery key is successful, then it's safe to assume that it failed because the key unsealed from the TPM is incorrect.
 			reason = RecoveryKeyUsageReasonInvalidKeyFile
 		}
-		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, activateOptions)
+		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, reason, activateOptions, options.KeyringPrefix)
 		return rErr == nil, &ActivateWithTPMSealedKeyError{err, rErr}
 	}
 
 	return true, nil
 }
 
-// ActivateWithRecoveryKeyOptions provides options to ActivateVolumeWithRecoveryKey.
-type ActivateWithRecoveryKeyOptions struct {
-	// Tries specifies the maximum number of times that activation with the fallback recovery key should be attempted before failing
-	// with an error.
-	Tries int
-
-	// ActivateOptions provides a mechanism to pass additional options to systemd-cryptsetup.
-	ActivateOptions []string
-}
-
 // ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
 // name volumeName, using the fallback recovery key. This makes use of systemd-cryptsetup.
 //
 // This function will use systemd-ask-password to request the recovery key. If keyReader is not nil, then an attempt to read the key
-// from this will be made instead by reading all characters until the first newline. The Tries field of options defines how many
+// from this will be made instead by reading all characters until the first newline. The RecoveryKeyTries field of options defines how many
 // attempts should be made to activate the volume with the recovery key before failing.
 //
 // The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
 //
-// If activation with the recovery key is successful, the recovery key will be added to the root user keyring in the kernel with a
-// description of the format "<argv[0]>:<volumeName>:reason=2".
+// If activation with the recovery key is successful, calling GetActivationDataFromKernel will return a *RecoveryActivationData
+// containing the recovery key and RecoveryKeyUsageReasonRequested as the recovery reason.
 //
-// If the Tries field of options is less than zero, an error will be returned. If the ActivateOptions field of options contains the
+// If the RecoveryKeyTries field of options is less than zero, an error will be returned. If the ActivateOptions field of options contains the
 // "tries=" option, then an error will be returned. This option cannot be used with this function.
-func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, options *ActivateWithRecoveryKeyOptions) error {
-	if options.Tries < 0 {
-		return errors.New("invalid Tries")
+func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, options *ActivateVolumeOptions) error {
+	if options.RecoveryKeyTries < 0 {
+		return errors.New("invalid RecoveryKeyTries")
 	}
 
 	activateOptions, err := makeActivateOptions(options.ActivateOptions)
@@ -547,7 +547,123 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 		return err
 	}
 
-	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.Tries, RecoveryKeyUsageReasonRequested, activateOptions)
+	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.RecoveryKeyTries, RecoveryKeyUsageReasonRequested, activateOptions, options.KeyringPrefix)
+}
+
+// ActivationData corresponds to some data added to the user keyring by one of the ActivateVolume functions.
+type ActivationData interface{}
+
+// RecoveryActivationData is added to the user keyring when a recovery key is used to activate a volume.
+type RecoveryActivationData struct {
+	Key    RecoveryKey
+	Reason RecoveryKeyUsageReason
+}
+
+// GetActivationDataFromKernel retrieves data that was added to the current user's user keyring by ActivateVolumeWithTPMSealedKey or
+// ActivateVolumeWithRecoveryKey for the specified source block device, using the prefix that was passed to either of those functions.
+// The block device path must match the path passed to one of the ActivateVolume functions. The type of data returned is dependent on
+// how the volume was activated - see the documentation for each function, If no data is found for the specified device, a
+// ErrNoActivationData error is returned.
+//
+// If remove is true, this function will unlink the key from the user's user keyring.
+func GetActivationDataFromKernel(prefix, sourceDevicePath string, remove bool) (ActivationData, error) {
+	var userKeys []int
+
+	sz, err := unix.KeyctlBuffer(unix.KEYCTL_READ, userKeyring, nil, 0)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot determine size of user keyring payload: %w", err)
+	}
+
+	for {
+		payload := make([]byte, sz)
+		n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, userKeyring, payload, 0)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot read user keyring payload: %w", err)
+		}
+
+		if n <= sz {
+			payload = payload[:n]
+
+			for len(payload) > 0 {
+				userKeys = append(userKeys, int(binary.LittleEndian.Uint32(payload)))
+				payload = payload[4:]
+			}
+			break
+		}
+
+		sz = n
+	}
+
+	re := regexp.MustCompile(fmt.Sprintf(`^user;[[:digit:]]+;[[:digit:]]+;[[:xdigit:]]+;%s:([^\?]+)\??(.*)`, keyringPrefixOrDefault(prefix)))
+	for _, id := range userKeys {
+		desc, err := unix.KeyctlString(unix.KEYCTL_DESCRIBE, id)
+		if err != nil {
+			continue
+		}
+		m := re.FindStringSubmatch(desc)
+		if len(m) == 0 {
+			continue
+		}
+		if m[1] != sourceDevicePath {
+			continue
+		}
+
+		sz, err := unix.KeyctlBuffer(unix.KEYCTL_READ, id, nil, 0)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot determine size of key payload: %w", err)
+		}
+		payload := make([]byte, sz)
+		_, err = unix.KeyctlBuffer(unix.KEYCTL_READ, id, payload, 0)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot read key payload: %w", err)
+		}
+
+		if remove {
+			// XXX: What should we do if unlinking fails?
+			unix.KeyctlInt(unix.KEYCTL_UNLINK, id, userKeyring, 0, 0)
+		}
+
+		params := make(map[string]string)
+		if len(m) > 2 {
+			for _, p := range strings.Split(m[2], "&") {
+				s := strings.SplitN(p, "=", 2)
+				k := s[0]
+				var v string
+				if len(s) > 1 {
+					v = s[1]
+				}
+				params[k] = v
+			}
+		}
+
+		t, ok := params["type"]
+		if !ok {
+			return nil, errors.New("invalid description (no type)")
+		}
+		switch t {
+		case "tpm":
+			return TPMPolicyAuthKey(payload), nil
+		case "recovery":
+			reason, ok := params["reason"]
+			if !ok {
+				return nil, errors.New("no recovery reason")
+			}
+			n, err := strconv.Atoi(reason)
+			if err != nil {
+				return nil, xerrors.Errorf("invalid recovery reason: %w", err)
+			}
+			if len(payload) != binary.Size(RecoveryKey{}) {
+				return nil, errors.New("invalid payload size")
+			}
+			var key RecoveryKey
+			copy(key[:], payload)
+			return &RecoveryActivationData{Key: key, Reason: RecoveryKeyUsageReason(n)}, nil
+		default:
+			return nil, errors.New("invalid description (unhandled type)")
+		}
+	}
+
+	return nil, ErrNoActivationData
 }
 
 func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
