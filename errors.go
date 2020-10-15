@@ -130,14 +130,6 @@ func isInvalidKeyFileError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// LockAccessToSealedKeysError is returned from ActivateVolumeWithTPMSealedKey if an error occurred whilst trying to lock access
-// to sealed keys created by this package.
-type LockAccessToSealedKeysError string
-
-func (e LockAccessToSealedKeysError) Error() string {
-	return "cannot lock access to sealed keys: " + string(e)
-}
-
 // ActivateWithTPMSealedKeyError is returned from ActivateVolumeWithTPMSealedKey if activation with the TPM protected key failed.
 type ActivateWithTPMSealedKeyError struct {
 	// TPMErr details the error that occurred during activation with the TPM sealed key.

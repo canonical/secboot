@@ -351,77 +351,41 @@ func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byt
 
 var requiresPinErr = errors.New("no PIN tries permitted when a PIN is required")
 
-type lockAccessError struct {
-	err error
-}
-
-func (e lockAccessError) Error() string {
-	return e.err.Error()
-}
-
-func (e lockAccessError) Unwrap() error {
-	return e.err
-}
-
-func isLockAccessError(err error) bool {
-	var e lockAccessError
-	return xerrors.As(err, &e)
-}
-
-func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, passphraseReader io.Reader, passphraseTries int, lock bool, activateOptions []string, keyringPrefix string) error {
-	var lockErr error
-	sealedKey, authPrivateKey, err := func() ([]byte, TPMPolicyAuthKey, error) {
-		defer func() {
-			if !lock {
-				return
-			}
-			// TODO: Figure out what to do with this
-			//lockErr = LockAccessToSealedKeys(tpm)
-		}()
-
-		k, err := ReadSealedKeyObject(keyPath)
-		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot read sealed key object: %w", err)
-		}
-
-		switch {
-		case passphraseTries == 0 && k.AuthMode2F() == AuthModePIN:
-			return nil, nil, requiresPinErr
-		case passphraseTries == 0:
-			passphraseTries = 1
-		}
-
-		var sealedKey []byte
-		var authPrivateKey []byte
-
-		for ; passphraseTries > 0; passphraseTries-- {
-			var pin string
-			if k.AuthMode2F() == AuthModePIN {
-				r := passphraseReader
-				passphraseReader = nil
-				pin, err = getPassword(sourceDevicePath, "PIN", r)
-				if err != nil {
-					return nil, nil, xerrors.Errorf("cannot obtain PIN: %w", err)
-				}
-			}
-
-			sealedKey, authPrivateKey, err = unsealKeyFromTPM(tpm, k, pin)
-			if err != nil && (err != ErrPINFail || k.AuthMode2F() != AuthModePIN) {
-				break
-			}
-		}
-
-		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot unseal key: %w", err)
-		}
-		return sealedKey, authPrivateKey, nil
-	}()
+func activateWithTPMKey(tpm *TPMConnection, volumeName, sourceDevicePath, keyPath string, passphraseReader io.Reader, passphraseTries int, activateOptions []string, keyringPrefix string) error {
+	k, err := ReadSealedKeyObject(keyPath)
+	if err != nil {
+		return xerrors.Errorf("cannot read sealed key object: %w", err)
+	}
 
 	switch {
-	case lockErr != nil:
-		return lockAccessError{err}
-	case err != nil:
-		return err
+	case passphraseTries == 0 && k.AuthMode2F() == AuthModePIN:
+		return requiresPinErr
+	case passphraseTries == 0:
+		passphraseTries = 1
+	}
+
+	var sealedKey []byte
+	var authPrivateKey TPMPolicyAuthKey
+
+	for ; passphraseTries > 0; passphraseTries-- {
+		var pin string
+		if k.AuthMode2F() == AuthModePIN {
+			r := passphraseReader
+			passphraseReader = nil
+			pin, err = getPassword(sourceDevicePath, "PIN", r)
+			if err != nil {
+				return xerrors.Errorf("cannot obtain PIN: %w", err)
+			}
+		}
+
+		sealedKey, authPrivateKey, err = unsealKeyFromTPM(tpm, k, pin)
+		if err != nil && (err != ErrPINFail || k.AuthMode2F() != AuthModePIN) {
+			break
+		}
+	}
+
+	if err != nil {
+		return xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
 	if err := activate(volumeName, sourceDevicePath, sealedKey, activateOptions); err != nil {
@@ -486,11 +450,6 @@ type ActivateVolumeOptions struct {
 	// options to systemd-cryptsetup.
 	ActivateOptions []string
 
-	// LockSealedKeys controls whether access to the keys is
-	// locked after unsealing by calling LockAccessToSealedKeys in
-	// TPM case for example.
-	LockSealedKeys bool
-
 	// KeyringPrefix is the prefix used for the description of any
 	// kernel keys created during activation.
 	KeyringPrefix string
@@ -505,9 +464,6 @@ type ActivateVolumeOptions struct {
 //
 // The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
 //
-// If the LockSealedKeys field of options is true, then this function will call LockAccessToSealedKeys after unsealing the key
-// and before activating the LUKS volume.
-//
 // If activation with the TPM sealed key object fails, this function will attempt to activate it with the fallback recovery key
 // instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of options specifies
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
@@ -517,9 +473,6 @@ type ActivateVolumeOptions struct {
 //
 // If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
 // field of options contains the "tries=" option, then an error will be returned. This option cannot be used with this function.
-//
-// If the LockSealedKeyAccess field of options is true and the call to LockAccessToSealedKeys fails, a LockAccessToSealedKeysError
-// error will be returned. In this case, activation with either the TPM sealed key or the fallback recovery key will not be attempted.
 //
 // If activation with the TPM sealed key fails, a *ActivateWithTPMSealedKeyError error will be returned, even if the subsequent
 // fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will be nil, and the
@@ -545,11 +498,9 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 		return false, err
 	}
 
-	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, passphraseReader, options.PassphraseTries, options.LockSealedKeys, activateOptions, options.KeyringPrefix); err != nil {
+	if err := activateWithTPMKey(tpm, volumeName, sourceDevicePath, keyPath, passphraseReader, options.PassphraseTries, activateOptions, options.KeyringPrefix); err != nil {
 		reason := RecoveryKeyUsageReasonUnexpectedError
 		switch {
-		case isLockAccessError(err):
-			return false, LockAccessToSealedKeysError(err.Error())
 		case xerrors.Is(err, ErrTPMLockout):
 			reason = RecoveryKeyUsageReasonTPMLockout
 		case xerrors.Is(err, ErrTPMProvisioning):
