@@ -822,6 +822,10 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 
 	if version == 0 {
+		// Execute required TPM2_PolicyNV assertion that was used for legacy locking with v0 files -
+		// this is only here because the existing policy for v0 files requires it. It is not expected that
+		// this will fail unless the NV index has been removed or altered, at which point the key is
+		// non-recoverable anyway.
 		index, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
 		if err != nil {
 			return xerrors.Errorf("cannot obtain context for lock NV index: %w", err)
@@ -859,35 +863,5 @@ func LockAccessToSealedKeys(tpm *TPMConnection, pcrs []int) error {
 		}
 	}
 
-	// Handle legacy locking for v0 key files
-	handles, err := tpm.GetCapabilityHandles(lockNVHandle, 1, session.IncludeAttrs(tpm2.AttrAudit))
-	if err != nil {
-		return xerrors.Errorf("cannot obtain handles from TPM: %w", err)
-	}
-	if len(handles) == 0 || handles[0] != lockNVHandle {
-		// Not provisioned, so no v0 keys created by this package can be unsealed by this TPM
-		return nil
-	}
-	lock, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
-	if err != nil {
-		return xerrors.Errorf("cannot obtain context for lock NV index: %w", err)
-	}
-	lockPublic, _, err := tpm.NVReadPublic(lock, session.IncludeAttrs(tpm2.AttrAudit))
-	if err != nil {
-		return xerrors.Errorf("cannot read public area of lock NV index: %w", err)
-	}
-	expectedAttrs := tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVReadStClear | tpm2.AttrNVWritten)
-	if lockPublic.Attrs != expectedAttrs {
-		// Definitely not an index created by us, so no v0 keys created by this package can be unsealed by this TPM.
-		return nil
-	}
-	if err := tpm.NVReadLock(lock, lock, session); err != nil {
-		if isAuthFailError(err, tpm2.CommandNVReadLock, 1) {
-			// The index has an authorization value, so it wasn't created by this package and no v0
-			// keys created by this package can be unsealed by this TPM.
-			return nil
-		}
-		return xerrors.Errorf("cannot lock NV index for reading: %w", err)
-	}
 	return nil
 }

@@ -62,9 +62,6 @@ import (
 // If the provided PIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be
 // incremented.
 //
-// If access to sealed key objects created by this package is disallowed until the next TPM reset or TPM restart, then a
-// ErrSealedKeyAccessLocked error will be returned.
-//
 // If the authorization policy check fails during unsealing, then a InvalidKeyFileError error will be returned. Note that this
 // condition can also occur as the result of an incorrectly provisioned TPM, which will be detected during a subsequent call to
 // SealKeyToTPM.
@@ -135,9 +132,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []b
 		case isAuthFailError(err, tpm2.CommandPolicySecret, 1):
 			return nil, nil, ErrPINFail
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
-			return nil, nil, InvalidKeyFileError{"no lock NV index is present"}
-		case tpm2.IsTPMError(err, tpm2.ErrorNVLocked, tpm2.CommandPolicyNV):
-			return nil, nil, ErrSealedKeyAccessLocked
+			return nil, nil, InvalidKeyFileError{"required legacy lock NV index is not present"}
 		}
 		return nil, nil, err
 	}

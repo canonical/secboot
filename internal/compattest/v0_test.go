@@ -118,15 +118,10 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
 	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, s.absPath("key"), s.absPath("pud"), profile), IsNil)
 }
 
-func (s *compatTestV0Suite) TestUnsealAfterLock1(c *C) {
-	// Test unsealing a v0 file from an initramfs using the legacy style locking
-	c.Assert(secboot.LockAccessToSealedKeys(s.TPM, nil), IsNil)
-	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
-	s.testUnsealErrorMatchesCommon(c, "cannot access the sealed key object until the next TPM reset or restart")
-}
-
-func (s *compatTestV0Suite) TestUnsealAfterLock2(c *C) {
-	// Test unsealing a v0 file from a newer initramfs using the fence-style locking
+func (s *compatTestV0Suite) TestUnsealAfterLock(c *C) {
+	// Test unsealing a v0 file from a newer initramfs using the fence-style locking - this just makes
+	// the PCR values invalid so there's no reason this shouldn't work or require a compatibility test,
+	// but keep this here just to make sure.
 	c.Assert(secboot.LockAccessToSealedKeys(s.TPM, []int{12}), IsNil)
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
 	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data")
