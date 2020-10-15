@@ -838,15 +838,15 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	return nil
 }
 
-// LockAccessToSealedKeys locks access to keys sealed by this package until the next TPM restart (equivalent to eg, system resume
-// from suspend-to-disk) or TPM reset (equivalent to booting after a system restart). This works for all keys sealed by this package
-// regardless of their PCR protection profile.
+// BlockPCRProtectionPolicies inserts a fence in to the specific PCRs for all active PCR banks, in order to
+// make PCR policies that depend on the specified PCRs and are satisfiable by the current PCR values invalid
+// until the next TPM restart (equivalent to eg, system resume from suspend-to-disk) or TPM reset
+// (equivalent to booting after a system reset).
 //
-// On success, subsequent calls to SealedKeyObject.UnsealFromTPM will fail with a ErrSealedKeyAccessLocked error until the next TPM
-// restart or TPM reset.
-//
-// TODO: Update this documentation and maybe rename the function, as it doesn't make much sense now.
-func LockAccessToSealedKeys(tpm *TPMConnection, pcrs []int) error {
+// This acts as a barrier between the environment in which a sealed key should be permitted to be unsealed
+// (eg, the initramfs), and the environment in which a sealed key should not be permitted to be unsealed
+// (eg, the OS runtime).
+func BlockPCRProtectionPolicies(tpm *TPMConnection, pcrs []int) error {
 	session := tpm.HmacSession()
 
 	// The fence is a hash of uint32(0), which is the same as EV_SEPARATOR (which can be uint32(0) or uint32(-1))

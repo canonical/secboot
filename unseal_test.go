@@ -271,8 +271,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 
 	t.Run("SealedKeyAccessLocked", func(t *testing.T) {
 		err := run(t, func(tpm *TPMConnection, _ string, _ []byte) {
-			if err := LockAccessToSealedKeys(tpm, []int{7}); err != nil {
-				t.Errorf("LockAccessToSealedKeys failed: %v", err)
+			if err := BlockPCRProtectionPolicies(tpm, []int{7}); err != nil {
+				t.Errorf("BlockPCRProtectionPolicies failed: %v", err)
 			}
 		})
 		if _, ok := err.(InvalidKeyFileError); !ok ||

@@ -109,7 +109,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
-	c.Assert(secboot.LockAccessToSealedKeys(s.TPM, nil), IsNil)
+	c.Assert(secboot.BlockPCRProtectionPolicies(s.TPM, nil), IsNil)
 
 	profile := secboot.NewPCRProtectionProfile()
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
@@ -122,7 +122,7 @@ func (s *compatTestV0Suite) TestUnsealAfterLock(c *C) {
 	// Test unsealing a v0 file from a newer initramfs using the fence-style locking - this just makes
 	// the PCR values invalid so there's no reason this shouldn't work or require a compatibility test,
 	// but keep this here just to make sure.
-	c.Assert(secboot.LockAccessToSealedKeys(s.TPM, []int{12}), IsNil)
+	c.Assert(secboot.BlockPCRProtectionPolicies(s.TPM, []int{12}), IsNil)
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
 	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data")
 }

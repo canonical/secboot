@@ -1955,7 +1955,7 @@ func TestExecutePolicy(t *testing.T) {
 	})
 }
 
-func TestLockAccessToSealedKeys(t *testing.T) {
+func TestBlockPCRProtectionPolicies(t *testing.T) {
 	// This test only test the fence style locking - the old style is tested with v0
 	// key files in internal/compattest/v0_test.go
 	tpm, _ := openTPMSimulatorForTesting(t)
@@ -1983,8 +1983,8 @@ func TestLockAccessToSealedKeys(t *testing.T) {
 				t.Fatalf("PCRRead failed: %v", err)
 			}
 
-			if err := LockAccessToSealedKeys(tpm, data.pcrs); err != nil {
-				t.Errorf("LockAccessToSealedKeys failed: %v", err)
+			if err := BlockPCRProtectionPolicies(tpm, data.pcrs); err != nil {
+				t.Errorf("BlockPCRProtectionPolicies failed: %v", err)
 			}
 
 			for _, p := range pcrs {
