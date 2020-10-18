@@ -127,6 +127,9 @@ func undefineKeyNVSpace(t *testing.T, tpm *TPMConnection, path string) {
 		return
 	}
 	rc, err := tpm.CreateResourceContextFromTPM(h)
+	if tpm2.IsResourceUnavailableError(err, h) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 	}
