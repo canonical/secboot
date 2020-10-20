@@ -23,9 +23,11 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 
@@ -54,11 +56,12 @@ func TestSealKeyToTPM(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	runNoCleanup := func(t *testing.T, tpm *TPMConnection, params *KeyCreationParams) (authKeyBytes []byte, path string, cleanup func()) {
+	run := func(t *testing.T, tpm *TPMConnection, params *KeyCreationParams) (authKeyBytes []byte) {
 		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPM_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
 		}
+		defer os.RemoveAll(tmpDir)
 
 		keyFile := tmpDir + "/keydata"
 
@@ -66,21 +69,13 @@ func TestSealKeyToTPM(t *testing.T) {
 		if err != nil {
 			t.Errorf("SealKeyToTPM failed: %v", err)
 		}
+		defer undefineKeyNVSpace(t, tpm, keyFile)
 
 		if err := ValidateKeyDataFile(tpm.TPMContext, keyFile, authPrivateKey, tpm.HmacSession()); err != nil {
 			t.Errorf("ValidateKeyDataFile failed: %v", err)
 		}
 
-		return authPrivateKey, keyFile, func() {
-			undefineKeyNVSpace(t, tpm, keyFile)
-			os.RemoveAll(tmpDir)
-		}
-	}
-
-	run := func(t *testing.T, tpm *TPMConnection, params *KeyCreationParams) (authKeyBytes []byte) {
-		authKeyBytes, _, cleanup := runNoCleanup(t, tpm, params)
-		cleanup()
-		return
+		return authPrivateKey
 	}
 
 	t.Run("Standard", func(t *testing.T) {
@@ -144,21 +139,113 @@ func TestSealKeyToTPM(t *testing.T) {
 			t.Fatalf("AuthKey private part bytes do not match provided one")
 		}
 	})
+}
 
-	t.Run("WithRelatedKey", func(t *testing.T) {
+func TestSealKeyToTPMMultiple(t *testing.T) {
+	func() {
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
-		authKey, keyFile, cleanup := runNoCleanup(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
-		defer cleanup()
 
-		k, err := ReadSealedKeyObject(keyFile)
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("Failed to provision TPM for test: %v", err)
+		}
+	}()
+
+	key := make([]byte, 64)
+	rand.Read(key)
+
+	run := func(t *testing.T, tpm *TPMConnection, n int, params *KeyCreationParams) (authKeyBytes TPMPolicyAuthKey) {
+		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPM_")
 		if err != nil {
-			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+			t.Fatalf("Creating temporary directory failed: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		var keys []*SealKeyRequest
+		for i := 0; i < n; i++ {
+			keys = append(keys, &SealKeyRequest{Key: key, Path: filepath.Join(tmpDir, fmt.Sprintf("keydata%d", i))})
 		}
 
-		authKey2 := run(t, tpm, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull, RelatedSealedKey: k, RelatedAuthKey: authKey})
-		if !bytes.Equal(authKey2, authKey) {
-			t.Errorf("Auth key private parts don't match")
+		authPrivateKey, err := SealKeyToTPMMultiple(tpm, keys, params)
+		if err != nil {
+			t.Errorf("SealKeyToTPMMultiple failed: %v", err)
+		}
+		defer undefineKeyNVSpace(t, tpm, keys[0].Path)
+
+		for _, k := range keys {
+			if err := ValidateKeyDataFile(tpm.TPMContext, k.Path, authPrivateKey, tpm.HmacSession()); err != nil {
+				t.Errorf("ValidateKeyDataFile failed: %v", err)
+			}
+		}
+
+		return authPrivateKey
+	}
+
+	t.Run("Single", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 1, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("2Keys", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("DifferentPCRPolicyCounterHandle", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
+	})
+
+	t.Run("SealAfterProvision", func(t *testing.T) {
+		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same TPMConnection
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("Failed to provision TPM for test: %v", err)
+		}
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("NoSRK", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+		if err != nil {
+			t.Fatalf("No SRK: %v", err)
+		}
+		if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
+			t.Errorf("EvictControl failed: %v", err)
+		}
+
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("NilPCRProfile", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 2, &KeyCreationParams{PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("NoPCRPolicyCounterHandle", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	})
+
+	t.Run("WithProvidedAuthKey", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
+		if err != nil {
+			t.Fatalf("GenerateKey failed: %v", err)
+		}
+		pkb := run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000, AuthKey: authKey})
+		if !bytes.Equal(pkb, authKey.D.Bytes()) {
+			t.Fatalf("AuthKey private part bytes do not match provided one")
 		}
 	})
 }

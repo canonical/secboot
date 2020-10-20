@@ -98,63 +98,42 @@ func TestUnsealRelated(t *testing.T) {
 		t.Fatalf("Failed to provision TPM for test: %v", err)
 	}
 
-	key1 := make([]byte, 64)
-	rand.Read(key1)
-	key2 := make([]byte, 64)
-	rand.Read(key2)
-
 	tmpDir, err := ioutil.TempDir("", "_TestUnsealRelated_")
 	if err != nil {
 		t.Fatalf("Creating temporary directory failed: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	keyFile1 := tmpDir + "/keydata1"
+	keys := []*SealKeyRequest{
+		{Key: make([]byte, 64), Path: filepath.Join(tmpDir, "keydata1")},
+		{Key: make([]byte, 64), Path: filepath.Join(tmpDir, "keydata2")}}
+	for _, k := range keys {
+		rand.Read(k.Key)
+	}
 
-	authKey, err := SealKeyToTPM(tpm, key1, keyFile1, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
+	authKey, err := SealKeyToTPMMultiple(tpm, keys, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
 	if err != nil {
-		t.Fatalf("SealKeyToTPM failed: %v", err)
+		t.Fatalf("SealKeyToTPMMultiple failed: %v", err)
 	}
-	defer undefineKeyNVSpace(t, tpm, keyFile1)
+	defer undefineKeyNVSpace(t, tpm, keys[0].Path)
 
-	k1, err := ReadSealedKeyObject(keyFile1)
-	if err != nil {
-		t.Fatalf("ReadSealedKeyObject failed: %v", err)
-	}
+	for _, key := range keys {
+		k, err := ReadSealedKeyObject(key.Path)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
 
-	keyFile2 := tmpDir + "/keydata2"
+		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm, "")
+		if err != nil {
+			t.Fatalf("UnsealFromTPM failed: %v", err)
+		}
 
-	if _, err = SealKeyToTPM(tpm, key2, keyFile2, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull, RelatedSealedKey: k1, RelatedAuthKey: authKey}); err != nil {
-		t.Fatalf("SealKeyToTPM failed: %v", err)
-	}
-
-	k2, err := ReadSealedKeyObject(keyFile2)
-	if err != nil {
-		t.Fatalf("ReadSealedKeyObject failed: %v", err)
-	}
-
-	keyUnsealed, authKeyUnsealed, err := k1.UnsealFromTPM(tpm, "")
-	if err != nil {
-		t.Fatalf("UnsealFromTPM failed: %v", err)
-	}
-
-	if !bytes.Equal(key1, keyUnsealed) {
-		t.Errorf("TPM returned the wrong key")
-	}
-	if !bytes.Equal(authKey, authKeyUnsealed) {
-		t.Errorf("TPM returned the wrong auth key")
-	}
-
-	keyUnsealed, authKeyUnsealed, err = k2.UnsealFromTPM(tpm, "")
-	if err != nil {
-		t.Fatalf("UnsealFromTPM failed: %v", err)
-	}
-
-	if !bytes.Equal(key2, keyUnsealed) {
-		t.Errorf("TPM returned the wrong key")
-	}
-	if !bytes.Equal(authKey, authKeyUnsealed) {
-		t.Errorf("TPM returned the wrong auth key")
+		if !bytes.Equal(keyUnsealed, key.Key) {
+			t.Errorf("TPM returned the wrong key")
+		}
+		if !bytes.Equal(authKeyUnsealed, authKey) {
+			t.Errorf("TPM returned the wrong auth key")
+		}
 	}
 }
 
