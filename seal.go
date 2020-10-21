@@ -380,6 +380,10 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 }
 
 func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPaths []string, authData interface{}, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
+	if len(keyPaths) == 0 {
+		return errors.New("no key files supplied")
+	}
+
 	var datas []*keyData
 	// Open the primary data file
 	keyFile, err := os.Open(keyPaths[0])
