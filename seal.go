@@ -209,7 +209,7 @@ func SealKeyToTPMMultiple(tpm *TPMConnection, keys []*SealKeyRequest, params *Ke
 
 	succeeded := false
 
-	// Compuate metadata.
+	// Compute metadata.
 
 	var goAuthKey *ecdsa.PrivateKey
 	// Use the provided authorization key,
@@ -340,7 +340,7 @@ func SealKeyToTPMMultiple(tpm *TPMConnection, keys []*SealKeyRequest, params *Ke
 	}
 
 	succeeded = true
-	return
+	return authKey, nil
 }
 
 // SealKeyToTPM seals the supplied disk encryption key to the storage hierarchy of the TPM. The sealed key object and associated
