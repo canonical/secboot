@@ -419,8 +419,11 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPaths []string,
 			// FIXME: Turn the missing lock NV index in to ErrProvisioning
 			return xerrors.Errorf("cannot read and validate related key data file: %w", err)
 		}
-		// The data is valid and the sealed key shares the same dynamic authorization policy
-		// signing key. Also verify that it has the same static authorization policy.
+		// The metadata is valid and consistent with the object's static authorization policy.
+		// Verify that it also has the same static authorization policy as the first key object passed
+		// to this function. This policy digest includes a cryptographic record of the PCR policy counter
+		// and dynamic authorization policy signing key, so this is the only check required to determine
+		// if 2 keys are related.
 		if !bytes.Equal(data.keyPublic.AuthPolicy, primaryData.keyPublic.AuthPolicy) {
 			return InvalidKeyFileError{"key data file " + p + " is not a related key file"}
 		}
