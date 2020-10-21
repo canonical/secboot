@@ -208,7 +208,7 @@ func SealKeyToTPMMultiple(tpm *TPMConnection, keys []*SealKeyRequest, params *Ke
 
 	succeeded := false
 
-	// Compuate metadata.
+	// Compute metadata.
 
 	var goAuthKey *ecdsa.PrivateKey
 	// Use the provided authorization key,
