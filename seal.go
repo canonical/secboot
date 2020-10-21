@@ -134,44 +134,55 @@ type KeyCreationParams struct {
 	AuthKey *ecdsa.PrivateKey
 }
 
-// SealKeyToTPM seals the supplied disk encryption key to the storage hierarchy of the TPM. The sealed key object and associated
-// metadata that is required during early boot in order to unseal the key again and unlock the associated encrypted volume is written
-// to a file at the path specified by keyPath.
+// SealKeyRequest corresponds to a key that should be sealed by SealKeyToTPMMultiple
+// to a file at the specified path.
+type SealKeyRequest struct {
+	Key  []byte
+	Path string
+}
+
+// SealKeyToTPMMultiple seals the supplied disk encryption keys to the storage hierarchy of the TPM. The keys are specified by
+// the keys argument, which is a slice of associated key and corresponding file path. The sealed key objects and associated
+// metadata that is required during early boot in order to unseal the keys again and unlock the associated encrypted volumes
+// are written to files at the specifed paths.
 //
 // This function requires knowledge of the authorization value for the storage hierarchy, which must be provided by calling
 // TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the provided authorization value is incorrect,
 // a AuthFailError error will be returned.
 //
-// If the TPM is not correctly provisioned, a ErrTPMProvisioning error will be returned. In this case, ProvisionTPM must be called
-// before proceeding.
+// This function expects there to be no files at the specified paths. If the keys argument references a file that already exists, a
+// wrapped *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be
+// returned if any file cannot be created and opened for writing.
 //
-// This function expects there to be no file at the specified path. If keyPath references a file that already exists, a wrapped
-// *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
-// the file cannot be created and opened for writing.
-//
-// This function will create a NV index at the handle specified by the PCRPolicyCounterHandle field of the params argument if it is not
-// tpm2.HandleNull. If the handle is already in use, a TPMResourceExistsError error will be returned. In this case, the caller will
-// need to either choose a different handle or undefine the existing one. If it is not tpm2.HandleNull, then it must be a valid NV
-// index handle (MSO == 0x01), and the choice of handle should take in to consideration the reserved indices from the "Registry of
+// This function will create a NV index at the handle specified by the PCRPolicyCounterHandle field of the params argument if it is
+// not tpm2.HandleNull. If the handle is already in use, a TPMResourceExistsError error will be returned. In this case, the caller
+// will need to either choose a different handle or undefine the existing one. If it is not tpm2.HandleNull, then it must be a valid
+// NV index handle (MSO == 0x01), and the choice of handle should take in to consideration the reserved indices from the "Registry of
 // reserved TPM 2.0 handles and localities" specification. It is recommended that the handle is in the block reserved for owner
 // objects (0x01800000 - 0x01bfffff).
 //
-// The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
-// argument.
+// All keys will be created with the same authorization policy, and will be protected with a PCR policy computed from the
+// PCRProtectionProfile supplied via the PCRProfile field of the params argument.
+//
+// If any part of this function fails, no sealed keys will be created.
 //
 // On success, this function returns the private part of the key used for authorizing PCR policy updates with
-// UpdateKeyPCRProtectionPolicy. This key doesn't need to be stored anywhere, and certainly mustn't be stored outside of the encrypted
-// volume protected with this sealed key file. The key is stored encrypted inside this sealed key file and returned from future calls
-// to SealedKeyObject.UnsealFromTPM.
+// UpdateKeyPCRProtectionPolicyMultiple. This key doesn't need to be stored anywhere, and certainly mustn't be stored outside of the
+// encrypted volume protected with this sealed key file. The key is stored encrypted inside this sealed key file and returned from
+// future calls to SealedKeyObject.UnsealFromTPM.
 //
 // The authorization key can also be chosen and provided by setting
 // AuthKey in the params argument.
-func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCreationParams) (authKey TPMPolicyAuthKey, err error) {
+func SealKeyToTPMMultiple(tpm *TPMConnection, keys []*SealKeyRequest, params *KeyCreationParams) (authKey TPMPolicyAuthKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
 	}
+	if len(keys) == 0 {
+		return nil, errors.New("no keys provided")
+	}
 
+	// Perform some sanity checks on params.
 	if params.AuthKey != nil && params.AuthKey.Curve != elliptic.P256() {
 		return nil, errors.New("provided AuthKey must be from elliptic.P256, no other curve is supported")
 	}
@@ -197,18 +208,7 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 
 	succeeded := false
 
-	// Create destination files
-	keyFile, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create key data file: %w", err)
-	}
-	defer func() {
-		keyFile.Close()
-		if succeeded {
-			return
-		}
-		os.Remove(keyPath)
-	}()
+	// Compute metadata.
 
 	var goAuthKey *ecdsa.PrivateKey
 	// Use the provided authorization key,
@@ -218,7 +218,6 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	if params.AuthKey != nil {
 		goAuthKey = params.AuthKey
 	} else {
-		var err error
 		goAuthKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			return nil, xerrors.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
@@ -229,8 +228,9 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
 	}
+	authKey = goAuthKey.D.Bytes()
 
-	// Create PCR policy counter
+	// Create PCR policy counter, if requested.
 	var pcrPolicyCounterPub *tpm2.NVPublic
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
 		pcrPolicyCounterPub, err = createPcrPolicyCounter(tpm.TPMContext, params.PCRPolicyCounterHandle, authKeyName, session)
@@ -267,21 +267,6 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	// Define the template for the sealed key object, using the computed policy digest
 	template.AuthPolicy = authPolicy
 
-	// Create the sensitive data
-	sealedData, err := mu.MarshalToBytes(sealedData{Key: key, AuthPrivateKey: goAuthKey.D.Bytes()})
-	if err != nil {
-		panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
-	}
-	sensitive := tpm2.SensitiveCreate{Data: sealedData}
-
-	// Now create the sealed key object. The command is integrity protected so if the object at the handle we expect the SRK to reside
-	// at has a different name (ie, if we're connected via a resource manager and somebody swapped the object with another one), this
-	// command will fail. We take advantage of parameter encryption here too.
-	priv, pub, _, _, _, err := tpm.Create(srk, &sensitive, template, nil, nil, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create sealed data object for key: %w", err)
-	}
-
 	// Create a dynamic authorization policy
 	pcrProfile := params.PCRProfile
 	if pcrProfile == nil {
@@ -293,19 +278,59 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 		return nil, xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
 
-	// Marshal the entire object (sealed key object and auxiliary data) to disk
-	data := keyData{
-		version:           currentMetadataVersion,
-		keyPrivate:        priv,
-		keyPublic:         pub,
-		authModeHint:      AuthModeNone,
-		staticPolicyData:  staticPolicyData,
-		dynamicPolicyData: dynamicPolicyData}
+	// Clean up files on failure.
+	defer func() {
+		if succeeded {
+			return
+		}
+		for _, key := range keys {
+			os.Remove(key.Path)
+		}
+	}()
 
-	if err := data.write(keyFile); err != nil {
-		return nil, xerrors.Errorf("cannot write key data file: %w", err)
+	// Seal each key.
+	for _, key := range keys {
+		// Create the destination file
+		f, err := os.OpenFile(key.Path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot create key data file %s: %w", key.Path, err)
+		}
+		// We'll close this at the end of this loop, but make sure it is closed if the function
+		// returns early
+		defer f.Close()
+
+		// Create the sensitive data
+		sealedData, err := mu.MarshalToBytes(sealedData{Key: key.Key, AuthPrivateKey: authKey})
+		if err != nil {
+			panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
+		}
+		sensitive := tpm2.SensitiveCreate{Data: sealedData}
+
+		// Now create the sealed key object. The command is integrity protected so if the object at the handle we expect the SRK to reside
+		// at has a different name (ie, if we're connected via a resource manager and somebody swapped the object with another one), this
+		// command will fail. We take advantage of parameter encryption here too.
+		priv, pub, _, _, _, err := tpm.Create(srk, &sensitive, template, nil, nil, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
+		if err != nil {
+			return nil, xerrors.Errorf("cannot create sealed data object for key: %w", err)
+		}
+
+		// Marshal the entire object (sealed key object and auxiliary data) to disk
+		data := keyData{
+			version:           currentMetadataVersion,
+			keyPrivate:        priv,
+			keyPublic:         pub,
+			authModeHint:      AuthModeNone,
+			staticPolicyData:  staticPolicyData,
+			dynamicPolicyData: dynamicPolicyData}
+
+		if err := data.write(f); err != nil {
+			return nil, xerrors.Errorf("cannot write key data file: %w", err)
+		}
+
+		f.Close()
 	}
 
+	// Increment the PCR policy counter for the first time.
 	if pcrPolicyCounterPub != nil {
 		if err := incrementPcrPolicyCounter(tpm.TPMContext, currentMetadataVersion, pcrPolicyCounterPub, nil, goAuthKey, authPublicKey,
 			session); err != nil {
@@ -314,7 +339,43 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	}
 
 	succeeded = true
-	return goAuthKey.D.Bytes(), nil
+	return authKey, nil
+}
+
+// SealKeyToTPM seals the supplied disk encryption key to the storage hierarchy of the TPM. The sealed key object and associated
+// metadata that is required during early boot in order to unseal the key again and unlock the associated encrypted volume is written
+// to a file at the path specified by keyPath.
+//
+// This function requires knowledge of the authorization value for the storage hierarchy, which must be provided by calling
+// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the provided authorization value is incorrect,
+// a AuthFailError error will be returned.
+//
+// If the TPM is not correctly provisioned, a ErrTPMProvisioning error will be returned. In this case, ProvisionTPM must be called
+// before proceeding.
+//
+// This function expects there to be no file at the specified path. If keyPath references a file that already exists, a wrapped
+// *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
+// the file cannot be created and opened for writing.
+//
+// This function will create a NV index at the handle specified by the PCRPolicyCounterHandle field of the params argument if it is not
+// tpm2.HandleNull. If the handle is already in use, a TPMResourceExistsError error will be returned. In this case, the caller will
+// need to either choose a different handle or undefine the existing one. If it is not tpm2.HandleNull, then it must be a valid NV
+// index handle (MSO == 0x01), and the choice of handle should take in to consideration the reserved indices from the "Registry of
+// reserved TPM 2.0 handles and localities" specification. It is recommended that the handle is in the block reserved for owner
+// objects (0x01800000 - 0x01bfffff).
+//
+// The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
+// argument.
+//
+// On success, this function returns the private part of the key used for authorizing PCR policy updates with
+// UpdateKeyPCRProtectionPolicy. This key doesn't need to be stored anywhere, and certainly mustn't be stored outside of the encrypted
+// volume protected with this sealed key file. The key is stored encrypted inside this sealed key file and returned from future calls
+// to SealedKeyObject.UnsealFromTPM.
+//
+// The authorization key can also be chosen and provided by setting
+// AuthKey in the params argument.
+func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCreationParams) (authKey TPMPolicyAuthKey, err error) {
+	return SealKeyToTPMMultiple(tpm, []*SealKeyRequest{{Key: key, Path: keyPath}}, params)
 }
 
 func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, authData interface{}, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {

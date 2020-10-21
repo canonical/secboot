@@ -90,6 +90,53 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	})
 }
 
+func TestUnsealRelated(t *testing.T) {
+	tpm := openTPMForTesting(t)
+	defer closeTPM(t, tpm)
+
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+		t.Fatalf("Failed to provision TPM for test: %v", err)
+	}
+
+	tmpDir, err := ioutil.TempDir("", "_TestUnsealRelated_")
+	if err != nil {
+		t.Fatalf("Creating temporary directory failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	keys := []*SealKeyRequest{
+		{Key: make([]byte, 64), Path: filepath.Join(tmpDir, "keydata1")},
+		{Key: make([]byte, 64), Path: filepath.Join(tmpDir, "keydata2")}}
+	for _, k := range keys {
+		rand.Read(k.Key)
+	}
+
+	authKey, err := SealKeyToTPMMultiple(tpm, keys, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
+	if err != nil {
+		t.Fatalf("SealKeyToTPMMultiple failed: %v", err)
+	}
+	defer undefineKeyNVSpace(t, tpm, keys[0].Path)
+
+	for _, key := range keys {
+		k, err := ReadSealedKeyObject(key.Path)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
+
+		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm, "")
+		if err != nil {
+			t.Fatalf("UnsealFromTPM failed: %v", err)
+		}
+
+		if !bytes.Equal(keyUnsealed, key.Key) {
+			t.Errorf("TPM returned the wrong key")
+		}
+		if !bytes.Equal(authKeyUnsealed, authKey) {
+			t.Errorf("TPM returned the wrong auth key")
+		}
+	}
+}
+
 func TestUnsealWithPIN(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)

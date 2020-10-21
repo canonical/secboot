@@ -23,9 +23,11 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 
@@ -133,6 +135,115 @@ func TestSealKeyToTPM(t *testing.T) {
 			t.Fatalf("GenerateKey failed: %v", err)
 		}
 		pkb := run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000, AuthKey: authKey})
+		if !bytes.Equal(pkb, authKey.D.Bytes()) {
+			t.Fatalf("AuthKey private part bytes do not match provided one")
+		}
+	})
+}
+
+func TestSealKeyToTPMMultiple(t *testing.T) {
+	func() {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("Failed to provision TPM for test: %v", err)
+		}
+	}()
+
+	key := make([]byte, 64)
+	rand.Read(key)
+
+	run := func(t *testing.T, tpm *TPMConnection, n int, params *KeyCreationParams) (authKeyBytes TPMPolicyAuthKey) {
+		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPM_")
+		if err != nil {
+			t.Fatalf("Creating temporary directory failed: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		var keys []*SealKeyRequest
+		for i := 0; i < n; i++ {
+			keys = append(keys, &SealKeyRequest{Key: key, Path: filepath.Join(tmpDir, fmt.Sprintf("keydata%d", i))})
+		}
+
+		authPrivateKey, err := SealKeyToTPMMultiple(tpm, keys, params)
+		if err != nil {
+			t.Errorf("SealKeyToTPMMultiple failed: %v", err)
+		}
+		defer undefineKeyNVSpace(t, tpm, keys[0].Path)
+
+		for _, k := range keys {
+			if err := ValidateKeyDataFile(tpm.TPMContext, k.Path, authPrivateKey, tpm.HmacSession()); err != nil {
+				t.Errorf("ValidateKeyDataFile failed: %v", err)
+			}
+		}
+
+		return authPrivateKey
+	}
+
+	t.Run("Single", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 1, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("2Keys", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("DifferentPCRPolicyCounterHandle", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
+	})
+
+	t.Run("SealAfterProvision", func(t *testing.T) {
+		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same TPMConnection
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("Failed to provision TPM for test: %v", err)
+		}
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("NoSRK", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+		if err != nil {
+			t.Fatalf("No SRK: %v", err)
+		}
+		if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
+			t.Errorf("EvictControl failed: %v", err)
+		}
+
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("NilPCRProfile", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 2, &KeyCreationParams{PCRPolicyCounterHandle: 0x01810000})
+	})
+
+	t.Run("NoPCRPolicyCounterHandle", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	})
+
+	t.Run("WithProvidedAuthKey", func(t *testing.T) {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+		authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
+		if err != nil {
+			t.Fatalf("GenerateKey failed: %v", err)
+		}
+		pkb := run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000, AuthKey: authKey})
 		if !bytes.Equal(pkb, authKey.D.Bytes()) {
 			t.Fatalf("AuthKey private part bytes do not match provided one")
 		}
