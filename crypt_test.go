@@ -1216,13 +1216,25 @@ type testInitializeLUKS2ContainerData struct {
 	devicePath string
 	label      string
 	key        []byte
+	opts       *InitializeLUKS2ContainerOptions
+	formatArgs []string
 }
 
 func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS2ContainerData) {
-	c.Check(InitializeLUKS2Container(data.devicePath, data.label, data.key), IsNil)
+	c.Check(InitializeLUKS2Container(data.devicePath, data.label, data.key, data.opts), IsNil)
+	formatArgs := []string{"cryptsetup",
+		"-q", "luksFormat", "--type", "luks2",
+		"--key-file", "-", "--cipher", "aes-xts-plain64",
+		"--key-size", "512",
+		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
+		"--pbkdf-memory", "32", "--label",
+		data.label, data.devicePath,
+	}
+	if data.formatArgs != nil {
+		formatArgs = data.formatArgs
+	}
 	c.Check(s.mockCryptsetup.Calls(), DeepEquals, [][]string{
-		{"cryptsetup", "-q", "luksFormat", "--type", "luks2", "--key-file", "-", "--cipher", "aes-xts-plain64", "--key-size", "512",
-			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--label", data.label, data.devicePath},
+		formatArgs,
 		{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath}})
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
@@ -1255,8 +1267,81 @@ func (s *cryptSuite) TestInitializeLUKS2Container(c *C) {
 	})
 }
 
+func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
+	// Test with a different key
+	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
+		devicePath: "/dev/vdc2",
+		label:      "test",
+		key:        s.tpmKey,
+		opts: &InitializeLUKS2ContainerOptions{
+			MetadataSize:     2 * 1024 * 1024, // 2MB
+			KeyslotsAreaSize: 3 * 1024 * 1024, // 3MB
+
+		},
+		formatArgs: []string{"cryptsetup",
+			"-q", "luksFormat", "--type", "luks2",
+			"--key-file", "-", "--cipher", "aes-xts-plain64",
+			"--key-size", "512",
+			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
+			"--pbkdf-memory", "32",
+			"--label", "test",
+			"--luks2-metadata-size", "2097152",
+			"--luks2-keyslots-size", "3145728",
+			"/dev/vdc2",
+		},
+	})
+}
+
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
-	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32]), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
+	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32], nil), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataSize(c *C) {
+	key := make([]byte, 64)
+	for _, validSz := range []int{0, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096} {
+		opts := InitializeLUKS2ContainerOptions{
+			MetadataSize: validSz * 1024,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
+	}
+
+	for _, invalidSz := range []int{1, 16 + 3, 8192, 500} {
+		opts := InitializeLUKS2ContainerOptions{
+			MetadataSize: invalidSz * 1024,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
+			fmt.Sprintf("cannot set metadata size to %v bytes", invalidSz*1024))
+	}
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerKeyslotsSize(c *C) {
+	key := make([]byte, 64)
+	for _, validSz := range []int{0, 4096,
+		128 * 1024 * 1024,
+		8 * 1024 * 1024,
+		16 * 1024,
+		256 * 4096,
+	} {
+		opts := InitializeLUKS2ContainerOptions{
+			KeyslotsAreaSize: validSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
+	}
+
+	for _, invalidSz := range []int{
+		// smaller than 4096
+		4095, 1,
+		// misaligned
+		10*4096 + 1024,
+		// larger than 128MB
+		128*1024*1024 + 4096,
+	} {
+		opts := InitializeLUKS2ContainerOptions{
+			KeyslotsAreaSize: invalidSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
+			fmt.Sprintf("cannot set keyslots area size to %v bytes", invalidSz))
+	}
 }
 
 type testAddRecoveryKeyToLUKS2ContainerData struct {
