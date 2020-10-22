@@ -1212,6 +1212,100 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling8(c *C) {
 	})
 }
 
+type testActivateVolumeWithKeyData struct {
+	activateOptions []string
+	keyData         []byte
+	expectedKeyData []byte
+	errMatch        string
+	cmdCalled       bool
+}
+
+func (s *cryptSuite) testActivateVolumeWithKey(c *C, data *testActivateVolumeWithKeyData) {
+	c.Assert(data.keyData, NotNil)
+
+	expectedKeyDataPath := filepath.Join(c.MkDir(), "expected-key")
+	mockSdCryptsetup := snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(`
+set -x
+key=$(xxd -p < "$4")
+if [ ! -f "%[1]s" ]; then echo "test error: expected key data not mocked"; exit 123; fi
+expected="$(xxd -p < "%[1]s")"
+if [ "$key" != "$expected" ]; then
+    exit 5
+fi
+`, expectedKeyDataPath))
+	s.AddCleanup(mockSdCryptsetup.Restore)
+	s.AddCleanup(MockSystemdCryptsetupPath(mockSdCryptsetup.Exe()))
+
+	expectedKeyData := data.expectedKeyData
+	if expectedKeyData == nil {
+		expectedKeyData = data.keyData
+	}
+	err := ioutil.WriteFile(expectedKeyDataPath, expectedKeyData, 0644)
+	c.Assert(err, IsNil)
+
+	options := ActivateVolumeOptions{
+		ActivateOptions: data.activateOptions,
+	}
+	err = ActivateVolumeWithKey("luks-volume", "/dev/sda1", data.keyData, &options)
+	if data.errMatch == "" {
+		c.Check(err, IsNil)
+	} else {
+		c.Check(err, ErrorMatches, data.errMatch)
+	}
+
+	if data.cmdCalled {
+		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+		c.Assert(len(mockSdCryptsetup.Calls()), Equals, 1)
+		c.Assert(len(mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+		c.Check(mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{
+			"systemd-cryptsetup", "attach", "luks-volume", "/dev/sda1",
+		})
+		c.Check(mockSdCryptsetup.Calls()[0][4], Matches,
+			filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(mockSdCryptsetup.Calls()[0][5], Equals,
+			strings.Join(append(data.activateOptions, "tries=1"), ","))
+	} else {
+		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+		c.Assert(len(mockSdCryptsetup.Calls()), Equals, 0)
+	}
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyNoOptions(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: nil,
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyWithOptions(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"--option"},
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyMismatchErr(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"--option"},
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		expectedKeyData: []byte{0, 0, 0, 0, 1},
+		errMatch:        ".*/systemd-cryptsetup failed: exit status 5",
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyTriesErr(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"tries=123"},
+		keyData:         []byte{0, 0, 0, 0, 1},
+		errMatch:        `cannot specify the "tries=" option for systemd-cryptsetup`,
+		cmdCalled:       false,
+	})
+}
+
 type testInitializeLUKS2ContainerData struct {
 	devicePath string
 	label      string
