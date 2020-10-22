@@ -20,6 +20,7 @@
 package secboot
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -378,15 +379,21 @@ func SealKeyToTPM(tpm *TPMConnection, key []byte, keyPath string, params *KeyCre
 	return SealKeyToTPMMultiple(tpm, []*SealKeyRequest{{Key: key, Path: keyPath}}, params)
 }
 
-func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, authData interface{}, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
-	// Open the key data file
-	keyFile, err := os.Open(keyPath)
+func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPaths []string, authData interface{}, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
+	if len(keyPaths) == 0 {
+		return errors.New("no key files supplied")
+	}
+
+	var datas []*keyData
+	// Open the primary data file
+	keyFile, err := os.Open(keyPaths[0])
 	if err != nil {
 		return xerrors.Errorf("cannot open key data file: %w", err)
 	}
 	defer keyFile.Close()
 
-	data, authKey, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm, keyFile, authData, session)
+	// Validate the primary file
+	primaryData, authKey, pcrPolicyCounterPub, err := decodeAndValidateKeyData(tpm, keyFile, authData, session)
 	if err != nil {
 		if isKeyFileError(err) {
 			return InvalidKeyFileError{err.Error()}
@@ -394,32 +401,62 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPath string, au
 		// FIXME: Turn the missing lock NV index in to ErrProvisioning
 		return xerrors.Errorf("cannot read and validate key data file: %w", err)
 	}
+	datas = append(datas, primaryData)
 
-	authPublicKey := data.staticPolicyData.authPublicKey
-	v0PinIndexAuthPolicies := data.staticPolicyData.v0PinIndexAuthPolicies
+	// Open and validate secondary files and make sure they are related
+	for _, p := range keyPaths[1:] {
+		keyFile, err := os.Open(p)
+		if err != nil {
+			return xerrors.Errorf("cannot open related key data file: %w", err)
+		}
+		defer keyFile.Close()
+
+		data, _, _, err := decodeAndValidateKeyData(tpm, keyFile, nil, session)
+		if err != nil {
+			if isKeyFileError(err) {
+				return InvalidKeyFileError{err.Error() + " (" + p + ")"}
+			}
+			// FIXME: Turn the missing lock NV index in to ErrProvisioning
+			return xerrors.Errorf("cannot read and validate related key data file: %w", err)
+		}
+		// The metadata is valid and consistent with the object's static authorization policy.
+		// Verify that it also has the same static authorization policy as the first key object passed
+		// to this function. This policy digest includes a cryptographic record of the PCR policy counter
+		// and dynamic authorization policy signing key, so this is the only check required to determine
+		// if 2 keys are related.
+		if !bytes.Equal(data.keyPublic.AuthPolicy, primaryData.keyPublic.AuthPolicy) {
+			return InvalidKeyFileError{"key data file " + p + " is not a related key file"}
+		}
+		datas = append(datas, data)
+	}
+
+	authPublicKey := primaryData.staticPolicyData.authPublicKey
+	v0PinIndexAuthPolicies := primaryData.staticPolicyData.v0PinIndexAuthPolicies
 
 	// Compute a new dynamic authorization policy
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
-	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm, data.version, data.keyPublic.NameAlg, authPublicKey.NameAlg, authKey,
+	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm, primaryData.version, primaryData.keyPublic.NameAlg, authPublicKey.NameAlg, authKey,
 		pcrPolicyCounterPub, v0PinIndexAuthPolicies, pcrProfile, session)
 	if err != nil {
 		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
 
-	// Atomically update the key data file
-	data.dynamicPolicyData = policyData
+	// Atomically update the key data files
+	for i, data := range datas {
+		data.dynamicPolicyData = policyData
 
-	if err := data.writeToFileAtomic(keyPath); err != nil {
-		return xerrors.Errorf("cannot write key data file: %v", err)
+		if err := data.writeToFileAtomic(keyPaths[i]); err != nil {
+			return xerrors.Errorf("cannot write key data file: %v", err)
+		}
 	}
 
 	if pcrPolicyCounterPub == nil {
 		return nil
 	}
 
-	if err := incrementPcrPolicyCounter(tpm, data.version, pcrPolicyCounterPub, v0PinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
+	if err := incrementPcrPolicyCounter(tpm, primaryData.version, pcrPolicyCounterPub, v0PinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
 		return xerrors.Errorf("cannot revoke old PCR policies: %w", err)
 	}
 
@@ -443,7 +480,7 @@ func UpdateKeyPCRProtectionPolicyV0(tpm *TPMConnection, keyPath, policyUpdatePat
 	}
 	defer policyUpdateFile.Close()
 
-	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, keyPath, policyUpdateFile, pcrProfile, tpm.HmacSession())
+	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []string{keyPath}, policyUpdateFile, pcrProfile, tpm.HmacSession())
 }
 
 // UpdateKeyPCRProtectionPolicy updates the PCR protection policy for the sealed key at the path specified by the keyPath argument
@@ -455,7 +492,26 @@ func UpdateKeyPCRProtectionPolicyV0(tpm *TPMConnection, keyPath, policyUpdatePat
 // If the file cannot be deserialized correctly or validation of the file fails, a InvalidKeyFileError error will be returned.
 //
 // On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
-// computed from the supplied PCRProtectionProfile.
+// computed from the supplied PCRProtectionProfile. If the sealed key data file was created with a PCR policy counter, the
+// previous PCR policy will be revoked.
 func UpdateKeyPCRProtectionPolicy(tpm *TPMConnection, keyPath string, authKey TPMPolicyAuthKey, pcrProfile *PCRProtectionProfile) error {
-	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, keyPath, authKey, pcrProfile, tpm.HmacSession())
+	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []string{keyPath}, authKey, pcrProfile, tpm.HmacSession())
+}
+
+// UpdateKeyPCRProtectionPolicyMultiple updates the PCR protection policy for the sealed keys at the paths specified
+// by the keyPaths argument to the profile defined by the pcrProfile argument. The keys must all be related (ie, they
+// were created using SealKeyToTPMMultiple). If any key in the supplied set is not related, an error will be returned.
+//
+// If any file cannot be opened, a wrapped *os.PathError error will be returned.
+//
+// If any file cannot be deserialized correctly or validation of a file fails, a InvalidKeyFileError error will
+// be returned.
+//
+// On success, each sealed key data file is updated atomically with an updated authorization policy that includes a PCR
+// policy computed from the supplied PCRProtectionProfile. If the sealed key data files were created with a PCR policy
+// counter, the previous PCR policy will be revoked only when all of the sealed key data files have been updated
+// successfully. If any file is not updated successfully, the previous PCR policy will not be revoked and the associated
+// error will be returned.
+func UpdateKeyPCRProtectionPolicyMultiple(tpm *TPMConnection, keyPaths []string, authKey TPMPolicyAuthKey, pcrProfile *PCRProtectionProfile) error {
+	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, keyPaths, authKey, pcrProfile, tpm.HmacSession())
 }
