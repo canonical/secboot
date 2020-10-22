@@ -560,10 +560,8 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 // If the ActivateOptions field of options contains the "tries=" option, then an
 // error will be returned. This option cannot be used with this function.
 func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, options *ActivateVolumeOptions) error {
-	if options.RecoveryKeyTries < 0 {
-		return errors.New("invalid RecoveryKeyTries")
-	}
-
+	// do not be more strict about checking options to allow reusing it
+	// across different calls
 	activateOptions, err := makeActivateOptions(options.ActivateOptions)
 	if err != nil {
 		return err
