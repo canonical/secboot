@@ -70,6 +70,7 @@ type cryptTestBase struct {
 	passwordFile                 string // a newline delimited list of passwords for the mock systemd-ask-password to return
 	expectedTpmKeyFile           string // the TPM expected by the mock systemd-cryptsetup
 	expectedRecoveryKeyFile      string // the recovery key expected by the mock systemd-cryptsetup
+	expectedKeyFile              string // the key expected by the mock systemd-cryptsetup
 	cryptsetupInvocationCountDir string
 	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
 	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
@@ -118,6 +119,7 @@ func (ctb *cryptTestBase) setUpTestBase(c *C, bt *snapd_testutil.BaseTest) {
 	ctb.passwordFile = filepath.Join(ctb.dir, "password")                       // passwords to be returned by the mock sd-ask-password
 	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")           // TPM key expected by the mock systemd-cryptsetup
 	ctb.expectedRecoveryKeyFile = filepath.Join(ctb.dir, "expectedrecoverykey") // Recovery key expected by the mock systemd-cryptsetup
+	ctb.expectedKeyFile = filepath.Join(ctb.dir, "expectedkey")                 // The key expected by the mock systemd-cryptsetup
 	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")                 // File in which the mock cryptsetup records the passed in key
 	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey")           // File in which the mock cryptsetup records the passed in new key
 	ctb.cryptsetupInvocationCountDir = c.MkDir()
@@ -131,13 +133,15 @@ sed -i -e '1,1d' %[1]s
 
 	sdCryptsetupBottom := `
 key=$(xxd -p < "$4")
-if [ ! -f "%[1]s" ] || [ "$key" != "$(xxd -p < "%[1]s")" ]; then
-    if [ ! -f "%[2]s" ] || [ "$key" != "$(xxd -p < "%[2]s")" ]; then
-	exit 1
+for kf in "%[1]s" "%[2]s" "%[3]s"; do
+    if [ -f "$kf" ] && [ "$key" == "$(xxd -p < "$kf")" ]; then
+        exit 0
     fi
-fi
+done
+# use a specific error code to differentiate from arbitrary exit 1 elsewhere
+exit 5
 `
-	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.expectedTpmKeyFile, ctb.expectedRecoveryKeyFile))
+	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.expectedTpmKeyFile, ctb.expectedRecoveryKeyFile, ctb.expectedKeyFile))
 	bt.AddCleanup(ctb.mockSdCryptsetup.Restore)
 	bt.AddCleanup(MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
 
@@ -656,7 +660,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() +
-			" failed: exit status 1\\) but activation with recovery key was successful"},
+			" failed: exit status 5\\) but activation with recovery key was successful"},
 	})
 }
 
@@ -689,7 +693,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		success:           false,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) " +
-			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1\\)"},
+			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5\\)"},
 	})
 }
 
@@ -1187,7 +1191,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
 		sdCryptsetupCalls:   1,
 		errChecker:          ErrorMatches,
-		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1"},
+		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
 	})
 }
 
@@ -1209,6 +1213,87 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling8(c *C) {
 		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000-00000"},
 		errChecker:          ErrorMatches,
 		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted: too many characters"},
+	})
+}
+
+type testActivateVolumeWithKeyData struct {
+	activateOptions []string
+	keyData         []byte
+	expectedKeyData []byte
+	errMatch        string
+	cmdCalled       bool
+}
+
+func (s *cryptSuite) testActivateVolumeWithKey(c *C, data *testActivateVolumeWithKeyData) {
+	c.Assert(data.keyData, NotNil)
+
+	expectedKeyData := data.expectedKeyData
+	if expectedKeyData == nil {
+		expectedKeyData = data.keyData
+	}
+	err := ioutil.WriteFile(s.expectedKeyFile, expectedKeyData, 0644)
+	c.Assert(err, IsNil)
+
+	options := ActivateVolumeOptions{
+		ActivateOptions: data.activateOptions,
+	}
+	err = ActivateVolumeWithKey("luks-volume", "/dev/sda1", data.keyData, &options)
+	if data.errMatch == "" {
+		c.Check(err, IsNil)
+	} else {
+		c.Check(err, ErrorMatches, data.errMatch)
+	}
+
+	if data.cmdCalled {
+		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+		c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
+		c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+		c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{
+			"systemd-cryptsetup", "attach", "luks-volume", "/dev/sda1",
+		})
+		c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches,
+			filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals,
+			strings.Join(append(data.activateOptions, "tries=1"), ","))
+	} else {
+		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+		c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 0)
+	}
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyNoOptions(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: nil,
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyWithOptions(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"--option"},
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyMismatchErr(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"--option"},
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		expectedKeyData: []byte{0, 0, 0, 0, 1},
+		errMatch:        ".*/systemd-cryptsetup failed: exit status 5",
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyTriesErr(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"tries=123"},
+		keyData:         []byte{0, 0, 0, 0, 1},
+		errMatch:        `cannot specify the "tries=" option for systemd-cryptsetup`,
+		cmdCalled:       false,
 	})
 }
 

@@ -550,6 +550,26 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.RecoveryKeyTries, RecoveryKeyUsageReasonRequested, activateOptions, options.KeyringPrefix)
 }
 
+// ActivateVolumeWithKey attempts to activate the LUKS encrypted volume at
+// sourceDevicePath and create a mapping with the name volumeName, using the
+// provided key. This makes use of systemd-cryptsetup.
+//
+// The ActivateOptions field of options can be used to specify additional
+// options to pass to systemd-cryptsetup. All other fields are ignored.
+//
+// If the ActivateOptions field of options contains the "tries=" option, then an
+// error will be returned. This option cannot be used with this function.
+func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, options *ActivateVolumeOptions) error {
+	// do not be more strict about checking options to allow reusing it
+	// across different calls
+	activateOptions, err := makeActivateOptions(options.ActivateOptions)
+	if err != nil {
+		return err
+	}
+
+	return activate(volumeName, sourceDevicePath, key, activateOptions)
+}
+
 // ActivationData corresponds to some data added to the user keyring by one of the ActivateVolume functions.
 type ActivationData interface{}
 
