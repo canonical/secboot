@@ -678,14 +678,16 @@ func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
 // InitializeLUKS2ContainerOptions carries options for initializing LUKS2
 // containers.
 type InitializeLUKS2ContainerOptions struct {
-	// MetadataSize sets the size of the LUKS2 metadata (JSON) area.The
-	// value includes 4096 bytes for the binary metadata. According to LUKS2
-	// specification and cryptsetup(8), only these values are valid: 16, 32,
-	// 64, 128, 256, 512, 1024, 2048 and 4096 kB.
-	MetadataSize int
-	// KeyslotsAreaSize sets the size of the LUKS2 binary keyslot area. The
-	// value must be aligned to 4096 bytes, with the maximum size of 128MB.
-	KeyslotsAreaSize int
+	// MetadataKiBSize sets the size of the LUKS2 metadata (JSON) area,
+	// expressed in multiples of 1024 bytes. The value includes 4096 bytes
+	// for the binary metadata. According to LUKS2 specification and
+	// cryptsetup(8), only these values are valid: 16, 32, 64, 128, 256,
+	// 512, 1024, 2048 and 4096 KiB.
+	MetadataKiBSize int
+	// KeyslotsAreaSize sets the size of the LUKS2 binary keyslot area,
+	// expressed in multiples of 1024 bytes. The value must be aligned to
+	// 4096 bytes, with the maximum size of 128MB.
+	KeyslotsAreaKiBSize int
 }
 
 func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
@@ -693,29 +695,29 @@ func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) er
 		return nil
 	}
 
-	if options.MetadataSize != 0 {
+	if options.MetadataKiBSize != 0 {
 		// metadata size is one of the allowed values (in kB)
 		allowedSizesKB := []int{16, 32, 64, 128, 256, 512, 1024, 2048, 4096}
 		found := false
 		for _, sz := range allowedSizesKB {
-			if options.MetadataSize == sz*1024 {
+			if options.MetadataKiBSize == sz {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return fmt.Errorf("cannot set metadata size to %v bytes",
-				options.MetadataSize)
+			return fmt.Errorf("cannot set metadata size to %v KiB",
+				options.MetadataKiBSize)
 		}
 	}
-	if options.KeyslotsAreaSize != 0 {
-		// minimum size 4096, a multiple of 4096, max size 128MB
-		sizeValid := options.KeyslotsAreaSize >= 4096 &&
-			options.KeyslotsAreaSize <= 128*1024*1024 &&
-			options.KeyslotsAreaSize%4096 == 0
+	if options.KeyslotsAreaKiBSize != 0 {
+		// minimum size 4096 (4KiB), a multiple of 4096, max size 128MiB
+		sizeValid := options.KeyslotsAreaKiBSize >= 4 &&
+			options.KeyslotsAreaKiBSize <= 128*1024 &&
+			options.KeyslotsAreaKiBSize%4 == 0
 		if !sizeValid {
-			return fmt.Errorf("cannot set keyslots area size to %v bytes",
-				options.KeyslotsAreaSize)
+			return fmt.Errorf("cannot set keyslots area size to %v KiB",
+				options.KeyslotsAreaKiBSize)
 		}
 	}
 	return nil
@@ -760,13 +762,13 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		"--label", label,
 	}
 	if options != nil {
-		if options.MetadataSize != 0 {
+		if options.MetadataKiBSize != 0 {
 			args = append(args,
-				"--luks2-metadata-size", strconv.Itoa(options.MetadataSize))
+				"--luks2-metadata-size", fmt.Sprintf("%dk", options.MetadataKiBSize))
 		}
-		if options.KeyslotsAreaSize != 0 {
+		if options.KeyslotsAreaKiBSize != 0 {
 			args = append(args,
-				"--luks2-keyslots-size", strconv.Itoa(options.KeyslotsAreaSize))
+				"--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
 		}
 	}
 	args = append(args,

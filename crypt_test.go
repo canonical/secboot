@@ -1274,8 +1274,8 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 		label:      "test",
 		key:        s.tpmKey,
 		opts: &InitializeLUKS2ContainerOptions{
-			MetadataSize:     2 * 1024 * 1024, // 2MB
-			KeyslotsAreaSize: 3 * 1024 * 1024, // 3MB
+			MetadataKiBSize:     2 * 1024, // 2MiB
+			KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
 
 		},
 		formatArgs: []string{"cryptsetup",
@@ -1285,8 +1285,8 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
 			"--pbkdf-memory", "32",
 			"--label", "test",
-			"--luks2-metadata-size", "2097152",
-			"--luks2-keyslots-size", "3145728",
+			"--luks2-metadata-size", "2048k",
+			"--luks2-keyslots-size", "3072k",
 			"/dev/vdc2",
 		},
 	})
@@ -1296,51 +1296,51 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
 	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32], nil), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
 }
 
-func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataSize(c *C) {
+func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataKiBSize(c *C) {
 	key := make([]byte, 64)
 	for _, validSz := range []int{0, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096} {
 		opts := InitializeLUKS2ContainerOptions{
-			MetadataSize: validSz * 1024,
+			MetadataKiBSize: validSz,
 		}
 		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
 	}
 
 	for _, invalidSz := range []int{1, 16 + 3, 8192, 500} {
 		opts := InitializeLUKS2ContainerOptions{
-			MetadataSize: invalidSz * 1024,
+			MetadataKiBSize: invalidSz,
 		}
 		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
-			fmt.Sprintf("cannot set metadata size to %v bytes", invalidSz*1024))
+			fmt.Sprintf("cannot set metadata size to %v KiB", invalidSz))
 	}
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerKeyslotsSize(c *C) {
 	key := make([]byte, 64)
-	for _, validSz := range []int{0, 4096,
-		128 * 1024 * 1024,
-		8 * 1024 * 1024,
-		16 * 1024,
-		256 * 4096,
+	for _, validSz := range []int{0, 4,
+		128 * 1024,
+		8 * 1024,
+		16,
+		256,
 	} {
 		opts := InitializeLUKS2ContainerOptions{
-			KeyslotsAreaSize: validSz,
+			KeyslotsAreaKiBSize: validSz,
 		}
 		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
 	}
 
 	for _, invalidSz := range []int{
-		// smaller than 4096
-		4095, 1,
+		// smaller than 4096 (4KiB)
+		1, 3,
 		// misaligned
-		10*4096 + 1024,
+		40 + 1,
 		// larger than 128MB
-		128*1024*1024 + 4096,
+		128*1024 + 4,
 	} {
 		opts := InitializeLUKS2ContainerOptions{
-			KeyslotsAreaSize: invalidSz,
+			KeyslotsAreaKiBSize: invalidSz,
 		}
 		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
-			fmt.Sprintf("cannot set keyslots area size to %v bytes", invalidSz))
+			fmt.Sprintf("cannot set keyslots area size to %v KiB", invalidSz))
 	}
 }
 
