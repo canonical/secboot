@@ -587,6 +587,326 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys11(c
 		authPrivateKey:    s.authPrivateKey})
 }
 
+type testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData struct {
+	keyFiles          []string
+	pinTries          int
+	recoveryKeyTries  int
+	activateOptions   []string
+	keyringPrefix     string
+	passphrases       []string
+	sdCryptsetupCalls int
+	success           bool
+	errCodes          []KeyErrorCode
+	errChecker        Checker
+	errCheckerArgs    []interface{}
+}
+
+func (s *cryptTPMSimulatorSuite) testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c *C, data *testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData) {
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
+
+	options := ActivateVolumeOptions{
+		PassphraseTries:  data.pinTries,
+		RecoveryKeyTries: data.recoveryKeyTries,
+		ActivateOptions:  data.activateOptions,
+		KeyringPrefix:    data.keyringPrefix}
+	success, err := ActivateVolumeWithMultipleTPMSealedKeys(s.TPM, "data", "/dev/sda1", data.keyFiles, nil, &options)
+	c.Check(err, data.errChecker, data.errCheckerArgs...)
+	c.Check(success, Equals, data.success)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.passphrases))
+	for i, call := range s.mockSdAskPassword.Calls() {
+		passphraseType := "PIN"
+		if i >= data.pinTries {
+			passphraseType = "recovery key"
+		}
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the " + passphraseType + " for disk /dev/sda1:"})
+	}
+	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
+	for _, call := range s.mockSdCryptsetup.Calls() {
+		c.Assert(len(call), Equals, 6)
+		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
+	}
+
+	if !data.success {
+		return
+	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryActivationData(c, data.keyringPrefix, "/dev/sda1", false, data.errCodes)
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling1(c *C) {
+	// Test that recovery fallback works with the TPM in DA lockout mode.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	defer func() {
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	}()
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot unseal key: the TPM is in DA lockout mode " +
+			"\\(.*/keydata\\)\\), \\(cannot unseal key: the TPM is in DA lockout mode \\(.*/keydata\\)\\)\\] but activation with recovery " +
+			"key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling2(c *C) {
+	// Test that recovery fallback works when there is no SRK and a new one can't be created.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	srk, err := s.TPM.CreateResourceContextFromTPM(tcg.SRKHandle)
+	c.Assert(err, IsNil)
+	_, err = s.TPM.EvictControl(s.TPM.OwnerHandleContext(), srk, srk.Handle(), nil)
+	c.Assert(err, IsNil)
+	s.SetHierarchyAuth(c, tpm2.HandleOwner)
+	s.TPM.OwnerHandleContext().SetAuthValue(nil)
+	defer s.TPM.OwnerHandleContext().SetAuthValue(testAuth)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorTPMProvisioning, KeyErrorTPMProvisioning},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot unseal key: the TPM is not correctly provisioned " +
+			"\\(.*/keydata\\)\\), \\(cannot unseal key: the TPM is not correctly provisioned \\(.*/keydata\\)\\)\\] but activation with recovery " +
+			"key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling3(c *C) {
+	// Test that recovery fallback works when the unsealed key is incorrect.
+	key := make([]byte, 64)
+	rand.Read(key)
+
+	incorrectKey := make([]byte, 32)
+	rand.Read(incorrectKey)
+	c.Assert(os.RemoveAll(filepath.Join(s.mockKeyslotsDir, "1")), IsNil)
+	s.addMockKeyslot(c, incorrectKey)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 3,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorInvalidFile, KeyErrorInvalidFile},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1 " +
+			"\\(.*/keydata\\)\\), \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1 \\(.*/keydata\\)\\)\\] but activation with recovery " +
+			"key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling4(c *C) {
+	// Test that activation fails if RecoveryKeyTries is zero.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	defer func() {
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	}()
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:   []string{s.keyFile, keyFile},
+		errCodes:   []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
+		errChecker: ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot unseal key: the TPM is in DA lockout mode " +
+			"\\(.*/keydata\\)\\), \\(cannot unseal key: the TPM is in DA lockout mode \\(.*/keydata\\)\\)\\] and activation with " +
+			"recovery key failed \\(no recovery key tries permitted\\)"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling5(c *C) {
+	// Test that activation fails if the wrong recovery key is supplied.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	defer func() {
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	}()
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		sdCryptsetupCalls: 1,
+		recoveryKeyTries:  1,
+		passphrases:       []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
+		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot unseal key: the TPM is in DA lockout mode " +
+			"\\(.*/keydata\\)\\), \\(cannot unseal key: the TPM is in DA lockout mode \\(.*/keydata\\)\\)\\] and activation with " +
+			"recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1\\)"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling6(c *C) {
+	// Test that recovery fallback works when a passphrase is required for all keys, but
+	// no passphrase attempts are permitted.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorPassphraseFail, KeyErrorPassphraseFail},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(no PIN tries permitted when a PIN is required " +
+			"\\(.*/keydata\\)\\), \\(no PIN tries permitted when a PIN is required \\(.*/keydata\\)\\)\\] but activation with recovery " +
+			"key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling7(c *C) {
+	// Test that recovery fallback works when the sealed key authorization policies are wrong.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	_, err = s.TPM.PCREvent(s.TPM.PCRHandleContext(7), []byte("foo"), nil)
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorInvalidFile, KeyErrorInvalidFile},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot unseal key: invalid key data file: cannot " +
+			"complete authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data " +
+			"\\(.*/keydata\\)\\), \\(cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"complete OR assertions: current session digest not found in policy data \\(.*/keydata\\)\\)\\] but activation with recovery " +
+			"key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling8(c *C) {
+	// Test that recovery fallback works when one key has an invalid authorization policy, and
+	// we supply the wrong passphrase to the second key.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).ExtendPCR(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		pinTries:          1,
+		recoveryKeyTries:  1,
+		passphrases:       []string{"foo", strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorPassphraseFail, KeyErrorInvalidFile},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot unseal key: the provided PIN is incorrect " +
+			"\\(.*/keydata\\)\\), \\(cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"complete OR assertions: current session digest not found in policy data \\(.*/keydata\\)\\)\\] but activation with recovery " +
+			"key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling9(c *C) {
+	// Test that recovery fallback works with more than one attempt at providing the recovery key.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	defer func() {
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	}()
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:         []string{s.keyFile, keyFile},
+		recoveryKeyTries: 2,
+		passphrases: []string{
+			"00000-00000-00000-00000-00000-00000-00000-00000",
+			strings.Join(s.recoveryKeyAscii, "-"),
+		},
+		sdCryptsetupCalls: 2,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot unseal key: the TPM is in DA lockout mode " +
+			"\\(.*/keydata\\)\\), \\(cannot unseal key: the TPM is in DA lockout mode \\(.*/keydata\\)\\)\\] but activation with recovery " +
+			"key was successful"},
+	})
+}
+
 type testActivateVolumeWithTPMSealedKeyNo2FAData struct {
 	volumeName       string
 	sourceDevicePath string
