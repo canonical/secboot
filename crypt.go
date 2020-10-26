@@ -568,6 +568,10 @@ type ActivateVolumeOptions struct {
 // If the volume is successfully activated, either with a TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
 func ActivateVolumeWithMultipleTPMSealedKeys(tpm *TPMConnection, volumeName, sourceDevicePath string, keyPaths []string, passphraseReader io.Reader, options *ActivateVolumeOptions) (bool, error) {
+	if len(keyPaths) == 0 {
+		return false, errors.New("no key files provided")
+	}
+
 	if options.PassphraseTries < 0 {
 		return false, errors.New("invalid PassphraseTries")
 	}
