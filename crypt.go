@@ -695,6 +695,54 @@ func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
 	return nil
 }
 
+// InitializeLUKS2ContainerOptions carries options for initializing LUKS2
+// containers.
+type InitializeLUKS2ContainerOptions struct {
+	// MetadataKiBSize sets the size of the LUKS2 metadata (JSON) area,
+	// expressed in multiples of 1024 bytes. The value includes 4096 bytes
+	// for the binary metadata. According to LUKS2 specification and
+	// cryptsetup(8), only these values are valid: 16, 32, 64, 128, 256,
+	// 512, 1024, 2048 and 4096 KiB.
+	MetadataKiBSize int
+	// KeyslotsAreaSize sets the size of the LUKS2 binary keyslot area,
+	// expressed in multiples of 1024 bytes. The value must be aligned to
+	// 4096 bytes, with the maximum size of 128MB.
+	KeyslotsAreaKiBSize int
+}
+
+func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
+	if options == nil {
+		return nil
+	}
+
+	if options.MetadataKiBSize != 0 {
+		// metadata size is one of the allowed values (in kB)
+		allowedSizesKB := []int{16, 32, 64, 128, 256, 512, 1024, 2048, 4096}
+		found := false
+		for _, sz := range allowedSizesKB {
+			if options.MetadataKiBSize == sz {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("cannot set metadata size to %v KiB",
+				options.MetadataKiBSize)
+		}
+	}
+	if options.KeyslotsAreaKiBSize != 0 {
+		// minimum size 4096 (4KiB), a multiple of 4096, max size 128MiB
+		sizeValid := options.KeyslotsAreaKiBSize >= 4 &&
+			options.KeyslotsAreaKiBSize <= 128*1024 &&
+			options.KeyslotsAreaKiBSize%4 == 0
+		if !sizeValid {
+			return fmt.Errorf("cannot set keyslots area size to %v KiB",
+				options.KeyslotsAreaKiBSize)
+		}
+	}
+	return nil
+}
+
 // InitializeLUKS2Container will initialize the partition at the specified devicePath as a new LUKS2 container. This can only
 // be called on a partition that isn't mapped. The label for the new LUKS2 container is provided via the label argument.
 //
@@ -707,12 +755,15 @@ func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
 //
 // WARNING: This function is destructive. Calling this on an existing LUKS container will make the data contained inside of it
 // irretrievable.
-func InitializeLUKS2Container(devicePath, label string, key []byte) error {
+func InitializeLUKS2Container(devicePath, label string, key []byte, options *InitializeLUKS2ContainerOptions) error {
 	if len(key) != 64 {
 		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
 	}
+	if err := validateInitializeLUKS2Options(options); err != nil {
+		return err
+	}
 
-	cmd := exec.Command("cryptsetup",
+	args := []string{
 		// batch processing, no password verification for formatting an existing LUKS container
 		"-q",
 		// formatting a new volume
@@ -729,8 +780,21 @@ func InitializeLUKS2Container(devicePath, label string, key []byte) error {
 		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
 		// set LUKS2 label
 		"--label", label,
+	}
+	if options != nil {
+		if options.MetadataKiBSize != 0 {
+			args = append(args,
+				"--luks2-metadata-size", fmt.Sprintf("%dk", options.MetadataKiBSize))
+		}
+		if options.KeyslotsAreaKiBSize != 0 {
+			args = append(args,
+				"--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
+		}
+	}
+	args = append(args,
 		// device to format
 		devicePath)
+	cmd := exec.Command("cryptsetup", args...)
 	cmd.Stdin = bytes.NewReader(key)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
