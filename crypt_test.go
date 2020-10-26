@@ -67,9 +67,11 @@ type cryptTestBase struct {
 
 	dir string
 
-	passwordFile                 string // a newline delimited list of passwords for the mock systemd-ask-password to return
-	mockKeyslotsDir              string
-	mockKeyslotsCount            int
+	passwordFile string // a newline delimited list of passwords for the mock systemd-ask-password to return
+
+	mockKeyslotsDir   string
+	mockKeyslotsCount int
+
 	cryptsetupInvocationCountDir string
 	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
 	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
@@ -139,7 +141,8 @@ for f in "%[1]s"/*; do
     fi
 done
 
-exit 1
+# use a specific error code to differentiate from arbitrary exit 1 elsewhere
+exit 5
 `
 	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.mockKeyslotsDir))
 	bt.AddCleanup(ctb.mockSdCryptsetup.Restore)
@@ -724,8 +727,8 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		success:           true,
 		errCodes:          []KeyErrorCode{KeyErrorInvalidFile, KeyErrorInvalidFile},
 		errChecker:        ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1 " +
-			"\\(.*/keydata\\)\\), \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1 \\(.*/keydata\\)\\)\\] but activation with recovery " +
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5 " +
+			"\\(.*/keydata\\)\\), \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5 \\(.*/keydata\\)\\)\\] but activation with recovery " +
 			"key was successful"},
 	})
 }
@@ -781,7 +784,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed keys \\[\\(cannot unseal key: the TPM is in DA lockout mode " +
 			"\\(.*/keydata\\)\\), \\(cannot unseal key: the TPM is in DA lockout mode \\(.*/keydata\\)\\)\\] and activation with " +
-			"recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1\\)"},
+			"recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5\\)"},
 	})
 }
 
@@ -1265,7 +1268,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() +
-			" failed: exit status 1\\) but activation with recovery key was successful"},
+			" failed: exit status 5\\) but activation with recovery key was successful"},
 	})
 }
 
@@ -1298,7 +1301,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		success:           false,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) " +
-			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1\\)"},
+			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5\\)"},
 	})
 }
 
@@ -1796,7 +1799,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
 		sdCryptsetupCalls:   1,
 		errChecker:          ErrorMatches,
-		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1"},
+		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
 	})
 }
 
@@ -1821,17 +1824,109 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling8(c *C) {
 	})
 }
 
+type testActivateVolumeWithKeyData struct {
+	activateOptions []string
+	keyData         []byte
+	expectedKeyData []byte
+	errMatch        string
+	cmdCalled       bool
+}
+
+func (s *cryptSuite) testActivateVolumeWithKey(c *C, data *testActivateVolumeWithKeyData) {
+	c.Assert(data.keyData, NotNil)
+
+	expectedKeyData := data.expectedKeyData
+	if expectedKeyData == nil {
+		expectedKeyData = data.keyData
+	}
+	s.addMockKeyslot(c, expectedKeyData)
+
+	options := ActivateVolumeOptions{
+		ActivateOptions: data.activateOptions,
+	}
+	err := ActivateVolumeWithKey("luks-volume", "/dev/sda1", data.keyData, &options)
+	if data.errMatch == "" {
+		c.Check(err, IsNil)
+	} else {
+		c.Check(err, ErrorMatches, data.errMatch)
+	}
+
+	if data.cmdCalled {
+		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+		c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
+		c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+		c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{
+			"systemd-cryptsetup", "attach", "luks-volume", "/dev/sda1",
+		})
+		c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches,
+			filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals,
+			strings.Join(append(data.activateOptions, "tries=1"), ","))
+	} else {
+		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+		c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 0)
+	}
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyNoOptions(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: nil,
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyWithOptions(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"--option"},
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyMismatchErr(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"--option"},
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		expectedKeyData: []byte{0, 0, 0, 0, 1},
+		errMatch:        ".*/systemd-cryptsetup failed: exit status 5",
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyTriesErr(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"tries=123"},
+		keyData:         []byte{0, 0, 0, 0, 1},
+		errMatch:        `cannot specify the "tries=" option for systemd-cryptsetup`,
+		cmdCalled:       false,
+	})
+}
+
 type testInitializeLUKS2ContainerData struct {
 	devicePath string
 	label      string
 	key        []byte
+	opts       *InitializeLUKS2ContainerOptions
+	formatArgs []string
 }
 
 func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS2ContainerData) {
-	c.Check(InitializeLUKS2Container(data.devicePath, data.label, data.key), IsNil)
+	c.Check(InitializeLUKS2Container(data.devicePath, data.label, data.key, data.opts), IsNil)
+	formatArgs := []string{"cryptsetup",
+		"-q", "luksFormat", "--type", "luks2",
+		"--key-file", "-", "--cipher", "aes-xts-plain64",
+		"--key-size", "512",
+		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
+		"--pbkdf-memory", "32", "--label",
+		data.label, data.devicePath,
+	}
+	if data.formatArgs != nil {
+		formatArgs = data.formatArgs
+	}
 	c.Check(s.mockCryptsetup.Calls(), DeepEquals, [][]string{
-		{"cryptsetup", "-q", "luksFormat", "--type", "luks2", "--key-file", "-", "--cipher", "aes-xts-plain64", "--key-size", "512",
-			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--label", data.label, data.devicePath},
+		formatArgs,
 		{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath}})
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
@@ -1864,8 +1959,81 @@ func (s *cryptSuite) TestInitializeLUKS2Container(c *C) {
 	})
 }
 
+func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
+	// Test with a different key
+	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
+		devicePath: "/dev/vdc2",
+		label:      "test",
+		key:        s.tpmKey,
+		opts: &InitializeLUKS2ContainerOptions{
+			MetadataKiBSize:     2 * 1024, // 2MiB
+			KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
+
+		},
+		formatArgs: []string{"cryptsetup",
+			"-q", "luksFormat", "--type", "luks2",
+			"--key-file", "-", "--cipher", "aes-xts-plain64",
+			"--key-size", "512",
+			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
+			"--pbkdf-memory", "32",
+			"--label", "test",
+			"--luks2-metadata-size", "2048k",
+			"--luks2-keyslots-size", "3072k",
+			"/dev/vdc2",
+		},
+	})
+}
+
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
-	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32]), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
+	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32], nil), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataKiBSize(c *C) {
+	key := make([]byte, 64)
+	for _, validSz := range []int{0, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096} {
+		opts := InitializeLUKS2ContainerOptions{
+			MetadataKiBSize: validSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
+	}
+
+	for _, invalidSz := range []int{1, 16 + 3, 8192, 500} {
+		opts := InitializeLUKS2ContainerOptions{
+			MetadataKiBSize: invalidSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
+			fmt.Sprintf("cannot set metadata size to %v KiB", invalidSz))
+	}
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerKeyslotsSize(c *C) {
+	key := make([]byte, 64)
+	for _, validSz := range []int{0, 4,
+		128 * 1024,
+		8 * 1024,
+		16,
+		256,
+	} {
+		opts := InitializeLUKS2ContainerOptions{
+			KeyslotsAreaKiBSize: validSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
+	}
+
+	for _, invalidSz := range []int{
+		// smaller than 4096 (4KiB)
+		1, 3,
+		// misaligned
+		40 + 1,
+		// larger than 128MB
+		128*1024 + 4,
+	} {
+		opts := InitializeLUKS2ContainerOptions{
+			KeyslotsAreaKiBSize: invalidSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
+			fmt.Sprintf("cannot set keyslots area size to %v KiB", invalidSz))
+	}
 }
 
 type testAddRecoveryKeyToLUKS2ContainerData struct {
