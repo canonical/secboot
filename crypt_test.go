@@ -218,7 +218,7 @@ dump_key "$new_keyfile" "%[3]s.$invocation"
 	})
 }
 
-func (ctb *cryptTestBase) checkRecoveryActivationData(c *C, prefix, path string, reason RecoveryKeyUsageReason) {
+func (ctb *cryptTestBase) checkRecoveryActivationData(c *C, prefix, path string, requested bool, errors []KeyErrorCode) {
 	// The previous tests should have all succeeded, but the following test will fail if the user keyring isn't reachable from
 	// the session keyring.
 	if !ctb.possessesUserKeyringKeys && !c.Failed() {
@@ -230,7 +230,8 @@ func (ctb *cryptTestBase) checkRecoveryActivationData(c *C, prefix, path string,
 	recoveryData, ok := data.(*RecoveryActivationData)
 	c.Assert(ok, Equals, true)
 	c.Check(recoveryData.Key[:], DeepEquals, ctb.recoveryKey)
-	c.Check(recoveryData.Reason, Equals, reason)
+	c.Check(recoveryData.Requested, Equals, requested)
+	c.Check(recoveryData.ErrorCodes, DeepEquals, errors)
 
 	data, err = GetActivationDataFromKernel(prefix, path, true)
 	c.Check(err, IsNil)
@@ -529,7 +530,7 @@ type testActivateVolumeWithTPMSealedKeyErrorHandlingData struct {
 	passphrases       []string
 	sdCryptsetupCalls int
 	success           bool
-	recoveryReason    RecoveryKeyUsageReason
+	recoveryReason    KeyErrorCode
 	errChecker        Checker
 	errCheckerArgs    []interface{}
 }
@@ -568,7 +569,7 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 	}
 
 	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryActivationData(c, data.keyringPrefix, "/dev/sda1", data.recoveryReason)
+	s.checkRecoveryActivationData(c, data.keyringPrefix, "/dev/sda1", false, []KeyErrorCode{data.recoveryReason})
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
@@ -610,7 +611,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonTPMLockout,
+		recoveryReason:    KeyErrorTPMLockout,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) but " +
 			"activation with recovery key was successful"},
@@ -635,7 +636,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		},
 		sdCryptsetupCalls: 2,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonTPMProvisioningError,
+		recoveryReason:    KeyErrorTPMProvisioning,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is not correctly " +
 			"provisioned\\) but activation with recovery key was successful"},
@@ -653,7 +654,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 2,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() +
 			" failed: exit status 1\\) but activation with recovery key was successful"},
@@ -706,7 +707,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonPassphraseFail,
+		recoveryReason:    KeyErrorPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the provided PIN is incorrect\\) but " +
 			"activation with recovery key was successful"},
@@ -721,7 +722,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonPassphraseFail,
+		recoveryReason:    KeyErrorPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(no PIN tries permitted when a PIN is required\\) but " +
 			"activation with recovery key was successful"},
@@ -738,7 +739,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
 			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
@@ -758,7 +759,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
 			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
@@ -812,7 +813,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 	}
 
 	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryActivationData(c, data.keyringPrefix, data.sourceDevicePath, RecoveryKeyUsageReasonRequested)
+	s.checkRecoveryActivationData(c, data.keyringPrefix, data.sourceDevicePath, true, nil)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
@@ -934,7 +935,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 	}
 
 	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryActivationData(c, "", "/dev/sda1", RecoveryKeyUsageReasonRequested)
+	s.checkRecoveryActivationData(c, "", "/dev/sda1", true, nil)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {

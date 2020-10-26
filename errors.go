@@ -20,6 +20,7 @@
 package secboot
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -145,4 +146,33 @@ func (e *ActivateWithTPMSealedKeyError) Error() string {
 		return fmt.Sprintf("cannot activate with TPM sealed key (%v) and activation with recovery key failed (%v)", e.TPMErr, e.RecoveryKeyUsageErr)
 	}
 	return fmt.Sprintf("cannot activate with TPM sealed key (%v) but activation with recovery key was successful", e.TPMErr)
+}
+
+// ActivateWithMultipleTPMSealedKeysError is returned from ActivateVolumeWithMultipleTPMSealedKeys if activation with the
+// TPM protected keys failed.
+type ActivateWithMultipleTPMSealedKeysError struct {
+	// TPMErrs details the errors that occurred during activation with the TPM sealed keys.
+	TPMErrs []error
+
+	// RecoveryKeyUsageErr details the error that occurred during activation with the fallback recovery key, if activation
+	// with the recovery key was also unsuccessful.
+	RecoveryKeyUsageErr error
+}
+
+func (e *ActivateWithMultipleTPMSealedKeysError) Error() string {
+	var s bytes.Buffer
+	fmt.Fprintf(&s, "cannot activate with TPM sealed keys [")
+	for i, err := range e.TPMErrs {
+		if i > 0 {
+			fmt.Fprintf(&s, ", ")
+		}
+		fmt.Fprintf(&s, "(%v)", err)
+	}
+	fmt.Fprintf(&s, "] ")
+	if e.RecoveryKeyUsageErr != nil {
+		fmt.Fprintf(&s, "and activation with recovery key failed (%v)", e.RecoveryKeyUsageErr)
+	} else {
+		fmt.Fprintf(&s, "but activation with recovery key was successful")
+	}
+	return s.String()
 }
