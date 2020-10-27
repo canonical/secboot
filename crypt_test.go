@@ -359,7 +359,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys1(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -378,7 +378,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys2(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -397,7 +397,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys3(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -416,7 +416,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys4(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -436,7 +436,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys5(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -460,7 +460,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys6(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).ExtendPCR(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
@@ -481,7 +481,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys7(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -501,7 +501,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys8(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -525,7 +525,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys9(c 
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -549,7 +549,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys10(c
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -573,7 +573,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys11(c
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).ExtendPCR(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
@@ -647,7 +647,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -667,7 +667,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
-			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is in DA lockout mode" +
 			"\nbut activation with recovery key was successful"},
 	})
 }
@@ -678,7 +678,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -701,7 +701,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is not correctly provisioned" +
-			"\n- .*/keydata: cannot unseal key: the TPM is not correctly provisioned" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is not correctly provisioned" +
 			"\nbut activation with recovery key was successful"},
 	})
 }
@@ -716,7 +716,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	c.Assert(os.RemoveAll(filepath.Join(s.mockKeyslotsDir, "1")), IsNil)
 	s.addMockKeyslot(c, incorrectKey)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -731,7 +731,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5" +
-			"\n- .*/keydata: cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5" +
+			"\n- .*/keydata2: cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5" +
 			"\nbut activation with recovery key was successful"},
 	})
 }
@@ -742,7 +742,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -758,7 +758,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker: ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
-			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is in DA lockout mode" +
 			"\nand activation with recovery key failed: no recovery key tries permitted"},
 	})
 }
@@ -769,7 +769,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -788,7 +788,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
-			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is in DA lockout mode" +
 			"\nand activation with recovery key failed: " +
 			"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
 	})
@@ -801,7 +801,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -818,7 +818,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: no PIN tries permitted when a PIN is required" +
-			"\n- .*/keydata: no PIN tries permitted when a PIN is required" +
+			"\n- .*/keydata2: no PIN tries permitted when a PIN is required" +
 			"\nbut activation with recovery key was successful"},
 	})
 }
@@ -829,7 +829,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -848,7 +848,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
 			"complete OR assertions: current session digest not found in policy data" +
-			"\n- .*/keydata: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"\n- .*/keydata2: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
 			"complete OR assertions: current session digest not found in policy data" +
 			"\nbut activation with recovery key was successful"},
 	})
@@ -861,7 +861,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).ExtendPCR(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
@@ -880,7 +880,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the provided PIN is incorrect" +
-			"\n- .*/keydata: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"\n- .*/keydata2: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
 			"complete OR assertions: current session digest not found in policy data" +
 			"\nbut activation with recovery key was successful"},
 	})
@@ -892,7 +892,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	keyFile := filepath.Join(c.MkDir(), "keydata")
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
@@ -915,7 +915,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
-			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is in DA lockout mode" +
 			"\nbut activation with recovery key was successful"},
 	})
 }
