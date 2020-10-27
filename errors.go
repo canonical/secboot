@@ -161,18 +161,14 @@ type ActivateWithMultipleTPMSealedKeysError struct {
 
 func (e *ActivateWithMultipleTPMSealedKeysError) Error() string {
 	var s bytes.Buffer
-	fmt.Fprintf(&s, "cannot activate with TPM sealed keys [")
-	for i, err := range e.TPMErrs {
-		if i > 0 {
-			fmt.Fprintf(&s, ", ")
-		}
-		fmt.Fprintf(&s, "(%v)", err)
+	fmt.Fprintf(&s, "cannot activate with TPM sealed keys:")
+	for _, err := range e.TPMErrs {
+		fmt.Fprintf(&s, "\n- %v", err)
 	}
-	fmt.Fprintf(&s, "] ")
 	if e.RecoveryKeyUsageErr != nil {
-		fmt.Fprintf(&s, "and activation with recovery key failed (%v)", e.RecoveryKeyUsageErr)
+		fmt.Fprintf(&s, "\nand activation with recovery key failed: %v", e.RecoveryKeyUsageErr)
 	} else {
-		fmt.Fprintf(&s, "but activation with recovery key was successful")
+		fmt.Fprintf(&s, "\nbut activation with recovery key was successful")
 	}
 	return s.String()
 }

@@ -392,7 +392,7 @@ type activateWithTPMKeyError struct {
 }
 
 func (e *activateWithTPMKeyError) Error() string {
-	return e.err.Error() + " (" + e.path + ")"
+	return fmt.Sprintf("%s: %v", e.path, e.err)
 }
 
 func (e *activateWithTPMKeyError) Unwrap() error {
