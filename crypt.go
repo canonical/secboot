@@ -386,12 +386,6 @@ func unsealKeyFromTPMAndActivate(tpm *TPMConnection, volumeName, sourceDevicePat
 
 var requiresPinErr = errors.New("no PIN tries permitted when a PIN is required")
 
-type activateTPMKeyContext struct {
-	path string
-	k    *SealedKeyObject
-	err  error
-}
-
 type activateWithTPMKeyError struct {
 	path string
 	err  error
@@ -405,14 +399,20 @@ func (e *activateWithTPMKeyError) Unwrap() error {
 	return e.err
 }
 
-type activateWithTPMKeysErrors []*activateWithTPMKeyError
-
-func (e activateWithTPMKeysErrors) Error() string {
-	// TODO:
-	return ""
+type activateTPMKeyContext struct {
+	path string
+	k    *SealedKeyObject
+	err  error
 }
 
-func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string, keyPaths []string, passphraseReader io.Reader, passphraseTries int, activateOptions []string, keyringPrefix string) error {
+func (c *activateTPMKeyContext) Err() *activateWithTPMKeyError {
+	if c.err == nil {
+		return nil
+	}
+	return &activateWithTPMKeyError{path: c.path, err: c.err}
+}
+
+func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string, keyPaths []string, passphraseReader io.Reader, passphraseTries int, activateOptions []string, keyringPrefix string) (succeeded bool, errs []*activateWithTPMKeyError) {
 	var contexts []*activateTPMKeyContext
 	// Read key files
 	for _, path := range keyPaths {
@@ -437,7 +437,7 @@ func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string
 			continue
 		}
 
-		return nil
+		return true, nil
 	}
 
 	// Try key files that do require a passhprase last.
@@ -474,15 +474,14 @@ func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string
 			continue
 		}
 
-		return nil
+		return true, nil
 	}
 
 	// Activation has failed if we reach this point.
-	var errs activateWithTPMKeysErrors
 	for _, c := range contexts {
-		errs = append(errs, &activateWithTPMKeyError{path: c.path, err: c.err})
+		errs = append(errs, c.Err())
 	}
-	return errs
+	return false, errs
 
 }
 
@@ -584,12 +583,7 @@ func ActivateVolumeWithMultipleTPMSealedKeys(tpm *TPMConnection, volumeName, sou
 		return false, err
 	}
 
-	if err := activateWithTPMKeys(tpm, volumeName, sourceDevicePath, keyPaths, passphraseReader, options.PassphraseTries, activateOptions, options.KeyringPrefix); err != nil {
-		errs, ok := err.(activateWithTPMKeysErrors)
-		if !ok {
-			return false, xerrors.Errorf("unexpected error: %w", err)
-		}
-
+	if success, errs := activateWithTPMKeys(tpm, volumeName, sourceDevicePath, keyPaths, passphraseReader, options.PassphraseTries, activateOptions, options.KeyringPrefix); !success {
 		var tpmErrCodes []KeyErrorCode
 		var tpmErrs []error
 
@@ -677,7 +671,7 @@ func ActivateVolumeWithTPMSealedKey(tpm *TPMConnection, volumeName, sourceDevice
 // The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
 //
 // If activation with the recovery key is successful, calling GetActivationDataFromKernel will return a *RecoveryActivationData
-// containing the recovery key and TPMKeyErrorRequested as the recovery reason.
+// containing the recovery key and the Requested flag set to true.
 //
 // If the RecoveryKeyTries field of options is less than zero, an error will be returned. If the ActivateOptions field of options contains the
 // "tries=" option, then an error will be returned. This option cannot be used with this function.
