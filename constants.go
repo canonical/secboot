@@ -24,8 +24,7 @@ import (
 )
 
 const (
-	lockNVHandle     tpm2.Handle = 0x01801100 // Global NV handle for locking access to sealed key objects
-	lockNVDataHandle tpm2.Handle = 0x01801101 // NV index containing policy data for lockNVHandle
+	lockNVHandle tpm2.Handle = 0x01801100 // Legacy global NV handle for locking access to sealed key objects
 
 	// SHA-256 is mandatory to exist on every PC-Client TPM
 	// XXX: Maybe dynamically select algorithms based on what's available on the device?

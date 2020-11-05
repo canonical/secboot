@@ -21,8 +21,11 @@ package secboot
 
 import (
 	"bytes"
-	"crypto/rsa"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"errors"
 	"fmt"
+	"math/big"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -119,20 +122,76 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 	return true, nil
 }
 
-// createPublicAreaForRSASigningKey creates a *tpm2.Public from a go *rsa.PublicKey, which is suitable for loading
+func bigIntToBytesZeroExtended(x *big.Int, bytes int) (out []byte) {
+	b := x.Bytes()
+	if len(b) > bytes {
+		return b
+	}
+	out = make([]byte, bytes)
+	copy(out[bytes-len(b):], b)
+	return
+}
+
+// createPublicAreaForECDSAKey creates a *tpm2.Public from a go *ecdsa.PublicKey, which is suitable for loading
 // in to a TPM with TPMContext.LoadExternal.
-func createPublicAreaForRSASigningKey(key *rsa.PublicKey) *tpm2.Public {
+func createTPMPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
+	var curve tpm2.ECCCurve
+	switch key.Curve {
+	case elliptic.P224():
+		curve = tpm2.ECCCurveNIST_P224
+	case elliptic.P256():
+		curve = tpm2.ECCCurveNIST_P256
+	case elliptic.P384():
+		curve = tpm2.ECCCurveNIST_P384
+	case elliptic.P521():
+		curve = tpm2.ECCCurveNIST_P521
+	default:
+		panic("unsupported curve")
+	}
+
 	return &tpm2.Public{
-		Type:    tpm2.ObjectTypeRSA,
+		Type:    tpm2.ObjectTypeECC,
 		NameAlg: tpm2.HashAlgorithmSHA256,
 		Attrs:   tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrSign,
 		Params: tpm2.PublicParamsU{
-			Data: &tpm2.RSAParams{
+			Data: &tpm2.ECCParams{
 				Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
-				Scheme:    tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
-				KeyBits:   uint16(key.N.BitLen()),
-				Exponent:  uint32(key.E)}},
-		Unique: tpm2.PublicIDU{Data: tpm2.PublicKeyRSA(key.N.Bytes())}}
+				Scheme: tpm2.ECCScheme{
+					Scheme:  tpm2.ECCSchemeECDSA,
+					Details: tpm2.AsymSchemeU{Data: &tpm2.SigSchemeECDSA{HashAlg: tpm2.HashAlgorithmSHA256}}},
+				CurveID: curve,
+				KDF:     tpm2.KDFScheme{Scheme: tpm2.KDFAlgorithmNull}}},
+		Unique: tpm2.PublicIDU{
+			Data: &tpm2.ECCPoint{
+				X: bigIntToBytesZeroExtended(key.X, key.Params().BitSize/8),
+				Y: bigIntToBytesZeroExtended(key.Y, key.Params().BitSize/8)}}}
+}
+
+func createECDSAPrivateKeyFromTPM(public *tpm2.Public, private tpm2.ECCParameter) (*ecdsa.PrivateKey, error) {
+	if public.Type != tpm2.ObjectTypeECC {
+		return nil, errors.New("unsupported type")
+	}
+
+	var curve elliptic.Curve
+	switch public.Params.ECCDetail().CurveID {
+	case tpm2.ECCCurveNIST_P224:
+		curve = elliptic.P224()
+	case tpm2.ECCCurveNIST_P256:
+		curve = elliptic.P256()
+	case tpm2.ECCCurveNIST_P384:
+		curve = elliptic.P384()
+	case tpm2.ECCCurveNIST_P521:
+		curve = elliptic.P521()
+	default:
+		return nil, errors.New("unsupported curve")
+	}
+
+	return &ecdsa.PrivateKey{
+		PublicKey: ecdsa.PublicKey{
+			Curve: curve,
+			X:     new(big.Int).SetBytes(public.Unique.ECC().X),
+			Y:     new(big.Int).SetBytes(public.Unique.ECC().Y)},
+		D: new(big.Int).SetBytes(private)}, nil
 }
 
 // digestListContains indicates whether the specified digest is present in the list of digests.

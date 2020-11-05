@@ -67,9 +67,11 @@ type cryptTestBase struct {
 
 	dir string
 
-	passwordFile                 string // a newline delimited list of passwords for the mock systemd-ask-password to return
-	expectedTpmKeyFile           string // the TPM expected by the mock systemd-cryptsetup
-	expectedRecoveryKeyFile      string // the recovery key expected by the mock systemd-cryptsetup
+	passwordFile string // a newline delimited list of passwords for the mock systemd-ask-password to return
+
+	mockKeyslotsDir   string
+	mockKeyslotsCount int
+
 	cryptsetupInvocationCountDir string
 	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
 	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
@@ -115,11 +117,13 @@ func (ctb *cryptTestBase) setUpTestBase(c *C, bt *snapd_testutil.BaseTest) {
 	ctb.dir = c.MkDir()
 	bt.AddCleanup(MockRunDir(ctb.dir))
 
-	ctb.passwordFile = filepath.Join(ctb.dir, "password")                       // passwords to be returned by the mock sd-ask-password
-	ctb.expectedTpmKeyFile = filepath.Join(ctb.dir, "expectedtpmkey")           // TPM key expected by the mock systemd-cryptsetup
-	ctb.expectedRecoveryKeyFile = filepath.Join(ctb.dir, "expectedrecoverykey") // Recovery key expected by the mock systemd-cryptsetup
-	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")                 // File in which the mock cryptsetup records the passed in key
-	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey")           // File in which the mock cryptsetup records the passed in new key
+	ctb.passwordFile = filepath.Join(ctb.dir, "password") // passwords to be returned by the mock sd-ask-password
+
+	ctb.mockKeyslotsCount = 0
+	ctb.mockKeyslotsDir = c.MkDir()
+
+	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")       // File in which the mock cryptsetup records the passed in key
+	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey") // File in which the mock cryptsetup records the passed in new key
 	ctb.cryptsetupInvocationCountDir = c.MkDir()
 
 	sdAskPasswordBottom := `
@@ -131,13 +135,16 @@ sed -i -e '1,1d' %[1]s
 
 	sdCryptsetupBottom := `
 key=$(xxd -p < "$4")
-if [ ! -f "%[1]s" ] || [ "$key" != "$(xxd -p < "%[1]s")" ]; then
-    if [ ! -f "%[2]s" ] || [ "$key" != "$(xxd -p < "%[2]s")" ]; then
-	exit 1
+for f in "%[1]s"/*; do
+    if [ "$key" == "$(xxd -p < "$f")" ]; then
+	exit 0
     fi
-fi
+done
+
+# use a specific error code to differentiate from arbitrary exit 1 elsewhere
+exit 5
 `
-	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.expectedTpmKeyFile, ctb.expectedRecoveryKeyFile))
+	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.mockKeyslotsDir))
 	bt.AddCleanup(ctb.mockSdCryptsetup.Restore)
 	bt.AddCleanup(MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
 
@@ -196,15 +203,15 @@ dump_key "$new_keyfile" "%[3]s.$invocation"
 	ctb.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
 	bt.AddCleanup(ctb.mockCryptsetup.Restore)
 
-	c.Assert(ioutil.WriteFile(ctb.expectedRecoveryKeyFile, ctb.recoveryKey, 0644), IsNil)
+	ctb.addMockKeyslot(c, ctb.recoveryKey)
 
 	startKeys := getKeyringKeys(c, userKeyring)
 
 	bt.AddCleanup(func() {
-		for kid := range getKeyringKeys(c, userKeyring) {
+		for _, id1 := range getKeyringKeys(c, userKeyring) {
 			found := false
-			for skid := range startKeys {
-				if skid == kid {
+			for _, id2 := range startKeys {
+				if id1 == id2 {
 					found = true
 					break
 				}
@@ -212,71 +219,705 @@ dump_key "$new_keyfile" "%[3]s.$invocation"
 			if found {
 				continue
 			}
-			_, err := unix.KeyctlInt(unix.KEYCTL_UNLINK, kid, userKeyring, 0, 0)
+			_, err := unix.KeyctlInt(unix.KEYCTL_UNLINK, id1, userKeyring, 0, 0)
 			c.Check(err, IsNil)
 		}
 	})
 }
 
-func (ctb *cryptTestBase) checkRecoveryKeyKeyringEntry(c *C, reason RecoveryKeyUsageReason) {
-	id, err := unix.KeyctlSearch(userKeyring, "user", fmt.Sprintf("%s:data:reason=%d", filepath.Base(os.Args[0]), reason), 0)
-	c.Check(err, IsNil)
+func (ctb *cryptTestBase) addMockKeyslot(c *C, key []byte) {
+	c.Assert(ioutil.WriteFile(filepath.Join(ctb.mockKeyslotsDir, fmt.Sprintf("%d", ctb.mockKeyslotsCount)), key, 0644), IsNil)
+	ctb.mockKeyslotsCount++
+}
 
+func (ctb *cryptTestBase) checkRecoveryActivationData(c *C, prefix, path string, requested bool, errors []KeyErrorCode) {
 	// The previous tests should have all succeeded, but the following test will fail if the user keyring isn't reachable from
 	// the session keyring.
 	if !ctb.possessesUserKeyringKeys && !c.Failed() {
 		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
 	}
 
-	buf := make([]byte, 16)
-	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, id, buf, 0)
+	data, err := GetActivationDataFromKernel(prefix, path, false)
+	c.Assert(err, IsNil)
+	recoveryData, ok := data.(*RecoveryActivationData)
+	c.Assert(ok, Equals, true)
+	c.Check(recoveryData.Key[:], DeepEquals, ctb.recoveryKey)
+	c.Check(recoveryData.Requested, Equals, requested)
+	c.Check(recoveryData.ErrorCodes, DeepEquals, errors)
+
+	data, err = GetActivationDataFromKernel(prefix, path, true)
 	c.Check(err, IsNil)
-	c.Check(n, Equals, 16)
-	c.Check(buf, DeepEquals, ctb.recoveryKey)
+	c.Check(data, NotNil)
+	_, err = GetActivationDataFromKernel(prefix, path, true)
+	c.Check(err, Equals, ErrNoActivationData)
 }
 
-type cryptTPMTestBase struct {
+type cryptTPMSimulatorSuite struct {
+	testutil.TPMSimulatorTestBase
 	cryptTestBase
 
-	keyFile string
+	keyFile        string
+	authPrivateKey TPMPolicyAuthKey
 }
 
-func (ctb *cryptTPMTestBase) setUpTestBase(c *C, ttb *testutil.TPMTestBase) {
-	ctb.cryptTestBase.setUpTestBase(c, &ttb.BaseTest)
+var _ = Suite(&cryptTPMSimulatorSuite{})
 
-	c.Assert(ProvisionTPM(ttb.TPM, ProvisionModeFull, nil), IsNil)
+func (s *cryptTPMSimulatorSuite) SetUpSuite(c *C) {
+	s.cryptTestBase.setUpSuiteBase(c)
+}
+
+func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
+	s.TPMSimulatorTestBase.SetUpTest(c)
+	s.cryptTestBase.setUpTestBase(c, &s.BaseTest)
+
+	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	s.ResetTPMSimulator(c)
 
 	dir := c.MkDir()
-	ctb.keyFile = dir + "/keydata"
+	s.keyFile = dir + "/keydata"
 
-	pinHandle := tpm2.Handle(0x0181fff0)
-	c.Assert(SealKeyToTPM(ttb.TPM, ctb.tpmKey, ctb.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: pinHandle}), IsNil)
-	pinIndex, err := ttb.TPM.CreateResourceContextFromTPM(pinHandle)
+	pcrPolicyCounterHandle := tpm2.Handle(0x0181fff0)
+	authPrivateKey, err := SealKeyToTPM(s.TPM, s.tpmKey, s.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: pcrPolicyCounterHandle})
 	c.Assert(err, IsNil)
-	ttb.AddCleanupNVSpace(c, ttb.TPM.OwnerHandleContext(), pinIndex)
+	s.authPrivateKey = authPrivateKey
+	pcrPolicyCounter, err := s.TPM.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
+	c.Assert(err, IsNil)
+	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pcrPolicyCounter)
 
-	c.Assert(ioutil.WriteFile(ctb.expectedTpmKeyFile, ctb.tpmKey, 0644), IsNil)
+	s.addMockKeyslot(c, s.tpmKey)
 
 	// Some tests may increment the DA lockout counter
-	ttb.AddCleanup(func() {
-		c.Check(ttb.TPM.DictionaryAttackLockReset(ttb.TPM.LockoutHandleContext(), nil), IsNil)
+	s.AddCleanup(func() {
+		c.Check(s.TPM.DictionaryAttackLockReset(s.TPM.LockoutHandleContext(), nil), IsNil)
 	})
 }
 
-type cryptTPMSuite struct {
-	testutil.TPMTestBase
-	cryptTPMTestBase
+func (s *cryptTPMSimulatorSuite) checkTPMPolicyAuthKey(c *C, prefix, path string, key TPMPolicyAuthKey) {
+	// The previous tests should have all succeeded, but the following test will fail if the user keyring isn't reachable from
+	// the session keyring.
+	if !s.possessesUserKeyringKeys && !c.Failed() {
+		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
+	}
+
+	data, err := GetActivationDataFromKernel(prefix, path, false)
+	c.Assert(err, IsNil)
+	authKey, ok := data.(TPMPolicyAuthKey)
+	c.Check(ok, Equals, true)
+	c.Check(authKey, DeepEquals, key)
+
+	data, err = GetActivationDataFromKernel(prefix, path, true)
+	c.Check(err, IsNil)
+	c.Check(data, NotNil)
+	_, err = GetActivationDataFromKernel(prefix, path, true)
+	c.Check(err, Equals, ErrNoActivationData)
 }
 
-var _ = Suite(&cryptTPMSuite{})
-
-func (s *cryptTPMSuite) SetUpSuite(c *C) {
-	s.cryptTPMTestBase.setUpSuiteBase(c)
+type testActivateVolumeWithMultipleTPMSealedKeysData struct {
+	volumeName        string
+	sourceDevicePath  string
+	keyFiles          []string
+	pinTries          int
+	recoveryKeyTries  int
+	activateOptions   []string
+	keyringPrefix     string
+	sdCryptsetupCalls int
+	pins              []string
+	authPrivateKey    TPMPolicyAuthKey
 }
 
-func (s *cryptTPMSuite) SetUpTest(c *C) {
-	s.TPMTestBase.SetUpTest(c)
-	s.cryptTPMTestBase.setUpTestBase(c, &s.TPMTestBase)
+func (s *cryptTPMSimulatorSuite) testActivateVolumeWithMultipleTPMSealedKeys(c *C, data *testActivateVolumeWithMultipleTPMSealedKeysData) {
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.pins, "\n")+"\n"), 0644), IsNil)
+
+	options := ActivateVolumeOptions{
+		PassphraseTries:  data.pinTries,
+		RecoveryKeyTries: data.recoveryKeyTries,
+		ActivateOptions:  data.activateOptions,
+		KeyringPrefix:    data.keyringPrefix}
+	success, err := ActivateVolumeWithMultipleTPMSealedKeys(s.TPM, data.volumeName, data.sourceDevicePath, data.keyFiles, nil, &options)
+	c.Check(success, Equals, true)
+	c.Check(err, IsNil)
+
+	c.Check(s.mockSdAskPassword.Calls(), HasLen, len(data.pins))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":" + data.sourceDevicePath, "Please enter the PIN for disk " + data.sourceDevicePath + ":"})
+	}
+
+	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
+	for _, call := range s.mockSdCryptsetup.Calls() {
+		c.Assert(call, HasLen, 6)
+		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
+	}
+
+	s.checkTPMPolicyAuthKey(c, data.keyringPrefix, data.sourceDevicePath, data.authPrivateKey)
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys1(c *C) {
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{s.keyFile, keyFile},
+		sdCryptsetupCalls: 1,
+		authPrivateKey:    s.authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys2(c *C) {
+	// Test with a different volumeName / sourceDevicePath
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "foo",
+		sourceDevicePath:  "/dev/vda2",
+		keyFiles:          []string{s.keyFile, keyFile},
+		sdCryptsetupCalls: 1,
+		authPrivateKey:    s.authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys3(c *C) {
+	// Test with the key files switched around - should still activate with the first key.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{keyFile, s.keyFile},
+		sdCryptsetupCalls: 1,
+		authPrivateKey:    authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys4(c *C) {
+	// Test with extra options for systemd-cryptsetup.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{s.keyFile, keyFile},
+		activateOptions:   []string{"foo=bar", "baz"},
+		sdCryptsetupCalls: 1,
+		authPrivateKey:    s.authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys5(c *C) {
+	// Test that ActivateVolumeWithTPMSealedKey creates a SRK when it can, rather than fallback back to the recovery key.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	srk, err := s.TPM.CreateResourceContextFromTPM(tcg.SRKHandle)
+	c.Assert(err, IsNil)
+	_, err = s.TPM.EvictControl(s.TPM.OwnerHandleContext(), srk, srk.Handle(), nil)
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{s.keyFile, keyFile},
+		sdCryptsetupCalls: 1,
+		authPrivateKey:    s.authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys6(c *C) {
+	// Test with 1 invalid and 1 valid key, with the invalid key being tried first.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).ExtendPCR(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{keyFile, s.keyFile},
+		sdCryptsetupCalls: 1,
+		authPrivateKey:    s.authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys7(c *C) {
+	// Test with 2 keys, with 1 requiring a passphrase. Should activate with the key not
+	// requiring a passphrase, regardless of key order.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{keyFile, s.keyFile},
+		sdCryptsetupCalls: 1,
+		authPrivateKey:    s.authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys8(c *C) {
+	// Test with 2 keys that both require a passhprase
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{s.keyFile, keyFile},
+		pinTries:          1,
+		sdCryptsetupCalls: 1,
+		pins:              []string{"1234"},
+		authPrivateKey:    s.authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys9(c *C) {
+	// Test with 2 keys that both require a passhprase, with only 1 passphrase attempt per
+	// key permitted and the first attempt being incorrect (should activate with second key).
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{s.keyFile, keyFile},
+		pinTries:          1,
+		sdCryptsetupCalls: 1,
+		pins:              []string{"foo", "1234"},
+		authPrivateKey:    authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys10(c *C) {
+	// Test with 2 keys that both require a passhprase, with 2 passphrase attempts per
+	// key permitted and the first attempt being incorrect (should activate with first key).
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{s.keyFile, keyFile},
+		pinTries:          2,
+		sdCryptsetupCalls: 1,
+		pins:              []string{"foo", "1234"},
+		authPrivateKey:    s.authPrivateKey})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys11(c *C) {
+	// Test with 2 keys - 1 invalid that doesn't require a passphrase, and 1 valid that
+	// does require a passphrase. Should activate successfully regardless of key order.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).ExtendPCR(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeys(c, &testActivateVolumeWithMultipleTPMSealedKeysData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/sda1",
+		keyFiles:          []string{keyFile, s.keyFile},
+		pinTries:          1,
+		sdCryptsetupCalls: 1,
+		pins:              []string{"1234"},
+		authPrivateKey:    s.authPrivateKey})
+}
+
+type testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData struct {
+	keyFiles          []string
+	pinTries          int
+	recoveryKeyTries  int
+	activateOptions   []string
+	keyringPrefix     string
+	passphrases       []string
+	sdCryptsetupCalls int
+	success           bool
+	errCodes          []KeyErrorCode
+	errChecker        Checker
+	errCheckerArgs    []interface{}
+}
+
+func (s *cryptTPMSimulatorSuite) testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c *C, data *testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData) {
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
+
+	options := ActivateVolumeOptions{
+		PassphraseTries:  data.pinTries,
+		RecoveryKeyTries: data.recoveryKeyTries,
+		ActivateOptions:  data.activateOptions,
+		KeyringPrefix:    data.keyringPrefix}
+	success, err := ActivateVolumeWithMultipleTPMSealedKeys(s.TPM, "data", "/dev/sda1", data.keyFiles, nil, &options)
+	c.Check(err, data.errChecker, data.errCheckerArgs...)
+	c.Check(success, Equals, data.success)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.passphrases))
+	for i, call := range s.mockSdAskPassword.Calls() {
+		passphraseType := "PIN"
+		if i >= data.pinTries {
+			passphraseType = "recovery key"
+		}
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the " + passphraseType + " for disk /dev/sda1:"})
+	}
+	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
+	for _, call := range s.mockSdCryptsetup.Calls() {
+		c.Assert(len(call), Equals, 6)
+		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
+	}
+
+	if !data.success {
+		return
+	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryActivationData(c, data.keyringPrefix, "/dev/sda1", false, data.errCodes)
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling1(c *C) {
+	// Test that recovery fallback works with the TPM in DA lockout mode.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	defer func() {
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	}()
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is in DA lockout mode" +
+			"\nbut activation with recovery key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling2(c *C) {
+	// Test that recovery fallback works when there is no SRK and a new one can't be created.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	srk, err := s.TPM.CreateResourceContextFromTPM(tcg.SRKHandle)
+	c.Assert(err, IsNil)
+	_, err = s.TPM.EvictControl(s.TPM.OwnerHandleContext(), srk, srk.Handle(), nil)
+	c.Assert(err, IsNil)
+	s.SetHierarchyAuth(c, tpm2.HandleOwner)
+	s.TPM.OwnerHandleContext().SetAuthValue(nil)
+	defer s.TPM.OwnerHandleContext().SetAuthValue(testAuth)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorTPMProvisioning, KeyErrorTPMProvisioning},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: cannot unseal key: the TPM is not correctly provisioned" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is not correctly provisioned" +
+			"\nbut activation with recovery key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling3(c *C) {
+	// Test that recovery fallback works when the unsealed key is incorrect.
+	key := make([]byte, 64)
+	rand.Read(key)
+
+	incorrectKey := make([]byte, 32)
+	rand.Read(incorrectKey)
+	c.Assert(os.RemoveAll(filepath.Join(s.mockKeyslotsDir, "1")), IsNil)
+	s.addMockKeyslot(c, incorrectKey)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 3,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorInvalidFile, KeyErrorInvalidFile},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5" +
+			"\n- .*/keydata2: cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5" +
+			"\nbut activation with recovery key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling4(c *C) {
+	// Test that activation fails if RecoveryKeyTries is zero.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	defer func() {
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	}()
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:   []string{s.keyFile, keyFile},
+		errCodes:   []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
+		errChecker: ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is in DA lockout mode" +
+			"\nand activation with recovery key failed: no recovery key tries permitted"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling5(c *C) {
+	// Test that activation fails if the wrong recovery key is supplied.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	defer func() {
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	}()
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		sdCryptsetupCalls: 1,
+		recoveryKeyTries:  1,
+		passphrases:       []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
+		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is in DA lockout mode" +
+			"\nand activation with recovery key failed: " +
+			"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling6(c *C) {
+	// Test that recovery fallback works when a passphrase is required for all keys, but
+	// no passphrase attempts are permitted.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorPassphraseFail, KeyErrorPassphraseFail},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: no PIN tries permitted when a PIN is required" +
+			"\n- .*/keydata2: no PIN tries permitted when a PIN is required" +
+			"\nbut activation with recovery key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling7(c *C) {
+	// Test that recovery fallback works when the sealed key authorization policies are wrong.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	_, err = s.TPM.PCREvent(s.TPM.PCRHandleContext(7), []byte("foo"), nil)
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		recoveryKeyTries:  1,
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorInvalidFile, KeyErrorInvalidFile},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"complete OR assertions: current session digest not found in policy data" +
+			"\n- .*/keydata2: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"complete OR assertions: current session digest not found in policy data" +
+			"\nbut activation with recovery key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling8(c *C) {
+	// Test that recovery fallback works when one key has an invalid authorization policy, and
+	// we supply the wrong passphrase to the second key.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).ExtendPCR(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:          []string{s.keyFile, keyFile},
+		pinTries:          1,
+		recoveryKeyTries:  1,
+		passphrases:       []string{"foo", strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorPassphraseFail, KeyErrorInvalidFile},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: cannot unseal key: the provided PIN is incorrect" +
+			"\n- .*/keydata2: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"complete OR assertions: current session digest not found in policy data" +
+			"\nbut activation with recovery key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling9(c *C) {
+	// Test that recovery fallback works with more than one attempt at providing the recovery key.
+	key := make([]byte, 64)
+	rand.Read(key)
+	s.addMockKeyslot(c, key)
+
+	keyFile := filepath.Join(c.MkDir(), "keydata2")
+
+	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	defer func() {
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	}()
+
+	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
+		keyFiles:         []string{s.keyFile, keyFile},
+		recoveryKeyTries: 2,
+		passphrases: []string{
+			"00000-00000-00000-00000-00000-00000-00000-00000",
+			strings.Join(s.recoveryKeyAscii, "-"),
+		},
+		sdCryptsetupCalls: 2,
+		success:           true,
+		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
+			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
+			"\n- .*/keydata2: cannot unseal key: the TPM is in DA lockout mode" +
+			"\nbut activation with recovery key was successful"},
+	})
 }
 
 type testActivateVolumeWithTPMSealedKeyNo2FAData struct {
@@ -285,10 +926,15 @@ type testActivateVolumeWithTPMSealedKeyNo2FAData struct {
 	pinTries         int
 	recoveryKeyTries int
 	activateOptions  []string
+	keyringPrefix    string
 }
 
-func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, data *testActivateVolumeWithTPMSealedKeyNo2FAData) {
-	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries, RecoveryKeyTries: data.recoveryKeyTries, ActivateOptions: data.activateOptions}
+func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, data *testActivateVolumeWithTPMSealedKeyNo2FAData) {
+	options := ActivateVolumeOptions{
+		PassphraseTries:  data.pinTries,
+		RecoveryKeyTries: data.recoveryKeyTries,
+		ActivateOptions:  data.activateOptions,
+		KeyringPrefix:    data.keyringPrefix}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, data.volumeName, data.sourceDevicePath, s.keyFile, nil, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -300,17 +946,19 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, data *test
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
+
+	s.checkTPMPolicyAuthKey(c, data.keyringPrefix, data.sourceDevicePath, s.authPrivateKey)
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA1(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA1(c *C) {
 	s.testActivateVolumeWithTPMSealedKeyNo2FA(c, &testActivateVolumeWithTPMSealedKeyNo2FAData{
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA2(c *C) {
-	// Test with a non-zero PINTries when a PIN isn't set.
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA2(c *C) {
+	// Test with a non-zero PassphraseTries when a PIN isn't set.
 	s.testActivateVolumeWithTPMSealedKeyNo2FA(c, &testActivateVolumeWithTPMSealedKeyNo2FAData{
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
@@ -318,7 +966,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA2(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA3(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA3(c *C) {
 	// Test with a non-zero RecoveryKeyTries.
 	s.testActivateVolumeWithTPMSealedKeyNo2FA(c, &testActivateVolumeWithTPMSealedKeyNo2FAData{
 		volumeName:       "data",
@@ -327,7 +975,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA3(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA4(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA4(c *C) {
 	// Test with extra options for systemd-cryptsetup.
 	s.testActivateVolumeWithTPMSealedKeyNo2FA(c, &testActivateVolumeWithTPMSealedKeyNo2FAData{
 		volumeName:       "data",
@@ -336,7 +984,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA4(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA5(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA5(c *C) {
 	// Test with a different volume name / device path.
 	s.testActivateVolumeWithTPMSealedKeyNo2FA(c, &testActivateVolumeWithTPMSealedKeyNo2FAData{
 		volumeName:       "foo",
@@ -344,7 +992,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA5(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA6(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA6(c *C) {
 	// Test that ActivateVolumeWithTPMSealedKey creates a SRK when it can, rather than fallback back to the recovery key.
 	srk, err := s.TPM.CreateResourceContextFromTPM(tcg.SRKHandle)
 	c.Assert(err, IsNil)
@@ -357,15 +1005,23 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyNo2FA6(c *C) {
 	})
 }
 
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA7(c *C) {
+	s.testActivateVolumeWithTPMSealedKeyNo2FA(c, &testActivateVolumeWithTPMSealedKeyNo2FAData{
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		keyringPrefix:    "test",
+	})
+}
+
 type testActivateVolumeWithTPMSealedKeyAndPINData struct {
 	pins     []string
 	pinTries int
 }
 
-func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINData) {
+func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.pins, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries}
+	options := ActivateVolumeOptions{PassphraseTries: data.pinTries}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, nil, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -382,9 +1038,11 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, data *tes
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+
+	s.checkTPMPolicyAuthKey(c, "", "/dev/sda1", s.authPrivateKey)
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
 	// Test with a single PIN attempt.
 	testPIN := "1234"
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
@@ -394,7 +1052,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPIN2(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPIN2(c *C) {
 	// Test with 2 PIN attempts.
 	testPIN := "1234"
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
@@ -410,7 +1068,7 @@ type testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData struct {
 	pinTries        int
 }
 
-func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData) {
+func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c *C, data *testActivateVolumeWithTPMSealedKeyAndPINUsingPINReaderData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.pins, "\n")+"\n"), 0644), IsNil)
 	c.Assert(ioutil.WriteFile(filepath.Join(s.dir, "pinfile"), []byte(data.pinFileContents), 0644), IsNil)
 
@@ -418,7 +1076,7 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c
 	c.Assert(err, IsNil)
 	defer r.Close()
 
-	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries}
+	options := ActivateVolumeOptions{PassphraseTries: data.pinTries}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, r, &options)
 	c.Check(success, Equals, true)
 	c.Check(err, IsNil)
@@ -435,9 +1093,11 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPINReader(c
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+
+	s.checkTPMPolicyAuthKey(c, "", "/dev/sda1", s.authPrivateKey)
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(c *C) {
 	// Test with the correct PIN provided via the io.Reader.
 	testPIN := "1234"
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
@@ -448,7 +1108,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader2(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader2(c *C) {
 	// Test with the correct PIN provided via the io.Reader when the file doesn't end in a newline.
 	testPIN := "1234"
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
@@ -459,7 +1119,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader2(
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader3(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader3(c *C) {
 	// Test falling back to asking for a PIN if the wrong PIN is provided via the io.Reader.
 	testPIN := "1234"
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
@@ -471,7 +1131,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader3(
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader4(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader4(c *C) {
 	// Test falling back to asking for a PIN without using a try if the io.Reader has no contents.
 	testPIN := "1234"
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
@@ -486,18 +1146,23 @@ type testActivateVolumeWithTPMSealedKeyErrorHandlingData struct {
 	pinTries          int
 	recoveryKeyTries  int
 	activateOptions   []string
+	keyringPrefix     string
 	passphrases       []string
 	sdCryptsetupCalls int
 	success           bool
-	recoveryReason    RecoveryKeyUsageReason
+	recoveryReason    KeyErrorCode
 	errChecker        Checker
 	errCheckerArgs    []interface{}
 }
 
-func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, data *testActivateVolumeWithTPMSealedKeyErrorHandlingData) {
+func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, data *testActivateVolumeWithTPMSealedKeyErrorHandlingData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries, RecoveryKeyTries: data.recoveryKeyTries, ActivateOptions: data.activateOptions}
+	options := ActivateVolumeOptions{
+		PassphraseTries:  data.pinTries,
+		RecoveryKeyTries: data.recoveryKeyTries,
+		ActivateOptions:  data.activateOptions,
+		KeyringPrefix:    data.keyringPrefix}
 	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, nil, &options)
 	c.Check(err, data.errChecker, data.errCheckerArgs...)
 	c.Check(success, Equals, data.success)
@@ -524,19 +1189,19 @@ func (s *cryptTPMSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, da
 	}
 
 	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryKeyKeyringEntry(c, data.recoveryReason)
+	s.checkRecoveryActivationData(c, data.keyringPrefix, "/dev/sda1", false, []KeyErrorCode{data.recoveryReason})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
-	// Test with an invalid value for PINTries.
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
+	// Test with an invalid value for PassphraseTries.
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		pinTries:       -1,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"invalid PINTries"},
+		errCheckerArgs: []interface{}{"invalid PassphraseTries"},
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling2(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling2(c *C) {
 	// Test with an invalid value for RecoveryKeyTries.
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries: -1,
@@ -545,7 +1210,7 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling2(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling3(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling3(c *C) {
 	// Test that adding "tries=" to ActivateOptions fails.
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		activateOptions: []string{"tries=2"},
@@ -554,11 +1219,11 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling3(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
 	// Test that recovery fallback works with the TPM in DA lockout mode.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
-		c.Check(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 	}()
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
@@ -566,14 +1231,14 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling4(c *C) {
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonTPMLockout,
+		recoveryReason:    KeyErrorTPMLockout,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) but " +
 			"activation with recovery key was successful"},
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling5(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling5(c *C) {
 	// Test that recovery fallback works when there is no SRK and a new one can't be created.
 	srk, err := s.TPM.CreateResourceContextFromTPM(tcg.SRKHandle)
 	c.Assert(err, IsNil)
@@ -591,36 +1256,37 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling5(c *C) {
 		},
 		sdCryptsetupCalls: 2,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonTPMProvisioningError,
+		recoveryReason:    KeyErrorTPMProvisioning,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is not correctly " +
 			"provisioned\\) but activation with recovery key was successful"},
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling6(c *C) {
 	// Test that recovery fallback works when the unsealed key is incorrect.
 	incorrectKey := make([]byte, 32)
 	rand.Read(incorrectKey)
-	c.Assert(ioutil.WriteFile(s.expectedTpmKeyFile, incorrectKey, 0644), IsNil)
+	c.Assert(os.RemoveAll(filepath.Join(s.mockKeyslotsDir, "1")), IsNil)
+	s.addMockKeyslot(c, incorrectKey)
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries:  1,
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 2,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() +
-			" failed: exit status 1\\) but activation with recovery key was successful"},
+			" failed: exit status 5\\) but activation with recovery key was successful"},
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
 	// Test that activation fails if RecoveryKeyTries is zero.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
-		c.Check(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 	}()
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
@@ -631,11 +1297,11 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling7(c *C) {
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 	// Test that activation fails if the wrong recovery key is provided.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	defer func() {
-		c.Check(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+		c.Check(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 	}()
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
@@ -645,11 +1311,11 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling8(c *C) {
 		success:           false,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) " +
-			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1\\)"},
+			"and activation with recovery key failed \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5\\)"},
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
 	// Test that recovery fallback works if the wrong PIN is supplied.
 	testPIN := "1234"
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
@@ -662,14 +1328,14 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling9(c *C) {
 		},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonPINFail,
+		recoveryReason:    KeyErrorPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the provided PIN is incorrect\\) but " +
 			"activation with recovery key was successful"},
 	})
 }
 
-func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling10(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling10(c *C) {
 	// Test that recovery fallback works if a PIN is set but no PIN attempts are permitted.
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
@@ -677,60 +1343,14 @@ func (s *cryptTPMSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling10(c *C) 
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonPINFail,
+		recoveryReason:    KeyErrorPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(no PIN tries permitted when a PIN is required\\) but " +
 			"activation with recovery key was successful"},
 	})
 }
 
-type cryptTPMSimulatorSuite struct {
-	testutil.TPMSimulatorTestBase
-	cryptTPMTestBase
-}
-
-var _ = Suite(&cryptTPMSimulatorSuite{})
-
-func (s *cryptTPMSimulatorSuite) SetUpSuite(c *C) {
-	s.cryptTPMTestBase.setUpSuiteBase(c)
-}
-
-func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
-	s.TPMSimulatorTestBase.SetUpTest(c)
-	s.ResetTPMSimulator(c)
-	s.cryptTPMTestBase.setUpTestBase(c, &s.TPMTestBase)
-}
-
-func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, data *testActivateVolumeWithTPMSealedKeyErrorHandlingData) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
-
-	options := ActivateWithTPMSealedKeyOptions{PINTries: data.pinTries, RecoveryKeyTries: data.recoveryKeyTries, ActivateOptions: data.activateOptions}
-	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", s.keyFile, nil, &options)
-	c.Check(err, data.errChecker, data.errCheckerArgs...)
-	c.Check(success, Equals, data.success)
-
-	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.passphrases))
-	for _, call := range s.mockSdAskPassword.Calls() {
-		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
-			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
-	}
-	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
-	for _, call := range s.mockSdCryptsetup.Calls() {
-		c.Assert(len(call), Equals, 6)
-		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
-	}
-
-	if !data.success {
-		return
-	}
-
-	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryKeyKeyringEntry(c, data.recoveryReason)
-}
-
-func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling11(c *C) {
 	// Test that recovery fallback works when the sealed key authorization policy is wrong.
 	_, err := s.TPM.PCREvent(s.TPM.PCRHandleContext(7), []byte("foo"), nil)
 	c.Assert(err, IsNil)
@@ -740,7 +1360,27 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    RecoveryKeyUsageReasonInvalidKeyFile,
+		recoveryReason:    KeyErrorInvalidFile,
+		errChecker:        ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
+			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
+			"activation with recovery key was successful"},
+	})
+}
+
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling12(c *C) {
+	// Test that recovery fallback works when the sealed key authorization policy is wrong, and make sure that
+	// the recovery key is added to the keyring with our specified prefix
+	_, err := s.TPM.PCREvent(s.TPM.PCRHandleContext(7), []byte("foo"), nil)
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
+		recoveryKeyTries:  1,
+		keyringPrefix:     "test",
+		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls: 1,
+		success:           true,
+		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
 			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
@@ -768,6 +1408,7 @@ type testActivateVolumeWithRecoveryKeyData struct {
 	sourceDevicePath    string
 	tries               int
 	activateOptions     []string
+	keyringPrefix       string
 	recoveryPassphrases []string
 	sdCryptsetupCalls   int
 }
@@ -775,7 +1416,7 @@ type testActivateVolumeWithRecoveryKeyData struct {
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateWithRecoveryKeyOptions{Tries: data.tries, ActivateOptions: data.activateOptions}
+	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries, ActivateOptions: data.activateOptions, KeyringPrefix: data.keyringPrefix}
 	c.Assert(ActivateVolumeWithRecoveryKey(data.volumeName, data.sourceDevicePath, nil, &options), IsNil)
 
 	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
@@ -793,7 +1434,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 	}
 
 	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryKeyKeyringEntry(c, RecoveryKeyUsageReasonRequested)
+	s.checkRecoveryActivationData(c, data.keyringPrefix, data.sourceDevicePath, true, nil)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
@@ -870,6 +1511,18 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey6(c *C) {
 	})
 }
 
+func (s *cryptSuite) TestActivateVolumeWithRecoveryKey7(c *C) {
+	// Test with a different keyring prefix
+	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		volumeName:          "data",
+		sourceDevicePath:    "/dev/sda1",
+		tries:               1,
+		keyringPrefix:       "test",
+		recoveryPassphrases: []string{strings.Join(s.recoveryKeyAscii, "-")},
+		sdCryptsetupCalls:   1,
+	})
+}
+
 type testActivateVolumeWithRecoveryKeyUsingKeyReaderData struct {
 	tries                   int
 	recoveryKeyFileContents string
@@ -885,7 +1538,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 	c.Assert(err, IsNil)
 	defer r.Close()
 
-	options := ActivateWithRecoveryKeyOptions{Tries: data.tries}
+	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries}
 	c.Assert(ActivateVolumeWithRecoveryKey("data", "/dev/sda1", r, &options), IsNil)
 
 	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
@@ -903,7 +1556,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 	}
 
 	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryKeyKeyringEntry(c, RecoveryKeyUsageReasonRequested)
+	s.checkRecoveryActivationData(c, "", "/dev/sda1", true, nil)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
@@ -1082,7 +1735,7 @@ type testActivateVolumeWithRecoveryKeyErrorHandlingData struct {
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *testActivateVolumeWithRecoveryKeyErrorHandlingData) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 
-	options := ActivateWithRecoveryKeyOptions{Tries: data.tries, ActivateOptions: data.activateOptions}
+	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries, ActivateOptions: data.activateOptions}
 	c.Check(ActivateVolumeWithRecoveryKey("data", "/dev/sda1", nil, &options), data.errChecker, data.errCheckerArgs...)
 
 	c.Check(len(s.mockSdAskPassword.Calls()), Equals, len(data.recoveryPassphrases))
@@ -1102,11 +1755,11 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling1(c *C) {
-	// Test with an invalid Tries value.
+	// Test with an invalid RecoveryKeyTries value.
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:          -1,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"invalid Tries"},
+		errCheckerArgs: []interface{}{"invalid RecoveryKeyTries"},
 	})
 }
 
@@ -1156,7 +1809,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
 		sdCryptsetupCalls:   1,
 		errChecker:          ErrorMatches,
-		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 1"},
+		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
 	})
 }
 
@@ -1181,17 +1834,109 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling8(c *C) {
 	})
 }
 
+type testActivateVolumeWithKeyData struct {
+	activateOptions []string
+	keyData         []byte
+	expectedKeyData []byte
+	errMatch        string
+	cmdCalled       bool
+}
+
+func (s *cryptSuite) testActivateVolumeWithKey(c *C, data *testActivateVolumeWithKeyData) {
+	c.Assert(data.keyData, NotNil)
+
+	expectedKeyData := data.expectedKeyData
+	if expectedKeyData == nil {
+		expectedKeyData = data.keyData
+	}
+	s.addMockKeyslot(c, expectedKeyData)
+
+	options := ActivateVolumeOptions{
+		ActivateOptions: data.activateOptions,
+	}
+	err := ActivateVolumeWithKey("luks-volume", "/dev/sda1", data.keyData, &options)
+	if data.errMatch == "" {
+		c.Check(err, IsNil)
+	} else {
+		c.Check(err, ErrorMatches, data.errMatch)
+	}
+
+	if data.cmdCalled {
+		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+		c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
+		c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+		c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{
+			"systemd-cryptsetup", "attach", "luks-volume", "/dev/sda1",
+		})
+		c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches,
+			filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals,
+			strings.Join(append(data.activateOptions, "tries=1"), ","))
+	} else {
+		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+		c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 0)
+	}
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyNoOptions(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: nil,
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyWithOptions(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"--option"},
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyMismatchErr(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"--option"},
+		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		expectedKeyData: []byte{0, 0, 0, 0, 1},
+		errMatch:        ".*/systemd-cryptsetup failed: exit status 5",
+		cmdCalled:       true,
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyTriesErr(c *C) {
+	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
+		activateOptions: []string{"tries=123"},
+		keyData:         []byte{0, 0, 0, 0, 1},
+		errMatch:        `cannot specify the "tries=" option for systemd-cryptsetup`,
+		cmdCalled:       false,
+	})
+}
+
 type testInitializeLUKS2ContainerData struct {
 	devicePath string
 	label      string
 	key        []byte
+	opts       *InitializeLUKS2ContainerOptions
+	formatArgs []string
 }
 
 func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS2ContainerData) {
-	c.Check(InitializeLUKS2Container(data.devicePath, data.label, data.key), IsNil)
+	c.Check(InitializeLUKS2Container(data.devicePath, data.label, data.key, data.opts), IsNil)
+	formatArgs := []string{"cryptsetup",
+		"-q", "luksFormat", "--type", "luks2",
+		"--key-file", "-", "--cipher", "aes-xts-plain64",
+		"--key-size", "512",
+		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
+		"--pbkdf-memory", "32", "--label",
+		data.label, data.devicePath,
+	}
+	if data.formatArgs != nil {
+		formatArgs = data.formatArgs
+	}
 	c.Check(s.mockCryptsetup.Calls(), DeepEquals, [][]string{
-		{"cryptsetup", "-q", "luksFormat", "--type", "luks2", "--key-file", "-", "--cipher", "aes-xts-plain64", "--key-size", "512",
-			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--label", data.label, data.devicePath},
+		formatArgs,
 		{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath}})
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
@@ -1224,8 +1969,81 @@ func (s *cryptSuite) TestInitializeLUKS2Container(c *C) {
 	})
 }
 
+func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
+	// Test with a different key
+	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
+		devicePath: "/dev/vdc2",
+		label:      "test",
+		key:        s.tpmKey,
+		opts: &InitializeLUKS2ContainerOptions{
+			MetadataKiBSize:     2 * 1024, // 2MiB
+			KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
+
+		},
+		formatArgs: []string{"cryptsetup",
+			"-q", "luksFormat", "--type", "luks2",
+			"--key-file", "-", "--cipher", "aes-xts-plain64",
+			"--key-size", "512",
+			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
+			"--pbkdf-memory", "32",
+			"--label", "test",
+			"--luks2-metadata-size", "2048k",
+			"--luks2-keyslots-size", "3072k",
+			"/dev/vdc2",
+		},
+	})
+}
+
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
-	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32]), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
+	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32], nil), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataKiBSize(c *C) {
+	key := make([]byte, 64)
+	for _, validSz := range []int{0, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096} {
+		opts := InitializeLUKS2ContainerOptions{
+			MetadataKiBSize: validSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
+	}
+
+	for _, invalidSz := range []int{1, 16 + 3, 8192, 500} {
+		opts := InitializeLUKS2ContainerOptions{
+			MetadataKiBSize: invalidSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
+			fmt.Sprintf("cannot set metadata size to %v KiB", invalidSz))
+	}
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerKeyslotsSize(c *C) {
+	key := make([]byte, 64)
+	for _, validSz := range []int{0, 4,
+		128 * 1024,
+		8 * 1024,
+		16,
+		256,
+	} {
+		opts := InitializeLUKS2ContainerOptions{
+			KeyslotsAreaKiBSize: validSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
+	}
+
+	for _, invalidSz := range []int{
+		// smaller than 4096 (4KiB)
+		1, 3,
+		// misaligned
+		40 + 1,
+		// larger than 128MB
+		128*1024 + 4,
+	} {
+		opts := InitializeLUKS2ContainerOptions{
+			KeyslotsAreaKiBSize: invalidSz,
+		}
+		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
+			fmt.Sprintf("cannot set keyslots area size to %v KiB", invalidSz))
+	}
 }
 
 type testAddRecoveryKeyToLUKS2ContainerData struct {

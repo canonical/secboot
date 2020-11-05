@@ -20,6 +20,7 @@
 package secboot
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -29,9 +30,14 @@ import (
 )
 
 var (
-	// ErrTPMClearRequiresPPI is returned from ProvisionTPM and indicates that clearing the TPM must be performed via
+	// ErrTPMClearRequiresPPI is returned from TPMConnection.EnsureProvisioned and indicates that clearing the TPM must be performed via
 	// the Physical Presence Interface.
 	ErrTPMClearRequiresPPI = errors.New("clearing the TPM requires the use of the Physical Presence Interface")
+
+	// ErrTPMProvisioningRequiresLockout is returned from TPMConnection.EnsureProvisioned when fully provisioning the TPM requires
+	// the use of the lockout hierarchy. In this case, the provisioning steps that can be performed without the use of the lockout
+	// hierarchy are completed.
+	ErrTPMProvisioningRequiresLockout = errors.New("provisioning the TPM requires the use of the lockout hierarchy")
 
 	// ErrTPMProvisioning indicates that the TPM is not provisioned correctly for the requested operation. Please note that other errors
 	// that can be returned may also be caused by incomplete provisioning, as it is not always possible to detect incomplete or
@@ -46,12 +52,12 @@ var (
 	// ErrPINFail is returned from SealedKeyObject.UnsealFromTPM if the provided PIN is incorrect.
 	ErrPINFail = errors.New("the provided PIN is incorrect")
 
-	// ErrSealedKeyAccessLocked is returned from SealedKeyObject.UnsealFromTPM if the sealed key object cannot be unsealed until the
-	// next TPM reset or restart.
-	ErrSealedKeyAccessLocked = errors.New("cannot access the sealed key object until the next TPM reset or restart")
-
 	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
 	ErrNoTPM2Device = errors.New("no TPM2 device is available")
+
+	// ErrNoActivationData is returned from GetActivationDataFromKernel if no activation data was found in the user keyring for
+	// the specified block device.
+	ErrNoActivationData = errors.New("no activation data found for the specified device")
 )
 
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists
@@ -125,14 +131,6 @@ func isInvalidKeyFileError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// LockAccessToSealedKeysError is returned from ActivateVolumeWithTPMSealedKey if an error occurred whilst trying to lock access
-// to sealed keys created by this package.
-type LockAccessToSealedKeysError string
-
-func (e LockAccessToSealedKeysError) Error() string {
-	return "cannot lock access to sealed keys: " + string(e)
-}
-
 // ActivateWithTPMSealedKeyError is returned from ActivateVolumeWithTPMSealedKey if activation with the TPM protected key failed.
 type ActivateWithTPMSealedKeyError struct {
 	// TPMErr details the error that occurred during activation with the TPM sealed key.
@@ -148,4 +146,29 @@ func (e *ActivateWithTPMSealedKeyError) Error() string {
 		return fmt.Sprintf("cannot activate with TPM sealed key (%v) and activation with recovery key failed (%v)", e.TPMErr, e.RecoveryKeyUsageErr)
 	}
 	return fmt.Sprintf("cannot activate with TPM sealed key (%v) but activation with recovery key was successful", e.TPMErr)
+}
+
+// ActivateWithMultipleTPMSealedKeysError is returned from ActivateVolumeWithMultipleTPMSealedKeys if activation with the
+// TPM protected keys failed.
+type ActivateWithMultipleTPMSealedKeysError struct {
+	// TPMErrs details the errors that occurred during activation with the TPM sealed keys.
+	TPMErrs []error
+
+	// RecoveryKeyUsageErr details the error that occurred during activation with the fallback recovery key, if activation
+	// with the recovery key was also unsuccessful.
+	RecoveryKeyUsageErr error
+}
+
+func (e *ActivateWithMultipleTPMSealedKeysError) Error() string {
+	var s bytes.Buffer
+	fmt.Fprintf(&s, "cannot activate with TPM sealed keys:")
+	for _, err := range e.TPMErrs {
+		fmt.Fprintf(&s, "\n- %v", err)
+	}
+	if e.RecoveryKeyUsageErr != nil {
+		fmt.Fprintf(&s, "\nand activation with recovery key failed: %v", e.RecoveryKeyUsageErr)
+	} else {
+		fmt.Fprintf(&s, "\nbut activation with recovery key was successful")
+	}
+	return s.String()
 }

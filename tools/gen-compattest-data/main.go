@@ -169,7 +169,7 @@ func run() int {
 		return 1
 	}
 
-	if err := secboot.ProvisionTPM(tpm, secboot.ProvisionModeFull, []byte("1234")); err != nil {
+	if err := tpm.EnsureProvisioned(secboot.ProvisionModeFull, []byte("1234")); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot provision TPM: %v\n", err)
 		return 1
 	}
@@ -184,8 +184,8 @@ func run() int {
 	rand.Read(key)
 
 	params := secboot.KeyCreationParams{
-		PCRProfile: pcrProfile,
-		PINHandle:  0x01801000,
+		PCRProfile:             pcrProfile,
+		PCRPolicyCounterHandle: 0x01801000,
 	}
 
 	keyFile := filepath.Join(outputDir, "key")
@@ -194,13 +194,19 @@ func run() int {
 		os.Remove(f)
 	}
 
-	if err := secboot.SealKeyToTPM(tpm, key, keyFile, pudFile, &params); err != nil {
+	authKey, err := secboot.SealKeyToTPM(tpm, key, keyFile, &params)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot seal key: %v\n", err)
 		return 1
 	}
 
 	if err := ioutil.WriteFile(filepath.Join(outputDir, "clearKey"), key, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot write cleartext key: %v\n", err)
+		return 1
+	}
+
+	if err := ioutil.WriteFile(filepath.Join(outputDir, "authKey"), authKey, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Cannot write policy update auth key: %v\n", err)
 		return 1
 	}
 

@@ -21,145 +21,79 @@ package secboot_test
 
 import (
 	"bytes"
-	"crypto/rsa"
 	"math/rand"
-	"os"
 	"testing"
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
 )
 
-func TestCreatePinNVIndex(t *testing.T) {
-	tpm := openTPMForTesting(t)
-	defer closeTPM(t, tpm)
-
-	key, err := rsa.GenerateKey(testutil.RandReader, 768)
-	if err != nil {
-		t.Fatalf("GenerateKey failed: %v", err)
-	}
-	keyPublic := CreatePublicAreaForRSASigningKey(&key.PublicKey)
-	keyName, err := keyPublic.Name()
-	if err != nil {
-		t.Fatalf("Cannot compute key name: %v", err)
-	}
-
-	for _, data := range []struct {
-		desc   string
-		handle tpm2.Handle
-	}{
-		{
-			desc:   "0x01800000",
-			handle: 0x01800000,
-		},
-		{
-			desc:   "0x0181ff00",
-			handle: 0x0181ff00,
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			pub, authPolicies, err := CreatePinNVIndex(tpm.TPMContext, data.handle, keyName, tpm.HmacSession())
-			if err != nil {
-				t.Fatalf("CreatePinNVIndex failed: %v", err)
-			}
-			defer func() {
-				index, err := tpm2.CreateNVIndexResourceContextFromPublic(pub)
-				if err != nil {
-					t.Errorf("CreateNVIndexResourceContextFromPublic failed: %v", err)
-				}
-				undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-			}()
-
-			if pub.Index != data.handle {
-				t.Errorf("Public area has wrong handle")
-			}
-			if pub.NameAlg != tpm2.HashAlgorithmSHA256 {
-				t.Errorf("Public area has wrong name algorithm")
-			}
-			if pub.Attrs != tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite|tpm2.AttrNVAuthRead|tpm2.AttrNVPolicyRead|tpm2.AttrNVWritten) {
-				t.Errorf("Public area has wrong attributes")
-			}
-			trial, _ := tpm2.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-			trial.PolicyOR(authPolicies)
-			if !bytes.Equal(pub.AuthPolicy, trial.GetDigest()) {
-				t.Errorf("Public area has wrong auth policy")
-			}
-			// Note, we test the individual components of the authorization policy during tests for
-			// incrementDynamicPolicyCounter, readDynamicPolicyCounter, performPinChange and executePolicySession.
-
-			pinIndexName, err := pub.Name()
-			if err != nil {
-				t.Errorf("NVPublic.Name failed: %v", err)
-			}
-			index, err := tpm.CreateResourceContextFromTPM(data.handle)
-			if err != nil {
-				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-			}
-			if !bytes.Equal(index.Name(), pinIndexName) {
-				t.Errorf("Unexpected name read back from TPM")
-			}
-		})
-	}
-}
-
 func TestPerformPinChange(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
-	key, err := rsa.GenerateKey(testutil.RandReader, 768)
-	if err != nil {
-		t.Fatalf("GenerateKey failed: %v", err)
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+		t.Errorf("Failed to provision TPM for test: %v", err)
 	}
-	keyPublic := CreatePublicAreaForRSASigningKey(&key.PublicKey)
-	keyName, err := keyPublic.Name()
+
+	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
-		t.Fatalf("Cannot compute key name: %v", err)
+		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 	}
-	pinIndexPub, pinIndexAuthPolicies, err := CreatePinNVIndex(tpm.TPMContext, 0x01810000, keyName, tpm.HmacSession())
+
+	sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
+	template := tpm2.Public{
+		Type:    tpm2.ObjectTypeKeyedHash,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs:   tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrUserWithAuth,
+		Params:  tpm2.PublicParamsU{Data: &tpm2.KeyedHashParams{Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}}}
+
+	priv, pub, _, _, _, err := tpm.Create(srk, &sensitive, &template, nil, nil, nil)
 	if err != nil {
-		t.Fatalf("CreatePinNVIndex failed: %v", err)
+		t.Fatalf("Create failed: %v", err)
 	}
-	defer func() {
-		index, err := tpm2.CreateNVIndexResourceContextFromPublic(pinIndexPub)
-		if err != nil {
-			t.Errorf("CreateNVIndexResourceContextFromPublic failed: %v", err)
-		}
-		undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
-	}()
+
+	key, err := tpm.Load(srk, priv, pub, nil)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	defer flushContext(t, tpm, key)
 
 	pin := "1234"
 
-	if err := PerformPinChange(tpm.TPMContext, pinIndexPub, pinIndexAuthPolicies, "", pin, tpm.HmacSession()); err != nil {
+	newPriv, err := PerformPinChange(tpm.TPMContext, priv, pub, "", pin, tpm.HmacSession())
+	if err != nil {
 		t.Fatalf("PerformPinChange failed: %v", err)
 	}
 
-	// Verify that the PIN change succeeded by executing a PolicySecret assertion, which is immediate and will fail if it
-	// didn't work.
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
+	// Verify that the PIN change succeeded by loading the new private area and trying to unseal it
+	newKey, err := tpm.Load(srk, newPriv, pub, nil)
 	if err != nil {
-		t.Fatalf("StartAuthSession failed: %v", err)
+		t.Fatalf("Load failed: %v", err)
 	}
-	defer flushContext(t, tpm, policySession)
+	defer flushContext(t, tpm, newKey)
 
-	pinIndex, err := tpm2.CreateNVIndexResourceContextFromPublic(pinIndexPub)
+	newKey.SetAuthValue([]byte(pin))
+
+	data, err := tpm.Unseal(newKey, nil)
 	if err != nil {
-		t.Fatalf("CreateNVIndexResourceContextFromPublic failed: %v", err)
+		t.Errorf("Unseal failed: %v", err)
 	}
-	pinIndex.SetAuthValue([]byte(pin))
 
-	if _, _, err := tpm.PolicySecret(pinIndex, policySession, nil, nil, 0, nil); err != nil {
-		t.Errorf("PolicySecret assertion failed: %v", err)
+	if !bytes.Equal(data, sensitive.Data) {
+		t.Errorf("Unexpected data")
 	}
 }
 
 type pinSuite struct {
-	testutil.TPMTestBase
-	key       []byte
-	pinHandle tpm2.Handle
-	keyFile   string
+	testutil.TPMSimulatorTestBase
+	key                    []byte
+	pcrPolicyCounterHandle tpm2.Handle
+	keyFile                string
 }
 
 var _ = Suite(&pinSuite{})
@@ -167,20 +101,22 @@ var _ = Suite(&pinSuite{})
 func (s *pinSuite) SetUpSuite(c *C) {
 	s.key = make([]byte, 64)
 	rand.Read(s.key)
-	s.pinHandle = tpm2.Handle(0x0181fff0)
+	s.pcrPolicyCounterHandle = tpm2.Handle(0x0181fff0)
 }
 
 func (s *pinSuite) SetUpTest(c *C) {
-	s.TPMTestBase.SetUpTest(c)
-	c.Assert(ProvisionTPM(s.TPM, ProvisionModeFull, nil), IsNil)
+	s.TPMSimulatorTestBase.SetUpTest(c)
+	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
+	s.ResetTPMSimulator(c)
 
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
 
-	c.Assert(SealKeyToTPM(s.TPM, s.key, s.keyFile, "", &KeyCreationParams{PCRProfile: getTestPCRProfile(), PINHandle: s.pinHandle}), IsNil)
-	pinIndex, err := s.TPM.CreateResourceContextFromTPM(s.pinHandle)
+	_, err := SealKeyToTPM(s.TPM, s.key, s.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: s.pcrPolicyCounterHandle})
 	c.Assert(err, IsNil)
-	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pinIndex)
+	policyCounter, err := s.TPM.CreateResourceContextFromTPM(s.pcrPolicyCounterHandle)
+	c.Assert(err, IsNil)
+	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), policyCounter)
 }
 
 func (s *pinSuite) checkPIN(c *C, pin string) {
@@ -192,17 +128,9 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 		c.Check(k.AuthMode2F(), Equals, AuthModePIN)
 	}
 
-	// Verify that the PIN change succeeded by executing a PolicySecret assertion, which is immediate and will fail if it
-	// didn't work.
-	policySession, err := s.TPM.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
-	c.Assert(err, IsNil)
-
-	pinIndex, err := s.TPM.CreateResourceContextFromTPM(k.PINIndexHandle())
-	c.Assert(err, IsNil)
-	pinIndex.SetAuthValue([]byte(pin))
-
-	_, _, err = s.TPM.PolicySecret(pinIndex, policySession, nil, nil, 0, nil)
+	key, _, err := k.UnsealFromTPM(s.TPM, pin)
 	c.Check(err, IsNil)
+	c.Check(key, DeepEquals, s.key)
 }
 
 func (s *pinSuite) TestSetAndClearPIN(c *C) {
@@ -212,18 +140,6 @@ func (s *pinSuite) TestSetAndClearPIN(c *C) {
 
 	c.Check(ChangePIN(s.TPM, s.keyFile, testPIN, ""), IsNil)
 	s.checkPIN(c, "")
-}
-
-func (s *pinSuite) TestChangePINDoesntUpdateFileIfAuthModeDoesntChange(c *C) {
-	fi1, err := os.Stat(s.keyFile)
-	c.Assert(err, IsNil)
-
-	c.Check(ChangePIN(s.TPM, s.keyFile, "", ""), IsNil)
-	s.checkPIN(c, "")
-
-	fi2, err := os.Stat(s.keyFile)
-	c.Assert(err, IsNil)
-	c.Check(fi2.ModTime(), DeepEquals, fi1.ModTime())
 }
 
 type testChangePINErrorHandlingData struct {
@@ -260,16 +176,5 @@ func (s *pinSuite) TestChangePINErrorHandling3(c *C) {
 		keyFile:        "/path/to/nothing",
 		errChecker:     ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot open key data file: open /path/to/nothing: no such file or directory"},
-	})
-}
-
-func (s *pinSuite) TestChangePINErrorHandling4(c *C) {
-	pinIndex, err := s.TPM.CreateResourceContextFromTPM(s.pinHandle)
-	c.Assert(err, IsNil)
-	c.Assert(s.TPM.NVUndefineSpace(s.TPM.OwnerHandleContext(), pinIndex, nil), IsNil)
-	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
-		keyFile:        s.keyFile,
-		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"invalid key data file: cannot validate key data: PIN NV index is unavailable"},
 	})
 }
