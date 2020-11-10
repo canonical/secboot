@@ -945,7 +945,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
 		// this key and these settings are already more secure than the recovery key. Increased cost
 		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "200",
+		"--pbkdf", "argon2i", "--iter-time", "100",
 		// set LUKS2 label
 		"--label", label,
 	}
@@ -1061,7 +1061,7 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
 		// this key and these settings are already more secure than the recovery key. Increased cost
 		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "200",
+		"--pbkdf", "argon2i", "--iter-time", "100",
 		// always have the main key in slot 0 for now
 		"--key-slot", "0"}); err != nil {
 		return err

@@ -1928,7 +1928,7 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 		"-q", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", "aes-xts-plain64",
 		"--key-size", "512",
-		"--pbkdf", "argon2i", "--iter-time", "200",
+		"--pbkdf", "argon2i", "--iter-time", "100",
 		"--label", data.label, data.devicePath,
 	}
 	if data.formatArgs != nil {
@@ -1983,7 +1983,7 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 			"-q", "luksFormat", "--type", "luks2",
 			"--key-file", "-", "--cipher", "aes-xts-plain64",
 			"--key-size", "512",
-			"--pbkdf", "argon2i", "--iter-time", "200",
+			"--pbkdf", "argon2i", "--iter-time", "100",
 			"--label", "test",
 			"--luks2-metadata-size", "2048k",
 			"--luks2-keyslots-size", "3072k",
@@ -2125,7 +2125,7 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 	c.Assert(len(call), Equals, 12)
 	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
 	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:12], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "200", "--key-slot", "0", data.devicePath, "-"})
+	c.Check(call[4:12], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "100", "--key-slot", "0", data.devicePath, "-"})
 
 	c.Check(s.mockCryptsetup.Calls()[2], DeepEquals, []string{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath})
 
