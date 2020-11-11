@@ -914,7 +914,7 @@ func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) er
 // be called on a partition that isn't mapped. The label for the new LUKS2 container is provided via the label argument.
 //
 // The initial key used for unlocking the container is provided via the key argument, and must be a cryptographically secure
-// 64-byte random number. The key should be stored encrypted by using SealKeyToTPM.
+// random number of at least 32-bytes. The key should be encrypted by using SealKeyToTPM.
 //
 // The container will be configured to encrypt data with AES-256 and XTS block cipher mode.
 //
@@ -923,8 +923,8 @@ func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) er
 // WARNING: This function is destructive. Calling this on an existing LUKS container will make the data contained inside of it
 // irretrievable.
 func InitializeLUKS2Container(devicePath, label string, key []byte, options *InitializeLUKS2ContainerOptions) error {
-	if len(key) != 64 {
-		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
+	if len(key) < 32 {
+		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
 	if err := validateInitializeLUKS2Options(options); err != nil {
 		return err
@@ -941,10 +941,11 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		"--key-file", "-",
 		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
 		"--cipher", "aes-xts-plain64", "--key-size", "512",
-		// use argon2i as the KDF with minimum cost (lowest possible time and memory costs). This is done
-		// because the supplied input key has the same entropy (512-bits) as the derived key and therefore
-		// increased time or memory cost don't provide a security benefit (but does slow down unlocking).
-		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
+		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
+		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
+		// this key and these settings are already more secure than the recovery key. Increased cost
+		// here only slows down unlocking.
+		"--pbkdf", "argon2i", "--iter-time", "100",
 		// set LUKS2 label
 		"--label", label,
 	}
@@ -1045,8 +1046,8 @@ func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey R
 // the new key. This is not a problem, because this function is intended to be called in the scenario that the default key cannot
 // be used to activate the LUKS2 container.
 func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, key []byte) error {
-	if len(key) != 64 {
-		return fmt.Errorf("expected a key length of 512-bits (got %d)", len(key)*8)
+	if len(key) < 32 {
+		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
 
 	cmd := exec.Command("cryptsetup", "luksKillSlot", "--key-file", "-", devicePath, "0")
@@ -1056,10 +1057,11 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 	}
 
 	if err := addKeyToLUKS2Container(devicePath, recoveryKey[:], key, []string{
-		// use argon2i as the KDF with minimum cost (lowest possible time and memory costs). This is done
-		// because the supplied input key has the same entropy (512-bits) as the derived key and therefore
-		// increased time or memory cost don't provide a security benefit (but does slow down unlocking).
-		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32",
+		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
+		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
+		// this key and these settings are already more secure than the recovery key. Increased cost
+		// here only slows down unlocking.
+		"--pbkdf", "argon2i", "--iter-time", "100",
 		// always have the main key in slot 0 for now
 		"--key-slot", "0"}); err != nil {
 		return err

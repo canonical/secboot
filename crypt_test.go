@@ -1928,9 +1928,8 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 		"-q", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", "aes-xts-plain64",
 		"--key-size", "512",
-		"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
-		"--pbkdf-memory", "32", "--label",
-		data.label, data.devicePath,
+		"--pbkdf", "argon2i", "--iter-time", "100",
+		"--label", data.label, data.devicePath,
 	}
 	if data.formatArgs != nil {
 		formatArgs = data.formatArgs
@@ -1984,8 +1983,7 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 			"-q", "luksFormat", "--type", "luks2",
 			"--key-file", "-", "--cipher", "aes-xts-plain64",
 			"--key-size", "512",
-			"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4",
-			"--pbkdf-memory", "32",
+			"--pbkdf", "argon2i", "--iter-time", "100",
 			"--label", "test",
 			"--luks2-metadata-size", "2048k",
 			"--luks2-keyslots-size", "3072k",
@@ -1995,7 +1993,7 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
-	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:32], nil), ErrorMatches, "expected a key length of 512-bits \\(got 256\\)")
+	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.tpmKey[0:16], nil), ErrorMatches, "expected a key length of at least 256-bits \\(got 128\\)")
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataKiBSize(c *C) {
@@ -2124,10 +2122,10 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 	c.Check(s.mockCryptsetup.Calls()[0], DeepEquals, []string{"cryptsetup", "luksKillSlot", "--key-file", "-", data.devicePath, "0"})
 
 	call := s.mockCryptsetup.Calls()[1]
-	c.Assert(len(call), Equals, 14)
+	c.Assert(len(call), Equals, 12)
 	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
 	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:14], DeepEquals, []string{"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--key-slot", "0", data.devicePath, "-"})
+	c.Check(call[4:12], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "100", "--key-slot", "0", data.devicePath, "-"})
 
 	c.Check(s.mockCryptsetup.Calls()[2], DeepEquals, []string{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath})
 
