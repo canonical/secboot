@@ -761,8 +761,13 @@ func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(updates []*secure
 // these in to this branch. For events corresponding to the measurement of EFI signature databases, measurements are computed based
 // on the current contents of each database with the supplied updates applied.
 //
-// Processing of the list of events stops when transitioning from pre-OS to OS-present (ie, a EV_SEPARATOR event is encountered in a
-// PCR < 7).
+// Processing of the list of events stops after transitioning from pre-OS to OS-present. This transition is indicated when an
+// EV_SEPARATOR event has been measured to any of PCRs 0-6 AND PCR 7. This handles 2 different firmware behaviours:
+// - Some firmware implementations signal the transition by measuring EV_SEPARATOR events to PCRs 0-7 at the same time.
+// - Firmware implementations that support secure boot verification of EFI drivers measure a EV_SEPARATOR event
+//   to PCR 7 immediately after measuring the secure boot configuration, which is before the transition to OS-present.
+//   In this case, processing of pre-OS events in PCR 7 must continue until an EV_SEPARATOR event is encountered in
+//   PCRs 0-6.
 func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, sigDbUpdates []*secureBootDbUpdate, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
 	osPresent := false
 	seenSecureBootPCRSeparator := false
