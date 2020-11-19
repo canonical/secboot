@@ -39,32 +39,31 @@ const (
 
 // Export variables and unexported functions for testing
 var (
-	ComputeDbUpdate                          = computeDbUpdate
-	ComputeDynamicPolicy                     = computeDynamicPolicy
-	CreatePcrPolicyCounter                   = createPcrPolicyCounter
-	ComputePcrPolicyCounterAuthPolicies      = computePcrPolicyCounterAuthPolicies
-	ComputePcrPolicyRefFromCounterContext    = computePcrPolicyRefFromCounterContext
-	ComputePcrPolicyRefFromCounterName       = computePcrPolicyRefFromCounterName
-	ComputePeImageDigest                     = computePeImageDigest
-	ComputePolicyORData                      = computePolicyORData
-	ComputeSnapModelDigest                   = computeSnapModelDigest
-	ComputeStaticPolicy                      = computeStaticPolicy
-	CreateTPMPublicAreaForECDSAKey           = createTPMPublicAreaForECDSAKey
-	DecodeSecureBootDb                       = decodeSecureBootDb
-	DecodeWinCertificate                     = decodeWinCertificate
-	EFICertTypePkcs7Guid                     = efiCertTypePkcs7Guid
-	EFICertX509Guid                          = efiCertX509Guid
-	ExecutePolicySession                     = executePolicySession
-	IdentifyInitialOSLaunchVerificationEvent = identifyInitialOSLaunchVerificationEvent
-	IncrementPcrPolicyCounter                = incrementPcrPolicyCounter
-	IsDynamicPolicyDataError                 = isDynamicPolicyDataError
-	IsStaticPolicyDataError                  = isStaticPolicyDataError
-	LockNVIndex1Attrs                        = lockNVIndex1Attrs
-	PerformPinChange                         = performPinChange
-	ReadPcrPolicyCounter                     = readPcrPolicyCounter
-	ReadShimVendorCert                       = readShimVendorCert
-	WinCertTypePKCSSignedData                = winCertTypePKCSSignedData
-	WinCertTypeEfiGuid                       = winCertTypeEfiGuid
+	ComputeDbUpdate                       = computeDbUpdate
+	ComputeDynamicPolicy                  = computeDynamicPolicy
+	CreatePcrPolicyCounter                = createPcrPolicyCounter
+	ComputePcrPolicyCounterAuthPolicies   = computePcrPolicyCounterAuthPolicies
+	ComputePcrPolicyRefFromCounterContext = computePcrPolicyRefFromCounterContext
+	ComputePcrPolicyRefFromCounterName    = computePcrPolicyRefFromCounterName
+	ComputePeImageDigest                  = computePeImageDigest
+	ComputePolicyORData                   = computePolicyORData
+	ComputeSnapModelDigest                = computeSnapModelDigest
+	ComputeStaticPolicy                   = computeStaticPolicy
+	CreateTPMPublicAreaForECDSAKey        = createTPMPublicAreaForECDSAKey
+	DecodeSecureBootDb                    = decodeSecureBootDb
+	DecodeWinCertificate                  = decodeWinCertificate
+	EFICertTypePkcs7Guid                  = efiCertTypePkcs7Guid
+	EFICertX509Guid                       = efiCertX509Guid
+	ExecutePolicySession                  = executePolicySession
+	IncrementPcrPolicyCounter             = incrementPcrPolicyCounter
+	IsDynamicPolicyDataError              = isDynamicPolicyDataError
+	IsStaticPolicyDataError               = isStaticPolicyDataError
+	LockNVIndex1Attrs                     = lockNVIndex1Attrs
+	PerformPinChange                      = performPinChange
+	ReadPcrPolicyCounter                  = readPcrPolicyCounter
+	ReadShimVendorCert                    = readShimVendorCert
+	WinCertTypePKCSSignedData             = winCertTypePKCSSignedData
+	WinCertTypeEfiGuid                    = winCertTypeEfiGuid
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -107,12 +106,6 @@ func (s *EFISignatureData) Owner() tcglog.EFIGUID {
 
 func (s *EFISignatureData) Data() []byte {
 	return s.data
-}
-
-type SecureBootVerificationEvent = secureBootVerificationEvent
-
-func (e *SecureBootVerificationEvent) MeasuredInPreOS() bool {
-	return e.measuredInPreOS
 }
 
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
