@@ -45,12 +45,11 @@ type EFIImage interface {
 // SnapFileEFIImage corresponds to a binary contained within a snap file that is loaded, verified and executed before ExitBootServices.
 type SnapFileEFIImage struct {
 	Container snap.Container
-	Path      string // The path of the snap image (used by the implementation of fmt.Stringer)
 	FileName  string // The filename within the snap squashfs
 }
 
 func (f SnapFileEFIImage) String() string {
-	return "snap:" + f.Path + ":" + f.FileName
+	return fmt.Sprintf("%#v:%s", f.Container, f.FileName)
 }
 
 func (f SnapFileEFIImage) Open() (interface {
