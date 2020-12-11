@@ -1,9 +1,8 @@
 language: go
-
+dist: focal
 install:
   - sudo apt-get update
   - sudo apt-get install -y sbsigntool
-  - sudo snap install core core18
   - sudo snap install --edge tpm2-simulator-chrisccoulson
   - ./get-deps
 script:
