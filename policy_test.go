@@ -176,13 +176,13 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 			if err != nil {
 				t.Fatalf("ComputeStaticPolicy failed: %v", err)
 			}
-			if dataout.AuthPublicKey().Params.ECCDetail().CurveID.GoCurve() != key.Curve {
+			if dataout.AuthPublicKey().Params.ECCDetail.CurveID.GoCurve() != key.Curve {
 				t.Errorf("Auth key public area has the wrong curve")
 			}
-			if (&big.Int{}).SetBytes(dataout.AuthPublicKey().Unique.ECC().X).Cmp(key.X) != 0 {
+			if (&big.Int{}).SetBytes(dataout.AuthPublicKey().Unique.ECC.X).Cmp(key.X) != 0 {
 				t.Errorf("Auth key public area has the wrong point")
 			}
-			if (&big.Int{}).SetBytes(dataout.AuthPublicKey().Unique.ECC().Y).Cmp(key.Y) != 0 {
+			if (&big.Int{}).SetBytes(dataout.AuthPublicKey().Unique.ECC.Y).Cmp(key.Y) != 0 {
 				t.Errorf("Auth key public area has the wrong point")
 			}
 
@@ -741,7 +741,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 				if dataout.AuthorizedPolicySignature().SigAlg != tpm2.SigSchemeAlgECDSA {
 					t.Errorf("Unexpected authorized policy signature algorithm")
 				}
-				if dataout.AuthorizedPolicySignature().Signature.ECDSA().Hash != data.signAlg {
+				if dataout.AuthorizedPolicySignature().Signature.ECDSA.Hash != data.signAlg {
 					t.Errorf("Unexpected authorized policy signature digest algorithm")
 				}
 
@@ -750,8 +750,8 @@ func TestComputeDynamicPolicy(t *testing.T) {
 				h.Write(ComputePcrPolicyRefFromCounterName(data.policyCounterName))
 
 				if ok := ecdsa.Verify(&key.PublicKey, h.Sum(nil),
-					(&big.Int{}).SetBytes(dataout.AuthorizedPolicySignature().Signature.ECDSA().SignatureR),
-					(&big.Int{}).SetBytes(dataout.AuthorizedPolicySignature().Signature.ECDSA().SignatureS)); !ok {
+					(&big.Int{}).SetBytes(dataout.AuthorizedPolicySignature().Signature.ECDSA.SignatureR),
+					(&big.Int{}).SetBytes(dataout.AuthorizedPolicySignature().Signature.ECDSA.SignatureS)); !ok {
 					t.Errorf("Invalid authorized policy signature")
 				}
 			} else {
@@ -1538,7 +1538,7 @@ func TestExecutePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
-			s.AuthPublicKey().Unique.Data = &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}
+			s.AuthPublicKey().Unique.ECC = &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}
 		})
 		// Even though this error is caused by broken static metadata, we get a dynamicPolicyDataError error because the signature
 		// verification fails. Validation with validateKeyData will detect the real issue though.
@@ -1593,7 +1593,7 @@ func TestExecutePolicy(t *testing.T) {
 				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 			}
 
-			alg := d.AuthorizedPolicySignature().Signature.ECDSA().Hash
+			alg := d.AuthorizedPolicySignature().Signature.ECDSA.Hash
 			h := alg.NewHash()
 			h.Write(d.AuthorizedPolicy())
 			h.Write(ComputePcrPolicyRefFromCounterContext(policyCounter))
@@ -1602,8 +1602,8 @@ func TestExecutePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("SignPSS failed: %v", err)
 			}
-			d.AuthorizedPolicySignature().Signature.ECDSA().SignatureR = sigR.Bytes()
-			d.AuthorizedPolicySignature().Signature.ECDSA().SignatureS = sigS.Bytes()
+			d.AuthorizedPolicySignature().Signature.ECDSA.SignatureR = sigR.Bytes()
+			d.AuthorizedPolicySignature().Signature.ECDSA.SignatureS = sigS.Bytes()
 		})
 		if !IsDynamicPolicyDataError(err) || err.Error() != "cannot verify PCR policy signature" {
 			t.Errorf("Unexpected error: %v", err)
@@ -1653,14 +1653,14 @@ func TestExecutePolicy(t *testing.T) {
 				t.Fatalf("GenerateKey failed: %v", err)
 			}
 
-			s.AuthPublicKey().Unique.Data = &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}
+			s.AuthPublicKey().Unique.ECC = &tpm2.ECCPoint{X: key.X.Bytes(), Y: key.Y.Bytes()}
 
 			policyCounter, err := tpm.CreateResourceContextFromTPM(s.PcrPolicyCounterHandle())
 			if err != nil {
 				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
 			}
 
-			alg := d.AuthorizedPolicySignature().Signature.ECDSA().Hash
+			alg := d.AuthorizedPolicySignature().Signature.ECDSA.Hash
 			h := alg.NewHash()
 			h.Write(d.AuthorizedPolicy())
 			h.Write(ComputePcrPolicyRefFromCounterContext(policyCounter))
@@ -1669,8 +1669,8 @@ func TestExecutePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("SignPSS failed: %v", err)
 			}
-			d.AuthorizedPolicySignature().Signature.ECDSA().SignatureR = sigR.Bytes()
-			d.AuthorizedPolicySignature().Signature.ECDSA().SignatureS = sigS.Bytes()
+			d.AuthorizedPolicySignature().Signature.ECDSA.SignatureR = sigR.Bytes()
+			d.AuthorizedPolicySignature().Signature.ECDSA.SignatureS = sigS.Bytes()
 		})
 		if err != nil {
 			t.Errorf("Failed to execute policy session: %v", err)

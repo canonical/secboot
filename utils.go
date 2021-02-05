@@ -93,10 +93,10 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 	if !bytes.Equal(pubBytes, templateBytes) {
 		// For RSA keys, the default exponent (2^^16 - 1) is normally indicated by the value 0, but handle a TPM that actually
 		// returns 65537 by trying again.
-		if template.Type == tpm2.ObjectTypeRSA && template.Params.RSADetail().Exponent == 0 {
+		if template.Type == tpm2.ObjectTypeRSA && template.Params.RSADetail.Exponent == 0 {
 			var templateCopy *tpm2.Public
 			mu.UnmarshalFromBytes(templateBytes, &templateCopy)
-			templateCopy.Params.RSADetail().Exponent = 65537
+			templateCopy.Params.RSADetail.Exponent = 65537
 			templateBytes, _ = mu.MarshalToBytes(templateCopy)
 			if !bytes.Equal(pubBytes, templateBytes) {
 				return false, nil
@@ -153,16 +153,16 @@ func createTPMPublicAreaForECDSAKey(key *ecdsa.PublicKey) *tpm2.Public {
 		Type:    tpm2.ObjectTypeECC,
 		NameAlg: tpm2.HashAlgorithmSHA256,
 		Attrs:   tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrSign,
-		Params: tpm2.PublicParamsU{
-			Data: &tpm2.ECCParams{
+		Params: &tpm2.PublicParamsU{
+			ECCDetail: &tpm2.ECCParams{
 				Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
 				Scheme: tpm2.ECCScheme{
 					Scheme:  tpm2.ECCSchemeECDSA,
-					Details: tpm2.AsymSchemeU{Data: &tpm2.SigSchemeECDSA{HashAlg: tpm2.HashAlgorithmSHA256}}},
+					Details: &tpm2.AsymSchemeU{ECDSA: &tpm2.SigSchemeECDSA{HashAlg: tpm2.HashAlgorithmSHA256}}},
 				CurveID: curve,
 				KDF:     tpm2.KDFScheme{Scheme: tpm2.KDFAlgorithmNull}}},
-		Unique: tpm2.PublicIDU{
-			Data: &tpm2.ECCPoint{
+		Unique: &tpm2.PublicIDU{
+			ECC: &tpm2.ECCPoint{
 				X: bigIntToBytesZeroExtended(key.X, key.Params().BitSize/8),
 				Y: bigIntToBytesZeroExtended(key.Y, key.Params().BitSize/8)}}}
 }
@@ -173,7 +173,7 @@ func createECDSAPrivateKeyFromTPM(public *tpm2.Public, private tpm2.ECCParameter
 	}
 
 	var curve elliptic.Curve
-	switch public.Params.ECCDetail().CurveID {
+	switch public.Params.ECCDetail.CurveID {
 	case tpm2.ECCCurveNIST_P224:
 		curve = elliptic.P224()
 	case tpm2.ECCCurveNIST_P256:
@@ -189,8 +189,8 @@ func createECDSAPrivateKeyFromTPM(public *tpm2.Public, private tpm2.ECCParameter
 	return &ecdsa.PrivateKey{
 		PublicKey: ecdsa.PublicKey{
 			Curve: curve,
-			X:     new(big.Int).SetBytes(public.Unique.ECC().X),
-			Y:     new(big.Int).SetBytes(public.Unique.ECC().Y)},
+			X:     new(big.Int).SetBytes(public.Unique.ECC.X),
+			Y:     new(big.Int).SetBytes(public.Unique.ECC.Y)},
 		D: new(big.Int).SetBytes(private)}, nil
 }
 

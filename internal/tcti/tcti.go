@@ -20,8 +20,6 @@
 package tcti
 
 import (
-	"io"
-
 	"github.com/canonical/go-tpm2"
 )
 
@@ -31,6 +29,6 @@ const (
 )
 
 // OpenDefaultTcti connects to the default TPM character device. This can be overridden for tests to connect to a simulator device.
-var OpenDefault = func() (io.ReadWriteCloser, error) {
+var OpenDefault = func() (tpm2.TCTI, error) {
 	return tpm2.OpenTPMDevice(tpmPath)
 }

@@ -24,7 +24,6 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -125,7 +124,7 @@ func run() int {
 	}
 	defer cleanupTpmSimulator()
 
-	restore1 := testutil.MockOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
+	restore1 := testutil.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
 		return tpm2.OpenMssim("", testutil.MssimPort, testutil.MssimPort+1)
 	})
 	defer restore1()
