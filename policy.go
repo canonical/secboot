@@ -222,8 +222,8 @@ func incrementPcrPolicyCounter(tpm *tpm2.TPMContext, version uint32, nvPublic *t
 		}
 		signature = tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgRSAPSS,
-			Signature: tpm2.SignatureU{
-				Data: &tpm2.SignatureRSAPSS{
+			Signature: &tpm2.SignatureU{
+				RSAPSS: &tpm2.SignatureRSAPSS{
 					Hash: signDigest,
 					Sig:  tpm2.PublicKeyRSA(sig)}}}
 	case *ecdsa.PrivateKey:
@@ -233,8 +233,8 @@ func incrementPcrPolicyCounter(tpm *tpm2.TPMContext, version uint32, nvPublic *t
 		}
 		signature = tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgECDSA,
-			Signature: tpm2.SignatureU{
-				Data: &tpm2.SignatureECDSA{
+			Signature: &tpm2.SignatureU{
+				ECDSA: &tpm2.SignatureECDSA{
 					Hash:       signDigest,
 					SignatureR: sigR.Bytes(),
 					SignatureS: sigS.Bytes()}}}
@@ -571,8 +571,8 @@ func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynam
 
 		signature = tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgRSAPSS,
-			Signature: tpm2.SignatureU{
-				Data: &tpm2.SignatureRSAPSS{
+			Signature: &tpm2.SignatureU{
+				RSAPSS: &tpm2.SignatureRSAPSS{
 					Hash: input.signAlg,
 					Sig:  tpm2.PublicKeyRSA(sig)}}}
 	} else {
@@ -583,8 +583,8 @@ func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynam
 
 		signature = tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgECDSA,
-			Signature: tpm2.SignatureU{
-				Data: &tpm2.SignatureECDSA{
+			Signature: &tpm2.SignatureU{
+				ECDSA: &tpm2.SignatureECDSA{
 					Hash:       input.signAlg,
 					SignatureR: sigR.Bytes(),
 					SignatureS: sigS.Bytes()}}}

@@ -154,9 +154,9 @@ func verifyEk(cert *x509.Certificate, ek tpm2.ResourceContext) error {
 
 	// The default exponent of 2^^16-1 is indicated by the value of 0 in the public area.
 	if pubKey.E != 65537 {
-		ekPublic.Params.RSADetail().Exponent = uint32(pubKey.E)
+		ekPublic.Params.RSADetail.Exponent = uint32(pubKey.E)
 	}
-	ekPublic.Unique.Data = tpm2.PublicKeyRSA(pubKey.N.Bytes())
+	ekPublic.Unique.RSA = pubKey.N.Bytes()
 
 	expectedEkName, err := ekPublic.Name()
 	if err != nil {
@@ -170,7 +170,7 @@ func verifyEk(cert *x509.Certificate, ek tpm2.ResourceContext) error {
 	if !bytes.Equal(ek.Name(), expectedEkName) {
 		// An exponent of 0 in the public area corresponds to the default (65537) exponent, but some TPM's don't return 0 in the
 		// public area (my Nuvoton TPM, for example). If the initial name comparison with exponent == 0 failed, try exponent == 65537.
-		ekPublic.Params.RSADetail().Exponent = uint32(pubKey.E)
+		ekPublic.Params.RSADetail.Exponent = uint32(pubKey.E)
 		expectedEkName, err := ekPublic.Name()
 		if err != nil {
 			panic(fmt.Sprintf("cannot compute expected name of EK object: %v", err))
@@ -285,8 +285,8 @@ func (t *TPMConnection) init() error {
 	// TPM for which the endorsement certificate was issued, so a correct response means we're communicating with that TPM.
 	symmetric := tpm2.SymDef{
 		Algorithm: tpm2.SymAlgorithmAES,
-		KeyBits:   tpm2.SymKeyBitsU{Data: uint16(128)},
-		Mode:      tpm2.SymModeU{Data: tpm2.SymModeCFB}}
+		KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}}
 	session, err := t.StartAuthSession(ek, nil, tpm2.SessionTypeHMAC, &symmetric, defaultSessionHashAlgorithm, nil)
 	if err != nil {
 		return xerrors.Errorf("cannot create HMAC session: %w", err)

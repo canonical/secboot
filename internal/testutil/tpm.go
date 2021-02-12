@@ -356,7 +356,7 @@ func CreateTestEKCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 	serial := big.NewInt(rand.Int63())
 
 	key := rsa.PublicKey{
-		N: new(big.Int).SetBytes(pub.Unique.RSA()),
+		N: new(big.Int).SetBytes(pub.Unique.RSA),
 		E: 65537}
 
 	keyId := make([]byte, 32)
@@ -466,7 +466,7 @@ func OpenTPMSimulatorForTesting() (*secboot.TPMConnection, *tpm2.TctiMssim, erro
 
 	var tcti *tpm2.TctiMssim
 
-	restore := MockOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
+	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
 		var err error
 		tcti, err = tpm2.OpenMssim("", MssimPort, MssimPort+1)
 		return tcti, err
@@ -497,7 +497,7 @@ func OpenTPMForTesting() (*secboot.TPMConnection, error) {
 		return nil, errors.New("cannot specify both -use-tpm and -use-mssim")
 	}
 
-	restore := MockOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
+	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
 		return tpm2.OpenTPMDevice(tpmPathForTest)
 	})
 	defer restore()
@@ -512,7 +512,7 @@ func OpenTPMForTesting() (*secboot.TPMConnection, error) {
 
 // MockOpenDefaultTctiFn allows a test to override the default function for creating a TPM connection via
 // secboot.ConnectToDefaultTPM and secboot.SecureConnectToDefaultTPM.
-func MockOpenDefaultTctiFn(fn func() (io.ReadWriteCloser, error)) (restore func()) {
+func MockOpenDefaultTctiFn(fn func() (tpm2.TCTI, error)) (restore func()) {
 	origFn := tcti.OpenDefault
 	tcti.OpenDefault = fn
 	return func() {

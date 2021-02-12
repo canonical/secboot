@@ -258,7 +258,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 			srkTemplate := tcg.MakeDefaultSRKTemplate()
-			srkTemplate.Unique.RSA()[0] = 0xff
+			srkTemplate.Unique.RSA[0] = 0xff
 			srkTransient, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, srkTemplate, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("CreatePrimary failed: %v", err)
