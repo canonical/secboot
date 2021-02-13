@@ -178,7 +178,7 @@ func (s *compatTestSuiteBase) TestChangePIN(c *C) {
 	c.Check(secboot.ChangePIN(s.TPM, s.absPath("key"), "", testPIN), IsNil)
 	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
-	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePIN)
+	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePassphrase)
 
 	c.Check(secboot.ChangePIN(s.TPM, s.absPath("key"), testPIN, ""), IsNil)
 	k, err = secboot.ReadSealedKeyObject(s.absPath("key"))

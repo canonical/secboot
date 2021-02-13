@@ -445,7 +445,7 @@ func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string
 		if c.err != nil {
 			continue
 		}
-		if c.k.AuthMode2F() != AuthModePIN {
+		if c.k.AuthMode2F() != AuthModePassphrase {
 			continue
 		}
 		if passphraseTries == 0 {
