@@ -35,6 +35,8 @@ var (
 
 // Activate unlocks the LUKS device at sourceDevicePath using systemd-cryptsetup and creates a device
 // mapping with the supplied volumeName. The device is unlocked using the supplied key.
+//
+// This will return a *os.ExitError error in the event that systemd-cryptsetup fails.
 func Activate(volumeName, sourceDevicePath string, key []byte) error {
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
