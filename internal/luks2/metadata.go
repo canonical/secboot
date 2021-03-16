@@ -721,7 +721,7 @@ type HdrInfo struct {
 	Metadata Metadata // JSON metadata
 }
 
-func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryHdr, []byte, error) {
+func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryHdr, *bytes.Buffer, error) {
 	if _, err := r.Seek(offset, io.SeekStart); err != nil {
 		return nil, nil, err
 	}
@@ -765,8 +765,8 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 	}
 
 	// Hash the JSON metadata area, keeping a copy of the hashed metadata in memory
-	var jsonBuffer bytes.Buffer
-	tr := io.TeeReader(r, &jsonBuffer)
+	jsonBuffer := new(bytes.Buffer)
+	tr := io.TeeReader(r, jsonBuffer)
 	if _, err := io.CopyN(h, tr, int64(hdr.HdrSize)-int64(binary.Size(hdr))); err != nil {
 		return nil, nil, xerrors.Errorf("cannot calculate checksum, error reading JSON metadata: %w", err)
 	}
@@ -776,7 +776,7 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 	}
 
 	// Return the binary header and the memory buffer containing the verified JSON metadata
-	return &hdr, jsonBuffer.Bytes(), nil
+	return &hdr, jsonBuffer, nil
 }
 
 // DecodeHdr will decode the LUKS header at the specified path. The path can either be a block device
@@ -822,7 +822,7 @@ func DecodeHdr(path string, lockMode LockMode) (*HdrInfo, error) {
 	primaryHdr, primaryJSON, primaryErr := decodeAndCheckHeader(f, 0, true)
 
 	var secondaryHdr *binaryHdr
-	var secondaryJSON []byte
+	var secondaryJSON *bytes.Buffer
 	if primaryErr != nil {
 		// No valid primary header. Try to decode and check a secondary header from one of the
 		// well known offsets.
@@ -838,7 +838,7 @@ func DecodeHdr(path string, lockMode LockMode) (*HdrInfo, error) {
 	}
 
 	var hdr *binaryHdr
-	var jsonData []byte
+	var jsonData *bytes.Buffer
 	switch {
 	case primaryHdr != nil && secondaryHdr != nil:
 		// Both headers are valid
@@ -866,7 +866,7 @@ func DecodeHdr(path string, lockMode LockMode) (*HdrInfo, error) {
 		HdrSize: hdr.HdrSize,
 		Label:   hdr.Label.String()}
 
-	if err := json.NewDecoder(bytes.NewReader(jsonData)).Decode(&info.Metadata); err != nil {
+	if err := json.NewDecoder(jsonData).Decode(&info.Metadata); err != nil {
 		return nil, err
 	}
 
