@@ -52,8 +52,8 @@ func (s *metadataSuite) decompress(c *C, path string) string {
 	dir := c.MkDir()
 	name := filepath.Base(path)
 	dst := filepath.Join(dir, name)
-	c.Assert(testutil.CopyFile(dst + ".xz", path + ".xz", 0600), IsNil)
-	c.Assert(exec.Command("unxz", dst + ".xz").Run(), IsNil)
+	c.Assert(testutil.CopyFile(dst+".xz", path+".xz", 0600), IsNil)
+	c.Assert(exec.Command("unxz", dst+".xz").Run(), IsNil)
 	return dst
 }
 
@@ -229,8 +229,8 @@ func (s *metadataSuite) TestAcquireManySharedLocksOnDevice(c *C) {
 }
 
 type testDecodeHdrData struct {
-	path string
-	hdrSize uint64
+	path         string
+	hdrSize      uint64
 	keyslotsSize uint64
 }
 
@@ -247,7 +247,7 @@ func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
 	c.Check(hdr.Metadata.Keyslots[0].KeySize, Equals, 64)
 	c.Assert(hdr.Metadata.Keyslots[0].Area, NotNil)
 	c.Check(hdr.Metadata.Keyslots[0].Area.Type, Equals, AreaTypeRaw)
-	c.Check(hdr.Metadata.Keyslots[0].Area.Offset, Equals, data.hdrSize * 2)
+	c.Check(hdr.Metadata.Keyslots[0].Area.Offset, Equals, data.hdrSize*2)
 	c.Check(hdr.Metadata.Keyslots[0].Area.Size, Equals, uint64(258048))
 	c.Check(hdr.Metadata.Keyslots[0].Area.Encryption, Equals, "aes-xts-plain64")
 	c.Check(hdr.Metadata.Keyslots[0].Area.KeySize, Equals, 64)
@@ -264,7 +264,7 @@ func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
 	c.Check(hdr.Metadata.Keyslots[1].KeySize, Equals, 64)
 	c.Assert(hdr.Metadata.Keyslots[1].Area, NotNil)
 	c.Check(hdr.Metadata.Keyslots[1].Area.Type, Equals, AreaTypeRaw)
-	c.Check(hdr.Metadata.Keyslots[1].Area.Offset, Equals, (data.hdrSize * 2) + 258048)
+	c.Check(hdr.Metadata.Keyslots[1].Area.Offset, Equals, (data.hdrSize*2)+258048)
 	c.Check(hdr.Metadata.Keyslots[1].Area.Size, Equals, uint64(258048))
 	c.Check(hdr.Metadata.Keyslots[1].Area.Encryption, Equals, "aes-xts-plain64")
 	c.Check(hdr.Metadata.Keyslots[1].Area.KeySize, Equals, 64)
@@ -299,15 +299,15 @@ func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
 	c.Check(hdr.Metadata.Digests[0].Digest, HasLen, 32)
 	c.Check(hdr.Metadata.Digests[0].Hash, Equals, HashSHA256)
 
-	c.Check(hdr.Metadata.Config.JSONSize, Equals, data.hdrSize - 4096)
+	c.Check(hdr.Metadata.Config.JSONSize, Equals, data.hdrSize-4096)
 	c.Check(hdr.Metadata.Config.KeyslotsSize, Equals, data.keyslotsSize)
 }
 
 func (s *metadataSuite) TestDecodeHdrValid(c *C) {
 	// Test a valid header
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path: "testdata/luks2-valid-hdr.img",
-		hdrSize: 16384,
+		path:         "testdata/luks2-valid-hdr.img",
+		hdrSize:      16384,
 		keyslotsSize: 16744448,
 	})
 }
@@ -316,8 +316,8 @@ func (s *metadataSuite) TestDecodeHdrInvalidPrimary(c *C) {
 	// Test where the primary header has an invalid checksum. The primary header has an
 	// invalid JSON size, so the test will fail if the secondary header isn't selected.
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path: "testdata/luks2-hdr-invalid-checksum0.img",
-		hdrSize: 16384,
+		path:         "testdata/luks2-hdr-invalid-checksum0.img",
+		hdrSize:      16384,
 		keyslotsSize: 16744448,
 	})
 }
@@ -326,8 +326,8 @@ func (s *metadataSuite) TestDecodeHdrInvalidSecondary(c *C) {
 	// Test where the secondary header has an invalid checksum. The secondary header has an
 	// invalid JSON size, so the test will fail if the primary header isn't selected.
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path: "testdata/luks2-hdr-invalid-checksum1.img",
-		hdrSize: 16384,
+		path:         "testdata/luks2-hdr-invalid-checksum1.img",
+		hdrSize:      16384,
 		keyslotsSize: 16744448,
 	})
 }
@@ -335,8 +335,8 @@ func (s *metadataSuite) TestDecodeHdrInvalidSecondary(c *C) {
 func (s *metadataSuite) TestDecodeHdrCustomMetadataSize(c *C) {
 	// Test a valid header with different metadata and binary keyslot area sizes
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path: "testdata/luks2-valid-hdr2.img",
-		hdrSize: 65536,
+		path:         "testdata/luks2-valid-hdr2.img",
+		hdrSize:      65536,
 		keyslotsSize: 8257536,
 	})
 }
@@ -346,8 +346,8 @@ func (s *metadataSuite) TestDecodeHdrCustomMetadataSizeInvalidPrimary(c *C) {
 	// primary header has an invalid checksum because of an invalid JSON size, so the
 	// test will fail if the secondary header isn't selected.
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path: "testdata/luks2-hdr2-invalid-checksum0.img",
-		hdrSize: 65536,
+		path:         "testdata/luks2-hdr2-invalid-checksum0.img",
+		hdrSize:      65536,
 		keyslotsSize: 8257536,
 	})
 }

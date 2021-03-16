@@ -19,48 +19,9 @@
 
 package luks2
 
-import (
-	"io/ioutil"
-	"os"
-	"path/filepath"
-
-	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
-)
-
 var (
 	runDir = "/run"
 )
-
-func mkFifo() (string, func(), error) {
-	// /run is not world writable but we create a unique directory here because this
-	// code can be invoked by a public API and we shouldn't fail if more than one
-	// process reaches here at the same time.
-	dir, err := ioutil.TempDir(runDir, filepath.Base(os.Args[0])+".")
-	if err != nil {
-		return "", nil, xerrors.Errorf("cannot create temporary directory: %w", err)
-	}
-
-	cleanup := func() {
-		os.RemoveAll(dir)
-	}
-
-	succeeded := false
-	defer func() {
-		if succeeded {
-			return
-		}
-		cleanup()
-	}()
-
-	fifo := filepath.Join(dir, "fifo")
-	if err := unix.Mkfifo(fifo, 0600); err != nil {
-		return "", nil, xerrors.Errorf("cannot create FIFO: %w", err)
-	}
-
-	succeeded = true
-	return fifo, cleanup, nil
-}
 
 type KeyslotPriority int
 

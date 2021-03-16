@@ -79,4 +79,3 @@ func MockSystemdCryptsetupPath(path string) (restore func()) {
 		systemdCryptsetupPath = origSystemdCryptsetupPath
 	}
 }
-
