@@ -77,7 +77,7 @@ type afSplitDataRaw struct {
 	Data mu.RawBytes
 }
 
-func (d *afSplitDataRaw) Marshal(w io.Writer) error {
+func (d afSplitDataRaw) Marshal(w io.Writer) error {
 	_, err := mu.MarshalToWriter(w, d.Hdr, d.Data)
 	return err
 }
@@ -148,7 +148,7 @@ func makeAfSplitData(data []byte, minSz int, hashAlg tpm2.HashAlgorithmId) (*afS
 	return &afSplitData{stripes: stripes, hashAlg: hashAlg, data: split}, nil
 }
 
-func (d *afSplitData) Marshal(w io.Writer) (nbytes int, err error) {
+func (d afSplitData) Marshal(w io.Writer) (nbytes int, err error) {
 	panic("cannot be marshalled")
 }
 
@@ -173,7 +173,7 @@ type keyPolicyUpdateData struct {
 	creationTicket *tpm2.TkCreation
 }
 
-func (d *keyPolicyUpdateData) Marshal(w io.Writer) error {
+func (d keyPolicyUpdateData) Marshal(w io.Writer) error {
 	panic("not implemented")
 }
 
@@ -259,7 +259,7 @@ type keyData struct {
 	dynamicPolicyData *dynamicPolicyData
 }
 
-func (d *keyData) Marshal(w io.Writer) error {
+func (d keyData) Marshal(w io.Writer) error {
 	if _, err := mu.MarshalToWriter(w, d.version); err != nil {
 		return xerrors.Errorf("cannot marshal version number: %w", err)
 	}
@@ -530,8 +530,8 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	switch k := authKey.(type) {
 	case *rsa.PrivateKey:
 		goAuthPublicKey := rsa.PublicKey{
-			N: new(big.Int).SetBytes(authPublicKey.Unique.RSA()),
-			E: int(authPublicKey.Params.RSADetail().Exponent)}
+			N: new(big.Int).SetBytes(authPublicKey.Unique.RSA),
+			E: int(authPublicKey.Params.RSADetail.Exponent)}
 		if k.E != goAuthPublicKey.E || k.N.Cmp(goAuthPublicKey.N) != 0 {
 			return nil, keyFileError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
 		}

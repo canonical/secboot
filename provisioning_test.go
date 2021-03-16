@@ -53,25 +53,25 @@ func validateSRK(t *testing.T, tpm *tpm2.TPMContext) {
 		tpm2.AttrDecrypt {
 		t.Errorf("SRK has unexpected attributes")
 	}
-	if pub.Params.RSADetail().Symmetric.Algorithm != tpm2.SymObjectAlgorithmAES {
+	if pub.Params.RSADetail.Symmetric.Algorithm != tpm2.SymObjectAlgorithmAES {
 		t.Errorf("SRK has unexpected symmetric algorithm")
 	}
-	if pub.Params.RSADetail().Symmetric.KeyBits.Sym() != 128 {
+	if pub.Params.RSADetail.Symmetric.KeyBits.Sym != 128 {
 		t.Errorf("SRK has unexpected symmetric key length")
 	}
-	if pub.Params.RSADetail().Symmetric.Mode.Sym() != tpm2.SymModeCFB {
+	if pub.Params.RSADetail.Symmetric.Mode.Sym != tpm2.SymModeCFB {
 		t.Errorf("SRK has unexpected symmetric mode")
 	}
-	if pub.Params.RSADetail().Scheme.Scheme != tpm2.RSASchemeNull {
+	if pub.Params.RSADetail.Scheme.Scheme != tpm2.RSASchemeNull {
 		t.Errorf("SRK has unexpected RSA scheme")
 	}
-	if pub.Params.RSADetail().KeyBits != 2048 {
+	if pub.Params.RSADetail.KeyBits != 2048 {
 		t.Errorf("SRK has unexpected RSA public modulus length")
 	}
-	if pub.Params.RSADetail().Exponent != 0 {
+	if pub.Params.RSADetail.Exponent != 0 {
 		t.Errorf("SRK has an unexpected non-default public exponent")
 	}
-	if len(pub.Unique.RSA()) != 2048/8 {
+	if len(pub.Unique.RSA) != 2048/8 {
 		t.Errorf("SRK has an unexpected RSA public modulus length")
 	}
 }
@@ -102,25 +102,25 @@ func validateEK(t *testing.T, tpm *tpm2.TPMContext) {
 		0x24, 0xfd, 0x52, 0xd7, 0x6e, 0x06, 0x52, 0x0b, 0x64, 0xf2, 0xa1, 0xda, 0x1b, 0x33, 0x14, 0x69, 0xaa}) {
 		t.Errorf("EK has unexpected auth policy")
 	}
-	if pub.Params.RSADetail().Symmetric.Algorithm != tpm2.SymObjectAlgorithmAES {
+	if pub.Params.RSADetail.Symmetric.Algorithm != tpm2.SymObjectAlgorithmAES {
 		t.Errorf("EK has unexpected symmetric algorithm")
 	}
-	if pub.Params.RSADetail().Symmetric.KeyBits.Sym() != 128 {
+	if pub.Params.RSADetail.Symmetric.KeyBits.Sym != 128 {
 		t.Errorf("EK has unexpected symmetric key length")
 	}
-	if pub.Params.RSADetail().Symmetric.Mode.Sym() != tpm2.SymModeCFB {
+	if pub.Params.RSADetail.Symmetric.Mode.Sym != tpm2.SymModeCFB {
 		t.Errorf("EK has unexpected symmetric mode")
 	}
-	if pub.Params.RSADetail().Scheme.Scheme != tpm2.RSASchemeNull {
+	if pub.Params.RSADetail.Scheme.Scheme != tpm2.RSASchemeNull {
 		t.Errorf("EK has unexpected RSA scheme")
 	}
-	if pub.Params.RSADetail().KeyBits != 2048 {
+	if pub.Params.RSADetail.KeyBits != 2048 {
 		t.Errorf("EK has unexpected RSA public modulus length")
 	}
-	if pub.Params.RSADetail().Exponent != 0 {
+	if pub.Params.RSADetail.Exponent != 0 {
 		t.Errorf("EK has an unexpected non-default public exponent")
 	}
-	if len(pub.Unique.RSA()) != 2048/8 {
+	if len(pub.Unique.RSA) != 2048/8 {
 		t.Errorf("EK has an unexpected RSA public modulus length")
 	}
 }
@@ -562,7 +562,7 @@ func TestProvisionWithInvalidEkCert(t *testing.T) {
 
 	// Temporarily modify the public template so that ProvisionTPM generates a primary key that doesn't match the EK cert
 	ekTemplate := tcg.MakeDefaultEKTemplate()
-	ekTemplate.Unique.RSA()[0] = 0xff
+	ekTemplate.Unique.RSA[0] = 0xff
 	restore := testutil.MockEKTemplate(ekTemplate)
 	defer restore()
 

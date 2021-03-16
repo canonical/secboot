@@ -67,7 +67,7 @@ func TestTPMConnectionIsEnabled(t *testing.T) {
 }
 
 func TestConnectToDefaultTPM(t *testing.T) {
-	restore := testutil.MockOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
+	restore := testutil.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
 		return tpm2.OpenMssim("", testutil.MssimPort, testutil.MssimPort+1)
 	})
 	defer restore()
@@ -193,7 +193,7 @@ func TestConnectToDefaultTPM(t *testing.T) {
 }
 
 func TestConnectToDefaultTPMNoTPM(t *testing.T) {
-	restore := testutil.MockOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
+	restore := testutil.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
 		return nil, &os.PathError{Op: "open", Path: "/dev/tpm0", Err: syscall.ENOENT}
 	})
 	defer restore()
@@ -212,7 +212,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 		t.SkipNow()
 	}
 
-	restore := testutil.MockOpenDefaultTctiFn(func() (io.ReadWriteCloser, error) {
+	restore := testutil.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
 		return tpm2.OpenMssim("", testutil.MssimPort, testutil.MssimPort+1)
 	})
 	defer restore()
