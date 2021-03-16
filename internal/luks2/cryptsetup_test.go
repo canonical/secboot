@@ -96,7 +96,7 @@ func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
 	keyslot, ok := info.Metadata.Keyslots[0]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
-	c.Check(keyslot.Priority, Equals, KeyslotPriorityNormal)
+	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
 
@@ -214,7 +214,7 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	keyslot, ok := endInfo.Metadata.Keyslots[newSlotId]
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.KeySize, Equals, 64)
-	c.Check(keyslot.Priority, Equals, KeyslotPriorityNormal)
+	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
 
@@ -464,12 +464,12 @@ func (s *cryptsetupSuite) TestKillNonExistantSlot(c *C) {
 	s.checkLUKS2Passphrase(c, devicePath, key)
 }
 
-type testSetKeyslotPriorityData struct {
+type testSetSlotPriorityData struct {
 	slotId   int
-	priority KeyslotPriority
+	priority SlotPriority
 }
 
-func (s *cryptsetupSuite) testSetKeyslotPriority(c *C, data *testSetKeyslotPriorityData) {
+func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityData) {
 	devicePath := s.createEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), 100*time.Millisecond), IsNil)
@@ -478,9 +478,9 @@ func (s *cryptsetupSuite) testSetKeyslotPriority(c *C, data *testSetKeyslotPrior
 	c.Assert(err, IsNil)
 	keyslot, ok := info.Metadata.Keyslots[data.slotId]
 	c.Assert(ok, Equals, true)
-	c.Check(keyslot.Priority, Equals, KeyslotPriorityNormal)
+	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 
-	c.Check(SetKeyslotPriority(devicePath, data.slotId, data.priority), IsNil)
+	c.Check(SetSlotPriority(devicePath, data.slotId, data.priority), IsNil)
 
 	info, err = DecodeHdr(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -489,20 +489,20 @@ func (s *cryptsetupSuite) testSetKeyslotPriority(c *C, data *testSetKeyslotPrior
 	c.Check(keyslot.Priority, Equals, data.priority)
 }
 
-func (s *cryptsetupSuite) TestSetKeyslotPriority1(c *C) {
-	s.testSetKeyslotPriority(c, &testSetKeyslotPriorityData{
+func (s *cryptsetupSuite) TestSetSlotPriority1(c *C) {
+	s.testSetSlotPriority(c, &testSetSlotPriorityData{
 		slotId:   0,
-		priority: KeyslotPriorityHigh})
+		priority: SlotPriorityHigh})
 }
 
-func (s *cryptsetupSuite) TestSetKeyslotPriority2(c *C) {
-	s.testSetKeyslotPriority(c, &testSetKeyslotPriorityData{
+func (s *cryptsetupSuite) TestSetSlotPriority2(c *C) {
+	s.testSetSlotPriority(c, &testSetSlotPriorityData{
 		slotId:   1,
-		priority: KeyslotPriorityHigh})
+		priority: SlotPriorityHigh})
 }
 
-func (s *cryptsetupSuite) TestSetKeyslotPriority3(c *C) {
-	s.testSetKeyslotPriority(c, &testSetKeyslotPriorityData{
+func (s *cryptsetupSuite) TestSetSlotPriority3(c *C) {
+	s.testSetSlotPriority(c, &testSetSlotPriorityData{
 		slotId:   1,
-		priority: KeyslotPriorityIgnore})
+		priority: SlotPriorityIgnore})
 }

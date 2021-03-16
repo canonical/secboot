@@ -258,7 +258,7 @@ func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
 	c.Check(hdr.Metadata.Keyslots[0].AF.Type, Equals, AFTypeLUKS1)
 	c.Check(hdr.Metadata.Keyslots[0].AF.Stripes, Equals, 4000)
 	c.Check(hdr.Metadata.Keyslots[0].AF.Hash, Equals, HashSHA256)
-	c.Check(hdr.Metadata.Keyslots[0].Priority, Equals, KeyslotPriorityHigh)
+	c.Check(hdr.Metadata.Keyslots[0].Priority, Equals, SlotPriorityHigh)
 
 	c.Check(hdr.Metadata.Keyslots[1].Type, Equals, KeyslotTypeLUKS2)
 	c.Check(hdr.Metadata.Keyslots[1].KeySize, Equals, 64)
@@ -276,7 +276,7 @@ func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
 	c.Check(hdr.Metadata.Keyslots[1].AF.Type, Equals, AFTypeLUKS1)
 	c.Check(hdr.Metadata.Keyslots[1].AF.Stripes, Equals, 4000)
 	c.Check(hdr.Metadata.Keyslots[1].AF.Hash, Equals, HashSHA256)
-	c.Check(hdr.Metadata.Keyslots[1].Priority, Equals, KeyslotPriorityNormal)
+	c.Check(hdr.Metadata.Keyslots[1].Priority, Equals, SlotPriorityNormal)
 
 	c.Assert(hdr.Metadata.Segments, HasLen, 1)
 	c.Check(hdr.Metadata.Segments[0].Type, Equals, "crypt")

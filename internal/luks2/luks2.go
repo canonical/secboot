@@ -23,15 +23,16 @@ var (
 	runDir = "/run"
 )
 
-type KeyslotPriority int
+// SlotPriority represents the priority of a keyslot.
+type SlotPriority int
 
-func (p KeyslotPriority) String() string {
+func (p SlotPriority) String() string {
 	switch p {
-	case KeyslotPriorityIgnore:
+	case SlotPriorityIgnore:
 		return "ignore"
-	case KeyslotPriorityNormal:
+	case SlotPriorityNormal:
 		return "normal"
-	case KeyslotPriorityHigh:
+	case SlotPriorityHigh:
 		return "prefer"
 	default:
 		panic("not reached")
@@ -39,7 +40,14 @@ func (p KeyslotPriority) String() string {
 }
 
 const (
-	KeyslotPriorityIgnore KeyslotPriority = iota
-	KeyslotPriorityNormal
-	KeyslotPriorityHigh
+	// SlotPriorityIgnore means that cryptsetup will not use the associated
+	// keyslot unless it is specified explicitly.
+	SlotPriorityIgnore SlotPriority = iota
+
+	// SlotPriorityNormal is the default keyslot priority.
+	SlotPriorityNormal
+
+	// SlotPriorityHigh means that cryptsetup will try the associated keyslot
+	// before it tries any keyslots with a priority of SlotPriorityNormal.
+	SlotPriorityHigh
 )

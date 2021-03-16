@@ -619,11 +619,11 @@ type KDF struct {
 // contains information about a stored protected key.
 type Keyslot struct {
 	Type     KeyslotType
-	KeySize  int             // The size of the key protected by this keyslot, in bytes
-	Area     *Area           // The allocated area in the keyslots area
-	KDF      *KDF            // The KDF parameters used for this keyslot
-	AF       *AF             // The anti-forensic splitter parameters used for this keyslot
-	Priority KeyslotPriority // Priority of this keyslot (0:ignore, 1:normal, 2:high)
+	KeySize  int          // The size of the key protected by this keyslot, in bytes
+	Area     *Area        // The allocated area in the keyslots area
+	KDF      *KDF         // The KDF parameters used for this keyslot
+	AF       *AF          // The anti-forensic splitter parameters used for this keyslot
+	Priority SlotPriority // Priority of this keyslot (0:ignore, 1:normal, 2:high)
 }
 
 func (s *Keyslot) UnmarshalJSON(data []byte) error {
@@ -646,9 +646,9 @@ func (s *Keyslot) UnmarshalJSON(data []byte) error {
 		KDF:     d.KDF,
 		AF:      d.AF}
 	if d.Priority != nil {
-		s.Priority = KeyslotPriority(*d.Priority)
+		s.Priority = SlotPriority(*d.Priority)
 	} else {
-		s.Priority = KeyslotPriorityNormal
+		s.Priority = SlotPriorityNormal
 	}
 	return nil
 }

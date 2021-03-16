@@ -190,9 +190,9 @@ func KillSlot(devicePath string, slot int, key []byte) error {
 	return nil
 }
 
-// SetKeyslotPriority sets the priority of the keyslot with the supplied slot number on
+// SetSlotPriority sets the priority of the keyslot with the supplied slot number on
 // the specified LUKS2 container.
-func SetKeyslotPriority(devicePath string, slot int, priority KeyslotPriority) error {
+func SetSlotPriority(devicePath string, slot int, priority SlotPriority) error {
 	cmd := exec.Command("cryptsetup", "config", "--priority", priority.String(), "--key-slot", strconv.Itoa(slot), devicePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return osutil.OutputErr(output, err)
