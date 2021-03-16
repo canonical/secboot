@@ -229,9 +229,10 @@ func (s *metadataSuite) TestAcquireManySharedLocksOnDevice(c *C) {
 }
 
 type testDecodeHdrData struct {
-	path         string
-	hdrSize      uint64
-	keyslotsSize uint64
+	path             string
+	hdrSize          uint64
+	keyslotsSize     uint64
+	keyslot2Priority SlotPriority
 }
 
 func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
@@ -276,7 +277,7 @@ func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
 	c.Check(hdr.Metadata.Keyslots[1].AF.Type, Equals, AFTypeLUKS1)
 	c.Check(hdr.Metadata.Keyslots[1].AF.Stripes, Equals, 4000)
 	c.Check(hdr.Metadata.Keyslots[1].AF.Hash, Equals, HashSHA256)
-	c.Check(hdr.Metadata.Keyslots[1].Priority, Equals, SlotPriorityNormal)
+	c.Check(hdr.Metadata.Keyslots[1].Priority, Equals, data.keyslot2Priority)
 
 	c.Assert(hdr.Metadata.Segments, HasLen, 1)
 	c.Check(hdr.Metadata.Segments[0].Type, Equals, "crypt")
@@ -306,9 +307,10 @@ func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
 func (s *metadataSuite) TestDecodeHdrValid(c *C) {
 	// Test a valid header
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path:         "testdata/luks2-valid-hdr.img",
-		hdrSize:      16384,
-		keyslotsSize: 16744448,
+		path:             "testdata/luks2-valid-hdr.img",
+		hdrSize:          16384,
+		keyslotsSize:     16744448,
+		keyslot2Priority: SlotPriorityNormal,
 	})
 }
 
@@ -316,9 +318,10 @@ func (s *metadataSuite) TestDecodeHdrInvalidPrimary(c *C) {
 	// Test where the primary header has an invalid checksum. The primary header has an
 	// invalid JSON size, so the test will fail if the secondary header isn't selected.
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path:         "testdata/luks2-hdr-invalid-checksum0.img",
-		hdrSize:      16384,
-		keyslotsSize: 16744448,
+		path:             "testdata/luks2-hdr-invalid-checksum0.img",
+		hdrSize:          16384,
+		keyslotsSize:     16744448,
+		keyslot2Priority: SlotPriorityNormal,
 	})
 }
 
@@ -326,18 +329,20 @@ func (s *metadataSuite) TestDecodeHdrInvalidSecondary(c *C) {
 	// Test where the secondary header has an invalid checksum. The secondary header has an
 	// invalid JSON size, so the test will fail if the primary header isn't selected.
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path:         "testdata/luks2-hdr-invalid-checksum1.img",
-		hdrSize:      16384,
-		keyslotsSize: 16744448,
+		path:             "testdata/luks2-hdr-invalid-checksum1.img",
+		hdrSize:          16384,
+		keyslotsSize:     16744448,
+		keyslot2Priority: SlotPriorityNormal,
 	})
 }
 
 func (s *metadataSuite) TestDecodeHdrCustomMetadataSize(c *C) {
 	// Test a valid header with different metadata and binary keyslot area sizes
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path:         "testdata/luks2-valid-hdr2.img",
-		hdrSize:      65536,
-		keyslotsSize: 8257536,
+		path:             "testdata/luks2-valid-hdr2.img",
+		hdrSize:          65536,
+		keyslotsSize:     8257536,
+		keyslot2Priority: SlotPriorityNormal,
 	})
 }
 
@@ -346,9 +351,21 @@ func (s *metadataSuite) TestDecodeHdrCustomMetadataSizeInvalidPrimary(c *C) {
 	// primary header has an invalid checksum because of an invalid JSON size, so the
 	// test will fail if the secondary header isn't selected.
 	s.testDecodeHdr(c, &testDecodeHdrData{
-		path:         "testdata/luks2-hdr2-invalid-checksum0.img",
-		hdrSize:      65536,
-		keyslotsSize: 8257536,
+		path:             "testdata/luks2-hdr2-invalid-checksum0.img",
+		hdrSize:          65536,
+		keyslotsSize:     8257536,
+		keyslot2Priority: SlotPriorityNormal,
+	})
+}
+
+func (s *metadataSuite) TestDecodeHdrObsoletePrimary(c *C) {
+	// Test where the primary header is obsolete. The secondary header has a modified
+	// keyslot priority, so the test will fail if the secondary header is not selected.
+	s.testDecodeHdr(c, &testDecodeHdrData{
+		path:             "testdata/luks2-hdr-obsolete0.img",
+		hdrSize:          16384,
+		keyslotsSize:     16744448,
+		keyslot2Priority: SlotPriorityIgnore,
 	})
 }
 
