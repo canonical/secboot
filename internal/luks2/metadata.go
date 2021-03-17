@@ -71,7 +71,7 @@ const (
 // A shared lock is for read-only access. There can be multiple parallel shared lock holders.
 //
 // This function implements the locking logic implemented by libcryptsetup - see
-// lib/utils_device_locking.c from the cryptsetup source code.
+// lib/utils_device_locking.c from the cryptsetup source code (tag:v2.3.1).
 //
 // On success, a callback is returned which should be called to release the lock.
 func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
@@ -832,7 +832,8 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 	var secondaryErr error
 	if primaryErr != nil {
 		// No valid primary header. Try to decode and check a secondary header from one of the
-		// well known offsets.
+		// well known offsets (see Table 1: Possible LUKS2 secondary header offsets and JSON area
+		// size in the LUKS2 On-Disk Format specification).
 		for _, off := range []int64{0x4000, 0x8000, 0x10000, 0x20000, 0x40000, 0x80000, 0x100000, 0x200000, 0x400000} {
 			secondaryHdr, secondaryJSONData, secondaryErr = decodeAndCheckHeader(f, off, false)
 			if secondaryErr == nil {
