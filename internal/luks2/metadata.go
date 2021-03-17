@@ -321,13 +321,13 @@ type binaryHdr struct {
 	Padding4096 [7 * 512]byte
 }
 
-type jsonNumber string
+type luksJsonNumber string
 
-func (n jsonNumber) int() (int, error) {
+func (n luksJsonNumber) int() (int, error) {
 	return strconv.Atoi(string(n))
 }
 
-func (n jsonNumber) uint64() (uint64, error) {
+func (n luksJsonNumber) uint64() (uint64, error) {
 	return strconv.ParseUint(string(n), 10, 64)
 }
 
@@ -341,8 +341,8 @@ type Config struct {
 
 func (c *Config) UnmarshalJSON(data []byte) error {
 	var d struct {
-		JSONSize     jsonNumber `json:"json_size"`
-		KeyslotsSize jsonNumber `json:"keyslots_size"`
+		JSONSize     luksJsonNumber `json:"json_size"`
+		KeyslotsSize luksJsonNumber `json:"keyslots_size"`
 		Flags        []string
 		Requirements []string
 	}
@@ -382,9 +382,9 @@ func (t Token) MarshalJSON() ([]byte, error) {
 		m[k] = v
 	}
 	m["type"] = t.Type
-	var keyslots []jsonNumber
+	var keyslots []luksJsonNumber
 	for _, s := range t.Keyslots {
-		keyslots = append(keyslots, jsonNumber(strconv.Itoa(s)))
+		keyslots = append(keyslots, luksJsonNumber(strconv.Itoa(s)))
 	}
 	m["keyslots"] = keyslots
 
@@ -416,7 +416,7 @@ func (t *Token) UnmarshalJSON(data []byte) error {
 			if !ok {
 				return errors.New("invalid keyslot id type")
 			}
-			n, err := jsonNumber(s).int()
+			n, err := luksJsonNumber(s).int()
 			if err != nil {
 				return xerrors.Errorf("invalid keyslot id: %w", err)
 			}
@@ -445,8 +445,8 @@ type Digest struct {
 func (d *Digest) UnmarshalJSON(data []byte) error {
 	var t struct {
 		Type       KDFType
-		Keyslots   []jsonNumber
-		Segments   []jsonNumber
+		Keyslots   []luksJsonNumber
+		Segments   []luksJsonNumber
 		Salt       []byte
 		Digest     []byte
 		Hash       Hash
@@ -507,9 +507,9 @@ type Segment struct {
 func (s *Segment) UnmarshalJSON(data []byte) error {
 	var d struct {
 		Type       string
-		Offset     jsonNumber
-		Size       jsonNumber
-		IVTweak    jsonNumber `json:"iv_tweak"`
+		Offset     luksJsonNumber
+		Size       luksJsonNumber
+		IVTweak    luksJsonNumber `json:"iv_tweak"`
 		Encryption string
 		SectorSize int `json:"sector_size"`
 		Integrity  *Integrity
@@ -566,8 +566,8 @@ type Area struct {
 func (a *Area) UnmarshalJSON(data []byte) error {
 	var d struct {
 		Type       AreaType
-		Offset     jsonNumber
-		Size       jsonNumber
+		Offset     luksJsonNumber
+		Size       luksJsonNumber
 		Encryption string
 		KeySize    int `json:"key_size"`
 	}
@@ -664,10 +664,10 @@ type Metadata struct {
 
 func (m *Metadata) UnmarshalJSON(data []byte) error {
 	var d struct {
-		Keyslots map[jsonNumber]*Keyslot
-		Segments map[jsonNumber]*Segment
-		Digests  map[jsonNumber]*Digest
-		Tokens   map[jsonNumber]*Token
+		Keyslots map[luksJsonNumber]*Keyslot
+		Segments map[luksJsonNumber]*Segment
+		Digests  map[luksJsonNumber]*Digest
+		Tokens   map[luksJsonNumber]*Token
 		Config   Config
 	}
 	if err := json.Unmarshal(data, &d); err != nil {
