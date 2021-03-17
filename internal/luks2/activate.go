@@ -21,6 +21,7 @@ package luks2
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,13 +39,7 @@ var (
 //
 // This will return a *os.ExitError error in the event that systemd-cryptsetup fails.
 func Activate(volumeName, sourceDevicePath string, key []byte) error {
-	fifoPath, cleanupFifo, err := mkFifo()
-	if err != nil {
-		return xerrors.Errorf("cannot create FIFO for passing key to systemd-cryptsetup: %w", err)
-	}
-	defer cleanupFifo()
-
-	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, fifoPath, "luks,tries=1")
+	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, "/dev/stdin", "luks,tries=1")
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
 	stdout, err := cmd.StdoutPipe()
@@ -55,6 +50,8 @@ func Activate(volumeName, sourceDevicePath string, key []byte) error {
 	if err != nil {
 		return xerrors.Errorf("cannot create stderr pipe: %w", err)
 	}
+
+	cmd.Stdin = bytes.NewReader(key)
 
 	if err := cmd.Start(); err != nil {
 		return err
@@ -77,22 +74,6 @@ func Activate(volumeName, sourceDevicePath string, key []byte) error {
 		wg.Done()
 	}()
 
-	f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
-	if err != nil {
-		// If we fail to open the write end, the read end will be blocked in open()
-		cmd.Process.Kill()
-		return xerrors.Errorf("cannot open FIFO for passing key to systemd-cryptsetup: %w", err)
-	}
-
-	if _, err := f.Write(key); err != nil {
-		f.Close()
-		// The read end is open and blocked inside read(). Closing our write end will result in the
-		// read end returning 0 bytes (EOF) and exitting cleanly.
-		cmd.Wait()
-		return xerrors.Errorf("cannot pass key to systemd-cryptsetup: %w", err)
-	}
-
-	f.Close()
 	wg.Wait()
 
 	return cmd.Wait()

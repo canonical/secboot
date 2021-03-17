@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"os"
 	"path/filepath"
 
 	. "github.com/snapcore/secboot/internal/luks2"
@@ -89,9 +88,7 @@ func (s *activateSuite) testActivate(c *C, data *testActivateData) {
 
 	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
 	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
-	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "luks,tries=1")
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath, "/dev/stdin", "luks,tries=1"})
 }
 
 func (s *activateSuite) TestActivate1(c *C) {
@@ -122,6 +119,5 @@ func (s *activateSuite) TestActivateWrongKey(c *C) {
 	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
 	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.runDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "luks,tries=1")
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1", "/dev/stdin", "luks,tries=1"})
 }
