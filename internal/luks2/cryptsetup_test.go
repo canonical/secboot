@@ -87,7 +87,7 @@ func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
 
 	c.Check(Format(devicePath, data.label, data.key, data.options), IsNil)
 
-	info, err := DecodeHdr(devicePath, LockModeBlocking)
+	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Label, Equals, data.label)
@@ -193,12 +193,12 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	devicePath := s.createEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", primaryKey, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 
-	startInfo, err := DecodeHdr(devicePath, LockModeBlocking)
+	startInfo, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 
 	c.Check(AddKey(devicePath, primaryKey, data.key, data.time), IsNil)
 
-	endInfo, err := DecodeHdr(devicePath, LockModeBlocking)
+	endInfo, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 
 	newSlotId := -1
@@ -254,7 +254,7 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 
 	c.Check(AddKey(devicePath, make([]byte, 32), []byte("foo"), 0), ErrorMatches, "No key available with this passphrase.")
 
-	info, err := DecodeHdr(devicePath, LockModeBlocking)
+	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
 	_, ok := info.Metadata.Keyslots[0]
@@ -275,7 +275,7 @@ func (s *cryptsetupSuite) testImportToken(c *C, data *testImportTokenData) {
 
 	c.Check(ImportToken(devicePath, data.token), IsNil)
 
-	info, err := DecodeHdr(devicePath, LockModeBlocking)
+	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 
 	c.Assert(info.Metadata.Tokens, HasLen, 1)
@@ -341,7 +341,7 @@ func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
 	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []int{0}}), IsNil)
 	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-bar", Keyslots: []int{1}}), IsNil)
 
-	info, err := DecodeHdr(devicePath, LockModeBlocking)
+	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Tokens, HasLen, 2)
 	_, ok := info.Metadata.Tokens[tokenId]
@@ -349,7 +349,7 @@ func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
 
 	c.Check(RemoveToken(devicePath, tokenId), IsNil)
 
-	info, err = DecodeHdr(devicePath, LockModeBlocking)
+	info, err = ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Tokens, HasLen, 1)
 	_, ok = info.Metadata.Tokens[tokenId]
@@ -371,7 +371,7 @@ func (s *cryptsetupSuite) TestRemoveNonExistantToken(c *C) {
 
 	c.Check(RemoveToken(devicePath, 10), ErrorMatches, "Token 10 is not in use.")
 
-	info, err := DecodeHdr(devicePath, LockModeBlocking)
+	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Tokens, HasLen, 1)
 	_, ok := info.Metadata.Tokens[0]
@@ -391,7 +391,7 @@ func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 	c.Assert(Format(devicePath, "", data.key1, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(AddKey(devicePath, data.key1, data.key2, 100*time.Millisecond), IsNil)
 
-	info, err := DecodeHdr(devicePath, LockModeBlocking)
+	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
 	_, ok := info.Metadata.Keyslots[data.slotId]
@@ -399,7 +399,7 @@ func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 
 	c.Check(KillSlot(devicePath, data.slotId, data.key), IsNil)
 
-	info, err = DecodeHdr(devicePath, LockModeBlocking)
+	info, err = ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
 	_, ok = info.Metadata.Keyslots[data.slotId]
@@ -474,7 +474,7 @@ func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityDat
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), 100*time.Millisecond), IsNil)
 
-	info, err := DecodeHdr(devicePath, LockModeBlocking)
+	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 	keyslot, ok := info.Metadata.Keyslots[data.slotId]
 	c.Assert(ok, Equals, true)
@@ -482,7 +482,7 @@ func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityDat
 
 	c.Check(SetSlotPriority(devicePath, data.slotId, data.priority), IsNil)
 
-	info, err = DecodeHdr(devicePath, LockModeBlocking)
+	info, err = ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 	keyslot, ok = info.Metadata.Keyslots[data.slotId]
 	c.Assert(ok, Equals, true)

@@ -228,18 +228,18 @@ func (s *metadataSuite) TestAcquireManySharedLocksOnDevice(c *C) {
 	c.Check(err, ErrorMatches, ".*: no such file or directory")
 }
 
-type testDecodeHdrData struct {
+type testReadHeaderData struct {
 	path             string
 	hdrSize          uint64
 	keyslotsSize     uint64
 	keyslot2Priority SlotPriority
 }
 
-func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
-	hdr, err := DecodeHdr(s.decompress(c, data.path), LockModeBlocking)
+func (s *metadataSuite) testReadHeader(c *C, data *testReadHeaderData) {
+	hdr, err := ReadHeader(s.decompress(c, data.path), LockModeBlocking)
 	c.Assert(err, IsNil)
 
-	c.Check(hdr.HdrSize, Equals, data.hdrSize)
+	c.Check(hdr.HeaderSize, Equals, data.hdrSize)
 	c.Check(hdr.Label, Equals, "data")
 
 	c.Assert(hdr.Metadata.Keyslots, HasLen, 2)
@@ -304,9 +304,9 @@ func (s *metadataSuite) testDecodeHdr(c *C, data *testDecodeHdrData) {
 	c.Check(hdr.Metadata.Config.KeyslotsSize, Equals, data.keyslotsSize)
 }
 
-func (s *metadataSuite) TestDecodeHdrValid(c *C) {
+func (s *metadataSuite) TestReadHeaderValid(c *C) {
 	// Test a valid header
-	s.testDecodeHdr(c, &testDecodeHdrData{
+	s.testReadHeader(c, &testReadHeaderData{
 		path:             "testdata/luks2-valid-hdr.img",
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
@@ -314,10 +314,10 @@ func (s *metadataSuite) TestDecodeHdrValid(c *C) {
 	})
 }
 
-func (s *metadataSuite) TestDecodeHdrInvalidPrimary(c *C) {
+func (s *metadataSuite) TestReadHeaderInvalidPrimary(c *C) {
 	// Test where the primary header has an invalid checksum. The primary header has an
 	// invalid JSON size, so the test will fail if the secondary header isn't selected.
-	s.testDecodeHdr(c, &testDecodeHdrData{
+	s.testReadHeader(c, &testReadHeaderData{
 		path:             "testdata/luks2-hdr-invalid-checksum0.img",
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
@@ -325,10 +325,10 @@ func (s *metadataSuite) TestDecodeHdrInvalidPrimary(c *C) {
 	})
 }
 
-func (s *metadataSuite) TestDecodeHdrInvalidSecondary(c *C) {
+func (s *metadataSuite) TestReadHeaderInvalidSecondary(c *C) {
 	// Test where the secondary header has an invalid checksum. The secondary header has an
 	// invalid JSON size, so the test will fail if the primary header isn't selected.
-	s.testDecodeHdr(c, &testDecodeHdrData{
+	s.testReadHeader(c, &testReadHeaderData{
 		path:             "testdata/luks2-hdr-invalid-checksum1.img",
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
@@ -336,9 +336,9 @@ func (s *metadataSuite) TestDecodeHdrInvalidSecondary(c *C) {
 	})
 }
 
-func (s *metadataSuite) TestDecodeHdrCustomMetadataSize(c *C) {
+func (s *metadataSuite) TestReadHeaderCustomMetadataSize(c *C) {
 	// Test a valid header with different metadata and binary keyslot area sizes
-	s.testDecodeHdr(c, &testDecodeHdrData{
+	s.testReadHeader(c, &testReadHeaderData{
 		path:             "testdata/luks2-valid-hdr2.img",
 		hdrSize:          65536,
 		keyslotsSize:     8257536,
@@ -346,11 +346,11 @@ func (s *metadataSuite) TestDecodeHdrCustomMetadataSize(c *C) {
 	})
 }
 
-func (s *metadataSuite) TestDecodeHdrCustomMetadataSizeInvalidPrimary(c *C) {
+func (s *metadataSuite) TestReadHeaderCustomMetadataSizeInvalidPrimary(c *C) {
 	// Test a valid header with different metadata and binary keyslot area sizes. The
 	// primary header has an invalid checksum because of an invalid JSON size, so the
 	// test will fail if the secondary header isn't selected.
-	s.testDecodeHdr(c, &testDecodeHdrData{
+	s.testReadHeader(c, &testReadHeaderData{
 		path:             "testdata/luks2-hdr2-invalid-checksum0.img",
 		hdrSize:          65536,
 		keyslotsSize:     8257536,
@@ -358,10 +358,10 @@ func (s *metadataSuite) TestDecodeHdrCustomMetadataSizeInvalidPrimary(c *C) {
 	})
 }
 
-func (s *metadataSuite) TestDecodeHdrObsoletePrimary(c *C) {
+func (s *metadataSuite) TestReadHeaderObsoletePrimary(c *C) {
 	// Test where the primary header is obsolete. The secondary header has a modified
 	// keyslot priority, so the test will fail if the secondary header is not selected.
-	s.testDecodeHdr(c, &testDecodeHdrData{
+	s.testReadHeader(c, &testReadHeaderData{
 		path:             "testdata/luks2-hdr-obsolete0.img",
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
@@ -369,14 +369,14 @@ func (s *metadataSuite) TestDecodeHdrObsoletePrimary(c *C) {
 	})
 }
 
-func (s *metadataSuite) TestDecodeHdrInvalidMagic(c *C) {
+func (s *metadataSuite) TestReadHeaderInvalidMagic(c *C) {
 	// Test where both headers have invalid magic values to check we get the right error.
-	_, err := DecodeHdr(s.decompress(c, "testdata/luks2-hdr-invalid-magic-both.img"), LockModeBlocking)
+	_, err := ReadHeader(s.decompress(c, "testdata/luks2-hdr-invalid-magic-both.img"), LockModeBlocking)
 	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: invalid magic")
 }
 
-func (s *metadataSuite) TestDecodeHdrInvalidVersion(c *C) {
+func (s *metadataSuite) TestReadHeaderInvalidVersion(c *C) {
 	// Test where both headers have an invalid version to check we get the right error.
-	_, err := DecodeHdr(s.decompress(c, "testdata/luks2-hdr-invalid-version-both.img"), LockModeBlocking)
+	_, err := ReadHeader(s.decompress(c, "testdata/luks2-hdr-invalid-version-both.img"), LockModeBlocking)
 	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: invalid version")
 }

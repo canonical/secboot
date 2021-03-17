@@ -52,7 +52,7 @@ var isBlockDevice = func(mode os.FileMode) bool {
 	return mode&os.ModeDevice > 0 && mode&os.ModeCharDevice == 0
 }
 
-// LockMode defines the locking mode for DecodeHdr.
+// LockMode defines the locking mode for ReadHeader.
 type LockMode int
 
 const (
@@ -714,11 +714,11 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// HdrInfo corresponds to the header (binary header and JSON metadata) for a LUKS2 volume.
-type HdrInfo struct {
-	HdrSize  uint64   // The total size of the binary header and JSON metadata in bytes
-	Label    string   // The label
-	Metadata Metadata // JSON metadata
+// HeaderInfo corresponds to the header (binary header and JSON metadata) for a LUKS2 volume.
+type HeaderInfo struct {
+	HeaderSize uint64   // The total size of the binary header and JSON metadata in bytes
+	Label      string   // The label
+	Metadata   Metadata // JSON metadata
 }
 
 func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryHdr, *bytes.Buffer, error) {
@@ -779,7 +779,7 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 	return &hdr, jsonBuffer, nil
 }
 
-// DecodeHdr will decode the LUKS header at the specified path. The path can either be a block device
+// ReadHeader will decode the LUKS header at the specified path. The path can either be a block device
 // or file containing a LUKS2 volume with an integral header, or it can be a detached header file.
 // Data is interpreted in accordance with the LUKS2 On-Disk Format specification
 // (https://gitlab.com/cryptsetup/LUKS2-docs/blob/master/luks2_doc_wip.pdf).
@@ -805,7 +805,7 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 // specified path. If the mode parameter is LockModeBlocking, this function will block until the
 // lock can be obtained. If the mode parameter is LockModeNonBlocking, a wrapped syscall.Errno
 // error with the value of syscall.EWOULDBLOCK will be returned if the lock can not be obtained.
-func DecodeHdr(path string, lockMode LockMode) (*HdrInfo, error) {
+func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 	releaseLock, err := acquireSharedLock(path, lockMode)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot acquire shared lock: %w", err)
@@ -862,9 +862,9 @@ func DecodeHdr(path string, lockMode LockMode) (*HdrInfo, error) {
 		return nil, xerrors.Errorf("no valid header found, error from decoding primary header: %w", primaryErr)
 	}
 
-	info := &HdrInfo{
-		HdrSize: hdr.HdrSize,
-		Label:   hdr.Label.String()}
+	info := &HeaderInfo{
+		HeaderSize: hdr.HdrSize,
+		Label:      hdr.Label.String()}
 
 	if err := json.NewDecoder(jsonData).Decode(&info.Metadata); err != nil {
 		return nil, err
