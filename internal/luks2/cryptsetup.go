@@ -119,7 +119,10 @@ func AddKey(devicePath string, existingKey, key []byte, kdfTime time.Duration) e
 	args = append(args,
 		// container to add key to
 		devicePath,
-		// read new key from stdin
+		// read new key from stdin.
+		// Note we don't supply the new key via the same FIFO as the existing key using
+		// the --{new-,}keyfile-offset and --{new-,}keyfile-size options, as FIFOs
+		// aren't seekable.
 		"-")
 	cmd := exec.Command("cryptsetup", args...)
 	cmd.Stdin = bytes.NewReader(key)
