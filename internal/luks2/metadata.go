@@ -61,7 +61,7 @@ const (
 )
 
 // acquireSharedLock acquires an advisory shared lock on the LUKS volume associated with the
-// specified path. The ath can either be a block device or file containing a LUKS2 volume with
+// specified path. The path can either be a block device or file containing a LUKS2 volume with
 // an integral header, or a detached header file associated with a LUKS device.
 //
 // If the mode parameter is LockModeBlocking, this function will block until the lock can be
