@@ -819,56 +819,73 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 	defer f.Close()
 
 	// Try to decode and check the primary header
-	primaryHdr, primaryJSON, primaryErr := decodeAndCheckHeader(f, 0, true)
+	primaryHdr, primaryJSONData, primaryErr := decodeAndCheckHeader(f, 0, true)
+	var primaryMetadata Metadata
+	if primaryErr == nil {
+		if err := json.NewDecoder(primaryJSONData).Decode(&primaryMetadata); err != nil {
+			primaryErr = xerrors.Errorf("cannot decode JSON metadata area: %w", err)
+		}
+	}
 
 	var secondaryHdr *binaryHdr
-	var secondaryJSON *bytes.Buffer
+	var secondaryJSONData *bytes.Buffer
+	var secondaryErr error
 	if primaryErr != nil {
 		// No valid primary header. Try to decode and check a secondary header from one of the
 		// well known offsets.
 		for _, off := range []int64{0x4000, 0x8000, 0x10000, 0x20000, 0x40000, 0x80000, 0x100000, 0x200000, 0x400000} {
-			secondaryHdr, secondaryJSON, err = decodeAndCheckHeader(f, off, false)
-			if err == nil {
+			secondaryHdr, secondaryJSONData, secondaryErr = decodeAndCheckHeader(f, off, false)
+			if secondaryErr == nil {
 				break
 			}
 		}
 	} else {
 		// Try to decode and check the secondary header immediately after the primary header.
-		secondaryHdr, secondaryJSON, _ = decodeAndCheckHeader(f, int64(primaryHdr.HdrSize), false)
+		secondaryHdr, secondaryJSONData, secondaryErr = decodeAndCheckHeader(f, int64(primaryHdr.HdrSize), false)
+	}
+	var secondaryMetadata Metadata
+	if secondaryErr == nil {
+		if err := json.NewDecoder(secondaryJSONData).Decode(&secondaryMetadata); err != nil {
+			secondaryErr = xerrors.Errorf("cannot decode JSON metadata area: %w", err)
+		}
 	}
 
 	var hdr *binaryHdr
-	var jsonData *bytes.Buffer
+	var metadata *Metadata
 	switch {
-	case primaryHdr != nil && secondaryHdr != nil:
+	case primaryErr == nil && secondaryErr == nil:
 		// Both headers are valid
 		hdr = primaryHdr
-		jsonData = primaryJSON
-		if secondaryHdr.SeqId > primaryHdr.SeqId {
-			// The secondary header is newer than the primary header, so use that
+		metadata = &primaryMetadata
+		switch {
+		case secondaryHdr.SeqId < primaryHdr.SeqId:
+			// The secondary header is obsolete. Cryptsetup will recover this automatically.
+			fmt.Fprintf(os.Stderr, "luks2.ReadHeader: secondary header for %s is obsolete\n", path)
+		case secondaryHdr.SeqId > primaryHdr.SeqId:
+			// The primary header is obsolete, so use the secondary header. This shouldn't
+			// normally happen as the primary header is updated first. Cryptsetup will recover
+			// this automatically.
 			hdr = secondaryHdr
-			jsonData = secondaryJSON
+			metadata = &secondaryMetadata
+			fmt.Fprintf(os.Stderr, "luks2.ReadHeader: primary header for %s is obsolete\n", path)
 		}
-	case primaryHdr != nil:
-		// We only have a valid primary header
+	case primaryErr == nil:
+		// We only have a valid primary header so use that. Cryptsetup will recover this automatically.
 		hdr = primaryHdr
-		jsonData = primaryJSON
-	case secondaryHdr != nil:
-		// We only have a valid secondary header
+		metadata = &primaryMetadata
+		fmt.Fprintf(os.Stderr, "luks2.ReadHeader: secondary header for %s is invalid: %v\n", path, secondaryErr)
+	case secondaryErr == nil:
+		// We only have a valid secondary header so use that. Cryptsetup will recover this automatically.
 		hdr = secondaryHdr
-		jsonData = secondaryJSON
+		metadata = &secondaryMetadata
+		fmt.Fprintf(os.Stderr, "luks2.ReadHeader: primary header for %s is invalid: %v\n", path, primaryErr)
 	default:
 		// No valid headers :(
 		return nil, xerrors.Errorf("no valid header found, error from decoding primary header: %w", primaryErr)
 	}
 
-	info := &HeaderInfo{
+	return &HeaderInfo{
 		HeaderSize: hdr.HdrSize,
-		Label:      hdr.Label.String()}
-
-	if err := json.NewDecoder(jsonData).Decode(&info.Metadata); err != nil {
-		return nil, err
-	}
-
-	return info, nil
+		Label:      hdr.Label.String(),
+		Metadata:   *metadata}, nil
 }
