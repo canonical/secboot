@@ -122,29 +122,80 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		return nil, errors.New("unsupported file type")
 	}
 
+	var lockFile *os.File
+	var origSt unix.Stat_t
+
+	release = func() {
+		// Release the lock
+		unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
+		defer lockFile.Close()
+		if !isBlockDevice(fi.Mode()) {
+			// If we didn't lock a block device, then we are finished now.
+			return
+		}
+
+		// If we locked a block device then we need to clean up the lock file, being careful
+		// not to race with potential new lock owners.
+
+		// Although this function only supports shared locks for read-only access (where an
+		// implementation bug might cause data inconsistency issues in the decoded data but
+		// doesn't lead to data loss), the following code is responsible for cleaning up the
+		// lock file on release. This is carefully implemented using the same steps as
+		// libcryptsetup to avoid racing with other lock holders, some of whom could be
+		// exclusive lock holders. Implementation bugs here that result in us unlinking a
+		// lock file that another processes has an exclusive lock on could result in data
+		// loss - please be careful when changing any of the code below.
+
+		// First of all, attempt to acquire an exclusive lock on the same file we had a lock
+		// on previously, without blocking.
+		if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+			// Another process has grabbed a lock since we released the lock. There's
+			// nothing else for us to do - the new lock owner is now responsible for
+			// cleaning up the lock file.
+			return
+		}
+
+		// We've got an exclusive lock on the lock file we originally opened and locked.
+		// Obtain the information about the file currently at the lock file path.
+		var st unix.Stat_t
+		if err := unix.Stat(lockPath, &st); err != nil {
+			// The lock file we opened has been cleaned up by another process, which acquired
+			// and released the same lock file in between us releasing the lock at the start
+			// of this function, and then acquiring an exclusive lock again. There's nothing
+			// else for us to do.
+			return
+		}
+		if origSt.Ino != st.Ino {
+			// The lock file we opened has been cleaned up by another process, which acquired
+			// and released the same lock file in between us releasing the lock at the start
+			// of this function, and then acquiring an exclusive lock again. Another process
+			// has since created a new lock file. There's nothing else for us to do - the new
+			// process is responsible for cleaning up the new lock file.
+			return
+		}
+
+		// The lock file path still links to the lock file we originally opened and locked, and we
+		// have an exclusive lock on it again. As other processes participating in locking require
+		// an exclusive lock for cleaning it up, it os now safe to unlink it.
+		os.Remove(lockPath)
+	}
+
 	for {
 		// Attempt to open the lock file for writing.
-		lockFile, err := os.OpenFile(lockPath, openFlags, 0600)
+		lockFile, err = os.OpenFile(lockPath, openFlags, 0600)
 		if err != nil {
 			return nil, xerrors.Errorf("cannot open lock file for writing: %w", err)
 		}
 
-		succeeded := false
-		defer func() {
-			if succeeded {
-				return
-			}
-			lockFile.Close()
-		}()
-
 		// Obtain and save information about the opened lock file.
-		var origSt unix.Stat_t
 		if err := unix.Fstat(int(lockFile.Fd()), &origSt); err != nil {
+			lockFile.Close()
 			return nil, xerrors.Errorf("cannot obtain lock file info: %w", err)
 		}
 
 		// Attempt to acquire the requested lock.
 		if err := unix.Flock(int(lockFile.Fd()), how); err != nil {
+			release()
 			return nil, xerrors.Errorf("cannot obtain lock: %w", err)
 		}
 
@@ -157,7 +208,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 			if err := unix.Stat(lockPath, &st); err != nil {
 				// The lock file we opened was unlinked by another lock owner between us
 				// opening the file and acquiring the lock. We need to try again.
-				lockFile.Close()
+				release()
 				continue
 			}
 
@@ -165,7 +216,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 				// The lock file we opened was unlinked by another lock owner between us
 				// opening the file and acquiring the lock, and another process has created a
 				// new lock file. We need to try again.
-				lockFile.Close()
+				release()
 				continue
 			}
 
@@ -175,62 +226,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		}
 
 		// We've successfully acquired the requested lock - return the release callback.
-		succeeded = true
-
-		return func() {
-			// Release the lock
-			unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
-			defer lockFile.Close()
-			if !isBlockDevice(fi.Mode()) {
-				// If we didn't lock a block device, then we are finished now.
-				return
-			}
-
-			// If we locked a block device then we need to clean up the lock file, being careful
-			// not to race with potential new lock owners.
-
-			// Although this function only supports shared locks for read-only access (where an
-			// implementation bug might cause data inconsistency issues in the decoded data but
-			// doesn't lead to data loss), the following code is responsible for cleaning up the
-			// lock file on release. This is carefully implemented using the same steps as
-			// libcryptsetup to avoid racing with other lock holders, some of whom could be
-			// exclusive lock holders. Implementation bugs here that result in us unlinking a
-			// lock file that another processes has an exclusive lock on could result in data
-			// loss - please be careful when changing any of the code below.
-
-			// First of all, attempt to acquire an exclusive lock on the same file we had a lock
-			// on previously, without blocking.
-			if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-				// Another process has grabbed a lock since we released the lock. There's
-				// nothing else for us to do - the new lock owner is now responsible for
-				// cleaning up the lock file.
-				return
-			}
-
-			// We've got an exclusive lock on the lock file we originally opened and locked.
-			// Obtain the information about the file currently at the lock file path.
-			var st unix.Stat_t
-			if err := unix.Stat(lockPath, &st); err != nil {
-				// The lock file we opened has been cleaned up by another process, which acquired
-				// and released the same lock file in between us releasing the lock at the start
-				// of this function, and then acquiring an exclusive lock again. There's nothing
-				// else for us to do.
-				return
-			}
-			if origSt.Ino != st.Ino {
-				// The lock file we opened has been cleaned up by another process, which acquired
-				// and released the same lock file in between us releasing the lock at the start
-				// of this function, and then acquiring an exclusive lock again. Another process
-				// has since created a new lock file. There's nothing else for us to do - the new
-				// process is responsible for cleaning up the new lock file.
-				return
-			}
-
-			// The lock file path still links to the lock file we originally opened and locked, and we
-			// have an exclusive lock on it again. As other processes participating in locking require
-			// an exclusive lock for cleaning it up, it os now safe to unlink it.
-			os.Remove(lockPath)
-		}, nil
+		return release, nil
 	}
 }
 
