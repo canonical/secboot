@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -36,6 +37,17 @@ import (
 var (
 	keySize = 64
 )
+
+func cryptsetupCmd(stdin io.Reader, args ...string) error {
+	cmd := exec.Command("cryptsetup", args...)
+	cmd.Stdin = stdin
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return osutil.OutputErr(output, err)
+	}
+
+	return nil
+}
 
 // FormatOptions provide the options for formatting a new LUKS2 volume
 type FormatOptions struct {
@@ -84,13 +96,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 	args = append(args,
 		// device to format
 		devicePath)
-	cmd := exec.Command("cryptsetup", args...)
-	cmd.Stdin = bytes.NewReader(key)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
-	}
 
-	return nil
+	return cryptsetupCmd(bytes.NewReader(key), args...)
 }
 
 // AddKey adds the supplied key in to a new keyslot for specified LUKS2 container. In order to do this,
@@ -163,43 +170,25 @@ func ImportToken(devicePath string, token *Token) error {
 	if err != nil {
 		return xerrors.Errorf("cannot serialize token: %w", err)
 	}
-	cmd := exec.Command("cryptsetup", "token", "import", devicePath)
-	cmd.Stdin = bytes.NewReader(tokenJSON)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
-	}
-	return nil
+
+	return cryptsetupCmd(bytes.NewReader(tokenJSON), "token", "import", devicePath)
 }
 
 // RemoveToken removes the token with the supplied ID from the JSON metadata area of the specified
 // LUKS2 container.
 func RemoveToken(devicePath string, id int) error {
-	cmd := exec.Command("cryptsetup", "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
-	}
-	return nil
+	return cryptsetupCmd(nil, "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
 }
 
 // KillSlot erases the keyslot with the supplied slot number from the specified LUKS2 container.
 // Note that a valid key for a remaining keyslot must be supplied, in order to prevent the last
 // keyslot from being erased.
 func KillSlot(devicePath string, slot int, key []byte) error {
-	cmd := exec.Command("cryptsetup", "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(slot))
-	cmd.Stdin = bytes.NewReader(key)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
-	}
-	return nil
+	return cryptsetupCmd(bytes.NewReader(key), "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(slot))
 }
 
 // SetSlotPriority sets the priority of the keyslot with the supplied slot number on
 // the specified LUKS2 container.
 func SetSlotPriority(devicePath string, slot int, priority SlotPriority) error {
-	cmd := exec.Command("cryptsetup", "config", "--priority", priority.String(), "--key-slot", strconv.Itoa(slot), devicePath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
-	}
-
-	return nil
+	return cryptsetupCmd(nil, "config", "--priority", priority.String(), "--key-slot", strconv.Itoa(slot), devicePath)
 }
