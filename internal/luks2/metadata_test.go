@@ -20,6 +20,8 @@
 package luks2_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -226,6 +228,57 @@ func (s *metadataSuite) TestAcquireManySharedLocksOnDevice(c *C) {
 	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
 	_, err = os.Open(lockPath)
 	c.Check(err, ErrorMatches, ".*: no such file or directory")
+}
+
+type testMarshalTokenData struct {
+	token          *Token
+	expectedParams map[string]interface{}
+}
+
+func (s *metadataSuite) testMarshalToken(c *C, data *testMarshalTokenData) {
+	b, err := json.Marshal(data.token)
+	c.Assert(err, IsNil)
+
+	var token *Token
+	c.Assert(json.Unmarshal(b, &token), IsNil)
+	c.Check(token.Type, Equals, data.token.Type)
+	c.Check(token.Keyslots, DeepEquals, data.token.Keyslots)
+	c.Check(token.Params, DeepEquals, data.expectedParams)
+}
+
+func (s *metadataSuite) TestMarshalToken1(c *C) {
+	s.testMarshalToken(c, &testMarshalTokenData{
+		token: &Token{
+			Type:     "luks2-keyring",
+			Keyslots: []int{0},
+			Params: map[string]interface{}{
+				"key_description": "foo",
+			},
+		},
+		expectedParams: map[string]interface{}{
+			"key_description": "foo",
+		},
+	})
+}
+
+func (s *metadataSuite) TestMarshalToken2(c *C) {
+	data := make([]byte, 128)
+	rand.Read(data)
+
+	s.testMarshalToken(c, &testMarshalTokenData{
+		token: &Token{
+			Type:     "secboot-test",
+			Keyslots: []int{1, 2},
+			Params: map[string]interface{}{
+				"secboot-a": 50,
+				"secboot-b": data,
+			},
+		},
+		expectedParams: map[string]interface{}{
+			"secboot-a": float64(50),
+			"secboot-b": base64.StdEncoding.EncodeToString(data),
+		},
+	})
 }
 
 type testReadHeaderData struct {
