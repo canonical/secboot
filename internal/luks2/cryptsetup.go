@@ -38,12 +38,33 @@ var (
 	keySize = 64
 )
 
-func cryptsetupCmd(stdin io.Reader, args ...string) error {
+// cryptsetupCmd is a helper for running the cryptsetup command. If stdin is supplied, data read
+// from it is supplied to cryptsetup via its stdin. If callback is supplied, it will be invoked
+// after cryptsetup has started.
+func cryptsetupCmd(stdin io.Reader, callback func(cmd *exec.Cmd) error, args ...string) error {
 	cmd := exec.Command("cryptsetup", args...)
 	cmd.Stdin = stdin
 
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+	var b bytes.Buffer
+	cmd.Stdout = &b
+	cmd.Stderr = &b
+
+	if err := cmd.Start(); err != nil {
+		return xerrors.Errorf("cannot start cryptsetup: %w", err)
+	}
+
+	var cbErr error
+	if callback != nil {
+		cbErr = callback(cmd)
+	}
+
+	err := cmd.Wait()
+
+	switch {
+	case cbErr != nil:
+		return cbErr
+	case err != nil:
+		return osutil.OutputErr(b.Bytes(), err)
 	}
 
 	return nil
@@ -97,7 +118,7 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		// device to format
 		devicePath)
 
-	return cryptsetupCmd(bytes.NewReader(key), args...)
+	return cryptsetupCmd(bytes.NewReader(key), nil, args...)
 }
 
 // AddKey adds the supplied key in to a new keyslot for specified LUKS2 container. In order to do this,
@@ -109,6 +130,9 @@ func AddKey(devicePath string, existingKey, key []byte, kdfTime time.Duration) e
 		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
 	}
 	defer cleanupFifo()
+
+	go func() {
+	}()
 
 	args := []string{
 		// add a new key
@@ -127,41 +151,42 @@ func AddKey(devicePath string, existingKey, key []byte, kdfTime time.Duration) e
 		// container to add key to
 		devicePath,
 		// read new key from stdin.
-		// Note we don't supply the new key via the same FIFO as the existing key using
-		// the --{new-,}keyfile-offset and --{new-,}keyfile-size options, as FIFOs
-		// aren't seekable.
+		// Note that we can't supply the new key and existing key via the same channel
+		// because pipes and FIFOs aren't seekable - we would need to use an actual file
+		// in order to be able to do this.
 		"-")
-	cmd := exec.Command("cryptsetup", args...)
-	cmd.Stdin = bytes.NewReader(key)
 
-	var b bytes.Buffer
-	cmd.Stdout = &b
-	cmd.Stderr = &b
+	writeExistingKeyToFifo := func(cmd *exec.Cmd) error {
+		f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
+		if err != nil {
+			// If we fail to open the write end, the read end will be blocked in open(), so
+			// kill the process.
+			cmd.Process.Kill()
+			return xerrors.Errorf("cannot open FIFO for passing existing key to cryptsetup: %w", err)
+		}
 
-	if err := cmd.Start(); err != nil {
-		return xerrors.Errorf("cannot start cryptsetup: %w", err)
+		if _, err := f.Write(existingKey); err != nil {
+			// The read end is open and blocked inside read(). Closing our write end will result in the
+			// read end returning 0 bytes (EOF) and continuing cleanly.
+			if err := f.Close(); err != nil {
+				// If we can't close the write end, the read end will remain blocked inside read(),
+				// so kill the process.
+				cmd.Process.Kill()
+			}
+			return xerrors.Errorf("cannot pass existing key to cryptsetup: %w", err)
+		}
+
+		if err := f.Close(); err != nil {
+			// If we can't close the write end, the read end will remain blocked inside read(),
+			// so kill the process.
+			cmd.Process.Kill()
+			return xerrors.Errorf("cannot close write end of FIFO: %w", err)
+		}
+
+		return nil
 	}
 
-	f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
-	if err != nil {
-		// If we fail to open the write end, the read end will be blocked in open()
-		cmd.Process.Kill()
-		return xerrors.Errorf("cannot open FIFO for passing existing key to cryptsetup: %w", err)
-	}
-
-	if _, err := f.Write(existingKey); err != nil {
-		f.Close()
-		// The read end is open and blocked inside read(). Closing our write end will result in the
-		// read end returning 0 bytes (EOF) and exitting cleanly.
-		cmd.Wait()
-		return xerrors.Errorf("cannot pass existing key to cryptsetup: %w", err)
-	}
-
-	f.Close()
-	if err := cmd.Wait(); err != nil {
-		return osutil.OutputErr(b.Bytes(), err)
-	}
-	return nil
+	return cryptsetupCmd(bytes.NewReader(key), writeExistingKeyToFifo, args...)
 }
 
 // ImportToken imports the supplied token in to the JSON metadata area of the specified LUKS2 container.
@@ -171,24 +196,24 @@ func ImportToken(devicePath string, token *Token) error {
 		return xerrors.Errorf("cannot serialize token: %w", err)
 	}
 
-	return cryptsetupCmd(bytes.NewReader(tokenJSON), "token", "import", devicePath)
+	return cryptsetupCmd(bytes.NewReader(tokenJSON), nil, "token", "import", devicePath)
 }
 
 // RemoveToken removes the token with the supplied ID from the JSON metadata area of the specified
 // LUKS2 container.
 func RemoveToken(devicePath string, id int) error {
-	return cryptsetupCmd(nil, "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
+	return cryptsetupCmd(nil, nil, "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
 }
 
 // KillSlot erases the keyslot with the supplied slot number from the specified LUKS2 container.
 // Note that a valid key for a remaining keyslot must be supplied, in order to prevent the last
 // keyslot from being erased.
 func KillSlot(devicePath string, slot int, key []byte) error {
-	return cryptsetupCmd(bytes.NewReader(key), "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(slot))
+	return cryptsetupCmd(bytes.NewReader(key), nil, "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(slot))
 }
 
 // SetSlotPriority sets the priority of the keyslot with the supplied slot number on
 // the specified LUKS2 container.
 func SetSlotPriority(devicePath string, slot int, priority SlotPriority) error {
-	return cryptsetupCmd(nil, "config", "--priority", priority.String(), "--key-slot", strconv.Itoa(slot), devicePath)
+	return cryptsetupCmd(nil, nil, "config", "--priority", priority.String(), "--key-slot", strconv.Itoa(slot), devicePath)
 }
