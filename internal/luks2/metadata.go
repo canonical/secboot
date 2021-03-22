@@ -35,6 +35,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
@@ -98,8 +99,8 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 
 	switch {
 	case isBlockDevice(fi.Mode()):
-		// Block devices use an advisory lock on a file in /run/cryptsetup. The lock file
-		// filename is of the format "L_<major>:<minor>".
+		// For block devices, libcryptsetup uses an advisory lock on a file in /run/cryptsetup.
+		// The lock file filename is of the format "L_<major>:<minor>".
 
 		// Don't assume that the lock directory exists.
 		if err := os.Mkdir(cryptsetupLockDir(), 0700); err != nil && !os.IsExist(err) {
@@ -115,7 +116,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		lockPath = filepath.Join(cryptsetupLockDir(), fmt.Sprintf("L_%d:%d", unix.Major(st.Rdev), unix.Minor(st.Rdev)))
 		openFlags = os.O_RDWR | os.O_CREATE
 	case fi.Mode().IsRegular():
-		// Regular files use an advisory lock directly on the file.
+		// For regular files, libcryptsetup uses an advisory lock directly on the file.
 		lockPath = path
 		openFlags = os.O_RDWR
 	default:
@@ -125,10 +126,20 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 	var lockFile *os.File
 	var origSt unix.Stat_t
 
+	// Define a mechanism to release the lock.
 	release = func() {
+		// Ensure multiple calls are benign
+		if lockFile == nil {
+			return
+		}
+
 		// Release the lock
 		unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
-		defer lockFile.Close()
+		defer func() {
+			lockFile.Close()
+			lockFile = nil
+		}()
+
 		if !isBlockDevice(fi.Mode()) {
 			// If we didn't lock a block device, then we are finished now.
 			return
@@ -146,38 +157,49 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		// lock file that another processes has an exclusive lock on could result in data
 		// loss - please be careful when changing any of the code below.
 
-		// First of all, attempt to acquire an exclusive lock on the same file we had a lock
+		// The lock file should only be cleaned up if we can get an exclusive lock on the
+		// inode we originally opened, and the lock file path still points to this inode.
+
+		// First of all, attempt to acquire an exclusive lock on the same inode we had a lock
 		// on previously, without blocking.
 		if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+			if errno, ok := err.(syscall.Errno); !ok || errno != syscall.EWOULDBLOCK {
+				fmt.Fprintf(os.Stderr, "luks2.acquireSharedLock: cannot acquire exclusive lock for cleanup: %v\n", err)
+			}
 			// Another process has grabbed a lock since we released the lock. There's
 			// nothing else for us to do - the new lock owner is now responsible for
 			// cleaning up the lock file.
 			return
 		}
 
-		// We've got an exclusive lock on the lock file we originally opened and locked.
-		// Obtain the information about the file currently at the lock file path.
+		// We've got an exclusive lock on the inode we originally opened and locked.
+		// Obtain the information about the inode currently at the lock file path.
 		var st unix.Stat_t
 		if err := unix.Stat(lockPath, &st); err != nil {
+			if errno, ok := err.(syscall.Errno); !ok || errno != syscall.ENOENT {
+				fmt.Fprintf(os.Stderr, "luks2.acquireSharedLock: cannot stat() lock file: %v\n", err)
+			}
 			// The lock file we opened has been cleaned up by another process, which acquired
-			// and released the same lock file in between us releasing the lock at the start
-			// of this function, and then acquiring an exclusive lock again. There's nothing
-			// else for us to do.
+			// and released it in between us releasing the lock at the start of this function,
+			// and then acquiring an exclusive lock again. There's nothing else for us to do.
 			return
 		}
 		if origSt.Ino != st.Ino {
-			// The lock file we opened has been cleaned up by another process, which acquired
-			// and released the same lock file in between us releasing the lock at the start
-			// of this function, and then acquiring an exclusive lock again. Another process
-			// has since created a new lock file. There's nothing else for us to do - the new
-			// process is responsible for cleaning up the new lock file.
+			// The inode at the lock file path is different to the one we opened. The lock file
+			// has been cleaned up by another process, which acquired and released it in between
+			// us releasing the lock at the start of this function, and then acquiring an
+			// exclusive lock again. Another process has since created a new lock file. There's
+			// nothing else for us to do - the new process is responsible for cleaning up the new
+			// lock file.
 			return
 		}
 
-		// The lock file path still links to the lock file we originally opened and locked, and we
+		// The lock file path still points to the inode that we originally opened and locked, and we
 		// have an exclusive lock on it again. As other processes participating in locking require
 		// an exclusive lock for cleaning it up, it os now safe to unlink it.
-		os.Remove(lockPath)
+		if err := os.Remove(lockPath); err != nil {
+			fmt.Fprintf(os.Stderr, "luks2.acquireSharedLock: cannot unlink lock file: %v\n", err)
+		}
 	}
 
 	for {
@@ -203,7 +225,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 			// If we are attempting to acquire a lock on a block device, make sure that we
 			// aren't racing with a previous lock holder or a new lock holder.
 			//
-			// Obtain the information about the file currently linked from the lock file path.
+			// Obtain information about the inode that the lock file path currently points to.
 			var st unix.Stat_t
 			if err := unix.Stat(lockPath, &st); err != nil {
 				// The lock file we opened was unlinked by another lock owner between us
@@ -220,9 +242,9 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 				continue
 			}
 
-			// The lock file path still links to the file we opened and locked after we've taken
-			// a shared lock. As applications participating in locking require an exclusive lock to
-			// unlink it, we know that we have a lock on the inode linked from the lock file path.
+			// The lock file path still points to the inode that we opened and have a shared lock
+			// on. As applications participating in locking require an exclusive lock to unlink it,
+			// we know that we have a lock on the inode linked from the lock file path.
 		}
 
 		// We've successfully acquired the requested lock - return the release callback.

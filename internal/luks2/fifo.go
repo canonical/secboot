@@ -20,6 +20,7 @@
 package luks2
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -38,7 +39,9 @@ func mkFifo() (string, func(), error) {
 	}
 
 	cleanup := func() {
-		os.RemoveAll(dir)
+		if err := os.RemoveAll(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "luks2.mkFifo: cannot remove fifo: %v\n", err)
+		}
 	}
 
 	succeeded := false
