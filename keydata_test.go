@@ -330,19 +330,20 @@ func (s *keyDataSuite) testKeyIDString(c *C, data *testKeyIDStringData) {
 func (s *keyDataSuite) TestKeyIDStringFile(c *C) {
 	s.testKeyIDString(c, &testKeyIDStringData{
 		id: &KeyID{
+			Device: 0x801,
 			Loader: "file",
-			Path:   "/foo/bar"},
-		expected: "file:/foo/bar@0"})
+			Name:   "foo/bar"},
+		expected: "file:[8:1]:foo/bar@0"})
 }
 
 func (s *keyDataSuite) TestKeyIDStringLUKS(c *C) {
 	s.testKeyIDString(c, &testKeyIDStringData{
 		id: &KeyID{
+			Device:   0x10300,
 			Loader:   "luks2",
-			Path:     "/dev/sda1",
 			Name:     "primary",
 			Revision: 15},
-		expected: "luks2:/dev/sda1:primary@15"})
+		expected: "luks2:[259:0]:primary@15"})
 }
 
 func (s *keyDataSuite) TestRecoverKeys(c *C) {

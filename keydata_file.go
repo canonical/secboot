@@ -21,21 +21,26 @@ package secboot
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
+	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
 )
 
 // FileKeyDataReader corresponds to an open file from which key data can be read.
 type FileKeyDataReader struct {
 	*os.File
+
+	dev  uint64
+	name string
 }
 
 // ID is the unique ID of the key data contained within this file.
 func (r *FileKeyDataReader) ID() *KeyID {
-	return &KeyID{Loader: "file", Path: r.Name()}
+	return &KeyID{Loader: "file", Device: r.dev, Name: r.name}
 }
 
 // OpenKeyDataFile is used to open a file containing key data at the specified path.
@@ -46,7 +51,29 @@ func OpenKeyDataFile(path string) (*FileKeyDataReader, error) {
 		return nil, xerrors.Errorf("cannot open file: %w", err)
 	}
 
-	return &FileKeyDataReader{f}, nil
+	var st unix.Stat_t
+	if err := unix.Fstat(int(f.Fd()), &st); err != nil {
+		return nil, xerrors.Errorf("cannot obtain file info: %w", err)
+	}
+
+	mountDir := filepath.Dir(path)
+	for ; mountDir != "/"; mountDir = filepath.Dir(mountDir) {
+		var dirSt unix.Stat_t
+		if err := unix.Stat(mountDir, &dirSt); err != nil {
+			return nil, xerrors.Errorf("cannot determine mount point: %w", err)
+		}
+
+		if dirSt.Dev != st.Dev {
+			break
+		}
+	}
+
+	name, err := filepath.Rel(mountDir, path)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot determine name: %w", err)
+	}
+
+	return &FileKeyDataReader{f, st.Dev, name}, nil
 }
 
 // NewKeyDataFileWriter creates a new osutil.AtomicFile instance for atomically

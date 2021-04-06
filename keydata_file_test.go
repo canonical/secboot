@@ -93,6 +93,19 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 }
 
 func (s *keyDataFileSuite) TestReader(c *C) {
+	var st unix.Stat_t
+	c.Check(unix.Stat(s.dir, &st), IsNil)
+
+	mountDir := filepath.Dir(s.dir)
+	for ; mountDir != "/"; mountDir = filepath.Dir(mountDir) {
+		var dirSt unix.Stat_t
+		c.Check(unix.Stat(mountDir, &dirSt), IsNil)
+
+		if dirSt.Dev != st.Dev {
+			break
+		}
+	}
+
 	key, auxKey := s.newKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
@@ -125,7 +138,9 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 	f, err := OpenKeyDataFile(filepath.Join(s.dir, "key"))
 	c.Assert(err, IsNil)
 	defer f.Close()
-	c.Check(f.ID().Equals(&KeyID{Loader: "file", Path: filepath.Join(s.dir, "key")}), testutil.IsTrue)
+	name, err := filepath.Rel(mountDir, filepath.Join(s.dir, "key"))
+	c.Check(err, IsNil)
+	c.Check(f.ID().Equals(&KeyID{Device: st.Dev, Loader: "file", Name: name}), testutil.IsTrue)
 
 	keyData, err = ReadKeyData(f)
 	c.Assert(err, IsNil)

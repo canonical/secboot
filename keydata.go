@@ -27,10 +27,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/canonical/go-sp800.90a-drbg"
 
+	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
 )
 
@@ -155,9 +155,15 @@ type KeyCreationData struct {
 // KeyID is the unique ID for a KeyData object. It is used to facilitate the
 // sharing of state between the early boot environment and OS runtime.
 type KeyID struct {
-	Loader   string // "file" or "luks2"
-	Path     string
-	Name     string
+	Loader string // "file" or "luks2"
+	Device uint64 // ID of block device
+
+	// Name identifies a key on a block device. The interpretation of this
+	// depends on the value of Loader. If Loader is "file" then this is the
+	// path of the file on the block device. If Loader is "luks2" then it
+	// refers to a LUKS2 token by its name (the value of "ubuntu_fde_name").
+	Name string
+
 	Revision uint64
 }
 
@@ -166,12 +172,7 @@ func (x *KeyID) Equals(y *KeyID) bool {
 }
 
 func (id *KeyID) String() string {
-	s := id.Loader + ":" + id.Path
-	if id.Name != "" {
-		s += ":" + id.Name
-	}
-	s += "@" + strconv.FormatUint(id.Revision, 10)
-	return s
+	return fmt.Sprintf("%s:[%d:%d]:%s@%d", id.Loader, unix.Major(id.Device), unix.Minor(id.Device), id.Name, id.Revision)
 }
 
 // KeyDataWriter is an interface used by KeyData to write the data to
