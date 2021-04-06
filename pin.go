@@ -198,9 +198,9 @@ func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
 	// Update the metadata and write a new key data file
 	origAuthModeHint := data.authModeHint
 	if newPIN == "" {
-		data.authModeHint = AuthModeNone
+		data.authModeHint = authModeNone
 	} else {
-		data.authModeHint = AuthModePIN
+		data.authModeHint = authModePIN
 	}
 
 	if origAuthModeHint == data.authModeHint && data.version == 0 {
