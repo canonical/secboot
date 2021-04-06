@@ -228,28 +228,6 @@ func (ctb *cryptTestBase) addMockKeyslot(c *C, key []byte) {
 	ctb.mockKeyslotsCount++
 }
 
-func (ctb *cryptTestBase) checkRecoveryActivationData(c *C, prefix, path string, requested bool, errors []KeyErrorCode) {
-	// The previous tests should have all succeeded, but the following test will fail if the user keyring isn't reachable from
-	// the session keyring.
-	if !ctb.possessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
-	data, err := GetActivationDataFromKernel(prefix, path, false)
-	c.Assert(err, IsNil)
-	recoveryData, ok := data.(*RecoveryActivationData)
-	c.Assert(ok, Equals, true)
-	c.Check(recoveryData.Key[:], DeepEquals, ctb.recoveryKey)
-	c.Check(recoveryData.Requested, Equals, requested)
-	c.Check(recoveryData.ErrorCodes, DeepEquals, errors)
-
-	data, err = GetActivationDataFromKernel(prefix, path, true)
-	c.Check(err, IsNil)
-	c.Check(data, NotNil)
-	_, err = GetActivationDataFromKernel(prefix, path, true)
-	c.Check(err, Equals, ErrNoActivationData)
-}
-
 type cryptSuite struct {
 	snapd_testutil.BaseTest
 	cryptTestBase
@@ -294,9 +272,6 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
-
-	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryActivationData(c, data.keyringPrefix, data.sourceDevicePath, true, nil)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
@@ -416,9 +391,6 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, "tries=1")
 	}
-
-	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryActivationData(c, "", "/dev/sda1", true, nil)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
