@@ -74,26 +74,6 @@ func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 	})
 }
 
-func (s *cryptTPMSimulatorSuite) checkTPMPolicyAuthKey(c *C, prefix, path string, key TPMPolicyAuthKey) {
-	// The previous tests should have all succeeded, but the following test will fail if the user keyring isn't reachable from
-	// the session keyring.
-	if !s.possessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
-	data, err := GetActivationDataFromKernel(prefix, path, false)
-	c.Assert(err, IsNil)
-	authKey, ok := data.(TPMPolicyAuthKey)
-	c.Check(ok, Equals, true)
-	c.Check(authKey, DeepEquals, key)
-
-	data, err = GetActivationDataFromKernel(prefix, path, true)
-	c.Check(err, IsNil)
-	c.Check(data, NotNil)
-	_, err = GetActivationDataFromKernel(prefix, path, true)
-	c.Check(err, Equals, ErrNoActivationData)
-}
-
 type testActivateVolumeWithMultipleTPMSealedKeysData struct {
 	volumeName        string
 	sourceDevicePath  string
@@ -132,8 +112,6 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithMultipleTPMSealedKeys(c *
 		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
-
-	s.checkTPMPolicyAuthKey(c, data.keyringPrefix, data.sourceDevicePath, data.authPrivateKey)
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeys1(c *C) {
@@ -381,7 +359,6 @@ type testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData struct {
 	passphrases       []string
 	sdCryptsetupCalls int
 	success           bool
-	errCodes          []KeyErrorCode
 	errChecker        Checker
 	errCheckerArgs    []interface{}
 }
@@ -418,9 +395,6 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithMultipleTPMSealedKeysErro
 	if !data.success {
 		return
 	}
-
-	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryActivationData(c, data.keyringPrefix, "/dev/sda1", false, data.errCodes)
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling1(c *C) {
@@ -445,7 +419,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
@@ -479,7 +452,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		errCodes:          []KeyErrorCode{KeyErrorTPMProvisioning, KeyErrorTPMProvisioning},
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is not correctly provisioned" +
@@ -509,7 +481,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 3,
 		success:           true,
-		errCodes:          []KeyErrorCode{KeyErrorInvalidFile, KeyErrorInvalidFile},
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5" +
@@ -536,7 +507,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 
 	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
 		keyFiles:   []string{s.keyFile, keyFile},
-		errCodes:   []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
 		errChecker: ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
@@ -566,7 +536,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		sdCryptsetupCalls: 1,
 		recoveryKeyTries:  1,
 		passphrases:       []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
-		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
@@ -596,7 +565,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		errCodes:          []KeyErrorCode{KeyErrorPassphraseFail, KeyErrorPassphraseFail},
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: no PIN tries permitted when a PIN is required" +
@@ -625,7 +593,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		errCodes:          []KeyErrorCode{KeyErrorInvalidFile, KeyErrorInvalidFile},
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
@@ -658,7 +625,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		passphrases:       []string{"foo", strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		errCodes:          []KeyErrorCode{KeyErrorPassphraseFail, KeyErrorInvalidFile},
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the provided PIN is incorrect" +
@@ -693,7 +659,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		},
 		sdCryptsetupCalls: 2,
 		success:           true,
-		errCodes:          []KeyErrorCode{KeyErrorTPMLockout, KeyErrorTPMLockout},
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
 			"\n- .*/keydata: cannot unseal key: the TPM is in DA lockout mode" +
@@ -728,8 +693,6 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyNo2FA(c *C, d
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
-
-	s.checkTPMPolicyAuthKey(c, data.keyringPrefix, data.sourceDevicePath, s.authPrivateKey)
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA1(c *C) {
@@ -820,8 +783,6 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyAndPIN(c *C, 
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
-
-	s.checkTPMPolicyAuthKey(c, "", "/dev/sda1", s.authPrivateKey)
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPIN1(c *C) {
@@ -875,8 +836,6 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyAndPINUsingPI
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
 	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
-
-	s.checkTPMPolicyAuthKey(c, "", "/dev/sda1", s.authPrivateKey)
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyAndPINUsingPINReader1(c *C) {
@@ -932,7 +891,6 @@ type testActivateVolumeWithTPMSealedKeyErrorHandlingData struct {
 	passphrases       []string
 	sdCryptsetupCalls int
 	success           bool
-	recoveryReason    KeyErrorCode
 	errChecker        Checker
 	errCheckerArgs    []interface{}
 }
@@ -969,9 +927,6 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 	if !data.success {
 		return
 	}
-
-	// This should be done last because it may fail in some circumstances.
-	s.checkRecoveryActivationData(c, data.keyringPrefix, "/dev/sda1", false, []KeyErrorCode{data.recoveryReason})
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
@@ -1013,7 +968,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    KeyErrorTPMLockout,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is in DA lockout mode\\) but " +
 			"activation with recovery key was successful"},
@@ -1038,7 +992,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		},
 		sdCryptsetupCalls: 2,
 		success:           true,
-		recoveryReason:    KeyErrorTPMProvisioning,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the TPM is not correctly " +
 			"provisioned\\) but activation with recovery key was successful"},
@@ -1057,7 +1010,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 2,
 		success:           true,
-		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot activate volume: " + s.mockSdCryptsetup.Exe() +
 			" failed: exit status 5\\) but activation with recovery key was successful"},
@@ -1110,7 +1062,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    KeyErrorPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: the provided PIN is incorrect\\) but " +
 			"activation with recovery key was successful"},
@@ -1125,7 +1076,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    KeyErrorPassphraseFail,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(no PIN tries permitted when a PIN is required\\) but " +
 			"activation with recovery key was successful"},
@@ -1142,7 +1092,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
 			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
@@ -1162,7 +1111,6 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
 		sdCryptsetupCalls: 1,
 		success:           true,
-		recoveryReason:    KeyErrorInvalidFile,
 		errChecker:        ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
 			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
