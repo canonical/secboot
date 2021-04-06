@@ -24,12 +24,11 @@ import (
 	"fmt"
 	"io"
 
-	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
 )
 
-func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, []byte, error) {
-	sealedKey, authPrivateKey, err := k.UnsealFromTPM(tpm, pin)
+func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byte, error) {
+	sealedKey, _, err := k.UnsealFromTPM(tpm, pin)
 	if err == ErrTPMProvisioning {
 		// ErrTPMProvisioning in this context might indicate that there isn't a valid persistent SRK. Have a go at creating one now and then
 		// retrying the unseal operation - if the previous SRK was evicted, the TPM owner hasn't changed and the storage hierarchy still
@@ -37,14 +36,14 @@ func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byt
 		// storage hierarchy has a non-null authorization value, ProvionTPM will fail. If the TPM owner has changed, ProvisionTPM might
 		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
 		if pErr := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); pErr == nil || pErr == ErrTPMProvisioningRequiresLockout {
-			sealedKey, authPrivateKey, err = k.UnsealFromTPM(tpm, pin)
+			sealedKey, _, err = k.UnsealFromTPM(tpm, pin)
 		}
 	}
-	return sealedKey, authPrivateKey, err
+	return sealedKey, err
 }
 
 func unsealKeyFromTPMAndActivate(tpm *TPMConnection, volumeName, sourceDevicePath, keyringPrefix string, activateOptions []string, k *SealedKeyObject, pin string) error {
-	sealedKey, authPrivateKey, err := unsealKeyFromTPM(tpm, k, pin)
+	sealedKey, err := unsealKeyFromTPM(tpm, k, pin)
 	if err != nil {
 		return xerrors.Errorf("cannot unseal key: %w", err)
 	}
@@ -53,19 +52,6 @@ func unsealKeyFromTPMAndActivate(tpm *TPMConnection, volumeName, sourceDevicePat
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 
-	// Add a key to the calling user's user keyring with default 0x3f010000 permissions (these defaults are hardcoded in the kernel).
-	// This permission flags define the following permissions:
-	// Possessor Set Attribute / Possessor Link / Possessor Search / Possessor Write / Possessor Read / Possessor View / User View.
-	// Possessor permissions only apply to a process with a searchable link to the key from one of its own keyrings - just having the
-	// same UID is not sufficient. Read permission is required to read the contents of the key (view permission only permits viewing
-	// of the description and other public metadata that isn't the key payload).
-	//
-	// Note that by default, systemd starts services with a private session keyring which does not contain a link to the user keyring.
-	// Therefore these services cannot access the contents of keys in the root user's user keyring if those keys only permit
-	// possessor-read.
-	//
-	// Ignore errors - we've activated the volume and so we shouldn't return an error at this point unless we close the volume again.
-	unix.AddKey("user", fmt.Sprintf("%s:%s?type=tpm", keyringPrefixOrDefault(keyringPrefix), sourceDevicePath), authPrivateKey, userKeyring)
 	return nil
 }
 
@@ -186,9 +172,7 @@ func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string
 // If activation with the TPM sealed key objects fails, this function will attempt to activate it with the fallback recovery key
 // instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of options specifies
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
-// will be made to activate the encrypted volume with the fallback recovery key. If activation with the recovery key is successful,
-// calling GetActivationDataFromKernel will return a *RecoveryActivationData containing the recovery key and the error codes
-// associated with the supplied TPM sealed keys.
+// will be made to activate the encrypted volume with the fallback recovery key.
 //
 // If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
 // field of options contains the "tries=" option, then an error will be returned. This option cannot be used with this function.
@@ -198,10 +182,6 @@ func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string
 // be nil, and the TPMErrs field will contain the original errors for each of the TPM sealed keys. If activation with the fallback
 // recovery key also fails, the RecoveryKeyUsageErr field of the returned error will also contain details of the error encountered
 // during recovery key activation.
-//
-// If the volume is successfully activated with a TPM sealed key and the TPM sealed key has a version of greater than 1, calling
-// GetActivationDataFromKernel will return a TPMPolicyAuthKey containing the private part of the key used for authorizing PCR policy
-// updates with UpdateKeyPCRProtectionPolicy.
 //
 // If the volume is successfully activated, either with a TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
@@ -223,33 +203,11 @@ func ActivateVolumeWithMultipleTPMSealedKeys(tpm *TPMConnection, volumeName, sou
 	}
 
 	if success, errs := activateWithTPMKeys(tpm, volumeName, sourceDevicePath, keyPaths, passphraseReader, options.PassphraseTries, activateOptions, options.KeyringPrefix); !success {
-		var tpmErrCodes []KeyErrorCode
 		var tpmErrs []error
-
 		for _, e := range errs {
-			code := KeyUnexpectedError
-			switch {
-			case xerrors.Is(e, ErrTPMLockout):
-				code = KeyErrorTPMLockout
-			case xerrors.Is(e, ErrTPMProvisioning):
-				code = KeyErrorTPMProvisioning
-			case isInvalidKeyFileError(e):
-				code = KeyErrorInvalidFile
-			case xerrors.Is(e, requiresPinErr):
-				code = KeyErrorPassphraseFail
-			case xerrors.Is(e, ErrPINFail):
-				code = KeyErrorPassphraseFail
-			case isExecError(e, systemdCryptsetupPath):
-				// systemd-cryptsetup only provides 2 exit codes - success or fail - so we don't know the reason it failed yet.
-				// If activation with the recovery key is successful, then it's safe to assume that it failed because the key
-				// unsealed from the TPM is incorrect.
-				code = KeyErrorInvalidFile
-			}
-			tpmErrCodes = append(tpmErrCodes, code)
 			tpmErrs = append(tpmErrs, e)
-
 		}
-		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, tpmErrCodes, activateOptions, options.KeyringPrefix)
+		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, activateOptions, options.KeyringPrefix)
 		return rErr == nil, &ActivateWithMultipleTPMSealedKeysError{tpmErrs, rErr}
 	}
 
@@ -269,9 +227,7 @@ func ActivateVolumeWithMultipleTPMSealedKeys(tpm *TPMConnection, volumeName, sou
 // If activation with the TPM sealed key object fails, this function will attempt to activate it with the fallback recovery key
 // instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of options specifies
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
-// will be made to activate the encrypted volume with the fallback recovery key. If activation with the recovery key is successful,
-// calling GetActivationDataFromKernel will return a *RecoveryActivationData containing the recovery key and the error code
-// associated with the TPM sealed key.
+// will be made to activate the encrypted volume with the fallback recovery key.
 //
 // If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the
 // ActivateOptions field of options contains the "tries=" option, then an error will be returned. This option cannot be used with
@@ -281,10 +237,6 @@ func ActivateVolumeWithMultipleTPMSealedKeys(tpm *TPMConnection, volumeName, sou
 // fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will be nil, and the
 // TPMErr field will contain the original error. If activation with the fallback recovery key also fails, the RecoveryKeyUsageErr
 // field of the returned error will also contain details of the error encountered during recovery key activation.
-//
-// If the volume is successfully activated with the TPM sealed key and the TPM sealed key has a version of greater than 1, calling
-// GetActivationDataFromKernel will return a TPMPolicyAuthKey containing the private part of the key used for authorizing PCR policy
-// updates with UpdateKeyPCRProtectionPolicy.
 //
 // If the volume is successfully activated, either with the TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
