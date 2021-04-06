@@ -33,6 +33,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/sys/unix"
@@ -237,6 +238,101 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
+type activateWithKeyDataError struct {
+	k   *KeyData
+	err error
+}
+
+func (e *activateWithKeyDataError) Error() string {
+	return fmt.Sprintf("%s: %v", e.k.ID(), e.err)
+}
+
+func (e *activateWithKeyDataError) Unwrap() error {
+	return e.err
+}
+
+type keyDataAndError struct {
+	*KeyData
+	err error
+}
+
+type activateWithKeyDataState struct {
+	volumeName       string
+	sourceDevicePath string
+	activateOptions  []string
+	keyringPrefix    string
+
+	keys []*keyDataAndError
+}
+
+func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
+	for _, k := range s.keys {
+		if k.err == nil {
+			continue
+		}
+		out = append(out, &activateWithKeyDataError{k: k.KeyData, err: k.err})
+	}
+	return
+}
+
+func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey, auxKey AuxiliaryKey) error {
+	if err := activate(s.volumeName, s.sourceDevicePath, key, s.activateOptions); err != nil {
+		return xerrors.Errorf("cannot activate volume: %w", err)
+	}
+
+	if err := keyring.AddKeyToUserKeyring(key, s.sourceDevicePath, keyringPurposeDiskUnlock, s.keyringPrefix); err != nil {
+		fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
+	}
+
+	if err := keyring.AddKeyToUserKeyring(auxKey, s.sourceDevicePath, keyringPurposeAuxiliary, s.keyringPrefix); err != nil {
+		fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
+	}
+
+	return nil
+}
+
+func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData) error {
+	key, auxKey, err := k.RecoverKeys()
+	if err != nil {
+		return xerrors.Errorf("cannot recover key: %w", err)
+	}
+
+	return s.tryActivateWithRecoveredKey(key, auxKey)
+}
+
+func (s *activateWithKeyDataState) run() (success bool) {
+	// Try keys that don't require any additional authentication first
+	for _, k := range s.keys {
+		if k.AuthMode() != AuthModeNone {
+			continue
+		}
+
+		if err := s.tryKeyDataAuthModeNone(k.KeyData); err != nil {
+			k.err = err
+			continue
+		}
+
+		return true
+	}
+
+	// TODO: Passphrase support
+
+	// We've failed at this point
+	return false
+}
+
+func makeActivateWithKeyDataState(volumeName, sourceDevicePath string, activateOptions []string, keyringPrefix string, keys []*KeyData) *activateWithKeyDataState {
+	s := &activateWithKeyDataState{
+		volumeName:       volumeName,
+		sourceDevicePath: sourceDevicePath,
+		activateOptions:  activateOptions,
+		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix)}
+	for _, k := range keys {
+		s.keys = append(s.keys, &keyDataAndError{KeyData: k})
+	}
+	return s
+}
+
 func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, activateOptions []string, keyringPrefix string) error {
 	if tries == 0 {
 		return errors.New("no recovery key tries permitted")
@@ -269,6 +365,10 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			}
 			lastErr = err
 			continue
+		}
+
+		if err := keyring.AddKeyToUserKeyring(key[:], sourceDevicePath, keyringPurposeDiskUnlock, keyringPrefixOrDefault(keyringPrefix)); err != nil {
+			fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
 		}
 
 		break
@@ -321,6 +421,55 @@ type ActivateVolumeOptions struct {
 	// KeyringPrefix is the prefix used for the description of any
 	// kernel keys created during activation.
 	KeyringPrefix string
+}
+
+type ActivateVolumeWithKeyDataError struct {
+	KeyDataErrs         []error
+	RecoveryKeyUsageErr error
+}
+
+func (e *ActivateVolumeWithKeyDataError) Error() string {
+	var s bytes.Buffer
+	fmt.Fprintf(&s, "cannot activate with platform protected keys:")
+	for _, err := range e.KeyDataErrs {
+		fmt.Fprintf(&s, "\n- %v", err)
+	}
+	fmt.Fprintf(&s, "\nand activation with recovery key failed: %v", e.RecoveryKeyUsageErr)
+	return s.String()
+}
+
+func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) error {
+	if len(keys) == 0 {
+		return errors.New("no keys provided")
+	}
+	if options.PassphraseTries < 0 {
+		return errors.New("invalid PassphraseTries")
+	}
+	if options.RecoveryKeyTries < 0 {
+		return errors.New("invalid RecoveryKeyTries")
+	}
+
+	activateOptions, err := makeActivateOptions(options.ActivateOptions)
+	if err != nil {
+		return err
+	}
+
+	s := makeActivateWithKeyDataState(volumeName, sourceDevicePath, activateOptions, options.KeyringPrefix, keys)
+	if success := s.run(); !success {
+		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, activateOptions, options.KeyringPrefix); rErr != nil {
+			var kdErrs []error
+			for _, e := range s.errors() {
+				kdErrs = append(kdErrs, e)
+			}
+			return &ActivateVolumeWithKeyDataError{kdErrs, rErr}
+		}
+	}
+
+	return nil
+}
+
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) error {
+	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, options)
 }
 
 // ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
