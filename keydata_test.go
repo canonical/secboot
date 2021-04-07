@@ -123,11 +123,11 @@ func makeMockKeyDataWriter() *mockKeyDataWriter {
 }
 
 type mockKeyDataReader struct {
-	id *KeyID
+	id KeyID
 	io.Reader
 }
 
-func (r *mockKeyDataReader) ID() *KeyID {
+func (r *mockKeyDataReader) ID() KeyID {
 	return r.id
 }
 
@@ -203,12 +203,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Auxili
 	return
 }
 
-func (s *keyDataTestBase) checkKeyDataJSON(c *C, r io.Reader, creationData *KeyCreationData, nmodels int) {
-	var j map[string]interface{}
-
-	d := json.NewDecoder(r)
-	c.Check(d.Decode(&j), IsNil)
-
+func (s *keyDataTestBase) checkKeyDataJSON(c *C, j map[string]interface{}, creationData *KeyCreationData, nmodels int) {
 	c.Check(j["platform_name"], Equals, creationData.PlatformName)
 
 	handle, err := json.Marshal(j["platform_handle"])
@@ -258,6 +253,15 @@ type keyDataSuite struct {
 }
 
 var _ = Suite(&keyDataSuite{})
+
+func (s *keyDataSuite) checkKeyDataJSON(c *C, r io.Reader, creationData *KeyCreationData, nmodels int) {
+	var j map[string]interface{}
+
+	d := json.NewDecoder(r)
+	c.Check(d.Decode(&j), IsNil)
+
+	s.keyDataTestBase.checkKeyDataJSON(c, j, creationData, nmodels)
+}
 
 type testKeyPayloadData struct {
 	key    DiskUnlockKey
@@ -319,7 +323,7 @@ func (s *keyDataSuite) TestKeyPayloadUnmarshalInvalid2(c *C) {
 }
 
 type testKeyIDStringData struct {
-	id       *KeyID
+	id       KeyID
 	expected string
 }
 
@@ -327,23 +331,18 @@ func (s *keyDataSuite) testKeyIDString(c *C, data *testKeyIDStringData) {
 	c.Check(data.id.String(), Equals, data.expected)
 }
 
-func (s *keyDataSuite) TestKeyIDStringFile(c *C) {
+func (s *keyDataSuite) TestKeyIDString1(c *C) {
 	s.testKeyIDString(c, &testKeyIDStringData{
-		id: &KeyID{
-			Device: 0x801,
-			Loader: "file",
-			Name:   "foo/bar"},
-		expected: "file:[8:1]:foo/bar@0"})
+		id:       KeyID{Name: "foobar"},
+		expected: "foobar@0"})
 }
 
 func (s *keyDataSuite) TestKeyIDStringLUKS(c *C) {
 	s.testKeyIDString(c, &testKeyIDStringData{
-		id: &KeyID{
-			Device:   0x10300,
-			Loader:   "luks2",
-			Name:     "primary",
+		id: KeyID{
+			Name:     "barfoo",
 			Revision: 15},
-		expected: "luks2:[259:0]:primary@15"})
+		expected: "barfoo@15"})
 }
 
 func (s *keyDataSuite) TestRecoverKeys(c *C) {
@@ -605,7 +604,7 @@ func (s *keyDataSuite) testReadKeyData(c *C, data *testReadKeyDataData) {
 	keyData, err := ReadKeyData(data.r)
 	c.Check(err, IsNil)
 
-	c.Check(keyData.ID().Equals(data.r.ID()), testutil.IsTrue)
+	c.Check(keyData.ID(), Equals, data.r.ID())
 
 	key, auxKey, err := keyData.RecoverKeys()
 	c.Check(err, IsNil)
@@ -640,7 +639,7 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{&KeyID{}, w.final}
+	r := &mockKeyDataReader{KeyID{}, w.final}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -671,7 +670,7 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{&KeyID{}, w.final}
+	r := &mockKeyDataReader{KeyID{}, w.final}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -709,7 +708,7 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{&KeyID{}, w.final}
+	r := &mockKeyDataReader{KeyID{}, w.final}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -740,7 +739,7 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{&KeyID{}, w.final}
+	r := &mockKeyDataReader{KeyID{}, w.final}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:    key,

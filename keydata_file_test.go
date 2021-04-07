@@ -21,6 +21,7 @@ package secboot_test
 
 import (
 	"crypto"
+	"encoding/json"
 	"os"
 	"path/filepath"
 
@@ -52,16 +53,25 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	w, err := NewKeyDataFileWriter(filepath.Join(s.dir, "key"))
-	c.Assert(err, IsNil)
-
+	w := NewFileKeyDataWriter("testkey", filepath.Join(s.dir, "key"))
+	c.Assert(w, NotNil)
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	f, err := os.Open(filepath.Join(s.dir, "key"))
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	s.checkKeyDataJSON(c, f, protected, 0)
+	var j map[string]interface{}
+
+	d := json.NewDecoder(f)
+	c.Check(d.Decode(&j), IsNil)
+
+	c.Check(j["name"], Equals, "testkey")
+
+	data, ok := j["data"].(map[string]interface{})
+	c.Check(ok, testutil.IsTrue)
+
+	s.checkKeyDataJSON(c, data, protected, 0)
 }
 
 func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
@@ -71,18 +81,14 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	w, err := NewKeyDataFileWriter(filepath.Join(s.dir, "key"))
-	c.Assert(err, IsNil)
-
+	w := NewFileKeyDataWriter("testkey", filepath.Join(s.dir, "key"))
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	f, err := os.Open(filepath.Join(s.dir, "key"))
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	w, err = NewKeyDataFileWriter(filepath.Join(s.dir, "key"))
-	c.Assert(err, IsNil)
-
+	w = NewFileKeyDataWriter("testkey", filepath.Join(s.dir, "key"))
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	var st1 unix.Stat_t
@@ -93,19 +99,6 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 }
 
 func (s *keyDataFileSuite) TestReader(c *C) {
-	var st unix.Stat_t
-	c.Check(unix.Stat(s.dir, &st), IsNil)
-
-	mountDir := filepath.Dir(s.dir)
-	for ; mountDir != "/"; mountDir = filepath.Dir(mountDir) {
-		var dirSt unix.Stat_t
-		c.Check(unix.Stat(mountDir, &dirSt), IsNil)
-
-		if dirSt.Dev != st.Dev {
-			break
-		}
-	}
-
 	key, auxKey := s.newKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
@@ -130,19 +123,14 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 
 	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
 
-	w, err := NewKeyDataFileWriter(filepath.Join(s.dir, "key"))
-	c.Assert(err, IsNil)
-
+	w := NewFileKeyDataWriter("testkey", filepath.Join(s.dir, "key"))
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	f, err := OpenKeyDataFile(filepath.Join(s.dir, "key"))
+	r, err := NewFileKeyDataReader(filepath.Join(s.dir, "key"))
 	c.Assert(err, IsNil)
-	defer f.Close()
-	name, err := filepath.Rel(mountDir, filepath.Join(s.dir, "key"))
-	c.Check(err, IsNil)
-	c.Check(f.ID().Equals(&KeyID{Device: st.Dev, Loader: "file", Name: name}), testutil.IsTrue)
+	c.Check(r.ID(), Equals, KeyID{Name: "testkey"})
 
-	keyData, err = ReadKeyData(f)
+	keyData, err = ReadKeyData(r)
 	c.Assert(err, IsNil)
 
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()

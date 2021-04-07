@@ -30,7 +30,6 @@ import (
 
 	"github.com/canonical/go-sp800.90a-drbg"
 
-	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
 )
 
@@ -155,31 +154,18 @@ type KeyCreationData struct {
 // KeyID is the unique ID for a KeyData object. It is used to facilitate the
 // sharing of state between the early boot environment and OS runtime.
 type KeyID struct {
-	Loader string // "file" or "luks2"
-	Device uint64 // ID of block device
-
-	// Name identifies a key on a block device. The interpretation of this
-	// depends on the value of Loader. If Loader is "file" then this is the
-	// path of the file on the block device. If Loader is "luks2" then it
-	// refers to a LUKS2 token by its name (the value of "ubuntu_fde_name").
-	Name string
-
-	Revision uint64
+	Name     string // Unique name for the KeyData
+	Revision uint64 // Revision of the KeyData
 }
 
-func (x *KeyID) Equals(y *KeyID) bool {
-	return *x == *y
-}
-
-func (id *KeyID) String() string {
-	return fmt.Sprintf("%s:[%d:%d]:%s@%d", id.Loader, unix.Major(id.Device), unix.Minor(id.Device), id.Name, id.Revision)
+func (id KeyID) String() string {
+	return fmt.Sprintf("%s@%d", id.Name, id.Revision)
 }
 
 // KeyDataWriter is an interface used by KeyData to write the data to
 // persistent storage in an atomic way.
 type KeyDataWriter interface {
 	io.Writer
-	Cancel() error
 	Commit() error
 }
 
@@ -187,7 +173,7 @@ type KeyDataWriter interface {
 // from persistent storage.
 type KeyDataReader interface {
 	io.Reader
-	ID() *KeyID
+	ID() KeyID
 }
 
 type hashAlg struct {
@@ -300,7 +286,7 @@ func processPlatformKeyRecoveryError(err error) error {
 // KeyData represents a disk unlock key and auxiliary key protected by a platform's
 // secure device.
 type KeyData struct {
-	id   *KeyID
+	id   KeyID
 	data keyData
 }
 
@@ -324,7 +310,7 @@ func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
 }
 
 // ID returns the unique ID for this key data.
-func (d *KeyData) ID() *KeyID {
+func (d *KeyData) ID() KeyID {
 	return d.id
 }
 
@@ -455,8 +441,6 @@ func (d *KeyData) SetAuthorizedSnapModels(auxKey AuxiliaryKey, models ...SnapMod
 
 // WriteAtomic saves this key data to the supplied KeyDataWriter.
 func (d *KeyData) WriteAtomic(w KeyDataWriter) error {
-	defer w.Cancel()
-
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(d.data); err != nil {
 		return xerrors.Errorf("cannot encode keydata: %w", err)
@@ -472,8 +456,7 @@ func (d *KeyData) WriteAtomic(w KeyDataWriter) error {
 // ReadKeyData reads the key data from the supplied KeyDataReader, returning a
 // new KeyData object.
 func ReadKeyData(r KeyDataReader) (*KeyData, error) {
-	id := *r.ID()
-	d := &KeyData{id: &id}
+	d := &KeyData{id: r.ID()}
 	dec := json.NewDecoder(r)
 	if err := dec.Decode(&d.data); err != nil {
 		return nil, xerrors.Errorf("cannot decode key data: %w", err)
@@ -502,7 +485,6 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 	}
 
 	return &KeyData{
-		id: &KeyID{},
 		data: keyData{
 			PlatformName:     creationData.PlatformName,
 			PlatformHandle:   json.RawMessage(creationData.Handle),
