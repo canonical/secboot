@@ -122,7 +122,7 @@ func (c KeyPayload) Unmarshal() (key DiskUnlockKey, auxKey AuxiliaryKey, err err
 	}
 
 	if r.Len() > 0 {
-		return nil, nil, errors.New("excess bytes")
+		return nil, nil, fmt.Errorf("%v excess byte(s)", r.Len())
 	}
 
 	return
@@ -209,7 +209,7 @@ func (a hashAlg) MarshalJSON() ([]byte, error) {
 	case crypto.SHA512:
 		s = "sha512"
 	default:
-		return nil, errors.New("invalid hash algorithm")
+		return nil, fmt.Errorf("unknown has algorithm: %v", a.Hash)
 	}
 
 	return json.Marshal(s)

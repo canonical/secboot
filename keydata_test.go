@@ -313,7 +313,7 @@ func (s *keyDataSuite) TestKeyPayloadUnmarshalInvalid2(c *C) {
 	payload = append(payload, 0xff)
 
 	key, auxKey, err := payload.Unmarshal()
-	c.Check(err, ErrorMatches, "excess bytes")
+	c.Check(err, ErrorMatches, "1 excess byte\\(s\\)")
 	c.Check(key, IsNil)
 	c.Check(auxKey, IsNil)
 }
