@@ -39,8 +39,8 @@ func (checker *hasKeyChecker) Check(params []interface{}, names []string) (resul
 	}
 
 	k := reflect.ValueOf(params[1])
-	if k.Kind() != reflect.String {
-		return false, names[1] + " is not a string"
+	if k.Type() != m.Type().Key() {
+		return false, names[1] + " has an unexpected type"
 	}
 
 	keys := m.MapKeys()
@@ -63,7 +63,7 @@ var IsTrue Checker = &isTrueChecker{
 func (checker *isTrueChecker) Check(params []interface{}, names []string) (result bool, error string) {
 	value := reflect.ValueOf(params[0])
 	if value.Kind() != reflect.Bool {
-		return false, names[0] + "is not a bool"
+		return false, names[0] + " is not a bool"
 	}
 	return value.Bool(), ""
 }
