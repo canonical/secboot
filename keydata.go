@@ -331,14 +331,14 @@ func (d *KeyData) ID() *KeyID {
 // AuthMode indicates the authentication mechanisms enabled for this key data.
 func (d *KeyData) AuthMode() (out AuthMode) {
 	if len(d.data.EncryptedPayload) > 0 {
-		return
+		return AuthModeNone
 	}
 
 	if d.data.PassphraseProtectedPayload != nil {
 		out |= AuthModePassphrase
 	}
 
-	return
+	return out
 }
 
 // RecoverKeys recovers the disk unlock key and auxiliary key associated with this
