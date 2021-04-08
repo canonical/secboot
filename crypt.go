@@ -238,6 +238,15 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
+type SnapModelChecker struct {
+	keyData *KeyData
+	auxKey  AuxiliaryKey
+}
+
+func (c *SnapModelChecker) IsModelAuthorized(model SnapModel) (bool, error) {
+	return c.keyData.IsSnapModelAuthorized(c.auxKey, model)
+}
+
 type activateWithKeyDataError struct {
 	k   *KeyData
 	err error
@@ -263,6 +272,9 @@ type activateWithKeyDataState struct {
 	keyringPrefix    string
 
 	keys []*keyDataAndError
+
+	keyData *KeyData
+	auxKey  AuxiliaryKey
 }
 
 func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
@@ -275,10 +287,17 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 	return
 }
 
-func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey, auxKey AuxiliaryKey) error {
+func (s *activateWithKeyDataState) snapModelChecker() *SnapModelChecker {
+	return &SnapModelChecker{s.keyData, s.auxKey}
+}
+
+func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(keyData *KeyData, key DiskUnlockKey, auxKey AuxiliaryKey) error {
 	if err := activate(s.volumeName, s.sourceDevicePath, key, s.activateOptions); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
+
+	s.keyData = keyData
+	s.auxKey = auxKey
 
 	if err := keyring.AddKeyToUserKeyring(key, s.sourceDevicePath, keyringPurposeDiskUnlock, s.keyringPrefix); err != nil {
 		fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
@@ -297,7 +316,7 @@ func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData) error {
 		return xerrors.Errorf("cannot recover key: %w", err)
 	}
 
-	return s.tryActivateWithRecoveredKey(key, auxKey)
+	return s.tryActivateWithRecoveredKey(k, key, auxKey)
 }
 
 func (s *activateWithKeyDataState) run() (success bool) {
@@ -438,37 +457,41 @@ func (e *ActivateVolumeWithKeyDataError) Error() string {
 	return s.String()
 }
 
-func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) error {
+func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) (*SnapModelChecker, error) {
 	if len(keys) == 0 {
-		return errors.New("no keys provided")
+		return nil, errors.New("no keys provided")
 	}
 	if options.PassphraseTries < 0 {
-		return errors.New("invalid PassphraseTries")
+		return nil, errors.New("invalid PassphraseTries")
 	}
 	if options.RecoveryKeyTries < 0 {
-		return errors.New("invalid RecoveryKeyTries")
+		return nil, errors.New("invalid RecoveryKeyTries")
 	}
 
 	activateOptions, err := makeActivateOptions(options.ActivateOptions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	s := makeActivateWithKeyDataState(volumeName, sourceDevicePath, activateOptions, options.KeyringPrefix, keys)
-	if success := s.run(); !success {
+	switch s.run() {
+	case true: // success!
+		return s.snapModelChecker(), nil
+	default: // failed - try recovery key
 		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, activateOptions, options.KeyringPrefix); rErr != nil {
+			// failed with recovery key - return errors
 			var kdErrs []error
 			for _, e := range s.errors() {
 				kdErrs = append(kdErrs, e)
 			}
-			return &ActivateVolumeWithKeyDataError{kdErrs, rErr}
+			return nil, &ActivateVolumeWithKeyDataError{kdErrs, rErr}
 		}
+		// succeeded with recovery key
+		return nil, nil
 	}
-
-	return nil
 }
 
-func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) error {
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) (*SnapModelChecker, error) {
 	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, options)
 }
 
