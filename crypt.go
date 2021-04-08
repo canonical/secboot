@@ -238,13 +238,25 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
+// SnapModelChecker is used for verifying whether a Snap device model is
+// authorized to access the data on a volume unlocked by this package.
 type SnapModelChecker struct {
-	keyData *KeyData
-	auxKey  AuxiliaryKey
+	volumeName string
+	keyData    *KeyData
+	auxKey     AuxiliaryKey
 }
 
+// IsModelAuthorized indicates whether the supplied Snap device model is
+// authorized to access the data on the decrypted volume with the device
+// mapper name returned by VolumeName.
 func (c *SnapModelChecker) IsModelAuthorized(model SnapModel) (bool, error) {
 	return c.keyData.IsSnapModelAuthorized(c.auxKey, model)
+}
+
+// VolumeName is the device mapper name of the volume associated with this
+// SnapModelChecker.
+func (c *SnapModelChecker) VolumeName() string {
+	return c.volumeName
 }
 
 type activateWithKeyDataError struct {
@@ -288,7 +300,7 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 }
 
 func (s *activateWithKeyDataState) snapModelChecker() *SnapModelChecker {
-	return &SnapModelChecker{s.keyData, s.auxKey}
+	return &SnapModelChecker{s.volumeName, s.keyData, s.auxKey}
 }
 
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(keyData *KeyData, key DiskUnlockKey, auxKey AuxiliaryKey) error {
@@ -442,21 +454,42 @@ type ActivateVolumeOptions struct {
 	KeyringPrefix string
 }
 
-type ActivateVolumeWithKeyDataError struct {
-	KeyDataErrs         []error
-	RecoveryKeyUsageErr error
+type activateVolumeWithKeyDataError struct {
+	keyDataErrs         []error
+	recoveryKeyUsageErr error
 }
 
-func (e *ActivateVolumeWithKeyDataError) Error() string {
+func (e *activateVolumeWithKeyDataError) Error() string {
 	var s bytes.Buffer
 	fmt.Fprintf(&s, "cannot activate with platform protected keys:")
-	for _, err := range e.KeyDataErrs {
+	for _, err := range e.keyDataErrs {
 		fmt.Fprintf(&s, "\n- %v", err)
 	}
-	fmt.Fprintf(&s, "\nand activation with recovery key failed: %v", e.RecoveryKeyUsageErr)
+	fmt.Fprintf(&s, "\nand activation with recovery key failed: %v", e.recoveryKeyUsageErr)
 	return s.String()
 }
 
+// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at sourceDevicePath and create a
+// mapping with the name volumeName, using the supplied KeyData objects to recover the disk unlock key from the
+// platform's secure device. This makes use of systemd-cryptsetup.
+//
+// The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
+//
+// If activation with the supplied KeyData objects fails, this function will attempt to activate it with the fallback
+// recovery key instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries
+// field of options specifies how many attempts should be made to activate the volume with the recovery key before
+// failing. If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback
+// recovery key.
+//
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If the ActivateOptions field of options contains the "tries=" option, then an error will be returned. This option
+// cannot be used with this function.
+//
+// If activation with one of the supplied KeyData objects succeeds, a SnapModelChecker will be returned so that the
+// caller can check whether a particular Snap device model has previously been authorized to access the data on this
+// volume. If the fallback recovery key is used for activation, no SnapModelChecker will be returned.
+//
+// If activation fails, an error will be returned.
 func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) (*SnapModelChecker, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("no keys provided")
@@ -484,13 +517,33 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 			for _, e := range s.errors() {
 				kdErrs = append(kdErrs, e)
 			}
-			return nil, &ActivateVolumeWithKeyDataError{kdErrs, rErr}
+			return nil, &activateVolumeWithKeyDataError{kdErrs, rErr}
 		}
 		// succeeded with recovery key
 		return nil, nil
 	}
 }
 
+// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at sourceDevicePath and create a
+// mapping with the name volumeName, using the supplied KeyData to recover the disk unlock key from the platform's
+// secure device. This makes use of systemd-cryptsetup.
+//
+// The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
+//
+// If activation with the supplied KeyData fails, this function will attempt to activate it with the fallback recovery
+// key instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of
+// options specifies how many attempts should be made to activate the volume with the recovery key before failing.
+// If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback recovery key.
+//
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If the ActivateOptions field of options contains the "tries=" option, then an error will be returned. This option
+// cannot be used with this function.
+//
+// If activation with the supplied KeyData succeeds, a SnapModelChecker will be returned so that the caller can check
+// whether a particular Snap device model has previously been authorized to access the data on this volume. If the
+// fallback recovery key is used for activation, no SnapModelChecker will be returned.
+//
+// If activation fails, an error will be returned.
 func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) (*SnapModelChecker, error) {
 	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, options)
 }
