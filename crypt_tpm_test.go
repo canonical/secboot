@@ -416,7 +416,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
 		keyFiles:          []string{s.keyFile, keyFile},
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -449,7 +449,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
 		keyFiles:          []string{s.keyFile, keyFile},
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -478,7 +478,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
 		keyFiles:          []string{s.keyFile, keyFile},
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 3,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -562,7 +562,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
 		keyFiles:          []string{s.keyFile, keyFile},
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -590,7 +590,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 	s.testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData{
 		keyFiles:          []string{s.keyFile, keyFile},
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -622,7 +622,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		keyFiles:          []string{s.keyFile, keyFile},
 		pinTries:          1,
 		recoveryKeyTries:  1,
-		passphrases:       []string{"foo", strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{"foo", s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -655,7 +655,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 		recoveryKeyTries: 2,
 		passphrases: []string{
 			"00000-00000-00000-00000-00000-00000-00000-00000",
-			strings.Join(s.recoveryKeyAscii, "-"),
+			s.recoveryKey.String(),
 		},
 		sdCryptsetupCalls: 2,
 		success:           true,
@@ -965,7 +965,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -988,7 +988,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		recoveryKeyTries: 2,
 		passphrases: []string{
 			"00000-00000-00000-00000-00000-00000-00000-00000",
-			strings.Join(s.recoveryKeyAscii, "-"),
+			s.recoveryKey.String(),
 		},
 		sdCryptsetupCalls: 2,
 		success:           true,
@@ -1007,7 +1007,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 2,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -1058,7 +1058,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 		recoveryKeyTries: 1,
 		passphrases: []string{
 			"",
-			strings.Join(s.recoveryKeyAscii, "-"),
+			s.recoveryKey.String(),
 		},
 		sdCryptsetupCalls: 1,
 		success:           true,
@@ -1073,7 +1073,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -1089,7 +1089,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries:  1,
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
@@ -1108,7 +1108,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
 		recoveryKeyTries:  1,
 		keyringPrefix:     "test",
-		passphrases:       []string{strings.Join(s.recoveryKeyAscii, "-")},
+		passphrases:       []string{s.recoveryKey.String()},
 		sdCryptsetupCalls: 1,
 		success:           true,
 		errChecker:        ErrorMatches,
