@@ -380,7 +380,7 @@ type testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData struct {
 }
 
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithMultipleTPMSealedKeysErrorHandling(c *C, data *testActivateVolumeWithMultipleTPMSealedKeysErrorHandlingData) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
+	s.addTryPassphrases(c, data.passphrases)
 
 	options := ActivateVolumeOptions{
 		PassphraseTries:  data.pinTries,
@@ -915,7 +915,7 @@ type testActivateVolumeWithTPMSealedKeyErrorHandlingData struct {
 }
 
 func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling(c *C, data *testActivateVolumeWithTPMSealedKeyErrorHandlingData) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
+	s.addTryPassphrases(c, data.passphrases)
 
 	options := ActivateVolumeOptions{
 		PassphraseTries:  data.pinTries,

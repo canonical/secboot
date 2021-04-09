@@ -178,6 +178,13 @@ func (ctb *cryptTestBase) checkRecoveryKeyInKeyring(c *C, prefix, path string, e
 }
 
 func (ctb *cryptTestBase) addTryPassphrases(c *C, passphrases []string) {
+	for _, passphrase := range passphrases {
+		f, err := os.OpenFile(ctb.passwordFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		c.Assert(err, IsNil)
+		_, err = f.WriteString(passphrase + "\n")
+		c.Check(err, IsNil)
+		f.Close()
+	}
 }
 
 type cryptSuite struct {
@@ -841,7 +848,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 	s.addMockKeyslot(c, data.primaryKey)
 	s.addMockKeyslot(c, data.recoveryKey[:])
 
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
+	s.addTryPassphrases(c, data.passphrases)
 
 	options := &ActivateVolumeOptions{
 		RecoveryKeyTries: data.recoveryKeyTries,
