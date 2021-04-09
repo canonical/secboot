@@ -58,9 +58,6 @@ func getKeyringKeys(c *C, keyringId int) (out []int) {
 }
 
 type cryptTestBase struct {
-	recoveryKey RecoveryKey
-	primaryKey  []byte
-
 	dir string
 
 	passwordFile string // a newline delimited list of passwords for the mock systemd-ask-password to return
@@ -80,11 +77,6 @@ type cryptTestBase struct {
 }
 
 func (ctb *cryptTestBase) setUpSuiteBase(c *C) {
-	rand.Read(ctb.recoveryKey[:])
-
-	ctb.primaryKey = make([]byte, 32)
-	rand.Read(ctb.primaryKey)
-
 	// These tests create keys in the user keyring that are only readable by a possessor. Reading these keys fails when running
 	// the tests inside gnome-terminal in Ubuntu 18.04 because the gnome-terminal backend runs inside the systemd user session,
 	// and inherits a private session keyring from the user session manager from which the user keyring isn't linked. This is
@@ -193,8 +185,6 @@ dump_key "$new_keyfile" "%[3]s.$invocation"
 	ctb.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
 	bt.AddCleanup(ctb.mockCryptsetup.Restore)
 
-	ctb.addMockKeyslot(c, ctb.recoveryKey[:])
-
 	startKeys := getKeyringKeys(c, userKeyring)
 
 	bt.AddCleanup(func() {
@@ -220,6 +210,18 @@ func (ctb *cryptTestBase) addMockKeyslot(c *C, key []byte) {
 	ctb.mockKeyslotsCount++
 }
 
+func (ctb *cryptTestBase) newPrimaryKey() []byte {
+	key := make([]byte, 32)
+	rand.Read(key)
+	return key
+}
+
+func (ctb *cryptTestBase) newRecoveryKey() RecoveryKey {
+	var key RecoveryKey
+	rand.Read(key[:])
+	return key
+}
+
 type cryptSuite struct {
 	snapd_testutil.BaseTest
 	cryptTestBase
@@ -236,6 +238,7 @@ func (s *cryptSuite) SetUpTest(c *C) {
 }
 
 type testActivateVolumeWithRecoveryKeyData struct {
+	recoveryKey         RecoveryKey
 	volumeName          string
 	sourceDevicePath    string
 	tries               int
@@ -246,6 +249,8 @@ type testActivateVolumeWithRecoveryKeyData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
+	s.addMockKeyslot(c, data.recoveryKey[:])
+
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 
 	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries, ActivateOptions: data.activateOptions, KeyringPrefix: data.keyringPrefix}
@@ -268,35 +273,41 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
 	// Test with a recovery key which is entered with a hyphen between each group of 5 digits.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		recoveryKey:         recoveryKey,
 		volumeName:          "data",
 		sourceDevicePath:    "/dev/sda1",
 		tries:               1,
-		recoveryPassphrases: []string{s.recoveryKey.String()},
+		recoveryPassphrases: []string{recoveryKey.String()},
 		sdCryptsetupCalls:   1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey2(c *C) {
 	// Test with a recovery key which is entered without a hyphen between each group of 5 digits.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		recoveryKey:         recoveryKey,
 		volumeName:          "data",
 		sourceDevicePath:    "/dev/sda1",
 		tries:               1,
-		recoveryPassphrases: []string{strings.Replace(s.recoveryKey.String(), "-", "", -1)},
+		recoveryPassphrases: []string{strings.Replace(recoveryKey.String(), "-", "", -1)},
 		sdCryptsetupCalls:   1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey3(c *C) {
 	// Test that activation succeeds when the correct recovery key is provided on the second attempt.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		recoveryKey:      recoveryKey,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		tries:            2,
 		recoveryPassphrases: []string{
 			"00000-00000-00000-00000-00000-00000-00000-00000",
-			s.recoveryKey.String(),
+			recoveryKey.String(),
 		},
 		sdCryptsetupCalls: 2,
 	})
@@ -305,13 +316,15 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey3(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey4(c *C) {
 	// Test that activation succeeds when the correct recovery key is provided on the second attempt, and the first
 	// attempt is badly formatted.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		recoveryKey:      recoveryKey,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		tries:            2,
 		recoveryPassphrases: []string{
 			"1234",
-			s.recoveryKey.String(),
+			recoveryKey.String(),
 		},
 		sdCryptsetupCalls: 1,
 	})
@@ -319,40 +332,47 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey4(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey5(c *C) {
 	// Test with additional options passed to systemd-cryptsetup.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		recoveryKey:         recoveryKey,
 		volumeName:          "data",
 		sourceDevicePath:    "/dev/sda1",
 		tries:               1,
 		activateOptions:     []string{"foo", "bar"},
-		recoveryPassphrases: []string{s.recoveryKey.String()},
+		recoveryPassphrases: []string{recoveryKey.String()},
 		sdCryptsetupCalls:   1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey6(c *C) {
 	// Test with a different volume name / device path.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		recoveryKey:         recoveryKey,
 		volumeName:          "foo",
 		sourceDevicePath:    "/dev/vdb2",
 		tries:               1,
-		recoveryPassphrases: []string{s.recoveryKey.String()},
+		recoveryPassphrases: []string{recoveryKey.String()},
 		sdCryptsetupCalls:   1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey7(c *C) {
 	// Test with a different keyring prefix
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKey(c, &testActivateVolumeWithRecoveryKeyData{
+		recoveryKey:         recoveryKey,
 		volumeName:          "data",
 		sourceDevicePath:    "/dev/sda1",
 		tries:               1,
 		keyringPrefix:       "test",
-		recoveryPassphrases: []string{s.recoveryKey.String()},
+		recoveryPassphrases: []string{recoveryKey.String()},
 		sdCryptsetupCalls:   1,
 	})
 }
 
 type testActivateVolumeWithRecoveryKeyUsingKeyReaderData struct {
+	recoveryKey             RecoveryKey
 	tries                   int
 	recoveryKeyFileContents string
 	recoveryPassphrases     []string
@@ -360,6 +380,8 @@ type testActivateVolumeWithRecoveryKeyUsingKeyReaderData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data *testActivateVolumeWithRecoveryKeyUsingKeyReaderData) {
+	s.addMockKeyslot(c, data.recoveryKey[:])
+
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 	c.Assert(ioutil.WriteFile(filepath.Join(s.dir, "keyfile"), []byte(data.recoveryKeyFileContents), 0644), IsNil)
 
@@ -387,47 +409,57 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
 	// Test with the correct recovery key supplied via a io.Reader, with a hyphen separating each group of 5 digits.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
+		recoveryKey:             recoveryKey,
 		tries:                   1,
-		recoveryKeyFileContents: s.recoveryKey.String() + "\n",
+		recoveryKeyFileContents: recoveryKey.String() + "\n",
 		sdCryptsetupCalls:       1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader2(c *C) {
 	// Test with the correct recovery key supplied via a io.Reader, without a hyphen separating each group of 5 digits.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
+		recoveryKey:             recoveryKey,
 		tries:                   1,
-		recoveryKeyFileContents: strings.Replace(s.recoveryKey.String(), "-", "", -1) + "\n",
+		recoveryKeyFileContents: strings.Replace(recoveryKey.String(), "-", "", -1) + "\n",
 		sdCryptsetupCalls:       1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader3(c *C) {
 	// Test with the correct recovery key supplied via a io.Reader when the key doesn't end in a newline.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
+		recoveryKey:             recoveryKey,
 		tries:                   1,
-		recoveryKeyFileContents: s.recoveryKey.String(),
+		recoveryKeyFileContents: recoveryKey.String(),
 		sdCryptsetupCalls:       1,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader4(c *C) {
 	// Test that falling back to requesting a recovery key works if the one provided by the io.Reader is incorrect.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
+		recoveryKey:             recoveryKey,
 		tries:                   2,
 		recoveryKeyFileContents: "00000-00000-00000-00000-00000-00000-00000-00000\n",
-		recoveryPassphrases:     []string{s.recoveryKey.String()},
+		recoveryPassphrases:     []string{recoveryKey.String()},
 		sdCryptsetupCalls:       2,
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader5(c *C) {
 	// Test that falling back to requesting a recovery key works if the one provided by the io.Reader is badly formatted.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
+		recoveryKey:             recoveryKey,
 		tries:                   2,
 		recoveryKeyFileContents: "5678\n",
-		recoveryPassphrases:     []string{s.recoveryKey.String()},
+		recoveryPassphrases:     []string{recoveryKey.String()},
 		sdCryptsetupCalls:       1,
 	})
 }
@@ -435,9 +467,11 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader5(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader6(c *C) {
 	// Test that falling back to requesting a recovery key works if the provided io.Reader is backed by an empty buffer,
 	// without using up a try.
+	recoveryKey := s.newRecoveryKey()
 	s.testActivateVolumeWithRecoveryKeyUsingKeyReader(c, &testActivateVolumeWithRecoveryKeyUsingKeyReaderData{
+		recoveryKey:         recoveryKey,
 		tries:               1,
-		recoveryPassphrases: []string{s.recoveryKey.String()},
+		recoveryPassphrases: []string{recoveryKey.String()},
 		sdCryptsetupCalls:   1,
 	})
 }
@@ -559,6 +593,9 @@ type testActivateVolumeWithRecoveryKeyErrorHandlingData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *testActivateVolumeWithRecoveryKeyErrorHandlingData) {
+	recoveryKey := s.newRecoveryKey()
+	s.addMockKeyslot(c, recoveryKey[:])
+
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
 
 	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries, ActivateOptions: data.activateOptions}
@@ -772,7 +809,7 @@ func (s *cryptSuite) TestInitializeLUKS2Container1(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/sda1",
 		label:      "data",
-		key:        s.primaryKey,
+		key:        s.newPrimaryKey(),
 	})
 }
 
@@ -781,7 +818,7 @@ func (s *cryptSuite) TestInitializeLUKS2Container2(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/vdc2",
 		label:      "test",
-		key:        s.primaryKey,
+		key:        s.newPrimaryKey(),
 	})
 }
 
@@ -799,7 +836,7 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/vdc2",
 		label:      "test",
-		key:        s.primaryKey,
+		key:        s.newPrimaryKey(),
 		opts: &InitializeLUKS2ContainerOptions{
 			MetadataKiBSize:     2 * 1024, // 2MiB
 			KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
@@ -819,7 +856,7 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
-	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.primaryKey[0:16], nil), ErrorMatches, "expected a key length of at least 256-bits \\(got 128\\)")
+	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.newPrimaryKey()[0:16], nil), ErrorMatches, "expected a key length of at least 256-bits \\(got 128\\)")
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataKiBSize(c *C) {
@@ -898,8 +935,8 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container1(c *C) {
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/sda1",
-		key:         s.primaryKey,
-		recoveryKey: s.recoveryKey,
+		key:         s.newPrimaryKey(),
+		recoveryKey: s.newRecoveryKey(),
 	})
 }
 
@@ -907,8 +944,8 @@ func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container2(c *C) {
 	// Test with different path.
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/vdb2",
-		key:         s.primaryKey,
-		recoveryKey: s.recoveryKey,
+		key:         s.newPrimaryKey(),
+		recoveryKey: s.newRecoveryKey(),
 	})
 }
 
@@ -917,7 +954,7 @@ func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container3(c *C) {
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/vdb2",
 		key:         make([]byte, 32),
-		recoveryKey: s.recoveryKey,
+		recoveryKey: s.newRecoveryKey(),
 	})
 }
 
@@ -925,7 +962,7 @@ func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container4(c *C) {
 	// Test with different recovery key.
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath: "/dev/vdb2",
-		key:        s.primaryKey,
+		key:        s.newPrimaryKey(),
 	})
 }
 
@@ -964,30 +1001,30 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey1(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		devicePath:  "/dev/sda1",
-		recoveryKey: s.recoveryKey,
-		key:         s.primaryKey,
+		recoveryKey: s.newRecoveryKey(),
+		key:         s.newPrimaryKey(),
 	})
 }
 
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey2(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		devicePath:  "/dev/vdc1",
-		recoveryKey: s.recoveryKey,
-		key:         s.primaryKey,
+		recoveryKey: s.newRecoveryKey(),
+		key:         s.newPrimaryKey(),
 	})
 }
 
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey3(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		devicePath: "/dev/sda1",
-		key:        s.primaryKey,
+		key:        s.newPrimaryKey(),
 	})
 }
 
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey4(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		devicePath:  "/dev/vdc1",
-		recoveryKey: s.recoveryKey,
+		recoveryKey: s.newRecoveryKey(),
 		key:         make([]byte, 32),
 	})
 }

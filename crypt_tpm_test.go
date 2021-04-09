@@ -38,6 +38,8 @@ type cryptTPMSimulatorSuite struct {
 	testutil.TPMSimulatorTestBase
 	cryptTestBase
 
+	recoveryKey RecoveryKey
+
 	keyFile        string
 	authPrivateKey TPMPolicyAuthKey
 }
@@ -58,15 +60,20 @@ func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
 
+	primaryKey := s.newPrimaryKey()
+
 	pcrPolicyCounterHandle := tpm2.Handle(0x0181fff0)
-	authPrivateKey, err := SealKeyToTPM(s.TPM, s.primaryKey, s.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: pcrPolicyCounterHandle})
+	authPrivateKey, err := SealKeyToTPM(s.TPM, primaryKey, s.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: pcrPolicyCounterHandle})
 	c.Assert(err, IsNil)
 	s.authPrivateKey = authPrivateKey
 	pcrPolicyCounter, err := s.TPM.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
 	c.Assert(err, IsNil)
 	s.AddCleanupNVSpace(c, s.TPM.OwnerHandleContext(), pcrPolicyCounter)
 
-	s.addMockKeyslot(c, s.primaryKey)
+	s.addMockKeyslot(c, primaryKey)
+
+	s.recoveryKey = s.newRecoveryKey()
+	s.addMockKeyslot(c, s.recoveryKey[:])
 
 	// Some tests may increment the DA lockout counter
 	s.AddCleanup(func() {
@@ -467,7 +474,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErro
 
 	incorrectKey := make([]byte, 32)
 	rand.Read(incorrectKey)
-	c.Assert(os.RemoveAll(filepath.Join(s.mockKeyslotsDir, "1")), IsNil)
+	c.Assert(os.RemoveAll(filepath.Join(s.mockKeyslotsDir, "0")), IsNil)
 	s.addMockKeyslot(c, incorrectKey)
 
 	keyFile := filepath.Join(c.MkDir(), "keydata2")
@@ -1002,7 +1009,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling
 	// Test that recovery fallback works when the unsealed key is incorrect.
 	incorrectKey := make([]byte, 32)
 	rand.Read(incorrectKey)
-	c.Assert(os.RemoveAll(filepath.Join(s.mockKeyslotsDir, "1")), IsNil)
+	c.Assert(os.RemoveAll(filepath.Join(s.mockKeyslotsDir, "0")), IsNil)
 	s.addMockKeyslot(c, incorrectKey)
 
 	s.testActivateVolumeWithTPMSealedKeyErrorHandling(c, &testActivateVolumeWithTPMSealedKeyErrorHandlingData{
