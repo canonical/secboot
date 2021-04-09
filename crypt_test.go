@@ -956,7 +956,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
-	keyData := s.newNamedKeyData(c, protected, &KeyID{"foo", 2})
+	keyData := s.newNamedKeyData(c, protected, &KeyID{Name: "foo", Revision: 2})
 
 	recoveryKey := s.newRecoveryKey()
 
@@ -980,7 +980,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
-	keyData := s.newNamedKeyData(c, protected, &KeyID{"bar", 5})
+	keyData := s.newNamedKeyData(c, protected, &KeyID{Name: "bar", Revision: 5})
 
 	recoveryKey := s.newRecoveryKey()
 
