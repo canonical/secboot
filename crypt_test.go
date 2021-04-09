@@ -20,7 +20,7 @@
 package secboot_test
 
 import (
-	"encoding/binary"
+	"crypto"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -32,32 +32,12 @@ import (
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
-	"golang.org/x/sys/unix"
-
 	. "gopkg.in/check.v1"
 )
 
-const (
-	sessionKeyring = -3
-	userKeyring    = -4
-)
-
-func getKeyringKeys(c *C, keyringId int) (out []int) {
-	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, keyringId, nil, 0)
-	c.Assert(err, IsNil)
-	buf := make([]byte, n)
-	_, err = unix.KeyctlBuffer(unix.KEYCTL_READ, keyringId, buf, 0)
-	c.Assert(err, IsNil)
-
-	for len(buf) > 0 {
-		id := int(binary.LittleEndian.Uint32(buf[0:4]))
-		buf = buf[4:]
-		out = append(out, id)
-	}
-	return
-}
-
 type cryptTestBase struct {
+	testutil.KeyringTestBase
+
 	dir string
 
 	passwordFile string // a newline delimited list of passwords for the mock systemd-ask-password to return
@@ -72,32 +52,13 @@ type cryptTestBase struct {
 	mockSdAskPassword *snapd_testutil.MockCmd
 	mockSdCryptsetup  *snapd_testutil.MockCmd
 	mockCryptsetup    *snapd_testutil.MockCmd
-
-	possessesUserKeyringKeys bool
 }
 
-func (ctb *cryptTestBase) setUpSuiteBase(c *C) {
-	// These tests create keys in the user keyring that are only readable by a possessor. Reading these keys fails when running
-	// the tests inside gnome-terminal in Ubuntu 18.04 because the gnome-terminal backend runs inside the systemd user session,
-	// and inherits a private session keyring from the user session manager from which the user keyring isn't linked. This is
-	// fixed in later releases by setting KeyringMode=inherit in /lib/systemd/system/user@.service, which causes the user
-	// session manager to start without a session keyring attached (which the gnome-terminal backend inherits). In this case,
-	// for the purposes of determing whether this process possesses a key, the kernel searches the user session keyring, from
-	// which the user keyring is linked.
-	userKeyringId, err := unix.KeyctlGetKeyringID(userKeyring, false)
-	c.Assert(err, IsNil)
-	keys := getKeyringKeys(c, sessionKeyring)
-	for _, id := range keys {
-		if id == userKeyringId {
-			ctb.possessesUserKeyringKeys = true
-			break
-		}
-	}
-}
+func (ctb *cryptTestBase) SetUpTest(c *C) {
+	ctb.KeyringTestBase.SetUpTest(c)
 
-func (ctb *cryptTestBase) setUpTestBase(c *C, bt *snapd_testutil.BaseTest) {
 	ctb.dir = c.MkDir()
-	bt.AddCleanup(MockRunDir(ctb.dir))
+	ctb.AddCleanup(MockRunDir(ctb.dir))
 
 	ctb.passwordFile = filepath.Join(ctb.dir, "password") // passwords to be returned by the mock sd-ask-password
 
@@ -113,7 +74,7 @@ head -1 %[1]s
 sed -i -e '1,1d' %[1]s
 `
 	ctb.mockSdAskPassword = snapd_testutil.MockCommand(c, "systemd-ask-password", fmt.Sprintf(sdAskPasswordBottom, ctb.passwordFile))
-	bt.AddCleanup(ctb.mockSdAskPassword.Restore)
+	ctb.AddCleanup(ctb.mockSdAskPassword.Restore)
 
 	sdCryptsetupBottom := `
 key=$(xxd -p < "$4")
@@ -123,12 +84,13 @@ for f in "%[1]s"/*; do
     fi
 done
 
+
 # use a specific error code to differentiate from arbitrary exit 1 elsewhere
 exit 5
 `
 	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.mockKeyslotsDir))
-	bt.AddCleanup(ctb.mockSdCryptsetup.Restore)
-	bt.AddCleanup(MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
+	ctb.AddCleanup(ctb.mockSdCryptsetup.Restore)
+	ctb.AddCleanup(MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
 
 	cryptsetupBottom := `
 keyfile=""
@@ -183,26 +145,7 @@ dump_key "$new_keyfile" "%[3]s.$invocation"
 `
 
 	ctb.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
-	bt.AddCleanup(ctb.mockCryptsetup.Restore)
-
-	startKeys := getKeyringKeys(c, userKeyring)
-
-	bt.AddCleanup(func() {
-		for _, id1 := range getKeyringKeys(c, userKeyring) {
-			found := false
-			for _, id2 := range startKeys {
-				if id1 == id2 {
-					found = true
-					break
-				}
-			}
-			if found {
-				continue
-			}
-			_, err := unix.KeyctlInt(unix.KEYCTL_UNLINK, id1, userKeyring, 0, 0)
-			c.Check(err, IsNil)
-		}
-	})
+	ctb.AddCleanup(ctb.mockCryptsetup.Restore)
 }
 
 func (ctb *cryptTestBase) addMockKeyslot(c *C, key []byte) {
@@ -222,19 +165,53 @@ func (ctb *cryptTestBase) newRecoveryKey() RecoveryKey {
 	return key
 }
 
+func (ctb *cryptTestBase) checkRecoveryKeyInKeyring(c *C, prefix, path string, expected RecoveryKey) {
+	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
+	// so far, mark the current test as expected to fail.
+	if !ctb.ProcessPossessesUserKeyringKeys && !c.Failed() {
+		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
+	}
+
+	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
+	c.Check(err, IsNil)
+	c.Check(key, DeepEquals, DiskUnlockKey(expected[:]))
+}
+
+func (ctb *cryptTestBase) addTryPassphrases(c *C, passphrases []string) {
+}
+
 type cryptSuite struct {
-	snapd_testutil.BaseTest
 	cryptTestBase
+	keyDataTestBase
+	snapModelTestBase
 }
 
 var _ = Suite(&cryptSuite{})
 
 func (s *cryptSuite) SetUpSuite(c *C) {
-	s.cryptTestBase.setUpSuiteBase(c)
+	s.cryptTestBase.SetUpSuite(c)
+	s.keyDataTestBase.SetUpSuite(c)
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {
-	s.cryptTestBase.setUpTestBase(c, &s.BaseTest)
+	s.cryptTestBase.SetUpTest(c)
+	s.keyDataTestBase.SetUpTest(c)
+}
+
+func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey AuxiliaryKey) {
+	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
+	// so far, mark the current test as expected to fail.
+	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
+		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
+	}
+
+	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
+	c.Check(err, IsNil)
+	c.Check(key, DeepEquals, expectedKey)
+
+	auxKey, err := GetAuxiliaryKeyFromKernel(prefix, path, false)
+	c.Check(err, IsNil)
+	c.Check(auxKey, DeepEquals, expectedAuxKey)
 }
 
 type testActivateVolumeWithRecoveryKeyData struct {
@@ -269,6 +246,9 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, strings.Join(append(data.activateOptions, "tries=1"), ","))
 	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyInKeyring(c, data.keyringPrefix, data.sourceDevicePath, data.recoveryKey)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
@@ -405,6 +385,9 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
 		c.Check(call[5], Equals, "tries=1")
 	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyInKeyring(c, "", "/dev/sda1", data.recoveryKey)
 }
 
 func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
@@ -695,6 +678,361 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling8(c *C) {
 		errChecker:          ErrorMatches,
 		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted: too many characters"},
 	})
+}
+
+type testActivateVolumeWithKeyDataData struct {
+	authorizedModels []SnapModel
+	volumeName       string
+	sourceDevicePath string
+	keyringPrefix    string
+	model            SnapModel
+	authorized       bool
+}
+
+func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolumeWithKeyDataData) {
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	s.addMockKeyslot(c, key)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	c.Check(keyData.SetAuthorizedSnapModels(auxKey, data.authorizedModels...), IsNil)
+
+	options := &ActivateVolumeOptions{KeyringPrefix: data.keyringPrefix}
+	modelChecker, err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, keyData, options)
+	c.Assert(err, IsNil)
+
+	authorized, err := modelChecker.IsModelAuthorized(data.model)
+	c.Check(err, IsNil)
+	c.Check(authorized, Equals, data.authorized)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+	c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
+	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkKeyDataKeysInKeyring(c, data.keyringPrefix, data.sourceDevicePath, key, auxKey)
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyData1(c *C) {
+	models := []SnapModel{
+		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		authorized:       true})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyData2(c *C) {
+	// Test with different volumeName / sourceDevicePath
+	models := []SnapModel{
+		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		authorizedModels: models,
+		volumeName:       "foo",
+		sourceDevicePath: "/dev/vda2",
+		model:            models[0],
+		authorized:       true})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyData3(c *C) {
+	// Test with different authorized models
+	models := []SnapModel{
+		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		authorized:       true})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyData4(c *C) {
+	// Test with unauthorized model
+	models := []SnapModel{
+		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		authorized: false})
+}
+
+type testActivateVolumeWithKeyDataErrorHandlingData struct {
+	primaryKey  DiskUnlockKey
+	recoveryKey RecoveryKey
+
+	passphrases []string
+
+	recoveryKeyTries int
+	keyringPrefix    string
+
+	keyData *KeyData
+
+	errChecker     Checker
+	errCheckerArgs []interface{}
+
+	sdCryptsetupCalls int
+}
+
+func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *testActivateVolumeWithKeyDataErrorHandlingData) {
+	s.addMockKeyslot(c, data.primaryKey)
+	s.addMockKeyslot(c, data.recoveryKey[:])
+
+	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.passphrases, "\n")+"\n"), 0644), IsNil)
+
+	options := &ActivateVolumeOptions{
+		RecoveryKeyTries: data.recoveryKeyTries,
+		KeyringPrefix:    data.keyringPrefix}
+	modelChecker, err := ActivateVolumeWithKeyData("data", "/dev/sda1", data.keyData, options)
+	c.Check(modelChecker, IsNil)
+	if data.errChecker != nil {
+		c.Check(err, data.errChecker, data.errCheckerArgs...)
+	} else {
+		c.Check(err, IsNil)
+	}
+
+	c.Check(s.mockSdAskPassword.Calls(), HasLen, len(data.passphrases))
+	for _, call := range s.mockSdAskPassword.Calls() {
+		c.Check(call, DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk", "--id",
+			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
+	}
+
+	c.Check(s.mockSdCryptsetup.Calls(), HasLen, data.sdCryptsetupCalls)
+	for _, call := range s.mockSdCryptsetup.Calls() {
+		c.Assert(len(call), Equals, 6)
+		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+		c.Check(call[5], Equals, "tries=1")
+	}
+
+	if data.errChecker != nil {
+		return
+	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyInKeyring(c, data.keyringPrefix, "/dev/sda1", data.recoveryKey)
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling1(c *C) {
+	// Test with an invalid value for RecoveryKeyTries.
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		recoveryKeyTries: -1,
+		keyData:          keyData,
+		errChecker:       ErrorMatches,
+		errCheckerArgs:   []interface{}{"invalid RecoveryKeyTries"}})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling2(c *C) {
+	// Test that recovery fallback works with the platform is unavailable
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	s.handler.state = mockPlatformDeviceStateUnavailable
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:        key,
+		recoveryKey:       recoveryKey,
+		passphrases:       []string{recoveryKey.String()},
+		recoveryKeyTries:  1,
+		keyData:           keyData,
+		sdCryptsetupCalls: 1})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
+	// Test that recovery fallback works when the platform device isn't properly initialized
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	s.handler.state = mockPlatformDeviceStateUninitialized
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:        key,
+		recoveryKey:       recoveryKey,
+		passphrases:       []string{recoveryKey.String()},
+		recoveryKeyTries:  1,
+		keyData:           keyData,
+		sdCryptsetupCalls: 1})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling4(c *C) {
+	// Test that recovery fallback works when the recovered key is incorrect
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		recoveryKey:       recoveryKey,
+		passphrases:       []string{recoveryKey.String()},
+		recoveryKeyTries:  1,
+		keyData:           keyData,
+		sdCryptsetupCalls: 2})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
+	// Test that activation fails if RecoveryKeyTries is zero.
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	s.handler.state = mockPlatformDeviceStateUnavailable
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:       key,
+		recoveryKey:      recoveryKey,
+		recoveryKeyTries: 0,
+		keyData:          keyData,
+		errChecker:       ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n- " +
+			"@0: cannot recover key: the platform's secure device is unavailable: the " +
+			"platform device is unavailable\nand activation with recovery key failed: " +
+			"no recovery key tries permitted"},
+		sdCryptsetupCalls: 0})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
+	// Test that activation fails if the supplied recovery key is incorrect
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	s.handler.state = mockPlatformDeviceStateUnavailable
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:       key,
+		recoveryKey:      recoveryKey,
+		passphrases:      []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
+		recoveryKeyTries: 1,
+		keyData:          keyData,
+		errChecker:       ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n- " +
+			"@0: cannot recover key: the platform's secure device is unavailable: the " +
+			"platform device is unavailable\nand activation with recovery key failed: " +
+			"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
+		sdCryptsetupCalls: 1})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
+	// Test that recovery fallback works if the correct key is eventually supplied
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	s.handler.state = mockPlatformDeviceStateUnavailable
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:  key,
+		recoveryKey: recoveryKey,
+		passphrases: []string{
+			"00000-00000-00000-00000-00000-00000-00000-00000",
+			recoveryKey.String()},
+		recoveryKeyTries:  2,
+		keyData:           keyData,
+		sdCryptsetupCalls: 2})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
+	// Test that recovery fallback works if the correct key is eventually supplied
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	s.handler.state = mockPlatformDeviceStateUnavailable
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:  key,
+		recoveryKey: recoveryKey,
+		passphrases: []string{
+			"1234",
+			recoveryKey.String()},
+		recoveryKeyTries:  2,
+		keyData:           keyData,
+		sdCryptsetupCalls: 1})
 }
 
 type testActivateVolumeWithKeyData struct {

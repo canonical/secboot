@@ -47,7 +47,7 @@ func (s *keyDataFileSuite) SetUpTest(c *C) {
 var _ = Suite(&keyDataFileSuite{})
 
 func (s *keyDataFileSuite) TestWriter(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -75,7 +75,7 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 }
 
 func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -99,7 +99,7 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 }
 
 func (s *keyDataFileSuite) TestReader(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)

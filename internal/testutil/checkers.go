@@ -53,6 +53,52 @@ func (checker *hasKeyChecker) Check(params []interface{}, names []string) (resul
 	return false, ""
 }
 
+type inSliceChecker struct {
+	sub Checker
+}
+
+func (checker *inSliceChecker) Info() *CheckerInfo {
+	info := *checker.sub.Info()
+	info.Name = "InSlice(" + info.Name + ")"
+	info.Params = append([]string{}, info.Params...)
+	if len(info.Params) >= 2 {
+		info.Params[1] = "[]" + info.Params[1]
+	} else {
+		info.Params = append(info.Params, "[]expected")
+	}
+	info.Params = info.Params[:2]
+	return &info
+}
+
+func (checker *inSliceChecker) Check(params []interface{}, names []string) (result bool, error string) {
+	if len(params) != len(checker.sub.Info().Params) {
+		return false, "InSlice can only be used with checkers that require 2 parameters"
+	}
+
+	slice := reflect.ValueOf(params[1])
+	if slice.Kind() != reflect.Slice {
+		return false, names[1] + " has the wrong kind"
+	}
+
+	for i := 0; i < slice.Len(); i++ {
+		if result, _ := checker.sub.Check([]interface{}{params[0], slice.Index(i).Interface()}, []string{names[0], checker.sub.Info().Params[1]}); result {
+			return true, ""
+		}
+	}
+	return false, ""
+}
+
+// InSlice determines whether a value is contained in the provided slice, using
+// the specified checker.
+//
+// For example:
+//
+//  c.Check(value, InSlice(Equals), []int{1, 2, 3})
+//
+func InSlice(checker Checker) Checker {
+	return &inSliceChecker{checker}
+}
+
 type isTrueChecker struct {
 	*CheckerInfo
 }

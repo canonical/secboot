@@ -168,7 +168,7 @@ func (s *keyDataTestBase) TearDownSuite(c *C) {
 	RegisterPlatformKeyDataHandler(mockPlatformName, nil)
 }
 
-func (s *keyDataTestBase) newKeys(c *C, sz1, sz2 int) (DiskUnlockKey, AuxiliaryKey) {
+func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, AuxiliaryKey) {
 	key := make([]byte, sz1)
 	auxKey := make([]byte, sz2)
 	_, err := rand.Read(key)
@@ -278,7 +278,7 @@ func (s *keyDataSuite) testKeyPayload(c *C, data *testKeyPayloadData) {
 }
 
 func (s *keyDataSuite) TestKeyPayload1(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 
 	s.testKeyPayload(c, &testKeyPayloadData{
 		key:    key,
@@ -286,7 +286,7 @@ func (s *keyDataSuite) TestKeyPayload1(c *C) {
 }
 
 func (s *keyDataSuite) TestKeyPayload2(c *C) {
-	key, auxKey := s.newKeys(c, 64, 32)
+	key, auxKey := s.newKeyDataKeys(c, 64, 32)
 
 	s.testKeyPayload(c, &testKeyPayloadData{
 		key:    key,
@@ -294,7 +294,7 @@ func (s *keyDataSuite) TestKeyPayload2(c *C) {
 }
 
 func (s *keyDataSuite) TestKeyPayload3(c *C) {
-	key, _ := s.newKeys(c, 32, 0)
+	key, _ := s.newKeyDataKeys(c, 32, 0)
 
 	s.testKeyPayload(c, &testKeyPayloadData{
 		key: key})
@@ -346,7 +346,7 @@ func (s *keyDataSuite) TestKeyIDStringLUKS(c *C) {
 }
 
 func (s *keyDataSuite) TestRecoverKeys(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -358,7 +358,7 @@ func (s *keyDataSuite) TestRecoverKeys(c *C) {
 }
 
 func (s *keyDataSuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	protected.PlatformName = "foo"
@@ -372,7 +372,7 @@ func (s *keyDataSuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 }
 
 func (s *keyDataSuite) TestRecoverKeysInvalidData(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	protected.Handle = []byte("\"\"")
@@ -393,7 +393,7 @@ type testSnapModelAuthData struct {
 }
 
 func (s *keyDataSuite) testSnapModelAuth(c *C, data *testSnapModelAuthData) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, data.alg)
 
 	keyData, err := NewKeyData(protected)
@@ -482,7 +482,7 @@ func (s *keyDataSuite) TestSnapModelAuth4(c *C) {
 }
 
 func (s *keyDataSuite) TestSetAuthorizedSnapModelsWithWrongKey(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -514,7 +514,7 @@ func (s *keyDataSuite) testWriteAtomic(c *C, data *testWriteAtomicData) {
 }
 
 func (s *keyDataSuite) TestWriteAtomic1(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -526,7 +526,7 @@ func (s *keyDataSuite) TestWriteAtomic1(c *C) {
 }
 
 func (s *keyDataSuite) TestWriteAtomic2(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA512)
 
 	keyData, err := NewKeyData(protected)
@@ -538,7 +538,7 @@ func (s *keyDataSuite) TestWriteAtomic2(c *C) {
 }
 
 func (s *keyDataSuite) TestWriteAtomic3(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -562,7 +562,7 @@ func (s *keyDataSuite) TestWriteAtomic3(c *C) {
 }
 
 func (s *keyDataSuite) TestWriteAtomic4(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -619,7 +619,7 @@ func (s *keyDataSuite) testReadKeyData(c *C, data *testReadKeyDataData) {
 }
 
 func (s *keyDataSuite) TestReadKeyData1(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -650,7 +650,7 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 }
 
 func (s *keyDataSuite) TestReadKeyData2(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA512)
 
 	keyData, err := NewKeyData(protected)
@@ -681,7 +681,7 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 }
 
 func (s *keyDataSuite) TestReadKeyData3(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
@@ -719,7 +719,7 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 }
 
 func (s *keyDataSuite) TestReadKeyData4(c *C) {
-	key, auxKey := s.newKeys(c, 32, 32)
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA512)
 
 	keyData, err := NewKeyData(protected)

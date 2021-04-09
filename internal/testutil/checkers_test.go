@@ -65,6 +65,17 @@ func (s *checkersSuite) TestHasKey(c *C) {
 	testCheck(c, HasKey, false, "key has an unexpected type", map[int]int{}, "foo")
 }
 
+func (s *checkersSuite) TestInSlice(c *C) {
+	testInfo(c, InSlice(Equals), "InSlice(Equals)", []string{"obtained", "[]expected"})
+	testCheck(c, InSlice(Equals), true, "", 1, []int{2, 1, 5})
+	testCheck(c, InSlice(Equals), false, "", 10, []int{2, 1, 5})
+	testCheck(c, InSlice(Equals), true, "", "foo", []string{"foo", "bar"})
+	testCheck(c, InSlice(Equals), false, "", "baz", []string{"foo", "bar"})
+
+	testCheck(c, InSlice(IsNil), false, "InSlice can only be used with checkers that require 2 parameters", nil, nil)
+	testCheck(c, InSlice(Equals), false, "[]expected has the wrong kind", 1, 1)
+}
+
 func (s *checkersSuite) TestIsTrue(c *C) {
 	testInfo(c, IsTrue, "IsTrue", []string{"value"})
 	testCheck(c, IsTrue, true, "", true)

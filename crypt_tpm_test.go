@@ -46,13 +46,17 @@ type cryptTPMSimulatorSuite struct {
 
 var _ = Suite(&cryptTPMSimulatorSuite{})
 
+func (s *cryptTPMSimulatorSuite) AddCleanup(f func()) {
+	s.TPMSimulatorTestBase.AddCleanup(f)
+}
+
 func (s *cryptTPMSimulatorSuite) SetUpSuite(c *C) {
-	s.cryptTestBase.setUpSuiteBase(c)
+	s.cryptTestBase.SetUpSuite(c)
 }
 
 func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 	s.TPMSimulatorTestBase.SetUpTest(c)
-	s.cryptTestBase.setUpTestBase(c, &s.BaseTest)
+	s.cryptTestBase.SetUpTest(c)
 
 	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
 	s.ResetTPMSimulator(c)
@@ -79,6 +83,11 @@ func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 	s.AddCleanup(func() {
 		c.Check(s.TPM.DictionaryAttackLockReset(s.TPM.LockoutHandleContext(), nil), IsNil)
 	})
+}
+
+func (s *cryptTPMSimulatorSuite) TearDownTest(c *C) {
+	s.cryptTestBase.TearDownTest(c)
+	s.TPMSimulatorTestBase.TearDownTest(c)
 }
 
 type testActivateVolumeWithMultipleTPMSealedKeysData struct {
@@ -402,6 +411,9 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithMultipleTPMSealedKeysErro
 	if !data.success {
 		return
 	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyInKeyring(c, data.keyringPrefix, "/dev/sda1", s.recoveryKey)
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleTPMSealedKeysErrorHandling1(c *C) {
@@ -934,6 +946,9 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithTPMSealedKeyErrorHandling
 	if !data.success {
 		return
 	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkRecoveryKeyInKeyring(c, data.keyringPrefix, "/dev/sda1", s.recoveryKey)
 }
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyErrorHandling1(c *C) {
