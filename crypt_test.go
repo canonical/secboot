@@ -214,6 +214,19 @@ func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expect
 	c.Check(auxKey, DeepEquals, expectedAuxKey)
 }
 
+func (s *cryptSuite) newNamedKeyData(c *C, data *KeyCreationData, id *KeyID) *KeyData {
+	keyData, err := NewKeyData(data)
+	c.Assert(err, IsNil)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	r := &mockKeyDataReader{*id, w.Reader()}
+	keyData, err = ReadKeyData(r)
+	c.Assert(err, IsNil)
+	return keyData
+}
+
 type testActivateVolumeWithRecoveryKeyData struct {
 	recoveryKey         RecoveryKey
 	volumeName          string
@@ -943,8 +956,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
-	keyData, err := NewKeyData(protected)
-	c.Assert(err, IsNil)
+	keyData := s.newNamedKeyData(c, protected, &KeyID{"foo", 2})
 
 	recoveryKey := s.newRecoveryKey()
 
@@ -957,7 +969,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 		keyData:          keyData,
 		errChecker:       ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n- " +
-			"@0: cannot recover key: the platform's secure device is unavailable: the " +
+			"foo@2: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\nand activation with recovery key failed: " +
 			"no recovery key tries permitted"},
 		sdCryptsetupCalls: 0})
@@ -968,8 +980,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
-	keyData, err := NewKeyData(protected)
-	c.Assert(err, IsNil)
+	keyData := s.newNamedKeyData(c, protected, &KeyID{"bar", 5})
 
 	recoveryKey := s.newRecoveryKey()
 
@@ -983,7 +994,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 		keyData:          keyData,
 		errChecker:       ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n- " +
-			"@0: cannot recover key: the platform's secure device is unavailable: the " +
+			"bar@5: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\nand activation with recovery key failed: " +
 			"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
 		sdCryptsetupCalls: 1})

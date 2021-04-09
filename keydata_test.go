@@ -111,11 +111,8 @@ func (w *mockKeyDataWriter) Commit() error {
 	return nil
 }
 
-func (w *mockKeyDataWriter) Read(data []byte) (int, error) {
-	if w.final == nil {
-		return 0, io.EOF
-	}
-	return w.final.Read(data)
+func (w *mockKeyDataWriter) Reader() io.Reader {
+	return w.final
 }
 
 func makeMockKeyDataWriter() *mockKeyDataWriter {
@@ -510,7 +507,7 @@ func (s *keyDataSuite) testWriteAtomic(c *C, data *testWriteAtomicData) {
 	w := makeMockKeyDataWriter()
 	c.Check(data.keyData.WriteAtomic(w), IsNil)
 
-	s.checkKeyDataJSON(c, w, data.creationData, data.nmodels)
+	s.checkKeyDataJSON(c, w.Reader(), data.creationData, data.nmodels)
 }
 
 func (s *keyDataSuite) TestWriteAtomic1(c *C) {
@@ -639,7 +636,7 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{}, w.final}
+	r := &mockKeyDataReader{KeyID{}, w.Reader()}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -670,7 +667,7 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{}, w.final}
+	r := &mockKeyDataReader{KeyID{}, w.Reader()}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -708,7 +705,7 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{}, w.final}
+	r := &mockKeyDataReader{KeyID{}, w.Reader()}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -739,7 +736,7 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{}, w.final}
+	r := &mockKeyDataReader{KeyID{}, w.Reader()}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:    key,
