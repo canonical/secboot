@@ -210,8 +210,8 @@ func (ctb *cryptTestBase) addMockKeyslot(c *C, key []byte) {
 	ctb.mockKeyslotsCount++
 }
 
-func (ctb *cryptTestBase) newPrimaryKey(sz int) []byte {
-	key := make([]byte, sz)
+func (ctb *cryptTestBase) newPrimaryKey() []byte {
+	key := make([]byte, 32)
 	rand.Read(key)
 	return key
 }
@@ -809,7 +809,7 @@ func (s *cryptSuite) TestInitializeLUKS2Container1(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/sda1",
 		label:      "data",
-		key:        s.newPrimaryKey(32),
+		key:        s.newPrimaryKey(),
 	})
 }
 
@@ -818,7 +818,7 @@ func (s *cryptSuite) TestInitializeLUKS2Container2(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/vdc2",
 		label:      "test",
-		key:        s.newPrimaryKey(32),
+		key:        s.newPrimaryKey(),
 	})
 }
 
@@ -836,7 +836,7 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/vdc2",
 		label:      "test",
-		key:        s.newPrimaryKey(32),
+		key:        s.newPrimaryKey(),
 		opts: &InitializeLUKS2ContainerOptions{
 			MetadataKiBSize:     2 * 1024, // 2MiB
 			KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
@@ -856,7 +856,7 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
-	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.newPrimaryKey(32)[0:16], nil), ErrorMatches, "expected a key length of at least 256-bits \\(got 128\\)")
+	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.newPrimaryKey()[0:16], nil), ErrorMatches, "expected a key length of at least 256-bits \\(got 128\\)")
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataKiBSize(c *C) {
@@ -935,7 +935,7 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container1(c *C) {
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/sda1",
-		key:         s.newPrimaryKey(32),
+		key:         s.newPrimaryKey(),
 		recoveryKey: s.newRecoveryKey(),
 	})
 }
@@ -944,7 +944,7 @@ func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container2(c *C) {
 	// Test with different path.
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath:  "/dev/vdb2",
-		key:         s.newPrimaryKey(32),
+		key:         s.newPrimaryKey(),
 		recoveryKey: s.newRecoveryKey(),
 	})
 }
@@ -962,7 +962,7 @@ func (s *cryptSuite) TestAddRecoveryKeyToLUKS2Container4(c *C) {
 	// Test with different recovery key.
 	s.testAddRecoveryKeyToLUKS2Container(c, &testAddRecoveryKeyToLUKS2ContainerData{
 		devicePath: "/dev/vdb2",
-		key:        s.newPrimaryKey(32),
+		key:        s.newPrimaryKey(),
 	})
 }
 
@@ -1002,7 +1002,7 @@ func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey1(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		devicePath:  "/dev/sda1",
 		recoveryKey: s.newRecoveryKey(),
-		key:         s.newPrimaryKey(32),
+		key:         s.newPrimaryKey(),
 	})
 }
 
@@ -1010,14 +1010,14 @@ func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey2(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		devicePath:  "/dev/vdc1",
 		recoveryKey: s.newRecoveryKey(),
-		key:         s.newPrimaryKey(32),
+		key:         s.newPrimaryKey(),
 	})
 }
 
 func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey3(c *C) {
 	s.testChangeLUKS2KeyUsingRecoveryKey(c, &testChangeLUKS2KeyUsingRecoveryKeyData{
 		devicePath: "/dev/sda1",
-		key:        s.newPrimaryKey(32),
+		key:        s.newPrimaryKey(),
 	})
 }
 

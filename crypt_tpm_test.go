@@ -60,7 +60,7 @@ func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 	dir := c.MkDir()
 	s.keyFile = dir + "/keydata"
 
-	primaryKey := s.newPrimaryKey(32)
+	primaryKey := s.newPrimaryKey()
 
 	pcrPolicyCounterHandle := tpm2.Handle(0x0181fff0)
 	authPrivateKey, err := SealKeyToTPM(s.TPM, primaryKey, s.keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: pcrPolicyCounterHandle})
