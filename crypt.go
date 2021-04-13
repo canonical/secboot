@@ -352,7 +352,7 @@ func (s *activateWithKeyDataState) run() (success bool) {
 	return false
 }
 
-func makeActivateWithKeyDataState(volumeName, sourceDevicePath string, activateOptions []string, keyringPrefix string, keys []*KeyData) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, activateOptions []string, keyringPrefix string, keys []*KeyData) *activateWithKeyDataState {
 	s := &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
@@ -506,7 +506,7 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 		return nil, err
 	}
 
-	s := makeActivateWithKeyDataState(volumeName, sourceDevicePath, activateOptions, options.KeyringPrefix, keys)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, activateOptions, options.KeyringPrefix, keys)
 	switch s.run() {
 	case true: // success!
 		return s.snapModelChecker(), nil
