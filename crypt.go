@@ -296,7 +296,7 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 		}
 		out = append(out, &activateWithKeyDataError{k: k.KeyData, err: k.err})
 	}
-	return
+	return out
 }
 
 func (s *activateWithKeyDataState) snapModelChecker() *SnapModelChecker {
