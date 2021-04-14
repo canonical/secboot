@@ -469,6 +469,12 @@ func (e *activateVolumeWithKeyDataError) Error() string {
 	return s.String()
 }
 
+// ErrRecoveryKeyUsed is returned from ActivateVolumeWithKeyData and
+// ActivateVolumeWithMultipleKeyData if the volume could not be activated with
+// any platform protected keys but activation with the recovery key was
+// successful.
+var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected keys but activation with the recovery key was successful")
+
 // ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at sourceDevicePath and create a
 // mapping with the name volumeName, using the supplied KeyData objects to recover the disk unlock key from the
 // platform's secure device. This makes use of systemd-cryptsetup.
@@ -487,7 +493,8 @@ func (e *activateVolumeWithKeyDataError) Error() string {
 //
 // If activation with one of the supplied KeyData objects succeeds, a SnapModelChecker will be returned so that the
 // caller can check whether a particular Snap device model has previously been authorized to access the data on this
-// volume. If the fallback recovery key is used for activation, no SnapModelChecker will be returned.
+// volume. If the fallback recovery key is used for successfully for activation, no SnapModelChecker will be
+// returned and a ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
 func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) (*SnapModelChecker, error) {
@@ -520,7 +527,7 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 			return nil, &activateVolumeWithKeyDataError{kdErrs, rErr}
 		}
 		// succeeded with recovery key
-		return nil, nil
+		return nil, ErrRecoveryKeyUsed
 	}
 }
 
@@ -541,7 +548,8 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 //
 // If activation with the supplied KeyData succeeds, a SnapModelChecker will be returned so that the caller can check
 // whether a particular Snap device model has previously been authorized to access the data on this volume. If the
-// fallback recovery key is used for activation, no SnapModelChecker will be returned.
+// fallback recovery key is used for successfully for activation, no SnapModelChecker will be returned and a
+// ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
 func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) (*SnapModelChecker, error) {

@@ -869,7 +869,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 	if data.errChecker != nil {
 		c.Check(err, data.errChecker, data.errCheckerArgs...)
 	} else {
-		c.Check(err, IsNil)
+		c.Check(err, Equals, ErrRecoveryKeyUsed)
 	}
 
 	c.Check(s.mockSdAskPassword.Calls(), HasLen, len(data.passphrases))
@@ -1181,7 +1181,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 	if data.errChecker != nil {
 		c.Check(err, data.errChecker, data.errCheckerArgs...)
 	} else {
-		c.Check(err, IsNil)
+		c.Check(err, Equals, ErrRecoveryKeyUsed)
 	}
 
 	c.Check(s.mockSdAskPassword.Calls(), HasLen, len(data.passphrases))
