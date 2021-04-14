@@ -125,7 +125,7 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 	if pin == "" {
 		c.Check(k.AuthMode2F(), Equals, AuthModeNone)
 	} else {
-		c.Check(k.AuthMode2F(), Equals, AuthModePIN)
+		c.Check(k.AuthMode2F(), Equals, AuthModePassphrase)
 	}
 
 	key, _, err := k.UnsealFromTPM(s.TPM, pin)

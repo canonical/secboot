@@ -21,46 +21,13 @@ package secboot_test
 
 import (
 	"encoding/binary"
-	"time"
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
-	"github.com/snapcore/snapd/asserts"
 
 	. "gopkg.in/check.v1"
 )
-
-type snapModelTestBase struct{}
-
-func (tb *snapModelTestBase) makeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) SnapModel {
-	template := map[string]interface{}{
-		"type":              "model",
-		"architecture":      "amd64",
-		"base":              "core20",
-		"timestamp":         time.Now().Format(time.RFC3339),
-		"sign-key-sha3-384": signKeyHash,
-		"snaps": []interface{}{
-			map[string]interface{}{
-				"name": "fake-linux",
-				"id":   "fakelinuxidididididididididididi",
-				"type": "kernel",
-			},
-			map[string]interface{}{
-				"name": "fake-gadget",
-				"id":   "fakegadgetididididididididididid",
-				"type": "gadget",
-			},
-		},
-	}
-	for k, v := range headers {
-		template[k] = v
-	}
-
-	assertion, err := asserts.Assemble(template, nil, nil, []byte("AXNpZw=="))
-	c.Assert(err, IsNil)
-	return assertion.(SnapModel)
-}
 
 type snapModelProfileSuite struct {
 	snapModelTestBase

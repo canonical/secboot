@@ -3,6 +3,12 @@
 	"ignore": "test",
 	"package": [
 		{
+			"checksumSHA1": "CT15zzEmXx3dQ7/PJCSwZhqSV/o=",
+			"path": "github.com/canonical/go-sp800.90a-drbg",
+			"revision": "6eeb1040d6c3a6b618a8da5e42ef66b35e7a3ddd",
+			"revisionTime": "2021-03-12T20:55:53Z"
+		},
+		{
 			"checksumSHA1": "HeHu/+gGhFD5UH8iApKz14DxJaw=",
 			"path": "github.com/canonical/go-tpm2",
 			"revision": "14cc20cfdf983fc6894fce8659c40acf3e6d3a73",
@@ -314,6 +320,7 @@
 		},
 		{
 			"checksumSHA1": "tZ9GNzrjTZEPDhoJEkouGPKRmZk=",
+			"origin": "github.com/pedronis/maze.io-x-crypto/afis",
 			"path": "maze.io/x/crypto/afis",
 			"revision": "9b94c9afe06676a7da39a608a48ed4e31f5d125f",
 			"revisionTime": "2019-01-31T09:06:03Z"

@@ -316,11 +316,11 @@ func SealKeyToTPMMultiple(tpm *TPMConnection, keys []*SealKeyRequest, params *Ke
 		}
 
 		// Marshal the entire object (sealed key object and auxiliary data) to disk
-		data := keyData{
+		data := tpmKeyData{
 			version:           currentMetadataVersion,
 			keyPrivate:        priv,
 			keyPublic:         pub,
-			authModeHint:      AuthModeNone,
+			authModeHint:      authModeNone,
 			staticPolicyData:  staticPolicyData,
 			dynamicPolicyData: dynamicPolicyData}
 
@@ -384,7 +384,7 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keyPaths []string,
 		return errors.New("no key files supplied")
 	}
 
-	var datas []*keyData
+	var datas []*tpmKeyData
 	// Open the primary data file
 	keyFile, err := os.Open(keyPaths[0])
 	if err != nil {

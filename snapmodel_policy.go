@@ -25,7 +25,6 @@ import (
 	"errors"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/snapd/asserts"
 
 	"golang.org/x/xerrors"
 )
@@ -36,15 +35,6 @@ func computeSnapSystemEpochDigest(alg tpm2.HashAlgorithmId, epoch uint32) tpm2.D
 	h := alg.NewHash()
 	binary.Write(h, binary.LittleEndian, epoch)
 	return h.Sum(nil)
-}
-
-// SnapModel exposes the details of a snap device model that are to be measured.
-type SnapModel interface {
-	Series() string
-	BrandID() string
-	Model() string
-	Grade() asserts.ModelGrade
-	SignKeyID() string
 }
 
 func computeSnapModelDigest(alg tpm2.HashAlgorithmId, model SnapModel) (tpm2.Digest, error) {
