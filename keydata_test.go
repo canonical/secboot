@@ -639,7 +639,7 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{"foo", 1}, w.final}
+	r := &mockKeyDataReader{KeyID{Name: "foo", Revision: 1}, w.final}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -670,7 +670,7 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{"bar", 3}, w.final}
+	r := &mockKeyDataReader{KeyID{Name: "bar", Revision: 3}, w.final}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -708,7 +708,7 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{"foo", 0}, w.final}
+	r := &mockKeyDataReader{KeyID{Name: "foo", Revision: 0}, w.final}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
@@ -739,7 +739,7 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{"foo", 0}, w.final}
+	r := &mockKeyDataReader{KeyID{Name: "foo", Revision: 0}, w.final}
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:    key,
