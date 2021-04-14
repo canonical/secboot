@@ -21,7 +21,6 @@ package secboot_test
 
 import (
 	"crypto"
-	"encoding/json"
 	"os"
 	"path/filepath"
 
@@ -53,7 +52,7 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	w := NewFileKeyDataWriter("testkey", filepath.Join(s.dir, "key"))
+	w := NewFileKeyDataWriter(filepath.Join(s.dir, "key"))
 	c.Assert(w, NotNil)
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
@@ -61,17 +60,7 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	var j map[string]interface{}
-
-	d := json.NewDecoder(f)
-	c.Check(d.Decode(&j), IsNil)
-
-	c.Check(j["name"], Equals, "testkey")
-
-	data, ok := j["data"].(map[string]interface{})
-	c.Check(ok, testutil.IsTrue)
-
-	s.checkKeyDataJSON(c, data, protected, 0)
+	s.checkKeyDataJSONFromReader(c, f, protected, 0)
 }
 
 func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
@@ -81,14 +70,14 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	w := NewFileKeyDataWriter("testkey", filepath.Join(s.dir, "key"))
+	w := NewFileKeyDataWriter(filepath.Join(s.dir, "key"))
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	f, err := os.Open(filepath.Join(s.dir, "key"))
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	w = NewFileKeyDataWriter("testkey", filepath.Join(s.dir, "key"))
+	w = NewFileKeyDataWriter(filepath.Join(s.dir, "key"))
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	var st1 unix.Stat_t
@@ -123,15 +112,25 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 
 	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
 
-	w := NewFileKeyDataWriter("testkey", filepath.Join(s.dir, "key"))
+	expectedId, err := keyData.ID()
+	c.Check(err, IsNil)
+
+	path := filepath.Join(s.dir, "key")
+
+	w := NewFileKeyDataWriter(path)
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r, err := NewFileKeyDataReader(filepath.Join(s.dir, "key"))
+	r, err := NewFileKeyDataReader(path)
 	c.Assert(err, IsNil)
-	c.Check(r.ID(), Equals, KeyID{Name: "testkey"})
+	c.Check(r.ReadableName(), Equals, path)
 
 	keyData, err = ReadKeyData(r)
 	c.Assert(err, IsNil)
+	c.Check(keyData.ReadableName(), Equals, path)
+
+	id, err := keyData.ID()
+	c.Check(err, IsNil)
+	c.Check(id, DeepEquals, expectedId)
 
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
 	c.Check(err, IsNil)

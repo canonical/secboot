@@ -265,7 +265,7 @@ type activateWithKeyDataError struct {
 }
 
 func (e *activateWithKeyDataError) Error() string {
-	return fmt.Sprintf("%s: %v", e.k.ID(), e.err)
+	return fmt.Sprintf("%s: %v", e.k.ReadableName(), e.err)
 }
 
 func (e *activateWithKeyDataError) Unwrap() error {

@@ -153,14 +153,7 @@ type KeyCreationData struct {
 
 // KeyID is the unique ID for a KeyData object. It is used to facilitate the
 // sharing of state between the early boot environment and OS runtime.
-type KeyID struct {
-	Name     string // Unique name for the KeyData
-	Revision uint64 // Revision of the KeyData
-}
-
-func (id KeyID) String() string {
-	return fmt.Sprintf("%s@%d", id.Name, id.Revision)
-}
+type KeyID []byte
 
 // KeyDataWriter is an interface used by KeyData to write the data to
 // persistent storage in an atomic way.
@@ -173,7 +166,7 @@ type KeyDataWriter interface {
 // from persistent storage.
 type KeyDataReader interface {
 	io.Reader
-	ID() KeyID
+	ReadableName() string
 }
 
 type hashAlg struct {
@@ -286,8 +279,8 @@ func processPlatformKeyRecoveryError(err error) error {
 // KeyData represents a disk unlock key and auxiliary key protected by a platform's
 // secure device.
 type KeyData struct {
-	id   KeyID
-	data keyData
+	readableName string
+	data         keyData
 }
 
 func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
@@ -309,9 +302,20 @@ func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
 	return hmacKey, nil
 }
 
+// ReadableName returns a human-readable name for this key data, useful for
+// including in errors.
+func (d *KeyData) ReadableName() string {
+	return d.readableName
+}
+
 // ID returns the unique ID for this key data.
-func (d *KeyData) ID() KeyID {
-	return d.id
+func (d *KeyData) ID() (KeyID, error) {
+	h := crypto.SHA256.New()
+	enc := json.NewEncoder(h)
+	if err := enc.Encode(&d.data); err != nil {
+		return nil, xerrors.Errorf("cannot compute ID: %w", err)
+	}
+	return KeyID(h.Sum(nil)), nil
 }
 
 // AuthMode indicates the authentication mechanisms enabled for this key data.
@@ -456,7 +460,7 @@ func (d *KeyData) WriteAtomic(w KeyDataWriter) error {
 // ReadKeyData reads the key data from the supplied KeyDataReader, returning a
 // new KeyData object.
 func ReadKeyData(r KeyDataReader) (*KeyData, error) {
-	d := &KeyData{id: r.ID()}
+	d := &KeyData{readableName: r.ReadableName()}
 	dec := json.NewDecoder(r)
 	if err := dec.Decode(&d.data); err != nil {
 		return nil, xerrors.Errorf("cannot decode key data: %w", err)
@@ -485,7 +489,6 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 	}
 
 	return &KeyData{
-		id: KeyID{Name: "nil"},
 		data: keyData{
 			PlatformName:     creationData.PlatformName,
 			PlatformHandle:   json.RawMessage(creationData.Handle),
