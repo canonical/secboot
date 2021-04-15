@@ -238,25 +238,31 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
-// SnapModelChecker is used for verifying whether a Snap device model is
-// authorized to access the data on a volume unlocked by this package.
-type SnapModelChecker struct {
+type snapModelCheckerImpl struct {
 	volumeName string
 	keyData    *KeyData
 	auxKey     AuxiliaryKey
 }
 
-// IsModelAuthorized indicates whether the supplied Snap device model is
-// authorized to access the data on the decrypted volume with the device
-// mapper name returned by VolumeName.
-func (c *SnapModelChecker) IsModelAuthorized(model SnapModel) (bool, error) {
+func (c *snapModelCheckerImpl) IsModelAuthorized(model SnapModel) (bool, error) {
 	return c.keyData.IsSnapModelAuthorized(c.auxKey, model)
 }
 
-// VolumeName is the device mapper name of the volume associated with this
-// SnapModelChecker.
-func (c *SnapModelChecker) VolumeName() string {
+func (c *snapModelCheckerImpl) VolumeName() string {
 	return c.volumeName
+}
+
+// SnapModelChecker is used for verifying whether a Snap device model is
+// authorized to access the data on a volume unlocked by this package.
+type SnapModelChecker interface {
+	// IsModelAuthorized indicates whether the supplied Snap device model is
+	// authorized to access the data on the decrypted volume with the device
+	// mapper name returned by VolumeName.
+	IsModelAuthorized(model SnapModel) (bool, error)
+
+	// VolumeName is the device mapper name of the volume associated with this
+	// SnapModelChecker.
+	VolumeName() string
 }
 
 type activateWithKeyDataError struct {
@@ -299,8 +305,8 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 	return out
 }
 
-func (s *activateWithKeyDataState) snapModelChecker() *SnapModelChecker {
-	return &SnapModelChecker{s.volumeName, s.keyData, s.auxKey}
+func (s *activateWithKeyDataState) snapModelChecker() *snapModelCheckerImpl {
+	return &snapModelCheckerImpl{s.volumeName, s.keyData, s.auxKey}
 }
 
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(keyData *KeyData, key DiskUnlockKey, auxKey AuxiliaryKey) error {
@@ -497,7 +503,7 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // returned and a ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
-func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) (*SnapModelChecker, error) {
+func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) (SnapModelChecker, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("no keys provided")
 	}
@@ -552,7 +558,7 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 // ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
-func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) (*SnapModelChecker, error) {
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) (SnapModelChecker, error) {
 	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, options)
 }
 
