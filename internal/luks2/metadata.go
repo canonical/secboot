@@ -164,7 +164,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		// on previously, without blocking.
 		if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 			if errno, ok := err.(syscall.Errno); !ok || errno != syscall.EWOULDBLOCK {
-				fmt.Fprintf(os.Stderr, "luks2.acquireSharedLock: cannot acquire exclusive lock for cleanup: %v\n", err)
+				fmt.Fprintf(stderr, "luks2.acquireSharedLock: cannot acquire exclusive lock for cleanup: %v\n", err)
 			}
 			// Another process has grabbed a lock since we released the lock. There's
 			// nothing else for us to do - the new lock owner is now responsible for
@@ -177,7 +177,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		var st unix.Stat_t
 		if err := unix.Stat(lockPath, &st); err != nil {
 			if errno, ok := err.(syscall.Errno); !ok || errno != syscall.ENOENT {
-				fmt.Fprintf(os.Stderr, "luks2.acquireSharedLock: cannot stat() lock file: %v\n", err)
+				fmt.Fprintf(stderr, "luks2.acquireSharedLock: cannot stat() lock file: %v\n", err)
 			}
 			// The lock file we opened has been cleaned up by another process, which acquired
 			// and released it in between us releasing the lock at the start of this function,
@@ -198,7 +198,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		// have an exclusive lock on it again. As other processes participating in locking require
 		// an exclusive lock for cleaning it up, it os now safe to unlink it.
 		if err := os.Remove(lockPath); err != nil {
-			fmt.Fprintf(os.Stderr, "luks2.acquireSharedLock: cannot unlink lock file: %v\n", err)
+			fmt.Fprintf(stderr, "luks2.acquireSharedLock: cannot unlink lock file: %v\n", err)
 		}
 	}
 
@@ -879,25 +879,25 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 		switch {
 		case secondaryHdr.SeqId < primaryHdr.SeqId:
 			// The secondary header is obsolete. Cryptsetup will recover this automatically.
-			fmt.Fprintf(os.Stderr, "luks2.ReadHeader: secondary header for %s is obsolete\n", path)
+			fmt.Fprintf(stderr, "luks2.ReadHeader: secondary header for %s is obsolete\n", path)
 		case secondaryHdr.SeqId > primaryHdr.SeqId:
 			// The primary header is obsolete, so use the secondary header. This shouldn't
 			// normally happen as the primary header is updated first. Cryptsetup will recover
 			// this automatically.
 			hdr = secondaryHdr
 			metadata = &secondaryMetadata
-			fmt.Fprintf(os.Stderr, "luks2.ReadHeader: primary header for %s is obsolete\n", path)
+			fmt.Fprintf(stderr, "luks2.ReadHeader: primary header for %s is obsolete\n", path)
 		}
 	case primaryErr == nil:
 		// We only have a valid primary header so use that. Cryptsetup will recover this automatically.
 		hdr = primaryHdr
 		metadata = &primaryMetadata
-		fmt.Fprintf(os.Stderr, "luks2.ReadHeader: secondary header for %s is invalid: %v\n", path, secondaryErr)
+		fmt.Fprintf(stderr, "luks2.ReadHeader: secondary header for %s is invalid: %v\n", path, secondaryErr)
 	case secondaryErr == nil:
 		// We only have a valid secondary header so use that. Cryptsetup will recover this automatically.
 		hdr = secondaryHdr
 		metadata = &secondaryMetadata
-		fmt.Fprintf(os.Stderr, "luks2.ReadHeader: primary header for %s is invalid: %v\n", path, primaryErr)
+		fmt.Fprintf(stderr, "luks2.ReadHeader: primary header for %s is invalid: %v\n", path, primaryErr)
 	default:
 		// No valid headers :(
 		return nil, xerrors.Errorf("no valid header found, error from decoding primary header: %w", primaryErr)

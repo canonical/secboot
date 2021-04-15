@@ -40,7 +40,7 @@ func mkFifo() (string, func(), error) {
 
 	cleanup := func() {
 		if err := os.RemoveAll(dir); err != nil {
-			fmt.Fprintf(os.Stderr, "luks2.mkFifo: cannot remove fifo: %v\n", err)
+			fmt.Fprintf(stderr, "luks2.mkFifo: cannot remove fifo: %v\n", err)
 		}
 	}
 

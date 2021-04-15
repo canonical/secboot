@@ -19,8 +19,14 @@
 
 package luks2
 
+import (
+	"io"
+	"os"
+)
+
 var (
-	runDir = "/run"
+	runDir           = "/run"
+	stderr io.Writer = os.Stderr
 )
 
 // SlotPriority represents the priority of a keyslot.

@@ -20,6 +20,7 @@
 package luks2_test
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"math/rand"
@@ -286,9 +287,13 @@ type testReadHeaderData struct {
 	hdrSize          uint64
 	keyslotsSize     uint64
 	keyslot2Priority SlotPriority
+	stderr           string
 }
 
 func (s *metadataSuite) testReadHeader(c *C, data *testReadHeaderData) {
+	stderr := new(bytes.Buffer)
+	s.AddCleanup(MockStderr(stderr))
+
 	hdr, err := ReadHeader(s.decompress(c, data.path), LockModeBlocking)
 	c.Assert(err, IsNil)
 
@@ -355,6 +360,8 @@ func (s *metadataSuite) testReadHeader(c *C, data *testReadHeaderData) {
 
 	c.Check(hdr.Metadata.Config.JSONSize, Equals, data.hdrSize-4096)
 	c.Check(hdr.Metadata.Config.KeyslotsSize, Equals, data.keyslotsSize)
+
+	c.Check(stderr.String(), Matches, data.stderr)
 }
 
 func (s *metadataSuite) TestReadHeaderValid(c *C) {
@@ -375,6 +382,7 @@ func (s *metadataSuite) TestReadHeaderInvalidPrimary(c *C) {
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityNormal,
+		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr-invalid-checksum0.img is invalid: invalid header checksum\n",
 	})
 }
 
@@ -386,6 +394,7 @@ func (s *metadataSuite) TestReadHeaderInvalidSecondary(c *C) {
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityNormal,
+		stderr:           "luks2.ReadHeader: secondary header for /.*/luks2-hdr-invalid-checksum1.img is invalid: invalid header checksum\n",
 	})
 }
 
@@ -408,6 +417,7 @@ func (s *metadataSuite) TestReadHeaderCustomMetadataSizeInvalidPrimary(c *C) {
 		hdrSize:          65536,
 		keyslotsSize:     8257536,
 		keyslot2Priority: SlotPriorityNormal,
+		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr2-invalid-checksum0.img is invalid: invalid header checksum\n",
 	})
 }
 
@@ -419,6 +429,7 @@ func (s *metadataSuite) TestReadHeaderObsoletePrimary(c *C) {
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityIgnore,
+		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr-obsolete0.img is obsolete\n",
 	})
 }
 

@@ -20,6 +20,7 @@
 package luks2
 
 import (
+	"io"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -77,5 +78,13 @@ func MockSystemdCryptsetupPath(path string) (restore func()) {
 	systemdCryptsetupPath = path
 	return func() {
 		systemdCryptsetupPath = origSystemdCryptsetupPath
+	}
+}
+
+func MockStderr(w io.Writer) (restore func()) {
+	origStderr := stderr
+	stderr = w
+	return func() {
+		stderr = origStderr
 	}
 }
