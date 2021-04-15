@@ -131,9 +131,6 @@ func AddKey(devicePath string, existingKey, key []byte, kdfTime time.Duration) e
 	}
 	defer cleanupFifo()
 
-	go func() {
-	}()
-
 	args := []string{
 		// add a new key
 		"luksAddKey",
