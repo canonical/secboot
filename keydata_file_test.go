@@ -112,7 +112,7 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 
 	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
 
-	expectedId, err := keyData.ID()
+	expectedId, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 
 	path := filepath.Join(s.dir, "key")
@@ -128,7 +128,7 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(keyData.ReadableName(), Equals, path)
 
-	id, err := keyData.ID()
+	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 	c.Check(id, DeepEquals, expectedId)
 

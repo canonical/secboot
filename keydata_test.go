@@ -336,7 +336,7 @@ func (s *keyDataSuite) TestKeyDataID(c *C) {
 	h := &keyDataHasher{Hash: crypto.SHA256.New()}
 	c.Check(keyData.WriteAtomic(h), IsNil)
 
-	id, err := keyData.ID()
+	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 	c.Check(id, DeepEquals, KeyID(h.Sum(nil)))
 }
@@ -610,7 +610,7 @@ func (s *keyDataSuite) testReadKeyData(c *C, data *testReadKeyDataData) {
 	c.Assert(err, IsNil)
 	c.Check(keyData.ReadableName(), Equals, data.r.ReadableName())
 
-	id, err := keyData.ID()
+	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 	c.Check(id, DeepEquals, data.id)
 
@@ -647,7 +647,7 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	id, err := keyData.ID()
+	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
@@ -680,7 +680,7 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	id, err := keyData.ID()
+	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
@@ -720,7 +720,7 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	id, err := keyData.ID()
+	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
@@ -753,7 +753,7 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	id, err := keyData.ID()
+	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{

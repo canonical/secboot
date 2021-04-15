@@ -308,8 +308,8 @@ func (d *KeyData) ReadableName() string {
 	return d.readableName
 }
 
-// ID returns the unique ID for this key data.
-func (d *KeyData) ID() (KeyID, error) {
+// UniqueID returns the unique ID for this key data.
+func (d *KeyData) UniqueID() (KeyID, error) {
 	h := crypto.SHA256.New()
 	enc := json.NewEncoder(h)
 	if err := enc.Encode(&d.data); err != nil {
