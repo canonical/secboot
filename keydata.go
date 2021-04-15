@@ -485,6 +485,7 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 	}
 
 	return &KeyData{
+		id: KeyID{Name: "nil"},
 		data: keyData{
 			PlatformName:     creationData.PlatformName,
 			PlatformHandle:   json.RawMessage(creationData.Handle),

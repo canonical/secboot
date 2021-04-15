@@ -24,6 +24,8 @@ import (
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/snapd/testutil"
 
+	"golang.org/x/sys/unix"
+
 	. "gopkg.in/check.v1"
 )
 
@@ -132,4 +134,43 @@ func (b *TPMSimulatorTestBase) ResetTPMSimulator(c *C) {
 	c.Assert(err, IsNil)
 	b.TPM = tpm
 	b.tcti = tcti
+}
+
+type KeyringTestBase struct {
+	testutil.BaseTest
+	ProcessPossessesUserKeyringKeys bool
+}
+
+func (b *KeyringTestBase) SetUpSuite(c *C) {
+	UserKeyringId, err := unix.KeyctlGetKeyringID(UserKeyring, false)
+	c.Assert(err, IsNil)
+
+	keys := GetKeyringKeys(c, sessionKeyring)
+	for _, id := range keys {
+		if id == UserKeyringId {
+			b.ProcessPossessesUserKeyringKeys = true
+			break
+		}
+	}
+}
+
+func (b *KeyringTestBase) SetUpTest(c *C) {
+	startKeys := GetKeyringKeys(c, UserKeyring)
+
+	b.AddCleanup(func() {
+		for _, id1 := range GetKeyringKeys(c, UserKeyring) {
+			found := false
+			for _, id2 := range startKeys {
+				if id1 == id2 {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+			_, err := unix.KeyctlInt(unix.KEYCTL_UNLINK, id1, UserKeyring, 0, 0)
+			c.Check(err, IsNil)
+		}
+	})
 }
