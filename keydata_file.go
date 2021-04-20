@@ -21,7 +21,8 @@ package secboot
 
 import (
 	"bytes"
-	"encoding/json"
+	"io"
+	"io/ioutil"
 	"os"
 
 	"github.com/snapcore/snapd/osutil"
@@ -30,20 +31,14 @@ import (
 	"golang.org/x/xerrors"
 )
 
-type fileKeyData struct {
-	Name string          `json:"name"`
-	Data json.RawMessage `json:"data"`
-}
-
 // FileKeyDataReader provides a mechanism to read a KeyData from a file.
 type FileKeyDataReader struct {
-	name string
+	readableName string
 	*bytes.Reader
 }
 
-// ID is the unique ID of the key data contained within this file.
-func (r *FileKeyDataReader) ID() KeyID {
-	return KeyID{Name: r.name}
+func (r *FileKeyDataReader) ReadableName() string {
+	return r.readableName
 }
 
 // NewFileKeyDataReader is used to read a file containing key data at the specified path.
@@ -54,18 +49,16 @@ func NewFileKeyDataReader(path string) (*FileKeyDataReader, error) {
 	}
 	defer f.Close()
 
-	var d *fileKeyData
-	dec := json.NewDecoder(f)
-	if err := dec.Decode(&d); err != nil {
-		return nil, xerrors.Errorf("cannot decode file key data: %w", err)
+	d, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot read file: %w", err)
 	}
 
-	return &FileKeyDataReader{d.Name, bytes.NewReader(d.Data)}, nil
+	return &FileKeyDataReader{path, bytes.NewReader(d)}, nil
 }
 
 // FileKeyDataWriter provides a mechanism to write a KeyData to a file.
 type FileKeyDataWriter struct {
-	name string
 	path string
 	*bytes.Buffer
 }
@@ -77,10 +70,8 @@ func (w *FileKeyDataWriter) Commit() error {
 	}
 	defer f.Cancel()
 
-	d := &fileKeyData{Name: w.name, Data: w.Bytes()}
-	enc := json.NewEncoder(f)
-	if err := enc.Encode(d); err != nil {
-		return xerrors.Errorf("cannot encode file key data: %w", err)
+	if _, err := io.Copy(f, w); err != nil {
+		return xerrors.Errorf("cannot write file key data: %w", err)
 	}
 
 	if err := f.Commit(); err != nil {
@@ -92,6 +83,6 @@ func (w *FileKeyDataWriter) Commit() error {
 
 // NewFileKeyDataWriter creates a new FileKeyDataWriter for atomically writing a
 // KeyData to a file.
-func NewFileKeyDataWriter(name, path string) *FileKeyDataWriter {
-	return &FileKeyDataWriter{name, path, new(bytes.Buffer)}
+func NewFileKeyDataWriter(path string) *FileKeyDataWriter {
+	return &FileKeyDataWriter{path, new(bytes.Buffer)}
 }

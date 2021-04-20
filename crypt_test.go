@@ -221,8 +221,8 @@ func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expect
 	c.Check(auxKey, DeepEquals, expectedAuxKey)
 }
 
-func (s *cryptSuite) newMultipleNamedKeyData(c *C, ids []*KeyID) (keyData []*KeyData, keys []DiskUnlockKey, auxKeys []AuxiliaryKey) {
-	for _, id := range ids {
+func (s *cryptSuite) newMultipleNamedKeyData(c *C, names ...string) (keyData []*KeyData, keys []DiskUnlockKey, auxKeys []AuxiliaryKey) {
+	for _, name := range names {
 		key, auxKey := s.newKeyDataKeys(c, 32, 32)
 		protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
@@ -232,7 +232,7 @@ func (s *cryptSuite) newMultipleNamedKeyData(c *C, ids []*KeyID) (keyData []*Key
 		w := makeMockKeyDataWriter()
 		c.Check(kd.WriteAtomic(w), IsNil)
 
-		r := &mockKeyDataReader{*id, w.Reader()}
+		r := &mockKeyDataReader{name, w.Reader()}
 		kd, err = ReadKeyData(r)
 		c.Assert(err, IsNil)
 
@@ -244,8 +244,8 @@ func (s *cryptSuite) newMultipleNamedKeyData(c *C, ids []*KeyID) (keyData []*Key
 	return keyData, keys, auxKeys
 }
 
-func (s *cryptSuite) newNamedKeyData(c *C, id *KeyID) (*KeyData, DiskUnlockKey, AuxiliaryKey) {
-	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, []*KeyID{id})
+func (s *cryptSuite) newNamedKeyData(c *C, name string) (*KeyData, DiskUnlockKey, AuxiliaryKey) {
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, name)
 	return keyData[0], keys[0], auxKeys[0]
 }
 
@@ -725,7 +725,7 @@ type testActivateVolumeWithKeyDataData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolumeWithKeyDataData) {
-	keyData, key, auxKey := s.newNamedKeyData(c, &KeyID{})
+	keyData, key, auxKey := s.newNamedKeyData(c, "")
 	s.addMockKeyslot(c, key)
 
 	c.Check(keyData.SetAuthorizedSnapModels(auxKey, data.authorizedModels...), IsNil)
@@ -896,7 +896,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling1(c *C) {
 	// Test with an invalid value for RecoveryKeyTries.
-	keyData, _, _ := s.newNamedKeyData(c, &KeyID{})
+	keyData, _, _ := s.newNamedKeyData(c, "")
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		recoveryKeyTries: -1,
@@ -907,7 +907,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling1(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling2(c *C) {
 	// Test that recovery fallback works with the platform is unavailable
-	keyData, key, _ := s.newNamedKeyData(c, &KeyID{})
+	keyData, key, _ := s.newNamedKeyData(c, "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -923,7 +923,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling2(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
 	// Test that recovery fallback works when the platform device isn't properly initialized
-	keyData, key, _ := s.newNamedKeyData(c, &KeyID{})
+	keyData, key, _ := s.newNamedKeyData(c, "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUninitialized
@@ -939,7 +939,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling4(c *C) {
 	// Test that recovery fallback works when the recovered key is incorrect
-	keyData, _, _ := s.newNamedKeyData(c, &KeyID{})
+	keyData, _, _ := s.newNamedKeyData(c, "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
@@ -952,7 +952,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling4(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 	// Test that activation fails if RecoveryKeyTries is zero.
-	keyData, key, _ := s.newNamedKeyData(c, &KeyID{Name: "foo", Revision: 2})
+	keyData, key, _ := s.newNamedKeyData(c, "foo")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -964,7 +964,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 		keyData:          keyData,
 		errChecker:       ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n" +
-			"- foo@2: cannot recover key: the platform's secure device is unavailable: the " +
+			"- foo: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
 			"and activation with recovery key failed: no recovery key tries permitted"},
 		sdCryptsetupCalls: 0})
@@ -972,7 +972,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 	// Test that activation fails if the supplied recovery key is incorrect
-	keyData, key, _ := s.newNamedKeyData(c, &KeyID{Name: "bar", Revision: 5})
+	keyData, key, _ := s.newNamedKeyData(c, "bar")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -985,7 +985,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 		keyData:          keyData,
 		errChecker:       ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n" +
-			"- bar@5: cannot recover key: the platform's secure device is unavailable: the " +
+			"- bar: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
 			"and activation with recovery key failed: cannot activate volume: " +
 			s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
@@ -994,7 +994,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
 	// Test that recovery fallback works if the correct key is eventually supplied
-	keyData, key, _ := s.newNamedKeyData(c, &KeyID{})
+	keyData, key, _ := s.newNamedKeyData(c, "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -1012,7 +1012,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
 	// Test that recovery fallback works if the correct key is eventually supplied
-	keyData, key, _ := s.newNamedKeyData(c, &KeyID{})
+	keyData, key, _ := s.newNamedKeyData(c, "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -1073,7 +1073,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData1(c *C) {
-	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
 	models := []SnapModel{
 		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
@@ -1099,7 +1099,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData1(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData2(c *C) {
 	// Test with a different volumeName / sourceDevicePath
-	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
 	models := []SnapModel{
 		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
@@ -1125,7 +1125,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData2(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData3(c *C) {
 	// Try with an invalid first key - the second key should be used for activation.
-	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
 	models := []SnapModel{
 		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
@@ -1208,7 +1208,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling1(c *C) {
 	// Test with an invalid value for RecoveryKeyTries.
-	keyData, _, _ := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, _, _ := s.newMultipleNamedKeyData(c, "", "")
 
 	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
 		keyData:          keyData,
@@ -1219,7 +1219,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling1(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling2(c *C) {
 	// Test that recovery fallback works with the platform is unavailable
-	keyData, keys, _ := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, keys, _ := s.newMultipleNamedKeyData(c, "", "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -1235,7 +1235,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling2(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling3(c *C) {
 	// Test that recovery fallback works when the platform device isn't properly initialized
-	keyData, keys, _ := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, keys, _ := s.newMultipleNamedKeyData(c, "", "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUninitialized
@@ -1251,7 +1251,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling3(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling4(c *C) {
 	// Test that recovery fallback works when the recovered key is incorrect
-	keyData, _, _ := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, _, _ := s.newMultipleNamedKeyData(c, "", "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
@@ -1264,7 +1264,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling4(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling5(c *C) {
 	// Test that activation fails if RecoveryKeyTries is zero.
-	keyData, keys, _ := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{Name: "foo", Revision: 2}, &KeyID{Name: "bar", Revision: 7}})
+	keyData, keys, _ := s.newMultipleNamedKeyData(c, "foo", "bar")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -1276,9 +1276,9 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling5(c *C) {
 		recoveryKeyTries: 0,
 		errChecker:       ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n" +
-			"- foo@2: cannot recover key: the platform's secure device is unavailable: the " +
+			"- foo: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
-			"- bar@7: cannot recover key: the platform's secure device is unavailable: the " +
+			"- bar: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
 			"and activation with recovery key failed: no recovery key tries permitted"},
 		sdCryptsetupCalls: 0})
@@ -1286,7 +1286,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling5(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling6(c *C) {
 	// Test that activation fails if the supplied recovery key is incorrect
-	keyData, keys, _ := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{Name: "bar", Revision: 9}, &KeyID{Name: "foo", Revision: 3}})
+	keyData, keys, _ := s.newMultipleNamedKeyData(c, "bar", "foo")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -1299,9 +1299,9 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling6(c *C) {
 		recoveryKeyTries: 1,
 		errChecker:       ErrorMatches,
 		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n" +
-			"- bar@9: cannot recover key: the platform's secure device is unavailable: the " +
+			"- bar: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
-			"- foo@3: cannot recover key: the platform's secure device is unavailable: the " +
+			"- foo: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
 			"and activation with recovery key failed: cannot activate volume: " +
 			s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
@@ -1310,7 +1310,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling6(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling7(c *C) {
 	// Test that recovery fallback works if the correct key is eventually supplied
-	keyData, keys, _ := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, keys, _ := s.newMultipleNamedKeyData(c, "", "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable
@@ -1328,7 +1328,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling7(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling8(c *C) {
 	// Test that recovery fallback works if the correct key is eventually supplied
-	keyData, keys, _ := s.newMultipleNamedKeyData(c, []*KeyID{&KeyID{}, &KeyID{}})
+	keyData, keys, _ := s.newMultipleNamedKeyData(c, "", "")
 	recoveryKey := s.newRecoveryKey()
 
 	s.handler.state = mockPlatformDeviceStateUnavailable

@@ -29,6 +29,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"hash"
 	"io"
 	"math/rand"
 
@@ -120,12 +121,12 @@ func makeMockKeyDataWriter() *mockKeyDataWriter {
 }
 
 type mockKeyDataReader struct {
-	id KeyID
+	readableName string
 	io.Reader
 }
 
-func (r *mockKeyDataReader) ID() KeyID {
-	return r.id
+func (r *mockKeyDataReader) ReadableName() string {
+	return r.readableName
 }
 
 func toHash(c *C, v interface{}) crypto.Hash {
@@ -244,21 +245,21 @@ func (s *keyDataTestBase) checkKeyDataJSON(c *C, j map[string]interface{}, creat
 	}
 }
 
+func (s *keyDataTestBase) checkKeyDataJSONFromReader(c *C, r io.Reader, creationData *KeyCreationData, nmodels int) {
+	var j map[string]interface{}
+
+	d := json.NewDecoder(r)
+	c.Check(d.Decode(&j), IsNil)
+
+	s.checkKeyDataJSON(c, j, creationData, nmodels)
+}
+
 type keyDataSuite struct {
 	snapModelTestBase
 	keyDataTestBase
 }
 
 var _ = Suite(&keyDataSuite{})
-
-func (s *keyDataSuite) checkKeyDataJSON(c *C, r io.Reader, creationData *KeyCreationData, nmodels int) {
-	var j map[string]interface{}
-
-	d := json.NewDecoder(r)
-	c.Check(d.Decode(&j), IsNil)
-
-	s.keyDataTestBase.checkKeyDataJSON(c, j, creationData, nmodels)
-}
 
 type testKeyPayloadData struct {
 	key    DiskUnlockKey
@@ -319,35 +320,33 @@ func (s *keyDataSuite) TestKeyPayloadUnmarshalInvalid2(c *C) {
 	c.Check(auxKey, IsNil)
 }
 
-type testKeyIDStringData struct {
-	id       KeyID
-	expected string
+type keyDataHasher struct {
+	hash.Hash
 }
 
-func (s *keyDataSuite) testKeyIDString(c *C, data *testKeyIDStringData) {
-	c.Check(data.id.String(), Equals, data.expected)
-}
+func (h *keyDataHasher) Commit() error { return nil }
 
-func (s *keyDataSuite) TestKeyIDString1(c *C) {
-	s.testKeyIDString(c, &testKeyIDStringData{
-		id:       KeyID{Name: "foobar"},
-		expected: "foobar@0"})
-}
+func (s *keyDataSuite) TestKeyDataID(c *C) {
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
-func (s *keyDataSuite) TestKeyIDStringLUKS(c *C) {
-	s.testKeyIDString(c, &testKeyIDStringData{
-		id: KeyID{
-			Name:     "barfoo",
-			Revision: 15},
-		expected: "barfoo@15"})
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	h := &keyDataHasher{Hash: crypto.SHA256.New()}
+	c.Check(keyData.WriteAtomic(h), IsNil)
+
+	id, err := keyData.UniqueID()
+	c.Check(err, IsNil)
+	c.Check(id, DeepEquals, KeyID(h.Sum(nil)))
 }
 
 func (s *keyDataSuite) TestNewKeyData(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 	keyData, err := NewKeyData(protected)
-	c.Assert(err, IsNil)
-	c.Check(keyData.ID(), Equals, KeyID{Name: "nil"})
+	c.Check(keyData, NotNil)
+	c.Check(err, IsNil)
 }
 
 func (s *keyDataSuite) TestRecoverKeys(c *C) {
@@ -515,7 +514,7 @@ func (s *keyDataSuite) testWriteAtomic(c *C, data *testWriteAtomicData) {
 	w := makeMockKeyDataWriter()
 	c.Check(data.keyData.WriteAtomic(w), IsNil)
 
-	s.checkKeyDataJSON(c, w.Reader(), data.creationData, data.nmodels)
+	s.checkKeyDataJSONFromReader(c, w.Reader(), data.creationData, data.nmodels)
 }
 
 func (s *keyDataSuite) TestWriteAtomic1(c *C) {
@@ -600,6 +599,7 @@ func (s *keyDataSuite) TestWriteAtomic4(c *C) {
 type testReadKeyDataData struct {
 	key        DiskUnlockKey
 	auxKey     AuxiliaryKey
+	id         KeyID
 	r          KeyDataReader
 	model      SnapModel
 	authorized bool
@@ -607,9 +607,12 @@ type testReadKeyDataData struct {
 
 func (s *keyDataSuite) testReadKeyData(c *C, data *testReadKeyDataData) {
 	keyData, err := ReadKeyData(data.r)
-	c.Check(err, IsNil)
+	c.Assert(err, IsNil)
+	c.Check(keyData.ReadableName(), Equals, data.r.ReadableName())
 
-	c.Check(keyData.ID(), Equals, data.r.ID())
+	id, err := keyData.UniqueID()
+	c.Check(err, IsNil)
+	c.Check(id, DeepEquals, data.id)
 
 	key, auxKey, err := keyData.RecoverKeys()
 	c.Check(err, IsNil)
@@ -644,12 +647,14 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{}, w.Reader()}
+	id, err := keyData.UniqueID()
+	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
 		auxKey:     auxKey,
-		r:          r,
+		id:         id,
+		r:          &mockKeyDataReader{"foo", w.Reader()},
 		model:      models[0],
 		authorized: true})
 }
@@ -675,12 +680,14 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{}, w.Reader()}
+	id, err := keyData.UniqueID()
+	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
 		auxKey:     auxKey,
-		r:          r,
+		id:         id,
+		r:          &mockKeyDataReader{"bar", w.Reader()},
 		model:      models[0],
 		authorized: true})
 }
@@ -713,12 +720,14 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{}, w.Reader()}
+	id, err := keyData.UniqueID()
+	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:        key,
 		auxKey:     auxKey,
-		r:          r,
+		id:         id,
+		r:          &mockKeyDataReader{"foo", w.Reader()},
 		model:      models[1],
 		authorized: true})
 }
@@ -744,12 +753,14 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	r := &mockKeyDataReader{KeyID{}, w.Reader()}
+	id, err := keyData.UniqueID()
+	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
 		key:    key,
 		auxKey: auxKey,
-		r:      r,
+		id:     id,
+		r:      &mockKeyDataReader{"foo", w.Reader()},
 		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
