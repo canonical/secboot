@@ -77,6 +77,12 @@ sed -i -e '1,1d' %[1]s
 	ctb.AddCleanup(ctb.mockSdAskPassword.Restore)
 
 	sdCryptsetupBottom := `
+if [ "$1" = "detach" ]; then
+    if [ "$2" = "bad-volume" ]; then
+        exit 7
+    fi
+    exit 0
+fi
 key=$(xxd -p < "$4")
 for f in "%[1]s"/*; do
     if [ "$key" == "$(xxd -p < "$f")" ]; then
@@ -1421,6 +1427,24 @@ func (s *cryptSuite) TestActivateVolumeWithKeyTriesErr(c *C) {
 		keyData:         []byte{0, 0, 0, 0, 1},
 		errMatch:        `cannot specify the "tries=" option for systemd-cryptsetup`,
 		cmdCalled:       false,
+	})
+}
+
+func (s *cryptSuite) TestDeactivateVolume(c *C) {
+	err := DeactivateVolume("luks-volume")
+	c.Assert(err, IsNil)
+	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 3)
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{
+		"systemd-cryptsetup", "detach", "luks-volume",
+	})
+}
+
+func (s *cryptSuite) TestDeactivateVolumeErr(c *C) {
+	err := DeactivateVolume("bad-volume")
+	c.Assert(err, ErrorMatches, `cannot deactivate volume: exit status 7`)
+	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 3)
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{
+		"systemd-cryptsetup", "detach", "bad-volume",
 	})
 }
 
