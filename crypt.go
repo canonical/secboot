@@ -606,6 +606,19 @@ func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, opti
 	return activate(volumeName, sourceDevicePath, key, activateOptions)
 }
 
+// DeactivateVolume attempts to deactivate the LUKS encrypted volumeName.
+// This makes use of systemd-cryptsetup.
+func DeactivateVolume(volumeName string) error {
+	cmd := exec.Command(systemdCryptsetupPath, "detach", volumeName)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return xerrors.Errorf("cannot deactivate volume: %w", osutil.OutputErr(output, err))
+	}
+
+	return nil
+}
+
 func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
 	cmd := exec.Command("cryptsetup", "config", "--priority", "prefer", "--key-slot", strconv.Itoa(slot), devicePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
