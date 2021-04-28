@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2019,2021 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -20,22 +20,27 @@
 package testutil
 
 import (
-	"encoding/hex"
-	"testing"
+	"bytes"
+	"fmt"
 
-	. "gopkg.in/check.v1"
+	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot"
 )
 
-func DecodeHexString(c *C, s string) []byte {
-	b, err := hex.DecodeString(s)
-	c.Assert(err, IsNil)
-	return b
-}
-
-func DecodeHexStringT(t *testing.T, s string) []byte {
-	b, err := hex.DecodeString(s)
+func FormatPCRValuesFromPCRProtectionProfile(profile *secboot.PCRProtectionProfile, tpm *tpm2.TPMContext) string {
+	values, err := profile.ComputePCRValues(tpm)
 	if err != nil {
-		t.Fatalf("DecodeHexString failed: %v", err)
+		return ""
 	}
-	return b
+	var s bytes.Buffer
+	fmt.Fprintf(&s, "\n")
+	for i, v := range values {
+		fmt.Fprintf(&s, "Value %d:\n", i)
+		for alg := range v {
+			for pcr := range v[alg] {
+				fmt.Fprintf(&s, " PCR%d,%v: %x\n", pcr, alg, v[alg][pcr])
+			}
+		}
+	}
+	return s.String()
 }

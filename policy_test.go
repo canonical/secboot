@@ -157,18 +157,18 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 			desc:                "SHA256",
 			alg:                 tpm2.HashAlgorithmSHA256,
 			pcrPolicyCounterPub: pcrPolicyCounterPub,
-			policy:              decodeHexStringT(t, "8fe1ba2f9a6883bac310c9dcb86a0337cf065bba792dcb80c86a1e91056c353e"),
+			policy:              testutil.DecodeHexStringT(t, "8fe1ba2f9a6883bac310c9dcb86a0337cf065bba792dcb80c86a1e91056c353e"),
 		},
 		{
 			desc:                "SHA1",
 			alg:                 tpm2.HashAlgorithmSHA1,
 			pcrPolicyCounterPub: pcrPolicyCounterPub,
-			policy:              decodeHexStringT(t, "71f93798419e42275cc3e54915f46d8734563803"),
+			policy:              testutil.DecodeHexStringT(t, "71f93798419e42275cc3e54915f46d8734563803"),
 		},
 		{
 			desc:   "NoPolicyCounter",
 			alg:    tpm2.HashAlgorithmSHA256,
-			policy: decodeHexStringT(t, "375b8a3aca3df9c7fc34b4184f7d030625470d56e89480b81d2f98900f0152a3"),
+			policy: testutil.DecodeHexStringT(t, "375b8a3aca3df9c7fc34b4184f7d030625470d56e89480b81d2f98900f0152a3"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
@@ -263,7 +263,7 @@ func TestComputePolicyORData(t *testing.T) {
 			inputDigests: tpm2.DigestList{
 				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).end(),
 			},
-			outputPolicy: decodeHexStringT(t, "fd7451c024bafe5f117cab2841c2dd81f5304350bd8b17ef1f667bceda1ffcf9"),
+			outputPolicy: testutil.DecodeHexStringT(t, "fd7451c024bafe5f117cab2841c2dd81f5304350bd8b17ef1f667bceda1ffcf9"),
 		},
 		{
 			desc: "MultipleDigests",
@@ -274,7 +274,7 @@ func TestComputePolicyORData(t *testing.T) {
 				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc")).end(),
 				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "1234")).end(),
 			},
-			outputPolicy: decodeHexStringT(t, "4088de0181ede03662fabce88ba4385b16448a981f6b399da861dfe6cc955b68"),
+			outputPolicy: testutil.DecodeHexStringT(t, "4088de0181ede03662fabce88ba4385b16448a981f6b399da861dfe6cc955b68"),
 		},
 		{
 			desc: "2Rows",
@@ -306,7 +306,7 @@ func TestComputePolicyORData(t *testing.T) {
 				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
 				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
 			},
-			outputPolicy: decodeHexStringT(t, "0a023c5b9182d2456407c39bf0ab62f6b86f90a4cec61e594c026a087c43e84c"),
+			outputPolicy: testutil.DecodeHexStringT(t, "0a023c5b9182d2456407c39bf0ab62f6b86f90a4cec61e594c026a087c43e84c"),
 		},
 		{
 			desc: "3Rows",
@@ -438,7 +438,7 @@ func TestComputePolicyORData(t *testing.T) {
 				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar4")).end(),
 				buildPCRDigest(t, tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}}).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "abc5")).addDigest(testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar5")).end(),
 			},
-			outputPolicy: decodeHexStringT(t, "447f411c3cedd453e53e9b95958774413bea32267a75db8545cd258ed4968575"),
+			outputPolicy: testutil.DecodeHexStringT(t, "447f411c3cedd453e53e9b95958774413bea32267a75db8545cd258ed4968575"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
@@ -526,7 +526,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       10,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
-			policy:            decodeHexStringT(t, "983c996e26d08cdd5a67f3fbdb98fe737e7c6f499e0fd5189ac99719a14c00db"),
+			policy:            testutil.DecodeHexStringT(t, "983c996e26d08cdd5a67f3fbdb98fe737e7c6f499e0fd5189ac99719a14c00db"),
 		},
 		{
 			desc:    "Single/2",
@@ -544,7 +544,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       10,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8}}},
-			policy:            decodeHexStringT(t, "166168f87e22c01dc62b19adab299f4ad18f5b313c81696d70c8bf64ed314208"),
+			policy:            testutil.DecodeHexStringT(t, "166168f87e22c01dc62b19adab299f4ad18f5b313c81696d70c8bf64ed314208"),
 		},
 		{
 			desc:    "SHA1Session",
@@ -562,7 +562,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       4551,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
-			policy:            decodeHexStringT(t, "66f29c63a88ce0d5046999b5067ced2c9e7d9a48"),
+			policy:            testutil.DecodeHexStringT(t, "66f29c63a88ce0d5046999b5067ced2c9e7d9a48"),
 		},
 		{
 			desc:    "SHA256SessionWithSHA512PCRs",
@@ -580,7 +580,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       403,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA512, Select: []int{7, 12}}},
-			policy:            decodeHexStringT(t, "151216fb8a020dbf181c936cb32e03606d5fd0073aa3b3999365e3d9a08d1f8a"),
+			policy:            testutil.DecodeHexStringT(t, "151216fb8a020dbf181c936cb32e03606d5fd0073aa3b3999365e3d9a08d1f8a"),
 		},
 		{
 			desc:    "MultiplePCRValues/1",
@@ -604,7 +604,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       5,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
-			policy:            decodeHexStringT(t, "a218c6db035ac2a84b229f2eddd3064a79c3b7c9f48d7bb2f3c6f3f3dda8712b"),
+			policy:            testutil.DecodeHexStringT(t, "a218c6db035ac2a84b229f2eddd3064a79c3b7c9f48d7bb2f3c6f3f3dda8712b"),
 		},
 		{
 			desc:    "MultiplePCRValues/2",
@@ -624,7 +624,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       5,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
-			policy:            decodeHexStringT(t, "e86c232ba03d8153fd1ebb8d248d64dd18d90acc7c0a3ddf6f0863af3f0c87f5"),
+			policy:            testutil.DecodeHexStringT(t, "e86c232ba03d8153fd1ebb8d248d64dd18d90acc7c0a3ddf6f0863af3f0c87f5"),
 		},
 		{
 			desc:    "SHA512AuthKey",
@@ -642,7 +642,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       10,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
-			policy:            decodeHexStringT(t, "983c996e26d08cdd5a67f3fbdb98fe737e7c6f499e0fd5189ac99719a14c00db"),
+			policy:            testutil.DecodeHexStringT(t, "983c996e26d08cdd5a67f3fbdb98fe737e7c6f499e0fd5189ac99719a14c00db"),
 		},
 		{
 			desc:    "MultiplePCRAlgorithms",
@@ -662,7 +662,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       10,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{8}}, {Hash: tpm2.HashAlgorithmSHA512, Select: []int{7}}},
-			policy:            decodeHexStringT(t, "e516f77fbd8a055c472d0cea472828a825b20096655bc1f5264504794b63d400"),
+			policy:            testutil.DecodeHexStringT(t, "e516f77fbd8a055c472d0cea472828a825b20096655bc1f5264504794b63d400"),
 		},
 		{
 			desc:    "LotsOfPCRValues",
@@ -695,7 +695,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 			policyCounterName: policyCounterName,
 			policyCount:       15,
 			pcrSelection:      tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 8, 12}}},
-			policy:            decodeHexStringT(t, "926f36ead779ff00e413bba00df3dd0428bd570c7fedb828a8ea2f0c12cc72ac"),
+			policy:            testutil.DecodeHexStringT(t, "926f36ead779ff00e413bba00df3dd0428bd570c7fedb828a8ea2f0c12cc72ac"),
 		},
 		{
 			desc:    "NoPolicyCounter",
@@ -711,7 +711,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 				},
 			},
 			pcrSelection: tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7, 12}}},
-			policy:       decodeHexStringT(t, "2af7dc478be6b563113b150fa5c2cc844506ec2273c9aa69ff5a67b150b3c339"),
+			policy:       testutil.DecodeHexStringT(t, "2af7dc478be6b563113b150fa5c2cc844506ec2273c9aa69ff5a67b150b3c339"),
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {

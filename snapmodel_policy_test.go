@@ -61,7 +61,7 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 	c.Check(digests, DeepEquals, expectedDigests)
 	if c.Failed() {
 		c.Logf("Profile:\n%s", profile)
-		c.Logf("Values:\n%s", profile.DumpValues(nil))
+		c.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
 	}
 }
 

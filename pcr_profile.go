@@ -314,8 +314,9 @@ func (s pcrProtectionProfileComputeContextStack) top() *pcrProtectionProfileComp
 	return s[0]
 }
 
-// computePCRValues computes a list of different PCR value combinations from this PCRProtectionProfile.
-func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext) (pcrValuesList, error) {
+// ComputePCRValues computes PCR values for this PCRProtectionProfile, returning one set of PCR values
+// for each complete branch. The returned list of PCR values is not de-duplicated.
+func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PCRValues, error) {
 	contexts := pcrProtectionProfileComputeContextStack{{values: pcrValuesList{make(tpm2.PCRValues)}}}
 
 	iter := p.traverseInstructions()
@@ -341,18 +342,18 @@ func (p *PCRProtectionProfile) computePCRValues(tpm *tpm2.TPMContext) (pcrValues
 		case *pcrProtectionProfileEndProfileInstr:
 			if contexts.top().isRoot() {
 				// This is the end of the profile
-				return contexts.top().values, nil
+				return []tpm2.PCRValues(contexts.top().values), nil
 			}
 			contexts = contexts.finishBranch()
 		}
 	}
 }
 
-// computePCRDigests computes a PCR selection and list of PCR digests from this PCRProtectionProfile. The returned list of PCR digests
-// is de-duplicated.
-func (p *PCRProtectionProfile) computePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
+// ComputePCRDigests computes a PCR selection and a list of composite PCR digests from this PCRProtectionProfile (one composite digest per
+// complete branch). The returned list of PCR digests is de-duplicated.
+func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
 	// Compute the sets of PCR values for all branches
-	values, err := p.computePCRValues(tpm)
+	values, err := p.ComputePCRValues(tpm)
 	if err != nil {
 		return nil, nil, err
 	}

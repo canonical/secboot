@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package efi
 
 import (
 	"fmt"
@@ -32,8 +32,8 @@ const (
 	certTableIndex = 4 // Index of the Certificate Table entry in the Data Directory of a PE image optional header
 )
 
-// EFIImage corresponds to a binary that is loaded, verified and executed before ExitBootServices.
-type EFIImage interface {
+// Image corresponds to a binary that is loaded, verified and executed before ExitBootServices.
+type Image interface {
 	fmt.Stringer
 	Open() (interface {
 		io.ReaderAt
@@ -42,17 +42,17 @@ type EFIImage interface {
 	}, error) // Open a handle to the image for reading
 }
 
-// SnapFileEFIImage corresponds to a binary contained within a snap file that is loaded, verified and executed before ExitBootServices.
-type SnapFileEFIImage struct {
+// SnapFileImage corresponds to a binary contained within a snap file that is loaded, verified and executed before ExitBootServices.
+type SnapFileImage struct {
 	Container snap.Container
 	FileName  string // The filename within the snap squashfs
 }
 
-func (f SnapFileEFIImage) String() string {
+func (f SnapFileImage) String() string {
 	return fmt.Sprintf("%#v:%s", f.Container, f.FileName)
 }
 
-func (f SnapFileEFIImage) Open() (interface {
+func (f SnapFileImage) Open() (interface {
 	io.ReaderAt
 	io.Closer
 	Size() int64
@@ -60,23 +60,23 @@ func (f SnapFileEFIImage) Open() (interface {
 	return f.Container.RandomAccessFile(f.FileName)
 }
 
-type fileEFIImageHandle struct {
+type fileImageHandle struct {
 	*os.File
 	size int64
 }
 
-func (h *fileEFIImageHandle) Size() int64 {
+func (h *fileImageHandle) Size() int64 {
 	return h.size
 }
 
-// FileEFIImage corresponds to a file on disk that is loaded, verified and executed before ExitBootServices.
-type FileEFIImage string
+// FileImage corresponds to a file on disk that is loaded, verified and executed before ExitBootServices.
+type FileImage string
 
-func (p FileEFIImage) String() string {
+func (p FileImage) String() string {
 	return string(p)
 }
 
-func (p FileEFIImage) Open() (interface {
+func (p FileImage) Open() (interface {
 	io.ReaderAt
 	io.Closer
 	Size() int64
@@ -90,27 +90,27 @@ func (p FileEFIImage) Open() (interface {
 		f.Close()
 		return nil, err
 	}
-	return &fileEFIImageHandle{File: f, size: fi.Size()}, nil
+	return &fileImageHandle{File: f, size: fi.Size()}, nil
 }
 
-// EFIImageLoadEventSource corresponds to the source of a EFIImageLoadEvent.
-type EFIImageLoadEventSource int
+// ImageLoadEventSource corresponds to the source of a ImageLoadEvent.
+type ImageLoadEventSource int
 
 const (
-	// Firmware indicates that the source of a EFIImageLoadEvent was platform firmware, via the EFI_BOOT_SERVICES.LoadImage()
+	// Firmware indicates that the source of a ImageLoadEvent was platform firmware, via the EFI_BOOT_SERVICES.LoadImage()
 	// and EFI_BOOT_SERVICES.StartImage() functions, with the subsequently executed image being verified against the signatures
 	// in the EFI authorized signature database.
-	Firmware EFIImageLoadEventSource = iota
+	Firmware ImageLoadEventSource = iota
 
-	// Shim indicates that the source of a EFIImageLoadEvent was shim, without relying on EFI boot services for loading, verifying
+	// Shim indicates that the source of a ImageLoadEvent was shim, without relying on EFI boot services for loading, verifying
 	// and executing the subsequently executed image. The image is verified by shim against the signatures in the EFI authorized
 	// signature database, the MOK database or shim's built-in vendor certificate before being executed directly.
 	Shim
 )
 
-// EFIImageLoadEvent corresponds to the execution of a verified EFIImage.
-type EFIImageLoadEvent struct {
-	Source EFIImageLoadEventSource // The source of the event
-	Image  EFIImage                // The image
-	Next   []*EFIImageLoadEvent    // A list of possible subsequent EFIImageLoadEvents
+// ImageLoadEvent corresponds to the execution of a verified Image.
+type ImageLoadEvent struct {
+	Source ImageLoadEventSource // The source of the event
+	Image  Image                // The image
+	Next   []*ImageLoadEvent    // A list of possible subsequent ImageLoadEvents
 }

@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package efi
 
 import (
 	"encoding/binary"
@@ -30,6 +30,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/pe1.14"
 
@@ -39,7 +40,7 @@ import (
 // computePeImageDigest computes a hash of a PE image in accordance with the "Windows Authenticode Portable Executable Signature
 // Format" specification. This function interprets the byte stream of the raw headers in some places, the layout of which are
 // defined in the "PE Format" specification (https://docs.microsoft.com/en-us/windows/win32/debug/pe-format)
-func computePeImageDigest(alg tpm2.HashAlgorithmId, image EFIImage) (tpm2.Digest, error) {
+func computePeImageDigest(alg tpm2.HashAlgorithmId, image Image) (tpm2.Digest, error) {
 	r, err := image.Open()
 	if err != nil {
 		return nil, xerrors.Errorf("cannot open image: %w", err)
@@ -201,34 +202,34 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image EFIImage) (tpm2.Digest
 }
 
 type bootManagerCodePolicyGenBranch struct {
-	profile  *PCRProtectionProfile
-	branches []*PCRProtectionProfile
+	profile  *secboot.PCRProtectionProfile
+	branches []*secboot.PCRProtectionProfile
 }
 
 func (n *bootManagerCodePolicyGenBranch) branch() *bootManagerCodePolicyGenBranch {
-	b := &bootManagerCodePolicyGenBranch{profile: NewPCRProtectionProfile()}
+	b := &bootManagerCodePolicyGenBranch{profile: secboot.NewPCRProtectionProfile()}
 	n.branches = append(n.branches, b.profile)
 	return b
 }
 
-// bmLoadEventAndBranch binds together a EFIImageLoadEvent and the branch that the event needs to be applied to.
+// bmLoadEventAndBranch binds together a ImageLoadEvent and the branch that the event needs to be applied to.
 type bmLoadEventAndBranch struct {
-	event  *EFIImageLoadEvent
+	event  *ImageLoadEvent
 	branch *bootManagerCodePolicyGenBranch
 }
 
-// EFIBootManagerProfileParams provide the arguments to AddEFIBootManagerProfile.
-type EFIBootManagerProfileParams struct {
+// BootManagerProfileParams provide the arguments to AddBootManagerProfile.
+type BootManagerProfileParams struct {
 	// PCRAlgorithm is the algorithm for which to compute PCR digests for. TPMs compliant with the "TCG PC Client Platform TPM Profile
 	// (PTP) Specification" Level 00, Revision 01.03 v22, May 22 2017 are required to support tpm2.HashAlgorithmSHA1 and
 	// tpm2.HashAlgorithmSHA256. Support for other digest algorithms is optional.
 	PCRAlgorithm tpm2.HashAlgorithmId
 
 	// LoadSequences is a list of EFI image load sequences for which to compute PCR digests for.
-	LoadSequences []*EFIImageLoadEvent
+	LoadSequences []*ImageLoadEvent
 }
 
-// AddEFIBootManagerProfile adds the UEFI boot manager code and boot attempts profile to the provided PCR protection profile, in order
+// AddBootManagerProfile adds the UEFI boot manager code and boot attempts profile to the provided PCR protection profile, in order
 // to generate a PCR policy that restricts access to a sealed key to a specific set of binaries started from the UEFI boot manager and
 // which are measured to PCR 4. Events that are measured to this PCR are detailed in section 2.3.4.5 of the "TCG PC Client Platform
 // Firmware Profile Specification".
@@ -252,7 +253,7 @@ type EFIBootManagerProfileParams struct {
 // If the EV_OMIT_BOOT_DEVICE_EVENTS is not recorded to PCR 4, the platform firmware will perform meaurements of all boot attempts,
 // even if they fail. The generated PCR policy will not be satisfied if the platform firmware performs boot attempts that fail,
 // even if the successful boot attempt is of a sequence of binaries included in this PCR profile.
-func AddEFIBootManagerProfile(profile *PCRProtectionProfile, params *EFIBootManagerProfileParams) error {
+func AddBootManagerProfile(profile *secboot.PCRProtectionProfile, params *BootManagerProfileParams) error {
 	// Load event log
 	eventLog, err := os.Open(efi.EventLogPath)
 	if err != nil {
