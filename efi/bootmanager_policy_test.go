@@ -21,11 +21,12 @@ package efi_test
 
 import (
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot"
-	. "github.com/snapcore/secboot/efi"
-	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
+
+	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/testutil"
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 type bootManagerPolicySuite struct{}
@@ -34,7 +35,7 @@ var _ = Suite(&bootManagerPolicySuite{})
 
 type testAddBootManagerProfileData struct {
 	eventLogPath string
-	initial      *secboot.PCRProtectionProfile
+	initial      *secboot_tpm2.PCRProtectionProfile
 	params       *BootManagerProfileParams
 	values       []tpm2.PCRValues
 }
@@ -45,7 +46,7 @@ func (s *bootManagerPolicySuite) testAddBootManagerProfile(c *C, data *testAddBo
 
 	profile := data.initial
 	if profile == nil {
-		profile = &secboot.PCRProtectionProfile{}
+		profile = &secboot_tpm2.PCRProtectionProfile{}
 	}
 	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{4}}})
@@ -173,7 +174,7 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfile3(c *C) {
 	// Test with a PCRProtectionProfile that already has some values in it.
 	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
 		eventLogPath: "testdata/eventlog1.bin",
-		initial: secboot.NewPCRProtectionProfile().
+		initial: secboot_tpm2.NewPCRProtectionProfile().
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 4, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 		params: &BootManagerProfileParams{

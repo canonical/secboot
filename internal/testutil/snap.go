@@ -17,20 +17,19 @@
  *
  */
 
-package secboot_test
+package testutil
 
 import (
 	"time"
 
-	. "github.com/snapcore/secboot"
 	"github.com/snapcore/snapd/asserts"
 
 	. "gopkg.in/check.v1"
+
+	"github.com/snapcore/secboot"
 )
 
-type snapModelTestBase struct{}
-
-func (tb *snapModelTestBase) makeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) SnapModel {
+func MakeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) secboot.SnapModel {
 	template := map[string]interface{}{
 		"type":              "model",
 		"architecture":      "amd64",
@@ -56,5 +55,5 @@ func (tb *snapModelTestBase) makeMockCore20ModelAssertion(c *C, headers map[stri
 
 	assertion, err := asserts.Assemble(template, nil, nil, []byte("AXNpZw=="))
 	c.Assert(err, IsNil)
-	return assertion.(SnapModel)
+	return assertion.(secboot.SnapModel)
 }

@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"bytes"
@@ -38,28 +38,29 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/snapcore/secboot/internal/tcg"
-	"github.com/snapcore/secboot/internal/tcti"
-	"github.com/snapcore/secboot/internal/truststore"
 	"github.com/snapcore/snapd/httputil"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/tcti"
+	"github.com/snapcore/secboot/internal/truststore"
 )
 
-// TPMDeviceAttributes contains details about the TPM extracted from a manufacturer issued endorsement key certificate.
-type TPMDeviceAttributes struct {
+// DeviceAttributes contains details about the TPM extracted from a manufacturer issued endorsement key certificate.
+type DeviceAttributes struct {
 	Manufacturer    tpm2.TPMManufacturer
 	Model           string
 	FirmwareVersion uint32
 }
 
-// TPMConnection corresponds to a connection to a TPM device, and is a wrapper around *tpm2.TPMContext.
-type TPMConnection struct {
+// Connection corresponds to a connection to a TPM device, and is a wrapper around *tpm2.TPMContext.
+type Connection struct {
 	*tpm2.TPMContext
 	verifiedEkCertChain      []*x509.Certificate
-	verifiedDeviceAttributes *TPMDeviceAttributes
+	verifiedDeviceAttributes *DeviceAttributes
 	ek                       tpm2.ResourceContext
 	provisionedSrk           tpm2.ResourceContext
 	hmacSession              tpm2.SessionContext
@@ -68,7 +69,7 @@ type TPMConnection struct {
 // IsEnabled indicates whether the TPM is enabled or whether it has been disabled by the platform firmware. A TPM device can be
 // disabled by the platform firmware by disabling the storage and endorsement hierarchies, but still remain visible to the operating
 // system.
-func (t *TPMConnection) IsEnabled() bool {
+func (t *Connection) IsEnabled() bool {
 	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyStartupClear, 1, t.HmacSession().IncludeAttrs(tpm2.AttrAudit))
 	if err != nil || len(props) == 0 {
 		return false
@@ -79,19 +80,19 @@ func (t *TPMConnection) IsEnabled() bool {
 
 // VerifiedEKCertChain returns the verified certificate chain for the endorsement key certificate obtained from this TPM. It was
 // verified using one of the built-in TPM manufacturer root CA certificates.
-func (t *TPMConnection) VerifiedEKCertChain() []*x509.Certificate {
+func (t *Connection) VerifiedEKCertChain() []*x509.Certificate {
 	return t.verifiedEkCertChain
 }
 
 // VerifiedDeviceAttributes returns the TPM device attributes for this TPM, obtained from the verified endorsement key certificate.
-func (t *TPMConnection) VerifiedDeviceAttributes() *TPMDeviceAttributes {
+func (t *Connection) VerifiedDeviceAttributes() *DeviceAttributes {
 	return t.verifiedDeviceAttributes
 }
 
 // EndorsementKey returns a reference to the TPM's persistent endorsement key, if one exists. If the endorsement key certificate has
 // been verified, the returned ResourceContext will correspond to the object for which the certificate was issued and can safely be
 // used to share secrets with the TPM.
-func (t *TPMConnection) EndorsementKey() (tpm2.ResourceContext, error) {
+func (t *Connection) EndorsementKey() (tpm2.ResourceContext, error) {
 	if t.ek == nil {
 		return nil, ErrTPMProvisioning
 	}
@@ -106,14 +107,14 @@ func (t *TPMConnection) EndorsementKey() (tpm2.ResourceContext, error) {
 // for which the endorsement certificate was issued. If the connection was created with ConnectToDefaultTPM, the session may be
 // salted with a value protected by the public part of the endorsement key if one exists or one is able to be created, but as the key
 // is not associated with a verified credential, there is no guarantee that only the TPM is able to retrieve the session key.
-func (t *TPMConnection) HmacSession() tpm2.SessionContext {
+func (t *Connection) HmacSession() tpm2.SessionContext {
 	if t.hmacSession == nil {
 		return nil
 	}
 	return t.hmacSession.WithAttrs(tpm2.AttrContinueSession)
 }
 
-func (t *TPMConnection) Close() error {
+func (t *Connection) Close() error {
 	t.FlushContext(t.hmacSession)
 	return t.TPMContext.Close()
 }
@@ -191,7 +192,7 @@ func (e verificationError) Error() string {
 	return e.err.Error()
 }
 
-func (t *TPMConnection) init() error {
+func (t *Connection) init() error {
 	// Allow init to be called more than once by flushing the previous session
 	if t.hmacSession != nil && t.hmacSession.Handle() != tpm2.HandleUnassigned {
 		t.FlushContext(t.hmacSession)
@@ -409,8 +410,8 @@ func checkChainForEkCertUsage(chain []*x509.Certificate) bool {
 	return true
 }
 
-func parseTPMDeviceAttributesFromDirectoryName(dirName pkix.RDNSequence) (*TPMDeviceAttributes, pkix.RDNSequence, error) {
-	var attrs TPMDeviceAttributes
+func parseDeviceAttributesFromDirectoryName(dirName pkix.RDNSequence) (*DeviceAttributes, pkix.RDNSequence, error) {
+	var attrs DeviceAttributes
 	var rdnsOut pkix.RelativeDistinguishedNameSET
 
 	hasManufacturer, hasModel, hasVersion := false, false, false
@@ -480,7 +481,7 @@ func parseTPMDeviceAttributesFromDirectoryName(dirName pkix.RDNSequence) (*TPMDe
 	return nil, nil, errors.New("incomplete or missing attributes")
 }
 
-func parseTPMDeviceAttributesFromSAN(data []byte) (*TPMDeviceAttributes, pkix.RDNSequence, error) {
+func parseDeviceAttributesFromSAN(data []byte) (*DeviceAttributes, pkix.RDNSequence, error) {
 	var seq asn1.RawValue
 	if rest, err := asn1.Unmarshal(data, &seq); err != nil {
 		return nil, nil, err
@@ -512,7 +513,7 @@ func parseTPMDeviceAttributesFromSAN(data []byte) (*TPMDeviceAttributes, pkix.RD
 				return nil, nil, errors.New("trailing bytes after SAN extension directory name")
 			}
 
-			return parseTPMDeviceAttributesFromDirectoryName(dirName)
+			return parseDeviceAttributesFromDirectoryName(dirName)
 		}
 	}
 
@@ -548,7 +549,7 @@ type ekCertData struct {
 //
 // On success, it returns a verified certificate chain. This function will also return success if there is no certificate and
 // it is executed inside a guest VM, in order to support fallback to a non-secure connection when using swtpm in a guest VM.
-func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *TPMDeviceAttributes, error) {
+func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *DeviceAttributes, error) {
 	// Parse EK cert
 	cert, err := x509.ParseCertificate(data.Cert)
 	if err != nil {
@@ -579,7 +580,7 @@ func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *TPMDeviceAttri
 		return nil, nil, errors.New("certificate contains invalid basic constraints")
 	}
 
-	var attrs *TPMDeviceAttributes
+	var attrs *DeviceAttributes
 	for _, e := range cert.Extensions {
 		if e.Id.Equal(tcg.OIDExtensionSubjectAltName) {
 			// SubjectAltName MUST be critical if subject is empty
@@ -588,7 +589,7 @@ func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *TPMDeviceAttri
 			}
 			var err error
 			var attrsRDN pkix.RDNSequence
-			attrs, attrsRDN, err = parseTPMDeviceAttributesFromSAN(e.Value)
+			attrs, attrsRDN, err = parseDeviceAttributesFromSAN(e.Value)
 			// SubjectAltName MUST include TPM manufacturer, model and firmware version
 			if err != nil {
 				return nil, nil, xerrors.Errorf("cannot parse TPM device attributes: %w", err)
@@ -771,7 +772,7 @@ func saveEkCertificateChain(data *ekCertData, dest string) error {
 //
 // If parentsOnly is true, this function will only save the parent certificates as long as the endorsement key certificate can be
 // reliably obtained from the TPM.
-func FetchAndSaveEKCertificateChain(tpm *TPMConnection, parentsOnly bool, destPath string) error {
+func FetchAndSaveEKCertificateChain(tpm *Connection, parentsOnly bool, destPath string) error {
 	data, err := fetchEkCertificateChain(tpm.TPMContext, parentsOnly)
 	if err != nil {
 		return err
@@ -830,13 +831,13 @@ func EncodeEKCertificateChain(ekCert *x509.Certificate, parents []*x509.Certific
 // FetchAndSaveEKCertificateChain. It should not be used in any other scenario.
 //
 // If no TPM2 device is available, then a ErrNoTPM2Device error will be returned.
-func ConnectToDefaultTPM() (*TPMConnection, error) {
+func ConnectToDefaultTPM() (*Connection, error) {
 	tpm, err := connectToDefaultTPM()
 	if err != nil {
 		return nil, err
 	}
 
-	t := &TPMConnection{TPMContext: tpm}
+	t := &Connection{TPMContext: tpm}
 
 	succeeded := false
 	defer func() {
@@ -886,7 +887,7 @@ func ConnectToDefaultTPM() (*TPMConnection, error) {
 // authorization value hasn't been provided via the endorsementAuth argument.
 //
 // If no TPM2 device is available, then a ErrNoTPM2Device error will be returned.
-func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byte) (*TPMConnection, error) {
+func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byte) (*Connection, error) {
 	if ekCertDataReader == nil {
 		return nil, errors.New("no EK certificate data was provided")
 	}
@@ -905,7 +906,7 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 		tpm.Close()
 	}()
 
-	t := &TPMConnection{TPMContext: tpm}
+	t := &Connection{TPMContext: tpm}
 
 	var certData *ekCertData
 	// Unmarshal supplied EK cert data

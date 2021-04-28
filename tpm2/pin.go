@@ -17,15 +17,16 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"os"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot/internal/tcg"
 )
 
 // computeV0PinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
@@ -149,7 +150,7 @@ func performPinChange(tpm *tpm2.TPMContext, keyPrivate tpm2.Private, keyPublic *
 // If the supplied key data file fails validation checks, an InvalidKeyFileError error will be returned.
 //
 // If oldPIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be incremented.
-func ChangePIN(tpm *TPMConnection, path string, oldPIN, newPIN string) error {
+func ChangePIN(tpm *Connection, path string, oldPIN, newPIN string) error {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {

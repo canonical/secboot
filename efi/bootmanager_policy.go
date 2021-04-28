@@ -25,9 +25,10 @@ import (
 	"github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot"
 
 	"golang.org/x/xerrors"
+
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 // computePeImageDigest computes a hash of a PE image in accordance with the "Windows Authenticode Portable Executable Signature
@@ -44,12 +45,12 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image Image) (tpm2.Digest, e
 }
 
 type bootManagerCodePolicyGenBranch struct {
-	profile  *secboot.PCRProtectionProfile
-	branches []*secboot.PCRProtectionProfile
+	profile  *secboot_tpm2.PCRProtectionProfile
+	branches []*secboot_tpm2.PCRProtectionProfile
 }
 
 func (n *bootManagerCodePolicyGenBranch) branch() *bootManagerCodePolicyGenBranch {
-	b := &bootManagerCodePolicyGenBranch{profile: secboot.NewPCRProtectionProfile()}
+	b := &bootManagerCodePolicyGenBranch{profile: secboot_tpm2.NewPCRProtectionProfile()}
 	n.branches = append(n.branches, b.profile)
 	return b
 }
@@ -100,7 +101,7 @@ type BootManagerProfileParams struct {
 // If the EV_OMIT_BOOT_DEVICE_EVENTS is not recorded to PCR 4, the platform firmware will perform meaurements of all boot attempts,
 // even if they fail. The generated PCR policy will not be satisfied if the platform firmware performs boot attempts that fail,
 // even if the successful boot attempt is of a sequence of binaries included in this PCR profile.
-func AddBootManagerProfile(profile *secboot.PCRProtectionProfile, params *BootManagerProfileParams) error {
+func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *BootManagerProfileParams) error {
 	env := params.Environment
 	if env == nil {
 		env = defaultEnv

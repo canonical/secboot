@@ -255,7 +255,6 @@ func (s *keyDataTestBase) checkKeyDataJSONFromReader(c *C, r io.Reader, creation
 }
 
 type keyDataSuite struct {
-	snapModelTestBase
 	keyDataTestBase
 }
 
@@ -411,7 +410,7 @@ func (s *keyDataSuite) testSnapModelAuth(c *C, data *testSnapModelAuthData) {
 
 func (s *keyDataSuite) TestSnapModelAuth1(c *C) {
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -427,14 +426,14 @@ func (s *keyDataSuite) TestSnapModelAuth1(c *C) {
 
 func (s *keyDataSuite) TestSnapModelAuth2(c *C) {
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -452,14 +451,14 @@ func (s *keyDataSuite) TestSnapModelAuth3(c *C) {
 	s.testSnapModelAuth(c, &testSnapModelAuthData{
 		alg: crypto.SHA256,
 		authModels: []SnapModel{
-			s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 				"authority-id": "fake-brand",
 				"series":       "16",
 				"brand-id":     "fake-brand",
 				"model":        "fake-model",
 				"grade":        "secured",
 			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")},
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -471,7 +470,7 @@ func (s *keyDataSuite) TestSnapModelAuth3(c *C) {
 
 func (s *keyDataSuite) TestSnapModelAuth4(c *C) {
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -493,7 +492,7 @@ func (s *keyDataSuite) TestSetAuthorizedSnapModelsWithWrongKey(c *C) {
 	c.Assert(err, IsNil)
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -549,7 +548,7 @@ func (s *keyDataSuite) TestWriteAtomic3(c *C) {
 	c.Assert(err, IsNil)
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -573,14 +572,14 @@ func (s *keyDataSuite) TestWriteAtomic4(c *C) {
 	c.Assert(err, IsNil)
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -634,7 +633,7 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 	c.Assert(err, IsNil)
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -667,7 +666,7 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 	c.Assert(err, IsNil)
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -700,14 +699,14 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 	c.Assert(err, IsNil)
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -740,7 +739,7 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 	c.Assert(err, IsNil)
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -761,7 +760,7 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 		auxKey: auxKey,
 		id:     id,
 		r:      &mockKeyDataReader{"foo", w.Reader()},
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",

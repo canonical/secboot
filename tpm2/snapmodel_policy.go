@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"encoding/base64"
@@ -27,6 +27,8 @@ import (
 	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot"
 )
 
 const zeroSnapSystemEpoch uint32 = 0
@@ -37,7 +39,7 @@ func computeSnapSystemEpochDigest(alg tpm2.HashAlgorithmId, epoch uint32) tpm2.D
 	return h.Sum(nil)
 }
 
-func computeSnapModelDigest(alg tpm2.HashAlgorithmId, model SnapModel) (tpm2.Digest, error) {
+func computeSnapModelDigest(alg tpm2.HashAlgorithmId, model secboot.SnapModel) (tpm2.Digest, error) {
 	signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
 	if err != nil {
 		return nil, xerrors.Errorf("cannot decode signing key ID: %w", err)
@@ -73,7 +75,7 @@ type SnapModelProfileParams struct {
 	PCRIndex int
 
 	// Models is the set of models to add to the PCR profile.
-	Models []SnapModel
+	Models []secboot.SnapModel
 }
 
 // AddSnapModelProfile adds the snap model profile to the PCR protection profile, as measured by snap-bootstrap, in order to generate
@@ -129,7 +131,7 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 	return nil
 }
 
-func measureSnapPropertyToTPM(tpm *TPMConnection, pcrIndex int, computeDigest func(tpm2.HashAlgorithmId) (tpm2.Digest, error)) error {
+func measureSnapPropertyToTPM(tpm *Connection, pcrIndex int, computeDigest func(tpm2.HashAlgorithmId) (tpm2.Digest, error)) error {
 	pcrSelection, err := tpm.GetCapabilityPCRs(tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
 		return xerrors.Errorf("cannot determine supported PCR banks: %w", err)
@@ -157,7 +159,7 @@ func measureSnapPropertyToTPM(tpm *TPMConnection, pcrIndex int, computeDigest fu
 
 // MeasureSnapSystemEpochToTPM measures a digest of uint32(0) to the specified PCR for all supported PCR banks. See the documentation
 // for AddSnapModelProfile for more details.
-func MeasureSnapSystemEpochToTPM(tpm *TPMConnection, pcrIndex int) error {
+func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
 	return measureSnapPropertyToTPM(tpm, pcrIndex, func(alg tpm2.HashAlgorithmId) (tpm2.Digest, error) {
 		return computeSnapSystemEpochDigest(alg, zeroSnapSystemEpoch), nil
 	})
@@ -165,7 +167,7 @@ func MeasureSnapSystemEpochToTPM(tpm *TPMConnection, pcrIndex int) error {
 
 // MeasureSnapModelToTPM measures a digest of the supplied model assertion to the specified PCR for all supported PCR banks.
 // See the documentation for AddSnapModelProfile for details of how the digest of the model is computed.
-func MeasureSnapModelToTPM(tpm *TPMConnection, pcrIndex int, model SnapModel) error {
+func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapModel) error {
 	return measureSnapPropertyToTPM(tpm, pcrIndex, func(alg tpm2.HashAlgorithmId) (tpm2.Digest, error) {
 		return computeSnapModelDigest(alg, model)
 	})

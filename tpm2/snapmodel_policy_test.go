@@ -17,21 +17,21 @@
  *
  */
 
-package secboot_test
+package tpm2_test
 
 import (
 	"encoding/binary"
 
 	"github.com/canonical/go-tpm2"
-	. "github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
+
+	"github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
+	. "github.com/snapcore/secboot/tpm2"
 )
 
-type snapModelProfileSuite struct {
-	snapModelTestBase
-}
+type snapModelProfileSuite struct{}
 
 var _ = Suite(&snapModelProfileSuite{})
 
@@ -70,8 +70,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile1(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
@@ -96,8 +96,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile2(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
@@ -122,8 +122,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile3(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "other-brand",
 					"series":       "16",
 					"brand-id":     "other-brand",
@@ -148,8 +148,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile4(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
@@ -174,8 +174,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile5(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "28",
 					"brand-id":     "fake-brand",
@@ -200,8 +200,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile6(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA1,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
@@ -226,8 +226,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile7(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     14,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
@@ -252,15 +252,15 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile8(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
 					"model":        "fake-model",
 					"grade":        "secured",
 				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
@@ -293,15 +293,15 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile9(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
 					"model":        "fake-model",
 					"grade":        "secured",
 				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
@@ -334,8 +334,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile10(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-bran",
 					"series":       "l16",
 					"brand-id":     "fake-bran",
@@ -360,8 +360,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile11(c *C) {
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
-			Models: []SnapModel{
-				s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 					"authority-id": "fake-brand",
 					"series":       "16",
 					"brand-id":     "fake-brand",
@@ -382,7 +382,6 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile11(c *C) {
 
 type snapModelMeasureSuite struct {
 	testutil.TPMSimulatorTestBase
-	snapModelTestBase
 }
 
 var _ = Suite(&snapModelMeasureSuite{})
@@ -394,7 +393,7 @@ func (s *snapModelMeasureSuite) SetUpTest(c *C) {
 
 type testMeasureSnapModelToTPMTestData struct {
 	pcrIndex int
-	model    SnapModel
+	model    secboot.SnapModel
 }
 
 func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMeasureSnapModelToTPMTestData) {
@@ -440,7 +439,7 @@ func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMe
 func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest1(c *C) {
 	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
 		pcrIndex: 12,
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -454,7 +453,7 @@ func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest2(c *C) {
 	// Test with a different signing key.
 	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
 		pcrIndex: 12,
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -468,7 +467,7 @@ func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest3(c *C) {
 	// Test with a different brand.
 	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
 		pcrIndex: 12,
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "other-brand",
 			"series":       "16",
 			"brand-id":     "other-brand",
@@ -482,7 +481,7 @@ func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest4(c *C) {
 	// Test with a different model.
 	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
 		pcrIndex: 12,
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -495,7 +494,7 @@ func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest4(c *C) {
 func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest5(c *C) {
 	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
 		pcrIndex: 12,
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "28",
 			"brand-id":     "fake-brand",
@@ -509,7 +508,7 @@ func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest6(c *C) {
 	// Test with a different PCR
 	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
 		pcrIndex: 14,
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -523,7 +522,7 @@ func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest7(c *C) {
 	// Test with a different grade.
 	s.testMeasureSnapModelToTPMTest(c, &testMeasureSnapModelToTPMTestData{
 		pcrIndex: 12,
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",

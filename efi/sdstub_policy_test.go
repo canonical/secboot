@@ -24,15 +24,16 @@ import (
 	"testing"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot"
+
 	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 func TestAddSystemdStubProfile(t *testing.T) {
 	for _, data := range []struct {
 		desc    string
-		initial *secboot.PCRProtectionProfile
+		initial *secboot_tpm2.PCRProtectionProfile
 		params  SystemdStubProfileParams
 		values  []tpm2.PCRValues
 	}{
@@ -101,8 +102,8 @@ func TestAddSystemdStubProfile(t *testing.T) {
 		},
 		{
 			desc: "WithInitialProfile",
-			initial: func() *secboot.PCRProtectionProfile {
-				return secboot.NewPCRProtectionProfile().
+			initial: func() *secboot_tpm2.PCRProtectionProfile {
+				return secboot_tpm2.NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
@@ -126,7 +127,7 @@ func TestAddSystemdStubProfile(t *testing.T) {
 		t.Run(data.desc, func(t *testing.T) {
 			profile := data.initial
 			if profile == nil {
-				profile = secboot.NewPCRProtectionProfile()
+				profile = secboot_tpm2.NewPCRProtectionProfile()
 			}
 			expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 			expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})

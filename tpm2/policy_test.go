@@ -17,7 +17,7 @@
  *
  */
 
-package secboot_test
+package tpm2_test
 
 import (
 	"bytes"
@@ -31,8 +31,9 @@ import (
 	"unsafe"
 
 	"github.com/canonical/go-tpm2"
-	. "github.com/snapcore/secboot"
+
 	"github.com/snapcore/secboot/internal/testutil"
+	. "github.com/snapcore/secboot/tpm2"
 )
 
 func TestIncrementPcrPolicyCounter(t *testing.T) {

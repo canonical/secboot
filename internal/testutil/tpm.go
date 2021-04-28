@@ -40,15 +40,16 @@ import (
 	"time"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/tcg"
-	"github.com/snapcore/secboot/internal/tcti"
-	"github.com/snapcore/secboot/internal/truststore"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 	"github.com/snapcore/snapd/snap"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/tcti"
+	"github.com/snapcore/secboot/internal/truststore"
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 var (
@@ -438,7 +439,7 @@ func TrustCA(cert []byte) (restore func()) {
 }
 
 // ResetTPMSimulator issues a Shutdown -> Reset -> Startup cycle of the TPM simulator and then returns a new connection.
-func ResetTPMSimulator(tpm *secboot.TPMConnection, tcti *tpm2.TctiMssim) (*secboot.TPMConnection, *tpm2.TctiMssim, error) {
+func ResetTPMSimulator(tpm *secboot_tpm2.Connection, tcti *tpm2.TctiMssim) (*secboot_tpm2.Connection, *tpm2.TctiMssim, error) {
 	if err := tpm.Shutdown(tpm2.StartupClear); err != nil {
 		return nil, nil, fmt.Errorf("Shutdown failed: %v", err)
 	}
@@ -455,7 +456,7 @@ func ResetTPMSimulator(tpm *secboot.TPMConnection, tcti *tpm2.TctiMssim) (*secbo
 	return OpenTPMSimulatorForTesting()
 }
 
-func OpenTPMSimulatorForTesting() (*secboot.TPMConnection, *tpm2.TctiMssim, error) {
+func OpenTPMSimulatorForTesting() (*secboot_tpm2.Connection, *tpm2.TctiMssim, error) {
 	if !UseMssim {
 		return nil, nil, nil
 	}
@@ -473,12 +474,12 @@ func OpenTPMSimulatorForTesting() (*secboot.TPMConnection, *tpm2.TctiMssim, erro
 	})
 	defer restore()
 
-	var tpm *secboot.TPMConnection
+	var tpm *secboot_tpm2.Connection
 	var err error
 	if len(EncodedTPMSimulatorEKCertChain) > 0 {
-		tpm, err = secboot.SecureConnectToDefaultTPM(bytes.NewReader(EncodedTPMSimulatorEKCertChain), nil)
+		tpm, err = secboot_tpm2.SecureConnectToDefaultTPM(bytes.NewReader(EncodedTPMSimulatorEKCertChain), nil)
 	} else {
-		tpm, err = secboot.ConnectToDefaultTPM()
+		tpm, err = secboot_tpm2.ConnectToDefaultTPM()
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("ConnectToDefaultTPM failed: %v", err)
@@ -487,7 +488,7 @@ func OpenTPMSimulatorForTesting() (*secboot.TPMConnection, *tpm2.TctiMssim, erro
 	return tpm, tcti, nil
 }
 
-func OpenTPMForTesting() (*secboot.TPMConnection, error) {
+func OpenTPMForTesting() (*secboot_tpm2.Connection, error) {
 	if !useTpm {
 		tpm, _, err := OpenTPMSimulatorForTesting()
 		return tpm, err
@@ -502,7 +503,7 @@ func OpenTPMForTesting() (*secboot.TPMConnection, error) {
 	})
 	defer restore()
 
-	tpm, err := secboot.ConnectToDefaultTPM()
+	tpm, err := secboot_tpm2.ConnectToDefaultTPM()
 	if err != nil {
 		return nil, fmt.Errorf("ConnectToDefaultTPM failed: %v", err)
 	}

@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"bytes"
@@ -34,13 +34,15 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
 	"golang.org/x/xerrors"
 
 	"maze.io/x/crypto/afis"
+
+	"github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/tcg"
 )
 
 const (
@@ -56,12 +58,12 @@ const (
 	authModePIN
 )
 
-// TPMPolicyAuthKey corresponds to the private part of the key used for signing updates to the authorization policy for a sealed key.
-type TPMPolicyAuthKey []byte
+// PolicyAuthKey corresponds to the private part of the key used for signing updates to the authorization policy for a sealed key.
+type PolicyAuthKey []byte
 
 type sealedData struct {
 	Key            []byte
-	AuthPrivateKey TPMPolicyAuthKey
+	AuthPrivateKey PolicyAuthKey
 }
 
 type afSplitDataRawHdr struct {
@@ -257,10 +259,9 @@ type keyDataRaw_v2 struct {
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
 
-// tpmKeyData corresponds to the part of a sealed key object that contains the TPM sealed object and associated metadata required
 // for executing authorization policy assertions.
-// XXX: This is temporarily named tpmKeyData until this code is moved in to secboot/tpm
-type tpmKeyData struct {
+// XXX: This is temporarily named keyData until this code is moved in to secboot/tpm
+type keyData struct {
 	version           uint32
 	keyPrivate        tpm2.Private
 	keyPublic         *tpm2.Public
@@ -270,12 +271,11 @@ type tpmKeyData struct {
 	dynamicPolicyData *dynamicPolicyData
 }
 
-func (d tpmKeyData) Marshal(w io.Writer) error {
+func (d keyData) Marshal(w io.Writer) error {
 	// We can upgrade v1 to v2 automatically
 	if d.version == 1 {
 		d.version = 2
 	}
-
 	if _, err := mu.MarshalToWriter(w, d.version); err != nil {
 		return xerrors.Errorf("cannot marshal version number: %w", err)
 	}
@@ -316,7 +316,7 @@ func (d tpmKeyData) Marshal(w io.Writer) error {
 	return nil
 }
 
-func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
+func (d *keyData) Unmarshal(r mu.Reader) error {
 	var version uint32
 	if _, err := mu.UnmarshalFromReader(r, &version); err != nil {
 		return xerrors.Errorf("cannot unmarshal version number: %w", err)
@@ -328,7 +328,7 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 		if _, err := mu.UnmarshalFromReader(r, &raw); err != nil {
 			return xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
-		*d = tpmKeyData{
+		*d = keyData{
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
@@ -350,7 +350,7 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 		if _, err := mu.UnmarshalFromBytes(merged, &raw); err != nil {
 			return xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
-		*d = tpmKeyData{
+		*d = keyData{
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
@@ -372,7 +372,7 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 		if _, err := mu.UnmarshalFromBytes(merged, &raw); err != nil {
 			return xerrors.Errorf("cannot unmarshal data: %w", err)
 		}
-		*d = tpmKeyData{
+		*d = keyData{
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
@@ -390,7 +390,7 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 // required, as indicated by an import symmetric seed of non-zero length. The tpmKeyData
 // structure will be updated with the newly imported private area and the import
 // symmetric seed will be cleared.
-func (d *tpmKeyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+func (d *keyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
 	if len(d.importSymSeed) == 0 {
 		return nil
 	}
@@ -414,9 +414,9 @@ func (d *tpmKeyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionCo
 	return nil
 }
 
-// load loads the TPM sealed object associated with this tpmKeyData in to the storage hierarchy of the TPM, and returns the newly
+// load loads the TPM sealed object associated with this keyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
-func (d *tpmKeyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	if err := d.ensureImported(tpm, session); err != nil {
 		return nil, err
 	}
@@ -444,9 +444,9 @@ func (d *tpmKeyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tp
 	return keyContext, nil
 }
 
-// validate performs some correctness checking on the provided tpmKeyData and authKey. On success, it returns the validated public area
+// validate performs some correctness checking on the provided keyData and authKey. On success, it returns the validated public area
 // for the PCR policy counter.
-func (d *tpmKeyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
+func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
 	if d.version > currentMetadataVersion {
 		return nil, keyFileError{errors.New("invalid metadata version")}
 	}
@@ -623,16 +623,16 @@ func (d *tpmKeyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, s
 	return pcrPolicyCounterPub, nil
 }
 
-// write serializes tpmKeyData in to the provided io.Writer.
-func (d *tpmKeyData) write(w io.Writer) error {
+// write serializes keyData in to the provided io.Writer.
+func (d *keyData) write(w io.Writer) error {
 	if _, err := mu.MarshalToWriter(w, keyDataHeader, d); err != nil {
 		return err
 	}
 	return nil
 }
 
-// writeToFileAtomic serializes tpmKeyData and writes it atomically to the file at the specified path.
-func (d *tpmKeyData) writeToFileAtomic(dest string) error {
+// writeToFileAtomic serializes keyData and writes it atomically to the file at the specified path.
+func (d *keyData) writeToFileAtomic(dest string) error {
 	f, err := osutil.NewAtomicFile(dest, 0600, 0, sys.UserID(osutil.NoChown), sys.GroupID(osutil.NoChown))
 	if err != nil {
 		return xerrors.Errorf("cannot create new atomic file: %w", err)
@@ -650,8 +650,8 @@ func (d *tpmKeyData) writeToFileAtomic(dest string) error {
 	return nil
 }
 
-// decodeKeyData deserializes tpmKeyData from the provided io.Reader.
-func decodeKeyData(r io.Reader) (*tpmKeyData, error) {
+// decodeKeyData deserializes keyData from the provided io.Reader.
+func decodeKeyData(r io.Reader) (*keyData, error) {
 	var header uint32
 	if _, err := mu.UnmarshalFromReader(r, &header); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal header: %w", err)
@@ -660,7 +660,7 @@ func decodeKeyData(r io.Reader) (*tpmKeyData, error) {
 		return nil, fmt.Errorf("unexpected header (%d)", header)
 	}
 
-	var d tpmKeyData
+	var d keyData
 	if _, err := mu.UnmarshalFromReader(r, &d); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal data: %w", err)
 	}
@@ -685,10 +685,10 @@ func isKeyFileError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// decodeAndValidateKeyData will deserialize tpmKeyData from the provided io.Reader and then perform some correctness checking. On
-// success, it returns the tpmKeyData, dynamic authorization policy signing key (if authData is provided) and the validated public area
+// decodeAndValidateKeyData will deserialize keyData from the provided io.Reader and then perform some correctness checking. On
+// success, it returns the keyData, dynamic authorization policy signing key (if authData is provided) and the validated public area
 // of the PCR policy counter index.
-func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile io.Reader, authData interface{}, session tpm2.SessionContext) (*tpmKeyData, crypto.PrivateKey, *tpm2.NVPublic, error) {
+func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile io.Reader, authData interface{}, session tpm2.SessionContext) (*keyData, crypto.PrivateKey, *tpm2.NVPublic, error) {
 	// Read the key data
 	data, err := decodeKeyData(keyFile)
 	if err != nil {
@@ -709,7 +709,7 @@ func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile io.Reader, authData 
 			return nil, nil, nil, keyFileError{errors.New("mismatched metadata versions")}
 		}
 		authKey = policyUpdateData.authKey
-	case TPMPolicyAuthKey:
+	case PolicyAuthKey:
 		if len(a) > 0 {
 			// If we were called with a byte slice, then we're expecting to load the current keydata version and the byte
 			// slice is the private part of the elliptic auth key.
@@ -734,7 +734,7 @@ func decodeAndValidateKeyData(tpm *tpm2.TPMContext, keyFile io.Reader, authData 
 // SealedKeyObject corresponds to a sealed key data file and exists to provide access to some read only operations on the underlying
 // file without having to read and deserialize the key data file more than once.
 type SealedKeyObject struct {
-	data *tpmKeyData
+	data *keyData
 }
 
 // Version returns the version number that this sealed key object was created with.
@@ -743,11 +743,11 @@ func (k *SealedKeyObject) Version() uint32 {
 }
 
 // AuthMode2F indicates the 2nd-factor authentication type for this sealed key object.
-func (k *SealedKeyObject) AuthMode2F() AuthMode {
+func (k *SealedKeyObject) AuthMode2F() secboot.AuthMode {
 	if k.data.authModeHint == authModePIN {
-		return AuthModePassphrase
+		return secboot.AuthModePassphrase
 	}
-	return AuthModeNone
+	return secboot.AuthModeNone
 }
 
 // PCRPolicyCounterHandle indicates the handle of the NV counter used for PCR policy revocation for this sealed key object (and for

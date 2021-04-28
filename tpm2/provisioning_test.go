@@ -17,7 +17,7 @@
  *
  */
 
-package secboot_test
+package tpm2_test
 
 import (
 	"bytes"
@@ -25,11 +25,12 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	. "github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/tcg"
-	"github.com/snapcore/secboot/internal/testutil"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/testutil"
+	. "github.com/snapcore/secboot/tpm2"
 )
 
 func validatePrimaryKeyAgainstTemplate(t *testing.T, tpm *tpm2.TPMContext, hierarchy, handle tpm2.Handle, template *tpm2.Public) {

@@ -33,7 +33,6 @@ import (
 )
 
 type keyDataFileSuite struct {
-	snapModelTestBase
 	keyDataTestBase
 	dir string
 }
@@ -95,14 +94,14 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 	c.Assert(err, IsNil)
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",

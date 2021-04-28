@@ -24,7 +24,8 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot"
+
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 // SystemdStubProfileParams provides the parameters to AddSystemdStubProfile.
@@ -47,8 +48,8 @@ type SystemdStubProfileParams struct {
 //
 // The PCR index that the EFI stub measures the kernel commandline too can be specified via the PCRIndex field of params.
 //
-// The set of kernel commandlines to add to the secboot.PCRProtectionProfile is specified via the KernelCmdlines field of params.
-func AddSystemdStubProfile(profile *secboot.PCRProtectionProfile, params *SystemdStubProfileParams) error {
+// The set of kernel commandlines to add to the PCRProtectionProfile is specified via the KernelCmdlines field of params.
+func AddSystemdStubProfile(profile *secboot_tpm2.PCRProtectionProfile, params *SystemdStubProfileParams) error {
 	if params.PCRIndex < 0 {
 		return errors.New("invalid PCR index")
 	}
@@ -56,10 +57,10 @@ func AddSystemdStubProfile(profile *secboot.PCRProtectionProfile, params *System
 		return errors.New("no kernel commandlines specified")
 	}
 
-	var subProfiles []*secboot.PCRProtectionProfile
+	var subProfiles []*secboot_tpm2.PCRProtectionProfile
 	for _, cmdline := range params.KernelCmdlines {
 		digest := tcglog.ComputeSystemdEFIStubCommandlineDigest(params.PCRAlgorithm.GetHash(), cmdline)
-		subProfiles = append(subProfiles, secboot.NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, digest))
+		subProfiles = append(subProfiles, secboot_tpm2.NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, digest))
 	}
 
 	profile.AddProfileOR(subProfiles...)

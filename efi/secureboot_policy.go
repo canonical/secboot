@@ -37,13 +37,14 @@ import (
 	"github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/pe1.14"
 	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/xerrors"
 
 	"go.mozilla.org/pkcs7"
+
+	"github.com/snapcore/secboot/internal/pe1.14"
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 const (
@@ -402,13 +403,13 @@ type secureBootPolicyGen struct {
 	sigDbUpdates []*secureBootDbUpdate
 }
 
-// secureBootPolicyGenBranch represents a branch of a secboot.PCRProtectionProfile. It contains its own PCRProtectionProfile in to which
+// secureBootPolicyGenBranch represents a branch of a PCRProtectionProfile. It contains its own PCRProtectionProfile in to which
 // instructions can be recorded, as well as some other context associated with this branch.
 type secureBootPolicyGenBranch struct {
 	gen *secureBootPolicyGen
 
-	profile     *secboot.PCRProtectionProfile // The PCR profile containing the instructions for this branch
-	subBranches []*secureBootPolicyGenBranch  // Sub-branches, if this has been branched
+	profile     *secboot_tpm2.PCRProtectionProfile // The PCR profile containing the instructions for this branch
+	subBranches []*secureBootPolicyGenBranch       // Sub-branches, if this has been branched
 
 	dbUpdateLevel              int             // The number of EFI signature database updates applied in this branch
 	dbSet                      secureBootDbSet // The signature database set associated with this branch
@@ -418,10 +419,10 @@ type secureBootPolicyGenBranch struct {
 }
 
 // branch creates a branch point in the current branch if one doesn't exist already (although inserting this branch point with
-// secboot.PCRProtectionProfile.AddProfileOR is deferred until later), and creates a new sub-branch at the current branch point. Once
+// PCRProtectionProfile.AddProfileOR is deferred until later), and creates a new sub-branch at the current branch point. Once
 // this has been called, no more instructions can be inserted in to the current branch.
 func (b *secureBootPolicyGenBranch) branch() *secureBootPolicyGenBranch {
-	c := &secureBootPolicyGenBranch{gen: b.gen, profile: secboot.NewPCRProtectionProfile()}
+	c := &secureBootPolicyGenBranch{gen: b.gen, profile: secboot_tpm2.NewPCRProtectionProfile()}
 	b.subBranches = append(b.subBranches, c)
 
 	// Preserve the context associated with this branch
@@ -934,12 +935,12 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 }
 
 // run takes a TCG event log and builds a PCR profile from the supplied configuration (see SecureBootPolicyProfileParams)
-func (g *secureBootPolicyGen) run(profile *secboot.PCRProtectionProfile, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
+func (g *secureBootPolicyGen) run(profile *secboot_tpm2.PCRProtectionProfile, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
 	// Process the pre-OS events for the current signature DB and then with each pending update applied
 	// in turn.
 	var roots []*secureBootPolicyGenBranch
 	for i := 0; i <= len(g.sigDbUpdates); i++ {
-		branch := &secureBootPolicyGenBranch{gen: g, profile: secboot.NewPCRProtectionProfile(), dbUpdateLevel: i}
+		branch := &secureBootPolicyGenBranch{gen: g, profile: secboot_tpm2.NewPCRProtectionProfile(), dbUpdateLevel: i}
 		if err := branch.processPreOSEvents(g.events, g.sigDbUpdates[0:i], sigDbUpdateQuirkMode); err != nil {
 			return xerrors.Errorf("cannot process pre-OS events from event log: %w", err)
 		}
@@ -997,7 +998,7 @@ func (g *secureBootPolicyGen) run(profile *secboot.PCRProtectionProfile, sigDbUp
 			continue
 		}
 
-		var subProfiles []*secboot.PCRProtectionProfile
+		var subProfiles []*secboot_tpm2.PCRProtectionProfile
 		for _, sb := range b.subBranches {
 			if sb.profile == nil {
 				// This sub-branch has been marked unbootable
@@ -1016,7 +1017,7 @@ func (g *secureBootPolicyGen) run(profile *secboot.PCRProtectionProfile, sigDbUp
 	}
 
 	validPathsForCurrentDb := false
-	var subProfiles []*secboot.PCRProtectionProfile
+	var subProfiles []*secboot_tpm2.PCRProtectionProfile
 	for _, b := range roots {
 		if b.profile == nil {
 			// This branch has no bootable paths
@@ -1105,7 +1106,7 @@ func (g *secureBootPolicyGen) run(profile *secboot.PCRProtectionProfile, sigDbUp
 // For the most common case where there are no signature database updates pending in the specified keystore directories and each image
 // load event sequence corresponds to loads of images that are all verified with the same chain of trust, this is a complicated way of
 // adding a single PCR digest to the provided secboot.PCRProtectionProfile.
-func AddSecureBootPolicyProfile(profile *secboot.PCRProtectionProfile, params *SecureBootPolicyProfileParams) error {
+func AddSecureBootPolicyProfile(profile *secboot_tpm2.PCRProtectionProfile, params *SecureBootPolicyProfileParams) error {
 	env := params.Environment
 	if env == nil {
 		env = defaultEnv
@@ -1176,12 +1177,12 @@ func AddSecureBootPolicyProfile(profile *secboot.PCRProtectionProfile, params *S
 
 	gen := &secureBootPolicyGen{params.PCRAlgorithm, env, params.LoadSequences, log.Events, sigDbUpdates}
 
-	profile1 := secboot.NewPCRProtectionProfile()
+	profile1 := secboot_tpm2.NewPCRProtectionProfile()
 	if err := gen.run(profile1, sigDbUpdateQuirkModeNone); err != nil {
 		return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
 	}
 
-	profile2 := secboot.NewPCRProtectionProfile()
+	profile2 := secboot_tpm2.NewPCRProtectionProfile()
 	if err := gen.run(profile2, sigDbUpdateQuirkModeDedupIgnoresOwner); err != nil {
 		return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
 	}

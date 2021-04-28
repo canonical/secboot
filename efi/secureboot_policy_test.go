@@ -34,9 +34,10 @@ import (
 
 	"github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot"
+
 	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 func TestReadShimVendorCert(t *testing.T) {
@@ -253,7 +254,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		desc    string
 		logPath string
 		efivars string
-		initial *secboot.PCRProtectionProfile
+		initial *secboot_tpm2.PCRProtectionProfile
 		params  SecureBootPolicyProfileParams
 		values  []tpm2.PCRValues
 		err     string
@@ -987,12 +988,12 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			err: "cannot compute secure boot policy profile: no bootable paths with current EFI signature database",
 		},
 		{
-			// Test with an initial secboot.PCRProtectionProfile to verify that it behaves correctly
+			// Test with an initial PCRProtectionProfile to verify that it behaves correctly
 			desc:    "WithInitialProfile",
 			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
-			initial: func() *secboot.PCRProtectionProfile {
-				return secboot.NewPCRProtectionProfile().
+			initial: func() *secboot_tpm2.PCRProtectionProfile {
+				return secboot_tpm2.NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
@@ -1305,7 +1306,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 
 			policy := data.initial
 			if policy == nil {
-				policy = &secboot.PCRProtectionProfile{}
+				policy = &secboot_tpm2.PCRProtectionProfile{}
 			}
 			expectedPcrs, _, _ := policy.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 			expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
