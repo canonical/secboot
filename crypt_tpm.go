@@ -42,13 +42,13 @@ func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byt
 	return sealedKey, err
 }
 
-func unsealKeyFromTPMAndActivate(tpm *TPMConnection, volumeName, sourceDevicePath, keyringPrefix string, activateOptions []string, k *SealedKeyObject, pin string) error {
+func unsealKeyFromTPMAndActivate(tpm *TPMConnection, volumeName, sourceDevicePath, keyringPrefix string, k *SealedKeyObject, pin string) error {
 	sealedKey, err := unsealKeyFromTPM(tpm, k, pin)
 	if err != nil {
 		return xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	if err := activate(volumeName, sourceDevicePath, sealedKey, activateOptions); err != nil {
+	if err := activate(volumeName, sourceDevicePath, sealedKey); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 
@@ -83,7 +83,7 @@ func (c *activateTPMKeyContext) Err() *activateWithTPMKeyError {
 	return &activateWithTPMKeyError{path: c.path, err: c.err}
 }
 
-func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string, keyPaths []string, passphraseReader io.Reader, passphraseTries int, activateOptions []string, keyringPrefix string) (succeeded bool, errs []*activateWithTPMKeyError) {
+func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string, keyPaths []string, passphraseReader io.Reader, passphraseTries int, keyringPrefix string) (succeeded bool, errs []*activateWithTPMKeyError) {
 	var contexts []*activateTPMKeyContext
 	// Read key files
 	for _, path := range keyPaths {
@@ -103,7 +103,7 @@ func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string
 			continue
 		}
 
-		if err := unsealKeyFromTPMAndActivate(tpm, volumeName, sourceDevicePath, keyringPrefix, activateOptions, c.k, ""); err != nil {
+		if err := unsealKeyFromTPMAndActivate(tpm, volumeName, sourceDevicePath, keyringPrefix, c.k, ""); err != nil {
 			c.err = err
 			continue
 		}
@@ -140,7 +140,7 @@ func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string
 			continue
 		}
 
-		if err := unsealKeyFromTPMAndActivate(tpm, volumeName, sourceDevicePath, keyringPrefix, activateOptions, c.k, pin); err != nil {
+		if err := unsealKeyFromTPMAndActivate(tpm, volumeName, sourceDevicePath, keyringPrefix, c.k, pin); err != nil {
 			c.err = err
 			continue
 		}
@@ -167,15 +167,12 @@ func activateWithTPMKeys(tpm *TPMConnection, volumeName, sourceDevicePath string
 // will be made instead by reading all characters until the first newline. The PassphraseTries field of options defines how many
 // attempts should be made to obtain the correct passphrase for each TPM sealed key before failing.
 //
-// The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
-//
 // If activation with the TPM sealed key objects fails, this function will attempt to activate it with the fallback recovery key
 // instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of options specifies
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
 // will be made to activate the encrypted volume with the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the ActivateOptions
-// field of options contains the "tries=" option, then an error will be returned. This option cannot be used with this function.
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
 //
 // If activation with the TPM sealed keys fails, a *ActivateWithMultipleTPMSealedKeysError error will be returned, even if the
 // subsequent fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will
@@ -197,17 +194,12 @@ func ActivateVolumeWithMultipleTPMSealedKeys(tpm *TPMConnection, volumeName, sou
 		return false, errors.New("invalid RecoveryKeyTries")
 	}
 
-	activateOptions, err := makeActivateOptions(options.ActivateOptions)
-	if err != nil {
-		return false, err
-	}
-
-	if success, errs := activateWithTPMKeys(tpm, volumeName, sourceDevicePath, keyPaths, passphraseReader, options.PassphraseTries, activateOptions, options.KeyringPrefix); !success {
+	if success, errs := activateWithTPMKeys(tpm, volumeName, sourceDevicePath, keyPaths, passphraseReader, options.PassphraseTries, options.KeyringPrefix); !success {
 		var tpmErrs []error
 		for _, e := range errs {
 			tpmErrs = append(tpmErrs, e)
 		}
-		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, activateOptions, options.KeyringPrefix)
+		rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, options.KeyringPrefix)
 		return rErr == nil, &ActivateWithMultipleTPMSealedKeysError{tpmErrs, rErr}
 	}
 
@@ -222,16 +214,12 @@ func ActivateVolumeWithMultipleTPMSealedKeys(tpm *TPMConnection, volumeName, sou
 // all characters until the first newline. The PassphraseTries field of options defines how many attempts should be made to
 // obtain the correct passphrase before failing.
 //
-// The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
-//
 // If activation with the TPM sealed key object fails, this function will attempt to activate it with the fallback recovery key
 // instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of options specifies
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
 // will be made to activate the encrypted volume with the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned. If the
-// ActivateOptions field of options contains the "tries=" option, then an error will be returned. This option cannot be used with
-// this function.
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
 //
 // If activation with the TPM sealed key fails, a *ActivateWithTPMSealedKeyError error will be returned, even if the subsequent
 // fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will be nil, and the
