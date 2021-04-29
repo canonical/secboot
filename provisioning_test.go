@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
@@ -31,98 +32,31 @@ import (
 	"golang.org/x/xerrors"
 )
 
-func validateSRK(t *testing.T, tpm *tpm2.TPMContext) {
-	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+func validatePrimaryKeyAgainstTemplate(t *testing.T, tpm *tpm2.TPMContext, hierarchy, handle tpm2.Handle, template *tpm2.Public) {
+	key, err := tpm.CreateResourceContextFromTPM(handle)
 	if err != nil {
-		t.Errorf("Cannot create context for SRK: %v", err)
+		t.Errorf("Cannot create context: %v", err)
 	}
 
-	// Validate the properties of the SRK
-	pub, _, _, err := tpm.ReadPublic(srk)
+	// The easiest way to validate that the primary key was created with the supplied
+	// template is to just create it again and compare the names
+	expected, _, _, _, _, err := tpm.CreatePrimary(tpm.GetPermanentContext(hierarchy), nil, template, nil, nil, nil)
 	if err != nil {
-		t.Fatalf("ReadPublic failed: %v", err)
+		t.Fatalf("CreatePrimary failed: %v", err)
 	}
+	defer tpm.FlushContext(expected)
 
-	if pub.Type != tpm2.ObjectTypeRSA {
-		t.Errorf("SRK has unexpected type")
-	}
-	if pub.NameAlg != tpm2.HashAlgorithmSHA256 {
-		t.Errorf("SRK has unexpected name algorithm")
-	}
-	if pub.Attrs != tpm2.AttrFixedTPM|tpm2.AttrFixedParent|tpm2.AttrSensitiveDataOrigin|tpm2.AttrUserWithAuth|tpm2.AttrNoDA|tpm2.AttrRestricted|
-		tpm2.AttrDecrypt {
-		t.Errorf("SRK has unexpected attributes")
-	}
-	if pub.Params.RSADetail.Symmetric.Algorithm != tpm2.SymObjectAlgorithmAES {
-		t.Errorf("SRK has unexpected symmetric algorithm")
-	}
-	if pub.Params.RSADetail.Symmetric.KeyBits.Sym != 128 {
-		t.Errorf("SRK has unexpected symmetric key length")
-	}
-	if pub.Params.RSADetail.Symmetric.Mode.Sym != tpm2.SymModeCFB {
-		t.Errorf("SRK has unexpected symmetric mode")
-	}
-	if pub.Params.RSADetail.Scheme.Scheme != tpm2.RSASchemeNull {
-		t.Errorf("SRK has unexpected RSA scheme")
-	}
-	if pub.Params.RSADetail.KeyBits != 2048 {
-		t.Errorf("SRK has unexpected RSA public modulus length")
-	}
-	if pub.Params.RSADetail.Exponent != 0 {
-		t.Errorf("SRK has an unexpected non-default public exponent")
-	}
-	if len(pub.Unique.RSA) != 2048/8 {
-		t.Errorf("SRK has an unexpected RSA public modulus length")
+	if !bytes.Equal(key.Name(), expected.Name()) {
+		t.Errorf("Key doesn't match")
 	}
 }
 
+func validateSRK(t *testing.T, tpm *tpm2.TPMContext) {
+	validatePrimaryKeyAgainstTemplate(t, tpm, tpm2.HandleOwner, tcg.SRKHandle, tcg.SRKTemplate)
+}
+
 func validateEK(t *testing.T, tpm *tpm2.TPMContext) {
-	ek, err := tpm.CreateResourceContextFromTPM(tcg.EKHandle)
-	if err != nil {
-		t.Errorf("Cannot create context for EK: %v", err)
-	}
-
-	// Validate the properties of the EK
-	pub, _, _, err := tpm.ReadPublic(ek)
-	if err != nil {
-		t.Fatalf("ReadPublic failed: %v", err)
-	}
-
-	if pub.Type != tpm2.ObjectTypeRSA {
-		t.Errorf("EK has unexpected type")
-	}
-	if pub.NameAlg != tpm2.HashAlgorithmSHA256 {
-		t.Errorf("EK has unexpected name algorithm")
-	}
-	if pub.Attrs != tpm2.AttrFixedTPM|tpm2.AttrFixedParent|tpm2.AttrSensitiveDataOrigin|tpm2.AttrAdminWithPolicy|tpm2.AttrRestricted|
-		tpm2.AttrDecrypt {
-		t.Errorf("EK has unexpected attributes")
-	}
-	if !bytes.Equal(pub.AuthPolicy, []byte{0x83, 0x71, 0x97, 0x67, 0x44, 0x84, 0xb3, 0xf8, 0x1a, 0x90, 0xcc, 0x8d, 0x46, 0xa5, 0xd7,
-		0x24, 0xfd, 0x52, 0xd7, 0x6e, 0x06, 0x52, 0x0b, 0x64, 0xf2, 0xa1, 0xda, 0x1b, 0x33, 0x14, 0x69, 0xaa}) {
-		t.Errorf("EK has unexpected auth policy")
-	}
-	if pub.Params.RSADetail.Symmetric.Algorithm != tpm2.SymObjectAlgorithmAES {
-		t.Errorf("EK has unexpected symmetric algorithm")
-	}
-	if pub.Params.RSADetail.Symmetric.KeyBits.Sym != 128 {
-		t.Errorf("EK has unexpected symmetric key length")
-	}
-	if pub.Params.RSADetail.Symmetric.Mode.Sym != tpm2.SymModeCFB {
-		t.Errorf("EK has unexpected symmetric mode")
-	}
-	if pub.Params.RSADetail.Scheme.Scheme != tpm2.RSASchemeNull {
-		t.Errorf("EK has unexpected RSA scheme")
-	}
-	if pub.Params.RSADetail.KeyBits != 2048 {
-		t.Errorf("EK has unexpected RSA public modulus length")
-	}
-	if pub.Params.RSADetail.Exponent != 0 {
-		t.Errorf("EK has an unexpected non-default public exponent")
-	}
-	if len(pub.Unique.RSA) != 2048/8 {
-		t.Errorf("EK has an unexpected RSA public modulus length")
-	}
+	validatePrimaryKeyAgainstTemplate(t, tpm, tpm2.HandleEndorsement, tcg.EKHandle, tcg.EKTemplate)
 }
 
 func TestProvisionNewTPM(t *testing.T) {
@@ -574,5 +508,180 @@ func TestProvisionWithInvalidEkCert(t *testing.T) {
 	if !xerrors.As(err, &ve) && err.Error() != "verification of the TPM failed: cannot verify TPM: endorsement key returned from the "+
 		"TPM doesn't match the endorsement certificate" {
 		t.Errorf("ProvisionTPM returned an unexpected error: %v", err)
+	}
+}
+
+func TestProvisionWithCustomSRKTemplate(t *testing.T) {
+	tpm, _ := openTPMSimulatorForTesting(t)
+	defer func() {
+		clearTPMWithPlatformAuth(t, tpm)
+		closeTPM(t, tpm)
+	}()
+
+	for _, data := range []struct {
+		desc string
+		mode ProvisionMode
+	}{
+		{
+			desc: "Clear",
+			mode: ProvisionModeClear,
+		},
+		{
+			desc: "Full",
+			mode: ProvisionModeFull,
+		},
+	} {
+		t.Run(data.desc, func(t *testing.T) {
+			clearTPMWithPlatformAuth(t, tpm)
+
+			template := tpm2.Public{
+				Type:    tpm2.ObjectTypeRSA,
+				NameAlg: tpm2.HashAlgorithmSHA256,
+				Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+					tpm2.AttrRestricted | tpm2.AttrDecrypt,
+				Params: &tpm2.PublicParamsU{
+					RSADetail: &tpm2.RSAParams{
+						Symmetric: tpm2.SymDefObject{
+							Algorithm: tpm2.SymObjectAlgorithmAES,
+							KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+							Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+						Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+						KeyBits:  2048,
+						Exponent: 0}}}
+
+			if err := tpm.EnsureProvisionedWithCustomSRK(data.mode, nil, &template); err != nil {
+				t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
+			}
+
+			validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
+
+			key, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, &template, nil, nil, nil)
+			if err != nil {
+				t.Fatalf("CreatePrimary failed: %v", err)
+			}
+			defer flushContext(t, tpm, key)
+
+			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			if err != nil {
+				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+			}
+
+			if !bytes.Equal(srk.Name(), key.Name()) {
+				t.Errorf("Unexpected SRK ID")
+			}
+
+			nv, err := tpm.CreateResourceContextFromTPM(0x01810001)
+			if err != nil {
+				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+			}
+
+			nvPub, _, err := tpm.NVReadPublic(nv)
+			if err != nil {
+				t.Fatalf("NVReadPublic failed: %v", err)
+			}
+
+			tmplB, err := tpm.NVRead(tpm.OwnerHandleContext(), nv, nvPub.Size, 0, nil)
+			if err != nil {
+				t.Errorf("NVRead failed: %v", err)
+			}
+
+			expected, _ := mu.MarshalToBytes(&template)
+			if !bytes.Equal(tmplB, expected) {
+				t.Errorf("Unexpected template")
+			}
+		})
+	}
+}
+
+func TestProvisionWithInvalidCustomSRKTemplate(t *testing.T) {
+	tpm, _ := openTPMSimulatorForTesting(t)
+	defer func() {
+		clearTPMWithPlatformAuth(t, tpm)
+		closeTPM(t, tpm)
+	}()
+
+	clearTPMWithPlatformAuth(t, tpm)
+
+	template := tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrSign,
+		Params: &tpm2.PublicParamsU{
+			RSADetail: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+					Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}}}
+	err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template)
+	if err == nil {
+		t.Fatalf("EnsureProvisionedWithCustomSRK should have failed")
+	}
+
+	if err.Error() != "supplied SRK template is not valid for a parent key" {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+}
+
+func TestRemoveStoredCustomSRKTemplate(t *testing.T) {
+	tpm, _ := openTPMSimulatorForTesting(t)
+	defer func() {
+		clearTPMWithPlatformAuth(t, tpm)
+		closeTPM(t, tpm)
+	}()
+
+	template := tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrDecrypt,
+		Params: &tpm2.PublicParamsU{
+			RSADetail: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+					Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}}}
+
+	for _, data := range []struct {
+		desc string
+		mode ProvisionMode
+	}{
+		{
+			desc: "Full",
+			mode: ProvisionModeFull,
+		},
+		{
+			desc: "WithoutLockout",
+			mode: ProvisionModeWithoutLockout,
+		},
+	} {
+		t.Run(data.desc, func(t *testing.T) {
+			clearTPMWithPlatformAuth(t, tpm)
+
+			if err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeFull, []byte("1234"), &template); err != nil {
+				t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
+			}
+
+			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			if err != nil {
+				t.Fatalf("No SRK context: %v", err)
+			}
+
+			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
+				t.Errorf("EvictControl failed: %v", err)
+			}
+
+			if err := tpm.EnsureProvisioned(data.mode, nil); err != nil {
+				t.Fatalf("EnsureProvisioned failed: %v", err)
+			}
+
+			validateSRK(t, tpm.TPMContext)
+		})
 	}
 }
