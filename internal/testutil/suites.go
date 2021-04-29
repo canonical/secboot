@@ -76,7 +76,7 @@ func (b *TPMTestBase) setUpTestBase(c *C, tpm *secboot.TPMConnection) {
 				hc, err = b.TPM.CreateResourceContextFromTPM(h)
 				c.Check(err, IsNil)
 			case tpm2.HandleTypeHMACSession:
-				hc = tpm2.CreateIncompleteSessionContext(h)
+				hc = tpm2.CreatePartialHandleContext(h)
 			default:
 				c.Fatalf("Unexpected handle type")
 			}
