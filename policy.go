@@ -769,7 +769,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
 			// staticInput.AuthPublicKey is invalid
-			return staticPolicyDataError{errors.New("public area of dynamic authorization policy signing key is invalid")}
+			return staticPolicyDataError{xerrors.Errorf("public area of dynamic authorization policy signing key is invalid: %w", err)}
 		}
 		return xerrors.Errorf("cannot load public area for dynamic authorization policy signing key: %w", err)
 	}
