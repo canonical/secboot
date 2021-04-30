@@ -102,7 +102,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 	})
 
-	t.Run("NoSRK", func(t *testing.T) {
+	t.Run("MissingSRK", func(t *testing.T) {
 		// Ensure that calling SealKeyToTPM recreates the SRK with the standard template
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
@@ -120,7 +120,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		validateSRK(t, tpm.TPMContext)
 	})
 
-	t.Run("NoCustomSRK", func(t *testing.T) {
+	t.Run("MissingCustomSRK", func(t *testing.T) {
 		// Ensure that calling SealKeyToTPM recreates the SRK with the custom
 		// template originally supplied during provisioning
 		tpm := openTPMForTesting(t)
@@ -163,6 +163,7 @@ func TestSealKeyToTPM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("MarshalToBytes failed: %v", err)
 		}
+		defer undefineNVSpace(t, tpm, nv, tpm.OwnerHandleContext())
 
 		if err := tpm.NVWrite(nv, nv, tmplB, 0, nil); err != nil {
 			t.Errorf("NVWrite failed: %v", err)
@@ -171,6 +172,63 @@ func TestSealKeyToTPM(t *testing.T) {
 		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 
 		validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
+	})
+
+	t.Run("MissingSRKWithInvalidCustomTemplate", func(t *testing.T) {
+		// Ensure that calling SealKeyToTPM recreates the SRK with the standard
+		// template if the NV index we use to store custom templates has invalid
+		// contents - if the contents are invalid then we didn't create it.
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+		if err != nil {
+			t.Fatalf("No SRK: %v", err)
+		}
+		if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
+			t.Errorf("EvictControl failed: %v", err)
+		}
+
+		template := tpm2.Public{
+			Type:    tpm2.ObjectTypeRSA,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+				tpm2.AttrRestricted | tpm2.AttrSign,
+			Params: &tpm2.PublicParamsU{
+				RSADetail: &tpm2.RSAParams{
+					Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
+					Scheme:   tpm2.RSAScheme{
+						Scheme: tpm2.RSASchemeRSAPSS,
+						Details: &tpm2.AsymSchemeU{
+							RSAPSS: &tpm2.SigSchemeRSAPSS{HashAlg: tpm2.HashAlgorithmSHA256},
+						},
+					},
+					KeyBits:  2048,
+					Exponent: 0}}}
+
+		tmplB, err := mu.MarshalToBytes(template)
+		if err != nil {
+			t.Errorf("MarshalToBytes failed: %v", err)
+		}
+
+		nvPub := tpm2.NVPublic{
+			Index:   SrkTemplateHandle,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVWriteDefine | tpm2.AttrNVOwnerRead | tpm2.AttrNVNoDA),
+			Size:    uint16(len(tmplB))}
+		nv, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, &nvPub, nil)
+		if err != nil {
+			t.Fatalf("MarshalToBytes failed: %v", err)
+		}
+		defer undefineNVSpace(t, tpm, nv, tpm.OwnerHandleContext())
+
+		if err := tpm.NVWrite(nv, nv, tmplB, 0, nil); err != nil {
+			t.Errorf("NVWrite failed: %v", err)
+		}
+
+		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
+
+		validateSRK(t, tpm.TPMContext)
 	})
 
 	t.Run("NilPCRProfile", func(t *testing.T) {
