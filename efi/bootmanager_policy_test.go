@@ -32,51 +32,6 @@ type bootManagerPolicySuite struct{}
 
 var _ = Suite(&bootManagerPolicySuite{})
 
-type testComputePeImageDigestData struct {
-	alg    tpm2.HashAlgorithmId
-	path   string
-	digest tpm2.Digest
-}
-
-func (s *bootManagerPolicySuite) testComputePeImageDigest(c *C, data *testComputePeImageDigestData) {
-	d, err := ComputePeImageDigest(data.alg, FileImage(data.path))
-	c.Assert(err, IsNil)
-	c.Check(d, DeepEquals, data.digest)
-	c.Logf("%x", d)
-}
-
-func (s *bootManagerPolicySuite) TestComputePeImageDigest1(c *C) {
-	s.testComputePeImageDigest(c, &testComputePeImageDigestData{
-		alg:    tpm2.HashAlgorithmSHA256,
-		path:   "testdata/mockshim1.efi.signed.1",
-		digest: testutil.DecodeHexString(c, "1d91795a82b24a61c5b5f4b5843062fd10fc42e2d403c5a65f811014df231c9f"),
-	})
-}
-
-func (s *bootManagerPolicySuite) TestComputePeImageDigest2(c *C) {
-	s.testComputePeImageDigest(c, &testComputePeImageDigestData{
-		alg:    tpm2.HashAlgorithmSHA256,
-		path:   "testdata/mockgrub1.efi.signed.shim",
-		digest: testutil.DecodeHexString(c, "5a03ecd3cc4caf9eabc8d7295772c0b74e2998d1631bbde372acbf2ffad4031a"),
-	})
-}
-
-func (s *bootManagerPolicySuite) TestComputePeImageDigest3(c *C) {
-	s.testComputePeImageDigest(c, &testComputePeImageDigestData{
-		alg:    tpm2.HashAlgorithmSHA1,
-		path:   "testdata/mockshim1.efi.signed.1",
-		digest: testutil.DecodeHexString(c, "2e65c395448b8fcfce99f0421bb396f7a66cc207"),
-	})
-}
-
-func (s *bootManagerPolicySuite) TestComputePeImageDigest4(c *C) {
-	s.testComputePeImageDigest(c, &testComputePeImageDigestData{
-		alg:    tpm2.HashAlgorithmSHA256,
-		path:   "testdata/mockkernel1.efi",
-		digest: testutil.DecodeHexString(c, "d74047a878cab6614ffc3569e6aff636470773c8b73dfb4288c54742e6c85945"),
-	})
-}
-
 type testAddBootManagerProfileData struct {
 	initial *secboot.PCRProtectionProfile
 	params  *BootManagerProfileParams

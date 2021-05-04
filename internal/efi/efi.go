@@ -19,7 +19,13 @@
 
 package efi
 
+import (
+	"github.com/canonical/go-efilib"
+)
+
 var (
 	EventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
 	EFIVarsPath  = "/sys/firmware/efi/efivars"                          // Default mount point for efivarfs
+
+	ReadVar = efi.ReadVar
 )

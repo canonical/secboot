@@ -3,6 +3,22 @@
 	"ignore": "test",
 	"package": [
 		{
+			"checksumSHA1": "X00p/+ydLr07E0YKS15/O6+xdTQ=",
+			"path": "github.com/canonical/go-efilib",
+			"revision": "1eb1ac272815a7f3f97e0e7ab64ab35265287cff",
+			"revisionTime": "2021-05-04T21:04:57Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
+			"checksumSHA1": "32kmrchV6DeWsy/jCE5jg6gYGig=",
+			"path": "github.com/canonical/go-efilib/internal/pe1.14",
+			"revision": "8a92bd81a83437ea5c5ddb86745972cb35cf1d45",
+			"revisionTime": "2021-04-19T17:55:38Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
 			"checksumSHA1": "CT15zzEmXx3dQ7/PJCSwZhqSV/o=",
 			"path": "github.com/canonical/go-sp800.90a-drbg",
 			"revision": "6eeb1040d6c3a6b618a8da5e42ef66b35e7a3ddd",
@@ -27,10 +43,10 @@
 			"revisionTime": "2021-01-29T14:51:58Z"
 		},
 		{
-			"checksumSHA1": "QGwWyf2f/5+FacNj2iKpjp8N5hg=",
+			"checksumSHA1": "Vo1vEvB04O1LzS0eayqx/LIx650=",
 			"path": "github.com/canonical/tcglog-parser",
-			"revision": "12a3a7bcf5a14486e838fea211e8d4aa280e9671",
-			"revisionTime": "2020-09-08T16:50:21Z"
+			"revision": "8c23904174a9d274d2780f00be4701fd6e3d1e56",
+			"revisionTime": "2021-05-04T17:32:17Z"
 		},
 		{
 			"checksumSHA1": "kmcZh6191ZYy/+G/tIWFZoVEkGs=",
