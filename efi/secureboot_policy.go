@@ -65,9 +65,7 @@ const (
 )
 
 var (
-	shimGuid                     = efi.MakeGUID(0x605dab50, 0xe046, 0x4300, 0xabb6, [...]uint8{0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23}) // SHIM_LOCK_GUID
-	efiGlobalVariableGuid        = efi.MakeGUID(0x8be4df61, 0x93ca, 0x11d2, 0xaa0d, [...]uint8{0x00, 0xe0, 0x98, 0x03, 0x2b, 0x8c}) // EFI_GLOBAL_VARIABLE
-	efiImageSecurityDatabaseGuid = efi.MakeGUID(0xd719b2cb, 0x3d3a, 0x4596, 0xa3bc, [...]uint8{0xda, 0xd0, 0x0e, 0x67, 0x65, 0x6f}) // EFI_IMAGE_SECURITY_DATABASE_GUID
+	shimGuid = efi.MakeGUID(0x605dab50, 0xe046, 0x4300, 0xabb6, [...]uint8{0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23}) // SHIM_LOCK_GUID
 
 	oidSha256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 )
@@ -281,17 +279,17 @@ func isSecureBootConfigMeasurementEvent(event *tcglog.Event, guid efi.GUID, name
 
 // isKEKMeasurementEvent determines if event corresponds to the measurement of KEK.
 func isKEKMeasurementEvent(event *tcglog.Event) bool {
-	return isSecureBootConfigMeasurementEvent(event, efiGlobalVariableGuid, kekName)
+	return isSecureBootConfigMeasurementEvent(event, efi.GlobalVariable, kekName)
 }
 
 // isDbMeasurementEvent determines if event corresponds to the measurement of UEFI authorized signature database.
 func isDbMeasurementEvent(event *tcglog.Event) bool {
-	return isSecureBootConfigMeasurementEvent(event, efiImageSecurityDatabaseGuid, dbName)
+	return isSecureBootConfigMeasurementEvent(event, efi.ImageSecurityDatabaseGuid, dbName)
 }
 
 // isDbxMeasurementEvent determines if event corresponds to the measurement of UEFI forbidden signature database.
 func isDbxMeasurementEvent(event *tcglog.Event) bool {
-	return isSecureBootConfigMeasurementEvent(event, efiImageSecurityDatabaseGuid, dbxName)
+	return isSecureBootConfigMeasurementEvent(event, efi.ImageSecurityDatabaseGuid, dbxName)
 }
 
 // isVerificationEvent determines if event corresponds to the verification of a EFI image.
@@ -463,7 +461,7 @@ func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid efi.
 // processKEKMeasurementEvent computes a measurement of KEK with the supplied udates applied and then extends that in to
 // this branch.
 func (b *secureBootPolicyGenBranch) processKEKMeasurementEvent(updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) error {
-	if _, err := b.processSignatureDbMeasurementEvent(efiGlobalVariableGuid, kekName, updates, updateQuirkMode); err != nil {
+	if _, err := b.processSignatureDbMeasurementEvent(efi.GlobalVariable, kekName, updates, updateQuirkMode); err != nil {
 		return err
 	}
 	return nil
@@ -474,7 +472,7 @@ func (b *secureBootPolicyGenBranch) processKEKMeasurementEvent(updates []*secure
 // resulting authorized signature database contents, which is used later on when computing verification events in
 // secureBootPolicyGen.computeAndExtendVerificationMeasurement.
 func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) error {
-	db, err := b.processSignatureDbMeasurementEvent(efiImageSecurityDatabaseGuid, dbName, updates, updateQuirkMode)
+	db, err := b.processSignatureDbMeasurementEvent(efi.ImageSecurityDatabaseGuid, dbName, updates, updateQuirkMode)
 	if err != nil {
 		return err
 	}
@@ -484,7 +482,7 @@ func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(updates []*secureB
 		return xerrors.Errorf("cannot decode DB contents: %w", err)
 	}
 
-	b.dbSet.uefiDb = &secureBootDb{variableName: efiImageSecurityDatabaseGuid, unicodeName: dbName, db: sigDb}
+	b.dbSet.uefiDb = &secureBootDb{variableName: efi.ImageSecurityDatabaseGuid, unicodeName: dbName, db: sigDb}
 
 	return nil
 }
@@ -492,7 +490,7 @@ func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(updates []*secureB
 // processDbxMeasurementEvent computes a measurement of the EFI forbidden signature database with the supplied updates applied and
 // then extends that in to this branch.
 func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) error {
-	if _, err := b.processSignatureDbMeasurementEvent(efiImageSecurityDatabaseGuid, dbxName, updates, updateQuirkMode); err != nil {
+	if _, err := b.processSignatureDbMeasurementEvent(efi.ImageSecurityDatabaseGuid, dbxName, updates, updateQuirkMode); err != nil {
 		return err
 	}
 	return nil
@@ -1050,7 +1048,7 @@ func AddSecureBootPolicyProfile(profile *secboot.PCRProtectionProfile, params *S
 					return fmt.Errorf("%s secure boot policy event has invalid event data: %v", event.EventType, err)
 				}
 				efiVarData := event.Data.(*tcglog.EFIVariableData)
-				if efiVarData.VariableName == efiGlobalVariableGuid && efiVarData.UnicodeName == sbStateName {
+				if efiVarData.VariableName == efi.GlobalVariable && efiVarData.UnicodeName == sbStateName {
 					switch {
 					case event.Index > 0:
 						// The spec says that secure boot policy must be measured again if the system supports changing it before ExitBootServices

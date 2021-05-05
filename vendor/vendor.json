@@ -3,10 +3,10 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "X00p/+ydLr07E0YKS15/O6+xdTQ=",
+			"checksumSHA1": "ouKgjSgU7veXFJ4NZvQz0hVSgR8=",
 			"path": "github.com/canonical/go-efilib",
-			"revision": "1eb1ac272815a7f3f97e0e7ab64ab35265287cff",
-			"revisionTime": "2021-05-04T21:04:57Z",
+			"revision": "06410e2b6936d6c7b088fbb8c4401dddafcb4853",
+			"revisionTime": "2021-05-05T15:45:42Z",
 			"version": "main",
 			"versionExact": "main"
 		},
@@ -27,10 +27,10 @@
 			"versionExact": "main"
 		},
 		{
-			"checksumSHA1": "tGgKAsS+gjNagGebWDzmKz1hggc=",
+			"checksumSHA1": "n9asp92GpBsgIOwbm4itjjzHm3Y=",
 			"path": "github.com/canonical/go-efilib/internal/uefi",
-			"revision": "1eb1ac272815a7f3f97e0e7ab64ab35265287cff",
-			"revisionTime": "2021-05-04T21:04:57Z",
+			"revision": "06410e2b6936d6c7b088fbb8c4401dddafcb4853",
+			"revisionTime": "2021-05-05T15:45:42Z",
 			"version": "main",
 			"versionExact": "main"
 		},
