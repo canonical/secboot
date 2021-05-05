@@ -11,10 +11,26 @@
 			"versionExact": "main"
 		},
 		{
+			"checksumSHA1": "Kk/ZsliKdaq7A/1Glzpq4m5Y5m8=",
+			"path": "github.com/canonical/go-efilib/internal/ioerr",
+			"revision": "1eb1ac272815a7f3f97e0e7ab64ab35265287cff",
+			"revisionTime": "2021-05-04T21:04:57Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
 			"checksumSHA1": "32kmrchV6DeWsy/jCE5jg6gYGig=",
 			"path": "github.com/canonical/go-efilib/internal/pe1.14",
 			"revision": "8a92bd81a83437ea5c5ddb86745972cb35cf1d45",
 			"revisionTime": "2021-04-19T17:55:38Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
+			"checksumSHA1": "tGgKAsS+gjNagGebWDzmKz1hggc=",
+			"path": "github.com/canonical/go-efilib/internal/uefi",
+			"revision": "1eb1ac272815a7f3f97e0e7ab64ab35265287cff",
+			"revisionTime": "2021-05-04T21:04:57Z",
 			"version": "main",
 			"versionExact": "main"
 		},
