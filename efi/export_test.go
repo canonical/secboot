@@ -31,15 +31,15 @@ const (
 
 // Export variables and unexported functions for testing
 var (
-	CertTypePkcs7Guid                  = certTypePkcs7Guid
-	CertX509Guid                       = certX509Guid
-	ComputeDbUpdate                       = computeDbUpdate
-	ComputePeImageDigest                  = computePeImageDigest
-	DecodeSecureBootDb                    = decodeSecureBootDb
-	DecodeWinCertificate                  = decodeWinCertificate
-	ReadShimVendorCert                    = readShimVendorCert
-	WinCertTypePKCSSignedData             = winCertTypePKCSSignedData
-	WinCertTypeEfiGuid                    = winCertTypeEfiGuid
+	CertTypePkcs7Guid         = certTypePkcs7Guid
+	CertX509Guid              = certX509Guid
+	ComputeDbUpdate           = computeDbUpdate
+	ComputePeImageDigest      = computePeImageDigest
+	DecodeSecureBootDb        = decodeSecureBootDb
+	DecodeWinCertificate      = decodeWinCertificate
+	ReadShimVendorCert        = readShimVendorCert
+	WinCertTypePKCSSignedData = winCertTypePKCSSignedData
+	WinCertTypeEfiGuid        = winCertTypeEfiGuid
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access

@@ -17,7 +17,7 @@
  *
  */
 
-package efi
+package efi_test
 
 import (
 	"testing"

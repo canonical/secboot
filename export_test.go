@@ -28,8 +28,8 @@ import (
 
 // Export constants for testing
 const (
-	CurrentMetadataVersion                = currentMetadataVersion
-	LockNVHandle                          = lockNVHandle
+	CurrentMetadataVersion = currentMetadataVersion
+	LockNVHandle           = lockNVHandle
 )
 
 // Export variables and unexported functions for testing
@@ -97,7 +97,6 @@ func (d *StaticPolicyData) SetPcrPolicyCounterHandle(h tpm2.Handle) {
 func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
 	return d.v0PinIndexAuthPolicies
 }
-
 
 // Export some helpers for testing.
 type MockPolicyPCRParam struct {

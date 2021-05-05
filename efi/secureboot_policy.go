@@ -615,8 +615,8 @@ type secureBootPolicyGen struct {
 type secureBootPolicyGenBranch struct {
 	gen *secureBootPolicyGen
 
-	profile     *secboot.PCRProtectionProfile        // The PCR profile containing the instructions for this branch
-	subBranches []*secureBootPolicyGenBranch // Sub-branches, if this has been branched
+	profile     *secboot.PCRProtectionProfile // The PCR profile containing the instructions for this branch
+	subBranches []*secureBootPolicyGenBranch  // Sub-branches, if this has been branched
 
 	dbUpdateLevel              int             // The number of EFI signature database updates applied in this branch
 	dbSet                      secureBootDbSet // The signature database set associated with this branch
