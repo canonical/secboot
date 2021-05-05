@@ -1184,13 +1184,49 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Test with a custom EFI environment, and make sure that the default environment is invalid
+			// so that we can verify that the custom one is used.
+			desc:    "CustomEnv",
+			logPath: "testdata/eventlog3.bin",
+			efivars: "testdata/efivars1",
+			params: SecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*ImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Environment: &mockEFIEnvironment{"testdata/efivars2", "testdata/eventlog1.bin"},
+			},
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: testutil.DecodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
+					},
+				},
+			},
+		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			restoreEventLogPath := testutil.MockEventLogPath(data.logPath)
+			restoreEventLogPath := MockEventLogPath(data.logPath)
 			defer restoreEventLogPath()
-			restoreReadVar := testutil.MockEFIReadVar(data.efivars)
+			restoreReadVar := MockReadVar(data.efivars)
 			defer restoreReadVar()
-			restoreEfivarsPath := testutil.MockEFIVarsPath(data.efivars)
+			restoreEfivarsPath := MockEFIVarsPath(data.efivars)
 			defer restoreEfivarsPath()
 
 			policy := data.initial

@@ -35,7 +35,7 @@
 - eventlog2.bin is an event log from the same QEMU instance but with with secure boot validation disabled in shim
   via MokSBState.
 - eventlog3.bin is from the same QEMU instance as eventlog1.bin, but with secure boot disabled.
-- eventlog4.bin is from a Dell Embedded Box PC 3000.
+- eventlog4.bin is from a Dell Embedded Box PC 3000. This log omits the ready-to-boot signal in PCR 4.
 
 The mock*.efi binaries are just variations of simple "hello world" EFI executables.
 - mockshim.efi.signed.2 is a mock shim executable containing no vendor cert, signed by certs/TestUefiSigning2.key.

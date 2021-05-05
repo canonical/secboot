@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2021 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -20,12 +20,28 @@
 package efi
 
 import (
+	"os"
+
 	"github.com/canonical/go-efilib"
+	"github.com/canonical/tcglog-parser"
 )
 
-var (
-	EventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
-	EFIVarsPath  = "/sys/firmware/efi/efivars"                          // Default mount point for efivarfs
+var readVar = efi.ReadVar
 
-	ReadVar = efi.ReadVar
-)
+type defaultEnvImpl struct{}
+
+func (e defaultEnvImpl) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
+	return readVar(name, guid)
+}
+
+func (e defaultEnvImpl) ReadEventLog() (*tcglog.Log, error) {
+	f, err := os.Open(eventLogPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return tcglog.ParseLog(f, &tcglog.LogOptions{})
+}
+
+var defaultEnv = defaultEnvImpl{}
