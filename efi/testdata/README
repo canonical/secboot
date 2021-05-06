@@ -3,19 +3,23 @@
   - a UEFI signature database from the same machine, containing the 2 Microsoft CAs.
   - a UEFI forbidden signature database from the same machine, with MS-2016-08-08.bin applied.
 - efivars2/ contains:
+  - a PK database containing certs/UbuntuOVMFPK.crt.
   - a KEK database containing certs/UbuntuOVMFKEK.crt, certs/MicrosoftKEK.crt and certs/TestKek.crt.
-  - a UEFI signature database containing certs/MicrosoftPCA.crt, certs/MicrosoftKEK.crt and
+  - a UEFI signature database containing certs/MicrosoftPCA.crt, certs/MicrosoftUefiCA.crt and
     certs/TestUefiCA.crt.
   - a UEFI forbidden signature database with a single SHA-256 signature.
 - efivars3/ contains:
+  - The same PK database from efivars2/.
   - The same KEK database from efivars2/.
   - The same UEFI signature database from efivars2/, but with certs/TestUefiCA2.crt enrolled.
   - The same UEFI forbidden signature database from efivars2/
 - efivars4/ contains:
+  - The same PK database from efivars2/.
   - The same KEK database from efivars2/.
   - The same UEFI signature database from efivars2/
   - The same UEFI signature database from efivars2/, but with updates1/dbx/MS-2016-08-08.bin
 - efivars5/ contains:
+  - The same PK database from efivars2/.
   - The same KEK database from efivars2/.
   - The same UEFI signature database from efivars2/, but with certs/TestUefiCA3.crt enrolled.
   - The same UEFI forbidden signature database from efivars2/
@@ -32,10 +36,15 @@
   - KEK, authorized and forbiddden signature databases from efivars2/.
   - Booted on a classic Ubuntu system with a version of shim authenticated by certs/TestUefiCA.crt, and
     grub and the kernel authenticated by shim's build-in vendor certificate (certs/TestShimVendorCA.crt).
+  It contains a ready-to-boot signal in PCR 4.
 - eventlog2.bin is an event log from the same QEMU instance but with with secure boot validation disabled in shim
   via MokSBState.
 - eventlog3.bin is from the same QEMU instance as eventlog1.bin, but with secure boot disabled.
-- eventlog4.bin is from a Dell Embedded Box PC 3000. This log omits the ready-to-boot signal in PCR 4.
+- eventlog4.bin is from a Dell Embedded Box PC 3000. This log omits the ready-to-boot signal in PCR 4,
+  the ordering of EV_EFI_VARIABLE_AUTHORITY and EV_EFI_BOOT_SERVICES_APPLICATION events are reversed,
+  and the EV_SEPARATOR event is measured to PCR 7 as part of the transition to OS-present instead
+  of before BDS.
+- eventlog5.bin is from a Dell XPS15 7590, and omits the ready-to-boot signal in PCR 4.
 
 The mock*.efi binaries are just variations of simple "hello world" EFI executables.
 - mockshim.efi.signed.2 is a mock shim executable containing no vendor cert, signed by certs/TestUefiSigning2.key.
