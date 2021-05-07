@@ -44,7 +44,7 @@ import (
 )
 
 const (
-	currentMetadataVersion    uint32 = 1
+	currentMetadataVersion    uint32 = 2
 	keyDataHeader             uint32 = 0x55534b24
 	keyPolicyUpdateDataHeader uint32 = 0x55534b50
 )
@@ -247,6 +247,16 @@ type keyDataRaw_v1 struct {
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
 
+// keyDataRaw_v2 is version 2 of the on-disk format of keyDataRaw.
+type keyDataRaw_v2 struct {
+	KeyPrivate        tpm2.Private
+	KeyPublic         *tpm2.Public
+	AuthModeHint      authMode
+	ImportSymSeed	  tpm2.EncryptedSecret
+	StaticPolicyData  *staticPolicyDataRaw_v1
+	DynamicPolicyData *dynamicPolicyDataRaw_v0
+}
+
 // tpmKeyData corresponds to the part of a sealed key object that contains the TPM sealed object and associated metadata required
 // for executing authorization policy assertions.
 // XXX: This is temporarily named tpmKeyData until this code is moved in to secboot/tpm
@@ -255,11 +265,17 @@ type tpmKeyData struct {
 	keyPrivate        tpm2.Private
 	keyPublic         *tpm2.Public
 	authModeHint      authMode
+	importSymSeed	  tpm2.EncryptedSecret
 	staticPolicyData  *staticPolicyData
 	dynamicPolicyData *dynamicPolicyData
 }
 
 func (d tpmKeyData) Marshal(w io.Writer) error {
+	// We can upgrade v1 to v2 automatically
+	if d.version == 1 {
+		d.version = 2
+	}
+
 	if _, err := mu.MarshalToWriter(w, d.version); err != nil {
 		return xerrors.Errorf("cannot marshal version number: %w", err)
 	}
@@ -275,12 +291,13 @@ func (d tpmKeyData) Marshal(w io.Writer) error {
 		if _, err := mu.MarshalToWriter(w, raw); err != nil {
 			return xerrors.Errorf("cannot marshal raw data: %w", err)
 		}
-	case 1:
+	case 2:
 		var tmpW bytes.Buffer
-		raw := keyDataRaw_v1{
+		raw := keyDataRaw_v2{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
 			AuthModeHint:      d.authModeHint,
+			ImportSymSeed:	   d.importSymSeed,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
 		if _, err := mu.MarshalToWriter(&tmpW, raw); err != nil {
@@ -338,6 +355,29 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
 			authModeHint:      raw.AuthModeHint,
+			staticPolicyData:  raw.StaticPolicyData.data(),
+			dynamicPolicyData: raw.DynamicPolicyData.data()}
+	case 2:
+		var splitData afSplitDataRaw
+		if _, err := mu.UnmarshalFromReader(r, &splitData); err != nil {
+			return xerrors.Errorf("cannot unmarshal split data: %w", err)
+		}
+
+		merged, err := splitData.data().merge()
+		if err != nil {
+			return xerrors.Errorf("cannot merge data: %w", err)
+		}
+
+		var raw keyDataRaw_v2
+		if _, err := mu.UnmarshalFromBytes(merged, &raw); err != nil {
+			return xerrors.Errorf("cannot unmarshal data: %w", err)
+		}
+		*d = tpmKeyData{
+			version:           version,
+			keyPrivate:        raw.KeyPrivate,
+			keyPublic:         raw.KeyPublic,
+			authModeHint:      raw.AuthModeHint,
+			importSymSeed:	   raw.ImportSymSeed,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	default:
