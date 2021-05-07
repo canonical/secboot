@@ -20,14 +20,11 @@
 package efi
 
 import (
-	"bytes"
 	"errors"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot"
-
-	"golang.org/x/xerrors"
 )
 
 // SystemdStubProfileParams provides the parameters to AddSystemdStubProfile.
@@ -61,16 +58,8 @@ func AddSystemdStubProfile(profile *secboot.PCRProtectionProfile, params *System
 
 	var subProfiles []*secboot.PCRProtectionProfile
 	for _, cmdline := range params.KernelCmdlines {
-		event := tcglog.SystemdEFIStubEventData{Str: cmdline}
-		var buf bytes.Buffer
-		if err := event.EncodeMeasuredBytes(&buf); err != nil {
-			return xerrors.Errorf("cannot encode kernel commandline event: %w", err)
-		}
-
-		h := params.PCRAlgorithm.NewHash()
-		buf.WriteTo(h)
-
-		subProfiles = append(subProfiles, secboot.NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil)))
+		digest := tcglog.ComputeSystemdEFIStubCommandlineDigest(params.PCRAlgorithm.GetHash(), cmdline)
+		subProfiles = append(subProfiles, secboot.NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, digest))
 	}
 
 	profile.AddProfileOR(subProfiles...)

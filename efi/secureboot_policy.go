@@ -59,8 +59,6 @@ const (
 
 	secureBootPCR = 7 // Secure Boot Policy Measurements PCR
 
-	returningFromEfiApplicationEvent = "Returning from EFI Application from Boot Option" // EV_EFI_ACTION index 2: "Attempt to execute code from Boot Option was unsuccessful"
-
 	sbKeySyncExe = "sbkeysync"
 )
 
@@ -417,17 +415,8 @@ func (b *secureBootPolicyGenBranch) extendFirmwareVerificationMeasurement(digest
 
 // omputeAndExtendVariableMeasurement computes a EFI variable measurement from the supplied arguments and extends that to
 // this branch.
-func (b *secureBootPolicyGenBranch) computeAndExtendVariableMeasurement(varName efi.GUID, unicodeName string, varData []byte) error {
-	data := tcglog.EFIVariableData{
-		VariableName: varName,
-		UnicodeName:  unicodeName,
-		VariableData: varData}
-	h := b.gen.pcrAlgorithm.NewHash()
-	if err := data.EncodeMeasuredBytes(h); err != nil {
-		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
-	}
-	b.extendMeasurement(h.Sum(nil))
-	return nil
+func (b *secureBootPolicyGenBranch) computeAndExtendVariableMeasurement(varName efi.GUID, unicodeName string, varData []byte) {
+	b.extendMeasurement(tcglog.ComputeEFIVariableDataDigest(b.gen.pcrAlgorithm.GetHash(), unicodeName, varName, varData))
 }
 
 // processSignatureDbMeasurementEvent computes a EFI signature database measurement for the specified database and with the supplied
@@ -451,10 +440,7 @@ func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid efi.
 		}
 	}
 
-	if err := b.computeAndExtendVariableMeasurement(guid, name, db); err != nil {
-		return nil, xerrors.Errorf("cannot compute and extend measurement: %w", err)
-	}
-
+	b.computeAndExtendVariableMeasurement(guid, name, db)
 	return db, nil
 }
 
@@ -666,15 +652,11 @@ Outer:
 	}
 
 	// Create event data, compute digest and perform extension for verification of this executable
-	eventData := tcglog.EFIVariableData{
-		VariableName: authority.source.variableName,
-		UnicodeName:  authority.source.unicodeName,
-		VariableData: varData.Bytes()}
-	h := b.gen.pcrAlgorithm.NewHash()
-	if err := eventData.EncodeMeasuredBytes(h); err != nil {
-		return xerrors.Errorf("cannot encode EFI_VARIABLE_DATA: %w", err)
-	}
-	digest := h.Sum(nil)
+	digest := tcglog.ComputeEFIVariableDataDigest(
+		b.gen.pcrAlgorithm.GetHash(),
+		authority.source.unicodeName,
+		authority.source.variableName,
+		varData.Bytes())
 
 	// Don't measure events that have already been measured
 	if b.hasVerificationEventBeenMeasuredBy(digest, source) {
@@ -1033,10 +1015,11 @@ func AddSecureBootPolicyProfile(profile *secboot.PCRProtectionProfile, params *S
 	}
 
 	// Make sure that the current boot is sane.
+	seenSecureBootConfig := false
 	for _, event := range log.Events {
 		switch event.PCRIndex {
 		case bootManagerCodePCR:
-			if event.EventType == tcglog.EventTypeEFIAction && event.Data.String() == returningFromEfiApplicationEvent {
+			if event.EventType == tcglog.EventTypeEFIAction && event.Data == tcglog.EFIReturningFromEFIApplicationEvent {
 				// Firmware should record this event if an EFI application returns to the boot manager. Bail out if this happened because the policy might not make sense.
 				return errors.New("cannot compute secure boot policy profile: the current boot was preceeded by a boot attempt to an EFI " +
 					"application that returned to the boot manager, without a reboot in between")
@@ -1050,7 +1033,7 @@ func AddSecureBootPolicyProfile(profile *secboot.PCRProtectionProfile, params *S
 				efiVarData := event.Data.(*tcglog.EFIVariableData)
 				if efiVarData.VariableName == efi.GlobalVariable && efiVarData.UnicodeName == sbStateName {
 					switch {
-					case event.Index > 0:
+					case seenSecureBootConfig:
 						// The spec says that secure boot policy must be measured again if the system supports changing it before ExitBootServices
 						// without a reboot. But the policy we create won't make sense, so bail out
 						return errors.New("cannot compute secure boot policy profile: secure boot configuration was modified after the initial " +
@@ -1058,6 +1041,7 @@ func AddSecureBootPolicyProfile(profile *secboot.PCRProtectionProfile, params *S
 					case efiVarData.VariableData[0] == 0x00:
 						return errors.New("cannot compute secure boot policy profile: the current boot was performed with secure boot disabled in firmware")
 					}
+					seenSecureBootConfig = true
 				}
 			case tcglog.EventTypeEFIVariableAuthority:
 				if err, isErr := event.Data.(error); isErr {
