@@ -189,10 +189,7 @@ func run() int {
 	}
 
 	keyFile := filepath.Join(outputDir, "key")
-	pudFile := filepath.Join(outputDir, "pud")
-	for _, f := range []string{keyFile, pudFile} {
-		os.Remove(f)
-	}
+	os.Remove(keyFile)
 
 	authKey, err := secboot.SealKeyToTPM(tpm, key, keyFile, &params)
 	if err != nil {
