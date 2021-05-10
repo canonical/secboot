@@ -252,7 +252,7 @@ type keyDataRaw_v2 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
 	AuthModeHint      authMode
-	ImportSymSeed	  tpm2.EncryptedSecret
+	ImportSymSeed     tpm2.EncryptedSecret
 	StaticPolicyData  *staticPolicyDataRaw_v1
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
@@ -265,7 +265,7 @@ type tpmKeyData struct {
 	keyPrivate        tpm2.Private
 	keyPublic         *tpm2.Public
 	authModeHint      authMode
-	importSymSeed	  tpm2.EncryptedSecret
+	importSymSeed     tpm2.EncryptedSecret
 	staticPolicyData  *staticPolicyData
 	dynamicPolicyData *dynamicPolicyData
 }
@@ -297,7 +297,7 @@ func (d tpmKeyData) Marshal(w io.Writer) error {
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
 			AuthModeHint:      d.authModeHint,
-			ImportSymSeed:	   d.importSymSeed,
+			ImportSymSeed:     d.importSymSeed,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
 		if _, err := mu.MarshalToWriter(&tmpW, raw); err != nil {
@@ -377,7 +377,7 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
 			authModeHint:      raw.AuthModeHint,
-			importSymSeed:	   raw.ImportSymSeed,
+			importSymSeed:     raw.ImportSymSeed,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	default:
@@ -386,9 +386,37 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 	return nil
 }
 
+func (d *tpmKeyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+	if len(d.importSymSeed) == 0 {
+		return nil
+	}
+
+	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+	if err != nil {
+		return xerrors.Errorf("cannot create context for SRK: %w", err)
+	}
+
+	priv, err := tpm.Import(srkContext, nil, d.keyPublic, d.keyPrivate, d.importSymSeed, nil, session)
+	if err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandImport, tpm2.AnyParameterIndex) {
+			return keyFileError{errors.New("cannot import sealed key object in to TPM: bad sealed key object, invalid symmetric seed, TPM owner changed or wrong TPM")}
+		}
+		return xerrors.Errorf("cannot import sealed key object in to TPM: %w", err)
+	}
+
+	d.keyPrivate = priv
+	d.importSymSeed = nil
+
+	return nil
+}
+
 // load loads the TPM sealed object associated with this tpmKeyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
 func (d *tpmKeyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+	if err := d.ensureImported(tpm, session); err != nil {
+		return nil, err
+	}
+
 	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
@@ -419,7 +447,7 @@ func (d *tpmKeyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, s
 		return nil, keyFileError{errors.New("invalid metadata version")}
 	}
 
-	sealedKeyTemplate := makeSealedKeyTemplate()
+	sealedKeyTemplate := makeImportableSealedKeyTemplate()
 
 	keyPublic := d.keyPublic
 
@@ -427,7 +455,7 @@ func (d *tpmKeyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, s
 	if keyPublic.Type != sealedKeyTemplate.Type {
 		return nil, keyFileError{errors.New("sealed key object has the wrong type")}
 	}
-	if keyPublic.Attrs != sealedKeyTemplate.Attrs {
+	if keyPublic.Attrs&^(tpm2.AttrFixedTPM|tpm2.AttrFixedParent) != sealedKeyTemplate.Attrs {
 		return nil, keyFileError{errors.New("sealed key object has the wrong attributes")}
 	}
 
