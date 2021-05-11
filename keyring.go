@@ -46,7 +46,7 @@ func keyringPrefixOrDefault(prefix string) string {
 
 // GetDiskUnlockKeyFromKernel retrieves the key that was used to unlock the
 // encrypted container at the specified path. The value of prefix must match
-// the prefix that was supplied via ActivateOptions during unlocking.
+// the prefix that was supplied via ActivateVolumeOptions during unlocking.
 //
 // If remove is true, the key will be removed from the kernel keyring prior
 // to returning.
@@ -74,8 +74,8 @@ func GetDiskUnlockKeyFromKernel(prefix, devicePath string, remove bool) (DiskUnl
 
 // GetAuxiliaryKeyFromKernel retrieves the auxiliary key associated with the
 // KeyData that was used to unlock the encrypted container at the specified path.
-// The value of prefix must match the prefix that was supplied via ActivateOptions
-// during unlocking.
+// The value of prefix must match the prefix that was supplied via
+// ActivateVolumeOptions during unlocking.
 //
 // If remove is true, the key will be removed from the kernel keyring prior
 // to returning.

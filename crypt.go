@@ -144,14 +144,14 @@ func mkFifo() (string, func(), error) {
 	return fifo, cleanup, nil
 }
 
-func activate(volumeName, sourceDevicePath string, key []byte, options []string) error {
+func activate(volumeName, sourceDevicePath string, key []byte) error {
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
 		return xerrors.Errorf("cannot create FIFO for passing key to systemd-cryptsetup: %w", err)
 	}
 	defer cleanupFifo()
 
-	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, fifoPath, strings.Join(options, ","))
+	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, fifoPath, "tries=1")
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
 	stdout, err := cmd.StdoutPipe()
@@ -286,7 +286,6 @@ type keyDataAndError struct {
 type activateWithKeyDataState struct {
 	volumeName       string
 	sourceDevicePath string
-	activateOptions  []string
 	keyringPrefix    string
 
 	keys []*keyDataAndError
@@ -310,7 +309,7 @@ func (s *activateWithKeyDataState) snapModelChecker() *snapModelCheckerImpl {
 }
 
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(keyData *KeyData, key DiskUnlockKey, auxKey AuxiliaryKey) error {
-	if err := activate(s.volumeName, s.sourceDevicePath, key, s.activateOptions); err != nil {
+	if err := activate(s.volumeName, s.sourceDevicePath, key); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 
@@ -358,11 +357,10 @@ func (s *activateWithKeyDataState) run() (success bool) {
 	return false
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, activateOptions []string, keyringPrefix string, keys []*KeyData) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*KeyData) *activateWithKeyDataState {
 	s := &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
-		activateOptions:  activateOptions,
 		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix)}
 	for _, k := range keys {
 		s.keys = append(s.keys, &keyDataAndError{KeyData: k})
@@ -370,7 +368,7 @@ func newActivateWithKeyDataState(volumeName, sourceDevicePath string, activateOp
 	return s
 }
 
-func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, activateOptions []string, keyringPrefix string) error {
+func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, keyringPrefix string) error {
 	if tries == 0 {
 		return errors.New("no recovery key tries permitted")
 	}
@@ -394,7 +392,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		if err := activate(volumeName, sourceDevicePath, key[:], activateOptions); err != nil {
+		if err := activate(volumeName, sourceDevicePath, key[:]); err != nil {
 			err = xerrors.Errorf("cannot activate volume: %w", err)
 			var e *exec.ExitError
 			if !xerrors.As(err, &e) {
@@ -412,17 +410,6 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 	}
 
 	return lastErr
-}
-
-func makeActivateOptions(in []string) ([]string, error) {
-	var out []string
-	for _, o := range in {
-		if strings.HasPrefix(o, "tries=") {
-			return nil, errors.New("cannot specify the \"tries=\" option for systemd-cryptsetup")
-		}
-		out = append(out, o)
-	}
-	return append(out, "tries=1"), nil
 }
 
 // ActivateVolumeOptions provides options to the ActivateVolumeWith*
@@ -450,10 +437,6 @@ type ActivateVolumeOptions struct {
 	// failed TPM unsealing.  Setting this to zero will disable
 	// attempts to activate with the fallback recovery key.
 	RecoveryKeyTries int
-
-	// ActivateOptions provides a mechanism to pass additional
-	// options to systemd-cryptsetup.
-	ActivateOptions []string
 
 	// KeyringPrefix is the prefix used for the description of any
 	// kernel keys created during activation.
@@ -485,8 +468,6 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // mapping with the name volumeName, using the supplied KeyData objects to recover the disk unlock key from the
 // platform's secure device. This makes use of systemd-cryptsetup.
 //
-// The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
-//
 // If activation with the supplied KeyData objects fails, this function will attempt to activate it with the fallback
 // recovery key instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries
 // field of options specifies how many attempts should be made to activate the volume with the recovery key before
@@ -494,8 +475,6 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // recovery key.
 //
 // If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
-// If the ActivateOptions field of options contains the "tries=" option, then an error will be returned. This option
-// cannot be used with this function.
 //
 // If activation with one of the supplied KeyData objects succeeds, a SnapModelChecker will be returned so that the
 // caller can check whether a particular Snap device model has previously been authorized to access the data on this
@@ -514,17 +493,12 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 		return nil, errors.New("invalid RecoveryKeyTries")
 	}
 
-	activateOptions, err := makeActivateOptions(options.ActivateOptions)
-	if err != nil {
-		return nil, err
-	}
-
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, activateOptions, options.KeyringPrefix, keys)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, keys)
 	switch s.run() {
 	case true: // success!
 		return s.snapModelChecker(), nil
 	default: // failed - try recovery key
-		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, activateOptions, options.KeyringPrefix); rErr != nil {
+		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, options.KeyringPrefix); rErr != nil {
 			// failed with recovery key - return errors
 			var kdErrs []error
 			for _, e := range s.errors() {
@@ -541,16 +515,12 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 // mapping with the name volumeName, using the supplied KeyData to recover the disk unlock key from the platform's
 // secure device. This makes use of systemd-cryptsetup.
 //
-// The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
-//
 // If activation with the supplied KeyData fails, this function will attempt to activate it with the fallback recovery
 // key instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of
 // options specifies how many attempts should be made to activate the volume with the recovery key before failing.
 // If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback recovery key.
 //
 // If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
-// If the ActivateOptions field of options contains the "tries=" option, then an error will be returned. This option
-// cannot be used with this function.
 //
 // If activation with the supplied KeyData succeeds, a SnapModelChecker will be returned so that the caller can check
 // whether a particular Snap device model has previously been authorized to access the data on this volume. If the
@@ -569,41 +539,20 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData
 // from this will be made instead by reading all characters until the first newline. The RecoveryKeyTries field of options defines how many
 // attempts should be made to activate the volume with the recovery key before failing.
 //
-// The ActivateOptions field of options can be used to specify additional options to pass to systemd-cryptsetup.
-//
-// If the RecoveryKeyTries field of options is less than zero, an error will be returned. If the ActivateOptions field of options contains the
-// "tries=" option, then an error will be returned. This option cannot be used with this function.
+// If the RecoveryKeyTries field of options is less than zero, an error will be returned.
 func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, options *ActivateVolumeOptions) error {
 	if options.RecoveryKeyTries < 0 {
 		return errors.New("invalid RecoveryKeyTries")
 	}
 
-	activateOptions, err := makeActivateOptions(options.ActivateOptions)
-	if err != nil {
-		return err
-	}
-
-	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.RecoveryKeyTries, activateOptions, options.KeyringPrefix)
+	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.RecoveryKeyTries, options.KeyringPrefix)
 }
 
 // ActivateVolumeWithKey attempts to activate the LUKS encrypted volume at
 // sourceDevicePath and create a mapping with the name volumeName, using the
 // provided key. This makes use of systemd-cryptsetup.
-//
-// The ActivateOptions field of options can be used to specify additional
-// options to pass to systemd-cryptsetup. All other fields are ignored.
-//
-// If the ActivateOptions field of options contains the "tries=" option, then an
-// error will be returned. This option cannot be used with this function.
 func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, options *ActivateVolumeOptions) error {
-	// do not be more strict about checking options to allow reusing it
-	// across different calls
-	activateOptions, err := makeActivateOptions(options.ActivateOptions)
-	if err != nil {
-		return err
-	}
-
-	return activate(volumeName, sourceDevicePath, key, activateOptions)
+	return activate(volumeName, sourceDevicePath, key)
 }
 
 // DeactivateVolume attempts to deactivate the LUKS encrypted volumeName.
