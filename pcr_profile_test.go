@@ -340,7 +340,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 			if !reflect.DeepEqual(pcrDigests, expectedDigests) {
 				t.Errorf("ComputePCRDigests returned unexpected digests")
 				t.Logf("Profile:\n%s", data.profile)
-				t.Logf("Values:\n%s", data.profile.DumpValues(nil))
+				t.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(data.profile, nil))
 			}
 		})
 	}

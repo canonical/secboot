@@ -17,7 +17,7 @@
  *
  */
 
-package secboot_test
+package efi_test
 
 import (
 	"bytes"
@@ -35,7 +35,8 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot"
+	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
@@ -52,7 +53,7 @@ func TestDecodeWinCertificate(t *testing.T) {
 			path:            "testdata/updates1/dbx/MS-2016-08-08.bin",
 			offset:          16,
 			expectedType:    WinCertTypeEfiGuid,
-			efiGuidCertType: EFICertTypePkcs7Guid,
+			efiGuidCertType: CertTypePkcs7Guid,
 		},
 		// TODO: Add test with signed EFI executable
 	} {
@@ -101,7 +102,7 @@ func TestReadShimVendorCert(t *testing.T) {
 		{
 			desc:     "WithVendorCert",
 			path:     "testdata/mockshim1.efi.signed.2",
-			certHash: decodeHexStringT(t, "9fc46ec43288967b862a5c12f13142325a6357746dd8195392fe1bf167e8b7ed"),
+			certHash: testutil.DecodeHexStringT(t, "9fc46ec43288967b862a5c12f13142325a6357746dd8195392fe1bf167e8b7ed"),
 		},
 		{
 			desc: "NoVendorCert",
@@ -152,11 +153,11 @@ func TestDecodeSecureBootDb(t *testing.T) {
 
 		microsoftRootCAName = "CN=Microsoft Root Certificate Authority 2010,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
 		microsoftPCASubject = "CN=Microsoft Windows Production PCA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
-		microsoftPCASerial  = decodeHexStringT(t, "61077656000000000008")
+		microsoftPCASerial  = testutil.DecodeHexStringT(t, "61077656000000000008")
 
 		microsoftThirdPartyRootCAName = "CN=Microsoft Corporation Third Party Marketplace Root,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
 		microsoftCASubject            = "CN=Microsoft Corporation UEFI CA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
-		microsoftCASerial             = decodeHexStringT(t, "6108d3c4000000000004")
+		microsoftCASerial             = testutil.DecodeHexStringT(t, "6108d3c4000000000004")
 
 		testOwnerGuid = tcglog.MakeEFIGUID(0xd1b37b32, 0x172d, 0x4d2a, 0x909f, [...]uint8{0xc7, 0x80, 0x81, 0x50, 0x17, 0x86})
 	)
@@ -211,7 +212,7 @@ func TestDecodeSecureBootDb(t *testing.T) {
 				{
 					issuer:  "CN=Test Key Exchange Key",
 					subject: "CN=Test UEFI CA",
-					serial:  decodeHexStringT(t, "01"),
+					serial:  testutil.DecodeHexStringT(t, "01"),
 					owner:   testOwnerGuid,
 				},
 			},
@@ -236,13 +237,13 @@ func TestDecodeSecureBootDb(t *testing.T) {
 				{
 					issuer:  "CN=Test Key Exchange Key",
 					subject: "CN=Test UEFI CA",
-					serial:  decodeHexStringT(t, "01"),
+					serial:  testutil.DecodeHexStringT(t, "01"),
 					owner:   testOwnerGuid,
 				},
 				{
 					issuer:  "CN=Test Key Exchange Key",
 					subject: "CN=Test UEFI CA 2",
-					serial:  decodeHexStringT(t, "02"),
+					serial:  testutil.DecodeHexStringT(t, "02"),
 					owner:   testOwnerGuid,
 				},
 			},
@@ -255,7 +256,7 @@ func TestDecodeSecureBootDb(t *testing.T) {
 				{
 					issuer:  microsoftRootCAName,
 					subject: "CN=Microsoft Windows PCA 2010,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US",
-					serial:  decodeHexStringT(t, "610c6a19000000000004"),
+					serial:  testutil.DecodeHexStringT(t, "610c6a19000000000004"),
 					owner:   tcglog.MakeEFIGUID(0x00000000, 0x0000, 0x0000, 0x0000, [...]uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}),
 				},
 			},
@@ -282,7 +283,7 @@ func TestDecodeSecureBootDb(t *testing.T) {
 			}
 			i := 0
 			for _, sig := range signatures {
-				if sig.SignatureType() != EFICertX509Guid {
+				if sig.SignatureType() != CertX509Guid {
 					continue
 				}
 
@@ -323,7 +324,7 @@ func TestComputeDbUpdate(t *testing.T) {
 			orig:          "testdata/efivars3/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates2/db/1.bin",
 			quirkMode:     SigDbUpdateQuirkModeNone,
-			sha1hash:      decodeHexStringT(t, "12669d032dd0c15a157a7af0df7b86f2e174344b"),
+			sha1hash:      testutil.DecodeHexStringT(t, "12669d032dd0c15a157a7af0df7b86f2e174344b"),
 			newSignatures: 1,
 		},
 		{
@@ -331,14 +332,14 @@ func TestComputeDbUpdate(t *testing.T) {
 			orig:      "testdata/efivars5/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:    "testdata/updates2/db/1.bin",
 			quirkMode: SigDbUpdateQuirkModeNone,
-			sha1hash:  decodeHexStringT(t, "12669d032dd0c15a157a7af0df7b86f2e174344b"),
+			sha1hash:  testutil.DecodeHexStringT(t, "12669d032dd0c15a157a7af0df7b86f2e174344b"),
 		},
 		{
 			desc:          "AppendMsDbxUpdate/1",
 			orig:          "testdata/efivars2/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates1/dbx/MS-2016-08-08.bin",
 			quirkMode:     SigDbUpdateQuirkModeNone,
-			sha1hash:      decodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
+			sha1hash:      testutil.DecodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
 			newSignatures: 77,
 		},
 		{
@@ -346,7 +347,7 @@ func TestComputeDbUpdate(t *testing.T) {
 			orig:          "testdata/efivars2/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates1/dbx/MS-2016-08-08.bin",
 			quirkMode:     SigDbUpdateQuirkModeDedupIgnoresOwner,
-			sha1hash:      decodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
+			sha1hash:      testutil.DecodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
 			newSignatures: 77,
 		},
 		{
@@ -354,7 +355,7 @@ func TestComputeDbUpdate(t *testing.T) {
 			orig:          "testdata/efivars4/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates3/dbx/1.bin",
 			quirkMode:     SigDbUpdateQuirkModeNone,
-			sha1hash:      decodeHexStringT(t, "b49564b2daee39b01b524bef75cf9cde2c3a2a0d"),
+			sha1hash:      testutil.DecodeHexStringT(t, "b49564b2daee39b01b524bef75cf9cde2c3a2a0d"),
 			newSignatures: 2,
 		},
 		{
@@ -362,7 +363,7 @@ func TestComputeDbUpdate(t *testing.T) {
 			orig:          "testdata/efivars4/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
 			update:        "testdata/updates3/dbx/1.bin",
 			quirkMode:     SigDbUpdateQuirkModeDedupIgnoresOwner,
-			sha1hash:      decodeHexStringT(t, "d2af590925046adc61b250a71f00b7b38d0eb3d1"),
+			sha1hash:      testutil.DecodeHexStringT(t, "d2af590925046adc61b250a71f00b7b38d0eb3d1"),
 			newSignatures: 1,
 		},
 	} {
@@ -429,7 +430,7 @@ func TestComputeDbUpdate(t *testing.T) {
 	}
 }
 
-func TestAddEFISecureBootPolicyProfile(t *testing.T) {
+func TestAddSecureBootPolicyProfile(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
 		t.SkipNow()
 	}
@@ -438,8 +439,8 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 		desc    string
 		logPath string
 		efivars string
-		initial *PCRProtectionProfile
-		params  EFISecureBootPolicyProfileParams
+		initial *secboot.PCRProtectionProfile
+		params  SecureBootPolicyProfileParams
 		values  []tpm2.PCRValues
 		err     string
 	}{
@@ -448,20 +449,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "Classic",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 								},
 							},
@@ -472,7 +473,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
+						7: testutil.DecodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
 					},
 				},
 			},
@@ -483,28 +484,28 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "UC20AuthenticateWithDb",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars3",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.2"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.2"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 											},
 										},
 									},
@@ -517,7 +518,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
+						7: testutil.DecodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
 					},
 				},
 			},
@@ -527,20 +528,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "InvalidGrubSignature",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 								},
 							},
@@ -555,20 +556,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "NoKernelSignature",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi"),
+										Image:  FileImage("testdata/mockkernel1.efi"),
 									},
 								},
 							},
@@ -584,20 +585,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "ShimVerificationDisabled",
 			logPath: "testdata/eventlog2.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 								},
 							},
@@ -613,28 +614,28 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "UC20AuthenticateGrubAndKernelWithShim",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 											},
 										},
 									},
@@ -647,7 +648,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
+						7: testutil.DecodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
 					},
 				},
 			},
@@ -658,20 +659,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "AuthenticateUsingDbBeforeShim",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars3",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim2.efi.signed.2"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim2.efi.signed.2"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 								},
 							},
@@ -682,7 +683,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
+						7: testutil.DecodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
 					},
 				},
 			},
@@ -694,36 +695,36 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "KernelCARotationUC20",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars5",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.3"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.3"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.3"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.3"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.3"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.3"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.3"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.3"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 											},
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.3"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.3"),
 											},
 										},
 									},
@@ -736,12 +737,12 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "638018bd7b8cc0ee760bc245a1626518969abcb18fa1fac5e4d6b516089e4273"),
+						7: testutil.DecodeHexStringT(t, "638018bd7b8cc0ee760bc245a1626518969abcb18fa1fac5e4d6b516089e4273"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "700ae6c5f01993a7d0e7d1a27de62f4907714cb1ca5f3b331b17c98c16cad7ca"),
+						7: testutil.DecodeHexStringT(t, "700ae6c5f01993a7d0e7d1a27de62f4907714cb1ca5f3b331b17c98c16cad7ca"),
 					},
 				},
 			},
@@ -754,28 +755,28 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "ShimCARotationUC20",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars5",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.2"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.2"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 											},
 										},
 									},
@@ -785,23 +786,23 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 					},
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.3"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.3"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 											},
 										},
 									},
@@ -814,12 +815,12 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "b2c71674ff57f4dbb8c565367e7b2c81b33df2fe3d1e1267301e532dc0bff244"),
+						7: testutil.DecodeHexStringT(t, "b2c71674ff57f4dbb8c565367e7b2c81b33df2fe3d1e1267301e532dc0bff244"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "a4d24afe50e018e28a7e7d95013346036514ec829ec7b6f775077733fd8c8a3f"),
+						7: testutil.DecodeHexStringT(t, "a4d24afe50e018e28a7e7d95013346036514ec829ec7b6f775077733fd8c8a3f"),
 					},
 				},
 			},
@@ -829,16 +830,16 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "MissingShimVendorCertSection",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars3",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+								Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 							},
 						},
 					},
@@ -852,20 +853,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "NoShimVendorCert",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars3",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim.efi.signed.2"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim.efi.signed.2"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 								},
 							},
@@ -876,7 +877,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
+						7: testutil.DecodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
 					},
 				},
 			},
@@ -887,28 +888,28 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "MismatchedNormalAndRecoverySystemsUC20",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars5",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.2"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.2"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.3"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.3"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.3"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.3"),
 											},
 										},
 									},
@@ -921,12 +922,12 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "b2c71674ff57f4dbb8c565367e7b2c81b33df2fe3d1e1267301e532dc0bff244"),
+						7: testutil.DecodeHexStringT(t, "b2c71674ff57f4dbb8c565367e7b2c81b33df2fe3d1e1267301e532dc0bff244"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "2474f28ed67b5ba81d5cba8d32c309d936c836226dc7f3627c497d87043e6f32"),
+						7: testutil.DecodeHexStringT(t, "2474f28ed67b5ba81d5cba8d32c309d936c836226dc7f3627c497d87043e6f32"),
 					},
 				},
 			},
@@ -936,20 +937,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "DbxUpdate/1",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 								},
 							},
@@ -961,12 +962,12 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
+						7: testutil.DecodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "3adb2087747261c43a096cb63ce49d60548029c9e848e8db37f2613a1d39b9e3"),
+						7: testutil.DecodeHexStringT(t, "3adb2087747261c43a096cb63ce49d60548029c9e848e8db37f2613a1d39b9e3"),
 					},
 				},
 			},
@@ -978,20 +979,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "DbxUpdate/2",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars4",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 								},
 							},
@@ -1003,17 +1004,17 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "3adb2087747261c43a096cb63ce49d60548029c9e848e8db37f2613a1d39b9e3"),
+						7: testutil.DecodeHexStringT(t, "3adb2087747261c43a096cb63ce49d60548029c9e848e8db37f2613a1d39b9e3"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "486bbbead76727ca5c634105f6f5d233c8320fa5565b053e34677bf263a684c4"),
+						7: testutil.DecodeHexStringT(t, "486bbbead76727ca5c634105f6f5d233c8320fa5565b053e34677bf263a684c4"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "6afe6128b8fa5826736c27c7510d7e576ace53e98abc9e0638dde94e5ec1ecde"),
+						7: testutil.DecodeHexStringT(t, "6afe6128b8fa5826736c27c7510d7e576ace53e98abc9e0638dde94e5ec1ecde"),
 					},
 				},
 			},
@@ -1025,20 +1026,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "DbAndDbxUpdate",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 								},
 							},
@@ -1050,17 +1051,17 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
+						7: testutil.DecodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "3adb2087747261c43a096cb63ce49d60548029c9e848e8db37f2613a1d39b9e3"),
+						7: testutil.DecodeHexStringT(t, "3adb2087747261c43a096cb63ce49d60548029c9e848e8db37f2613a1d39b9e3"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "774dc0533ccc3906bd75aed7539f264271dce7263a67fba757f55a89b4feb058"),
+						7: testutil.DecodeHexStringT(t, "774dc0533ccc3906bd75aed7539f264271dce7263a67fba757f55a89b4feb058"),
 					},
 				},
 			},
@@ -1073,36 +1074,36 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "DbUpdateAndKernelCARotationUC20",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars3",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.2"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.2"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.3"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.3"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 											},
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.3"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.3"),
 											},
 										},
 									},
@@ -1116,17 +1117,17 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
+						7: testutil.DecodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "b2c71674ff57f4dbb8c565367e7b2c81b33df2fe3d1e1267301e532dc0bff244"),
+						7: testutil.DecodeHexStringT(t, "b2c71674ff57f4dbb8c565367e7b2c81b33df2fe3d1e1267301e532dc0bff244"),
 					},
 				},
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "2474f28ed67b5ba81d5cba8d32c309d936c836226dc7f3627c497d87043e6f32"),
+						7: testutil.DecodeHexStringT(t, "2474f28ed67b5ba81d5cba8d32c309d936c836226dc7f3627c497d87043e6f32"),
 					},
 				},
 			},
@@ -1137,28 +1138,28 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "DbUpdateWithNoInitialBootablePaths",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.3"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.3"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.3"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.3"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.3"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.3"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.3"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.3"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.3"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.3"),
 											},
 										},
 									},
@@ -1172,29 +1173,29 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			err: "cannot compute secure boot policy profile: no bootable paths with current EFI signature database",
 		},
 		{
-			// Test with an initial PCRProtectionProfile to verify that it behaves correctly
+			// Test with an initial secboot.PCRProtectionProfile to verify that it behaves correctly
 			desc:    "WithInitialProfile",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			initial: func() *PCRProtectionProfile {
-				return NewPCRProtectionProfile().
+			initial: func() *secboot.PCRProtectionProfile {
+				return secboot.NewPCRProtectionProfile().
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 			}(),
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 								},
 							},
@@ -1205,8 +1206,8 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
-						8: decodeHexStringT(t, "a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"),
+						7: testutil.DecodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
+						8: testutil.DecodeHexStringT(t, "a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"),
 					},
 				},
 			},
@@ -1215,28 +1216,28 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "VerifyWithDualSignedShim_1",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim2.efi.signed.21"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim2.efi.signed.21"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 											},
 										},
 									},
@@ -1249,7 +1250,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "6466563be3828a602d73756ec9ebcfd717336e2297dc3ad0f2fa5074b5c637b6"),
+						7: testutil.DecodeHexStringT(t, "6466563be3828a602d73756ec9ebcfd717336e2297dc3ad0f2fa5074b5c637b6"),
 					},
 				},
 			},
@@ -1258,28 +1259,28 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "VerifyWithDualSignedShim_2",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars3",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim2.efi.signed.21"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim2.efi.signed.21"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 											},
 										},
 									},
@@ -1292,7 +1293,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
+						7: testutil.DecodeHexStringT(t, "6d13b267035194ddd12fd9ec817ad7f8e5919e481cb2b4e3b54ec00a226dcb1a"),
 					},
 				},
 			},
@@ -1303,28 +1304,28 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "NoBootablePaths",
 			logPath: "testdata/eventlog1.bin",
 			efivars: "testdata/efivars1",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim2.efi.signed.2"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim2.efi.signed.2"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 									},
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-										Next: []*EFIImageLoadEvent{
+										Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+										Next: []*ImageLoadEvent{
 											{
 												Source: Shim,
-												Image:  FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+												Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
 											},
 										},
 									},
@@ -1344,20 +1345,20 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			desc:    "Classic/2",
 			logPath: "testdata/eventlog4.bin",
 			efivars: "testdata/efivars2",
-			params: EFISecureBootPolicyProfileParams{
+			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				LoadSequences: []*EFIImageLoadEvent{
+				LoadSequences: []*ImageLoadEvent{
 					{
 						Source: Firmware,
-						Image:  FileEFIImage("testdata/mockshim1.efi.signed.1"),
-						Next: []*EFIImageLoadEvent{
+						Image:  FileImage("testdata/mockshim1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
 							{
 								Source: Shim,
-								Image:  FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-								Next: []*EFIImageLoadEvent{
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
 									{
 										Source: Shim,
-										Image:  FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
 									},
 								},
 							},
@@ -1368,7 +1369,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: decodeHexStringT(t, "b00b060d82d146bc21cf22576f7d468dce3b898ce01e5ca5b7cf93cf02bbd2e8"),
+						7: testutil.DecodeHexStringT(t, "b00b060d82d146bc21cf22576f7d468dce3b898ce01e5ca5b7cf93cf02bbd2e8"),
 					},
 				},
 			},
@@ -1382,7 +1383,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 
 			policy := data.initial
 			if policy == nil {
-				policy = &PCRProtectionProfile{}
+				policy = &secboot.PCRProtectionProfile{}
 			}
 			expectedPcrs, _, _ := policy.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 			expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
@@ -1392,17 +1393,17 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 				expectedDigests = append(expectedDigests, d)
 			}
 
-			err := AddEFISecureBootPolicyProfile(policy, &data.params)
+			err := AddSecureBootPolicyProfile(policy, &data.params)
 			if data.err != "" {
 				if err == nil {
-					t.Fatalf("Expected AddEFISecureBootPolicyProfile to fail")
+					t.Fatalf("Expected AddSecureBootPolicyProfile to fail")
 				}
 				if err.Error() != data.err {
 					t.Errorf("Unexpected error: %v", err)
 				}
 			} else {
 				if err != nil {
-					t.Fatalf("AddEFISecureBootPolicyProfile failed: %v", err)
+					t.Fatalf("AddSecureBootPolicyProfile failed: %v", err)
 				}
 
 				pcrs, digests, err := policy.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
@@ -1415,7 +1416,7 @@ func TestAddEFISecureBootPolicyProfile(t *testing.T) {
 				if !reflect.DeepEqual(digests, expectedDigests) {
 					t.Errorf("ComputePCRDigests returned unexpected values")
 					t.Logf("Profile:\n%s", policy)
-					t.Logf("Values:\n%s", policy.DumpValues(nil))
+					t.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(policy, nil))
 				}
 			}
 		})

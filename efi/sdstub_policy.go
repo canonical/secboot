@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package efi
 
 import (
 	"bytes"
@@ -25,12 +25,13 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot"
 
 	"golang.org/x/xerrors"
 )
 
-// SystemdEFIStubProfileParams provides the parameters to AddSystemdEFIStubProfile.
-type SystemdEFIStubProfileParams struct {
+// SystemdStubProfileParams provides the parameters to AddSystemdStubProfile.
+type SystemdStubProfileParams struct {
 	// PCRAlgorithm is the algorithm for which to compute PCR digests for. TPMs compliant with the "TCG PC Client Platform TPM Profile
 	// (PTP) Specification" Level 00, Revision 01.03 v22, May 22 2017 are required to support tpm2.HashAlgorithmSHA1 and
 	// tpm2.HashAlgorithmSHA256. Support for other digest algorithms is optional.
@@ -43,14 +44,14 @@ type SystemdEFIStubProfileParams struct {
 	KernelCmdlines []string
 }
 
-// AddSystemdEFIStubProfile adds the systemd EFI linux loader stub profile to the PCR protection profile, in order to generate a
+// AddSystemdStubProfile adds the systemd EFI linux loader stub profile to the PCR protection profile, in order to generate a
 // PCR policy that restricts access to a key to a defined set of kernel commandlines when booting a linux kernel using the systemd
 // EFI stub.
 //
 // The PCR index that the EFI stub measures the kernel commandline too can be specified via the PCRIndex field of params.
 //
-// The set of kernel commandlines to add to the PCRProtectionProfile is specified via the KernelCmdlines field of params.
-func AddSystemdEFIStubProfile(profile *PCRProtectionProfile, params *SystemdEFIStubProfileParams) error {
+// The set of kernel commandlines to add to the secboot.PCRProtectionProfile is specified via the KernelCmdlines field of params.
+func AddSystemdStubProfile(profile *secboot.PCRProtectionProfile, params *SystemdStubProfileParams) error {
 	if params.PCRIndex < 0 {
 		return errors.New("invalid PCR index")
 	}
@@ -58,7 +59,7 @@ func AddSystemdEFIStubProfile(profile *PCRProtectionProfile, params *SystemdEFIS
 		return errors.New("no kernel commandlines specified")
 	}
 
-	var subProfiles []*PCRProtectionProfile
+	var subProfiles []*secboot.PCRProtectionProfile
 	for _, cmdline := range params.KernelCmdlines {
 		event := tcglog.SystemdEFIStubEventData{Str: cmdline}
 		var buf bytes.Buffer
@@ -69,7 +70,7 @@ func AddSystemdEFIStubProfile(profile *PCRProtectionProfile, params *SystemdEFIS
 		h := params.PCRAlgorithm.NewHash()
 		buf.WriteTo(h)
 
-		subProfiles = append(subProfiles, NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil)))
+		subProfiles = append(subProfiles, secboot.NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, h.Sum(nil)))
 	}
 
 	profile.AddProfileOR(subProfiles...)

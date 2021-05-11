@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package efi
 
 import (
 	"bufio"
@@ -36,6 +36,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/pe1.14"
 	"github.com/snapcore/snapd/osutil"
@@ -75,8 +76,8 @@ var (
 	efiGlobalVariableGuid        = tcglog.MakeEFIGUID(0x8be4df61, 0x93ca, 0x11d2, 0xaa0d, [...]uint8{0x00, 0xe0, 0x98, 0x03, 0x2b, 0x8c}) // EFI_GLOBAL_VARIABLE
 	efiImageSecurityDatabaseGuid = tcglog.MakeEFIGUID(0xd719b2cb, 0x3d3a, 0x4596, 0xa3bc, [...]uint8{0xda, 0xd0, 0x0e, 0x67, 0x65, 0x6f}) // EFI_IMAGE_SECURITY_DATABASE_GUID
 
-	efiCertX509Guid      = tcglog.MakeEFIGUID(0xa5c059a1, 0x94e4, 0x4aa7, 0x87b5, [...]uint8{0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72}) // EFI_CERT_X509_GUID
-	efiCertTypePkcs7Guid = tcglog.MakeEFIGUID(0x4aafd29d, 0x68df, 0x49ee, 0x8aa9, [...]uint8{0x34, 0x7d, 0x37, 0x56, 0x65, 0xa7}) // EFI_CERT_TYPE_PKCS7_GUID
+	certX509Guid      = tcglog.MakeEFIGUID(0xa5c059a1, 0x94e4, 0x4aa7, 0x87b5, [...]uint8{0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72}) // EFI_CERT_X509_GUID
+	certTypePkcs7Guid = tcglog.MakeEFIGUID(0x4aafd29d, 0x68df, 0x49ee, 0x8aa9, [...]uint8{0x34, 0x7d, 0x37, 0x56, 0x65, 0xa7}) // EFI_CERT_TYPE_PKCS7_GUID
 
 	oidSha256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 
@@ -337,7 +338,7 @@ func computeDbUpdate(orig io.ReaderAt, update io.ReadSeeker, quirkMode sigDbUpda
 		cert = c.(*winCertificateUefiGuid)
 	}
 
-	if cert.CertType != efiCertTypePkcs7Guid {
+	if cert.CertType != certTypePkcs7Guid {
 		return nil, fmt.Errorf("update has invalid value for EFI_VARIABLE_AUTHENTICATION_2.AuthInfo.CertType (%s)", cert.CertType)
 	}
 
@@ -560,15 +561,15 @@ func isShimExecutable(r io.ReaderAt) (bool, error) {
 	return pefile.Section(".vendor_cert") != nil, nil
 }
 
-// EFISecureBootPolicyProfileParams provide the arguments to AddEFISecureBootPolicyProfile.
-type EFISecureBootPolicyProfileParams struct {
+// SecureBootPolicyProfileParams provide the arguments to AddSecureBootPolicyProfile.
+type SecureBootPolicyProfileParams struct {
 	// PCRAlgorithm is the algorithm for which to compute PCR digests for. TPMs compliant with the "TCG PC Client Platform TPM Profile
 	// (PTP) Specification" Level 00, Revision 01.03 v22, May 22 2017 are required to support tpm2.HashAlgorithmSHA1 and
 	// tpm2.HashAlgorithmSHA256. Support for other digest algorithms is optional.
 	PCRAlgorithm tpm2.HashAlgorithmId
 
 	// LoadSequences is a list of EFI image load sequences for which to compute PCR digests for.
-	LoadSequences []*EFIImageLoadEvent
+	LoadSequences []*ImageLoadEvent
 
 	// SignatureDbUpdateKeystores is a list of directories containing EFI signature database updates for which to compute PCR digests
 	// for. These directories are passed to sbkeysync using the --keystore option.
@@ -600,22 +601,22 @@ type authenticodeSignerAndIntermediates struct {
 }
 
 // secureBootPolicyGen is the main structure involved with computing secure boot policy PCR digests. It is essentially just
-// a container for EFISecureBootPolicyProfileParams - per-branch context is maintained in secureBootPolicyGenBranch instead.
+// a container for SecureBootPolicyProfileParams - per-branch context is maintained in secureBootPolicyGenBranch instead.
 type secureBootPolicyGen struct {
 	pcrAlgorithm  tpm2.HashAlgorithmId
-	loadSequences []*EFIImageLoadEvent
+	loadSequences []*ImageLoadEvent
 
 	events       []*tcglog.Event
 	sigDbUpdates []*secureBootDbUpdate
 }
 
-// secureBootPolicyGenBranch represents a branch of a PCRProtectionProfile. It contains its own PCRProtectionProfile in to which
+// secureBootPolicyGenBranch represents a branch of a secboot.PCRProtectionProfile. It contains its own PCRProtectionProfile in to which
 // instructions can be recorded, as well as some other context associated with this branch.
 type secureBootPolicyGenBranch struct {
 	gen *secureBootPolicyGen
 
-	profile     *PCRProtectionProfile        // The PCR profile containing the instructions for this branch
-	subBranches []*secureBootPolicyGenBranch // Sub-branches, if this has been branched
+	profile     *secboot.PCRProtectionProfile // The PCR profile containing the instructions for this branch
+	subBranches []*secureBootPolicyGenBranch  // Sub-branches, if this has been branched
 
 	dbUpdateLevel              int             // The number of EFI signature database updates applied in this branch
 	dbSet                      secureBootDbSet // The signature database set associated with this branch
@@ -624,10 +625,10 @@ type secureBootPolicyGenBranch struct {
 }
 
 // branch creates a branch point in the current branch if one doesn't exist already (although inserting this branch point with
-// PCRProtectionProfile.AddProfileOR is deferred until later), and creates a new sub-branch at the current branch point. Once
+// secboot.PCRProtectionProfile.AddProfileOR is deferred until later), and creates a new sub-branch at the current branch point. Once
 // this has been called, no more instructions can be inserted in to the current branch.
 func (b *secureBootPolicyGenBranch) branch() *secureBootPolicyGenBranch {
-	c := &secureBootPolicyGenBranch{gen: b.gen, profile: NewPCRProtectionProfile()}
+	c := &secureBootPolicyGenBranch{gen: b.gen, profile: secboot.NewPCRProtectionProfile()}
 	b.subBranches = append(b.subBranches, c)
 
 	// Preserve the context associated with this branch
@@ -651,7 +652,7 @@ func (b *secureBootPolicyGenBranch) extendMeasurement(digest tpm2.Digest) {
 
 // extendVerificationMeasurement extends the supplied digest and records that the digest has been measured by the specified source in
 // to this branch.
-func (b *secureBootPolicyGenBranch) extendVerificationMeasurement(digest tpm2.Digest, source EFIImageLoadEventSource) {
+func (b *secureBootPolicyGenBranch) extendVerificationMeasurement(digest tpm2.Digest, source ImageLoadEventSource) {
 	var digests *tpm2.DigestList
 	switch source {
 	case Firmware:
@@ -813,14 +814,14 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, s
 func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byte) {
 	b.dbSet.shimDb = &secureBootDb{variableName: shimGuid, unicodeName: shimName}
 	if vendorCert != nil {
-		b.dbSet.shimDb.signatures = append(b.dbSet.shimDb.signatures, &efiSignatureData{signatureType: efiCertX509Guid, data: vendorCert})
+		b.dbSet.shimDb.signatures = append(b.dbSet.shimDb.signatures, &efiSignatureData{signatureType: certX509Guid, data: vendorCert})
 	}
 	b.shimVerificationEvents = nil
 }
 
 // hasVerificationEventBeenMeasuredBy determines whether the verification event with the associated digest has been measured by the
 // supplied source already in this branch.
-func (b *secureBootPolicyGenBranch) hasVerificationEventBeenMeasuredBy(digest tpm2.Digest, source EFIImageLoadEventSource) bool {
+func (b *secureBootPolicyGenBranch) hasVerificationEventBeenMeasuredBy(digest tpm2.Digest, source ImageLoadEventSource) bool {
 	var digests *tpm2.DigestList
 	switch source {
 	case Firmware:
@@ -844,7 +845,7 @@ func (b *secureBootPolicyGenBranch) hasVerificationEventBeenMeasuredBy(digest tp
 // and the source of that certificate, needs to be determined. If the image is not signed with an authority that is trusted by a CA
 // certificate that exists in this branch, then this branch will be marked as unbootable and it will be omitted from the final PCR
 // profile.
-func (b *secureBootPolicyGenBranch) computeAndExtendVerificationMeasurement(sigs []*authenticodeSignerAndIntermediates, source EFIImageLoadEventSource) error {
+func (b *secureBootPolicyGenBranch) computeAndExtendVerificationMeasurement(sigs []*authenticodeSignerAndIntermediates, source ImageLoadEventSource) error {
 	if b.profile == nil {
 		// This branch is going to be excluded because it is unbootable.
 		return nil
@@ -873,7 +874,7 @@ Outer:
 
 			for _, caSig := range db.signatures {
 				// Ignore signatures that aren't X509 certificates
-				if caSig.signatureType != efiCertX509Guid {
+				if caSig.signatureType != certX509Guid {
 					continue
 				}
 
@@ -939,13 +940,13 @@ Outer:
 	return nil
 }
 
-// sbLoadEventAndBranches binds together a EFIImageLoadEvent and the branches that the event needs to be applied to.
+// sbLoadEventAndBranches binds together a ImageLoadEvent and the branches that the event needs to be applied to.
 type sbLoadEventAndBranches struct {
-	event    *EFIImageLoadEvent
+	event    *ImageLoadEvent
 	branches []*secureBootPolicyGenBranch
 }
 
-func (e *sbLoadEventAndBranches) branch(event *EFIImageLoadEvent) *sbLoadEventAndBranches {
+func (e *sbLoadEventAndBranches) branch(event *ImageLoadEvent) *sbLoadEventAndBranches {
 	var branches []*secureBootPolicyGenBranch
 	for _, b := range e.branches {
 		if b.profile == nil {
@@ -964,7 +965,7 @@ func (e *sbLoadEventAndBranches) branch(event *EFIImageLoadEvent) *sbLoadEventAn
 // source of that certificate needs to be determined. If the image is not signed with an authority that is trusted by a CA
 // certificate for a particular branch, then that branch will be marked as unbootable and it will be omitted from the final PCR
 // profile.
-func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(branches []*secureBootPolicyGenBranch, r io.ReaderAt, source EFIImageLoadEventSource) error {
+func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(branches []*secureBootPolicyGenBranch, r io.ReaderAt, source ImageLoadEventSource) error {
 	pefile, err := pe.NewFile(r)
 	if err != nil {
 		return xerrors.Errorf("cannot decode PE binary: %w", err)
@@ -1074,7 +1075,7 @@ func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBoot
 // processOSLoadEvent computes a measurement associated with the supplied image load event and extends this to the specified branches.
 // If the image load corresponds to shim, then some additional processing is performed to extract the included vendor certificate
 // (see secureBootPolicyGen.processShimExecutableLaunch).
-func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGenBranch, event *EFIImageLoadEvent) error {
+func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGenBranch, event *ImageLoadEvent) error {
 	r, err := event.Image.Open()
 	if err != nil {
 		return xerrors.Errorf("cannot open image: %w", err)
@@ -1101,13 +1102,13 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 	return nil
 }
 
-// run takes a TCG event log and builds a PCR profile from the supplied configuration (see EFISecureBootPolicyProfileParams)
-func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
+// run takes a TCG event log and builds a PCR profile from the supplied configuration (see SecureBootPolicyProfileParams)
+func (g *secureBootPolicyGen) run(profile *secboot.PCRProtectionProfile, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
 	// Process the pre-OS events for the current signature DB and then with each pending update applied
 	// in turn.
 	var roots []*secureBootPolicyGenBranch
 	for i := 0; i <= len(g.sigDbUpdates); i++ {
-		branch := &secureBootPolicyGenBranch{gen: g, profile: NewPCRProtectionProfile(), dbUpdateLevel: i}
+		branch := &secureBootPolicyGenBranch{gen: g, profile: secboot.NewPCRProtectionProfile(), dbUpdateLevel: i}
 		if err := branch.processPreOSEvents(g.events, g.sigDbUpdates[0:i], sigDbUpdateQuirkMode); err != nil {
 			return xerrors.Errorf("cannot process pre-OS events from event log: %w", err)
 		}
@@ -1165,7 +1166,7 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, sigDbUpdateQuir
 			continue
 		}
 
-		var subProfiles []*PCRProtectionProfile
+		var subProfiles []*secboot.PCRProtectionProfile
 		for _, sb := range b.subBranches {
 			if sb.profile == nil {
 				// This sub-branch has been marked unbootable
@@ -1184,7 +1185,7 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, sigDbUpdateQuir
 	}
 
 	validPathsForCurrentDb := false
-	var subProfiles []*PCRProtectionProfile
+	var subProfiles []*secboot.PCRProtectionProfile
 	for _, b := range roots {
 		if b.profile == nil {
 			// This branch has no bootable paths
@@ -1205,7 +1206,7 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, sigDbUpdateQuir
 	return nil
 }
 
-// AddEFISecureBootPolicyProfile adds the UEFI secure boot policy profile to the provided PCR protection profile, in order to generate
+// AddSecureBootPolicyProfile adds the UEFI secure boot policy profile to the provided PCR protection profile, in order to generate
 // a PCR policy that restricts access to a sealed key to a set of UEFI secure boot policies measured to PCR 7. The secure boot policy
 // information that is measured to PCR 7 is defined in section 2.3.4.8 of the "TCG PC Client Platform Firmware Profile Specification".
 //
@@ -1216,7 +1217,7 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, sigDbUpdateQuir
 // The secure boot policy measurements include events that correspond to the authentication of loaded EFI images, and those events
 // record the certificate of the authorities used to authenticate these images. The params argument allows the generated PCR policy
 // to be restricted to a specific set of chains of trust by specifying EFI image load sequences via the LoadSequences field. This
-// function will compute the measurements associated with the authentication of these load sequences. Each of the EFIImage instances
+// function will compute the measurements associated with the authentication of these load sequences. Each of the Image instances
 // reachable from the LoadSequences field of params must correspond to an EFI image with one or more Authenticode signatures. These
 // signatures are used to determine the CA certificate that will be used to authenticate them in order to compute authentication
 // meausurement events. The digest algorithm of the Authenticode signatures must be SHA256. If there are no signatures, or the
@@ -1272,8 +1273,8 @@ func (g *secureBootPolicyGen) run(profile *PCRProtectionProfile, sigDbUpdateQuir
 //
 // For the most common case where there are no signature database updates pending in the specified keystore directories and each image
 // load event sequence corresponds to loads of images that are all verified with the same chain of trust, this is a complicated way of
-// adding a single PCR digest to the provided PCRProtectionProfile.
-func AddEFISecureBootPolicyProfile(profile *PCRProtectionProfile, params *EFISecureBootPolicyProfileParams) error {
+// adding a single PCR digest to the provided secboot.PCRProtectionProfile.
+func AddSecureBootPolicyProfile(profile *secboot.PCRProtectionProfile, params *SecureBootPolicyProfileParams) error {
 	// Load event log
 	eventLog, err := os.Open(efi.EventLogPath)
 	if err != nil {
@@ -1341,12 +1342,12 @@ func AddEFISecureBootPolicyProfile(profile *PCRProtectionProfile, params *EFISec
 
 	gen := &secureBootPolicyGen{params.PCRAlgorithm, params.LoadSequences, log.Events, sigDbUpdates}
 
-	profile1 := NewPCRProtectionProfile()
+	profile1 := secboot.NewPCRProtectionProfile()
 	if err := gen.run(profile1, sigDbUpdateQuirkModeNone); err != nil {
 		return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
 	}
 
-	profile2 := NewPCRProtectionProfile()
+	profile2 := secboot.NewPCRProtectionProfile()
 	if err := gen.run(profile2, sigDbUpdateQuirkModeDedupIgnoresOwner); err != nil {
 		return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
 	}

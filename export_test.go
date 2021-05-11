@@ -20,40 +20,29 @@
 package secboot
 
 import (
-	"bytes"
 	"crypto/ecdsa"
-	"fmt"
 	"os"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/tcglog-parser"
 )
 
 // Export constants for testing
 const (
-	CurrentMetadataVersion                = currentMetadataVersion
-	LockNVHandle                          = lockNVHandle
-	SigDbUpdateQuirkModeNone              = sigDbUpdateQuirkModeNone
-	SigDbUpdateQuirkModeDedupIgnoresOwner = sigDbUpdateQuirkModeDedupIgnoresOwner
+	CurrentMetadataVersion = currentMetadataVersion
+	LockNVHandle           = lockNVHandle
 )
 
 // Export variables and unexported functions for testing
 var (
-	ComputeDbUpdate                       = computeDbUpdate
 	ComputeDynamicPolicy                  = computeDynamicPolicy
 	CreatePcrPolicyCounter                = createPcrPolicyCounter
 	ComputePcrPolicyCounterAuthPolicies   = computePcrPolicyCounterAuthPolicies
 	ComputePcrPolicyRefFromCounterContext = computePcrPolicyRefFromCounterContext
 	ComputePcrPolicyRefFromCounterName    = computePcrPolicyRefFromCounterName
-	ComputePeImageDigest                  = computePeImageDigest
 	ComputePolicyORData                   = computePolicyORData
 	ComputeSnapModelDigest                = computeSnapModelDigest
 	ComputeStaticPolicy                   = computeStaticPolicy
 	CreateTPMPublicAreaForECDSAKey        = createTPMPublicAreaForECDSAKey
-	DecodeSecureBootDb                    = decodeSecureBootDb
-	DecodeWinCertificate                  = decodeWinCertificate
-	EFICertTypePkcs7Guid                  = efiCertTypePkcs7Guid
-	EFICertX509Guid                       = efiCertX509Guid
 	ExecutePolicySession                  = executePolicySession
 	IncrementPcrPolicyCounter             = incrementPcrPolicyCounter
 	IsDynamicPolicyDataError              = isDynamicPolicyDataError
@@ -61,9 +50,6 @@ var (
 	LockNVIndex1Attrs                     = lockNVIndex1Attrs
 	PerformPinChange                      = performPinChange
 	ReadPcrPolicyCounter                  = readPcrPolicyCounter
-	ReadShimVendorCert                    = readShimVendorCert
-	WinCertTypePKCSSignedData             = winCertTypePKCSSignedData
-	WinCertTypeEfiGuid                    = winCertTypeEfiGuid
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -94,22 +80,6 @@ func (d *DynamicPolicyData) AuthorizedPolicySignature() *tpm2.Signature {
 	return d.authorizedPolicySignature
 }
 
-type EFISignatureData = efiSignatureData
-
-func (s *EFISignatureData) SignatureType() tcglog.EFIGUID {
-	return s.signatureType
-}
-
-func (s *EFISignatureData) Owner() tcglog.EFIGUID {
-	return s.owner
-}
-
-func (s *EFISignatureData) Data() []byte {
-	return s.data
-}
-
-type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
-
 type StaticPolicyData = staticPolicyData
 
 func (d *StaticPolicyData) AuthPublicKey() *tpm2.Public {
@@ -128,14 +98,7 @@ func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
 	return d.v0PinIndexAuthPolicies
 }
 
-type WinCertificateAuthenticode = winCertificateAuthenticode
-type WinCertificateUefiGuid = winCertificateUefiGuid
-
 // Export some helpers for testing.
-func GetWinCertificateType(cert winCertificate) uint16 {
-	return cert.wCertificateType()
-}
-
 type MockPolicyPCRParam struct {
 	PCR     int
 	Alg     tpm2.HashAlgorithmId
@@ -206,28 +169,6 @@ func NewDynamicPolicyComputeParams(key *ecdsa.PrivateKey, signAlg tpm2.HashAlgor
 
 func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic) *staticPolicyComputeParams {
 	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub}
-}
-
-func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
-	return p.computePCRDigests(tpm, alg)
-}
-
-func (p *PCRProtectionProfile) DumpValues(tpm *tpm2.TPMContext) string {
-	values, err := p.computePCRValues(tpm)
-	if err != nil {
-		return ""
-	}
-	var s bytes.Buffer
-	fmt.Fprintf(&s, "\n")
-	for i, v := range values {
-		fmt.Fprintf(&s, "Value %d:\n", i)
-		for alg := range v {
-			for pcr := range v[alg] {
-				fmt.Fprintf(&s, " PCR%d,%v: %x\n", pcr, alg, v[alg][pcr])
-			}
-		}
-	}
-	return s.String()
 }
 
 func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey TPMPolicyAuthKey, session tpm2.SessionContext) error {

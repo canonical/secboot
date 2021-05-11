@@ -70,7 +70,7 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 	}
 
 	// Compute PCR digests
-	pcrs, pcrDigests, err := pcrProfile.computePCRDigests(tpm, alg)
+	pcrs, pcrDigests, err := pcrProfile.ComputePCRDigests(tpm, alg)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute PCR digests from protection profile: %w", err)
 	}

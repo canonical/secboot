@@ -17,19 +17,20 @@
  *
  */
 
-package secboot_test
+package efi_test
 
 import (
 	"github.com/canonical/go-tpm2"
-	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot"
+	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
 )
 
-type efiBootManagerPolicySuite struct{}
+type bootManagerPolicySuite struct{}
 
-var _ = Suite(&efiBootManagerPolicySuite{})
+var _ = Suite(&bootManagerPolicySuite{})
 
 type testComputePeImageDigestData struct {
 	alg    tpm2.HashAlgorithmId
@@ -37,14 +38,14 @@ type testComputePeImageDigestData struct {
 	digest tpm2.Digest
 }
 
-func (s *efiBootManagerPolicySuite) testComputePeImageDigest(c *C, data *testComputePeImageDigestData) {
-	d, err := ComputePeImageDigest(data.alg, FileEFIImage(data.path))
+func (s *bootManagerPolicySuite) testComputePeImageDigest(c *C, data *testComputePeImageDigestData) {
+	d, err := ComputePeImageDigest(data.alg, FileImage(data.path))
 	c.Assert(err, IsNil)
 	c.Check(d, DeepEquals, data.digest)
 	c.Logf("%x", d)
 }
 
-func (s *efiBootManagerPolicySuite) TestComputePeImageDigest1(c *C) {
+func (s *bootManagerPolicySuite) TestComputePeImageDigest1(c *C) {
 	s.testComputePeImageDigest(c, &testComputePeImageDigestData{
 		alg:    tpm2.HashAlgorithmSHA256,
 		path:   "testdata/mockshim1.efi.signed.1",
@@ -52,7 +53,7 @@ func (s *efiBootManagerPolicySuite) TestComputePeImageDigest1(c *C) {
 	})
 }
 
-func (s *efiBootManagerPolicySuite) TestComputePeImageDigest2(c *C) {
+func (s *bootManagerPolicySuite) TestComputePeImageDigest2(c *C) {
 	s.testComputePeImageDigest(c, &testComputePeImageDigestData{
 		alg:    tpm2.HashAlgorithmSHA256,
 		path:   "testdata/mockgrub1.efi.signed.shim",
@@ -60,7 +61,7 @@ func (s *efiBootManagerPolicySuite) TestComputePeImageDigest2(c *C) {
 	})
 }
 
-func (s *efiBootManagerPolicySuite) TestComputePeImageDigest3(c *C) {
+func (s *bootManagerPolicySuite) TestComputePeImageDigest3(c *C) {
 	s.testComputePeImageDigest(c, &testComputePeImageDigestData{
 		alg:    tpm2.HashAlgorithmSHA1,
 		path:   "testdata/mockshim1.efi.signed.1",
@@ -68,7 +69,7 @@ func (s *efiBootManagerPolicySuite) TestComputePeImageDigest3(c *C) {
 	})
 }
 
-func (s *efiBootManagerPolicySuite) TestComputePeImageDigest4(c *C) {
+func (s *bootManagerPolicySuite) TestComputePeImageDigest4(c *C) {
 	s.testComputePeImageDigest(c, &testComputePeImageDigestData{
 		alg:    tpm2.HashAlgorithmSHA256,
 		path:   "testdata/mockkernel1.efi",
@@ -76,19 +77,19 @@ func (s *efiBootManagerPolicySuite) TestComputePeImageDigest4(c *C) {
 	})
 }
 
-type testAddEFIBootManagerProfileData struct {
-	initial *PCRProtectionProfile
-	params  *EFIBootManagerProfileParams
+type testAddBootManagerProfileData struct {
+	initial *secboot.PCRProtectionProfile
+	params  *BootManagerProfileParams
 	values  []tpm2.PCRValues
 }
 
-func (s *efiBootManagerPolicySuite) testAddEFIBootManagerProfile(c *C, data *testAddEFIBootManagerProfileData) {
+func (s *bootManagerPolicySuite) testAddBootManagerProfile(c *C, data *testAddBootManagerProfileData) {
 	restoreEventLogPath := testutil.MockEventLogPath("testdata/eventlog1.bin")
 	defer restoreEventLogPath()
 
 	profile := data.initial
 	if profile == nil {
-		profile = &PCRProtectionProfile{}
+		profile = &secboot.PCRProtectionProfile{}
 	}
 	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{4}}})
@@ -98,33 +99,33 @@ func (s *efiBootManagerPolicySuite) testAddEFIBootManagerProfile(c *C, data *tes
 		expectedDigests = append(expectedDigests, d)
 	}
 
-	c.Assert(AddEFIBootManagerProfile(profile, data.params), IsNil)
+	c.Assert(AddBootManagerProfile(profile, data.params), IsNil)
 	pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Assert(err, IsNil)
 	c.Check(pcrs.Equal(expectedPcrs), Equals, true)
 	c.Check(digests, DeepEquals, expectedDigests)
 	if c.Failed() {
 		c.Logf("Profile:\n%s", profile)
-		c.Logf("Values:\n%s", profile.DumpValues(nil))
+		c.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
 	}
 }
 
-func (s *efiBootManagerPolicySuite) TestAddEFIBootManagerProfile1(c *C) {
-	s.testAddEFIBootManagerProfile(c, &testAddEFIBootManagerProfileData{
-		params: &EFIBootManagerProfileParams{
+func (s *bootManagerPolicySuite) TestAddBootManagerProfile1(c *C) {
+	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*EFIImageLoadEvent{
+			LoadSequences: []*ImageLoadEvent{
 				{
-					Image: FileEFIImage("testdata/mockshim1.efi.signed.1"),
-					Next: []*EFIImageLoadEvent{
+					Image: FileImage("testdata/mockshim1.efi.signed.1"),
+					Next: []*ImageLoadEvent{
 						{
-							Image: FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-							Next: []*EFIImageLoadEvent{
+							Image: FileImage("testdata/mockgrub1.efi.signed.shim"),
+							Next: []*ImageLoadEvent{
 								{
-									Image: FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+									Image: FileImage("testdata/mockkernel1.efi.signed.shim"),
 								},
 								{
-									Image: FileEFIImage("testdata/mockkernel2.efi.signed.shim"),
+									Image: FileImage("testdata/mockkernel2.efi.signed.shim"),
 								},
 							},
 						},
@@ -147,31 +148,31 @@ func (s *efiBootManagerPolicySuite) TestAddEFIBootManagerProfile1(c *C) {
 	})
 }
 
-func (s *efiBootManagerPolicySuite) TestAddEFIBootManagerProfile2(c *C) {
-	s.testAddEFIBootManagerProfile(c, &testAddEFIBootManagerProfileData{
-		params: &EFIBootManagerProfileParams{
+func (s *bootManagerPolicySuite) TestAddBootManagerProfile2(c *C) {
+	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*EFIImageLoadEvent{
+			LoadSequences: []*ImageLoadEvent{
 				{
-					Image: FileEFIImage("testdata/mockshim1.efi.signed.2"),
-					Next: []*EFIImageLoadEvent{
+					Image: FileImage("testdata/mockshim1.efi.signed.2"),
+					Next: []*ImageLoadEvent{
 						{
-							Image: FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-							Next: []*EFIImageLoadEvent{
+							Image: FileImage("testdata/mockgrub1.efi.signed.2"),
+							Next: []*ImageLoadEvent{
 								{
-									Image: FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+									Image: FileImage("testdata/mockkernel1.efi.signed.2"),
 								},
 								{
-									Image: FileEFIImage("testdata/mockkernel2.efi.signed.2"),
+									Image: FileImage("testdata/mockkernel2.efi.signed.2"),
 								},
 								{
-									Image: FileEFIImage("testdata/mockgrub1.efi.signed.2"),
-									Next: []*EFIImageLoadEvent{
+									Image: FileImage("testdata/mockgrub1.efi.signed.2"),
+									Next: []*ImageLoadEvent{
 										{
-											Image: FileEFIImage("testdata/mockkernel1.efi.signed.2"),
+											Image: FileImage("testdata/mockkernel1.efi.signed.2"),
 										},
 										{
-											Image: FileEFIImage("testdata/mockkernel2.efi.signed.2"),
+											Image: FileImage("testdata/mockkernel2.efi.signed.2"),
 										},
 									},
 								},
@@ -206,22 +207,22 @@ func (s *efiBootManagerPolicySuite) TestAddEFIBootManagerProfile2(c *C) {
 	})
 }
 
-func (s *efiBootManagerPolicySuite) TestAddEFIBootManagerProfile3(c *C) {
-	s.testAddEFIBootManagerProfile(c, &testAddEFIBootManagerProfileData{
-		initial: NewPCRProtectionProfile().
+func (s *bootManagerPolicySuite) TestAddBootManagerProfile3(c *C) {
+	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		initial: secboot.NewPCRProtectionProfile().
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 4, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
-		params: &EFIBootManagerProfileParams{
+		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*EFIImageLoadEvent{
+			LoadSequences: []*ImageLoadEvent{
 				{
-					Image: FileEFIImage("testdata/mockshim1.efi.signed.1"),
-					Next: []*EFIImageLoadEvent{
+					Image: FileImage("testdata/mockshim1.efi.signed.1"),
+					Next: []*ImageLoadEvent{
 						{
-							Image: FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-							Next: []*EFIImageLoadEvent{
+							Image: FileImage("testdata/mockgrub1.efi.signed.shim"),
+							Next: []*ImageLoadEvent{
 								{
-									Image: FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+									Image: FileImage("testdata/mockkernel1.efi.signed.shim"),
 								},
 							},
 						},
@@ -240,32 +241,32 @@ func (s *efiBootManagerPolicySuite) TestAddEFIBootManagerProfile3(c *C) {
 	})
 }
 
-func (s *efiBootManagerPolicySuite) TestAddEFIBootManagerProfile4(c *C) {
-	s.testAddEFIBootManagerProfile(c, &testAddEFIBootManagerProfileData{
-		params: &EFIBootManagerProfileParams{
+func (s *bootManagerPolicySuite) TestAddBootManagerProfile4(c *C) {
+	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*EFIImageLoadEvent{
+			LoadSequences: []*ImageLoadEvent{
 				{
-					Image: FileEFIImage("testdata/mockshim1.efi.signed.1"),
-					Next: []*EFIImageLoadEvent{
+					Image: FileImage("testdata/mockshim1.efi.signed.1"),
+					Next: []*ImageLoadEvent{
 						{
-							Image: FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-							Next: []*EFIImageLoadEvent{
+							Image: FileImage("testdata/mockgrub1.efi.signed.shim"),
+							Next: []*ImageLoadEvent{
 								{
-									Image: FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+									Image: FileImage("testdata/mockkernel1.efi.signed.shim"),
 								},
 							},
 						},
 					},
 				},
 				{
-					Image: FileEFIImage("testdata/mockshim1.efi.signed.1"),
-					Next: []*EFIImageLoadEvent{
+					Image: FileImage("testdata/mockshim1.efi.signed.1"),
+					Next: []*ImageLoadEvent{
 						{
-							Image: FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-							Next: []*EFIImageLoadEvent{
+							Image: FileImage("testdata/mockgrub1.efi.signed.shim"),
+							Next: []*ImageLoadEvent{
 								{
-									Image: FileEFIImage("testdata/mockkernel2.efi.signed.shim"),
+									Image: FileImage("testdata/mockkernel2.efi.signed.shim"),
 								},
 							},
 						},

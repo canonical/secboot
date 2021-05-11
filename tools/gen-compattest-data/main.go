@@ -30,6 +30,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/snapd/asserts"
 
@@ -47,20 +48,20 @@ func init() {
 func computePCRProtectionProfile() (*secboot.PCRProtectionProfile, error) {
 	profile := secboot.NewPCRProtectionProfile()
 
-	sbpParams := secboot.EFISecureBootPolicyProfileParams{
+	sbpParams := efi.SecureBootPolicyProfileParams{
 		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-		LoadSequences: []*secboot.EFIImageLoadEvent{
+		LoadSequences: []*efi.ImageLoadEvent{
 			{
-				Source: secboot.Firmware,
-				Image:  secboot.FileEFIImage("testdata/mockshim1.efi.signed.1"),
-				Next: []*secboot.EFIImageLoadEvent{
+				Source: efi.Firmware,
+				Image:  efi.FileImage("efi/testdata/mockshim1.efi.signed.1"),
+				Next: []*efi.ImageLoadEvent{
 					{
-						Source: secboot.Shim,
-						Image:  secboot.FileEFIImage("testdata/mockgrub1.efi.signed.shim"),
-						Next: []*secboot.EFIImageLoadEvent{
+						Source: efi.Shim,
+						Image:  efi.FileImage("efi/testdata/mockgrub1.efi.signed.shim"),
+						Next: []*efi.ImageLoadEvent{
 							{
-								Source: secboot.Shim,
-								Image:  secboot.FileEFIImage("testdata/mockkernel1.efi.signed.shim"),
+								Source: efi.Shim,
+								Image:  efi.FileImage("efi/testdata/mockkernel1.efi.signed.shim"),
 							},
 						},
 					},
@@ -69,11 +70,11 @@ func computePCRProtectionProfile() (*secboot.PCRProtectionProfile, error) {
 		},
 	}
 
-	if err := secboot.AddEFISecureBootPolicyProfile(profile, &sbpParams); err != nil {
+	if err := efi.AddSecureBootPolicyProfile(profile, &sbpParams); err != nil {
 		return nil, xerrors.Errorf("cannot add secureboot policy profile: %w", err)
 	}
 
-	sdefisParams := secboot.SystemdEFIStubProfileParams{
+	sdefisParams := efi.SystemdStubProfileParams{
 		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 		PCRIndex:     12,
 		KernelCmdlines: []string{
@@ -82,11 +83,11 @@ func computePCRProtectionProfile() (*secboot.PCRProtectionProfile, error) {
 		},
 	}
 
-	if err := secboot.AddSystemdEFIStubProfile(profile, &sdefisParams); err != nil {
+	if err := efi.AddSystemdStubProfile(profile, &sdefisParams); err != nil {
 		return nil, xerrors.Errorf("cannot add systemd EFI stub profile: %w", err)
 	}
 
-	modelData, err := ioutil.ReadFile("testdata/fake-model")
+	modelData, err := ioutil.ReadFile("tools/gen-compattest-data/data/fake-model")
 	if err != nil {
 		return nil, xerrors.Errorf("cannot read model assertion: %w", err)
 	}
@@ -128,9 +129,9 @@ func run() int {
 		return tpm2.OpenMssim("", testutil.MssimPort, testutil.MssimPort+1)
 	})
 	defer restore1()
-	restore2 := testutil.MockEFIVarsPath("testdata/efivars2")
+	restore2 := testutil.MockEFIVarsPath("efi/testdata/efivars2")
 	defer restore2()
-	restore3 := testutil.MockEventLogPath("testdata/eventlog1.bin")
+	restore3 := testutil.MockEventLogPath("efi/testdata/eventlog1.bin")
 	defer restore3()
 
 	tpm, err := secboot.ConnectToDefaultTPM()

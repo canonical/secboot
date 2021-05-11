@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/x509"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -79,14 +78,6 @@ func openTPMForTesting(t *testing.T) *TPMConnection {
 		t.SkipNow()
 	}
 	return tpm
-}
-
-func decodeHexStringT(t *testing.T, s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		t.Fatalf("DecodeHexString failed: %v", err)
-	}
-	return b
 }
 
 // Flush a handle context. Fails the test if it doesn't succeed.
