@@ -150,6 +150,7 @@ func computeDbUpdate(base, update io.Reader, quirkMode sigDbUpdateQuirkMode) ([]
 		for _, us := range ul.Signatures {
 			isNewSig := true
 
+		BaseLoop:
 			for _, l := range baseDb {
 				if l.Type != ul.Type {
 					// Different signature type
@@ -168,11 +169,8 @@ func computeDbUpdate(base, update io.Reader, quirkMode sigDbUpdateQuirkMode) ([]
 						}
 					}
 					if !isNewSig {
-						break
+						break BaseLoop
 					}
-				}
-				if !isNewSig {
-					break
 				}
 			}
 
