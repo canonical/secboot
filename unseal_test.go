@@ -128,9 +128,9 @@ func TestUnsealImportable(t *testing.T) {
 
 		keyFile := tmpDir + "/keydata"
 
-		authKey, err := SealKeyToTPMStorageKey(srkPub, key, keyFile, params)
+		authKey, err := SealKeyToExternalTPMStorageKey(srkPub, key, keyFile, params)
 		if err != nil {
-			t.Fatalf("SealKeyToTPMStorageKey failed: %v", err)
+			t.Fatalf("SealKeyToExternalTPMStorageKey failed: %v", err)
 		}
 
 		k, err := ReadSealedKeyObject(keyFile)

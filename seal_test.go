@@ -394,7 +394,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 	})
 }
 
-func TestSealKeyToTPMStorageKey(t *testing.T) {
+func TestSealKeyToExternalTPMStorageKey(t *testing.T) {
 	var srkPub *tpm2.Public
 
 	func() {
@@ -424,7 +424,7 @@ func TestSealKeyToTPMStorageKey(t *testing.T) {
 	rand.Read(key)
 
 	run := func(t *testing.T, params *KeyCreationParams) (authKeyBytes []byte) {
-		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPMStorageKey_")
+		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToExternalTPMStorageKey_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
 		}
@@ -432,9 +432,9 @@ func TestSealKeyToTPMStorageKey(t *testing.T) {
 
 		keyFile := tmpDir + "/keydata"
 
-		authPrivateKey, err := SealKeyToTPMStorageKey(srkPub, key, keyFile, params)
+		authPrivateKey, err := SealKeyToExternalTPMStorageKey(srkPub, key, keyFile, params)
 		if err != nil {
-			t.Errorf("SealKeyToTPMStorageKey failed: %v", err)
+			t.Errorf("SealKeyToExternalTPMStorageKey failed: %v", err)
 		}
 
 		tpm := openTPMForTesting(t)
@@ -467,7 +467,7 @@ func TestSealKeyToTPMStorageKey(t *testing.T) {
 	})
 }
 
-func TestSealKeyToTPMStorageKeyErrorHandling(t *testing.T) {
+func TestSealKeyToExternalTPMStorageKeyErrorHandling(t *testing.T) {
 	var srkPub *tpm2.Public
 
 	func() {
@@ -495,7 +495,7 @@ func TestSealKeyToTPMStorageKeyErrorHandling(t *testing.T) {
 	run := func(t *testing.T, tmpDir string, params *KeyCreationParams) error {
 		if tmpDir == "" {
 			var err error
-			tmpDir, err = ioutil.TempDir("", "_TestSealKeyToTPMStorageKeyErrorHandling_")
+			tmpDir, err = ioutil.TempDir("", "_TestSealKeyToExternalTPMStorageKeyErrorHandling_")
 			if err != nil {
 				t.Fatalf("Creating temporary directory failed: %v", err)
 			}
@@ -505,7 +505,7 @@ func TestSealKeyToTPMStorageKeyErrorHandling(t *testing.T) {
 		keyFile := tmpDir + "/keydata"
 		origKeyFileInfo, _ := os.Stat(keyFile)
 
-		_, err := SealKeyToTPMStorageKey(srkPub, key, keyFile, params)
+		_, err := SealKeyToExternalTPMStorageKey(srkPub, key, keyFile, params)
 
 		if fi, err := os.Stat(keyFile); err == nil && (origKeyFileInfo == nil || origKeyFileInfo.ModTime() != fi.ModTime()) {
 			t.Errorf("SealKeyToTPM created a key file")

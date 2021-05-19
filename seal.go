@@ -155,11 +155,11 @@ type KeyCreationParams struct {
 	AuthKey *ecdsa.PrivateKey
 }
 
-// SealKeyToTPMStorageKey seals the supplied disk encryption key to the TPM storage key associated with the supplied public tpmKey.
-// This creates an importable sealed key and is suitable in environments that don't have access to the TPM but do have access to
-// the public part of the TPM's storage primary key. The sealed key object and associated metadata that is required during early
-// boot in order to unseal the key again and unlock the associated encrypted volume is written to a file at the path specified by
-// keyPath.
+// SealKeyToExternalTPMStorageKey seals the supplied disk encryption key to the TPM storage key associated with the supplied public
+// tpmKey. This creates an importable sealed key and is suitable in environments that don't have access to the TPM but do have
+// access to the public part of the TPM's storage primary key. The sealed key object and associated metadata that is required
+// during early boot in order to unseal the key again and unlock the associated encrypted volume is written to a file at the path
+// specified by keyPath.
 //
 // The tpmKey argument must correspond to the storage primary key on the target TPM, persisted at the standard handle.
 //
@@ -180,7 +180,7 @@ type KeyCreationParams struct {
 //
 // The authorization key can also be chosen and provided by setting
 // AuthKey in the params argument.
-func SealKeyToTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath string, params *KeyCreationParams) (authKey TPMPolicyAuthKey, err error) {
+func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath string, params *KeyCreationParams) (authKey TPMPolicyAuthKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
