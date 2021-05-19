@@ -22,7 +22,6 @@ package compattest
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/snapcore/secboot"
@@ -31,74 +30,64 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type compatTestV0Suite struct {
+type compatTestV1Suite struct {
 	compatTestSuiteBase
 }
 
-func (s *compatTestV0Suite) SetUpSuite(c *C) {
-	s.compatTestSuiteBase.setUpSuiteBase(c, "testdata/v0")
+func (s *compatTestV1Suite) SetUpSuite(c *C) {
+	s.compatTestSuiteBase.setUpSuiteBase(c, "testdata/v1")
 }
 
-var _ = Suite(&compatTestV0Suite{})
+var _ = Suite(&compatTestV1Suite{})
 
-func (s *compatTestV0Suite) TestSealKeyToTPM(c *C) {
-	// Verify that we can seal a new key on a TPM provisioned with a legacy style lock NV index
-	key := make([]byte, 64)
-	rand.Read(key)
-	profile := secboot.NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7)
-	_, err := secboot.SealKeyToTPM(s.TPM, key, c.MkDir()+"/key", &secboot.KeyCreationParams{PCRProfile: profile, PCRPolicyCounterHandle: 0x01810001})
-	c.Check(err, IsNil)
-	// TODO: Validate the key file when we have an API for this
-}
-
-func (s *compatTestV0Suite) TestUnseal1(c *C) {
+func (s *compatTestV1Suite) TestUnseal1(c *C) {
 	s.testUnseal(c, s.absPath("pcrSequence.1"))
 }
 
-func (s *compatTestV0Suite) TestUnseal2(c *C) {
+func (s *compatTestV1Suite) TestUnseal2(c *C) {
 	s.testUnseal(c, s.absPath("pcrSequence.2"))
 }
 
-func (s *compatTestV0Suite) TestUnsealAfterReprovision(c *C) {
-	// Test that reprovisioning doesn't touch the legacy lock NV index if it is valid
+func (s *compatTestV1Suite) TestUnsealAfterReprovision(c *C) {
+	// This should still work because the primary key doesn't change.
 	c.Assert(s.TPM.EnsureProvisioned(secboot.ProvisionModeWithoutLockout, nil), IsNil)
 	s.testUnseal(c, s.absPath("pcrSequence.1"))
 }
 
-func (s *compatTestV0Suite) TestUnsealWithPIN1(c *C) {
+func (s *compatTestV1Suite) TestUnsealWithPIN1(c *C) {
 	s.testUnsealWithPIN(c, s.absPath("pcrSequence.1"))
 }
 
-func (s *compatTestV0Suite) TestUnsealWithPIN2(c *C) {
+func (s *compatTestV1Suite) TestUnsealWithPIN2(c *C) {
 	s.testUnsealWithPIN(c, s.absPath("pcrSequence.2"))
 }
 
-func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
+func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
 	profile := secboot.NewPCRProtectionProfile()
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, s.absPath("key"), s.absPath("pud"), profile), IsNil)
+	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.readFile(c, "authKey"), profile), IsNil)
 }
 
-func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
+func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
 	profile := secboot.NewPCRProtectionProfile()
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
 	key2 := s.copyFile(c, s.absPath("key"))
 
-	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, key2, s.absPath("pud"), profile), IsNil)
+	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, key2, s.readFile(c, "authKey"), profile), IsNil)
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
 	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }
 
-func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
+func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 	profile := secboot.NewPCRProtectionProfile()
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, s.absPath("key"), s.absPath("pud"), profile), IsNil)
+	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.readFile(c, "authKey"), profile), IsNil)
 
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "7 11 %x\n", testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
@@ -108,20 +97,17 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 	s.testUnsealCommon(c, "")
 }
 
-func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
+func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
 	c.Assert(secboot.BlockPCRProtectionPolicies(s.TPM, nil), IsNil)
 
 	profile := secboot.NewPCRProtectionProfile()
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	c.Check(secboot.UpdateKeyPCRProtectionPolicyV0(s.TPM, s.absPath("key"), s.absPath("pud"), profile), IsNil)
+	c.Check(secboot.UpdateKeyPCRProtectionPolicy(s.TPM, s.absPath("key"), s.readFile(c, "authKey"), profile), IsNil)
 }
 
-func (s *compatTestV0Suite) TestUnsealAfterLock(c *C) {
-	// Test unsealing a v0 file from a newer initramfs using the fence-style locking - this just makes
-	// the PCR values invalid so there's no reason this shouldn't work or require a compatibility test,
-	// but keep this here just to make sure.
+func (s *compatTestV1Suite) TestUnsealAfterLock(c *C) {
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
 	c.Assert(secboot.BlockPCRProtectionPolicies(s.TPM, []int{12}), IsNil)
 	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data")

@@ -105,6 +105,12 @@ func (s *compatTestSuiteBase) absPath(name string) string {
 	return filepath.Join(s.tmpDir, name)
 }
 
+func (s *compatTestSuiteBase) readFile(c *C, name string) []byte {
+	b, err := ioutil.ReadFile(s.absPath(name))
+	c.Assert(err, IsNil)
+	return b
+}
+
 func (s *compatTestSuiteBase) replayPCRSequenceFromReader(c *C, r io.Reader) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
