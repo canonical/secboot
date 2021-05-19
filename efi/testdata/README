@@ -25,6 +25,7 @@
 - updates3/ contains a UEFI forbidden signature db update based on the contents of the forbidden signature
   database from efivars4/, but with 2 sha256 signatures changed (one digest and one owner GUID).
 - updates4/ contains updates from updates1/ and updates2/
+- updates5/ contains the UEFI forbidden signature update issued by Microsoft on 12th October 2020.
 
 - eventlog1.bin is an event log from a QEMU instance running OVMF with the following configuration:
   - certs/UbuntuOVMFPK.crt in PK.

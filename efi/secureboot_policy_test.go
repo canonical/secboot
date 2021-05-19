@@ -160,6 +160,15 @@ func TestComputeDbUpdate(t *testing.T) {
 			newESLs:       1,
 			newSignatures: []int{1},
 		},
+		{
+			desc:          "AppendDbxUpdateWithMultipleESLs",
+			orig:          "testdata/efivars2/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
+			update:        "testdata/updates5/dbx/dbxupdate_x64_1.bin",
+			quirkMode:     SigDbUpdateQuirkModeNone,
+			sha1hash:      testutil.DecodeHexStringT(t, "306985f67cdc580e25c1572568f9e65e420984d2"),
+			newESLs:       4,
+			newSignatures: []int{1, 1, 1, 183},
+		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
 			o, err := os.Open(data.orig)
