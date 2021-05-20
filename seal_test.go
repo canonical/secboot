@@ -197,7 +197,7 @@ func TestSealKeyToTPM(t *testing.T) {
 			Params: &tpm2.PublicParamsU{
 				RSADetail: &tpm2.RSAParams{
 					Symmetric: tpm2.SymDefObject{Algorithm: tpm2.SymObjectAlgorithmNull},
-					Scheme:   tpm2.RSAScheme{
+					Scheme: tpm2.RSAScheme{
 						Scheme: tpm2.RSASchemeRSAPSS,
 						Details: &tpm2.AsymSchemeU{
 							RSAPSS: &tpm2.SigSchemeRSAPSS{HashAlg: tpm2.HashAlgorithmSHA256},

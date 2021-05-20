@@ -742,6 +742,52 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyNo2FA6(c *C) 
 	})
 }
 
+func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithTPMSealedKeyMissingCustomSRK(c *C) {
+	template := tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrDecrypt,
+		Params: &tpm2.PublicParamsU{
+			RSADetail: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+					Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}}}
+	c.Assert(s.TPM.EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template), IsNil)
+
+	dir := c.MkDir()
+	keyFile := dir + "/keydata"
+
+	primaryKey := s.newPrimaryKey()
+
+	_, err := SealKeyToTPM(s.TPM, primaryKey, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Assert(err, IsNil)
+
+	s.addMockKeyslot(c, primaryKey)
+
+	srk, err := s.TPM.CreateResourceContextFromTPM(tcg.SRKHandle)
+	c.Assert(err, IsNil)
+	_, err = s.TPM.EvictControl(s.TPM.OwnerHandleContext(), srk, srk.Handle(), nil)
+	c.Assert(err, IsNil)
+
+	options := ActivateVolumeOptions{}
+	success, err := ActivateVolumeWithTPMSealedKey(s.TPM, "data", "/dev/sda1", keyFile, nil, &options)
+	c.Check(success, Equals, true)
+	c.Check(err, IsNil)
+
+	c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
+	c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
+	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
+
+	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
+	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+}
+
 type testActivateVolumeWithTPMSealedKeyAndPINData struct {
 	pins     []string
 	pinTries int
