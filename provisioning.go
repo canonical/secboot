@@ -43,6 +43,10 @@ const (
 	recoveryTime    uint32 = 7200
 	lockoutRecovery uint32 = 86400
 
+	// srkTemplateHandle is the NV index at which we can find a custom template for
+	// the storage primary key, if one is supplied during provisioning. The handle
+	// here is in the range reserved for owner indices, so there shouldn't be
+	// anything here on a new installation.
 	srkTemplateHandle tpm2.Handle = 0x01810001
 )
 
