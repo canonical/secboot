@@ -580,6 +580,10 @@ func TestProvisionWithCustomSRKTemplate(t *testing.T) {
 				t.Fatalf("NVReadPublic failed: %v", err)
 			}
 
+			if nvPub.Attrs != tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVWriteDefine | tpm2.AttrNVOwnerRead | tpm2.AttrNVNoDA | tpm2.AttrNVWriteLocked | tpm2.AttrNVWritten) {
+				t.Errorf("Unexpected attributes")
+			}
+
 			tmplB, err := tpm.NVRead(tpm.OwnerHandleContext(), nv, nvPub.Size, 0, nil)
 			if err != nil {
 				t.Errorf("NVRead failed: %v", err)
