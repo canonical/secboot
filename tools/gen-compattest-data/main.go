@@ -129,7 +129,7 @@ func run() int {
 		return tpm2.OpenMssim("", testutil.MssimPort, testutil.MssimPort+1)
 	})
 	defer restore1()
-	restore2 := testutil.MockEFIVarsPath("efi/testdata/efivars2")
+	restore2 := testutil.MockEFIReadVar("efi/testdata/efivars2")
 	defer restore2()
 	restore3 := testutil.MockEventLogPath("efi/testdata/eventlog1.bin")
 	defer restore3()

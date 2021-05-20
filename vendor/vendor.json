@@ -3,6 +3,38 @@
 	"ignore": "test",
 	"package": [
 		{
+			"checksumSHA1": "ouKgjSgU7veXFJ4NZvQz0hVSgR8=",
+			"path": "github.com/canonical/go-efilib",
+			"revision": "06410e2b6936d6c7b088fbb8c4401dddafcb4853",
+			"revisionTime": "2021-05-05T15:45:42Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
+			"checksumSHA1": "Kk/ZsliKdaq7A/1Glzpq4m5Y5m8=",
+			"path": "github.com/canonical/go-efilib/internal/ioerr",
+			"revision": "1eb1ac272815a7f3f97e0e7ab64ab35265287cff",
+			"revisionTime": "2021-05-04T21:04:57Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
+			"checksumSHA1": "32kmrchV6DeWsy/jCE5jg6gYGig=",
+			"path": "github.com/canonical/go-efilib/internal/pe1.14",
+			"revision": "8a92bd81a83437ea5c5ddb86745972cb35cf1d45",
+			"revisionTime": "2021-04-19T17:55:38Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
+			"checksumSHA1": "n9asp92GpBsgIOwbm4itjjzHm3Y=",
+			"path": "github.com/canonical/go-efilib/internal/uefi",
+			"revision": "06410e2b6936d6c7b088fbb8c4401dddafcb4853",
+			"revisionTime": "2021-05-05T15:45:42Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
 			"checksumSHA1": "CT15zzEmXx3dQ7/PJCSwZhqSV/o=",
 			"path": "github.com/canonical/go-sp800.90a-drbg",
 			"revision": "6eeb1040d6c3a6b618a8da5e42ef66b35e7a3ddd",
@@ -27,10 +59,10 @@
 			"revisionTime": "2021-01-29T14:51:58Z"
 		},
 		{
-			"checksumSHA1": "QGwWyf2f/5+FacNj2iKpjp8N5hg=",
+			"checksumSHA1": "v71Cl1YYXpjrSsNl7kJKr/gxf1g=",
 			"path": "github.com/canonical/tcglog-parser",
-			"revision": "12a3a7bcf5a14486e838fea211e8d4aa280e9671",
-			"revisionTime": "2020-09-08T16:50:21Z"
+			"revision": "0db9685976738af534d41b823386a05981fcb72c",
+			"revisionTime": "2021-05-11T16:36:12Z"
 		},
 		{
 			"checksumSHA1": "kmcZh6191ZYy/+G/tIWFZoVEkGs=",

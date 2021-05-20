@@ -24,7 +24,6 @@ import (
 	"crypto"
 	_ "crypto/sha1"
 	_ "crypto/sha256"
-	"crypto/x509"
 	"encoding/binary"
 	"io"
 	"io/ioutil"
@@ -33,60 +32,12 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot"
 	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
 )
-
-func TestDecodeWinCertificate(t *testing.T) {
-	for _, data := range []struct {
-		desc            string
-		path            string
-		offset          int64
-		expectedType    uint16
-		efiGuidCertType tcglog.EFIGUID
-	}{
-		{
-			desc:            "AuthenticatedVariable",
-			path:            "testdata/updates1/dbx/MS-2016-08-08.bin",
-			offset:          16,
-			expectedType:    WinCertTypeEfiGuid,
-			efiGuidCertType: CertTypePkcs7Guid,
-		},
-		// TODO: Add test with signed EFI executable
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			f, err := os.Open(data.path)
-			if err != nil {
-				t.Fatalf("Open failed: %v", err)
-			}
-			defer f.Close()
-
-			f.Seek(data.offset, io.SeekStart)
-
-			cert, _, err := DecodeWinCertificate(f)
-			if err != nil {
-				t.Fatalf("DecodeWinCertificate failed: %v", err)
-			}
-
-			certType := GetWinCertificateType(cert)
-			if certType != data.expectedType {
-				t.Errorf("Unexpected type: %v", certType)
-			}
-
-			switch certType {
-			case WinCertTypePKCSSignedData:
-			case WinCertTypeEfiGuid:
-				c := cert.(*WinCertificateUefiGuid)
-				if c.CertType != data.efiGuidCertType {
-					t.Errorf("Unexpected WIN_CERTIFICATE_UEFI_GUID type: %v", c.CertType)
-				}
-			}
-		})
-	}
-}
 
 func TestReadShimVendorCert(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
@@ -147,169 +98,6 @@ func TestReadShimVendorCert(t *testing.T) {
 	}
 }
 
-func TestDecodeSecureBootDb(t *testing.T) {
-	var (
-		microsoftOwnerGuid = tcglog.MakeEFIGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b})
-
-		microsoftRootCAName = "CN=Microsoft Root Certificate Authority 2010,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
-		microsoftPCASubject = "CN=Microsoft Windows Production PCA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
-		microsoftPCASerial  = testutil.DecodeHexStringT(t, "61077656000000000008")
-
-		microsoftThirdPartyRootCAName = "CN=Microsoft Corporation Third Party Marketplace Root,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
-		microsoftCASubject            = "CN=Microsoft Corporation UEFI CA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US"
-		microsoftCASerial             = testutil.DecodeHexStringT(t, "6108d3c4000000000004")
-
-		testOwnerGuid = tcglog.MakeEFIGUID(0xd1b37b32, 0x172d, 0x4d2a, 0x909f, [...]uint8{0xc7, 0x80, 0x81, 0x50, 0x17, 0x86})
-	)
-
-	type certId struct {
-		issuer  string
-		subject string
-		serial  []byte
-		owner   tcglog.EFIGUID
-	}
-	for _, data := range []struct {
-		desc       string
-		path       string
-		certs      []certId
-		signatures int
-	}{
-		{
-			desc: "db1",
-			path: "testdata/efivars1/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
-			certs: []certId{
-				{
-					issuer:  microsoftRootCAName,
-					subject: microsoftPCASubject,
-					serial:  microsoftPCASerial,
-					owner:   microsoftOwnerGuid,
-				},
-				{
-					issuer:  microsoftThirdPartyRootCAName,
-					subject: microsoftCASubject,
-					serial:  microsoftCASerial,
-					owner:   microsoftOwnerGuid,
-				},
-			},
-			signatures: 2,
-		},
-		{
-			desc: "db2",
-			path: "testdata/efivars2/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
-			certs: []certId{
-				{
-					issuer:  microsoftRootCAName,
-					subject: microsoftPCASubject,
-					serial:  microsoftPCASerial,
-					owner:   microsoftOwnerGuid,
-				},
-				{
-					issuer:  microsoftThirdPartyRootCAName,
-					subject: microsoftCASubject,
-					serial:  microsoftCASerial,
-					owner:   microsoftOwnerGuid,
-				},
-				{
-					issuer:  "CN=Test Key Exchange Key",
-					subject: "CN=Test UEFI CA",
-					serial:  testutil.DecodeHexStringT(t, "01"),
-					owner:   testOwnerGuid,
-				},
-			},
-			signatures: 3,
-		},
-		{
-			desc: "db3",
-			path: "testdata/efivars3/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
-			certs: []certId{
-				{
-					issuer:  microsoftRootCAName,
-					subject: microsoftPCASubject,
-					serial:  microsoftPCASerial,
-					owner:   microsoftOwnerGuid,
-				},
-				{
-					issuer:  microsoftThirdPartyRootCAName,
-					subject: microsoftCASubject,
-					serial:  microsoftCASerial,
-					owner:   microsoftOwnerGuid,
-				},
-				{
-					issuer:  "CN=Test Key Exchange Key",
-					subject: "CN=Test UEFI CA",
-					serial:  testutil.DecodeHexStringT(t, "01"),
-					owner:   testOwnerGuid,
-				},
-				{
-					issuer:  "CN=Test Key Exchange Key",
-					subject: "CN=Test UEFI CA 2",
-					serial:  testutil.DecodeHexStringT(t, "02"),
-					owner:   testOwnerGuid,
-				},
-			},
-			signatures: 4,
-		},
-		{
-			desc: "dbx1",
-			path: "testdata/efivars1/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
-			certs: []certId{
-				{
-					issuer:  microsoftRootCAName,
-					subject: "CN=Microsoft Windows PCA 2010,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US",
-					serial:  testutil.DecodeHexStringT(t, "610c6a19000000000004"),
-					owner:   tcglog.MakeEFIGUID(0x00000000, 0x0000, 0x0000, 0x0000, [...]uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}),
-				},
-			},
-			signatures: 78,
-		},
-		{
-			desc:       "dbx2",
-			path:       "testdata/efivars2/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
-			signatures: 1,
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			d, err := ioutil.ReadFile(data.path)
-			if err != nil {
-				t.Fatalf("ReadFile failed: %v", err)
-			}
-
-			signatures, err := DecodeSecureBootDb(bytes.NewReader(d[4:]))
-			if err != nil {
-				t.Fatalf("decodeSecureBootDb failed: %v", err)
-			}
-			if len(signatures) != data.signatures {
-				t.Fatalf("Unexpected number of signatures (got %d, expected %d)", len(signatures), data.signatures)
-			}
-			i := 0
-			for _, sig := range signatures {
-				if sig.SignatureType() != CertX509Guid {
-					continue
-				}
-
-				c, err := x509.ParseCertificate(sig.Data())
-				if err != nil {
-					t.Errorf("ParseCertificate failed: %v", err)
-				}
-
-				if sig.Owner() != data.certs[i].owner {
-					t.Errorf("Unexpected owner (got %s, expected %s)", sig.Owner(), data.certs[i].owner)
-				}
-				if c.Issuer.String() != data.certs[i].issuer {
-					t.Errorf("Unexpected issuer: %s", c.Issuer)
-				}
-				if c.Subject.String() != data.certs[i].subject {
-					t.Errorf("Unexpected subject: %s", c.Subject.String())
-				}
-				if !bytes.Equal(c.SerialNumber.Bytes(), data.certs[i].serial) {
-					t.Errorf("Unexpected serial number (got %x, expected %x)", c.SerialNumber.Bytes(), data.certs[i].serial)
-				}
-				i++
-			}
-		})
-	}
-}
-
 func TestComputeDbUpdate(t *testing.T) {
 	for _, data := range []struct {
 		desc          string
@@ -317,7 +105,8 @@ func TestComputeDbUpdate(t *testing.T) {
 		update        string
 		quirkMode     SigDbUpdateQuirkMode
 		sha1hash      []byte
-		newSignatures int
+		newESLs       int
+		newSignatures []int
 	}{
 		{
 			desc:          "AppendOneCertToDb",
@@ -325,7 +114,8 @@ func TestComputeDbUpdate(t *testing.T) {
 			update:        "testdata/updates2/db/1.bin",
 			quirkMode:     SigDbUpdateQuirkModeNone,
 			sha1hash:      testutil.DecodeHexStringT(t, "12669d032dd0c15a157a7af0df7b86f2e174344b"),
-			newSignatures: 1,
+			newESLs:       1,
+			newSignatures: []int{1},
 		},
 		{
 			desc:      "AppendExistingCertToDb",
@@ -340,7 +130,8 @@ func TestComputeDbUpdate(t *testing.T) {
 			update:        "testdata/updates1/dbx/MS-2016-08-08.bin",
 			quirkMode:     SigDbUpdateQuirkModeNone,
 			sha1hash:      testutil.DecodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
-			newSignatures: 77,
+			newESLs:       1,
+			newSignatures: []int{77},
 		},
 		{
 			desc:          "AppendMsDbxUpdate/2",
@@ -348,7 +139,8 @@ func TestComputeDbUpdate(t *testing.T) {
 			update:        "testdata/updates1/dbx/MS-2016-08-08.bin",
 			quirkMode:     SigDbUpdateQuirkModeDedupIgnoresOwner,
 			sha1hash:      testutil.DecodeHexStringT(t, "96f7dc104ee34a0ce8425aac20f29e2b2aba9d7e"),
-			newSignatures: 77,
+			newESLs:       1,
+			newSignatures: []int{77},
 		},
 		{
 			desc:          "AppendDbxUpdateWithDuplicateSignatures/1",
@@ -356,7 +148,8 @@ func TestComputeDbUpdate(t *testing.T) {
 			update:        "testdata/updates3/dbx/1.bin",
 			quirkMode:     SigDbUpdateQuirkModeNone,
 			sha1hash:      testutil.DecodeHexStringT(t, "b49564b2daee39b01b524bef75cf9cde2c3a2a0d"),
-			newSignatures: 2,
+			newESLs:       1,
+			newSignatures: []int{2},
 		},
 		{
 			desc:          "AppendDbxUpdateWithDuplicateSignatures/2",
@@ -364,19 +157,31 @@ func TestComputeDbUpdate(t *testing.T) {
 			update:        "testdata/updates3/dbx/1.bin",
 			quirkMode:     SigDbUpdateQuirkModeDedupIgnoresOwner,
 			sha1hash:      testutil.DecodeHexStringT(t, "d2af590925046adc61b250a71f00b7b38d0eb3d1"),
-			newSignatures: 1,
+			newESLs:       1,
+			newSignatures: []int{1},
+		},
+		{
+			desc:          "AppendDbxUpdateWithMultipleESLs",
+			orig:          "testdata/efivars2/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f",
+			update:        "testdata/updates5/dbx/dbxupdate_x64_1.bin",
+			quirkMode:     SigDbUpdateQuirkModeNone,
+			sha1hash:      testutil.DecodeHexStringT(t, "306985f67cdc580e25c1572568f9e65e420984d2"),
+			newESLs:       4,
+			newSignatures: []int{1, 1, 1, 183},
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			orig, err := os.Open(data.orig)
+			o, err := os.Open(data.orig)
 			if err != nil {
 				t.Fatalf("Open failed: %v", err)
 			}
-			defer orig.Close()
-			origReader := io.NewSectionReader(orig, 4, (1<<63)-5)
-			origSignatures, err := DecodeSecureBootDb(origReader)
+			defer o.Close()
+
+			orig := io.NewSectionReader(o, 4, (1<<63)-5)
+
+			origDb, err := efi.ReadSignatureDatabase(orig)
 			if err != nil {
-				t.Errorf("DecodeSecureBootDb failed: %v", err)
+				t.Errorf("ReadSignatureDatabase failed: %v", err)
 			}
 
 			update, err := os.Open(data.update)
@@ -385,43 +190,48 @@ func TestComputeDbUpdate(t *testing.T) {
 			}
 			defer update.Close()
 
-			db, err := ComputeDbUpdate(origReader, update, data.quirkMode)
+			orig.Seek(0, io.SeekStart)
+			updated, err := ComputeDbUpdate(orig, update, data.quirkMode)
 			if err != nil {
-				t.Fatalf("ComputeDbUpdate failed: %v", err)
+				t.Errorf("ComputeDbUpdate failed: %v", err)
 			}
 
 			// Ensure that an append was performed (ie, the original contents are unmofified)
-			origReader.Seek(0, io.SeekStart)
-			origDb, err := ioutil.ReadAll(origReader)
+			orig.Seek(0, io.SeekStart)
+			origBytes, err := ioutil.ReadAll(orig)
 			if err != nil {
-				t.Fatalf("ReadAll failed: %v", err)
+				t.Errorf("ReadAll failed: %v", err)
 			}
 
-			if !bytes.Equal(origDb, db[:len(origDb)]) {
+			if !bytes.Equal(origBytes, updated[:len(origBytes)]) {
 				t.Errorf("ComputeDbUpdate didn't perform an append")
 			}
 
 			// Ensure that the result is well formed
-			signatures, err := DecodeSecureBootDb(bytes.NewReader(db))
+			updatedDb, err := efi.ReadSignatureDatabase(bytes.NewReader(updated))
 			if err != nil {
-				t.Errorf("DecodeSecureBootDb failed: %v", err)
+				t.Errorf("ReadSignatureDatabase failed: %v", err)
 			}
 
-			// Check we got the expected number of new signatures
-			if (len(signatures) - len(origSignatures)) != data.newSignatures {
-				t.Errorf("Incorrect number of new signatures (got %d, expected %d)", len(signatures)-len(origSignatures), data.newSignatures)
+			if (len(updatedDb) - len(origDb)) != data.newESLs {
+				t.Errorf("Incorrect number of new ESLs (got %d, expected %d)", len(updatedDb)-len(origDb), data.newESLs)
+			}
+			for i := 0; i < data.newESLs; i++ {
+				if len(updatedDb[len(origDb)+i].Signatures) != data.newSignatures[i] {
+					t.Errorf("Incorrect number of new signatures (got %d, expected %d)", len(updatedDb[len(origDb)+i].Signatures), data.newSignatures[i])
+				}
 			}
 
 			// Lastly, verify the contents against a known good digest
 			h := crypto.SHA1.New()
 			var attrs uint32
-			if err := binary.Read(orig, binary.LittleEndian, &attrs); err != nil {
+			if err := binary.Read(o, binary.LittleEndian, &attrs); err != nil {
 				t.Fatalf("binary.Read failed: %v", err)
 			}
 			if err := binary.Write(h, binary.LittleEndian, attrs); err != nil {
 				t.Fatalf("binary.Write failed: %v", err)
 			}
-			h.Write(db)
+			h.Write(updated)
 
 			if !bytes.Equal(data.sha1hash, h.Sum(nil)) {
 				t.Errorf("Unexpected updated contents (sha1 got %x, expected %x)", h.Sum(nil), data.sha1hash)
@@ -1378,6 +1188,8 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		t.Run(data.desc, func(t *testing.T) {
 			restoreEventLogPath := testutil.MockEventLogPath(data.logPath)
 			defer restoreEventLogPath()
+			restoreReadVar := testutil.MockEFIReadVar(data.efivars)
+			defer restoreReadVar()
 			restoreEfivarsPath := testutil.MockEFIVarsPath(data.efivars)
 			defer restoreEfivarsPath()
 
