@@ -52,6 +52,12 @@ func (s *activateSuite) SetUpTest(c *C) {
 	s.mockKeyslotsCount = 0
 
 	sdCryptsetupBottom := `
+if [ "$1" = "detach" ]; then
+    if [ "$2" = "bad-volume" ]; then
+        exit 7
+    fi
+    exit 0
+fi
 key=$(xxd -p < "$4")
 for f in "%[1]s"/*; do
     if [ "$key" == "$(xxd -p < "$f")" ]; then
@@ -114,10 +120,26 @@ func (s *activateSuite) TestActivateWrongKey(c *C) {
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	c.Check(Activate("data", "/dev/sda1", nil), ErrorMatches, "exit status 5")
+	c.Check(Activate("data", "/dev/sda1", nil), ErrorMatches, `systemd-cryptsetup failed with: exit status 5`)
 
 	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
 	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
 	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
 	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1", "/dev/stdin", "luks,tries=1"})
+}
+
+func (s *activateSuite) TestDeactivate(c *C) {
+	c.Assert(Deactivate("data"), IsNil)
+	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{
+		"systemd-cryptsetup", "detach", "data",
+	})
+}
+
+func (s *activateSuite) TestDeactivateErr(c *C) {
+	c.Assert(Deactivate("bad-volume"), ErrorMatches, `systemd-cryptsetup failed with: exit status 7`)
+	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{
+		"systemd-cryptsetup", "detach", "bad-volume",
+	})
 }

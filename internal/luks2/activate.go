@@ -21,6 +21,7 @@ package luks2
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 
@@ -40,7 +41,20 @@ func Activate(volumeName, sourceDevicePath string, key []byte) error {
 	cmd.Stdin = bytes.NewReader(key)
 
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+		return fmt.Errorf("systemd-cryptsetup failed with: %v", osutil.OutputErr(output, err))
+	}
+
+	return nil
+}
+
+// Deactivate detaches the LUKS volume with the supplied name.
+func Deactivate(volumeName string) error {
+	cmd := exec.Command(systemdCryptsetupPath, "detach", volumeName)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("systemd-cryptsetup failed with: %v", osutil.OutputErr(output, err))
 	}
 
 	return nil

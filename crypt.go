@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/snapcore/secboot/internal/keyring"
+	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/sys/unix"
@@ -41,8 +42,10 @@ import (
 )
 
 var (
-	runDir                = "/run"
-	systemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
+	luks2Activate   = luks2.Activate
+	luks2Deactivate = luks2.Deactivate
+
+	runDir = "/run"
 )
 
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
@@ -142,68 +145,6 @@ func mkFifo() (string, func(), error) {
 
 	succeeded = true
 	return fifo, cleanup, nil
-}
-
-func activate(volumeName, sourceDevicePath string, key []byte) error {
-	fifoPath, cleanupFifo, err := mkFifo()
-	if err != nil {
-		return xerrors.Errorf("cannot create FIFO for passing key to systemd-cryptsetup: %w", err)
-	}
-	defer cleanupFifo()
-
-	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, fifoPath, "tries=1")
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return xerrors.Errorf("cannot create stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return xerrors.Errorf("cannot create stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	done := make(chan bool, 2)
-	go func() {
-		rd := bufio.NewScanner(stdout)
-		for rd.Scan() {
-			fmt.Printf("systemd-cryptsetup: %s\n", rd.Text())
-		}
-		done <- true
-	}()
-	go func() {
-		rd := bufio.NewScanner(stderr)
-		for rd.Scan() {
-			fmt.Fprintf(os.Stderr, "systemd-cryptsetup: %s\n", rd.Text())
-		}
-		done <- true
-	}()
-
-	f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
-	if err != nil {
-		// If we fail to open the write end, the read end will be blocked in open()
-		cmd.Process.Kill()
-		return xerrors.Errorf("cannot open FIFO for passing key to systemd-cryptsetup: %w", err)
-	}
-
-	if _, err := f.Write(key); err != nil {
-		f.Close()
-		// The read end is open and blocked inside read(). Closing our write end will result in the
-		// read end returning 0 bytes (EOF) and exitting cleanly.
-		cmd.Wait()
-		return xerrors.Errorf("cannot pass key to systemd-cryptsetup: %w", err)
-	}
-
-	f.Close()
-	for i := 0; i < 2; i++ {
-		<-done
-	}
-
-	return wrapExecError(cmd, cmd.Wait())
 }
 
 func askPassword(sourceDevicePath, msg string) (string, error) {
@@ -309,7 +250,7 @@ func (s *activateWithKeyDataState) snapModelChecker() *snapModelCheckerImpl {
 }
 
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(keyData *KeyData, key DiskUnlockKey, auxKey AuxiliaryKey) error {
-	if err := activate(s.volumeName, s.sourceDevicePath, key); err != nil {
+	if err := luks2Activate(s.volumeName, s.sourceDevicePath, key); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 
@@ -392,13 +333,8 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		if err := activate(volumeName, sourceDevicePath, key[:]); err != nil {
-			err = xerrors.Errorf("cannot activate volume: %w", err)
-			var e *exec.ExitError
-			if !xerrors.As(err, &e) {
-				return err
-			}
-			lastErr = err
+		if err := luks2Activate(volumeName, sourceDevicePath, key[:]); err != nil {
+			lastErr = xerrors.Errorf("cannot activate volume: %w", err)
 			continue
 		}
 
@@ -552,20 +488,13 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 // sourceDevicePath and create a mapping with the name volumeName, using the
 // provided key. This makes use of systemd-cryptsetup.
 func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, options *ActivateVolumeOptions) error {
-	return activate(volumeName, sourceDevicePath, key)
+	return luks2Activate(volumeName, sourceDevicePath, key)
 }
 
 // DeactivateVolume attempts to deactivate the LUKS encrypted volumeName.
 // This makes use of systemd-cryptsetup.
 func DeactivateVolume(volumeName string) error {
-	cmd := exec.Command(systemdCryptsetupPath, "detach", volumeName)
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return xerrors.Errorf("cannot deactivate volume: %w", osutil.OutputErr(output, err))
-	}
-
-	return nil
+	return luks2Deactivate(volumeName)
 }
 
 func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
