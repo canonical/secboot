@@ -630,7 +630,7 @@ func TestProvisionWithInvalidCustomSRKTemplate(t *testing.T) {
 	}
 }
 
-func TestRemoveStoredCustomSRKTemplate(t *testing.T) {
+func TestProvisionDefaultRemovesCustomSRKTemplate(t *testing.T) {
 	tpm, _ := openTPMSimulatorForTesting(t)
 	defer func() {
 		clearTPMWithPlatformAuth(t, tpm)
