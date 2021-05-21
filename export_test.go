@@ -30,6 +30,7 @@ import (
 const (
 	CurrentMetadataVersion = currentMetadataVersion
 	LockNVHandle           = lockNVHandle
+	SrkTemplateHandle      = srkTemplateHandle
 )
 
 // Export variables and unexported functions for testing
