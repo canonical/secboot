@@ -34,9 +34,9 @@ func unsealKeyFromTPM(tpm *TPMConnection, k *SealedKeyObject, pin string) ([]byt
 		// ErrTPMProvisioning in this context might indicate that there isn't a valid persistent SRK. Have a go at creating one now and then
 		// retrying the unseal operation - if the previous SRK was evicted, the TPM owner hasn't changed and the storage hierarchy still
 		// has a null authorization value, then this will allow us to unseal the key without requiring any type of manual recovery. If the
-		// storage hierarchy has a non-null authorization value, creating a new SRK will fail. If the TPM owner has changed, we might be
-		// able to create a new SRK but UnsealFromTPM will fail with InvalidKeyFileError when retried.
-		if _, pErr := provisionStoragePrimaryKey(tpm.TPMContext, tpm.HmacSession()); pErr == nil {
+		// storage hierarchy has a non-null authorization value, ProvisionTPM will fail. If the TPM owner has changed, ProvisionTPM might
+		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
+		if pErr := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); pErr == nil || pErr == ErrTPMProvisioningRequiresLockout {
 			sealedKey, _, err = k.UnsealFromTPM(tpm, pin)
 		}
 	}

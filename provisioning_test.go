@@ -555,21 +555,6 @@ func TestProvisionWithCustomSRKTemplate(t *testing.T) {
 
 			validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
-			key, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, &template, nil, nil, nil)
-			if err != nil {
-				t.Fatalf("CreatePrimary failed: %v", err)
-			}
-			defer flushContext(t, tpm, key)
-
-			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-			if err != nil {
-				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-			}
-
-			if !bytes.Equal(srk.Name(), key.Name()) {
-				t.Errorf("Unexpected SRK ID")
-			}
-
 			nv, err := tpm.CreateResourceContextFromTPM(0x01810001)
 			if err != nil {
 				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
@@ -580,7 +565,7 @@ func TestProvisionWithCustomSRKTemplate(t *testing.T) {
 				t.Fatalf("NVReadPublic failed: %v", err)
 			}
 
-			if nvPub.Attrs != tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVWriteDefine | tpm2.AttrNVOwnerRead | tpm2.AttrNVNoDA | tpm2.AttrNVWriteLocked | tpm2.AttrNVWritten) {
+			if nvPub.Attrs != tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite|tpm2.AttrNVWriteDefine|tpm2.AttrNVOwnerRead|tpm2.AttrNVNoDA|tpm2.AttrNVWriteLocked|tpm2.AttrNVWritten) {
 				t.Errorf("Unexpected attributes")
 			}
 
@@ -630,7 +615,7 @@ func TestProvisionWithInvalidCustomSRKTemplate(t *testing.T) {
 	}
 }
 
-func TestProvisionDefaultRemovesCustomSRKTemplate(t *testing.T) {
+func TestProvisionDefaultPreservesCustomSRKTemplate(t *testing.T) {
 	tpm, _ := openTPMSimulatorForTesting(t)
 	defer func() {
 		clearTPMWithPlatformAuth(t, tpm)
@@ -685,7 +670,120 @@ func TestProvisionDefaultRemovesCustomSRKTemplate(t *testing.T) {
 				t.Fatalf("EnsureProvisioned failed: %v", err)
 			}
 
-			validateSRK(t, tpm.TPMContext)
+			validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
 		})
+	}
+}
+
+func TestProvisionDefaultClearRemovesCustomSRKTemplate(t *testing.T) {
+	tpm, _ := openTPMSimulatorForTesting(t)
+	defer func() {
+		clearTPMWithPlatformAuth(t, tpm)
+		closeTPM(t, tpm)
+	}()
+
+	template := tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrDecrypt,
+		Params: &tpm2.PublicParamsU{
+			RSADetail: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+					Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}}}
+
+	clearTPMWithPlatformAuth(t, tpm)
+
+	if err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeWithoutLockout, nil, &template); err != nil && err != ErrTPMProvisioningRequiresLockout {
+		t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
+	}
+
+	validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
+
+	if err := tpm.EnsureProvisioned(ProvisionModeClear, nil); err != nil {
+		t.Fatalf("EnsureProvisioned failed: %v", err)
+	}
+
+	validateSRK(t, tpm.TPMContext)
+}
+
+func TestProvisionWithCustomSRKTemplateOverwritesExisting(t *testing.T) {
+	tpm, _ := openTPMSimulatorForTesting(t)
+	defer func() {
+		clearTPMWithPlatformAuth(t, tpm)
+		closeTPM(t, tpm)
+	}()
+
+	clearTPMWithPlatformAuth(t, tpm)
+
+	template1 := tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrDecrypt,
+		Params: &tpm2.PublicParamsU{
+			RSADetail: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+					Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}}}
+
+	if err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template1); err != nil {
+		t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
+	}
+
+	validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template1)
+
+	template2 := tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrDecrypt,
+		Params: &tpm2.PublicParamsU{
+			RSADetail: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   &tpm2.SymKeyBitsU{Sym: 256},
+					Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}}}
+
+	if err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template2); err != nil {
+		t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
+	}
+
+	validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template2)
+
+	nv, err := tpm.CreateResourceContextFromTPM(0x01810001)
+	if err != nil {
+		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+	}
+
+	nvPub, _, err := tpm.NVReadPublic(nv)
+	if err != nil {
+		t.Fatalf("NVReadPublic failed: %v", err)
+	}
+
+	if nvPub.Attrs != tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite|tpm2.AttrNVWriteDefine|tpm2.AttrNVOwnerRead|tpm2.AttrNVNoDA|tpm2.AttrNVWriteLocked|tpm2.AttrNVWritten) {
+		t.Errorf("Unexpected attributes")
+	}
+
+	tmplB, err := tpm.NVRead(tpm.OwnerHandleContext(), nv, nvPub.Size, 0, nil)
+	if err != nil {
+		t.Errorf("NVRead failed: %v", err)
+	}
+
+	expected, _ := mu.MarshalToBytes(&template2)
+	if !bytes.Equal(tmplB, expected) {
+		t.Errorf("Unexpected template")
 	}
 }

@@ -174,59 +174,8 @@ func removeStoredSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) 
 	return nil
 }
 
-// EnsureProvisionedWithCustomSRK prepares the TPM for full disk encryption. The mode parameter specifies the behaviour of this
-// function.
-//
-// EnsureProvisioned is generally preferred over this function.
-//
-// If mode is ProvisionModeClear, this function will attempt to clear the TPM before provisioning it. If owner clear has been
-// disabled (which will be the case if the TPM has previously been provisioned with this function), then ErrTPMClearRequiresPPI
-// will be returned. In this case, the TPM must be cleared via the physical presence interface by calling RequestTPMClearUsingPPI
-// and performing a system restart. Note that clearing the TPM makes all previously sealed keys permanently unrecoverable. This
-// mode should normally be used when resetting a device to factory settings (ie, performing a new installation).
-//
-// If mode is ProvisionModeClear or ProvisionModeFull, then the authorization value for the lockout hierarchy will be set to
-// newLockoutAuth, owner clear will be disabled, and the parameters of the TPM's dictionary attack logic will be configured to
-// appropriate values.
-//
-// If mode is ProvisionModeClear or ProvisionModeFull, this function performs operations that require the use of the lockout
-// hierarchy (detailed above), and knowledge of the lockout hierarchy's authorization value. This must be provided by calling
-// TPMConnection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
-// provided, then a AuthFailError error will be returned. If this happens, the TPM will have entered dictionary attack lockout mode
-// for the lockout hierarchy. Further calls will result in a ErrTPMLockout error being returned. The only way to recover from this is
-// to either wait for the pre-programmed recovery time to expire, or to clear the TPM via the physical presence interface by calling
-// RequestTPMClearUsingPPI. If the lockout hierarchy authorization value is not known then mode should be set to
-// ProvisionModeWithoutLockout, with the caveat that this mode cannot fully provision the TPM.
-//
-// If mode is ProvisionModeFull or ProvisionModeWithoutLockout, this function will not affect the ability to recover sealed keys that
-// can currently be recovered.
-//
-// In all modes, this function will create and persist both a storage root key and an endorsement key. Both of these will be
-// persisted at the handles specied in the "TCG TPM v2.0 Provisioning Guidance" specification. The endorsement key will be
-// created using the RSA template defined in the "TCG EK Credential Profile for TPM Family 2.0" specification. The storage root
-// key will be created using the RSA template defined in the "TCG TPM v2.0 Provisioning Guidance" specification unless the
-// srkTemplate argument is supplied, in which case, this template will be used instead. If there are any objects already stored
-// at the locations required for either primary key, then this function will evict them automatically from the TPM. These
-// operations both require the use of the storage and endorsement hierarchies. If mode is ProvisionModeFull or
-// ProvisionModeWithoutLockout, then knowledge of the authorization values for these hierarchies is required. Whilst these will be
-// empty after clearing the TPM, if they have been set since clearing the TPM then they will need to be provided by calling
-// TPMConnection.EndorsementHandleContext().SetAuthValue() and TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling
-// this function. If the wrong value is provided for either authorization, then a AuthFailError error will be returned. If the
-// correct authorization values are not known, then the only way to recover from this is to clear the TPM either by calling this
-// function with mode set to ProvisionModeClear (and providing the correct authorization value for the lockout hierarchy), or by
-// using the physical presence interface.
-//
-// If mode is ProvisionModeWithoutLockout but the TPM indicates that use of the lockout hierarchy is required to fully provision the
-// TPM (eg, to disable owner clear, set the lockout hierarchy authorization value or configure the DA lockout parameters), then a
-// ErrTPMProvisioningRequiresLockout error will be returned. In this scenario, the function will complete all operations that can be
-// completed without using the lockout hierarchy, but the function should be called again either with mode set to ProvisionModeFull
-// (if the authorization value for the lockout hierarchy is known), or ProvisionModeClear.
-func (t *TPMConnection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public) error {
+func (t *TPMConnection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public, useExistingSrkTemplate bool) error {
 	session := t.HmacSession()
-
-	if srkTemplate != nil && !srkTemplate.IsParent() {
-		return errors.New("supplied SRK template is not valid for a parent key")
-	}
 
 	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
@@ -274,17 +223,22 @@ func (t *TPMConnection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLo
 	}
 	session = t.HmacSession()
 
-	if srkTemplate != nil {
-		if err := storeSrkTemplate(t.TPMContext, srkTemplate, session); err != nil {
-			return xerrors.Errorf("cannot store custom SRK template: %w", err)
-		}
-	} else if mode != ProvisionModeClear {
+	// Provision a storage root key
+	if !useExistingSrkTemplate && mode != ProvisionModeClear {
+		// If we're not reusing the existing custom template, remove it. We don't
+		// need to do this if mode == ProvisionModeClear because it will have already
+		// been removed.
 		if err := removeStoredSrkTemplate(t.TPMContext, session); err != nil {
 			return xerrors.Errorf("cannot remove stored custom SRK template: %w", err)
 		}
 	}
+	if srkTemplate != nil {
+		// Persist the new custom template
+		if err := storeSrkTemplate(t.TPMContext, srkTemplate, session); err != nil {
+			return xerrors.Errorf("cannot store custom SRK template: %w", err)
+		}
+	}
 
-	// Provision a storage root key
 	srk, err := provisionStoragePrimaryKey(t.TPMContext, session)
 	if err != nil {
 		switch {
@@ -350,6 +304,65 @@ func (t *TPMConnection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLo
 	return nil
 }
 
+// EnsureProvisionedWithCustomSRK prepares the TPM for full disk encryption. The mode parameter specifies the behaviour of this
+// function.
+//
+// EnsureProvisioned is generally preferred over this function.
+//
+// If mode is ProvisionModeClear, this function will attempt to clear the TPM before provisioning it. If owner clear has been
+// disabled (which will be the case if the TPM has previously been provisioned with this function), then ErrTPMClearRequiresPPI
+// will be returned. In this case, the TPM must be cleared via the physical presence interface by calling RequestTPMClearUsingPPI
+// and performing a system restart. Note that clearing the TPM makes all previously sealed keys permanently unrecoverable. This
+// mode should normally be used when resetting a device to factory settings (ie, performing a new installation).
+//
+// If mode is ProvisionModeClear or ProvisionModeFull, then the authorization value for the lockout hierarchy will be set to
+// newLockoutAuth, owner clear will be disabled, and the parameters of the TPM's dictionary attack logic will be configured to
+// appropriate values.
+//
+// If mode is ProvisionModeClear or ProvisionModeFull, this function performs operations that require the use of the lockout
+// hierarchy (detailed above), and knowledge of the lockout hierarchy's authorization value. This must be provided by calling
+// TPMConnection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
+// provided, then a AuthFailError error will be returned. If this happens, the TPM will have entered dictionary attack lockout mode
+// for the lockout hierarchy. Further calls will result in a ErrTPMLockout error being returned. The only way to recover from this is
+// to either wait for the pre-programmed recovery time to expire, or to clear the TPM via the physical presence interface by calling
+// RequestTPMClearUsingPPI. If the lockout hierarchy authorization value is not known then mode should be set to
+// ProvisionModeWithoutLockout, with the caveat that this mode cannot fully provision the TPM.
+//
+// If mode is ProvisionModeFull or ProvisionModeWithoutLockout, this function will not affect the ability to recover sealed keys that
+// can currently be recovered.
+//
+// In all modes, this function will create and persist both a storage root key and an endorsement key. Both of these will be
+// persisted at the handles specied in the "TCG TPM v2.0 Provisioning Guidance" specification. The endorsement key will be
+// created using the RSA template defined in the "TCG EK Credential Profile for TPM Family 2.0" specification. The storage root
+// key will be created using the RSA template defined in the "TCG TPM v2.0 Provisioning Guidance" specification unless the
+// srkTemplate argument is supplied, in which case, this template will be used instead. If there are any objects already stored
+// at the locations required for either primary key, then this function will evict them automatically from the TPM. These
+// operations both require the use of the storage and endorsement hierarchies. If mode is ProvisionModeFull or
+// ProvisionModeWithoutLockout, then knowledge of the authorization values for these hierarchies is required. Whilst these will be
+// empty after clearing the TPM, if they have been set since clearing the TPM then they will need to be provided by calling
+// TPMConnection.EndorsementHandleContext().SetAuthValue() and TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling
+// this function. If the wrong value is provided for either authorization, then a AuthFailError error will be returned. If the
+// correct authorization values are not known, then the only way to recover from this is to clear the TPM either by calling this
+// function with mode set to ProvisionModeClear (and providing the correct authorization value for the lockout hierarchy), or by
+// using the physical presence interface.
+//
+// If srkTemplate is supplied, it will be persisted inside the TPM. Future calls to EnsureProvisioned will use this template
+// unless mode is set to ProvisionModeClear. The template will also be used to recreate the storage root key during device
+// activation if the initial unsealing fails.
+//
+// If mode is ProvisionModeWithoutLockout but the TPM indicates that use of the lockout hierarchy is required to fully provision the
+// TPM (eg, to disable owner clear, set the lockout hierarchy authorization value or configure the DA lockout parameters), then a
+// ErrTPMProvisioningRequiresLockout error will be returned. In this scenario, the function will complete all operations that can be
+// completed without using the lockout hierarchy, but the function should be called again either with mode set to ProvisionModeFull
+// (if the authorization value for the lockout hierarchy is known), or ProvisionModeClear.
+func (t *TPMConnection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public) error {
+	if srkTemplate != nil && !srkTemplate.IsParent() {
+		return errors.New("supplied SRK template is not valid for a parent key")
+	}
+
+	return t.ensureProvisionedInternal(mode, newLockoutAuth, srkTemplate, false)
+}
+
 // EnsureProvisioned prepares the TPM for full disk encryption. The mode parameter specifies the behaviour of this function.
 //
 // If mode is ProvisionModeClear, this function will attempt to clear the TPM before provisioning it. If owner clear has been
@@ -374,17 +387,21 @@ func (t *TPMConnection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLo
 // If mode is ProvisionModeFull or ProvisionModeWithoutLockout, this function will not affect the ability to recover sealed keys that
 // can currently be recovered.
 //
-// In all modes, this function will create and persist both a storage root key and an endorsement key. Both of these will be created
-// using the RSA templates defined in and persisted at the handles specified in the "TCG EK Credential Profile for TPM Family 2.0"
-// and "TCG TPM v2.0 Provisioning Guidance" specifications. If there are any objects already stored at the locations required for
-// either primary key, then this function will evict them automatically from the TPM. These operations both require the use of the
-// storage and endorsement hierarchies. If mode is ProvisionModeFull or ProvisionModeWithoutLockout, then knowledge of the
-// authorization values for these hierarchies is required. Whilst these will be empty after clearing the TPM, if they have been set
-// since clearing the TPM then they will need to be provided by calling TPMConnection.EndorsementHandleContext().SetAuthValue() and
-// TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling this function. If the wrong value is provided for either
-// authorization, then a AuthFailError error will be returned. If the correct authorization values are not known, then the only way
-// to recover from this is to clear the TPM either by calling this function with mode set to ProvisionModeClear (and providing the
-// correct authorization value for the lockout hierarchy), or by using the physical presence interface.
+// In all modes, this function will create and persist both a storage root key and an endorsement key. Both of these will be
+// persisted at the handles specied in the "TCG TPM v2.0 Provisioning Guidance" specification. The endorsement key will be
+// created using the RSA template defined in the "TCG EK Credential Profile for TPM Family 2.0" specification. The storage root
+// key will be created using the RSA template defined in the "TCG TPM v2.0 Provisioning Guidance" specification unless the
+// TPM has previously been provisioned with a custom SRK template using the EnsureProvisionedWithCustomSRK function and mode is
+// not ProvisionModeClear, in which case, the originally supplied template will be used instead. If there are any objects already
+// stored at the locations required for either primary key, then this function will evict them automatically from the TPM. These
+// operations both require the use of the storage and endorsement hierarchies. If mode is ProvisionModeFull or
+// ProvisionModeWithoutLockout, then knowledge of the authorization values for these hierarchies is required. Whilst these will be
+// empty after clearing the TPM, if they have been set since clearing the TPM then they will need to be provided by calling
+// TPMConnection.EndorsementHandleContext().SetAuthValue() and TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling
+// this function. If the wrong value is provided for either authorization, then a AuthFailError error will be returned. If the
+// correct authorization values are not known, then the only way to recover from this is to clear the TPM either by calling this
+// function with mode set to ProvisionModeClear (and providing the correct authorization value for the lockout hierarchy), or by
+// using the physical presence interface.
 //
 // If mode is ProvisionModeWithoutLockout but the TPM indicates that use of the lockout hierarchy is required to fully provision the
 // TPM (eg, to disable owner clear, set the lockout hierarchy authorization value or configure the DA lockout parameters), then a
@@ -392,7 +409,7 @@ func (t *TPMConnection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLo
 // completed without using the lockout hierarchy, but the function should be called again either with mode set to ProvisionModeFull
 // (if the authorization value for the lockout hierarchy is known), or ProvisionModeClear.
 func (t *TPMConnection) EnsureProvisioned(mode ProvisionMode, newLockoutAuth []byte) error {
-	return t.EnsureProvisionedWithCustomSRK(mode, newLockoutAuth, nil)
+	return t.ensureProvisionedInternal(mode, newLockoutAuth, nil, true)
 }
 
 // RequestTPMClearUsingPPI submits a request to the firmware to clear the TPM on the next reboot. This is the only way to clear
