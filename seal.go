@@ -258,9 +258,11 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath str
 	if err != nil {
 		panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
 	}
+	// Define the actual sensitive area. The initial auth value is empty - note
+	// that tpm2.CreateDuplicationObjectFromSensitive pads this to the length of
+	// the name algorithm for us so we don't define it here.
 	sensitive := tpm2.Sensitive{
 		Type:      pub.Type,
-		AuthValue: make(tpm2.Auth, pub.NameAlg.Size()),
 		SeedValue: make(tpm2.Digest, pub.NameAlg.Size()),
 		Sensitive: &tpm2.SensitiveCompositeU{Bits: sealedData}}
 	if _, err := io.ReadFull(rand.Reader, sensitive.SeedValue); err != nil {
