@@ -51,6 +51,17 @@ func makeImportableSealedKeyTemplate() *tpm2.Public {
 	return tmpl
 }
 
+// computeSealedKeyDynamicAuthPolicy is a helper to compute a new PCR policy using the supplied
+// pcrProfile, signed with the supplied authKey.
+//
+// If tpm is not nil, this function will verify that the supplied pcrProfile produces a PCR
+// selection that is supported by the TPM. If tpm is nil, it will be assumed that the target
+// TPM supports the PCRs and algorithms defined in the TCG PC Client Platform TPM Profile
+// Specification for TPM 2.0.
+//
+// If tpm is not nil and counterPub is supplied, the current policy count will be read from
+// the TPM and the new PCR policy will have a count of this value + 1. If tpm is nil then
+// counterPub must also be nil, else an error will be returned.
 func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey crypto.PrivateKey,
 	counterPub *tpm2.NVPublic, counterAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
