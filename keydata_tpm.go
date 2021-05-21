@@ -386,6 +386,10 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 	return nil
 }
 
+// ensureImported will import the sealed key object into the TPM's storage hierarchy if
+// required, as indicated by an import symmetric seed of non-zero length. The tpmKeyData
+// structure will be updated with the newly imported private area and the import
+// symmetric seed will be cleared.
 func (d *tpmKeyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
 	if len(d.importSymSeed) == 0 {
 		return nil
