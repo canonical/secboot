@@ -630,7 +630,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticatedWithD
 	})
 }
 
-func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticateWithDbBeforeShimBasline(c *C) {
+func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticateWithDbBeforeShimBaseline(c *C) {
 	s.testAddSecureBootPolicyProfile(c, &testAddSecureBootPolicyProfileData{
 		eventLogPath: "testdata/eventlog_sb.bin",
 		efivars:      "testdata/efivars_mock1_plus_shim_vendor_ca",
@@ -1473,6 +1473,175 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShim2(c *C) {
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "d8348aafadb44d32d77b78480c8f1f82a0bf39f80ce27e241aef73189294969f"),
+				},
+			},
+		},
+	})
+}
+
+func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithEmptyDbtAndDbr(c *C) {
+	// Test that present but empty timestamp and recovery databases are omitted
+	// from the log. Should produce the same digest as *Classic.
+	s.testAddSecureBootPolicyProfile(c, &testAddSecureBootPolicyProfileData{
+		eventLogPath: "testdata/eventlog_sb.bin",
+		efivars:      "testdata/efivars_mock1_with_empty_dbt_and_dbr",
+		params: SecureBootPolicyProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			LoadSequences: []*ImageLoadEvent{
+				{
+					Source: Firmware,
+					Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
+					Next: []*ImageLoadEvent{
+						{
+							Source: Shim,
+							Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
+							Next: []*ImageLoadEvent{
+								{
+									Source: Shim,
+									Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
+								},
+								{
+									Source: Shim,
+									Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: testutil.DecodeHexString(c, "84c3cf3c3ca91234fda780141b06af2e32bb4c6fc809216f2c33d25b84155796"),
+				},
+			},
+		},
+	})
+}
+
+func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithDbtInLogButEmptyDbtAndDbrVars(c *C) {
+	// Test that present but empty timestamp and recovery databases are omitted
+	// from the log, even if the log contains events for these - the current variable
+	// values are authoritative. Should produce the same digest as *Classic.
+	s.testAddSecureBootPolicyProfile(c, &testAddSecureBootPolicyProfileData{
+		eventLogPath: "testdata/eventlog_sb_with_dbt_and_dbr.bin",
+		efivars:      "testdata/efivars_mock1_with_empty_dbt_and_dbr",
+		params: SecureBootPolicyProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			LoadSequences: []*ImageLoadEvent{
+				{
+					Source: Firmware,
+					Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
+					Next: []*ImageLoadEvent{
+						{
+							Source: Shim,
+							Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
+							Next: []*ImageLoadEvent{
+								{
+									Source: Shim,
+									Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
+								},
+								{
+									Source: Shim,
+									Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: testutil.DecodeHexString(c, "84c3cf3c3ca91234fda780141b06af2e32bb4c6fc809216f2c33d25b84155796"),
+				},
+			},
+		},
+	})
+}
+
+func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithDbt(c *C) {
+	// Test that we compute a digest that contains the timestamp database
+	// if it is present and not empty, even if it doesn't appear in the
+	// current log (as with other databases, it is updateable from the OS and
+	// so the current variable value is authoritative).
+	s.testAddSecureBootPolicyProfile(c, &testAddSecureBootPolicyProfileData{
+		eventLogPath: "testdata/eventlog_sb.bin",
+		efivars:      "testdata/efivars_mock1_with_dbt",
+		params: SecureBootPolicyProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			LoadSequences: []*ImageLoadEvent{
+				{
+					Source: Firmware,
+					Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
+					Next: []*ImageLoadEvent{
+						{
+							Source: Shim,
+							Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
+							Next: []*ImageLoadEvent{
+								{
+									Source: Shim,
+									Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
+								},
+								{
+									Source: Shim,
+									Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: testutil.DecodeHexString(c, "812b557893046f9b8ff577a91ffeba8e231c67cd8d17fe42347ada860c29f690"),
+				},
+			},
+		},
+	})
+}
+
+func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithDbtAndDbr(c *C) {
+	// Test that we compute a digest that contains the timestamp and recovery
+	// database if they are present and not empty, even if they don't appear in the
+	// current log (as with other databases, they are updateable from the OS and
+	// so the current variable value is authoritative).
+	s.testAddSecureBootPolicyProfile(c, &testAddSecureBootPolicyProfileData{
+		eventLogPath: "testdata/eventlog_sb.bin",
+		efivars:      "testdata/efivars_mock1_with_dbt_and_dbr",
+		params: SecureBootPolicyProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			LoadSequences: []*ImageLoadEvent{
+				{
+					Source: Firmware,
+					Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
+					Next: []*ImageLoadEvent{
+						{
+							Source: Shim,
+							Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
+							Next: []*ImageLoadEvent{
+								{
+									Source: Shim,
+									Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
+								},
+								{
+									Source: Shim,
+									Image:  FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: testutil.DecodeHexString(c, "cd5dbf8df1e726b8d422a9fa0184c4461846ce932bf98a208df6edad0f1b6f65"),
 				},
 			},
 		},

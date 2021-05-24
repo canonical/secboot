@@ -446,6 +446,101 @@ func newEfiVarData(srcDir string) ([]efiVarData, error) {
 				newDbVar("dbx", sigDb{devNullSha256Esl{}}),
 			},
 		},
+		{
+			name: "efivars_mock1_with_empty_dbt_and_dbr",
+			vars: []efiVar{
+				newGlobalVar("SecureBoot", efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, bytesPayload([]byte{0x01})),
+				newGlobalVar("PK", efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess,
+					&x509Esl{
+						cert:  certs["PkKek-1-Ubuntu"],
+						owner: efi.MakeGUID(0x4e32566d, 0x8e9e, 0x4f52, 0x81d3, [...]uint8{0x5b, 0xb9, 0x71, 0x5f, 0x97, 0x27}),
+					}),
+				newGlobalVar("KEK", efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess,
+					sigDb{
+						&x509Esl{
+							cert:  certs["TestKek1.1"],
+							owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+						},
+					}),
+				newDbVar("db", sigDb{
+					&x509Esl{
+						cert:  certs["TestUefiCA1.1"],
+						owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+					},
+				}),
+				newDbVar("dbx", sigDb{devNullSha256Esl{}}),
+				newDbVar("dbt", bytesPayload(nil)),
+				newDbVar("dbr", bytesPayload(nil)),
+			},
+		},
+		{
+			name: "efivars_mock1_with_dbt",
+			vars: []efiVar{
+				newGlobalVar("SecureBoot", efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, bytesPayload([]byte{0x01})),
+				newGlobalVar("PK", efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess,
+					&x509Esl{
+						cert:  certs["PkKek-1-Ubuntu"],
+						owner: efi.MakeGUID(0x4e32566d, 0x8e9e, 0x4f52, 0x81d3, [...]uint8{0x5b, 0xb9, 0x71, 0x5f, 0x97, 0x27}),
+					}),
+				newGlobalVar("KEK", efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess,
+					sigDb{
+						&x509Esl{
+							cert:  certs["TestKek1.1"],
+							owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+						},
+					}),
+				newDbVar("db", sigDb{
+					&x509Esl{
+						cert:  certs["TestUefiCA1.1"],
+						owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+					},
+				}),
+				newDbVar("dbx", sigDb{devNullSha256Esl{}}),
+				newDbVar("dbt", sigDb{
+					&x509Esl{
+						cert:  certs["TestTimestampCA"],
+						owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+					},
+				}),
+			},
+		},
+		{
+			name: "efivars_mock1_with_dbt_and_dbr",
+			vars: []efiVar{
+				newGlobalVar("SecureBoot", efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, bytesPayload([]byte{0x01})),
+				newGlobalVar("PK", efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess,
+					&x509Esl{
+						cert:  certs["PkKek-1-Ubuntu"],
+						owner: efi.MakeGUID(0x4e32566d, 0x8e9e, 0x4f52, 0x81d3, [...]uint8{0x5b, 0xb9, 0x71, 0x5f, 0x97, 0x27}),
+					}),
+				newGlobalVar("KEK", efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess,
+					sigDb{
+						&x509Esl{
+							cert:  certs["TestKek1.1"],
+							owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+						},
+					}),
+				newDbVar("db", sigDb{
+					&x509Esl{
+						cert:  certs["TestUefiCA1.1"],
+						owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+					},
+				}),
+				newDbVar("dbx", sigDb{devNullSha256Esl{}}),
+				newDbVar("dbt", sigDb{
+					&x509Esl{
+						cert:  certs["TestTimestampCA"],
+						owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+					},
+				}),
+				newDbVar("dbr", sigDb{
+					&x509Esl{
+						cert:  certs["TestKek1.1"],
+						owner: efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde}),
+					},
+				}),
+			},
+		},
 	}, nil
 }
 

@@ -73,11 +73,18 @@ func (w *logWriter) hashLogExtendEvent(data eventData, event *Event) {
 
 }
 
+type variableEventData struct {
+	guid efi.GUID
+	name string
+	data []byte
+}
+
 type logOptions struct {
-	omitEFIActionEvents bool
-	secureBootDisabled  bool
-	noShimVerification  bool
-	noSBAT              bool
+	omitEFIActionEvents    bool
+	secureBootDisabled     bool
+	noShimVerification     bool
+	noSBAT                 bool
+	includeDbtAndDbrEvents bool
 }
 
 func constructLog(vars map[string]map[string][]byte, certs map[string][]byte, opts *logOptions) []*tcglog.Event {
@@ -118,11 +125,7 @@ func constructLog(vars map[string]map[string][]byte, certs map[string][]byte, op
 	}
 
 	// Mock secure boot config measurements
-	for _, sbconfig := range []struct {
-		guid efi.GUID
-		name string
-		data []byte
-	}{
+	sbEvents := []variableEventData{
 		{
 			guid: efi.GlobalVariable,
 			name: "SecureBoot",
@@ -147,12 +150,25 @@ func constructLog(vars map[string]map[string][]byte, certs map[string][]byte, op
 			guid: efi.ImageSecurityDatabaseGuid,
 			name: "dbx",
 			data: vars["efivars_ms"]["dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f"],
-		},
-	} {
+		}}
+	if opts.includeDbtAndDbrEvents {
+		sbEvents = append(sbEvents,
+			variableEventData{
+				guid: efi.ImageSecurityDatabaseGuid,
+				name: "dbt",
+				data: vars["efivars_mock1_with_dbt"]["dbt-d719b2cb-3d3a-4596-a3bc-dad00e67656f"],
+			},
+			variableEventData{
+				guid: efi.ImageSecurityDatabaseGuid,
+				name: "dbr",
+				data: vars["efivars_ms"]["KEK-8be4df61-93ca-11d2-aa0d-00e098032b8c"],
+			})
+	}
+	for _, event := range sbEvents {
 		data := &tcglog.EFIVariableData{
-			VariableName: sbconfig.guid,
-			UnicodeName:  sbconfig.name,
-			VariableData: sbconfig.data}
+			VariableName: event.guid,
+			UnicodeName:  event.name,
+			VariableData: event.data}
 		w.hashLogExtendEvent(data, &Event{
 			PCRIndex:  7,
 			EventType: tcglog.EventTypeEFIVariableDriverConfig,
@@ -406,7 +422,8 @@ var logs = []logData{
 	{name: "eventlog_sb_no_efi_action", opts: logOptions{omitEFIActionEvents: true}},
 	{name: "eventlog_sb_no_shim_verification", opts: logOptions{noShimVerification: true}},
 	{name: "eventlog_sb_no_sbat", opts: logOptions{noSBAT: true}},
-	{name: "eventlog_no_sb", opts: logOptions{secureBootDisabled: true}}}
+	{name: "eventlog_no_sb", opts: logOptions{secureBootDisabled: true}},
+	{name: "eventlog_sb_with_dbt_and_dbr", opts: logOptions{includeDbtAndDbrEvents: true}}}
 
 func makeTCGLogs(srcDir, dstDir string) error {
 	datas, err := newEfiVarData(srcDir)

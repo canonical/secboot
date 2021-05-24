@@ -197,6 +197,19 @@ var certDatas = []certData{
 			CommonName:   "Test UEFI Secure Boot Signing 1",
 		},
 	},
+	{
+		name:         "TestTimestampCA",
+		isCA:         true,
+		keyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		serialNumber: big.NewInt(1),
+		subject: pkix.Name{
+			Country:      []string{"GB"},
+			Organization: []string{"Fake Corporation"},
+			Locality:     []string{"London"},
+			Province:     []string{"England"},
+			CommonName:   "Test Timestamp CA",
+		},
+	},
 }
 
 func decodePEM(path, t string) ([]byte, error) {

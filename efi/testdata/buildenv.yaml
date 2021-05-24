@@ -1,7 +1,7 @@
 go-arch: amd64
 go-version: go1.16.6
 kernel-version: |
-  Linux version 5.11.0-22-generic (buildd@lcy01-amd64-025) (gcc (Ubuntu 10.3.0-1ubuntu1) 10.3.0, GNU ld (GNU Binutils for Ubuntu) 2.36.1) #23-Ubuntu SMP Thu Jun 17 00:34:23 UTC 2021
+  Linux version 5.11.0-31-generic (buildd@lcy01-amd64-009) (gcc (Ubuntu 10.3.0-1ubuntu1) 10.3.0, GNU ld (GNU Binutils for Ubuntu) 2.36.1) #33-Ubuntu SMP Wed Aug 11 13:19:04 UTC 2021
 os-release:
   BUG_REPORT_URL: '"https://bugs.launchpad.net/ubuntu/"'
   HOME_URL: '"https://www.ubuntu.com/"'
