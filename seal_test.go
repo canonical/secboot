@@ -509,6 +509,201 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 	})
 }
 
+func TestSealKeyToExternalTPMStorageKey(t *testing.T) {
+	var srkPub *tpm2.Public
+
+	func() {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("Failed to provision TPM for test: %v", err)
+		}
+
+		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+		if err != nil {
+			t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+		}
+
+		srkPub, _, _, err = tpm.ReadPublic(srk)
+		if err != nil {
+			t.Fatalf("ReadPublic failed: %v", err)
+		}
+	}()
+
+	pcrProfile := func() *PCRProtectionProfile {
+		return NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
+	}
+
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	run := func(t *testing.T, params *KeyCreationParams) (authKeyBytes []byte) {
+		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToExternalTPMStorageKey_")
+		if err != nil {
+			t.Fatalf("Creating temporary directory failed: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		keyFile := tmpDir + "/keydata"
+
+		authPrivateKey, err := SealKeyToExternalTPMStorageKey(srkPub, key, keyFile, params)
+		if err != nil {
+			t.Errorf("SealKeyToExternalTPMStorageKey failed: %v", err)
+		}
+
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		if err := ValidateKeyDataFile(tpm.TPMContext, keyFile, authPrivateKey, tpm.HmacSession()); err != nil {
+			t.Errorf("ValidateKeyDataFile failed: %v", err)
+		}
+
+		return authPrivateKey
+	}
+
+	t.Run("Standard", func(t *testing.T) {
+		run(t, &KeyCreationParams{PCRProfile: pcrProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	})
+
+	t.Run("NilPCRProfile", func(t *testing.T) {
+		run(t, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
+	})
+
+	t.Run("WithProvidedAuthKey", func(t *testing.T) {
+		authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
+		if err != nil {
+			t.Fatalf("GenerateKey failed: %v", err)
+		}
+		pkb := run(t, &KeyCreationParams{PCRProfile: pcrProfile(), PCRPolicyCounterHandle: tpm2.HandleNull, AuthKey: authKey})
+		if !bytes.Equal(pkb, authKey.D.Bytes()) {
+			t.Fatalf("AuthKey private part bytes do not match provided one")
+		}
+	})
+}
+
+func TestSealKeyToExternalTPMStorageKeyErrorHandling(t *testing.T) {
+	var srkPub *tpm2.Public
+
+	func() {
+		tpm := openTPMForTesting(t)
+		defer closeTPM(t, tpm)
+
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("Failed to provision TPM for test: %v", err)
+		}
+
+		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+		if err != nil {
+			t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+		}
+
+		srkPub, _, _, err = tpm.ReadPublic(srk)
+		if err != nil {
+			t.Fatalf("ReadPublic failed: %v", err)
+		}
+	}()
+
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	run := func(t *testing.T, tmpDir string, params *KeyCreationParams) error {
+		if tmpDir == "" {
+			var err error
+			tmpDir, err = ioutil.TempDir("", "_TestSealKeyToExternalTPMStorageKeyErrorHandling_")
+			if err != nil {
+				t.Fatalf("Creating temporary directory failed: %v", err)
+			}
+		}
+		defer os.RemoveAll(tmpDir)
+
+		keyFile := tmpDir + "/keydata"
+		origKeyFileInfo, _ := os.Stat(keyFile)
+
+		_, err := SealKeyToExternalTPMStorageKey(srkPub, key, keyFile, params)
+
+		if fi, err := os.Stat(keyFile); err == nil && (origKeyFileInfo == nil || origKeyFileInfo.ModTime() != fi.ModTime()) {
+			t.Errorf("SealKeyToTPM created a key file")
+		}
+
+		return err
+	}
+
+	t.Run("NilParams", func(t *testing.T) {
+		err := run(t, "", nil)
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "no KeyCreationParams provided" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("FileExists", func(t *testing.T) {
+		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPMErrors_")
+		if err != nil {
+			t.Fatalf("Creating temporary directory failed: %v", err)
+		}
+		f, err := os.OpenFile(tmpDir+"/keydata", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			t.Fatalf("OpenFile failed: %v", err)
+		}
+		defer f.Close()
+		err = run(t, tmpDir, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
+		var e *os.PathError
+		if !xerrors.As(err, &e) || e.Path != tmpDir+"/keydata" || e.Err != syscall.EEXIST {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("InvalidPCRProfile", func(t *testing.T) {
+		pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7)
+		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "cannot compute dynamic authorization policy: cannot compute PCR digests from protection profile: cannot read "+
+			"current value of PCR 7 from bank TPM_ALG_SHA256: no TPM context" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("InvalidPCRProfileSelection", func(t *testing.T) {
+		pcrProfile := NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size()))
+		err := run(t, "", &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "cannot compute dynamic authorization policy: PCR protection profile contains digests for unsupported PCRs" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("WrongCurve", func(t *testing.T) {
+		authKey, err := ecdsa.GenerateKey(elliptic.P384(), testutil.RandReader)
+		if err != nil {
+			t.Fatalf("GenerateKey failed: %v", err)
+		}
+		err = run(t, "", &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull, AuthKey: authKey})
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "provided AuthKey must be from elliptic.P256, no other curve is supported" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+
+	t.Run("WithPCRPolicyCounter", func(t *testing.T) {
+		err := run(t, "", &KeyCreationParams{PCRPolicyCounterHandle: 0x01810000})
+		if err == nil {
+			t.Fatalf("Expected an error")
+		}
+		if err.Error() != "PCRPolicyCounter must be tpm2.HandleNull when creating an importable sealed key" {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
+}
+
 func TestUpdateKeyPCRProtectionPolicy(t *testing.T) {
 	tpm, _ := openTPMSimulatorForTesting(t)
 	defer closeTPM(t, tpm)

@@ -90,6 +90,76 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	})
 }
 
+func TestUnsealImportable(t *testing.T) {
+	tpm := openTPMForTesting(t)
+	defer closeTPM(t, tpm)
+
+	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+		t.Fatalf("Failed to provision TPM for test: %v", err)
+	}
+
+	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+	if err != nil {
+		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
+	}
+
+	srkPub, _, _, err := tpm.ReadPublic(srk)
+	if err != nil {
+		t.Fatalf("ReadPublic failed: %v", err)
+	}
+
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	pcrProfile := func(t *testing.T) *PCRProtectionProfile {
+		_, pcrValues, err := tpm.PCRRead(tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+		if err != nil {
+			t.Fatalf("PCRRead failed: %v", err)
+		}
+		return NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, pcrValues[tpm2.HashAlgorithmSHA256][7])
+	}
+
+	run := func(t *testing.T, params *KeyCreationParams) {
+		tmpDir, err := ioutil.TempDir("", "_TestUnsealImportable_")
+		if err != nil {
+			t.Fatalf("Creating temporary directory failed: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		keyFile := tmpDir + "/keydata"
+
+		authKey, err := SealKeyToExternalTPMStorageKey(srkPub, key, keyFile, params)
+		if err != nil {
+			t.Fatalf("SealKeyToExternalTPMStorageKey failed: %v", err)
+		}
+
+		k, err := ReadSealedKeyObject(keyFile)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
+
+		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm, "")
+		if err != nil {
+			t.Fatalf("UnsealFromTPM failed: %v", err)
+		}
+
+		if !bytes.Equal(key, keyUnsealed) {
+			t.Errorf("TPM returned the wrong key")
+		}
+		if !bytes.Equal(authKey, authKeyUnsealed) {
+			t.Errorf("TPM returned the wrong auth key")
+		}
+	}
+
+	t.Run("SimplePCRProfile", func(t *testing.T) {
+		run(t, &KeyCreationParams{PCRProfile: pcrProfile(t), PCRPolicyCounterHandle: tpm2.HandleNull})
+	})
+
+	t.Run("NilPCRProfile", func(t *testing.T) {
+		run(t, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
+	})
+}
+
 func TestUnsealRelated(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)

@@ -44,7 +44,7 @@ import (
 )
 
 const (
-	currentMetadataVersion    uint32 = 1
+	currentMetadataVersion    uint32 = 2
 	keyDataHeader             uint32 = 0x55534b24
 	keyPolicyUpdateDataHeader uint32 = 0x55534b50
 )
@@ -247,6 +247,16 @@ type keyDataRaw_v1 struct {
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
 
+// keyDataRaw_v2 is version 2 of the on-disk format of keyDataRaw.
+type keyDataRaw_v2 struct {
+	KeyPrivate        tpm2.Private
+	KeyPublic         *tpm2.Public
+	AuthModeHint      authMode
+	ImportSymSeed     tpm2.EncryptedSecret
+	StaticPolicyData  *staticPolicyDataRaw_v1
+	DynamicPolicyData *dynamicPolicyDataRaw_v0
+}
+
 // tpmKeyData corresponds to the part of a sealed key object that contains the TPM sealed object and associated metadata required
 // for executing authorization policy assertions.
 // XXX: This is temporarily named tpmKeyData until this code is moved in to secboot/tpm
@@ -255,11 +265,17 @@ type tpmKeyData struct {
 	keyPrivate        tpm2.Private
 	keyPublic         *tpm2.Public
 	authModeHint      authMode
+	importSymSeed     tpm2.EncryptedSecret
 	staticPolicyData  *staticPolicyData
 	dynamicPolicyData *dynamicPolicyData
 }
 
 func (d tpmKeyData) Marshal(w io.Writer) error {
+	// We can upgrade v1 to v2 automatically
+	if d.version == 1 {
+		d.version = 2
+	}
+
 	if _, err := mu.MarshalToWriter(w, d.version); err != nil {
 		return xerrors.Errorf("cannot marshal version number: %w", err)
 	}
@@ -275,12 +291,13 @@ func (d tpmKeyData) Marshal(w io.Writer) error {
 		if _, err := mu.MarshalToWriter(w, raw); err != nil {
 			return xerrors.Errorf("cannot marshal raw data: %w", err)
 		}
-	case 1:
+	case 2:
 		var tmpW bytes.Buffer
-		raw := keyDataRaw_v1{
+		raw := keyDataRaw_v2{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
 			AuthModeHint:      d.authModeHint,
+			ImportSymSeed:     d.importSymSeed,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
 		if _, err := mu.MarshalToWriter(&tmpW, raw); err != nil {
@@ -340,15 +357,70 @@ func (d *tpmKeyData) Unmarshal(r mu.Reader) error {
 			authModeHint:      raw.AuthModeHint,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
+	case 2:
+		var splitData afSplitDataRaw
+		if _, err := mu.UnmarshalFromReader(r, &splitData); err != nil {
+			return xerrors.Errorf("cannot unmarshal split data: %w", err)
+		}
+
+		merged, err := splitData.data().merge()
+		if err != nil {
+			return xerrors.Errorf("cannot merge data: %w", err)
+		}
+
+		var raw keyDataRaw_v2
+		if _, err := mu.UnmarshalFromBytes(merged, &raw); err != nil {
+			return xerrors.Errorf("cannot unmarshal data: %w", err)
+		}
+		*d = tpmKeyData{
+			version:           version,
+			keyPrivate:        raw.KeyPrivate,
+			keyPublic:         raw.KeyPublic,
+			authModeHint:      raw.AuthModeHint,
+			importSymSeed:     raw.ImportSymSeed,
+			staticPolicyData:  raw.StaticPolicyData.data(),
+			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	default:
 		return fmt.Errorf("unexpected version number (%d)", version)
 	}
 	return nil
 }
 
+// ensureImported will import the sealed key object into the TPM's storage hierarchy if
+// required, as indicated by an import symmetric seed of non-zero length. The tpmKeyData
+// structure will be updated with the newly imported private area and the import
+// symmetric seed will be cleared.
+func (d *tpmKeyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+	if len(d.importSymSeed) == 0 {
+		return nil
+	}
+
+	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+	if err != nil {
+		return xerrors.Errorf("cannot create context for SRK: %w", err)
+	}
+
+	priv, err := tpm.Import(srkContext, nil, d.keyPublic, d.keyPrivate, d.importSymSeed, nil, session)
+	if err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandImport, tpm2.AnyParameterIndex) {
+			return keyFileError{errors.New("cannot import sealed key object in to TPM: bad sealed key object, invalid symmetric seed, TPM owner changed or wrong TPM")}
+		}
+		return xerrors.Errorf("cannot import sealed key object in to TPM: %w", err)
+	}
+
+	d.keyPrivate = priv
+	d.importSymSeed = nil
+
+	return nil
+}
+
 // load loads the TPM sealed object associated with this tpmKeyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
 func (d *tpmKeyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+	if err := d.ensureImported(tpm, session); err != nil {
+		return nil, err
+	}
+
 	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
@@ -379,7 +451,7 @@ func (d *tpmKeyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, s
 		return nil, keyFileError{errors.New("invalid metadata version")}
 	}
 
-	sealedKeyTemplate := makeSealedKeyTemplate()
+	sealedKeyTemplate := makeImportableSealedKeyTemplate()
 
 	keyPublic := d.keyPublic
 
@@ -387,7 +459,7 @@ func (d *tpmKeyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, s
 	if keyPublic.Type != sealedKeyTemplate.Type {
 		return nil, keyFileError{errors.New("sealed key object has the wrong type")}
 	}
-	if keyPublic.Attrs != sealedKeyTemplate.Attrs {
+	if keyPublic.Attrs&^(tpm2.AttrFixedTPM|tpm2.AttrFixedParent) != sealedKeyTemplate.Attrs {
 		return nil, keyFileError{errors.New("sealed key object has the wrong attributes")}
 	}
 

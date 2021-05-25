@@ -27,6 +27,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -43,29 +44,59 @@ func makeSealedKeyTemplate() *tpm2.Public {
 		Params:  &tpm2.PublicParamsU{KeyedHashDetail: &tpm2.KeyedHashParams{Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}}}
 }
 
+func makeImportableSealedKeyTemplate() *tpm2.Public {
+	tmpl := makeSealedKeyTemplate()
+	tmpl.Attrs &^= tpm2.AttrFixedTPM | tpm2.AttrFixedParent
+	return tmpl
+}
+
+// computeSealedKeyDynamicAuthPolicy is a helper to compute a new PCR policy using the supplied
+// pcrProfile, signed with the supplied authKey.
+//
+// If tpm is not nil, this function will verify that the supplied pcrProfile produces a PCR
+// selection that is supported by the TPM. If tpm is nil, it will be assumed that the target
+// TPM supports the PCRs and algorithms defined in the TCG PC Client Platform TPM Profile
+// Specification for TPM 2.0.
+//
+// If tpm is not nil and counterPub is supplied, the current policy count will be read from
+// the TPM and the new PCR policy will have a count of this value + 1. If tpm is nil then
+// counterPub must also be nil, else an error will be returned.
 func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey crypto.PrivateKey,
 	counterPub *tpm2.NVPublic, counterAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
-	// Obtain the count for the new policy
+
 	var nextPolicyCount uint64
 	var counterName tpm2.Name
-	if counterPub != nil {
+	var supportedPcrs tpm2.PCRSelectionList
+	if tpm != nil {
 		var err error
-		nextPolicyCount, err = readPcrPolicyCounter(tpm, version, counterPub, counterAuthPolicies, session)
-		if err != nil {
-			return nil, xerrors.Errorf("cannot read policy counter: %w", err)
-		}
-		nextPolicyCount += 1
+		// Obtain the count for the new policy
+		if counterPub != nil {
+			nextPolicyCount, err = readPcrPolicyCounter(tpm, version, counterPub, counterAuthPolicies, session)
+			if err != nil {
+				return nil, xerrors.Errorf("cannot read policy counter: %w", err)
+			}
+			nextPolicyCount += 1
 
-		counterName, err = counterPub.Name()
-		if err != nil {
-			return nil, xerrors.Errorf("cannot compute name of policy counter: %w", err)
+			counterName, err = counterPub.Name()
+			if err != nil {
+				return nil, xerrors.Errorf("cannot compute name of policy counter: %w", err)
+			}
 		}
-	}
 
-	supportedPcrs, err := tpm.GetCapabilityPCRs(session.IncludeAttrs(tpm2.AttrAudit))
-	if err != nil {
-		return nil, xerrors.Errorf("cannot determine supported PCRs: %w", err)
+		supportedPcrs, err = tpm.GetCapabilityPCRs(session.IncludeAttrs(tpm2.AttrAudit))
+		if err != nil {
+			return nil, xerrors.Errorf("cannot determine supported PCRs: %w", err)
+		}
+	} else {
+		if counterPub != nil {
+			return nil, errors.New("use of policy counter requires a TPM connection")
+		}
+
+		// Defined as mandatory in the TCG PC Client Platform TPM Profile Specification for TPM 2.0
+		supportedPcrs = tpm2.PCRSelectionList{
+			{Hash: tpm2.HashAlgorithmSHA1, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
+			{Hash: tpm2.HashAlgorithmSHA256, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}}}
 	}
 
 	// Compute PCR digests
@@ -132,6 +163,150 @@ type KeyCreationParams struct {
 	// If set a key from elliptic.P256 must be used,
 	// if not set one is generated.
 	AuthKey *ecdsa.PrivateKey
+}
+
+// SealKeyToExternalTPMStorageKey seals the supplied disk encryption key to the TPM storage key associated with the supplied public
+// tpmKey. This creates an importable sealed key and is suitable in environments that don't have access to the TPM but do have
+// access to the public part of the TPM's storage primary key. The sealed key object and associated metadata that is required
+// during early boot in order to unseal the key again and unlock the associated encrypted volume is written to a file at the path
+// specified by keyPath.
+//
+// The tpmKey argument must correspond to the storage primary key on the target TPM, persisted at the standard handle.
+//
+// This function expects there to be no file at the specified path. If keyPath references a file that already exists, a wrapped
+// *os.PathError error will be returned with an underlying error of syscall.EEXIST. A wrapped *os.PathError error will be returned if
+// the file cannot be created and opened for writing.
+//
+// This function cannot create a sealed key that uses a PCR policy counter. The PCRPolicyCounterHandle field of the params argument
+// must be tpm2.HandleNull.
+//
+// The key will be protected with a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field of the params
+// argument.
+//
+// On success, this function returns the private part of the key used for authorizing PCR policy updates with
+// UpdateKeyPCRProtectionPolicy. This key doesn't need to be stored anywhere, and certainly mustn't be stored outside of the encrypted
+// volume protected with this sealed key file. The key is stored encrypted inside this sealed key file and returned from future calls
+// to SealedKeyObject.UnsealFromTPM.
+//
+// The authorization key can also be chosen and provided by setting
+// AuthKey in the params argument.
+func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath string, params *KeyCreationParams) (authKey TPMPolicyAuthKey, err error) {
+	// params is mandatory.
+	if params == nil {
+		return nil, errors.New("no KeyCreationParams provided")
+	}
+
+	// Perform some sanity checks on params.
+	if params.AuthKey != nil && params.AuthKey.Curve != elliptic.P256() {
+		return nil, errors.New("provided AuthKey must be from elliptic.P256, no other curve is supported")
+	}
+
+	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
+		return nil, errors.New("PCRPolicyCounter must be tpm2.HandleNull when creating an importable sealed key")
+	}
+
+	succeeded := false
+
+	// Compute metadata.
+
+	var goAuthKey *ecdsa.PrivateKey
+	// Use the provided authorization key,
+	// otherwise create an asymmetric key for signing
+	// authorization policy updates, and authorizing dynamic
+	// authorization policy revocations.
+	if params.AuthKey != nil {
+		goAuthKey = params.AuthKey
+	} else {
+		goAuthKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
+		}
+	}
+	authPublicKey := createTPMPublicAreaForECDSAKey(&goAuthKey.PublicKey)
+	authKey = goAuthKey.D.Bytes()
+
+	pub := makeImportableSealedKeyTemplate()
+
+	// Compute the static policy - this never changes for the lifetime of this key file
+	staticPolicyData, authPolicy, err := computeStaticPolicy(pub.NameAlg, &staticPolicyComputeParams{key: authPublicKey})
+	if err != nil {
+		return nil, xerrors.Errorf("cannot compute static authorization policy: %w", err)
+	}
+
+	pub.AuthPolicy = authPolicy
+
+	// Create a dynamic authorization policy
+	pcrProfile := params.PCRProfile
+	if pcrProfile == nil {
+		pcrProfile = &PCRProtectionProfile{}
+	}
+	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(nil, currentMetadataVersion, pub.NameAlg, authPublicKey.NameAlg,
+		goAuthKey, nil, nil, pcrProfile, nil)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
+	}
+
+	// Clean up files on failure.
+	defer func() {
+		if succeeded {
+			return
+		}
+		os.Remove(keyPath)
+	}()
+
+	// Seal key
+
+	// Create the destination file
+	f, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create key data file: %w", err)
+	}
+	defer f.Close()
+
+	// Create the sensitive data
+	sealedData, err := mu.MarshalToBytes(sealedData{Key: key, AuthPrivateKey: authKey})
+	if err != nil {
+		panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
+	}
+	// Define the actual sensitive area. The initial auth value is empty - note
+	// that tpm2.CreateDuplicationObjectFromSensitive pads this to the length of
+	// the name algorithm for us so we don't define it here.
+	sensitive := tpm2.Sensitive{
+		Type:      pub.Type,
+		SeedValue: make(tpm2.Digest, pub.NameAlg.Size()),
+		Sensitive: &tpm2.SensitiveCompositeU{Bits: sealedData}}
+	if _, err := io.ReadFull(rand.Reader, sensitive.SeedValue); err != nil {
+		return nil, xerrors.Errorf("cannot create seed value: %w", err)
+	}
+
+	// Compute the public ID
+	h := pub.NameAlg.NewHash()
+	h.Write(sensitive.SeedValue)
+	h.Write(sensitive.Sensitive.Bits)
+	pub.Unique = &tpm2.PublicIDU{KeyedHash: h.Sum(nil)}
+
+	// Now create the importable sealed key object (duplication object).
+	_, priv, importSymSeed, err := tpm2.CreateDuplicationObjectFromSensitive(&sensitive, pub, tpmKey, nil, nil)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create duplication object: %w", err)
+	}
+
+	// Marshal the entire object (sealed key object and auxiliary data) to disk
+	data := tpmKeyData{
+		version:           currentMetadataVersion,
+		keyPrivate:        priv,
+		keyPublic:         pub,
+		authModeHint:      authModeNone,
+		importSymSeed:     importSymSeed,
+		staticPolicyData:  staticPolicyData,
+		dynamicPolicyData: dynamicPolicyData}
+
+	if err := data.write(f); err != nil {
+		return nil, xerrors.Errorf("cannot write key data file: %w", err)
+	}
+
+	succeeded = true
+	return authKey, nil
 }
 
 // SealKeyRequest corresponds to a key that should be sealed by SealKeyToTPMMultiple
