@@ -51,8 +51,6 @@ type cryptTestBase struct {
 		sourceDevicePath string
 	}
 
-	mockLUKS2DeactivateCalls int
-
 	cryptsetupInvocationCountDir string
 	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
 	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
@@ -101,15 +99,6 @@ func (ctb *cryptTestBase) SetUpTest(c *C) {
 		}
 
 		return errors.New("systemd-cryptsetup failed with: exit status 1")
-	}))
-
-	ctb.mockLUKS2DeactivateCalls = 0
-	ctb.AddCleanup(MockLUKS2Deactivate(func(volumeName string) error {
-		ctb.mockLUKS2DeactivateCalls++
-		if volumeName == "bad-volume" {
-			return errors.New("systemd-cryptsetup failed with: exit status 1")
-		}
-		return nil
 	}))
 
 	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")       // File in which the mock cryptsetup records the passed in key
@@ -222,6 +211,8 @@ type cryptSuite struct {
 	cryptTestBase
 	keyDataTestBase
 	snapModelTestBase
+
+	mockLUKS2DeactivateCalls int
 }
 
 var _ = Suite(&cryptSuite{})
@@ -234,6 +225,15 @@ func (s *cryptSuite) SetUpSuite(c *C) {
 func (s *cryptSuite) SetUpTest(c *C) {
 	s.cryptTestBase.SetUpTest(c)
 	s.keyDataTestBase.SetUpTest(c)
+
+	s.mockLUKS2DeactivateCalls = 0
+	s.AddCleanup(MockLUKS2Deactivate(func(volumeName string) error {
+		s.mockLUKS2DeactivateCalls++
+		if volumeName == "bad-volume" {
+			return errors.New("systemd-cryptsetup failed with: exit status 1")
+		}
+		return nil
+	}))
 }
 
 func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey AuxiliaryKey) {
