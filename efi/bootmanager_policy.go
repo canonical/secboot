@@ -21,13 +21,11 @@ package efi
 
 import (
 	"errors"
-	"os"
 
 	"github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot"
-	internal_efi "github.com/snapcore/secboot/internal/efi"
 
 	"golang.org/x/xerrors"
 )
@@ -71,6 +69,11 @@ type BootManagerProfileParams struct {
 
 	// LoadSequences is a list of EFI image load sequences for which to compute PCR digests for.
 	LoadSequences []*ImageLoadEvent
+
+	// Environment is an optional parameter that allows the caller to provide
+	// a custom EFI environment. If not set, the host's normal environment will
+	// be used
+	Environment HostEnvironment
 }
 
 // AddBootManagerProfile adds the UEFI boot manager code and boot attempts profile to the provided PCR protection profile, in order
@@ -98,12 +101,13 @@ type BootManagerProfileParams struct {
 // even if they fail. The generated PCR policy will not be satisfied if the platform firmware performs boot attempts that fail,
 // even if the successful boot attempt is of a sequence of binaries included in this PCR profile.
 func AddBootManagerProfile(profile *secboot.PCRProtectionProfile, params *BootManagerProfileParams) error {
-	// Load event log
-	eventLog, err := os.Open(internal_efi.EventLogPath)
-	if err != nil {
-		return xerrors.Errorf("cannot open TCG event log: %w", err)
+	env := params.Environment
+	if env == nil {
+		env = defaultEnv
 	}
-	log, err := tcglog.ParseLog(eventLog, &tcglog.LogOptions{})
+
+	// Load event log
+	log, err := env.ReadEventLog()
 	if err != nil {
 		return xerrors.Errorf("cannot parse TCG event log: %w", err)
 	}

@@ -24,6 +24,9 @@ import (
 	"github.com/snapcore/snapd/snap"
 	"io"
 	"os"
+
+	"github.com/canonical/go-efilib"
+	"github.com/canonical/tcglog-parser"
 )
 
 const (
@@ -31,6 +34,19 @@ const (
 
 	certTableIndex = 4 // Index of the Certificate Table entry in the Data Directory of a PE image optional header
 )
+
+var (
+	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
+)
+
+// HostEnvironment is an interface that abstracts out an EFI environment, so that
+// consumers of the API can provide a custom mechanism to read EFI variables or parse
+// the TCG event log.
+type HostEnvironment interface {
+	ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error)
+
+	ReadEventLog() (*tcglog.Log, error)
+}
 
 // Image corresponds to a binary that is loaded, verified and executed before ExitBootServices.
 type Image interface {

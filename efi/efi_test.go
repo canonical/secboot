@@ -20,9 +20,33 @@
 package efi_test
 
 import (
+	"os"
 	"testing"
+
+	"github.com/canonical/go-efilib"
+	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
 )
 
 func Test(t *testing.T) { TestingT(t) }
+
+type mockEFIEnvironment struct {
+	efivars string
+	log     string
+}
+
+func (e *mockEFIEnvironment) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
+	return testutil.EFIReadVar(e.efivars, name, guid)
+}
+
+func (e *mockEFIEnvironment) ReadEventLog() (*tcglog.Log, error) {
+	f, err := os.Open(e.log)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return tcglog.ParseLog(f, &tcglog.LogOptions{})
+}

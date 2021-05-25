@@ -33,13 +33,14 @@ type bootManagerPolicySuite struct{}
 var _ = Suite(&bootManagerPolicySuite{})
 
 type testAddBootManagerProfileData struct {
-	initial *secboot.PCRProtectionProfile
-	params  *BootManagerProfileParams
-	values  []tpm2.PCRValues
+	eventLogPath string
+	initial      *secboot.PCRProtectionProfile
+	params       *BootManagerProfileParams
+	values       []tpm2.PCRValues
 }
 
 func (s *bootManagerPolicySuite) testAddBootManagerProfile(c *C, data *testAddBootManagerProfileData) {
-	restoreEventLogPath := testutil.MockEventLogPath("testdata/eventlog1.bin")
+	restoreEventLogPath := MockEventLogPath(data.eventLogPath)
 	defer restoreEventLogPath()
 
 	profile := data.initial
@@ -66,7 +67,9 @@ func (s *bootManagerPolicySuite) testAddBootManagerProfile(c *C, data *testAddBo
 }
 
 func (s *bootManagerPolicySuite) TestAddBootManagerProfile1(c *C) {
+	// Test with a classic style configuration - shim -> grub -> 2 kernels.
 	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		eventLogPath: "testdata/eventlog1.bin",
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []*ImageLoadEvent{
@@ -104,7 +107,11 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfile1(c *C) {
 }
 
 func (s *bootManagerPolicySuite) TestAddBootManagerProfile2(c *C) {
+	// Test with a UC20 style configuration:
+	// - shim -> grub -> 2 kernels
+	// - shim -> grub -> grub -> 2 kernels
 	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		eventLogPath: "testdata/eventlog1.bin",
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []*ImageLoadEvent{
@@ -163,7 +170,9 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfile2(c *C) {
 }
 
 func (s *bootManagerPolicySuite) TestAddBootManagerProfile3(c *C) {
+	// Test with a PCRProtectionProfile that already has some values in it.
 	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		eventLogPath: "testdata/eventlog1.bin",
 		initial: secboot.NewPCRProtectionProfile().
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 4, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
@@ -197,7 +206,10 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfile3(c *C) {
 }
 
 func (s *bootManagerPolicySuite) TestAddBootManagerProfile4(c *C) {
+	// Test with a classic style configuration (same as 1), but with LoadSequences
+	// constructed differently.
 	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		eventLogPath: "testdata/eventlog1.bin",
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []*ImageLoadEvent{
@@ -238,6 +250,92 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfile4(c *C) {
 			{
 				tpm2.HashAlgorithmSHA256: {
 					4: testutil.DecodeHexString(c, "557e91fbdbd0f81e746fcd0509ac639ad9221d9bf5a8d73dca8b343e39932f5f"),
+				},
+			},
+		},
+	})
+}
+
+func (s *bootManagerPolicySuite) TestAddBootManagerProfile5(c *C) {
+	// Test with a classic style configuration - shim -> grub -> 2 kernels, but on
+	// a system that omits the ready-to-boot signal in PCR4 (should produce different
+	// digests compared to 1).
+	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		eventLogPath: "testdata/eventlog4.bin",
+		params: &BootManagerProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			LoadSequences: []*ImageLoadEvent{
+				{
+					Image: FileImage("testdata/mockshim1.efi.signed.1"),
+					Next: []*ImageLoadEvent{
+						{
+							Image: FileImage("testdata/mockgrub1.efi.signed.shim"),
+							Next: []*ImageLoadEvent{
+								{
+									Image: FileImage("testdata/mockkernel1.efi.signed.shim"),
+								},
+								{
+									Image: FileImage("testdata/mockkernel2.efi.signed.shim"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4: testutil.DecodeHexString(c, "be2d7b2e64cadaae9c49ea7ee50f3bf41d80a9720227b7c28df7abcc19f3a2b4"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4: testutil.DecodeHexString(c, "66b37e7511157f0bd9d8ea6dba291ae0e1d4dc7f67cb72dda7cc2cb482da5b17"),
+				},
+			},
+		},
+	})
+}
+
+func (s *bootManagerPolicySuite) TestAddBootManagerProfile6(c *C) {
+	// Test with a classic style configuration - shim -> grub -> 2 kernels, but using
+	// a custom EFI environment. Set the log path for the "default" environment to
+	// the one set in test 1, but supply the log used in test 5 via the custom environment
+	// to verify that the correct one is used.
+	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
+		eventLogPath: "testdata/eventlog1.bin",
+		params: &BootManagerProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			LoadSequences: []*ImageLoadEvent{
+				{
+					Image: FileImage("testdata/mockshim1.efi.signed.1"),
+					Next: []*ImageLoadEvent{
+						{
+							Image: FileImage("testdata/mockgrub1.efi.signed.shim"),
+							Next: []*ImageLoadEvent{
+								{
+									Image: FileImage("testdata/mockkernel1.efi.signed.shim"),
+								},
+								{
+									Image: FileImage("testdata/mockkernel2.efi.signed.shim"),
+								},
+							},
+						},
+					},
+				},
+			},
+			Environment: &mockEFIEnvironment{"", "testdata/eventlog4.bin"},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4: testutil.DecodeHexString(c, "be2d7b2e64cadaae9c49ea7ee50f3bf41d80a9720227b7c28df7abcc19f3a2b4"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4: testutil.DecodeHexString(c, "66b37e7511157f0bd9d8ea6dba291ae0e1d4dc7f67cb72dda7cc2cb482da5b17"),
 				},
 			},
 		},

@@ -27,53 +27,28 @@ import (
 	"path/filepath"
 
 	"github.com/canonical/go-efilib"
-	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-func MockEFIVarsPath(path string) (restore func()) {
-	origPath := internal_efi.EFIVarsPath
-	internal_efi.EFIVarsPath = path
-	return func() {
-		internal_efi.EFIVarsPath = origPath
-	}
-}
-
-func MockEventLogPath(path string) (restore func()) {
-	origPath := internal_efi.EventLogPath
-	internal_efi.EventLogPath = path
-	return func() {
-		internal_efi.EventLogPath = origPath
-	}
-}
-
-func MockEFIReadVar(dir string) (restore func()) {
-	origReadVar := internal_efi.ReadVar
-
-	internal_efi.ReadVar = func(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
-		path := filepath.Join(dir, fmt.Sprintf("%s-%s", name, guid))
-		f, err := os.Open(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil, 0, efi.ErrVariableNotFound
-			}
-			return nil, 0, err
+func EFIReadVar(dir, name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
+	path := filepath.Join(dir, fmt.Sprintf("%s-%s", name, guid))
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, 0, efi.ErrVariableNotFound
 		}
-		defer f.Close()
+		return nil, 0, err
+	}
+	defer f.Close()
 
-		var attrs efi.VariableAttributes
-		if err := binary.Read(f, binary.LittleEndian, &attrs); err != nil {
-			return nil, 0, err
-		}
-
-		val, err := ioutil.ReadAll(f)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		return val, attrs, nil
+	var attrs efi.VariableAttributes
+	if err := binary.Read(f, binary.LittleEndian, &attrs); err != nil {
+		return nil, 0, err
 	}
 
-	return func() {
-		internal_efi.ReadVar = origReadVar
+	val, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, 0, err
 	}
+
+	return val, attrs, nil
 }

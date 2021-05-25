@@ -19,6 +19,11 @@
 
 package efi
 
+import (
+	"github.com/canonical/go-efilib"
+	"github.com/snapcore/secboot/internal/testutil"
+)
+
 // Export constants for testing
 const (
 	SigDbUpdateQuirkModeNone              = sigDbUpdateQuirkModeNone
@@ -28,9 +33,38 @@ const (
 // Export variables and unexported functions for testing
 var (
 	ComputeDbUpdate    = computeDbUpdate
+	DefaultEnv         = defaultEnv
 	ReadShimVendorCert = readShimVendorCert
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
+
+// Helper functions
+func MockEFIVarsPath(path string) (restore func()) {
+	origPath := efiVarsPath
+	efiVarsPath = path
+	return func() {
+		efiVarsPath = origPath
+	}
+}
+
+func MockEventLogPath(path string) (restore func()) {
+	origPath := eventLogPath
+	eventLogPath = path
+	return func() {
+		eventLogPath = origPath
+	}
+}
+
+func MockReadVar(dir string) (restore func()) {
+	origReadVar := readVar
+	readVar = func(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
+		return testutil.EFIReadVar(dir, name, guid)
+	}
+
+	return func() {
+		readVar = origReadVar
+	}
+}
