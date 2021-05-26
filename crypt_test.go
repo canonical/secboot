@@ -34,6 +34,8 @@ import (
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luks2/luks2test"
+	"github.com/snapcore/secboot/internal/paths"
+	"github.com/snapcore/secboot/internal/paths/pathstest"
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
@@ -62,6 +64,7 @@ func (ctb *cryptTestBase) SetUpTest(c *C) {
 
 	ctb.dir = c.MkDir()
 	ctb.AddCleanup(MockRunDir(ctb.dir))
+	ctb.AddCleanup(pathstest.MockRunDir(ctb.dir))
 
 	ctb.passwordFile = filepath.Join(ctb.dir, "password") // passwords to be returned by the mock sd-ask-password
 
@@ -1536,10 +1539,10 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
 
 	call := s.mockCryptsetup.Calls()[0]
-	c.Assert(len(call), Equals, 10)
-	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
-	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:10], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
+	c.Assert(len(call), Equals, 12)
+	c.Check(call[0:5], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file"})
+	c.Check(call[5], Matches, filepath.Join(paths.RunDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(call[6:12], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
 
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
@@ -1652,7 +1655,7 @@ type cryptSuiteFull struct {
 }
 
 func (s *cryptSuiteFull) SetUpTest(c *C) {
-	s.BaseTest.SetUpTest(c)
+	s.cryptTestBase.SetUpTest(c)
 
 	s.AddCleanup(luks2test.WrapCryptsetup(c))
 }
@@ -1717,4 +1720,24 @@ func (s *cryptSuiteFull) TestInitializeLUKS2ContainerWithOptions(c *C) {
 		MetadataKiBSize:     2 * 1024, // 2MiB
 		KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
 	})
+}
+
+func (s *cryptSuiteFull) TestAddRecoveryKeyToLUKS2Container(c *C) {
+	key := s.newPrimaryKey()
+	path := luks2test.CreateEmptyDiskImage(c, 20)
+
+	c.Check(InitializeLUKS2Container(path, "", key, nil), IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey), IsNil)
+
+	expectedKDFTime := 5000 * time.Millisecond
+
+	start := time.Now()
+	luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
+	elapsed := time.Now().Sub(start)
+
+	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 }

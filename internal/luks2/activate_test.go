@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 
 	. "github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/paths/pathstest"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
@@ -46,7 +47,7 @@ func (s *activateSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 
 	s.runDir = c.MkDir()
-	s.AddCleanup(MockRunDir(s.runDir))
+	s.AddCleanup(pathstest.MockRunDir(s.runDir))
 
 	s.mockKeyslotsDir = c.MkDir()
 	s.mockKeyslotsCount = 0

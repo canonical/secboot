@@ -28,6 +28,7 @@ import (
 
 	. "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luks2/luks2test"
+	"github.com/snapcore/secboot/internal/paths/pathstest"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
@@ -40,7 +41,7 @@ type cryptsetupSuite struct {
 func (s *cryptsetupSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 
-	s.AddCleanup(MockRunDir(c.MkDir()))
+	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 
 	s.AddCleanup(luks2test.WrapCryptsetup(c))
 }

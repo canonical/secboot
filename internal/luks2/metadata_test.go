@@ -31,6 +31,7 @@ import (
 	"time"
 
 	. "github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/paths/pathstest"
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
@@ -48,7 +49,7 @@ func (s *metadataSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 
 	s.runDir = c.MkDir()
-	s.AddCleanup(MockRunDir(s.runDir))
+	s.AddCleanup(pathstest.MockRunDir(s.runDir))
 }
 
 func (s *metadataSuite) decompress(c *C, path string) string {
