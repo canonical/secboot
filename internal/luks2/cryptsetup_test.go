@@ -160,8 +160,9 @@ func (s *cryptsetupSuite) TestFormat5(c *C) {
 }
 
 type testAddKeyData struct {
-	key  []byte
-	time time.Duration
+	key     []byte
+	options *AddKeyOptions
+	time    time.Duration
 }
 
 func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
@@ -174,7 +175,7 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	startInfo, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 
-	c.Check(AddKey(devicePath, primaryKey, data.key, data.time), IsNil)
+	c.Check(AddKey(devicePath, primaryKey, data.key, data.options), IsNil)
 
 	endInfo, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -188,6 +189,10 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	}
 
 	c.Assert(newSlotId, snapd_testutil.IntGreaterThan, -1)
+	if data.options != nil && data.options.Slot != AnySlot {
+		c.Check(newSlotId, Equals, data.options.Slot)
+	}
+
 	c.Check(endInfo.Metadata.Keyslots, HasLen, 2)
 	keyslot, ok := endInfo.Metadata.Keyslots[newSlotId]
 	c.Assert(ok, Equals, true)
@@ -197,29 +202,54 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
 
 	expectedKDFTime := 2000 * time.Millisecond
-	if data.time > 0 {
-		expectedKDFTime = data.time
+	if data.options != nil && data.options.KDFTime > 0 {
+		expectedKDFTime = data.options.KDFTime
 	}
 
 	start := time.Now()
 	luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
 	elapsed := time.Now().Sub(start)
+
 	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 }
 
 func (s *cryptsetupSuite) TestAddKey1(c *C) {
+	// Test with custom KDF benchmark time
 	key := make([]byte, 32)
 	rand.Read(key)
 
 	s.testAddKey(c, &testAddKeyData{
-		key:  key,
-		time: 100 * time.Millisecond})
+		key: key,
+		options: &AddKeyOptions{
+			KDFTime: 100 * time.Millisecond,
+			Slot:    AnySlot}})
 }
 
 func (s *cryptsetupSuite) TestAddKey2(c *C) {
+	// Test with no options
 	s.testAddKey(c, &testAddKeyData{key: []byte("foo")})
+}
+
+func (s *cryptsetupSuite) TestAddKey3(c *C) {
+	// Test with default options
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	s.testAddKey(c, &testAddKeyData{key: key, options: &AddKeyOptions{Slot: AnySlot}})
+}
+
+func (s *cryptsetupSuite) TestAddKey4(c *C) {
+	// Test with specific keyslot
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	s.testAddKey(c, &testAddKeyData{
+		key: key,
+		options: &AddKeyOptions{
+			KDFTime: 100 * time.Millisecond,
+			Slot:    8}})
 }
 
 func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
@@ -230,7 +260,7 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 
 	c.Assert(Format(devicePath, "", primaryKey, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 
-	c.Check(AddKey(devicePath, make([]byte, 32), []byte("foo"), 0), ErrorMatches, "cryptsetup failed with: No key available with this passphrase.")
+	c.Check(AddKey(devicePath, make([]byte, 32), []byte("foo"), nil), ErrorMatches, "cryptsetup failed with: No key available with this passphrase.")
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -249,7 +279,7 @@ type testImportTokenData struct {
 func (s *cryptsetupSuite) testImportToken(c *C, data *testImportTokenData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
-	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), 100*time.Millisecond), IsNil)
+	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFTime: 100 * time.Millisecond, Slot: AnySlot}), IsNil)
 
 	c.Check(ImportToken(devicePath, data.token), IsNil)
 
@@ -315,7 +345,7 @@ func (s *cryptsetupSuite) TestImportToken3(c *C) {
 func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
-	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), 100*time.Millisecond), IsNil)
+	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFTime: 100 * time.Millisecond, Slot: AnySlot}), IsNil)
 	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []int{0}}), IsNil)
 	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-bar", Keyslots: []int{1}}), IsNil)
 
@@ -367,7 +397,7 @@ type testKillSlotData struct {
 func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", data.key1, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
-	c.Assert(AddKey(devicePath, data.key1, data.key2, 100*time.Millisecond), IsNil)
+	c.Assert(AddKey(devicePath, data.key1, data.key2, &AddKeyOptions{KDFTime: 100 * time.Millisecond, Slot: AnySlot}), IsNil)
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -422,7 +452,7 @@ func (s *cryptsetupSuite) TestKillSlotWithWrongPassphrase(c *C) {
 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", key1, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
-	c.Assert(AddKey(devicePath, key1, key2, 100*time.Millisecond), IsNil)
+	c.Assert(AddKey(devicePath, key1, key2, &AddKeyOptions{KDFTime: 100 * time.Millisecond, Slot: AnySlot}), IsNil)
 
 	c.Check(KillSlot(devicePath, 1, key2), ErrorMatches, "cryptsetup failed with: No key available with this passphrase.")
 
@@ -450,7 +480,7 @@ type testSetSlotPriorityData struct {
 func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
-	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), 100*time.Millisecond), IsNil)
+	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFTime: 100 * time.Millisecond, Slot: AnySlot}), IsNil)
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)

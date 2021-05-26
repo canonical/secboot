@@ -651,7 +651,10 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOpt
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
 func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
-	return luks2.AddKey(devicePath, key, recoveryKey[:], 5*time.Second)
+	options := luks2.AddKeyOptions{
+		KDFTime: 5 * time.Second,
+		Slot:    luks2.AnySlot}
+	return luks2.AddKey(devicePath, key, recoveryKey[:], &options)
 }
 
 // ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
@@ -669,22 +672,20 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
 
-	cmd := exec.Command("cryptsetup", "luksKillSlot", "--key-file", "-", devicePath, "0")
-	cmd.Stdin = bytes.NewReader(recoveryKey[:])
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+	if err := luks2.KillSlot(devicePath, 0, recoveryKey[:]); err != nil {
+		return xerrors.Errorf("cannot kill existing slot: %w", err)
 	}
 
-	if err := addKeyToLUKS2Container(devicePath, recoveryKey[:], key, []string{
-		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
-		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
-		// this key and these settings are already more secure than the recovery key. Increased cost
-		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "100",
-		// always have the main key in slot 0 for now
-		"--key-slot", "0"}); err != nil {
-		return err
+	options := luks2.AddKeyOptions{
+		KDFTime: 100 * time.Millisecond,
+		Slot:    0}
+	if err := luks2.AddKey(devicePath, recoveryKey[:], key, &options); err != nil {
+		return xerrors.Errorf("cannot add key: %w", err)
 	}
 
-	return setLUKS2KeyslotPreferred(devicePath, 0)
+	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
+		return xerrors.Errorf("cannot change keyslot priority: %w", err)
+	}
+
+	return nil
 }
