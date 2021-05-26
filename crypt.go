@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
@@ -574,45 +575,21 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		return err
 	}
 
-	args := []string{
-		// batch processing, no password verification for formatting an existing LUKS container
-		"-q",
-		// formatting a new volume
-		"luksFormat",
-		// use LUKS2
-		"--type", "luks2",
-		// read the key from stdin
-		"--key-file", "-",
-		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
-		"--cipher", "aes-xts-plain64", "--key-size", "512",
-		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
-		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
-		// this key and these settings are already more secure than the recovery key. Increased cost
-		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "100",
-		// set LUKS2 label
-		"--label", label,
-	}
+	opts := luks2.FormatOptions{KDFTime: 100 * time.Millisecond}
 	if options != nil {
-		if options.MetadataKiBSize != 0 {
-			args = append(args,
-				"--luks2-metadata-size", fmt.Sprintf("%dk", options.MetadataKiBSize))
-		}
-		if options.KeyslotsAreaKiBSize != 0 {
-			args = append(args,
-				"--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
-		}
-	}
-	args = append(args,
-		// device to format
-		devicePath)
-	cmd := exec.Command("cryptsetup", args...)
-	cmd.Stdin = bytes.NewReader(key)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+		opts.MetadataKiBSize = options.MetadataKiBSize
+		opts.KeyslotsAreaKiBSize = options.KeyslotsAreaKiBSize
 	}
 
-	return setLUKS2KeyslotPreferred(devicePath, 0)
+	if err := luks2.Format(devicePath, label, key, &opts); err != nil {
+		return xerrors.Errorf("cannot format %s: %w", err)
+	}
+
+	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
+		return xerrors.Errorf("cannot change keyslot priority: %w", err)
+	}
+
+	return nil
 }
 
 func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOptionArgs []string) error {

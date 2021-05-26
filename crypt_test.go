@@ -29,8 +29,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/luks2/luks2test"
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
@@ -51,12 +54,7 @@ type cryptTestBase struct {
 		sourceDevicePath string
 	}
 
-	cryptsetupInvocationCountDir string
-	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
-	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
-
 	mockSdAskPassword *snapd_testutil.MockCmd
-	mockCryptsetup    *snapd_testutil.MockCmd
 }
 
 func (ctb *cryptTestBase) SetUpTest(c *C) {
@@ -101,71 +99,12 @@ func (ctb *cryptTestBase) SetUpTest(c *C) {
 		return errors.New("systemd-cryptsetup failed with: exit status 1")
 	}))
 
-	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")       // File in which the mock cryptsetup records the passed in key
-	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey") // File in which the mock cryptsetup records the passed in new key
-	ctb.cryptsetupInvocationCountDir = c.MkDir()
-
 	sdAskPasswordBottom := `
 head -1 %[1]s
 sed -i -e '1,1d' %[1]s
 `
 	ctb.mockSdAskPassword = snapd_testutil.MockCommand(c, "systemd-ask-password", fmt.Sprintf(sdAskPasswordBottom, ctb.passwordFile))
 	ctb.AddCleanup(ctb.mockSdAskPassword.Restore)
-
-	cryptsetupBottom := `
-keyfile=""
-action=""
-
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --key-file)
-            keyfile=$2
-            shift 2
-            ;;
-        --type | --cipher | --key-size | --pbkdf | --pbkdf-force-iterations | --pbkdf-memory | --label | --priority | --key-slot | --iter-time)
-            shift 2
-            ;;
-        -*)
-            shift
-            ;;
-        *)
-            if [ -z "$action" ]; then
-                action=$1
-                shift
-            else
-                break
-            fi
-    esac
-done
-
-new_keyfile=""
-if [ "$action" = "luksAddKey" ]; then
-    new_keyfile=$2
-fi
-
-invocation=$(find %[4]s | wc -l)
-mktemp %[4]s/XXXX
-
-dump_key()
-{
-    in=$1
-    out=$2
-
-    if [ -z "$in" ]; then
-	touch "$out"
-    elif [ "$in" == "-" ]; then
-	cat /dev/stdin > "$out"
-    else
-	cat "$in" > "$out"
-    fi
-}
-
-dump_key "$keyfile" "%[2]s.$invocation"
-dump_key "$new_keyfile" "%[3]s.$invocation"
-`
-
-	ctb.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
-	ctb.AddCleanup(ctb.mockCryptsetup.Restore)
 }
 
 func (ctb *cryptTestBase) addMockKeyslot(c *C, key []byte) {
@@ -213,6 +152,11 @@ type cryptSuite struct {
 	snapModelTestBase
 
 	mockLUKS2DeactivateCalls int
+
+	cryptsetupInvocationCountDir string
+	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
+	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
+	mockCryptsetup               *snapd_testutil.MockCmd
 }
 
 var _ = Suite(&cryptSuite{})
@@ -234,6 +178,66 @@ func (s *cryptSuite) SetUpTest(c *C) {
 		}
 		return nil
 	}))
+
+	dir := c.MkDir()
+	s.cryptsetupKey = filepath.Join(dir, "cryptsetupkey")       // File in which the mock cryptsetup records the passed in key
+	s.cryptsetupNewkey = filepath.Join(dir, "cryptsetupnewkey") // File in which the mock cryptsetup records the passed in new key
+	s.cryptsetupInvocationCountDir = c.MkDir()
+
+	cryptsetupBottom := `
+keyfile=""
+action=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --key-file)
+            keyfile=$2
+            shift 2
+            ;;
+        --type | --cipher | --key-size | --pbkdf | --pbkdf-force-iterations | --pbkdf-memory | --label | --priority | --key-slot | --iter-time)
+            shift 2
+            ;;
+        -*)
+            shift
+            ;;
+        *)
+            if [ -z "$action" ]; then
+                action=$1
+                shift
+            else
+                break
+            fi
+    esac
+done
+
+new_keyfile=""
+if [ "$action" = "luksAddKey" ]; then
+    new_keyfile=$2
+fi
+
+invocation=$(find %[3]s | wc -l)
+mktemp %[3]s/XXXX
+
+dump_key()
+{
+    in=$1
+    out=$2
+
+    if [ -z "$in" ]; then
+	touch "$out"
+    elif [ "$in" == "-" ]; then
+	cat /dev/stdin > "$out"
+    else
+	cat "$in" > "$out"
+    fi
+}
+
+dump_key "$keyfile" "%[1]s.$invocation"
+dump_key "$new_keyfile" "%[2]s.$invocation"
+`
+
+	s.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, s.cryptsetupKey, s.cryptsetupNewkey, s.cryptsetupInvocationCountDir))
+	s.AddCleanup(s.mockCryptsetup.Restore)
 }
 
 func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey AuxiliaryKey) {
@@ -1399,11 +1403,11 @@ func (s *cryptSuite) TestDeactivateVolumeErr(c *C) {
 }
 
 type testInitializeLUKS2ContainerData struct {
-	devicePath string
-	label      string
-	key        []byte
-	opts       *InitializeLUKS2ContainerOptions
-	formatArgs []string
+	devicePath      string
+	label           string
+	key             []byte
+	opts            *InitializeLUKS2ContainerOptions
+	extraFormatArgs []string
 }
 
 func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS2ContainerData) {
@@ -1411,13 +1415,12 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	formatArgs := []string{"cryptsetup",
 		"-q", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", "aes-xts-plain64",
-		"--key-size", "512",
+		"--key-size", "512", "--label", data.label,
 		"--pbkdf", "argon2i", "--iter-time", "100",
-		"--label", data.label, data.devicePath,
 	}
-	if data.formatArgs != nil {
-		formatArgs = data.formatArgs
-	}
+	formatArgs = append(formatArgs, data.extraFormatArgs...)
+	formatArgs = append(formatArgs, data.devicePath)
+
 	c.Check(s.mockCryptsetup.Calls(), DeepEquals, [][]string{
 		formatArgs,
 		{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath}})
@@ -1443,7 +1446,7 @@ func (s *cryptSuite) TestInitializeLUKS2Container2(c *C) {
 	})
 }
 
-func (s *cryptSuite) TestInitializeLUKS2Container(c *C) {
+func (s *cryptSuite) TestInitializeLUKS2Container3(c *C) {
 	// Test with a different key
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/vdc2",
@@ -1463,15 +1466,9 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 			KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
 
 		},
-		formatArgs: []string{"cryptsetup",
-			"-q", "luksFormat", "--type", "luks2",
-			"--key-file", "-", "--cipher", "aes-xts-plain64",
-			"--key-size", "512",
-			"--pbkdf", "argon2i", "--iter-time", "100",
-			"--label", "test",
+		extraFormatArgs: []string{
 			"--luks2-metadata-size", "2048k",
 			"--luks2-keyslots-size", "3072k",
-			"/dev/vdc2",
 		},
 	})
 }
@@ -1647,5 +1644,77 @@ func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey4(c *C) {
 		devicePath:  "/dev/vdc1",
 		recoveryKey: s.newRecoveryKey(),
 		key:         make([]byte, 32),
+	})
+}
+
+type cryptSuiteFull struct {
+	cryptTestBase
+}
+
+func (s *cryptSuiteFull) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+
+	s.AddCleanup(luks2test.WrapCryptsetup(c))
+}
+
+var _ = Suite(&cryptSuiteFull{})
+
+func (s *cryptSuiteFull) testInitializeLUKS2Container(c *C, options *InitializeLUKS2ContainerOptions) {
+	key := s.newPrimaryKey()
+	path := luks2test.CreateEmptyDiskImage(c, 20)
+
+	c.Check(InitializeLUKS2Container(path, "data", key, options), IsNil)
+
+	info, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	c.Assert(err, IsNil)
+
+	c.Check(info.Label, Equals, "data")
+
+	c.Check(info.Metadata.Keyslots, HasLen, 1)
+	keyslot, ok := info.Metadata.Keyslots[0]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.KeySize, Equals, 64)
+	c.Check(keyslot.Priority, Equals, luks2.SlotPriorityHigh)
+	c.Assert(keyslot.KDF, NotNil)
+	c.Check(keyslot.KDF.Type, Equals, luks2.KDFTypeArgon2i)
+
+	c.Check(info.Metadata.Segments, HasLen, 1)
+	segment, ok := info.Metadata.Segments[0]
+	c.Assert(ok, Equals, true)
+	c.Check(segment.Encryption, Equals, "aes-xts-plain64")
+
+	c.Check(info.Metadata.Tokens, HasLen, 0)
+
+	expectedMetadataSize := uint64(16 * 1024)
+	if options != nil && options.MetadataKiBSize > 0 {
+		expectedMetadataSize = uint64(options.MetadataKiBSize * 1024)
+	}
+	expectedKeyslotsSize := uint64(16*1024*1024) - (2 * expectedMetadataSize)
+	if options != nil && options.KeyslotsAreaKiBSize > 0 {
+		expectedKeyslotsSize = uint64(options.KeyslotsAreaKiBSize * 1024)
+	}
+
+	c.Check(info.Metadata.Config.JSONSize, Equals, expectedMetadataSize-uint64(4*1024))
+	c.Check(info.Metadata.Config.KeyslotsSize, Equals, expectedKeyslotsSize)
+
+	expectedKDFTime := 100 * time.Millisecond
+
+	start := time.Now()
+	luks2test.CheckLUKS2Passphrase(c, path, key)
+	elapsed := time.Now().Sub(start)
+
+	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
+}
+
+func (s *cryptSuiteFull) TestInitializeLUKS2Container(c *C) {
+	s.testInitializeLUKS2Container(c, nil)
+}
+
+func (s *cryptSuiteFull) TestInitializeLUKS2ContainerWithOptions(c *C) {
+	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
+		MetadataKiBSize:     2 * 1024, // 2MiB
+		KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
 	})
 }

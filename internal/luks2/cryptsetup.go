@@ -64,7 +64,7 @@ func cryptsetupCmd(stdin io.Reader, callback func(cmd *exec.Cmd) error, args ...
 	case cbErr != nil:
 		return cbErr
 	case err != nil:
-		return osutil.OutputErr(b.Bytes(), err)
+		return fmt.Errorf("cryptsetup failed with: %v", osutil.OutputErr(b.Bytes(), err))
 	}
 
 	return nil

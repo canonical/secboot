@@ -22,14 +22,12 @@ package luks2_test
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
 	"math/rand"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	. "github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/luks2/luks2test"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
@@ -44,28 +42,7 @@ func (s *cryptsetupSuite) SetUpTest(c *C) {
 
 	s.AddCleanup(MockRunDir(c.MkDir()))
 
-	cryptsetupWrapperBottom := `
-# Set max locked memory to 0. Without this and without CAP_IPC_LOCK, mlockall will
-# succeed but subsequent calls to mmap will fail because the limit is too low. Setting
-# this to 0 here will cause mlockall to fail, which cryptsetup ignores.
-ulimit -l 0
-exec %[1]s "$@" </dev/stdin
-`
-
-	cryptsetup, err := exec.LookPath("cryptsetup")
-	c.Assert(err, IsNil)
-
-	cryptsetupWrapper := snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupWrapperBottom, cryptsetup))
-	s.AddCleanup(cryptsetupWrapper.Restore)
-}
-
-func (s *cryptsetupSuite) createEmptyDiskImage(c *C, sz int) string {
-	f, err := os.OpenFile(filepath.Join(c.MkDir(), "disk.img"), os.O_RDWR|os.O_CREATE, 0600)
-	c.Assert(err, IsNil)
-	defer f.Close()
-
-	c.Assert(f.Truncate(int64(sz)*1024*1024), IsNil)
-	return f.Name()
+	s.AddCleanup(luks2test.WrapCryptsetup(c))
 }
 
 func (s *cryptsetupSuite) checkLUKS2Passphrase(c *C, path string, key []byte) {
@@ -83,7 +60,7 @@ type testFormatData struct {
 }
 
 func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
 	c.Check(Format(devicePath, data.label, data.key, data.options), IsNil)
 
@@ -125,7 +102,7 @@ func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
 	}
 
 	start := time.Now()
-	s.checkLUKS2Passphrase(c, devicePath, data.key)
+	luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
 	elapsed := time.Now().Sub(start)
 	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
@@ -190,7 +167,7 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	primaryKey := make([]byte, 32)
 	rand.Read(primaryKey)
 
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", primaryKey, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 
 	startInfo, err := ReadHeader(devicePath, LockModeBlocking)
@@ -224,7 +201,7 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	}
 
 	start := time.Now()
-	s.checkLUKS2Passphrase(c, devicePath, data.key)
+	luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
 	elapsed := time.Now().Sub(start)
 	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
@@ -248,11 +225,11 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 	primaryKey := make([]byte, 32)
 	rand.Read(primaryKey)
 
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
 	c.Assert(Format(devicePath, "", primaryKey, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 
-	c.Check(AddKey(devicePath, make([]byte, 32), []byte("foo"), 0), ErrorMatches, "No key available with this passphrase.")
+	c.Check(AddKey(devicePath, make([]byte, 32), []byte("foo"), 0), ErrorMatches, "cryptsetup failed with: No key available with this passphrase.")
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -260,7 +237,7 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 	_, ok := info.Metadata.Keyslots[0]
 	c.Check(ok, Equals, true)
 
-	s.checkLUKS2Passphrase(c, devicePath, primaryKey)
+	luks2test.CheckLUKS2Passphrase(c, devicePath, primaryKey)
 }
 
 type testImportTokenData struct {
@@ -269,7 +246,7 @@ type testImportTokenData struct {
 }
 
 func (s *cryptsetupSuite) testImportToken(c *C, data *testImportTokenData) {
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), 100*time.Millisecond), IsNil)
 
@@ -335,7 +312,7 @@ func (s *cryptsetupSuite) TestImportToken3(c *C) {
 }
 
 func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), 100*time.Millisecond), IsNil)
 	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []int{0}}), IsNil)
@@ -365,11 +342,11 @@ func (s *cryptsetupSuite) TestRemoveToken2(c *C) {
 }
 
 func (s *cryptsetupSuite) TestRemoveNonExistantToken(c *C) {
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(ImportToken(devicePath, &Token{Type: "secboot-foo", Keyslots: []int{0}}), IsNil)
 
-	c.Check(RemoveToken(devicePath, 10), ErrorMatches, "Token 10 is not in use.")
+	c.Check(RemoveToken(devicePath, 10), ErrorMatches, "cryptsetup failed with: Token 10 is not in use.")
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -387,7 +364,7 @@ type testKillSlotData struct {
 }
 
 func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", data.key1, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(AddKey(devicePath, data.key1, data.key2, 100*time.Millisecond), IsNil)
 
@@ -405,7 +382,7 @@ func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 	_, ok = info.Metadata.Keyslots[data.slotId]
 	c.Check(ok, Equals, false)
 
-	s.checkLUKS2Passphrase(c, devicePath, data.testKey)
+	luks2test.CheckLUKS2Passphrase(c, devicePath, data.testKey)
 }
 
 func (s *cryptsetupSuite) TestKillSlot1(c *C) {
@@ -442,26 +419,26 @@ func (s *cryptsetupSuite) TestKillSlotWithWrongPassphrase(c *C) {
 	key2 := make([]byte, 32)
 	rand.Read(key2)
 
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", key1, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(AddKey(devicePath, key1, key2, 100*time.Millisecond), IsNil)
 
-	c.Check(KillSlot(devicePath, 1, key2), ErrorMatches, "No key available with this passphrase.")
+	c.Check(KillSlot(devicePath, 1, key2), ErrorMatches, "cryptsetup failed with: No key available with this passphrase.")
 
-	s.checkLUKS2Passphrase(c, devicePath, key1)
-	s.checkLUKS2Passphrase(c, devicePath, key2)
+	luks2test.CheckLUKS2Passphrase(c, devicePath, key1)
+	luks2test.CheckLUKS2Passphrase(c, devicePath, key2)
 }
 
 func (s *cryptsetupSuite) TestKillNonExistantSlot(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", key, &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 
-	c.Check(KillSlot(devicePath, 8, key), ErrorMatches, "Keyslot 8 is not active.")
+	c.Check(KillSlot(devicePath, 8, key), ErrorMatches, "cryptsetup failed with: Keyslot 8 is not active.")
 
-	s.checkLUKS2Passphrase(c, devicePath, key)
+	luks2test.CheckLUKS2Passphrase(c, devicePath, key)
 }
 
 type testSetSlotPriorityData struct {
@@ -470,7 +447,7 @@ type testSetSlotPriorityData struct {
 }
 
 func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityData) {
-	devicePath := s.createEmptyDiskImage(c, 20)
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFTime: 100 * time.Millisecond}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), 100*time.Millisecond), IsNil)
 
