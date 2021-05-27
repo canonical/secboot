@@ -1650,19 +1650,19 @@ func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey4(c *C) {
 	})
 }
 
-type cryptSuiteFull struct {
+type cryptSuiteExpensive struct {
 	cryptTestBase
 }
 
-func (s *cryptSuiteFull) SetUpTest(c *C) {
+func (s *cryptSuiteExpensive) SetUpTest(c *C) {
 	s.cryptTestBase.SetUpTest(c)
 
 	s.AddCleanup(luks2test.WrapCryptsetup(c))
 }
 
-var _ = Suite(&cryptSuiteFull{})
+var _ = Suite(&cryptSuiteExpensive{})
 
-func (s *cryptSuiteFull) testInitializeLUKS2Container(c *C, options *InitializeLUKS2ContainerOptions) {
+func (s *cryptSuiteExpensive) testInitializeLUKS2Container(c *C, options *InitializeLUKS2ContainerOptions) {
 	key := s.newPrimaryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
@@ -1703,18 +1703,18 @@ func (s *cryptSuiteFull) testInitializeLUKS2Container(c *C, options *InitializeL
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 }
 
-func (s *cryptSuiteFull) TestInitializeLUKS2Container(c *C) {
+func (s *cryptSuiteExpensive) TestInitializeLUKS2Container(c *C) {
 	s.testInitializeLUKS2Container(c, nil)
 }
 
-func (s *cryptSuiteFull) TestInitializeLUKS2ContainerWithOptions(c *C) {
+func (s *cryptSuiteExpensive) TestInitializeLUKS2ContainerWithOptions(c *C) {
 	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
 		MetadataKiBSize:     2 * 1024, // 2MiB
 		KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
 	})
 }
 
-func (s *cryptSuiteFull) TestAddRecoveryKeyToLUKS2Container(c *C) {
+func (s *cryptSuiteExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
 	key := s.newPrimaryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
@@ -1755,7 +1755,7 @@ func (s *cryptSuiteFull) TestAddRecoveryKeyToLUKS2Container(c *C) {
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 }
 
-func (s *cryptSuiteFull) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
+func (s *cryptSuiteExpensive) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
 	key := s.newPrimaryKey()
 	recoveryKey := s.newRecoveryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
