@@ -1676,15 +1676,7 @@ func (s *cryptSuiteFull) testInitializeLUKS2Container(c *C, options *InitializeL
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
 	keyslot, ok := info.Metadata.Keyslots[0]
 	c.Assert(ok, Equals, true)
-	c.Check(keyslot.KeySize, Equals, 64)
 	c.Check(keyslot.Priority, Equals, luks2.SlotPriorityHigh)
-	c.Assert(keyslot.KDF, NotNil)
-	c.Check(keyslot.KDF.Type, Equals, luks2.KDFTypeArgon2i)
-
-	c.Check(info.Metadata.Segments, HasLen, 1)
-	segment, ok := info.Metadata.Segments[0]
-	c.Assert(ok, Equals, true)
-	c.Check(segment.Encryption, Equals, "aes-xts-plain64")
 
 	c.Check(info.Metadata.Tokens, HasLen, 0)
 
@@ -1728,10 +1720,53 @@ func (s *cryptSuiteFull) TestAddRecoveryKeyToLUKS2Container(c *C) {
 
 	c.Check(InitializeLUKS2Container(path, "", key, nil), IsNil)
 
+	startInfo, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	c.Assert(err, IsNil)
+
 	recoveryKey := s.newRecoveryKey()
 	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey), IsNil)
 
+	endInfo, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	c.Assert(err, IsNil)
+
+	newSlotId := -1
+	for s := range endInfo.Metadata.Keyslots {
+		if _, ok := startInfo.Metadata.Keyslots[s]; !ok {
+			newSlotId = int(s)
+			break
+		}
+	}
+
+	c.Assert(newSlotId, snapd_testutil.IntGreaterThan, -1)
+
+	c.Check(endInfo.Metadata.Keyslots, HasLen, 2)
+	keyslot, ok := endInfo.Metadata.Keyslots[newSlotId]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.Priority, Equals, luks2.SlotPriorityNormal)
+
 	expectedKDFTime := 5000 * time.Millisecond
+
+	start := time.Now()
+	luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
+	elapsed := time.Now().Sub(start)
+
+	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
+}
+
+func (s *cryptSuiteFull) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
+	key := s.newPrimaryKey()
+	recoveryKey := s.newRecoveryKey()
+	path := luks2test.CreateEmptyDiskImage(c, 20)
+
+	c.Check(InitializeLUKS2Container(path, "", key, nil), IsNil)
+	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey), IsNil)
+
+	newKey := s.newPrimaryKey()
+	c.Check(ChangeLUKS2KeyUsingRecoveryKey(path, recoveryKey, newKey), IsNil)
+
+	expectedKDFTime := 100 * time.Millisecond
 
 	start := time.Now()
 	luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
