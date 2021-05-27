@@ -1653,6 +1653,14 @@ type cryptSuiteExpensive struct {
 	cryptTestBase
 }
 
+func (s *cryptSuiteExpensive) SetUpSuite(c *C) {
+	for _, e := range os.Environ() {
+		if e == "NO_EXPENSIVE_CRYPTSETUP_TESTS=1" {
+			c.Skip("skipping expensive cryptsetup tests")
+		}
+	}
+}
+
 func (s *cryptSuiteExpensive) SetUpTest(c *C) {
 	s.cryptTestBase.SetUpTest(c)
 

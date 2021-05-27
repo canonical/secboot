@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"math/rand"
+	"os"
 	"os/exec"
 	"time"
 
@@ -36,6 +37,14 @@ import (
 
 type cryptsetupSuite struct {
 	snapd_testutil.BaseTest
+}
+
+func (s *cryptsetupSuite) SetUpSuite(c *C) {
+	for _, e := range os.Environ() {
+		if e == "NO_EXPENSIVE_CRYPTSETUP_TESTS=1" {
+			c.Skip("skipping expensive cryptsetup tests")
+		}
+	}
 }
 
 func (s *cryptsetupSuite) SetUpTest(c *C) {

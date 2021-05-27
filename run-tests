@@ -9,6 +9,10 @@ while [ $# -gt 0 ]; do
                         WITH_MSSIM=1
                         shift
                         ;;
+                --no-expensive-cryptsetup-tests)
+                        ENV="env NO_EXPENSIVE_CRYPTSETUP_TESTS=1"
+                        shift
+                        ;;
                 --)
                         shift
                         break
@@ -24,4 +28,4 @@ if [ $WITH_MSSIM -eq 1 ]; then
 fi
 
 
-go test -v -race -p 1 ./... -args -check.v $MSSIM_ARGS $@
+$ENV go test -v -race -p 1 ./... -args -check.v $MSSIM_ARGS $@
