@@ -541,6 +541,10 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		return err
 	}
 
+	// Configure the KDF with reduced cost. This is done because the supplied input key has an
+	// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
+	// this key and these settings are already more secure than the 16-byte recovery key. Increased
+	// cost here only slows down unlocking.
 	opts := luks2.FormatOptions{KDFTime: 100 * time.Millisecond}
 	if options != nil {
 		opts.MetadataKiBSize = options.MetadataKiBSize
@@ -591,6 +595,10 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		return xerrors.Errorf("cannot kill existing slot: %w", err)
 	}
 
+	// Configure the KDF with reduced cost. This is done because the supplied input key has an
+	// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
+	// this key and these settings are already more secure than the 16-byte recovery key. Increased
+	// cost here only slows down unlocking.
 	options := luks2.AddKeyOptions{
 		KDFTime: 100 * time.Millisecond,
 		Slot:    0}
