@@ -157,14 +157,6 @@ func MockLUKS2Deactivate(fn func(string) error) (restore func()) {
 	}
 }
 
-func MockRunDir(path string) (restore func()) {
-	origRunDir := runDir
-	runDir = path
-	return func() {
-		runDir = origRunDir
-	}
-}
-
 func NewDynamicPolicyComputeParams(key *ecdsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList,
 	pcrDigests tpm2.DigestList, policyCounterName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
 	return &dynamicPolicyComputeParams{

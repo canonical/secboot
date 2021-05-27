@@ -26,7 +26,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,15 +37,12 @@ import (
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/snapd/osutil"
 
-	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
 )
 
 var (
 	luks2Activate   = luks2.Activate
 	luks2Deactivate = luks2.Deactivate
-
-	runDir = "/run"
 )
 
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
@@ -116,36 +112,6 @@ func wrapExecError(cmd *exec.Cmd, err error) error {
 func isExecError(err error, path string) bool {
 	var e *execError
 	return xerrors.As(err, &e) && e.path == path
-}
-
-func mkFifo() (string, func(), error) {
-	// /run is not world writable but we create a unique directory here because this
-	// code can be invoked by a public API and we shouldn't fail if more than one
-	// process reaches here at the same time.
-	dir, err := ioutil.TempDir(runDir, filepath.Base(os.Args[0])+".")
-	if err != nil {
-		return "", nil, xerrors.Errorf("cannot create temporary directory: %w", err)
-	}
-
-	cleanup := func() {
-		os.RemoveAll(dir)
-	}
-
-	succeeded := false
-	defer func() {
-		if succeeded {
-			return
-		}
-		cleanup()
-	}()
-
-	fifo := filepath.Join(dir, "fifo")
-	if err := unix.Mkfifo(fifo, 0600); err != nil {
-		return "", nil, xerrors.Errorf("cannot create FIFO: %w", err)
-	}
-
-	succeeded = true
-	return fifo, cleanup, nil
 }
 
 func askPassword(sourceDevicePath, msg string) (string, error) {
@@ -589,57 +555,6 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		return xerrors.Errorf("cannot change keyslot priority: %w", err)
 	}
 
-	return nil
-}
-
-func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOptionArgs []string) error {
-	fifoPath, cleanupFifo, err := mkFifo()
-	if err != nil {
-		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
-	}
-	defer cleanupFifo()
-
-	args := []string{
-		// add a new key
-		"luksAddKey",
-		// read existing key from named pipe
-		"--key-file", fifoPath}
-	args = append(args, extraOptionArgs...)
-	args = append(args,
-		// container to add key to
-		devicePath,
-		// read new key from stdin
-		"-")
-	cmd := exec.Command("cryptsetup", args...)
-	cmd.Stdin = bytes.NewReader(key)
-
-	var b bytes.Buffer
-	cmd.Stdout = &b
-	cmd.Stderr = &b
-
-	if err := cmd.Start(); err != nil {
-		return xerrors.Errorf("cannot start cryptsetup: %w", err)
-	}
-
-	f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
-	if err != nil {
-		// If we fail to open the write end, the read end will be blocked in open()
-		cmd.Process.Kill()
-		return xerrors.Errorf("cannot open FIFO for passing existing key to cryptsetup: %w", err)
-	}
-
-	if _, err := f.Write(existingKey); err != nil {
-		f.Close()
-		// The read end is open and blocked inside read(). Closing our write end will result in the
-		// read end returning 0 bytes (EOF) and exitting cleanly.
-		cmd.Wait()
-		return xerrors.Errorf("cannot pass existing key to cryptsetup: %w", err)
-	}
-
-	f.Close()
-	if err := cmd.Wait(); err != nil {
-		return osutil.OutputErr(b.Bytes(), err)
-	}
 	return nil
 }
 

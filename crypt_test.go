@@ -63,7 +63,6 @@ func (ctb *cryptTestBase) SetUpTest(c *C) {
 	ctb.KeyringTestBase.SetUpTest(c)
 
 	ctb.dir = c.MkDir()
-	ctb.AddCleanup(MockRunDir(ctb.dir))
 	ctb.AddCleanup(pathstest.MockRunDir(ctb.dir))
 
 	ctb.passwordFile = filepath.Join(ctb.dir, "password") // passwords to be returned by the mock sd-ask-password
