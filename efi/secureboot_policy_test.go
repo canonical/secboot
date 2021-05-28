@@ -257,7 +257,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		{
 			// Test with a classic style boot chain with grub and kernel authenticated using the shim vendor cert
 			desc:    "Classic",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -292,7 +292,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// Test with a UC20 style bootchain with normal and recovery systems, and the normal path booting via a chainloaded GRUB. All
 			// components are authenticated using a certificate in the UEFI signature db.
 			desc:    "UC20AuthenticateWithDb",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars3",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -336,7 +336,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		{
 			// Test with a GRUB binary that has an invalid signature
 			desc:    "InvalidGrubSignature",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -364,7 +364,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		{
 			// Test with an unsigned kernel
 			desc:    "NoKernelSignature",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -422,7 +422,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// Test with a UC20 style bootchain with normal and recovery systems, and the normal path booting via a chainloaded GRUB. Grub
 			// and the kernel are authenticated using a shim's vendor cert.
 			desc:    "UC20AuthenticateGrubAndKernelWithShim",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -467,7 +467,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// Verify that when grub and kernel can be authenticated using a CA in both shim and the UEFI signature db, we compute digests
 			// for authenticating with the signature database, as that is what shim tries first.
 			desc:    "AuthenticateUsingDbBeforeShim",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars3",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -503,7 +503,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// components are authenticated using a certificate in the UEFI signature db. There are 2 kernels for each system, each signed
 			// with a different key to simulate what the profile might look like after installing a kernel signed with a new key.
 			desc:    "KernelCARotationUC20",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars5",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -563,7 +563,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// each signed with a different key to simulate what the profile might look like before committing a shim update signed with a
 			// new key.
 			desc:    "ShimCARotationUC20",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars5",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -638,7 +638,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		{
 			// Verify that DirectLoadWithShimVerify fails if there are no shim binaries in the boot chain.
 			desc:    "MissingShimVendorCertSection",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars3",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -661,7 +661,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		{
 			// Test that shim binaries without a vendor cert work correctly
 			desc:    "NoShimVendorCert",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars3",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -696,7 +696,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// Test with a UC20 style bootchain with normal and recovery systems, and the normal path booting via a chainloaded GRUB. The
 			// normal and recovery chains have different trust paths
 			desc:    "MismatchedNormalAndRecoverySystemsUC20",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars5",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -745,7 +745,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		{
 			// Test that a single dbx update produces 2 digests
 			desc:    "DbxUpdate/1",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -787,7 +787,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// produces 3 digests - we don't know whether the firmware will consider this extra signature as new or not, so precompute
 			// values for both scenarios.
 			desc:    "DbxUpdate/2",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars4",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -834,7 +834,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// in between updates. Each update is written atomically, but there isn't atomicity between updates, so the 3 digests takes care
 			// of this)
 			desc:    "DbAndDbxUpdate",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -882,7 +882,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// and 2 kernels for each system - one signed with an existing CA and one signed with the new one. Verify that we get 3 digests
 			// (the new kernels can only be authenticated after the db update is applied).
 			desc:    "DbUpdateAndKernelCARotationUC20",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars3",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -946,7 +946,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// Test that computation fails with an error even if there are some bootable paths, if there are no bootable paths with the
 			// initial (pre-update) signature database.
 			desc:    "DbUpdateWithNoInitialBootablePaths",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -985,7 +985,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		{
 			// Test with an initial secboot.PCRProtectionProfile to verify that it behaves correctly
 			desc:    "WithInitialProfile",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			initial: func() *secboot.PCRProtectionProfile {
 				return secboot.NewPCRProtectionProfile().
@@ -1024,7 +1024,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		},
 		{
 			desc:    "VerifyWithDualSignedShim_1",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars2",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -1067,7 +1067,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 		},
 		{
 			desc:    "VerifyWithDualSignedShim_2",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars3",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -1112,7 +1112,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			// Verify that a load sequence is omitted from the profile if any intermediate component can't be authenticated
 			// before a branch.
 			desc:    "NoBootablePaths",
-			logPath: "testdata/eventlog1.bin",
+			logPath: "testdata/eventlog5.bin",
 			efivars: "testdata/efivars1",
 			params: SecureBootPolicyProfileParams{
 				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -1179,7 +1179,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 			values: []tpm2.PCRValues{
 				{
 					tpm2.HashAlgorithmSHA256: {
-						7: testutil.DecodeHexStringT(t, "b00b060d82d146bc21cf22576f7d468dce3b898ce01e5ca5b7cf93cf02bbd2e8"),
+						7: testutil.DecodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
 					},
 				},
 			},
@@ -1210,7 +1210,7 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 						},
 					},
 				},
-				Environment: &mockEFIEnvironment{"testdata/efivars2", "testdata/eventlog1.bin"},
+				Environment: &mockEFIEnvironment{"testdata/efivars2", "testdata/eventlog5.bin"},
 			},
 			values: []tpm2.PCRValues{
 				{

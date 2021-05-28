@@ -47,6 +47,7 @@ import (
 )
 
 const (
+	pkName      = "PK"         // Unicode variable name for the EFI platform key
 	kekName     = "KEK"        // Unicode variable name for the EFI KEK database
 	dbName      = "db"         // Unicode variable name for the EFI authorized signature database
 	dbxName     = "dbx"        // Unicode variable name for the EFI forbidden signature database
@@ -257,41 +258,50 @@ func buildSignatureDbUpdateList(keystores []string) ([]*secureBootDbUpdate, erro
 	return updates, nil
 }
 
-// isSecureBootConfigMeasurementEvent determines if event corresponds to the measurement of a secure boot configuration.
-func isSecureBootConfigMeasurementEvent(event *tcglog.Event, guid efi.GUID, name string) bool {
-	if event.PCRIndex != secureBootPCR {
-		return false
-	}
-	if event.EventType != tcglog.EventTypeEFIVariableDriverConfig {
-		return false
-	}
-
-	efiVarData, isEfiVar := event.Data.(*tcglog.EFIVariableData)
-	if !isEfiVar {
-		return false
-	}
-
-	return efiVarData.VariableName == guid && efiVarData.UnicodeName == name
+func isSecureBootEvent(event *tcglog.Event) bool {
+	return event.PCRIndex == secureBootPCR
 }
 
-// isKEKMeasurementEvent determines if event corresponds to the measurement of KEK.
-func isKEKMeasurementEvent(event *tcglog.Event) bool {
-	return isSecureBootConfigMeasurementEvent(event, efi.GlobalVariable, kekName)
+// isSecureBootConfigMeasurementEvent determines if event corresponds to the measurement of secure
+// boot configuration.
+func isSecureBootConfigMeasurementEvent(event *tcglog.Event) bool {
+	return isSecureBootEvent(event) && event.EventType == tcglog.EventTypeEFIVariableDriverConfig
 }
 
-// isDbMeasurementEvent determines if event corresponds to the measurement of UEFI authorized signature database.
+// isDbMeasurementEvent determines if event corresponds to the measurement of the UEFI authorized
+// signature database.
 func isDbMeasurementEvent(event *tcglog.Event) bool {
-	return isSecureBootConfigMeasurementEvent(event, efi.ImageSecurityDatabaseGuid, dbName)
+	if !isSecureBootConfigMeasurementEvent(event) {
+		return false
+	}
+
+	data := event.Data.(*tcglog.EFIVariableData)
+	return data.VariableName == efi.ImageSecurityDatabaseGuid && data.UnicodeName == dbName
 }
 
-// isDbxMeasurementEvent determines if event corresponds to the measurement of UEFI forbidden signature database.
-func isDbxMeasurementEvent(event *tcglog.Event) bool {
-	return isSecureBootConfigMeasurementEvent(event, efi.ImageSecurityDatabaseGuid, dbxName)
+// isSignatureDatabaseMeasurementEVent determines if event corresponds to the measurement of one
+// of the UEFI signature databases.
+func isSignatureDatabaseMeasurementEvent(event *tcglog.Event) bool {
+	if !isSecureBootConfigMeasurementEvent(event) {
+		return false
+	}
+
+	data := event.Data.(*tcglog.EFIVariableData)
+	switch {
+	case data.VariableName == efi.GlobalVariable && data.UnicodeName == pkName:
+		return true
+	case data.VariableName == efi.GlobalVariable && data.UnicodeName == kekName:
+		return true
+	case data.VariableName == efi.ImageSecurityDatabaseGuid:
+		return true
+	default:
+		return false
+	}
 }
 
 // isVerificationEvent determines if event corresponds to the verification of a EFI image.
 func isVerificationEvent(event *tcglog.Event) bool {
-	return event.PCRIndex == secureBootPCR && event.EventType == tcglog.EventTypeEFIVariableAuthority
+	return isSecureBootEvent(event) && event.EventType == tcglog.EventTypeEFIVariableAuthority
 }
 
 // isShimExecutable determines if the EFI executable read from r looks like a valid shim binary (ie, it has a ".vendor_cert" section.
@@ -449,15 +459,6 @@ func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid efi.
 	return db, nil
 }
 
-// processKEKMeasurementEvent computes a measurement of KEK with the supplied udates applied and then extends that in to
-// this branch.
-func (b *secureBootPolicyGenBranch) processKEKMeasurementEvent(updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) error {
-	if _, err := b.processSignatureDbMeasurementEvent(efi.GlobalVariable, kekName, updates, updateQuirkMode); err != nil {
-		return err
-	}
-	return nil
-}
-
 // processDbMeasurementEvent computes a measurement of the EFI authorized signature database with the supplied updates applied and
 // then extends that in to this branch. The branch context is then updated to contain a list of signatures associated with the
 // resulting authorized signature database contents, which is used later on when computing verification events in
@@ -475,15 +476,6 @@ func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(updates []*secureB
 
 	b.dbSet.uefiDb = &secureBootDb{variableName: efi.ImageSecurityDatabaseGuid, unicodeName: dbName, db: sigDb}
 
-	return nil
-}
-
-// processDbxMeasurementEvent computes a measurement of the EFI forbidden signature database with the supplied updates applied and
-// then extends that in to this branch.
-func (b *secureBootPolicyGenBranch) processDbxMeasurementEvent(updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) error {
-	if _, err := b.processSignatureDbMeasurementEvent(efi.ImageSecurityDatabaseGuid, dbxName, updates, updateQuirkMode); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -509,21 +501,29 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, s
 		switch {
 		case e.PCRIndex < secureBootPCR && e.EventType == tcglog.EventTypeSeparator:
 			osPresent = true
-		case isKEKMeasurementEvent(e):
-			if err := b.processKEKMeasurementEvent(sigDbUpdates, sigDbUpdateQuirkMode); err != nil {
-				return xerrors.Errorf("cannot process KEK measurement event: %w", err)
-			}
 		case isDbMeasurementEvent(e):
+			// This is the db variable - requires special handling because it updates context
+			// for this branch.
 			if err := b.processDbMeasurementEvent(sigDbUpdates, sigDbUpdateQuirkMode); err != nil {
 				return xerrors.Errorf("cannot process db measurement event: %w", err)
 			}
-		case isDbxMeasurementEvent(e):
-			if err := b.processDbxMeasurementEvent(sigDbUpdates, sigDbUpdateQuirkMode); err != nil {
-				return xerrors.Errorf("cannot process dbx measurement event: %w", err)
+		case isSignatureDatabaseMeasurementEvent(e):
+			// This is any signature database variable other than db.
+			data := e.Data.(*tcglog.EFIVariableData)
+			if _, err := b.processSignatureDbMeasurementEvent(data.VariableName, data.UnicodeName, sigDbUpdates, sigDbUpdateQuirkMode); err != nil {
+				return xerrors.Errorf("cannot process %s measurement event: %w", data.UnicodeName, err)
 			}
 		case isVerificationEvent(e):
+			// This is a verification event corresponding to a UEFI driver or system
+			// preparation application.
 			b.extendFirmwareVerificationMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
-		case e.PCRIndex == secureBootPCR:
+		case isSecureBootEvent(e):
+			// This is any secure boot event that isn't a verification event or signature
+			// database measurement. Secure boot configuration variables that aren't signature
+			// databases are volatile variables mirrored by boot services code from a
+			// non-volatile boot services only variable (eg, SecureBoot or DeployedMode).
+			// The non-volatile variable can only be accessed by boot services code, so
+			// always replay the log digest.
 			b.extendMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
 			if e.EventType == tcglog.EventTypeSeparator {
 				seenSecureBootPCRSeparator = true
