@@ -34,11 +34,17 @@ const (
 var (
 	ComputeDbUpdate    = computeDbUpdate
 	DefaultEnv         = defaultEnv
-	ReadShimVendorCert = readShimVendorCert
+	NewShimImageHandle = newShimImageHandle
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
+type ShimImageHandle = shimImageHandle
+
+func (s *ShimImageHandle) ReadVendorCert() ([]byte, error) {
+	return s.readVendorCert()
+}
+
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
 
 // Helper functions

@@ -72,7 +72,11 @@ func TestReadShimVendorCert(t *testing.T) {
 			}
 			defer f.Close()
 
-			cert, err := ReadShimVendorCert(f)
+			shim, err := NewShimImageHandle(f)
+			if err != nil {
+				t.Fatalf("NewShimImageHandle failed: %v", err)
+			}
+			cert, err := shim.ReadVendorCert()
 			if data.err == "" {
 				if err != nil {
 					t.Errorf("ReadShimVendorCert failed: %v", err)
@@ -1216,6 +1220,76 @@ func TestAddSecureBootPolicyProfile(t *testing.T) {
 				{
 					tpm2.HashAlgorithmSHA256: {
 						7: testutil.DecodeHexStringT(t, "d9ea13718ff09d8ade8e570656f4ac3d93d121d4fe784dee966b38e3fcddaf87"),
+					},
+				},
+			},
+		},
+		{
+			// Test with a classic style boot chain with grub and kernel authenticated using the shim vendor cert
+			// using a shim with a .sbat section.
+			desc:    "Sbat",
+			logPath: "testdata/eventlog5.bin",
+			efivars: "testdata/efivars2",
+			params: SecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*ImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileImage("testdata/mockshim_sbat1.efi.signed.1"),
+						Next: []*ImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileImage("testdata/mockgrub1.efi.signed.shim"),
+								Next: []*ImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileImage("testdata/mockkernel1.efi.signed.shim"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: testutil.DecodeHexStringT(t, "0020aa9ce92c20ac6a6c9f2320bab1cad1871c8da660fa2860f566126cc56604"),
+					},
+				},
+			},
+		},
+		{
+			// Test with a classic style boot chain with all components authenticated using a signature
+			// in the UEFI signature db, using a shim with a .sbat section.
+			desc:    "AuthenticateWithDbWithSbat",
+			logPath: "testdata/eventlog5.bin",
+			efivars: "testdata/efivars3",
+			params: SecureBootPolicyProfileParams{
+				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+				LoadSequences: []*ImageLoadEvent{
+					{
+						Source: Firmware,
+						Image:  FileImage("testdata/mockshim_sbat1.efi.signed.2"),
+						Next: []*ImageLoadEvent{
+							{
+								Source: Shim,
+								Image:  FileImage("testdata/mockgrub1.efi.signed.2"),
+								Next: []*ImageLoadEvent{
+									{
+										Source: Shim,
+										Image:  FileImage("testdata/mockkernel1.efi.signed.2"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			values: []tpm2.PCRValues{
+				{
+					tpm2.HashAlgorithmSHA256: {
+						7: testutil.DecodeHexStringT(t, "2ff27679972afe59ebc81752fd7c58ee7f1bb455760c02851a5d56cf331459a6"),
 					},
 				},
 			},

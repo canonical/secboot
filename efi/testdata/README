@@ -58,6 +58,10 @@ signed by certs/TestUefiSigning3.key.
 signed by certs/TestUefiSigning2.key.
 - mockshim2.efi.signed.21 is a mock shim executable containing certs/TestUefiCA2.crt at the vendor cert and
 signed by certs/TestUefiSigning.key and certs/TestUefiSigning2.key.
+- mockshim_sbat1.efi.signed.1 is a mock shim executable with .sbat section containing certs/TestShimVendorCA.crt
+as the vendor cert and signed by certs/TestUefiSigning.key.
+- mockshim_sbat1.efi.signed.2 is a mock shim executable with .sbat section containing certs/TestShimVendorCA.crt
+as the vendor cert and signed by certs/TestUefiSigning2.key.
 
 - mockgrub1.efi.signed.2 is a mock grub executable signed with certs/TestUefiSigning2.key.
 - mockgrub1.efi.signed.3 is a mock grub executable signed with certs/TestUefiSigning3.key.
