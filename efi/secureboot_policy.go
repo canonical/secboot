@@ -90,7 +90,6 @@ const (
 
 type shimImageHandle struct {
 	pefile *pe.File
-	r      io.ReaderAt
 }
 
 func newShimImageHandle(r io.ReaderAt) (*shimImageHandle, error) {
@@ -99,7 +98,7 @@ func newShimImageHandle(r io.ReaderAt) (*shimImageHandle, error) {
 		return nil, xerrors.Errorf("cannot decode PE binary: %w", err)
 	}
 
-	return &shimImageHandle{pefile, r}, nil
+	return &shimImageHandle{pefile}, nil
 }
 
 func (s *shimImageHandle) openSection(name string) *pe.Section {
