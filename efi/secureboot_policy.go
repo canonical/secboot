@@ -55,6 +55,7 @@ const (
 
 	mokListName    = "MokList"    // Unicode variable name for the shim MOK database
 	mokSbStateName = "MokSBState" // Unicode variable name for the shim secure boot configuration (validation enabled/disabled)
+	sbatName       = "SbatLevel"  // Unicode variable name for the SBAT variable
 	shimName       = "Shim"       // Unicode variable name used for recording events when shim's vendor certificate is used for verification
 
 	secureBootPCR = 7 // Secure Boot Policy Measurements PCR
@@ -70,15 +71,44 @@ var (
 	efiVarsPath = "/sys/firmware/efi/efivars" // Default mount point for efivarfs
 )
 
-// readShimVendorCert obtains the DER encoded built-in vendor certificate from the shim executable accessed via r.
-func readShimVendorCert(r io.ReaderAt) ([]byte, error) {
+type shimFlags int
+
+const (
+	// shimHasSbatVerification indicates that the shim
+	// binary performs SBAT verification of subsequent loaders,
+	// and performs an additional measurement of the SBAT
+	// variable.
+	shimHasSbatVerification shimFlags = 1 << iota
+
+	// shimVariableAuthorityEventsMatchSpec indicates that shim
+	// performs EV_EFI_VARIABLE_AUTHORITY events according to the
+	// TCG specification when an image is authenticated with a
+	// EFI_SIGNATURE_DATA structure, ie, it has this commit:
+	// https://github.com/rhboot/shim/commit/e3325f8100f5a14e0684ff80290e53975de1a5d9
+	shimVariableAuthorityEventsMatchSpec
+)
+
+type shimImageHandle struct {
+	pefile *pe.File
+}
+
+func newShimImageHandle(r io.ReaderAt) (*shimImageHandle, error) {
 	pefile, err := pe.NewFile(r)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot decode PE binary: %w", err)
 	}
 
+	return &shimImageHandle{pefile}, nil
+}
+
+func (s *shimImageHandle) openSection(name string) *pe.Section {
+	return s.pefile.Section(name)
+}
+
+// readVendorCert obtains the DER encoded built-in vendor certificate from this shim image.
+func (s *shimImageHandle) readVendorCert() ([]byte, error) {
 	// Shim's vendor certificate is in the .vendor_cert section.
-	section := pefile.Section(".vendor_cert")
+	section := s.openSection(".vendor_cert")
 	if section == nil {
 		return nil, errors.New("missing .vendor_cert section")
 	}
@@ -113,6 +143,10 @@ func readShimVendorCert(r io.ReaderAt) ([]byte, error) {
 	}
 
 	return certData, nil
+}
+
+func (s *shimImageHandle) hasSbatSection() bool {
+	return s.openSection(".sbat") != nil
 }
 
 type sigDbUpdateQuirkMode int
@@ -380,6 +414,7 @@ type secureBootPolicyGenBranch struct {
 	dbSet                      secureBootDbSet // The signature database set associated with this branch
 	firmwareVerificationEvents tpm2.DigestList // The verification events recorded by firmware in this branch
 	shimVerificationEvents     tpm2.DigestList // The verification events recorded by shim in this branch
+	shimFlags                  shimFlags       // Flags associated with shim in this branch
 }
 
 // branch creates a branch point in the current branch if one doesn't exist already (although inserting this branch point with
@@ -540,12 +575,51 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, s
 
 // processShimExecutableLaunch updates the context in this branch with the supplied shim vendor certificate so that it can be used
 // later on when computing verification events in secureBootPolicyGenBranch.computeAndExtendVerificationMeasurement.
-func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byte) {
+func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byte, flags shimFlags) {
+	if b.profile == nil {
+		// This branch is going to be excluded because it is unbootable.
+		return
+	}
+
+	if flags&shimHasSbatVerification > 0 {
+		// XXX: This is a bit of a hack, just so that we are compatible with
+		// the latest shim. Some things to note:
+		// - SBAT-capable shim will initialize the SBAT variable to a known
+		//   (compiled in) payload if the variable doesn't exist, has an older
+		//   payload or doesn't have the correct attributes. "Older" right now
+		//   is determined by checking a timestamp in the payload whilst the
+		//   variable is BS+NV and not-authenticated, but would be determined by
+		//   the signature timestamp for an authenticated variable in the future.
+		// - The variable is initialized as BS+NV and then mirrored to a RT
+		//   variable by a SBAT-capable shim, which means we don't know what
+		//   the current variable value is if we are pre-computing a PCR policy
+		//   on a system that was booted with a pre-SBAT shim. This isn't a
+		//   problem right now because there is only one payload, but will be
+		//   a problem in the future as updates are published if the variable
+		//   remains a non-authenticated BS+NV variable as opposed to a RT+BS+NV
+		//   authenticated variable.
+		// - In the future and in order to do this properly, we need an authoritative
+		//   source for the current variable value (eg, event log for BS+NV variable
+		//   or current variable value for RT+BS+NV, like we do for other
+		//   configuration).
+		// - Shim doesn't provide a way to audit the compiled-in SBAT payload, so
+		//   we don't have a way to introspect what it will set it to, although
+		//   we know what it is right now.
+		// - Future PCR value computation will be a bit more complicated than it
+		//   is now - imagine if you have 2 shim's with different built-in SBAT
+		//   payloads, and those are both different to the current SBAT value.
+		//   Because shim will overwrite the SBAT variable if its built-in
+		//   payload is newer, booting with one shim may affect the PCR values
+		//   associated with a branch that has a different shim.
+		b.computeAndExtendVariableMeasurement(shimGuid, sbatName, []byte("sbat,1,2021030218\n"))
+	}
+
 	b.dbSet.shimDb = &secureBootDb{variableName: shimGuid, unicodeName: shimName}
 	if vendorCert != nil {
 		b.dbSet.shimDb.db = efi.SignatureDatabase{&efi.SignatureList{Type: efi.CertX509Guid, Signatures: []*efi.SignatureData{{Data: vendorCert}}}}
 	}
 	b.shimVerificationEvents = nil
+	b.shimFlags = flags
 }
 
 // hasVerificationEventBeenMeasuredBy determines whether the verification event with the associated digest has been measured by the
@@ -644,16 +718,18 @@ Outer:
 
 	// Serialize authority certificate for measurement
 	var varData *bytes.Buffer
-	switch source {
-	case Firmware:
-		// Firmware measures the entire EFI_SIGNATURE_DATA, including the SignatureOwner
+	switch {
+	case source == Shim && (b.shimFlags&shimVariableAuthorityEventsMatchSpec == 0 || authority.source == b.dbSet.shimDb):
+		// Shim measures the certificate data rather than the entire EFI_SIGNATURE_DATA
+		// in some circumstances.
+		varData = bytes.NewBuffer(authority.signature.Data)
+	default:
+		// Firmware always measures the entire EFI_SIGNATURE_DATA including the SignatureOwner,
+		// and newer versions of shim do in some circumstances.
 		varData = new(bytes.Buffer)
 		if err := authority.signature.Write(varData); err != nil {
 			return xerrors.Errorf("cannot encode EFI_SIGNATURE_DATA for authority: %w", err)
 		}
-	case Shim:
-		// Shim measures the certificate data, rather than the entire EFI_SIGNATURE_DATA
-		varData = bytes.NewBuffer(authority.signature.Data)
 	}
 
 	// Create event data, compute digest and perform extension for verification of this executable
@@ -788,15 +864,35 @@ Outer:
 // processShimExecutableLaunch extracts the vendor certificate from the shim executable read from r, and then updates the specified
 // branches to contain a reference to the vendor certificate so that it can be used later on when computing verification events in
 // secureBootPolicyGen.computeAndExtendVerificationMeasurement for images that are authenticated by shim.
-func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBootPolicyGenBranch, r io.ReaderAt) error {
+func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBootPolicyGenBranch, shim *shimImageHandle) error {
 	// Extract this shim's vendor cert
-	vendorCert, err := readShimVendorCert(r)
+	vendorCert, err := shim.readVendorCert()
 	if err != nil {
 		return xerrors.Errorf("cannot extract vendor certificate: %w", err)
 	}
 
+	var flags shimFlags
+
+	// Check if this shim has a .sbat section. We use this to make some assumptions
+	// about shim's behaviour below.
+	hasSbatSection := shim.hasSbatSection()
+
+	if hasSbatSection {
+		// If this shim has a .sbat section, assume it also does SBAT verification.
+		// This isn't a perfect heuristic, but nobody is adding a .sbat section to a
+		// pre-SBAT version of shim and then signing it, so it doesn't matter.
+		flags |= shimHasSbatVerification
+
+		// There isn't a good heuristic for this, but at least none of Canonical's
+		// pre-SBAT shim's had the fix for this, and all SBAT capable shims do
+		// have this fix.
+		// XXX: It's possible that this is broken for shims that weren't signed
+		//  for Canonical.
+		flags |= shimVariableAuthorityEventsMatchSpec
+	}
+
 	for _, b := range branches {
-		b.processShimExecutableLaunch(vendorCert)
+		b.processShimExecutableLaunch(vendorCert, flags)
 	}
 
 	return nil
@@ -825,7 +921,12 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 		return nil
 	}
 
-	if err := g.processShimExecutableLaunch(branches, r); err != nil {
+	shim, err := newShimImageHandle(r)
+	if err != nil {
+		return xerrors.Errorf("cannot create handle for shim image: %w", err)
+	}
+
+	if err := g.processShimExecutableLaunch(branches, shim); err != nil {
 		return xerrors.Errorf("cannot process shim executable: %w", err)
 	}
 
