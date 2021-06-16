@@ -35,7 +35,6 @@ import (
 
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
-	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/xerrors"
 )
@@ -462,15 +461,6 @@ func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, opti
 // This makes use of systemd-cryptsetup.
 func DeactivateVolume(volumeName string) error {
 	return luks2Deactivate(volumeName)
-}
-
-func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
-	cmd := exec.Command("cryptsetup", "config", "--priority", "prefer", "--key-slot", strconv.Itoa(slot), devicePath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
-	}
-
-	return nil
 }
 
 // InitializeLUKS2ContainerOptions carries options for initializing LUKS2
