@@ -56,8 +56,8 @@ func CreateEmptyDiskImage(c *C, sz int) string {
 	return f.Name()
 }
 
-func CheckLUKS2Passphrase(c *C, path string, key []byte) {
-	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", path)
+func CheckLUKS2Passphrase(c *C, devicePath string, key []byte) {
+	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
 	cmd.Stdin = bytes.NewReader(key)
 	c.Check(cmd.Run(), IsNil)
 }
