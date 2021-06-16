@@ -33,10 +33,10 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/xerrors"
+
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
-
-	"golang.org/x/xerrors"
 )
 
 var (

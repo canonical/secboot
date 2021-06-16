@@ -27,12 +27,13 @@ import (
 	"os/exec"
 	"time"
 
-	. "github.com/snapcore/secboot/internal/luks2"
-	"github.com/snapcore/secboot/internal/luks2/luks2test"
-	"github.com/snapcore/secboot/internal/paths/pathstest"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
+
+	. "github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/luks2/luks2test"
+	"github.com/snapcore/secboot/internal/paths/pathstest"
 )
 
 type cryptsetupSuite struct {
