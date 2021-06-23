@@ -62,37 +62,26 @@ func makeImportableSealedKeyTemplate() *tpm2.Public {
 // the TPM and the new PCR policy will have a count of this value + 1. If tpm is nil then
 // counterPub must also be nil, else an error will be returned.
 func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey crypto.PrivateKey,
-	counterPub *tpm2.NVPublic, counterAuthPolicies tpm2.DigestList, pcrProfile *PCRProtectionProfile,
+	counterPub *tpm2.NVPublic, pcrProfile *PCRProtectionProfile, policyCount uint64,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
-
-	var nextPolicyCount uint64
 	var counterName tpm2.Name
+	// Obtain the count for the new policy
+	if counterPub != nil {
+		var err error
+		counterName, err = counterPub.Name()
+		if err != nil {
+			return nil, xerrors.Errorf("cannot compute name of policy counter: %w", err)
+		}
+	}
+
 	var supportedPcrs tpm2.PCRSelectionList
 	if tpm != nil {
 		var err error
-		// Obtain the count for the new policy
-		if counterPub != nil {
-			nextPolicyCount, err = readPcrPolicyCounter(tpm, version, counterPub, counterAuthPolicies, session)
-			if err != nil {
-				return nil, xerrors.Errorf("cannot read policy counter: %w", err)
-			}
-			nextPolicyCount += 1
-
-			counterName, err = counterPub.Name()
-			if err != nil {
-				return nil, xerrors.Errorf("cannot compute name of policy counter: %w", err)
-			}
-		}
-
 		supportedPcrs, err = tpm.GetCapabilityPCRs(session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
 			return nil, xerrors.Errorf("cannot determine supported PCRs: %w", err)
 		}
 	} else {
-		if counterPub != nil {
-			return nil, errors.New("use of policy counter requires a TPM connection")
-		}
-
 		// Defined as mandatory in the TCG PC Client Platform TPM Profile Specification for TPM 2.0
 		supportedPcrs = tpm2.PCRSelectionList{
 			{Hash: tpm2.HashAlgorithmSHA1, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
@@ -135,7 +124,7 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 		pcrs:              pcrs,
 		pcrDigests:        pcrDigests,
 		policyCounterName: counterName,
-		policyCount:       nextPolicyCount}
+		policyCount:       policyCount}
 
 	policyData, err := computeDynamicPolicy(version, alg, &policyParams)
 	if err != nil {
@@ -241,7 +230,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath str
 		pcrProfile = &PCRProtectionProfile{}
 	}
 	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(nil, currentMetadataVersion, pub.NameAlg, authPublicKey.NameAlg,
-		goAuthKey, nil, nil, pcrProfile, nil)
+		goAuthKey, nil, pcrProfile, 0, nil)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -399,16 +388,13 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		}
 	}
 	authPublicKey := createTPMPublicAreaForECDSAKey(&goAuthKey.PublicKey)
-	authKeyName, err := authPublicKey.Name()
-	if err != nil {
-		return nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
-	}
 	authKey = goAuthKey.D.Bytes()
 
 	// Create PCR policy counter, if requested.
 	var pcrPolicyCounterPub *tpm2.NVPublic
+	var pcrPolicyCount uint64
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
-		pcrPolicyCounterPub, err = createPcrPolicyCounter(tpm.TPMContext, params.PCRPolicyCounterHandle, authKeyName, session)
+		pcrPolicyCounterPub, pcrPolicyCount, err = createPcrPolicyCounter(tpm.TPMContext, params.PCRPolicyCounterHandle, authPublicKey, session)
 		switch {
 		case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
 			return nil, TPMResourceExistsError{params.PCRPolicyCounterHandle}
@@ -448,7 +434,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		pcrProfile = &PCRProtectionProfile{}
 	}
 	dynamicPolicyData, err := computeSealedKeyDynamicAuthPolicy(tpm.TPMContext, currentMetadataVersion, template.NameAlg,
-		authPublicKey.NameAlg, goAuthKey, pcrPolicyCounterPub, nil, pcrProfile, session)
+		authPublicKey.NameAlg, goAuthKey, pcrPolicyCounterPub, pcrProfile, pcrPolicyCount, session)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -503,14 +489,6 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		}
 
 		f.Close()
-	}
-
-	// Increment the PCR policy counter for the first time.
-	if pcrPolicyCounterPub != nil {
-		if err := incrementPcrPolicyCounter(tpm.TPMContext, currentMetadataVersion, pcrPolicyCounterPub, nil, goAuthKey, authPublicKey,
-			session); err != nil {
-			return nil, xerrors.Errorf("cannot increment PCR policy counter: %w", err)
-		}
 	}
 
 	succeeded = true
@@ -585,15 +563,13 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 		}
 	}
 
-	authPublicKey := primaryData.staticPolicyData.authPublicKey
-	v0PinIndexAuthPolicies := primaryData.staticPolicyData.v0PinIndexAuthPolicies
-
 	// Compute a new dynamic authorization policy
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
-	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm, primaryData.version, primaryData.keyPublic.NameAlg, authPublicKey.NameAlg, authKey,
-		pcrPolicyCounterPub, v0PinIndexAuthPolicies, pcrProfile, session)
+	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm, primaryData.version, primaryData.keyPublic.NameAlg,
+		primaryData.staticPolicyData.authPublicKey.NameAlg, authKey, pcrPolicyCounterPub, pcrProfile,
+		primaryData.dynamicPolicyData.policyCount+1, session)
 	if err != nil {
 		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -605,14 +581,6 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 		if err := k.data.writeToFileAtomic(k.path); err != nil {
 			return xerrors.Errorf("cannot write key data file: %v", err)
 		}
-	}
-
-	if pcrPolicyCounterPub == nil {
-		return nil
-	}
-
-	if err := incrementPcrPolicyCounter(tpm, primaryData.version, pcrPolicyCounterPub, v0PinIndexAuthPolicies, authKey, authPublicKey, session); err != nil {
-		return xerrors.Errorf("cannot revoke old PCR policies: %w", err)
 	}
 
 	return nil
@@ -646,6 +614,47 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, policyUpdateData.authKey, pcrProfile, tpm.HmacSession())
 }
 
+// RevokeOldPCRProtectionPoliciesV0 revokes old PCR protection policies associated with this sealed key. This
+// function only works with version 0 sealed key data objects. The caller must specify the path to the policy
+// update data file that was originally saved by SealKeyToTPM.
+//
+// If validation of the key data fails, a InvalidKeyFileError error will be returned.
+func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, policyUpdatePath string) error {
+	policyUpdateFile, err := os.Open(policyUpdatePath)
+	if err != nil {
+		return xerrors.Errorf("cannot open private data file: %w", err)
+	}
+	defer policyUpdateFile.Close()
+
+	policyUpdateData, err := decodeKeyPolicyUpdateData(policyUpdateFile)
+	if err != nil {
+		return InvalidKeyFileError{fmt.Sprintf("cannot read dynamic policy update data: %v", err)}
+	}
+	if policyUpdateData.version != k.data.version {
+		return InvalidKeyFileError{"mismatched metadata versions"}
+	}
+
+	pcrPolicyCounterPub, err := k.data.validate(tpm.TPMContext, policyUpdateData.authKey, tpm.HmacSession())
+	if err != nil {
+		if isKeyFileError(err) {
+			return InvalidKeyFileError{err.Error()}
+		}
+		return xerrors.Errorf("cannot validate key data: %w", err)
+	}
+
+	if pcrPolicyCounterPub == nil {
+		return nil
+	}
+
+	handle := newPcrPolicyCounterHandleV0(pcrPolicyCounterPub, k.data.staticPolicyData.authPublicKey, k.data.staticPolicyData.v0PinIndexAuthPolicies)
+
+	if err := handle.Set(tpm.TPMContext, k.data.dynamicPolicyData.policyCount, policyUpdateData.authKey, tpm.HmacSession()); err != nil {
+		return xerrors.Errorf("cannot revoke old PCR policies: %w", err)
+	}
+
+	return nil
+}
+
 // UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
 // pcrProfile argument. In order to do this, the caller must also specify the private part of the authorization key
 // that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
@@ -653,14 +662,48 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 // If validation of the sealed key data fails, a InvalidKeyFileError error will be returned.
 //
 // On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
-// computed from the supplied PCRProtectionProfile. If the sealed key data file was created with a PCR policy counter, the
-// previous PCR policy will be revoked.
+// computed from the supplied PCRProtectionProfile.
 func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey PolicyAuthKey, pcrProfile *PCRProtectionProfile) error {
 	ecdsaAuthKey, err := createECDSAPrivateKeyFromTPM(k.data.staticPolicyData.authPublicKey, tpm2.ECCParameter(authKey))
 	if err != nil {
 		return InvalidKeyFileError{fmt.Sprintf("cannot create auth key: %v", err)}
 	}
 	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, ecdsaAuthKey, pcrProfile, tpm.HmacSession())
+}
+
+// RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. If the key
+// data was not created with a PCR policy counter, then this function does nothing. The caller must also specify
+// the private part of the authorization key that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
+//
+// If validation of the key data fails, a InvalidKeyFileError error will be returned.
+func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey PolicyAuthKey) error {
+	ecdsaAuthKey, err := createECDSAPrivateKeyFromTPM(k.data.staticPolicyData.authPublicKey, tpm2.ECCParameter(authKey))
+	if err != nil {
+		return InvalidKeyFileError{fmt.Sprintf("cannot create auth key: %v", err)}
+	}
+
+	pcrPolicyCounterPub, err := k.data.validate(tpm.TPMContext, nil, tpm.HmacSession())
+	if err != nil {
+		if isKeyFileError(err) {
+			return InvalidKeyFileError{err.Error()}
+		}
+		return xerrors.Errorf("cannot validate key data: %w", err)
+	}
+
+	if pcrPolicyCounterPub == nil {
+		return nil
+	}
+
+	handle, err := newPcrPolicyCounterHandleV1(pcrPolicyCounterPub, k.data.staticPolicyData.authPublicKey)
+	if err != nil {
+		return xerrors.Errorf("cannot create handle to revoke old PCR policies: %w", err)
+	}
+
+	if err := handle.Set(tpm.TPMContext, k.data.dynamicPolicyData.policyCount, ecdsaAuthKey, tpm.HmacSession()); err != nil {
+		return xerrors.Errorf("cannot revoke old PCR policies: %w", err)
+	}
+
+	return nil
 }
 
 // UpdateKeyPCRProtectionPolicyMultiple updates the PCR protection policy for the supplied sealed key objects to the
@@ -670,10 +713,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey Pol
 // If validation of any sealed key object fails, a InvalidKeyFileError error will be returned.
 //
 // On success, each sealed key data file is updated atomically with an updated authorization policy that includes a PCR
-// policy computed from the supplied PCRProtectionProfile. If the sealed key data files were created with a PCR policy
-// counter, the previous PCR policy will be revoked only when all of the sealed key data files have been updated
-// successfully. If any file is not updated successfully, the previous PCR policy will not be revoked and the associated
-// error will be returned.
+// policy computed from the supplied PCRProtectionProfile.
 func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObject, authKey PolicyAuthKey, pcrProfile *PCRProtectionProfile) error {
 	if len(keys) == 0 {
 		return errors.New("no sealed keys supplied")

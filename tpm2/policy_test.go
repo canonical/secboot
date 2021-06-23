@@ -36,7 +36,7 @@ import (
 	. "github.com/snapcore/secboot/tpm2"
 )
 
-func TestIncrementPcrPolicyCounter(t *testing.T) {
+func TestPcrPolicyCounterHandleSet(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
@@ -45,12 +45,8 @@ func TestIncrementPcrPolicyCounter(t *testing.T) {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
 	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
-	keyName, err := keyPublic.Name()
-	if err != nil {
-		t.Fatalf("Cannot compute key name: %v", err)
-	}
 
-	policyCounterPub, err := CreatePcrPolicyCounter(tpm.TPMContext, 0x0181ff00, keyName, tpm.HmacSession())
+	policyCounterPub, initialCount, err := CreatePcrPolicyCounter(tpm.TPMContext, 0x0181ff00, keyPublic, tpm.HmacSession())
 	if err != nil {
 		t.Fatalf("CreatePcrPolicyCounter failed: %v", err)
 	}
@@ -62,25 +58,25 @@ func TestIncrementPcrPolicyCounter(t *testing.T) {
 		undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
 	}()
 
-	initialCount, err := ReadPcrPolicyCounter(tpm.TPMContext, CurrentMetadataVersion, policyCounterPub, nil, tpm.HmacSession())
+	h, err := NewPcrPolicyCounterHandleV1(policyCounterPub, keyPublic)
 	if err != nil {
-		t.Errorf("ReadPcrPolicyCounter failed: %v", err)
+		t.Fatalf("NewPcrPolicyCounterHandleV1 failed: %v", err)
 	}
 
-	if err := IncrementPcrPolicyCounter(tpm.TPMContext, CurrentMetadataVersion, policyCounterPub, nil, key, keyPublic, tpm.HmacSession()); err != nil {
-		t.Fatalf("IncrementPcrPolicyCounter failed: %v", err)
+	if err := h.Set(tpm.TPMContext, initialCount+1, key, tpm.HmacSession()); err != nil {
+		t.Errorf("Set failed: %v", err)
 	}
 
-	count, err := ReadPcrPolicyCounter(tpm.TPMContext, CurrentMetadataVersion, policyCounterPub, nil, tpm.HmacSession())
+	count, err := h.Get(tpm.TPMContext, tpm.HmacSession())
 	if err != nil {
-		t.Errorf("ReadPcrPolicyCounter failed: %v", err)
+		t.Errorf("Get failed: %v", err)
 	}
 	if count != initialCount+1 {
-		t.Errorf("ReadPcrPolicyCounter returned an unexpected count (got %d, expected %d)", count, initialCount+1)
+		t.Errorf("Get returned an unexpected count (got %d, expected %d)", count, initialCount+1)
 	}
 }
 
-func TestReadPcrPolicyCounter(t *testing.T) {
+func TestCreatePcrPolicyCounterHandle(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
 
@@ -102,7 +98,13 @@ func TestReadPcrPolicyCounter(t *testing.T) {
 		t.Fatalf("NVReadCounter failed: %v", err)
 	}
 
-	policyCounterPub, err := CreatePcrPolicyCounter(tpm.TPMContext, 0x0181ff00, nil, tpm.HmacSession())
+	key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
+	if err != nil {
+		t.Fatalf("GenerateKey failed: %v", err)
+	}
+	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
+
+	policyCounterPub, count, err := CreatePcrPolicyCounter(tpm.TPMContext, 0x0181ff00, keyPublic, tpm.HmacSession())
 	if err != nil {
 		t.Fatalf("CreatePcrPolicyCounter failed: %v", err)
 	}
@@ -114,12 +116,8 @@ func TestReadPcrPolicyCounter(t *testing.T) {
 		undefineNVSpace(t, tpm, index, tpm.OwnerHandleContext())
 	}()
 
-	count, err := ReadPcrPolicyCounter(tpm.TPMContext, CurrentMetadataVersion, policyCounterPub, nil, tpm.HmacSession())
-	if err != nil {
-		t.Errorf("ReadPcrPolicyCounter failed: %v", err)
-	}
 	if count != testCount {
-		t.Errorf("ReadPcrPolicyCounter returned an unexpected count (got %d, expected %d)", count, testCount)
+		t.Errorf("CreatePcrPolicyCounter returned an unexpected count (got %d, expected %d)", count, testCount)
 	}
 }
 
@@ -135,9 +133,8 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 		t.Fatalf("ParsePKCS1PrivateKey failed: %v", err)
 	}
 	publicKey := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
-	publicKeyName, _ := publicKey.Name()
 
-	pcrPolicyCounterAuthPolicies, _ := ComputePcrPolicyCounterAuthPolicies(tpm2.HashAlgorithmSHA256, publicKeyName)
+	pcrPolicyCounterAuthPolicies, _ := ComputePcrPolicyCounterAuthPolicies(tpm2.HashAlgorithmSHA256, publicKey)
 	trial, _ := tpm2.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
 	trial.PolicyOR(pcrPolicyCounterAuthPolicies)
 
@@ -776,12 +773,8 @@ func TestExecutePolicy(t *testing.T) {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
 	keyPublic := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
-	keyName, err := keyPublic.Name()
-	if err != nil {
-		t.Fatalf("Cannot compute key name: %v", err)
-	}
 
-	policyCounterPub, err := CreatePcrPolicyCounter(tpm.TPMContext, 0x0181ff00, keyName, tpm.HmacSession())
+	policyCounterPub, policyCount, err := CreatePcrPolicyCounter(tpm.TPMContext, 0x0181ff00, keyPublic, tpm.HmacSession())
 	if err != nil {
 		t.Fatalf("CreatePcrPolicyCounter failed: %v", err)
 	}
@@ -790,11 +783,6 @@ func TestExecutePolicy(t *testing.T) {
 		t.Fatalf("CreateNVIndexResourceContextFromPublic failed: %v", err)
 	}
 	defer func() { undefineNVSpace(t, tpm, policyCounter, tpm.OwnerHandleContext()) }()
-
-	policyCount, err := ReadPcrPolicyCounter(tpm.TPMContext, CurrentMetadataVersion, policyCounterPub, nil, tpm.HmacSession())
-	if err != nil {
-		t.Fatalf("readDynamicPolicyCounter failed: %v", err)
-	}
 
 	type pcrEvent struct {
 		index int
