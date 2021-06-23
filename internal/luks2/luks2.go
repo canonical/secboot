@@ -25,7 +25,6 @@ import (
 )
 
 var (
-	runDir           = "/run"
 	stderr io.Writer = os.Stderr
 )
 

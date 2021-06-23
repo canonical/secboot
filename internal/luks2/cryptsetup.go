@@ -34,6 +34,12 @@ import (
 	"golang.org/x/xerrors"
 )
 
+const (
+	// AnySlot tells a command to automatically choose an appropriate slot
+	// as opposed to hard coding one.
+	AnySlot = -1
+)
+
 var (
 	keySize = 64
 )
@@ -64,7 +70,7 @@ func cryptsetupCmd(stdin io.Reader, callback func(cmd *exec.Cmd) error, args ...
 	case cbErr != nil:
 		return cbErr
 	case err != nil:
-		return osutil.OutputErr(b.Bytes(), err)
+		return fmt.Errorf("cryptsetup failed with: %v", osutil.OutputErr(b.Bytes(), err))
 	}
 
 	return nil
@@ -121,10 +127,22 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 	return cryptsetupCmd(bytes.NewReader(key), nil, args...)
 }
 
+// AddKeyOptions provides the options for adding a key to a LUKS2 volume
+type AddKeyOptions struct {
+	KDFTime time.Duration // the KDF benchmark time for the new key
+
+	// Slot is the keyslot to use. Note that the default value is slot 0. In
+	// order to automatically choose a slot, use AnySlot.
+	Slot int
+}
+
 // AddKey adds the supplied key in to a new keyslot for specified LUKS2 container. In order to do this,
 // an existing key must be provided. The KDF for the new keyslot will be configured to use argon2i with
-// the supplied benchmark time.
-func AddKey(devicePath string, existingKey, key []byte, kdfTime time.Duration) error {
+// the supplied benchmark time. The key will be added to the supplied slot.
+//
+// If options is not supplied, the default KDF benchmark time is used and the command will
+// automatically choose an appropriate slot.
+func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) error {
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
 		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
@@ -140,9 +158,14 @@ func AddKey(devicePath string, existingKey, key []byte, kdfTime time.Duration) e
 		"--key-file", fifoPath,
 		// use argon2i as the KDF
 		"--pbkdf", "argon2i"}
-	if kdfTime != 0 {
-		// set the KDF benchmark time
-		args = append(args, "--iter-time", strconv.FormatUint(uint64(kdfTime/time.Millisecond), 10))
+	if options != nil {
+		if options.KDFTime != 0 {
+			// set the KDF benchmark time
+			args = append(args, "--iter-time", strconv.FormatUint(uint64(options.KDFTime/time.Millisecond), 10))
+		}
+		if options.Slot != AnySlot {
+			args = append(args, "--key-slot", strconv.Itoa(options.Slot))
+		}
 	}
 	args = append(args,
 		// container to add key to

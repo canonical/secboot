@@ -141,19 +141,19 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
-func MockRunDir(path string) (restore func()) {
-	origRunDir := runDir
-	runDir = path
+func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
+	origActivate := luks2Activate
+	luks2Activate = fn
 	return func() {
-		runDir = origRunDir
+		luks2Activate = origActivate
 	}
 }
 
-func MockSystemdCryptsetupPath(path string) (restore func()) {
-	origSystemdCryptsetupPath := systemdCryptsetupPath
-	systemdCryptsetupPath = path
+func MockLUKS2Deactivate(fn func(string) error) (restore func()) {
+	origDeactivate := luks2Deactivate
+	luks2Deactivate = fn
 	return func() {
-		systemdCryptsetupPath = origSystemdCryptsetupPath
+		luks2Deactivate = origDeactivate
 	}
 }
 

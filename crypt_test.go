@@ -20,15 +20,22 @@
 package secboot_test
 
 import (
+	"bytes"
 	"crypto"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/luks2/luks2test"
+	"github.com/snapcore/secboot/internal/paths"
+	"github.com/snapcore/secboot/internal/paths/pathstest"
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
@@ -42,32 +49,57 @@ type cryptTestBase struct {
 
 	passwordFile string // a newline delimited list of passwords for the mock systemd-ask-password to return
 
-	mockKeyslotsDir   string
-	mockKeyslotsCount int
-
-	cryptsetupInvocationCountDir string
-	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
-	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
+	mockKeyslotsDir        string
+	mockKeyslotsCount      int
+	mockLUKS2ActivateCalls []struct {
+		volumeName       string
+		sourceDevicePath string
+	}
 
 	mockSdAskPassword *snapd_testutil.MockCmd
-	mockSdCryptsetup  *snapd_testutil.MockCmd
-	mockCryptsetup    *snapd_testutil.MockCmd
 }
 
 func (ctb *cryptTestBase) SetUpTest(c *C) {
 	ctb.KeyringTestBase.SetUpTest(c)
 
 	ctb.dir = c.MkDir()
-	ctb.AddCleanup(MockRunDir(ctb.dir))
+	ctb.AddCleanup(pathstest.MockRunDir(ctb.dir))
 
 	ctb.passwordFile = filepath.Join(ctb.dir, "password") // passwords to be returned by the mock sd-ask-password
 
 	ctb.mockKeyslotsCount = 0
 	ctb.mockKeyslotsDir = c.MkDir()
 
-	ctb.cryptsetupKey = filepath.Join(ctb.dir, "cryptsetupkey")       // File in which the mock cryptsetup records the passed in key
-	ctb.cryptsetupNewkey = filepath.Join(ctb.dir, "cryptsetupnewkey") // File in which the mock cryptsetup records the passed in new key
-	ctb.cryptsetupInvocationCountDir = c.MkDir()
+	ctb.mockLUKS2ActivateCalls = nil
+	ctb.AddCleanup(MockLUKS2Activate(func(volumeName, sourceDevicePath string, key []byte) error {
+		ctb.mockLUKS2ActivateCalls = append(ctb.mockLUKS2ActivateCalls, struct {
+			volumeName       string
+			sourceDevicePath string
+		}{volumeName, sourceDevicePath})
+
+		f, err := os.Open(ctb.mockKeyslotsDir)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		slots, err := f.Readdir(0)
+		if err != nil {
+			return err
+		}
+
+		for _, slot := range slots {
+			k, err := ioutil.ReadFile(filepath.Join(ctb.mockKeyslotsDir, slot.Name()))
+			if err != nil {
+				return err
+			}
+			if bytes.Equal(k, key) {
+				return nil
+			}
+		}
+
+		return errors.New("systemd-cryptsetup failed with: exit status 1")
+	}))
 
 	sdAskPasswordBottom := `
 head -1 %[1]s
@@ -75,83 +107,6 @@ sed -i -e '1,1d' %[1]s
 `
 	ctb.mockSdAskPassword = snapd_testutil.MockCommand(c, "systemd-ask-password", fmt.Sprintf(sdAskPasswordBottom, ctb.passwordFile))
 	ctb.AddCleanup(ctb.mockSdAskPassword.Restore)
-
-	sdCryptsetupBottom := `
-if [ "$1" = "detach" ]; then
-    if [ "$2" = "bad-volume" ]; then
-        exit 7
-    fi
-    exit 0
-fi
-key=$(xxd -p < "$4")
-for f in "%[1]s"/*; do
-    if [ "$key" == "$(xxd -p < "$f")" ]; then
-	exit 0
-    fi
-done
-
-
-# use a specific error code to differentiate from arbitrary exit 1 elsewhere
-exit 5
-`
-	ctb.mockSdCryptsetup = snapd_testutil.MockCommand(c, c.MkDir()+"/systemd-cryptsetup", fmt.Sprintf(sdCryptsetupBottom, ctb.mockKeyslotsDir))
-	ctb.AddCleanup(ctb.mockSdCryptsetup.Restore)
-	ctb.AddCleanup(MockSystemdCryptsetupPath(ctb.mockSdCryptsetup.Exe()))
-
-	cryptsetupBottom := `
-keyfile=""
-action=""
-
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --key-file)
-            keyfile=$2
-            shift 2
-            ;;
-        --type | --cipher | --key-size | --pbkdf | --pbkdf-force-iterations | --pbkdf-memory | --label | --priority | --key-slot | --iter-time)
-            shift 2
-            ;;
-        -*)
-            shift
-            ;;
-        *)
-            if [ -z "$action" ]; then
-                action=$1
-                shift
-            else
-                break
-            fi
-    esac
-done
-
-new_keyfile=""
-if [ "$action" = "luksAddKey" ]; then
-    new_keyfile=$2
-fi
-
-invocation=$(find %[4]s | wc -l)
-mktemp %[4]s/XXXX
-
-dump_key()
-{
-    in=$1
-    out=$2
-
-    if [ -z "$in" ]; then
-	touch "$out"
-    elif [ "$in" == "-" ]; then
-	cat /dev/stdin > "$out"
-    else
-	cat "$in" > "$out"
-    fi
-}
-
-dump_key "$keyfile" "%[2]s.$invocation"
-dump_key "$new_keyfile" "%[3]s.$invocation"
-`
-
-	ctb.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, ctb.dir, ctb.cryptsetupKey, ctb.cryptsetupNewkey, ctb.cryptsetupInvocationCountDir))
-	ctb.AddCleanup(ctb.mockCryptsetup.Restore)
 }
 
 func (ctb *cryptTestBase) addMockKeyslot(c *C, key []byte) {
@@ -197,6 +152,13 @@ type cryptSuite struct {
 	cryptTestBase
 	keyDataTestBase
 	snapModelTestBase
+
+	mockLUKS2DeactivateCalls int
+
+	cryptsetupInvocationCountDir string
+	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
+	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
+	mockCryptsetup               *snapd_testutil.MockCmd
 }
 
 var _ = Suite(&cryptSuite{})
@@ -209,6 +171,75 @@ func (s *cryptSuite) SetUpSuite(c *C) {
 func (s *cryptSuite) SetUpTest(c *C) {
 	s.cryptTestBase.SetUpTest(c)
 	s.keyDataTestBase.SetUpTest(c)
+
+	s.mockLUKS2DeactivateCalls = 0
+	s.AddCleanup(MockLUKS2Deactivate(func(volumeName string) error {
+		s.mockLUKS2DeactivateCalls++
+		if volumeName == "bad-volume" {
+			return errors.New("systemd-cryptsetup failed with: exit status 1")
+		}
+		return nil
+	}))
+
+	dir := c.MkDir()
+	s.cryptsetupKey = filepath.Join(dir, "cryptsetupkey")       // File in which the mock cryptsetup records the passed in key
+	s.cryptsetupNewkey = filepath.Join(dir, "cryptsetupnewkey") // File in which the mock cryptsetup records the passed in new key
+	s.cryptsetupInvocationCountDir = c.MkDir()
+
+	cryptsetupBottom := `
+keyfile=""
+action=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --key-file)
+            keyfile=$2
+            shift 2
+            ;;
+        --type | --cipher | --key-size | --pbkdf | --pbkdf-force-iterations | --pbkdf-memory | --label | --priority | --key-slot | --iter-time)
+            shift 2
+            ;;
+        -*)
+            shift
+            ;;
+        *)
+            if [ -z "$action" ]; then
+                action=$1
+                shift
+            else
+                break
+            fi
+    esac
+done
+
+new_keyfile=""
+if [ "$action" = "luksAddKey" ]; then
+    new_keyfile=$2
+fi
+
+invocation=$(find %[3]s | wc -l)
+mktemp %[3]s/XXXX
+
+dump_key()
+{
+    in=$1
+    out=$2
+
+    if [ -z "$in" ]; then
+	touch "$out"
+    elif [ "$in" == "-" ]; then
+	cat /dev/stdin > "$out"
+    else
+	cat "$in" > "$out"
+    fi
+}
+
+dump_key "$keyfile" "%[1]s.$invocation"
+dump_key "$new_keyfile" "%[2]s.$invocation"
+`
+
+	s.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, s.cryptsetupKey, s.cryptsetupNewkey, s.cryptsetupInvocationCountDir))
+	s.AddCleanup(s.mockCryptsetup.Restore)
 }
 
 func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey AuxiliaryKey) {
@@ -262,7 +293,7 @@ type testActivateVolumeWithRecoveryKeyData struct {
 	tries               int
 	keyringPrefix       string
 	recoveryPassphrases []string
-	sdCryptsetupCalls   int
+	activateTries       int
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
@@ -279,12 +310,10 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 			filepath.Base(os.Args[0]) + ":" + data.sourceDevicePath, "Please enter the recovery key for disk " + data.sourceDevicePath + ":"})
 	}
 
-	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
-	for _, call := range s.mockSdCryptsetup.Calls() {
-		c.Assert(len(call), Equals, 6)
-		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-		c.Check(call[5], Equals, "tries=1")
+	c.Assert(s.mockLUKS2ActivateCalls, HasLen, data.activateTries)
+	for _, call := range s.mockLUKS2ActivateCalls {
+		c.Check(call.volumeName, Equals, data.volumeName)
+		c.Check(call.sourceDevicePath, Equals, data.sourceDevicePath)
 	}
 
 	// This should be done last because it may fail in some circumstances.
@@ -300,7 +329,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey1(c *C) {
 		sourceDevicePath:    "/dev/sda1",
 		tries:               1,
 		recoveryPassphrases: []string{recoveryKey.String()},
-		sdCryptsetupCalls:   1,
+		activateTries:       1,
 	})
 }
 
@@ -313,7 +342,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey2(c *C) {
 		sourceDevicePath:    "/dev/sda1",
 		tries:               1,
 		recoveryPassphrases: []string{strings.Replace(recoveryKey.String(), "-", "", -1)},
-		sdCryptsetupCalls:   1,
+		activateTries:       1,
 	})
 }
 
@@ -329,7 +358,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey3(c *C) {
 			"00000-00000-00000-00000-00000-00000-00000-00000",
 			recoveryKey.String(),
 		},
-		sdCryptsetupCalls: 2,
+		activateTries: 2,
 	})
 }
 
@@ -346,7 +375,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey4(c *C) {
 			"1234",
 			recoveryKey.String(),
 		},
-		sdCryptsetupCalls: 1,
+		activateTries: 1,
 	})
 }
 
@@ -359,7 +388,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey5(c *C) {
 		sourceDevicePath:    "/dev/vdb2",
 		tries:               1,
 		recoveryPassphrases: []string{recoveryKey.String()},
-		sdCryptsetupCalls:   1,
+		activateTries:       1,
 	})
 }
 
@@ -373,7 +402,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKey6(c *C) {
 		tries:               1,
 		keyringPrefix:       "test",
 		recoveryPassphrases: []string{recoveryKey.String()},
-		sdCryptsetupCalls:   1,
+		activateTries:       1,
 	})
 }
 
@@ -382,7 +411,7 @@ type testActivateVolumeWithRecoveryKeyUsingKeyReaderData struct {
 	tries                   int
 	recoveryKeyFileContents string
 	recoveryPassphrases     []string
-	sdCryptsetupCalls       int
+	activateTries           int
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data *testActivateVolumeWithRecoveryKeyUsingKeyReaderData) {
@@ -404,12 +433,10 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data 
 			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
 	}
 
-	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
-	for _, call := range s.mockSdCryptsetup.Calls() {
-		c.Assert(len(call), Equals, 6)
-		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-		c.Check(call[5], Equals, "tries=1")
+	c.Assert(s.mockLUKS2ActivateCalls, HasLen, data.activateTries)
+	for _, call := range s.mockLUKS2ActivateCalls {
+		c.Check(call.volumeName, Equals, "data")
+		c.Check(call.sourceDevicePath, Equals, "/dev/sda1")
 	}
 
 	// This should be done last because it may fail in some circumstances.
@@ -423,7 +450,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader1(c *C) {
 		recoveryKey:             recoveryKey,
 		tries:                   1,
 		recoveryKeyFileContents: recoveryKey.String() + "\n",
-		sdCryptsetupCalls:       1,
+		activateTries:           1,
 	})
 }
 
@@ -434,7 +461,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader2(c *C) {
 		recoveryKey:             recoveryKey,
 		tries:                   1,
 		recoveryKeyFileContents: strings.Replace(recoveryKey.String(), "-", "", -1) + "\n",
-		sdCryptsetupCalls:       1,
+		activateTries:           1,
 	})
 }
 
@@ -445,7 +472,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader3(c *C) {
 		recoveryKey:             recoveryKey,
 		tries:                   1,
 		recoveryKeyFileContents: recoveryKey.String(),
-		sdCryptsetupCalls:       1,
+		activateTries:           1,
 	})
 }
 
@@ -457,7 +484,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader4(c *C) {
 		tries:                   2,
 		recoveryKeyFileContents: "00000-00000-00000-00000-00000-00000-00000-00000\n",
 		recoveryPassphrases:     []string{recoveryKey.String()},
-		sdCryptsetupCalls:       2,
+		activateTries:           2,
 	})
 }
 
@@ -469,7 +496,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader5(c *C) {
 		tries:                   2,
 		recoveryKeyFileContents: "5678\n",
 		recoveryPassphrases:     []string{recoveryKey.String()},
-		sdCryptsetupCalls:       1,
+		activateTries:           1,
 	})
 }
 
@@ -481,7 +508,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyUsingKeyReader6(c *C) {
 		recoveryKey:         recoveryKey,
 		tries:               1,
 		recoveryPassphrases: []string{recoveryKey.String()},
-		sdCryptsetupCalls:   1,
+		activateTries:       1,
 	})
 }
 
@@ -595,7 +622,7 @@ func (s *cryptSuite) TestRecoveryKeyStringify2(c *C) {
 type testActivateVolumeWithRecoveryKeyErrorHandlingData struct {
 	tries               int
 	recoveryPassphrases []string
-	sdCryptsetupCalls   int
+	activateTries       int
 	errChecker          Checker
 	errCheckerArgs      []interface{}
 }
@@ -615,12 +642,10 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
 	}
 
-	c.Check(len(s.mockSdCryptsetup.Calls()), Equals, data.sdCryptsetupCalls)
-	for _, call := range s.mockSdCryptsetup.Calls() {
-		c.Assert(len(call), Equals, 6)
-		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-		c.Check(call[5], Equals, "tries=1")
+	c.Assert(s.mockLUKS2ActivateCalls, HasLen, data.activateTries)
+	for _, call := range s.mockLUKS2ActivateCalls {
+		c.Check(call.volumeName, Equals, "data")
+		c.Check(call.sourceDevicePath, Equals, "/dev/sda1")
 	}
 }
 
@@ -667,9 +692,9 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling5(c *C) {
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:               1,
 		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000"},
-		sdCryptsetupCalls:   1,
+		activateTries:       1,
 		errChecker:          ErrorMatches,
-		errCheckerArgs:      []interface{}{"cannot activate volume: " + s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
+		errCheckerArgs:      []interface{}{"cannot activate volume: systemd-cryptsetup failed with: exit status 1"},
 	})
 }
 
@@ -678,7 +703,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 	s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:               2,
 		recoveryPassphrases: []string{"00000-00000-00000-00000-00000-00000-00000-00000", "1234"},
-		sdCryptsetupCalls:   1,
+		activateTries:       1,
 		errChecker:          ErrorMatches,
 		errCheckerArgs:      []interface{}{"cannot decode recovery key: incorrectly formatted: insufficient characters"},
 	})
@@ -718,12 +743,10 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 	c.Check(authorized, Equals, data.authorized)
 
 	c.Check(s.mockSdAskPassword.Calls(), HasLen, 0)
-	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
-	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
 
-	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
-	c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+	c.Assert(s.mockLUKS2ActivateCalls, HasLen, 1)
+	c.Check(s.mockLUKS2ActivateCalls[0].volumeName, Equals, data.volumeName)
+	c.Check(s.mockLUKS2ActivateCalls[0].sourceDevicePath, Equals, data.sourceDevicePath)
 
 	// This should be done last because it may fail in some circumstances.
 	s.checkKeyDataKeysInKeyring(c, data.keyringPrefix, data.sourceDevicePath, key, auxKey)
@@ -831,7 +854,7 @@ type testActivateVolumeWithKeyDataErrorHandlingData struct {
 	errChecker     Checker
 	errCheckerArgs []interface{}
 
-	sdCryptsetupCalls int
+	activateTries int
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *testActivateVolumeWithKeyDataErrorHandlingData) {
@@ -857,12 +880,10 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
 	}
 
-	c.Check(s.mockSdCryptsetup.Calls(), HasLen, data.sdCryptsetupCalls)
-	for _, call := range s.mockSdCryptsetup.Calls() {
-		c.Assert(call, HasLen, 6)
-		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-		c.Check(call[5], Equals, "tries=1")
+	c.Assert(s.mockLUKS2ActivateCalls, HasLen, data.activateTries)
+	for _, call := range s.mockLUKS2ActivateCalls {
+		c.Check(call.volumeName, Equals, "data")
+		c.Check(call.sourceDevicePath, Equals, "/dev/sda1")
 	}
 
 	if data.errChecker != nil {
@@ -892,12 +913,12 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling2(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:        key,
-		recoveryKey:       recoveryKey,
-		passphrases:       []string{recoveryKey.String()},
-		recoveryKeyTries:  1,
-		keyData:           keyData,
-		sdCryptsetupCalls: 1})
+		primaryKey:       key,
+		recoveryKey:      recoveryKey,
+		passphrases:      []string{recoveryKey.String()},
+		recoveryKeyTries: 1,
+		keyData:          keyData,
+		activateTries:    1})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
@@ -908,12 +929,12 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
 	s.handler.state = mockPlatformDeviceStateUninitialized
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:        key,
-		recoveryKey:       recoveryKey,
-		passphrases:       []string{recoveryKey.String()},
-		recoveryKeyTries:  1,
-		keyData:           keyData,
-		sdCryptsetupCalls: 1})
+		primaryKey:       key,
+		recoveryKey:      recoveryKey,
+		passphrases:      []string{recoveryKey.String()},
+		recoveryKeyTries: 1,
+		keyData:          keyData,
+		activateTries:    1})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling4(c *C) {
@@ -922,11 +943,11 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling4(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		recoveryKey:       recoveryKey,
-		passphrases:       []string{recoveryKey.String()},
-		recoveryKeyTries:  1,
-		keyData:           keyData,
-		sdCryptsetupCalls: 2})
+		recoveryKey:      recoveryKey,
+		passphrases:      []string{recoveryKey.String()},
+		recoveryKeyTries: 1,
+		keyData:          keyData,
+		activateTries:    2})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
@@ -946,7 +967,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 			"- foo: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
 			"and activation with recovery key failed: no recovery key tries permitted"},
-		sdCryptsetupCalls: 0})
+		activateTries: 0})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
@@ -967,8 +988,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 			"- bar: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
 			"and activation with recovery key failed: cannot activate volume: " +
-			s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
-		sdCryptsetupCalls: 1})
+			"systemd-cryptsetup failed with: exit status 1"},
+		activateTries: 1})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
@@ -984,9 +1005,9 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
 		passphrases: []string{
 			"00000-00000-00000-00000-00000-00000-00000-00000",
 			recoveryKey.String()},
-		recoveryKeyTries:  2,
-		keyData:           keyData,
-		sdCryptsetupCalls: 2})
+		recoveryKeyTries: 2,
+		keyData:          keyData,
+		activateTries:    2})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
@@ -1002,9 +1023,9 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
 		passphrases: []string{
 			"1234",
 			recoveryKey.String()},
-		recoveryKeyTries:  2,
-		keyData:           keyData,
-		sdCryptsetupCalls: 1})
+		recoveryKeyTries: 2,
+		keyData:          keyData,
+		activateTries:    1})
 }
 
 type testActivateVolumeWithMultipleKeyDataData struct {
@@ -1018,7 +1039,7 @@ type testActivateVolumeWithMultipleKeyDataData struct {
 	model      SnapModel
 	authorized bool
 
-	sdCryptsetupCalls int
+	activateTries int
 
 	key    DiskUnlockKey
 	auxKey AuxiliaryKey
@@ -1039,12 +1060,10 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 
 	c.Check(s.mockSdAskPassword.Calls(), HasLen, 0)
 
-	c.Check(s.mockSdCryptsetup.Calls(), HasLen, data.sdCryptsetupCalls)
-	for _, call := range s.mockSdCryptsetup.Calls() {
-		c.Assert(call, HasLen, 6)
-		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-		c.Check(call[5], Equals, "tries=1")
+	c.Assert(s.mockLUKS2ActivateCalls, HasLen, data.activateTries)
+	for _, call := range s.mockLUKS2ActivateCalls {
+		c.Check(call.volumeName, Equals, data.volumeName)
+		c.Check(call.sourceDevicePath, Equals, data.sourceDevicePath)
 	}
 
 	// This should be done last because it may fail in some circumstances.
@@ -1065,15 +1084,15 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData1(c *C) {
 	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
-		keys:              keys,
-		keyData:           keyData,
-		volumeName:        "data",
-		sourceDevicePath:  "/dev/sda1",
-		model:             models[0],
-		authorized:        true,
-		sdCryptsetupCalls: 1,
-		key:               keys[0],
-		auxKey:            auxKeys[0]})
+		keys:             keys,
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		authorized:       true,
+		activateTries:    1,
+		key:              keys[0],
+		auxKey:           auxKeys[0]})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData2(c *C) {
@@ -1091,15 +1110,15 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData2(c *C) {
 	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
-		keys:              keys,
-		keyData:           keyData,
-		volumeName:        "foo",
-		sourceDevicePath:  "/dev/vda2",
-		model:             models[0],
-		authorized:        true,
-		sdCryptsetupCalls: 1,
-		key:               keys[0],
-		auxKey:            auxKeys[0]})
+		keys:             keys,
+		keyData:          keyData,
+		volumeName:       "foo",
+		sourceDevicePath: "/dev/vda2",
+		model:            models[0],
+		authorized:       true,
+		activateTries:    1,
+		key:              keys[0],
+		auxKey:           auxKeys[0]})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData3(c *C) {
@@ -1117,15 +1136,15 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData3(c *C) {
 	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
-		keys:              keys[1:],
-		keyData:           keyData,
-		volumeName:        "data",
-		sourceDevicePath:  "/dev/sda1",
-		model:             models[0],
-		authorized:        true,
-		sdCryptsetupCalls: 2,
-		key:               keys[1],
-		auxKey:            auxKeys[1]})
+		keys:             keys[1:],
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		authorized:       true,
+		activateTries:    2,
+		key:              keys[1],
+		auxKey:           auxKeys[1]})
 }
 
 type testActivateVolumeWithMultipleKeyDataErrorHandlingData struct {
@@ -1141,7 +1160,7 @@ type testActivateVolumeWithMultipleKeyDataErrorHandlingData struct {
 	errChecker     Checker
 	errCheckerArgs []interface{}
 
-	sdCryptsetupCalls int
+	activateTries int
 }
 
 func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, data *testActivateVolumeWithMultipleKeyDataErrorHandlingData) {
@@ -1169,12 +1188,10 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 			filepath.Base(os.Args[0]) + ":/dev/sda1", "Please enter the recovery key for disk /dev/sda1:"})
 	}
 
-	c.Check(s.mockSdCryptsetup.Calls(), HasLen, data.sdCryptsetupCalls)
-	for _, call := range s.mockSdCryptsetup.Calls() {
-		c.Assert(call, HasLen, 6)
-		c.Check(call[0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-		c.Check(call[4], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-		c.Check(call[5], Equals, "tries=1")
+	c.Assert(s.mockLUKS2ActivateCalls, HasLen, data.activateTries)
+	for _, call := range s.mockLUKS2ActivateCalls {
+		c.Check(call.volumeName, Equals, "data")
+		c.Check(call.sourceDevicePath, Equals, "/dev/sda1")
 	}
 
 	if data.errChecker != nil {
@@ -1204,12 +1221,12 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling2(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
-		keys:              keys,
-		recoveryKey:       recoveryKey,
-		keyData:           keyData,
-		passphrases:       []string{recoveryKey.String()},
-		recoveryKeyTries:  1,
-		sdCryptsetupCalls: 1})
+		keys:             keys,
+		recoveryKey:      recoveryKey,
+		keyData:          keyData,
+		passphrases:      []string{recoveryKey.String()},
+		recoveryKeyTries: 1,
+		activateTries:    1})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling3(c *C) {
@@ -1220,12 +1237,12 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling3(c *C) {
 	s.handler.state = mockPlatformDeviceStateUninitialized
 
 	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
-		keys:              keys,
-		recoveryKey:       recoveryKey,
-		keyData:           keyData,
-		passphrases:       []string{recoveryKey.String()},
-		recoveryKeyTries:  1,
-		sdCryptsetupCalls: 1})
+		keys:             keys,
+		recoveryKey:      recoveryKey,
+		keyData:          keyData,
+		passphrases:      []string{recoveryKey.String()},
+		recoveryKeyTries: 1,
+		activateTries:    1})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling4(c *C) {
@@ -1234,11 +1251,11 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling4(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
-		recoveryKey:       recoveryKey,
-		keyData:           keyData,
-		passphrases:       []string{recoveryKey.String()},
-		recoveryKeyTries:  1,
-		sdCryptsetupCalls: 3})
+		recoveryKey:      recoveryKey,
+		keyData:          keyData,
+		passphrases:      []string{recoveryKey.String()},
+		recoveryKeyTries: 1,
+		activateTries:    3})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling5(c *C) {
@@ -1260,7 +1277,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling5(c *C) {
 			"- bar: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
 			"and activation with recovery key failed: no recovery key tries permitted"},
-		sdCryptsetupCalls: 0})
+		activateTries: 0})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling6(c *C) {
@@ -1283,8 +1300,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling6(c *C) {
 			"- foo: cannot recover key: the platform's secure device is unavailable: the " +
 			"platform device is unavailable\n" +
 			"and activation with recovery key failed: cannot activate volume: " +
-			s.mockSdCryptsetup.Exe() + " failed: exit status 5"},
-		sdCryptsetupCalls: 1})
+			"systemd-cryptsetup failed with: exit status 1"},
+		activateTries: 1})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling7(c *C) {
@@ -1301,8 +1318,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling7(c *C) {
 		passphrases: []string{
 			"00000-00000-00000-00000-00000-00000-00000-00000",
 			recoveryKey.String()},
-		recoveryKeyTries:  2,
-		sdCryptsetupCalls: 2})
+		recoveryKeyTries: 2,
+		activateTries:    2})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling8(c *C) {
@@ -1319,8 +1336,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling8(c *C) {
 		passphrases: []string{
 			"1234",
 			recoveryKey.String()},
-		recoveryKeyTries:  2,
-		sdCryptsetupCalls: 1})
+		recoveryKeyTries: 2,
+		activateTries:    1})
 }
 
 type testActivateVolumeWithKeyData struct {
@@ -1349,18 +1366,13 @@ func (s *cryptSuite) testActivateVolumeWithKey(c *C, data *testActivateVolumeWit
 
 	if data.cmdCalled {
 		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
-		c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 1)
-		c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 6)
 
-		c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{
-			"systemd-cryptsetup", "attach", "luks-volume", "/dev/sda1",
-		})
-		c.Check(s.mockSdCryptsetup.Calls()[0][4], Matches,
-			filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-		c.Check(s.mockSdCryptsetup.Calls()[0][5], Equals, "tries=1")
+		c.Assert(s.mockLUKS2ActivateCalls, HasLen, 1)
+		c.Check(s.mockLUKS2ActivateCalls[0].volumeName, Equals, "luks-volume")
+		c.Check(s.mockLUKS2ActivateCalls[0].sourceDevicePath, Equals, "/dev/sda1")
 	} else {
 		c.Check(len(s.mockSdAskPassword.Calls()), Equals, 0)
-		c.Assert(len(s.mockSdCryptsetup.Calls()), Equals, 0)
+		c.Check(s.mockLUKS2ActivateCalls, HasLen, 0)
 	}
 }
 
@@ -1375,7 +1387,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyMismatchErr(c *C) {
 	s.testActivateVolumeWithKey(c, &testActivateVolumeWithKeyData{
 		keyData:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
 		expectedKeyData: []byte{0, 0, 0, 0, 1},
-		errMatch:        ".*/systemd-cryptsetup failed: exit status 5",
+		errMatch:        "systemd-cryptsetup failed with: exit status 1",
 		cmdCalled:       true,
 	})
 }
@@ -1383,27 +1395,21 @@ func (s *cryptSuite) TestActivateVolumeWithKeyMismatchErr(c *C) {
 func (s *cryptSuite) TestDeactivateVolume(c *C) {
 	err := DeactivateVolume("luks-volume")
 	c.Assert(err, IsNil)
-	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 3)
-	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{
-		"systemd-cryptsetup", "detach", "luks-volume",
-	})
+	c.Check(s.mockLUKS2DeactivateCalls, Equals, 1)
 }
 
 func (s *cryptSuite) TestDeactivateVolumeErr(c *C) {
 	err := DeactivateVolume("bad-volume")
-	c.Assert(err, ErrorMatches, `cannot deactivate volume: exit status 7`)
-	c.Assert(len(s.mockSdCryptsetup.Calls()[0]), Equals, 3)
-	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{
-		"systemd-cryptsetup", "detach", "bad-volume",
-	})
+	c.Assert(err, ErrorMatches, `systemd-cryptsetup failed with: exit status 1`)
+	c.Check(s.mockLUKS2DeactivateCalls, Equals, 1)
 }
 
 type testInitializeLUKS2ContainerData struct {
-	devicePath string
-	label      string
-	key        []byte
-	opts       *InitializeLUKS2ContainerOptions
-	formatArgs []string
+	devicePath      string
+	label           string
+	key             []byte
+	opts            *InitializeLUKS2ContainerOptions
+	extraFormatArgs []string
 }
 
 func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS2ContainerData) {
@@ -1411,13 +1417,12 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	formatArgs := []string{"cryptsetup",
 		"-q", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", "aes-xts-plain64",
-		"--key-size", "512",
+		"--key-size", "512", "--label", data.label,
 		"--pbkdf", "argon2i", "--iter-time", "100",
-		"--label", data.label, data.devicePath,
 	}
-	if data.formatArgs != nil {
-		formatArgs = data.formatArgs
-	}
+	formatArgs = append(formatArgs, data.extraFormatArgs...)
+	formatArgs = append(formatArgs, data.devicePath)
+
 	c.Check(s.mockCryptsetup.Calls(), DeepEquals, [][]string{
 		formatArgs,
 		{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath}})
@@ -1443,7 +1448,7 @@ func (s *cryptSuite) TestInitializeLUKS2Container2(c *C) {
 	})
 }
 
-func (s *cryptSuite) TestInitializeLUKS2Container(c *C) {
+func (s *cryptSuite) TestInitializeLUKS2Container3(c *C) {
 	// Test with a different key
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/vdc2",
@@ -1463,15 +1468,9 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 			KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
 
 		},
-		formatArgs: []string{"cryptsetup",
-			"-q", "luksFormat", "--type", "luks2",
-			"--key-file", "-", "--cipher", "aes-xts-plain64",
-			"--key-size", "512",
-			"--pbkdf", "argon2i", "--iter-time", "100",
-			"--label", "test",
+		extraFormatArgs: []string{
 			"--luks2-metadata-size", "2048k",
 			"--luks2-keyslots-size", "3072k",
-			"/dev/vdc2",
 		},
 	})
 }
@@ -1539,10 +1538,10 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
 
 	call := s.mockCryptsetup.Calls()[0]
-	c.Assert(len(call), Equals, 10)
-	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
-	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:10], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
+	c.Assert(len(call), Equals, 12)
+	c.Check(call[0:5], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file"})
+	c.Check(call[5], Matches, filepath.Join(paths.RunDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(call[6:12], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
 
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
@@ -1596,13 +1595,13 @@ type testChangeLUKS2KeyUsingRecoveryKeyData struct {
 func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLUKS2KeyUsingRecoveryKeyData) {
 	c.Check(ChangeLUKS2KeyUsingRecoveryKey(data.devicePath, data.recoveryKey, data.key), IsNil)
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 3)
-	c.Check(s.mockCryptsetup.Calls()[0], DeepEquals, []string{"cryptsetup", "luksKillSlot", "--key-file", "-", data.devicePath, "0"})
+	c.Check(s.mockCryptsetup.Calls()[0], DeepEquals, []string{"cryptsetup", "luksKillSlot", "--type", "luks2", "--key-file", "-", data.devicePath, "0"})
 
 	call := s.mockCryptsetup.Calls()[1]
-	c.Assert(len(call), Equals, 12)
-	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
-	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:12], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "100", "--key-slot", "0", data.devicePath, "-"})
+	c.Assert(len(call), Equals, 14)
+	c.Check(call[0:5], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file"})
+	c.Check(call[5], Matches, filepath.Join(paths.RunDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(call[6:14], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "100", "--key-slot", "0", data.devicePath, "-"})
 
 	c.Check(s.mockCryptsetup.Calls()[2], DeepEquals, []string{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath})
 
@@ -1648,4 +1647,139 @@ func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey4(c *C) {
 		recoveryKey: s.newRecoveryKey(),
 		key:         make([]byte, 32),
 	})
+}
+
+type cryptSuiteExpensive struct {
+	cryptTestBase
+}
+
+func (s *cryptSuiteExpensive) SetUpSuite(c *C) {
+	for _, e := range os.Environ() {
+		if e == "NO_EXPENSIVE_CRYPTSETUP_TESTS=1" {
+			c.Skip("skipping expensive cryptsetup tests")
+		}
+	}
+}
+
+func (s *cryptSuiteExpensive) SetUpTest(c *C) {
+	s.cryptTestBase.SetUpTest(c)
+
+	s.AddCleanup(luks2test.WrapCryptsetup(c))
+}
+
+var _ = Suite(&cryptSuiteExpensive{})
+
+func (s *cryptSuiteExpensive) testInitializeLUKS2Container(c *C, options *InitializeLUKS2ContainerOptions) {
+	key := s.newPrimaryKey()
+	path := luks2test.CreateEmptyDiskImage(c, 20)
+
+	c.Check(InitializeLUKS2Container(path, "data", key, options), IsNil)
+
+	info, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	c.Assert(err, IsNil)
+
+	c.Check(info.Label, Equals, "data")
+
+	c.Check(info.Metadata.Keyslots, HasLen, 1)
+	keyslot, ok := info.Metadata.Keyslots[0]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.Priority, Equals, luks2.SlotPriorityHigh)
+
+	c.Check(info.Metadata.Tokens, HasLen, 0)
+
+	expectedMetadataSize := uint64(16 * 1024)
+	if options != nil && options.MetadataKiBSize > 0 {
+		expectedMetadataSize = uint64(options.MetadataKiBSize * 1024)
+	}
+	expectedKeyslotsSize := uint64(16*1024*1024) - (2 * expectedMetadataSize)
+	if options != nil && options.KeyslotsAreaKiBSize > 0 {
+		expectedKeyslotsSize = uint64(options.KeyslotsAreaKiBSize * 1024)
+	}
+
+	c.Check(info.Metadata.Config.JSONSize, Equals, expectedMetadataSize-uint64(4*1024))
+	c.Check(info.Metadata.Config.KeyslotsSize, Equals, expectedKeyslotsSize)
+
+	expectedKDFTime := 100 * time.Millisecond
+
+	start := time.Now()
+	luks2test.CheckLUKS2Passphrase(c, path, key)
+	elapsed := time.Now().Sub(start)
+
+	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
+}
+
+func (s *cryptSuiteExpensive) TestInitializeLUKS2Container(c *C) {
+	s.testInitializeLUKS2Container(c, nil)
+}
+
+func (s *cryptSuiteExpensive) TestInitializeLUKS2ContainerWithOptions(c *C) {
+	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
+		MetadataKiBSize:     2 * 1024, // 2MiB
+		KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
+	})
+}
+
+func (s *cryptSuiteExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
+	key := s.newPrimaryKey()
+	path := luks2test.CreateEmptyDiskImage(c, 20)
+
+	c.Check(InitializeLUKS2Container(path, "", key, nil), IsNil)
+
+	startInfo, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey), IsNil)
+
+	endInfo, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	c.Assert(err, IsNil)
+
+	newSlotId := -1
+	for s := range endInfo.Metadata.Keyslots {
+		if _, ok := startInfo.Metadata.Keyslots[s]; !ok {
+			newSlotId = int(s)
+			break
+		}
+	}
+
+	c.Assert(newSlotId, snapd_testutil.IntGreaterThan, -1)
+
+	c.Check(endInfo.Metadata.Keyslots, HasLen, 2)
+	keyslot, ok := endInfo.Metadata.Keyslots[newSlotId]
+	c.Assert(ok, Equals, true)
+	c.Check(keyslot.Priority, Equals, luks2.SlotPriorityNormal)
+
+	expectedKDFTime := 5000 * time.Millisecond
+
+	start := time.Now()
+	luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
+	elapsed := time.Now().Sub(start)
+
+	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
+}
+
+func (s *cryptSuiteExpensive) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
+	key := s.newPrimaryKey()
+	recoveryKey := s.newRecoveryKey()
+	path := luks2test.CreateEmptyDiskImage(c, 20)
+
+	c.Check(InitializeLUKS2Container(path, "", key, nil), IsNil)
+	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey), IsNil)
+
+	newKey := s.newPrimaryKey()
+	c.Check(ChangeLUKS2KeyUsingRecoveryKey(path, recoveryKey, newKey), IsNil)
+
+	expectedKDFTime := 100 * time.Millisecond
+
+	start := time.Now()
+	luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
+	elapsed := time.Now().Sub(start)
+
+	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
+	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 }

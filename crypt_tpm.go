@@ -49,7 +49,7 @@ func unsealKeyFromTPMAndActivate(tpm *TPMConnection, volumeName, sourceDevicePat
 		return xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	if err := activate(volumeName, sourceDevicePath, sealedKey); err != nil {
+	if err := luks2Activate(volumeName, sourceDevicePath, sealedKey); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 

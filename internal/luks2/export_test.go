@@ -65,14 +65,6 @@ func MockDataDeviceInfo(stMock *unix.Stat_t) (restore func()) {
 	}
 }
 
-func MockRunDir(path string) (restore func()) {
-	origRunDir := runDir
-	runDir = path
-	return func() {
-		runDir = origRunDir
-	}
-}
-
 func MockSystemdCryptsetupPath(path string) (restore func()) {
 	origSystemdCryptsetupPath := systemdCryptsetupPath
 	systemdCryptsetupPath = path

@@ -26,23 +26,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+
+	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot/internal/keyring"
-	"github.com/snapcore/snapd/osutil"
-
-	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
+	"github.com/snapcore/secboot/internal/luks2"
 )
 
 var (
-	runDir                = "/run"
-	systemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
+	luks2Activate   = luks2.Activate
+	luks2Deactivate = luks2.Deactivate
 )
 
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
@@ -112,98 +111,6 @@ func wrapExecError(cmd *exec.Cmd, err error) error {
 func isExecError(err error, path string) bool {
 	var e *execError
 	return xerrors.As(err, &e) && e.path == path
-}
-
-func mkFifo() (string, func(), error) {
-	// /run is not world writable but we create a unique directory here because this
-	// code can be invoked by a public API and we shouldn't fail if more than one
-	// process reaches here at the same time.
-	dir, err := ioutil.TempDir(runDir, filepath.Base(os.Args[0])+".")
-	if err != nil {
-		return "", nil, xerrors.Errorf("cannot create temporary directory: %w", err)
-	}
-
-	cleanup := func() {
-		os.RemoveAll(dir)
-	}
-
-	succeeded := false
-	defer func() {
-		if succeeded {
-			return
-		}
-		cleanup()
-	}()
-
-	fifo := filepath.Join(dir, "fifo")
-	if err := unix.Mkfifo(fifo, 0600); err != nil {
-		return "", nil, xerrors.Errorf("cannot create FIFO: %w", err)
-	}
-
-	succeeded = true
-	return fifo, cleanup, nil
-}
-
-func activate(volumeName, sourceDevicePath string, key []byte) error {
-	fifoPath, cleanupFifo, err := mkFifo()
-	if err != nil {
-		return xerrors.Errorf("cannot create FIFO for passing key to systemd-cryptsetup: %w", err)
-	}
-	defer cleanupFifo()
-
-	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, fifoPath, "tries=1")
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return xerrors.Errorf("cannot create stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return xerrors.Errorf("cannot create stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	done := make(chan bool, 2)
-	go func() {
-		rd := bufio.NewScanner(stdout)
-		for rd.Scan() {
-			fmt.Printf("systemd-cryptsetup: %s\n", rd.Text())
-		}
-		done <- true
-	}()
-	go func() {
-		rd := bufio.NewScanner(stderr)
-		for rd.Scan() {
-			fmt.Fprintf(os.Stderr, "systemd-cryptsetup: %s\n", rd.Text())
-		}
-		done <- true
-	}()
-
-	f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
-	if err != nil {
-		// If we fail to open the write end, the read end will be blocked in open()
-		cmd.Process.Kill()
-		return xerrors.Errorf("cannot open FIFO for passing key to systemd-cryptsetup: %w", err)
-	}
-
-	if _, err := f.Write(key); err != nil {
-		f.Close()
-		// The read end is open and blocked inside read(). Closing our write end will result in the
-		// read end returning 0 bytes (EOF) and exitting cleanly.
-		cmd.Wait()
-		return xerrors.Errorf("cannot pass key to systemd-cryptsetup: %w", err)
-	}
-
-	f.Close()
-	for i := 0; i < 2; i++ {
-		<-done
-	}
-
-	return wrapExecError(cmd, cmd.Wait())
 }
 
 func askPassword(sourceDevicePath, msg string) (string, error) {
@@ -309,7 +216,7 @@ func (s *activateWithKeyDataState) snapModelChecker() *snapModelCheckerImpl {
 }
 
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(keyData *KeyData, key DiskUnlockKey, auxKey AuxiliaryKey) error {
-	if err := activate(s.volumeName, s.sourceDevicePath, key); err != nil {
+	if err := luks2Activate(s.volumeName, s.sourceDevicePath, key); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 
@@ -392,13 +299,8 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 			continue
 		}
 
-		if err := activate(volumeName, sourceDevicePath, key[:]); err != nil {
-			err = xerrors.Errorf("cannot activate volume: %w", err)
-			var e *exec.ExitError
-			if !xerrors.As(err, &e) {
-				return err
-			}
-			lastErr = err
+		if err := luks2Activate(volumeName, sourceDevicePath, key[:]); err != nil {
+			lastErr = xerrors.Errorf("cannot activate volume: %w", err)
 			continue
 		}
 
@@ -552,29 +454,13 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReade
 // sourceDevicePath and create a mapping with the name volumeName, using the
 // provided key. This makes use of systemd-cryptsetup.
 func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, options *ActivateVolumeOptions) error {
-	return activate(volumeName, sourceDevicePath, key)
+	return luks2Activate(volumeName, sourceDevicePath, key)
 }
 
 // DeactivateVolume attempts to deactivate the LUKS encrypted volumeName.
 // This makes use of systemd-cryptsetup.
 func DeactivateVolume(volumeName string) error {
-	cmd := exec.Command(systemdCryptsetupPath, "detach", volumeName)
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return xerrors.Errorf("cannot deactivate volume: %w", osutil.OutputErr(output, err))
-	}
-
-	return nil
-}
-
-func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
-	cmd := exec.Command("cryptsetup", "config", "--priority", "prefer", "--key-slot", strconv.Itoa(slot), devicePath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
-	}
-
-	return nil
+	return luks2Deactivate(volumeName)
 }
 
 // InitializeLUKS2ContainerOptions carries options for initializing LUKS2
@@ -645,95 +531,24 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		return err
 	}
 
-	args := []string{
-		// batch processing, no password verification for formatting an existing LUKS container
-		"-q",
-		// formatting a new volume
-		"luksFormat",
-		// use LUKS2
-		"--type", "luks2",
-		// read the key from stdin
-		"--key-file", "-",
-		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
-		"--cipher", "aes-xts-plain64", "--key-size", "512",
-		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
-		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
-		// this key and these settings are already more secure than the recovery key. Increased cost
-		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "100",
-		// set LUKS2 label
-		"--label", label,
-	}
+	// Configure the KDF with reduced cost. This is done because the supplied input key has an
+	// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
+	// this key and these settings are already more secure than the 16-byte recovery key. Increased
+	// cost here only slows down unlocking.
+	opts := luks2.FormatOptions{KDFTime: 100 * time.Millisecond}
 	if options != nil {
-		if options.MetadataKiBSize != 0 {
-			args = append(args,
-				"--luks2-metadata-size", fmt.Sprintf("%dk", options.MetadataKiBSize))
-		}
-		if options.KeyslotsAreaKiBSize != 0 {
-			args = append(args,
-				"--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
-		}
-	}
-	args = append(args,
-		// device to format
-		devicePath)
-	cmd := exec.Command("cryptsetup", args...)
-	cmd.Stdin = bytes.NewReader(key)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+		opts.MetadataKiBSize = options.MetadataKiBSize
+		opts.KeyslotsAreaKiBSize = options.KeyslotsAreaKiBSize
 	}
 
-	return setLUKS2KeyslotPreferred(devicePath, 0)
-}
-
-func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOptionArgs []string) error {
-	fifoPath, cleanupFifo, err := mkFifo()
-	if err != nil {
-		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
-	}
-	defer cleanupFifo()
-
-	args := []string{
-		// add a new key
-		"luksAddKey",
-		// read existing key from named pipe
-		"--key-file", fifoPath}
-	args = append(args, extraOptionArgs...)
-	args = append(args,
-		// container to add key to
-		devicePath,
-		// read new key from stdin
-		"-")
-	cmd := exec.Command("cryptsetup", args...)
-	cmd.Stdin = bytes.NewReader(key)
-
-	var b bytes.Buffer
-	cmd.Stdout = &b
-	cmd.Stderr = &b
-
-	if err := cmd.Start(); err != nil {
-		return xerrors.Errorf("cannot start cryptsetup: %w", err)
+	if err := luks2.Format(devicePath, label, key, &opts); err != nil {
+		return xerrors.Errorf("cannot format %s: %w", err)
 	}
 
-	f, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
-	if err != nil {
-		// If we fail to open the write end, the read end will be blocked in open()
-		cmd.Process.Kill()
-		return xerrors.Errorf("cannot open FIFO for passing existing key to cryptsetup: %w", err)
+	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
+		return xerrors.Errorf("cannot change keyslot priority: %w", err)
 	}
 
-	if _, err := f.Write(existingKey); err != nil {
-		f.Close()
-		// The read end is open and blocked inside read(). Closing our write end will result in the
-		// read end returning 0 bytes (EOF) and exitting cleanly.
-		cmd.Wait()
-		return xerrors.Errorf("cannot pass existing key to cryptsetup: %w", err)
-	}
-
-	f.Close()
-	if err := cmd.Wait(); err != nil {
-		return osutil.OutputErr(b.Bytes(), err)
-	}
 	return nil
 }
 
@@ -745,9 +560,10 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOpt
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
 func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
-	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], []string{
-		// use argon2i as the KDF with an increased cost
-		"--pbkdf", "argon2i", "--iter-time", "5000"})
+	options := luks2.AddKeyOptions{
+		KDFTime: 5 * time.Second,
+		Slot:    luks2.AnySlot}
+	return luks2.AddKey(devicePath, key, recoveryKey[:], &options)
 }
 
 // ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
@@ -765,22 +581,24 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
 
-	cmd := exec.Command("cryptsetup", "luksKillSlot", "--key-file", "-", devicePath, "0")
-	cmd.Stdin = bytes.NewReader(recoveryKey[:])
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return osutil.OutputErr(output, err)
+	if err := luks2.KillSlot(devicePath, 0, recoveryKey[:]); err != nil {
+		return xerrors.Errorf("cannot kill existing slot: %w", err)
 	}
 
-	if err := addKeyToLUKS2Container(devicePath, recoveryKey[:], key, []string{
-		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
-		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
-		// this key and these settings are already more secure than the recovery key. Increased cost
-		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "100",
-		// always have the main key in slot 0 for now
-		"--key-slot", "0"}); err != nil {
-		return err
+	// Configure the KDF with reduced cost. This is done because the supplied input key has an
+	// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
+	// this key and these settings are already more secure than the 16-byte recovery key. Increased
+	// cost here only slows down unlocking.
+	options := luks2.AddKeyOptions{
+		KDFTime: 100 * time.Millisecond,
+		Slot:    0}
+	if err := luks2.AddKey(devicePath, recoveryKey[:], key, &options); err != nil {
+		return xerrors.Errorf("cannot add key: %w", err)
 	}
 
-	return setLUKS2KeyslotPreferred(devicePath, 0)
+	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
+		return xerrors.Errorf("cannot change keyslot priority: %w", err)
+	}
+
+	return nil
 }
