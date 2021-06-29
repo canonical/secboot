@@ -618,13 +618,13 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 	return nil
 }
 
-// UpdatePCRProtectionPolicyV0 updates the PCR protection policy for the sealed key at the path specified by the keyPath argument
-// to the profile defined by the pcrProfile argument. This function only works with version 0 sealed key files. In order to do this,
-// the caller must also specify the path to the policy update data file that was originally saved by SealKeyToTPM.
+// UpdatePCRProtectionPolicyV0 updates the PCR protection policy for this sealed key object to the profile defined by the
+// pcrProfile argument. This function only works with version 0 sealed key data objects. In order to do this, the caller
+// must also specify the path to the policy update data file that was originally saved by SealKeyToTPM.
 //
-// If either file cannot be opened, a wrapped *os.PathError error will be returned.
+// If the policy update data file cannot be opened, a wrapped *os.PathError error will be returned.
 //
-// If either file cannot be deserialized correctly or validation of the files fails, a InvalidKeyFileError error will be returned.
+// If validation of the sealed key data fails, a InvalidKeyFileError error will be returned.
 //
 // On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
 // computed from the supplied PCRProtectionProfile.
@@ -646,13 +646,11 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, policyUpdateData.authKey, pcrProfile, tpm.HmacSession())
 }
 
-// UpdatePCRProtectionPolicy updates the PCR protection policy for the sealed key at the path specified by the keyPath argument
-// to the profile defined by the pcrProfile argument. In order to do this, the caller must also specify the private part of the
-// authorization key that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
+// UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
+// pcrProfile argument. In order to do this, the caller must also specify the private part of the authorization key
+// that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
 //
-// If the file cannot be opened, a wrapped *os.PathError error will be returned.
-//
-// If the file cannot be deserialized correctly or validation of the file fails, a InvalidKeyFileError error will be returned.
+// If validation of the sealed key data fails, a InvalidKeyFileError error will be returned.
 //
 // On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
 // computed from the supplied PCRProtectionProfile. If the sealed key data file was created with a PCR policy counter, the
@@ -665,14 +663,11 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey Pol
 	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, ecdsaAuthKey, pcrProfile, tpm.HmacSession())
 }
 
-// UpdateKeyPCRProtectionPolicyMultiple updates the PCR protection policy for the sealed keys at the paths specified
-// by the keyPaths argument to the profile defined by the pcrProfile argument. The keys must all be related (ie, they
-// were created using SealKeyToTPMMultiple). If any key in the supplied set is not related, an error will be returned.
+// UpdateKeyPCRProtectionPolicyMultiple updates the PCR protection policy for the supplied sealed key objects to the
+// profile defined by the pcrProfile argument. The keys must all be related (ie, they were created using
+// SealKeyToTPMMultiple). If any key in the supplied set is not related, an error will be returned.
 //
-// If any file cannot be opened, a wrapped *os.PathError error will be returned.
-//
-// If any file cannot be deserialized correctly or validation of a file fails, a InvalidKeyFileError error will
-// be returned.
+// If validation of any sealed key object fails, a InvalidKeyFileError error will be returned.
 //
 // On success, each sealed key data file is updated atomically with an updated authorization policy that includes a PCR
 // policy computed from the supplied PCRProtectionProfile. If the sealed key data files were created with a PCR policy

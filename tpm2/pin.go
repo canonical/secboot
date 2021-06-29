@@ -138,14 +138,12 @@ func performPinChange(tpm *tpm2.TPMContext, keyPrivate tpm2.Private, keyPublic *
 	return newKeyPrivate, nil
 }
 
-// ChangePIN changes the PIN for the key data file at the specified path. The existing PIN must be supplied via the oldPIN argument.
+// ChangePIN changes the PIN for this sealed key object. The existing PIN must be supplied via the oldPIN argument.
 // Setting newPIN to an empty string will clear the PIN and set a hint on the key data file that no PIN is set.
 //
 // If the TPM's dictionary attack logic has been triggered, a ErrTPMLockout error will be returned.
 //
-// If the file at the specified path cannot be opened, then a wrapped *os.PathError error will be returned.
-//
-// If the supplied key data file fails validation checks, an InvalidKeyFileError error will be returned.
+// If validation of the sealed key object fails, an InvalidKeyFileError error will be returned.
 //
 // If oldPIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be incremented.
 func (k *SealedKeyObject) ChangePIN(tpm *Connection, oldPIN, newPIN string) error {
