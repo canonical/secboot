@@ -643,6 +643,21 @@ type InitializeLUKS2ContainerOptions struct {
 	KeyslotsAreaKiBSize int
 }
 
+// AddRecoveryKeyToLUKS2ContainerOptions carries options for recovery key to LUKS2
+// containers.
+type PbkdfLUKS2ContainerOptions struct {
+	// PbkdfMmemory set the memory cost for PBKDF (for Argon2i/id the number
+	// represents kilobytes).  Note that it is maximal value,
+	// PBKDF benchmark or available physical memory can decrease it.
+	PbkdfMmemory int
+	// Avoid PBKDF benchmark and set time cost (iterations) directly.
+	PkdfForceIterations int
+	// Set the parallel cost for PBKDF (number of threads, up to 4).
+	// Note that it is maximal value, it is decreased
+	// automatically if CPU online count is lower.
+	PbkdfParallel int
+}
+
 func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
 	if options == nil {
 		return nil
@@ -688,7 +703,7 @@ func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) er
 //
 // WARNING: This function is destructive. Calling this on an existing LUKS container will make the data contained inside of it
 // irretrievable.
-func InitializeLUKS2Container(devicePath, label string, key []byte, options *InitializeLUKS2ContainerOptions) error {
+func InitializeLUKS2Container(devicePath, label string, key []byte, options *InitializeLUKS2ContainerOptions, pbkdfOptions *PbkdfLUKS2ContainerOptions) error {
 	if len(key) < 32 {
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
@@ -711,7 +726,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
 		// this key and these settings are already more secure than the recovery key. Increased cost
 		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "100",
+		"--pbkdf", "argon2i",
 		// set LUKS2 label
 		"--label", label,
 	}
@@ -724,6 +739,24 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 			args = append(args,
 				"--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
 		}
+	}
+	if pbkdfOptions != nil {
+		if pbkdfOptions.PbkdfMmemory != 0 {
+			args = append(args,
+				"--pbkdf-memory", fmt.Sprintf("%d", pbkdfOptions.PbkdfMmemory))
+		}
+		if pbkdfOptions.PkdfForceIterations != 0 {
+			args = append(args,
+				"--pbkdf-force-iterations", fmt.Sprintf("%d", pbkdfOptions.PkdfForceIterations))
+		} else {
+			args = append(args, "--iter-time", "100")
+		}
+		if pbkdfOptions.PbkdfParallel != 0 {
+			args = append(args,
+				"--pbkdf-parallel", fmt.Sprintf("%d", pbkdfOptions.PbkdfParallel))
+		}
+	} else {
+		args = append(args, "--iter-time", "100")
 	}
 	args = append(args,
 		// device to format
@@ -795,10 +828,33 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOpt
 // key argument.
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
-func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
-	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], []string{
-		// use argon2i as the KDF with an increased cost
-		"--pbkdf", "argon2i", "--iter-time", "5000"})
+func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey, pbkdfOptions *PbkdfLUKS2ContainerOptions) error {
+	args := []string{
+		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
+		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
+		// this key and these settings are already more secure than the recovery key. Increased cost
+		// here only slows down unlocking.
+		"--pbkdf", "argon2i",
+	}
+	if pbkdfOptions != nil {
+		if pbkdfOptions.PbkdfMmemory != 0 {
+			args = append(args,
+				"--pbkdf-memory", fmt.Sprintf("%d", pbkdfOptions.PbkdfMmemory))
+		}
+		if pbkdfOptions.PkdfForceIterations != 0 {
+			args = append(args,
+				"--pbkdf-force-iterations", fmt.Sprintf("%d", pbkdfOptions.PkdfForceIterations))
+		} else {
+			args = append(args, "--iter-time", "100")
+		}
+		if pbkdfOptions.PbkdfParallel != 0 {
+			args = append(args,
+				"--pbkdf-parallel", fmt.Sprintf("%d", pbkdfOptions.PbkdfParallel))
+		}
+	} else {
+		args = append(args, "--iter-time", "5000")
+	}
+	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], args)
 }
 
 // ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
