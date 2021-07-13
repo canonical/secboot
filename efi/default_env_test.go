@@ -40,13 +40,13 @@ type testReadVarData struct {
 }
 
 func (s *defaultEnvSuite) testReadVar(c *C, data *testReadVarData) {
-	restore := MockReadVar("testdata/efivars6")
+	restore := MockReadVar("testdata/efivars_ms")
 	defer restore()
 
 	varData, attrs, err := DefaultEnv.ReadVar(data.name, data.guid)
 	c.Check(err, IsNil)
 
-	expectedVarData, expectedAttrs, err := testutil.EFIReadVar("testdata/efivars6", data.name, data.guid)
+	expectedVarData, expectedAttrs, err := testutil.EFIReadVar("testdata/efivars_ms", data.name, data.guid)
 	c.Check(err, IsNil)
 
 	c.Check(attrs, Equals, expectedAttrs)
@@ -55,20 +55,20 @@ func (s *defaultEnvSuite) testReadVar(c *C, data *testReadVarData) {
 
 func (s *defaultEnvSuite) TestReadVar1(c *C) {
 	s.testReadVar(c, &testReadVarData{
-		name: "foo",
-		guid: efi.MakeGUID(0x4e448f45, 0x159f, 0x49f8, 0x8a7f, [6]uint8{0x45, 0xf3, 0xb2, 0x7c, 0xf8, 0x96})})
+		name: "SecureBoot",
+		guid: efi.GlobalVariable})
 }
 
 func (s *defaultEnvSuite) TestReadVar2(c *C) {
 	s.testReadVar(c, &testReadVarData{
-		name: "bar",
-		guid: efi.MakeGUID(0x4e448f45, 0x159f, 0x49f8, 0x8a7f, [6]uint8{0x45, 0xf3, 0xb2, 0x7c, 0xf8, 0x96})})
+		name: "PK",
+		guid: efi.GlobalVariable})
 }
 
 func (s *defaultEnvSuite) TestReadVar3(c *C) {
 	s.testReadVar(c, &testReadVarData{
-		name: "foo",
-		guid: efi.MakeGUID(0xf97cb67a, 0x0de5, 0x46b3, 0x882e, [6]uint8{0xcf, 0x35, 0x8b, 0x3f, 0xe8, 0x89})})
+		name: "dbx",
+		guid: efi.ImageSecurityDatabaseGuid})
 }
 
 func (s *defaultEnvSuite) testReadEventLog(c *C, path string) {
@@ -82,16 +82,16 @@ func (s *defaultEnvSuite) testReadEventLog(c *C, path string) {
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	expectedLog, err := tcglog.ParseLog(f, &tcglog.LogOptions{})
+	expectedLog, err := tcglog.ReadLog(f, &tcglog.LogOptions{})
 	c.Assert(err, IsNil)
 
 	c.Check(log, DeepEquals, expectedLog)
 }
 
 func (s *defaultEnvSuite) TestReadEventLog1(c *C) {
-	s.testReadEventLog(c, "testdata/eventlog1.bin")
+	s.testReadEventLog(c, "testdata/eventlog_sb.bin")
 }
 
 func (s *defaultEnvSuite) TestReadEventLog2(c *C) {
-	s.testReadEventLog(c, "testdata/eventlog2.bin")
+	s.testReadEventLog(c, "testdata/eventlog_no_sb.bin")
 }
