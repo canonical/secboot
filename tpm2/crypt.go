@@ -42,29 +42,6 @@ var (
 )
 
 // XXX: This code is duplicated temporarily from github.com/snapcore/secboot:crypt.go
-// It will go away once https://github.com/snapcore/secboot/pull/128/ lands and this
-// code has been ported to use it.
-type execError struct {
-	path string
-	err  error
-}
-
-func (e *execError) Error() string {
-	return fmt.Sprintf("%s failed: %s", e.path, e.err)
-}
-
-func (e *execError) Unwrap() error {
-	return e.err
-}
-
-func wrapExecError(cmd *exec.Cmd, err error) error {
-	if err == nil {
-		return nil
-	}
-	return &execError{path: cmd.Path, err: err}
-}
-
-// XXX: This code is duplicated temporarily from github.com/snapcore/secboot:crypt.go
 // It will go away once there is an abstract interface for handling authorization requests,
 // or we figure out a way to do activation with TPM key files using the new API so that
 // this one can be removed.
@@ -78,7 +55,7 @@ func askPassword(sourceDevicePath, msg string) (string, error) {
 	cmd.Stdout = &out
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		return "", wrapExecError(cmd, err)
+		return "", err
 	}
 	result, err := out.ReadString('\n')
 	if err != nil {
