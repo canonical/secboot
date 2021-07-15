@@ -34,12 +34,9 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
-
-var testPIN = "12345678"
 
 func Test(t *testing.T) { TestingT(t) }
 
@@ -153,11 +150,11 @@ func (s *compatTestSuiteBase) copyFile(c *C, path string) string {
 	return dst.Name()
 }
 
-func (s *compatTestSuiteBase) testUnsealCommon(c *C, pin string) {
+func (s *compatTestSuiteBase) testUnsealCommon(c *C) {
 	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
 
-	key, authPrivateKey, err := k.UnsealFromTPM(s.TPM, pin)
+	key, authPrivateKey, err := k.UnsealFromTPM(s.TPM)
 	c.Check(err, IsNil)
 
 	expectedKey, err := ioutil.ReadFile(s.absPath("clearKey"))
@@ -175,40 +172,13 @@ func (s *compatTestSuiteBase) testUnsealCommon(c *C, pin string) {
 
 func (s *compatTestSuiteBase) testUnseal(c *C, pcrEventsFile string) {
 	s.replayPCRSequenceFromFile(c, pcrEventsFile)
-	s.testUnsealCommon(c, "")
-}
-
-func (s *compatTestSuiteBase) TestChangePIN(c *C) {
-	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
-	c.Assert(err, IsNil)
-	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
-
-	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
-	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePassphrase)
-	k, err = secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
-	c.Assert(err, IsNil)
-	c.Check(k.AuthMode2F(), Equals, secboot.AuthModePassphrase)
-
-	c.Check(k.ChangePIN(s.TPM, testPIN, ""), IsNil)
-	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
-	k, err = secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
-	c.Assert(err, IsNil)
-	c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
-}
-
-func (s *compatTestSuiteBase) testUnsealWithPIN(c *C, pcrEventsFile string) {
-	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
-	c.Assert(err, IsNil)
-	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
-
-	s.replayPCRSequenceFromFile(c, pcrEventsFile)
-	s.testUnsealCommon(c, testPIN)
+	s.testUnsealCommon(c)
 }
 
 func (s *compatTestSuiteBase) testUnsealErrorMatchesCommon(c *C, pattern string) {
 	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
 	c.Assert(err, IsNil)
 
-	_, _, err = k.UnsealFromTPM(s.TPM, "")
+	_, _, err = k.UnsealFromTPM(s.TPM)
 	c.Check(err, ErrorMatches, pattern)
 }

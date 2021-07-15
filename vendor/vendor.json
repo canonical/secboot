@@ -353,14 +353,14 @@
 			"revisionTime": "2020-04-10T17:18:43Z"
 		},
 		{
-			"checksumSHA1": "oy1Jeoa2mt9xaoYsL44J6mt0+Mk=",
-			"path": "golang.org/x/sys/unix",
+			"checksumSHA1": "Ld0iviZSRGAKK6WSoti+3++1RmY=",
+			"path": "golang.org/x/sys/internal/unsafeheader",
 			"revision": "6f6e22806c3450b5b4d275e186976d3b5758db41",
 			"revisionTime": "2021-09-06T14:56:19Z"
 		},
 		{
 			"checksumSHA1": "oy1Jeoa2mt9xaoYsL44J6mt0+Mk=",
-			"path": "golang.org/x/sys/internal/unsafeheader",
+			"path": "golang.org/x/sys/unix",
 			"revision": "6f6e22806c3450b5b4d275e186976d3b5758db41",
 			"revisionTime": "2021-09-06T14:56:19Z"
 		},

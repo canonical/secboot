@@ -750,7 +750,7 @@ func TestUpdateKeyPCRProtectionPolicy(t *testing.T) {
 				t.Fatalf("ReadSealedKeyObject failed: %v", err)
 			}
 
-			unsealedKey, _, err := k.UnsealFromTPM(tpm, "")
+			unsealedKey, _, err := k.UnsealFromTPM(tpm)
 			if err != nil {
 				t.Errorf("Unseal failed: %v", err)
 			}
@@ -798,7 +798,7 @@ func TestRevokeOldPCRProtectionPolicies(t *testing.T) {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		unsealedKey, _, err := k.UnsealFromTPM(tpm, "")
+		unsealedKey, _, err := k.UnsealFromTPM(tpm)
 		if err != nil {
 			t.Errorf("Unseal failed: %v", err)
 		}
@@ -858,7 +858,7 @@ func TestRevokeOldPCRProtectionPolicies(t *testing.T) {
 				t.Fatalf("ReadSealedKeyObject failed: %v", err)
 			}
 
-			_, _, err = k.UnsealFromTPM(tpm, "")
+			_, _, err = k.UnsealFromTPM(tpm)
 			if _, ok := err.(InvalidKeyFileError); !ok ||
 				err.Error() != "invalid key data file: cannot complete authorization policy assertions: the PCR policy has been revoked" {
 				t.Errorf("Unexpected error: %v", err)
@@ -926,7 +926,7 @@ func TestUpdateKeyPCRProtectionPolicyMultiple(t *testing.T) {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		unsealedKey, _, err := k.UnsealFromTPM(tpm, "")
+		unsealedKey, _, err := k.UnsealFromTPM(tpm)
 		if err != nil {
 			t.Errorf("Unseal failed: %v", err)
 		}

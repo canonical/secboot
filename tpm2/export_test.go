@@ -52,7 +52,6 @@ var (
 	IsStaticPolicyDataError               = isStaticPolicyDataError
 	LockNVIndex1Attrs                     = lockNVIndex1Attrs
 	NewPcrPolicyCounterHandleV1           = newPcrPolicyCounterHandleV1
-	PerformPinChange                      = performPinChange
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
