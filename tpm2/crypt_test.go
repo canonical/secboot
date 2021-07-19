@@ -549,9 +549,9 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleSealedKeysErrorHa
 		success:          true,
 		errChecker:       ErrorMatches,
 		errCheckerArgs: []interface{}{"(?sm)cannot activate with TPM sealed keys:" +
-			"\n- .*/keydata: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"\n- .*/keydata: cannot unseal key: invalid key data: cannot complete authorization policy assertions: cannot " +
 			"complete OR assertions: current session digest not found in policy data" +
-			"\n- .*/keydata2: cannot unseal key: invalid key data file: cannot complete authorization policy assertions: cannot " +
+			"\n- .*/keydata2: cannot unseal key: invalid key data: cannot complete authorization policy assertions: cannot " +
 			"complete OR assertions: current session digest not found in policy data" +
 			"\nbut activation with recovery key was successful"},
 	})
@@ -861,7 +861,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyErrorHandling10(
 		activateTries:    1,
 		success:          true,
 		errChecker:       ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data: cannot complete " +
 			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
 			"activation with recovery key was successful"},
 	})
@@ -880,7 +880,7 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyErrorHandling11(
 		activateTries:    1,
 		success:          true,
 		errChecker:       ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data file: cannot complete " +
+		errCheckerArgs: []interface{}{"cannot activate with TPM sealed key \\(cannot unseal key: invalid key data: cannot complete " +
 			"authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data\\) but " +
 			"activation with recovery key was successful"},
 	})

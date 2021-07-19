@@ -177,12 +177,7 @@ func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NV
 	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub}
 }
 
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
-	k, err := ReadSealedKeyObject(keyFile)
-	if err != nil {
-		return err
-	}
-
+func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
 	authKey, err := createECDSAPrivateKeyFromTPM(k.data.staticPolicyData.authPublicKey, tpm2.ECCParameter(authPrivateKey))
 	if err != nil {
 		return err
@@ -190,4 +185,13 @@ func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey Po
 
 	_, err = k.data.validate(tpm, authKey, session)
 	return err
+}
+
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
+	k, err := ReadSealedKeyObjectFromFile(keyFile)
+	if err != nil {
+		return err
+	}
+
+	return k.Validate(tpm, authPrivateKey, session)
 }

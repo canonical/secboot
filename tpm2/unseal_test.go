@@ -60,7 +60,7 @@ func TestUnsealWithNo2FA(t *testing.T) {
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
 
-		k, err := ReadSealedKeyObject(keyFile)
+		k, err := ReadSealedKeyObjectFromFile(keyFile)
 		if err != nil {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
@@ -134,7 +134,7 @@ func TestUnsealImportable(t *testing.T) {
 			t.Fatalf("SealKeyToExternalTPMStorageKey failed: %v", err)
 		}
 
-		k, err := ReadSealedKeyObject(keyFile)
+		k, err := ReadSealedKeyObjectFromFile(keyFile)
 		if err != nil {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
@@ -189,7 +189,7 @@ func TestUnsealRelated(t *testing.T) {
 	defer undefineKeyNVSpace(t, tpm, keys[0].Path)
 
 	for _, key := range keys {
-		k, err := ReadSealedKeyObject(key.Path)
+		k, err := ReadSealedKeyObjectFromFile(key.Path)
 		if err != nil {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
@@ -238,7 +238,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 
 		fn(tpm, keyFile, authKey)
 
-		k, err := ReadSealedKeyObject(keyFile)
+		k, err := ReadSealedKeyObjectFromFile(keyFile)
 		if err != nil {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
@@ -294,7 +294,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Errorf("EvictControl failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot load sealed key object in to TPM: bad "+
+		if _, ok := err.(InvalidKeyDataError); !ok || err.Error() != "invalid key data: cannot load sealed key object in to TPM: bad "+
 			"sealed key object or TPM owner changed" {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -309,7 +309,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
+		if _, ok := err.(InvalidKeyDataError); !ok || err.Error() != "invalid key data: cannot complete authorization policy "+
 			"assertions: cannot complete OR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -332,7 +332,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 
 			io.Copy(dst, src)
 
-			k, err := ReadSealedKeyObject(newKeyFile)
+			k, err := ReadSealedKeyObjectFromFile(newKeyFile)
 			if err != nil {
 				t.Fatalf("ReadSealedKeyObject failed: %v", err)
 			}
@@ -344,7 +344,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Fatalf("RevokeOldPCRProtectionPolicies failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
+		if _, ok := err.(InvalidKeyDataError); !ok || err.Error() != "invalid key data: cannot complete authorization policy "+
 			"assertions: the PCR policy has been revoked" {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -356,8 +356,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 				t.Errorf("BlockPCRProtectionPolicies failed: %v", err)
 			}
 		})
-		if _, ok := err.(InvalidKeyFileError); !ok ||
-			err.Error() != "invalid key data file: cannot complete authorization policy assertions: cannot complete OR assertions: current "+
+		if _, ok := err.(InvalidKeyDataError); !ok ||
+			err.Error() != "invalid key data: cannot complete authorization policy assertions: cannot complete OR assertions: current "+
 				"session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}

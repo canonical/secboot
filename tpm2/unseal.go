@@ -36,29 +36,29 @@ import (
 // called to attempt to resolve this.
 //
 // If the TPM sealed object cannot be loaded in to the TPM for reasons other than the lack of a storage root key, then a
-// InvalidKeyFileError error will be returned. This could be caused because the sealed object data is invalid in some way, or because
+// InvalidKeyDataError error will be returned. This could be caused because the sealed object data is invalid in some way, or because
 // the sealed object is associated with another TPM owner (the TPM has been cleared since the sealed key data file was created with
 // SealKeyToTPM), or because the TPM object at the persistent handle reserved for the storage root key has a public area that looks
 // like a valid storage root key but it was created with the wrong template. This latter case is really caused by an incorrectly
 // provisioned TPM, but it isn't possible to detect this. A subsequent call to SealKeyToTPM or ProvisionTPM will rectify this.
 //
-// If the TPM's current PCR values are not consistent with the PCR protection policy for this key file, a InvalidKeyFileError error
+// If the TPM's current PCR values are not consistent with the PCR protection policy for this key file, a InvalidKeyDataError error
 // will be returned.
 //
-// If any of the metadata in this key file is invalid, a InvalidKeyFileError error will be returned.
+// If any of the metadata in this key file is invalid, a InvalidKeyDataError error will be returned.
 //
-// If the TPM is missing any persistent resources associated with this key file, then a InvalidKeyFileError error will be returned.
+// If the TPM is missing any persistent resources associated with this key file, then a InvalidKeyDataError error will be returned.
 //
-// If the key file has been superceded (eg, by a call to SealedKeyObject.UpdatePCRProtectionPolicy), then a InvalidKeyFileError error
+// If the key file has been superceded (eg, by a call to SealedKeyObject.UpdatePCRProtectionPolicy), then a InvalidKeyDataError error
 // will be returned.
 //
-// If the signature of the updatable part of the key file's authorization policy is invalid, then a InvalidKeyFileError error will
+// If the signature of the updatable part of the key file's authorization policy is invalid, then a InvalidKeyDataError error will
 // be returned.
 //
 // If the metadata for the updatable part of the key file's authorization policy is not consistent with the approved policy, then a
-// InvalidKeyFileError error will be returned.
+// InvalidKeyDataError error will be returned.
 //
-// If the authorization policy check fails during unsealing, then a InvalidKeyFileError error will be returned. Note that this
+// If the authorization policy check fails during unsealing, then a InvalidKeyDataError error will be returned. Note that this
 // condition can also occur as the result of an incorrectly provisioned TPM, which will be detected during a subsequent call to
 // SealKeyToTPM.
 //
@@ -81,8 +81,8 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 	// Load the key data
 	keyObject, err := k.data.load(tpm.TPMContext, hmacSession)
 	switch {
-	case isKeyFileError(err):
-		// A keyFileError can be as a result of an improperly provisioned TPM - detect if the object at tcg.SRKHandle is a valid primary key
+	case isKeyDataError(err):
+		// A keyDataError can be as a result of an improperly provisioned TPM - detect if the object at tcg.SRKHandle is a valid primary key
 		// with the correct attributes. If it's not, then it's definitely a provisioning error. If it is, then it could still be a
 		// provisioning error because we don't know if the object was created with the same template that ProvisionTPM uses. In that case,
 		// we'll just assume an invalid key file
@@ -102,7 +102,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 		}
 		// This is probably a broken key file, but it could still be a provisioning error because we don't know if the SRK object was
 		// created with the same template that ProvisionTPM uses.
-		return nil, nil, InvalidKeyFileError{err.Error()}
+		return nil, nil, InvalidKeyDataError{err.Error()}
 	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
 		return nil, nil, ErrTPMProvisioning
 	case err != nil:
@@ -122,11 +122,11 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 		switch {
 		case isDynamicPolicyDataError(err):
 			// TODO: Add a separate error for this
-			return nil, nil, InvalidKeyFileError{err.Error()}
+			return nil, nil, InvalidKeyDataError{err.Error()}
 		case isStaticPolicyDataError(err):
-			return nil, nil, InvalidKeyFileError{err.Error()}
+			return nil, nil, InvalidKeyDataError{err.Error()}
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
-			return nil, nil, InvalidKeyFileError{"required legacy lock NV index is not present"}
+			return nil, nil, InvalidKeyDataError{"required legacy lock NV index is not present"}
 		}
 		return nil, nil, err
 	}
@@ -135,7 +135,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 	keyData, err := tpm.Unseal(keyObject, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
 	switch {
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
-		return nil, nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}
+		return nil, nil, InvalidKeyDataError{"the authorization policy check failed during unsealing"}
 	case err != nil:
 		return nil, nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
@@ -146,7 +146,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 
 	var sealedData sealedData
 	if _, err := mu.UnmarshalFromBytes(keyData, &sealedData); err != nil {
-		return nil, nil, InvalidKeyFileError{err.Error()}
+		return nil, nil, InvalidKeyDataError{err.Error()}
 	}
 
 	return sealedData.Key, sealedData.AuthPrivateKey, nil

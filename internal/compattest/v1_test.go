@@ -60,7 +60,7 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot_tpm2.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
 }
@@ -72,13 +72,13 @@ func (s *compatTestV1Suite) TestRevokeOldPCRProtectionPolicies(c *C) {
 
 	key2 := s.copyFile(c, s.absPath("key"))
 
-	k, err := secboot_tpm2.ReadSealedKeyObject(key2)
+	k, err := secboot_tpm2.ReadSealedKeyObjectFromFile(key2)
 	c.Assert(err, IsNil)
 
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
 	c.Check(k.RevokeOldPCRProtectionPolicies(s.TPM, s.readFile(c, "authKey")), IsNil)
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
-	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: the PCR policy has been revoked")
+	s.testUnsealErrorMatchesCommon(c, "invalid key data: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }
 
 func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
@@ -86,9 +86,12 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot_tpm2.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
+
+	w := secboot_tpm2.NewFileSealedKeyObjectWriter(s.absPath("key"))
+	c.Check(k.WriteAtomic(w), IsNil)
 
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "7 11 %x\n", testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
@@ -105,7 +108,7 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 
-	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot_tpm2.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
 }
@@ -113,5 +116,5 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {
 func (s *compatTestV1Suite) TestUnsealAfterLock(c *C) {
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
 	c.Assert(secboot_tpm2.BlockPCRProtectionPolicies(s.TPM, []int{12}), IsNil)
-	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data")
+	s.testUnsealErrorMatchesCommon(c, "invalid key data: cannot complete authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data")
 }
