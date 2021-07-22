@@ -21,11 +21,8 @@ package tpm2
 
 import (
 	"crypto/ecdsa"
-	"io"
 
 	"github.com/canonical/go-tpm2"
-
-	"github.com/snapcore/secboot"
 )
 
 // Export constants for testing
@@ -105,22 +102,6 @@ func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
 }
 
 // Export some helpers for testing.
-func MockActivateVolumeWithRecoveryKey(fn func(string, string, io.Reader, *secboot.ActivateVolumeOptions) error) (restore func()) {
-	orig := secbootActivateVolumeWithRecoveryKey
-	secbootActivateVolumeWithRecoveryKey = fn
-	return func() {
-		secbootActivateVolumeWithRecoveryKey = orig
-	}
-}
-
-func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
-	orig := luks2Activate
-	luks2Activate = fn
-	return func() {
-		luks2Activate = orig
-	}
-}
-
 type MockPolicyPCRParam struct {
 	PCR     int
 	Alg     tpm2.HashAlgorithmId
