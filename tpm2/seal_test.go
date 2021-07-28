@@ -17,7 +17,7 @@
  *
  */
 
-package secboot_test
+package tpm2_test
 
 import (
 	"bytes"
@@ -36,9 +36,10 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	. "github.com/snapcore/secboot"
+
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
+	. "github.com/snapcore/secboot/tpm2"
 )
 
 func getTestPCRProfile() *PCRProtectionProfile {
@@ -58,7 +59,7 @@ func TestSealKeyToTPM(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	run := func(t *testing.T, tpm *TPMConnection, params *KeyCreationParams) (authKeyBytes []byte) {
+	run := func(t *testing.T, tpm *Connection, params *KeyCreationParams) (authKeyBytes []byte) {
 		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPM_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
@@ -93,7 +94,7 @@ func TestSealKeyToTPM(t *testing.T) {
 	})
 
 	t.Run("SealAfterProvision", func(t *testing.T) {
-		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same TPMConnection
+		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same Connection
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
@@ -270,7 +271,7 @@ func TestSealKeyToTPMMultiple(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	run := func(t *testing.T, tpm *TPMConnection, n int, params *KeyCreationParams) (authKeyBytes TPMPolicyAuthKey) {
+	run := func(t *testing.T, tpm *Connection, n int, params *KeyCreationParams) (authKeyBytes PolicyAuthKey) {
 		tmpDir, err := ioutil.TempDir("", "_TestSealKeyToTPM_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
@@ -316,7 +317,7 @@ func TestSealKeyToTPMMultiple(t *testing.T) {
 	})
 
 	t.Run("SealAfterProvision", func(t *testing.T) {
-		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same TPMConnection
+		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same Connection
 		tpm := openTPMForTesting(t)
 		defer closeTPM(t, tpm)
 		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
@@ -715,7 +716,7 @@ func TestUpdateKeyPCRProtectionPolicy(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	prepare := func(t *testing.T, params *KeyCreationParams) (path string, authKey TPMPolicyAuthKey, cleanup func()) {
+	prepare := func(t *testing.T, params *KeyCreationParams) (path string, authKey PolicyAuthKey, cleanup func()) {
 		tmpDir, err := ioutil.TempDir("", "_TestUpdateKeyPCRProtectionPolicy_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
@@ -732,7 +733,7 @@ func TestUpdateKeyPCRProtectionPolicy(t *testing.T) {
 			os.RemoveAll(tmpDir)
 		}
 	}
-	update := func(t *testing.T, keyFile string, authKey TPMPolicyAuthKey, profile *PCRProtectionProfile) {
+	update := func(t *testing.T, keyFile string, authKey PolicyAuthKey, profile *PCRProtectionProfile) {
 		if err := UpdateKeyPCRProtectionPolicy(tpm, keyFile, authKey, profile); err != nil {
 			t.Errorf("UpdateKeyPCRProtectionPolicy failed: %v", err)
 		}
@@ -840,7 +841,7 @@ func TestUpdateKeyPCRProtectionPolicyMultiple(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	prepare := func(t *testing.T, n int, params *KeyCreationParams) (paths []string, authKey TPMPolicyAuthKey, cleanup func()) {
+	prepare := func(t *testing.T, n int, params *KeyCreationParams) (paths []string, authKey PolicyAuthKey, cleanup func()) {
 		tmpDir, err := ioutil.TempDir("", "_TestUpdateKeyPCRProtectionPolicyMultiple_")
 		if err != nil {
 			t.Fatalf("Creating temporary directory failed: %v", err)
@@ -866,7 +867,7 @@ func TestUpdateKeyPCRProtectionPolicyMultiple(t *testing.T) {
 		}
 	}
 
-	update := func(t *testing.T, keyFiles []string, authKey TPMPolicyAuthKey, profile *PCRProtectionProfile) {
+	update := func(t *testing.T, keyFiles []string, authKey PolicyAuthKey, profile *PCRProtectionProfile) {
 		if err := UpdateKeyPCRProtectionPolicyMultiple(tpm, keyFiles, authKey, profile); err != nil {
 			t.Errorf("UpdateKeyPCRProtectionPolicy failed: %v", err)
 		}

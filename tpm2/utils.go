@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"bytes"

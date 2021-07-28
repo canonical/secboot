@@ -24,10 +24,10 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot"
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
-func FormatPCRValuesFromPCRProtectionProfile(profile *secboot.PCRProtectionProfile, tpm *tpm2.TPMContext) string {
+func FormatPCRValuesFromPCRProtectionProfile(profile *secboot_tpm2.PCRProtectionProfile, tpm *tpm2.TPMContext) string {
 	values, err := profile.ComputePCRValues(tpm)
 	if err != nil {
 		return ""

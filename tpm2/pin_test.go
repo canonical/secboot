@@ -17,7 +17,7 @@
  *
  */
 
-package secboot_test
+package tpm2_test
 
 import (
 	"bytes"
@@ -25,11 +25,13 @@ import (
 	"testing"
 
 	"github.com/canonical/go-tpm2"
-	. "github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/tcg"
-	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
+
+	"github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/testutil"
+	. "github.com/snapcore/secboot/tpm2"
 )
 
 func TestPerformPinChange(t *testing.T) {
@@ -123,9 +125,9 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 	k, err := ReadSealedKeyObject(s.keyFile)
 	c.Assert(err, IsNil)
 	if pin == "" {
-		c.Check(k.AuthMode2F(), Equals, AuthModeNone)
+		c.Check(k.AuthMode2F(), Equals, secboot.AuthModeNone)
 	} else {
-		c.Check(k.AuthMode2F(), Equals, AuthModePassphrase)
+		c.Check(k.AuthMode2F(), Equals, secboot.AuthModePassphrase)
 	}
 
 	key, _, err := k.UnsealFromTPM(s.TPM, pin)

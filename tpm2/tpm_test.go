@@ -17,7 +17,7 @@
  *
  */
 
-package secboot_test
+package tpm2_test
 
 import (
 	"bytes"
@@ -29,12 +29,13 @@ import (
 	"testing"
 
 	"github.com/canonical/go-tpm2"
-	. "github.com/snapcore/secboot"
+
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
+	. "github.com/snapcore/secboot/tpm2"
 )
 
-func TestTPMConnectionIsEnabled(t *testing.T) {
+func TestConnectionIsEnabled(t *testing.T) {
 	tpm, _ := openTPMSimulatorForTesting(t)
 	defer func() {
 		clearTPMWithPlatformAuth(t, tpm)
@@ -72,13 +73,13 @@ func TestConnectToDefaultTPM(t *testing.T) {
 	})
 	defer restore()
 
-	connectAndClear := func(t *testing.T) *TPMConnection {
+	connectAndClear := func(t *testing.T) *Connection {
 		tpm, _ := openTPMSimulatorForTesting(t)
 		clearTPMWithPlatformAuth(t, tpm)
 		return tpm
 	}
 
-	run := func(t *testing.T, hasEk bool, cleanup func(*TPMConnection)) {
+	run := func(t *testing.T, hasEk bool, cleanup func(*Connection)) {
 		tpm, err := ConnectToDefaultTPM()
 		if err != nil {
 			t.Fatalf("ConnectToDefaultTPM failed: %v", err)
@@ -99,28 +100,28 @@ func TestConnectToDefaultTPM(t *testing.T) {
 		rc, err := tpm.EndorsementKey()
 		if !hasEk {
 			if err == nil {
-				t.Fatalf("TPMConnection.EndorsementKey should have returned an error")
+				t.Fatalf("Connection.EndorsementKey should have returned an error")
 			}
 			if rc != nil {
-				t.Errorf("TPMConnection.EndorsementKey should have returned a nil context")
+				t.Errorf("Connection.EndorsementKey should have returned a nil context")
 			}
 			if err != ErrTPMProvisioning {
-				t.Errorf("TPMConnection.EndorsementKey returned an unexpected error: %v", err)
+				t.Errorf("Connection.EndorsementKey returned an unexpected error: %v", err)
 			}
 		} else {
 			if err != nil {
-				t.Fatalf("TPMConnection.EndorsementKey failed: %v", err)
+				t.Fatalf("Connection.EndorsementKey failed: %v", err)
 			}
 			if rc == nil {
-				t.Fatalf("TPMConnection.EndorsementKey returned a nil context")
+				t.Fatalf("Connection.EndorsementKey returned a nil context")
 			}
 			if rc.Handle() != tcg.EKHandle {
-				t.Errorf("TPMConnection.EndorsementKey returned an unexpected context")
+				t.Errorf("Connection.EndorsementKey returned an unexpected context")
 			}
 		}
 		session := tpm.HmacSession()
 		if session == nil || session.Handle().Type() != tpm2.HandleTypeHMACSession {
-			t.Fatalf("TPMConnection.HmacSession returned invalid session context")
+			t.Fatalf("Connection.HmacSession returned invalid session context")
 		}
 	}
 
@@ -217,13 +218,13 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 	})
 	defer restore()
 
-	connectAndClear := func(t *testing.T) *TPMConnection {
+	connectAndClear := func(t *testing.T) *Connection {
 		tpm, _ := openTPMSimulatorForTesting(t)
 		clearTPMWithPlatformAuth(t, tpm)
 		return tpm
 	}
 
-	run := func(t *testing.T, ekCert io.Reader, hasEk bool, auth []byte, cleanup func(*TPMConnection)) {
+	run := func(t *testing.T, ekCert io.Reader, hasEk bool, auth []byte, cleanup func(*Connection)) {
 		tpm, err := SecureConnectToDefaultTPM(ekCert, auth)
 		if err != nil {
 			t.Fatalf("SecureConnectToDefaultTPM failed: %v", err)
@@ -258,28 +259,28 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 		rc, err := tpm.EndorsementKey()
 		if !hasEk {
 			if err == nil {
-				t.Fatalf("TPMConnection.EndorsementKey should have returned an error")
+				t.Fatalf("Connection.EndorsementKey should have returned an error")
 			}
 			if rc != nil {
-				t.Errorf("TPMConnection.EndorsementKey should have returned a nil context")
+				t.Errorf("Connection.EndorsementKey should have returned a nil context")
 			}
 			if err != ErrTPMProvisioning {
-				t.Errorf("TPMConnection.EndorsementKey returned an unexpected error: %v", err)
+				t.Errorf("Connection.EndorsementKey returned an unexpected error: %v", err)
 			}
 		} else {
 			if err != nil {
-				t.Fatalf("TPMConnection.EndorsementKey failed: %v", err)
+				t.Fatalf("Connection.EndorsementKey failed: %v", err)
 			}
 			if rc == nil {
-				t.Fatalf("TPMConnection.EndorsementKey returned a nil context")
+				t.Fatalf("Connection.EndorsementKey returned a nil context")
 			}
 			if rc.Handle() != tcg.EKHandle {
-				t.Errorf("TPMConnection.EndorsementKey returned an unexpected context")
+				t.Errorf("Connection.EndorsementKey returned an unexpected context")
 			}
 		}
 		session := tpm.HmacSession()
 		if session == nil || session.Handle().Type() != tpm2.HandleTypeHMACSession {
-			t.Fatalf("TPMConnection.HmacSession returned invalid session context")
+			t.Fatalf("Connection.HmacSession returned invalid session context")
 		}
 	}
 
@@ -305,7 +306,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 			}
 		}()
 
-		run(t, bytes.NewReader(testutil.EncodedTPMSimulatorEKCertChain), false, testAuth, func(tpm *TPMConnection) {
+		run(t, bytes.NewReader(testutil.EncodedTPMSimulatorEKCertChain), false, testAuth, func(tpm *Connection) {
 			clearTPMWithPlatformAuth(t, tpm)
 		})
 	})
@@ -478,7 +479,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 			}
 		}()
 
-		run(t, bytes.NewReader(testutil.EncodedTPMSimulatorEKCertChain), false, testAuth, func(tpm *TPMConnection) {
+		run(t, bytes.NewReader(testutil.EncodedTPMSimulatorEKCertChain), false, testAuth, func(tpm *Connection) {
 			clearTPMWithPlatformAuth(t, tpm)
 		})
 	})

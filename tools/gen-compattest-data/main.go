@@ -31,12 +31,14 @@ import (
 	"github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot"
-	secboot_efi "github.com/snapcore/secboot/efi"
-	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/snapd/asserts"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot"
+	secboot_efi "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/testutil"
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 var (
@@ -66,8 +68,8 @@ func init() {
 	flag.StringVar(&outputDir, "output", "", "Specify the output directory")
 }
 
-func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot.PCRProtectionProfile, error) {
-	profile := secboot.NewPCRProtectionProfile()
+func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2.PCRProtectionProfile, error) {
+	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	sbpParams := secboot_efi.SecureBootPolicyProfileParams{
 		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -119,13 +121,13 @@ func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot.PCRP
 		return nil, xerrors.Errorf("cannot decode model assertion: %w", err)
 	}
 
-	smParams := secboot.SnapModelProfileParams{
+	smParams := secboot_tpm2.SnapModelProfileParams{
 		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 		PCRIndex:     12,
 		Models:       []secboot.SnapModel{model.(secboot.SnapModel)},
 	}
 
-	if err := secboot.AddSnapModelProfile(profile, &smParams); err != nil {
+	if err := secboot_tpm2.AddSnapModelProfile(profile, &smParams); err != nil {
 		return nil, xerrors.Errorf("cannot add snap model profile: %w", err)
 	}
 
@@ -154,7 +156,7 @@ func run() int {
 
 	env := &mockEFIEnvironment{"efi/testdata/efivars2", "efi/testdata/eventlog1.bin"}
 
-	tpm, err := secboot.ConnectToDefaultTPM()
+	tpm, err := secboot_tpm2.ConnectToDefaultTPM()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot open TPM simulator connection: %v\n", err)
 		return 1
@@ -184,12 +186,12 @@ func run() int {
 		return 1
 	}
 
-	if err := secboot.SaveEKCertificateChain(nil, []*x509.Certificate{caCert}, filepath.Join(outputDir, "EKCertData")); err != nil {
+	if err := secboot_tpm2.SaveEKCertificateChain(nil, []*x509.Certificate{caCert}, filepath.Join(outputDir, "EKCertData")); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot save EK certificate chain: %v\n", err)
 		return 1
 	}
 
-	if err := tpm.EnsureProvisioned(secboot.ProvisionModeFull, []byte("1234")); err != nil {
+	if err := tpm.EnsureProvisioned(secboot_tpm2.ProvisionModeFull, []byte("1234")); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot provision TPM: %v\n", err)
 		return 1
 	}
@@ -203,7 +205,7 @@ func run() int {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	params := secboot.KeyCreationParams{
+	params := secboot_tpm2.KeyCreationParams{
 		PCRProfile:             pcrProfile,
 		PCRPolicyCounterHandle: 0x01801000,
 	}
@@ -211,7 +213,7 @@ func run() int {
 	keyFile := filepath.Join(outputDir, "key")
 	os.Remove(keyFile)
 
-	authKey, err := secboot.SealKeyToTPM(tpm, key, keyFile, &params)
+	authKey, err := secboot_tpm2.SealKeyToTPM(tpm, key, keyFile, &params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot seal key: %v\n", err)
 		return 1

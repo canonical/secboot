@@ -21,12 +21,13 @@ package testutil
 
 import (
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot"
 	"github.com/snapcore/snapd/testutil"
 
 	"golang.org/x/sys/unix"
 
 	. "gopkg.in/check.v1"
+
+	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
 var (
@@ -35,10 +36,10 @@ var (
 
 type TPMTestBase struct {
 	testutil.BaseTest
-	TPM *secboot.TPMConnection // Not anonymous because of tpm2.TPMContext.TestParms
+	TPM *secboot_tpm2.Connection // Not anonymous because of tpm2.TPMContext.TestParms
 }
 
-func (b *TPMTestBase) setUpTestBase(c *C, tpm *secboot.TPMConnection) {
+func (b *TPMTestBase) setUpTestBase(c *C, tpm *secboot_tpm2.Connection) {
 	b.BaseTest.SetUpTest(c)
 	b.TPM = tpm
 

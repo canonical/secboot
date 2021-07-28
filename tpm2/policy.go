@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"crypto"
@@ -846,7 +846,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 // This acts as a barrier between the environment in which a sealed key should be permitted to be unsealed
 // (eg, the initramfs), and the environment in which a sealed key should not be permitted to be unsealed
 // (eg, the OS runtime).
-func BlockPCRProtectionPolicies(tpm *TPMConnection, pcrs []int) error {
+func BlockPCRProtectionPolicies(tpm *Connection, pcrs []int) error {
 	session := tpm.HmacSession()
 
 	// The fence is a hash of uint32(0), which is the same as EV_SEPARATOR (which can be uint32(0) or uint32(-1))

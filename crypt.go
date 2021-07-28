@@ -108,11 +108,6 @@ func wrapExecError(cmd *exec.Cmd, err error) error {
 	return &execError{path: cmd.Path, err: err}
 }
 
-func isExecError(err error, path string) bool {
-	var e *execError
-	return xerrors.As(err, &e) && e.path == path
-}
-
 func askPassword(sourceDevicePath, msg string) (string, error) {
 	cmd := exec.Command(
 		"systemd-ask-password",

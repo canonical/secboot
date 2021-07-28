@@ -17,14 +17,15 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot/internal/tcg"
 )
 
 // UnsealFromTPM will load the TPM sealed object in to the TPM and attempt to unseal it, returning the cleartext key on success.
@@ -68,7 +69,7 @@ import (
 //
 // On success, the unsealed cleartext key is returned as the first return value, and the private part of the key used for
 // authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is returned as the second return value.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *TPMConnection, pin string) (key []byte, authKey TPMPolicyAuthKey, err error) {
+func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection, pin string) (key []byte, authKey PolicyAuthKey, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {

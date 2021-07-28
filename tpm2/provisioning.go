@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"errors"
@@ -26,9 +26,10 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot/internal/tcg"
 )
 
 const (
@@ -50,7 +51,7 @@ const (
 	srkTemplateHandle tpm2.Handle = 0x01810001
 )
 
-// ProvisionMode is used to control the behaviour of TPMConnection.EnsureProvisioned.
+// ProvisionMode is used to control the behaviour of Connection.EnsureProvisioned.
 type ProvisionMode int
 
 const (
@@ -174,7 +175,7 @@ func removeStoredSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) 
 	return nil
 }
 
-func (t *TPMConnection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public, useExistingSrkTemplate bool) error {
+func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public, useExistingSrkTemplate bool) error {
 	session := t.HmacSession()
 
 	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1, session.IncludeAttrs(tpm2.AttrAudit))
@@ -355,7 +356,7 @@ func (t *TPMConnection) ensureProvisionedInternal(mode ProvisionMode, newLockout
 // ErrTPMProvisioningRequiresLockout error will be returned. In this scenario, the function will complete all operations that can be
 // completed without using the lockout hierarchy, but the function should be called again either with mode set to ProvisionModeFull
 // (if the authorization value for the lockout hierarchy is known), or ProvisionModeClear.
-func (t *TPMConnection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public) error {
+func (t *Connection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public) error {
 	if srkTemplate != nil && !srkTemplate.IsParent() {
 		return errors.New("supplied SRK template is not valid for a parent key")
 	}
@@ -408,7 +409,7 @@ func (t *TPMConnection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLo
 // ErrTPMProvisioningRequiresLockout error will be returned. In this scenario, the function will complete all operations that can be
 // completed without using the lockout hierarchy, but the function should be called again either with mode set to ProvisionModeFull
 // (if the authorization value for the lockout hierarchy is known), or ProvisionModeClear.
-func (t *TPMConnection) EnsureProvisioned(mode ProvisionMode, newLockoutAuth []byte) error {
+func (t *Connection) EnsureProvisioned(mode ProvisionMode, newLockoutAuth []byte) error {
 	return t.ensureProvisionedInternal(mode, newLockoutAuth, nil, true)
 }
 

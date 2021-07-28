@@ -31,88 +31,19 @@ import (
 	"strings"
 	"time"
 
+	snapd_testutil "github.com/snapcore/snapd/testutil"
+
+	. "gopkg.in/check.v1"
+
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luks2/luks2test"
 	"github.com/snapcore/secboot/internal/paths"
 	"github.com/snapcore/secboot/internal/paths/pathstest"
 	"github.com/snapcore/secboot/internal/testutil"
-	snapd_testutil "github.com/snapcore/snapd/testutil"
-
-	. "gopkg.in/check.v1"
 )
 
-type cryptTestBase struct {
-	testutil.KeyringTestBase
-
-	dir string
-
-	passwordFile string // a newline delimited list of passwords for the mock systemd-ask-password to return
-
-	mockKeyslotsDir        string
-	mockKeyslotsCount      int
-	mockLUKS2ActivateCalls []struct {
-		volumeName       string
-		sourceDevicePath string
-	}
-
-	mockSdAskPassword *snapd_testutil.MockCmd
-}
-
-func (ctb *cryptTestBase) SetUpTest(c *C) {
-	ctb.KeyringTestBase.SetUpTest(c)
-
-	ctb.dir = c.MkDir()
-	ctb.AddCleanup(pathstest.MockRunDir(ctb.dir))
-
-	ctb.passwordFile = filepath.Join(ctb.dir, "password") // passwords to be returned by the mock sd-ask-password
-
-	ctb.mockKeyslotsCount = 0
-	ctb.mockKeyslotsDir = c.MkDir()
-
-	ctb.mockLUKS2ActivateCalls = nil
-	ctb.AddCleanup(MockLUKS2Activate(func(volumeName, sourceDevicePath string, key []byte) error {
-		ctb.mockLUKS2ActivateCalls = append(ctb.mockLUKS2ActivateCalls, struct {
-			volumeName       string
-			sourceDevicePath string
-		}{volumeName, sourceDevicePath})
-
-		f, err := os.Open(ctb.mockKeyslotsDir)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-
-		slots, err := f.Readdir(0)
-		if err != nil {
-			return err
-		}
-
-		for _, slot := range slots {
-			k, err := ioutil.ReadFile(filepath.Join(ctb.mockKeyslotsDir, slot.Name()))
-			if err != nil {
-				return err
-			}
-			if bytes.Equal(k, key) {
-				return nil
-			}
-		}
-
-		return errors.New("systemd-cryptsetup failed with: exit status 1")
-	}))
-
-	sdAskPasswordBottom := `
-head -1 %[1]s
-sed -i -e '1,1d' %[1]s
-`
-	ctb.mockSdAskPassword = snapd_testutil.MockCommand(c, "systemd-ask-password", fmt.Sprintf(sdAskPasswordBottom, ctb.passwordFile))
-	ctb.AddCleanup(ctb.mockSdAskPassword.Restore)
-}
-
-func (ctb *cryptTestBase) addMockKeyslot(c *C, key []byte) {
-	c.Assert(ioutil.WriteFile(filepath.Join(ctb.mockKeyslotsDir, fmt.Sprintf("%d", ctb.mockKeyslotsCount)), key, 0644), IsNil)
-	ctb.mockKeyslotsCount++
-}
+type cryptTestBase struct{}
 
 func (ctb *cryptTestBase) newPrimaryKey() []byte {
 	key := make([]byte, 32)
@@ -126,51 +57,79 @@ func (ctb *cryptTestBase) newRecoveryKey() RecoveryKey {
 	return key
 }
 
-func (ctb *cryptTestBase) checkRecoveryKeyInKeyring(c *C, prefix, path string, expected RecoveryKey) {
-	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
-	// so far, mark the current test as expected to fail.
-	if !ctb.ProcessPossessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
-	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
-	c.Check(err, IsNil)
-	c.Check(key, DeepEquals, DiskUnlockKey(expected[:]))
-}
-
-func (ctb *cryptTestBase) addTryPassphrases(c *C, passphrases []string) {
-	for _, passphrase := range passphrases {
-		f, err := os.OpenFile(ctb.passwordFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-		c.Assert(err, IsNil)
-		_, err = f.WriteString(passphrase + "\n")
-		c.Check(err, IsNil)
-		f.Close()
-	}
-}
-
 type cryptSuite struct {
 	cryptTestBase
 	keyDataTestBase
-	snapModelTestBase
+	testutil.KeyringTestBase
 
+	passwordFile string // a newline delimited list of passwords for the mock systemd-ask-password to return
+
+	mockKeyslotsDir   string
+	mockKeyslotsCount int
+
+	mockLUKS2ActivateCalls []struct {
+		volumeName       string
+		sourceDevicePath string
+	}
 	mockLUKS2DeactivateCalls int
 
 	cryptsetupInvocationCountDir string
 	cryptsetupKey                string // The file in which the mock cryptsetup dumps the provided key
 	cryptsetupNewkey             string // The file in which the mock cryptsetup dumps the provided new key
-	mockCryptsetup               *snapd_testutil.MockCmd
+
+	mockCryptsetup    *snapd_testutil.MockCmd
+	mockSdAskPassword *snapd_testutil.MockCmd
 }
 
 var _ = Suite(&cryptSuite{})
 
 func (s *cryptSuite) SetUpSuite(c *C) {
-	s.cryptTestBase.SetUpSuite(c)
 	s.keyDataTestBase.SetUpSuite(c)
+	s.KeyringTestBase.SetUpSuite(c)
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {
-	s.cryptTestBase.SetUpTest(c)
 	s.keyDataTestBase.SetUpTest(c)
+	s.KeyringTestBase.SetUpTest(c)
+
+	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
+
+	dir := c.MkDir()
+	s.passwordFile = filepath.Join(dir, "password") // passwords to be returned by the mock sd-ask-password
+
+	s.mockKeyslotsCount = 0
+	s.mockKeyslotsDir = c.MkDir()
+
+	s.mockLUKS2ActivateCalls = nil
+	s.AddCleanup(MockLUKS2Activate(func(volumeName, sourceDevicePath string, key []byte) error {
+		s.mockLUKS2ActivateCalls = append(s.mockLUKS2ActivateCalls, struct {
+			volumeName       string
+			sourceDevicePath string
+		}{volumeName, sourceDevicePath})
+
+		f, err := os.Open(s.mockKeyslotsDir)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		slots, err := f.Readdir(0)
+		if err != nil {
+			return err
+		}
+
+		for _, slot := range slots {
+			k, err := ioutil.ReadFile(filepath.Join(s.mockKeyslotsDir, slot.Name()))
+			if err != nil {
+				return err
+			}
+			if bytes.Equal(k, key) {
+				return nil
+			}
+		}
+
+		return errors.New("systemd-cryptsetup failed with: exit status 1")
+	}))
 
 	s.mockLUKS2DeactivateCalls = 0
 	s.AddCleanup(MockLUKS2Deactivate(func(volumeName string) error {
@@ -181,7 +140,6 @@ func (s *cryptSuite) SetUpTest(c *C) {
 		return nil
 	}))
 
-	dir := c.MkDir()
 	s.cryptsetupKey = filepath.Join(dir, "cryptsetupkey")       // File in which the mock cryptsetup records the passed in key
 	s.cryptsetupNewkey = filepath.Join(dir, "cryptsetupnewkey") // File in which the mock cryptsetup records the passed in new key
 	s.cryptsetupInvocationCountDir = c.MkDir()
@@ -240,6 +198,40 @@ dump_key "$new_keyfile" "%[2]s.$invocation"
 
 	s.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, s.cryptsetupKey, s.cryptsetupNewkey, s.cryptsetupInvocationCountDir))
 	s.AddCleanup(s.mockCryptsetup.Restore)
+
+	sdAskPasswordBottom := `
+head -1 %[1]s
+sed -i -e '1,1d' %[1]s
+`
+	s.mockSdAskPassword = snapd_testutil.MockCommand(c, "systemd-ask-password", fmt.Sprintf(sdAskPasswordBottom, s.passwordFile))
+	s.AddCleanup(s.mockSdAskPassword.Restore)
+}
+
+func (s *cryptSuite) addMockKeyslot(c *C, key []byte) {
+	c.Assert(ioutil.WriteFile(filepath.Join(s.mockKeyslotsDir, fmt.Sprintf("%d", s.mockKeyslotsCount)), key, 0644), IsNil)
+	s.mockKeyslotsCount++
+}
+
+func (s *cryptSuite) addTryPassphrases(c *C, passphrases []string) {
+	for _, passphrase := range passphrases {
+		f, err := os.OpenFile(s.passwordFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		c.Assert(err, IsNil)
+		_, err = f.WriteString(passphrase + "\n")
+		c.Check(err, IsNil)
+		f.Close()
+	}
+}
+
+func (s *cryptSuite) checkRecoveryKeyInKeyring(c *C, prefix, path string, expected RecoveryKey) {
+	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
+	// so far, mark the current test as expected to fail.
+	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
+		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
+	}
+
+	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
+	c.Check(err, IsNil)
+	c.Check(key, DeepEquals, DiskUnlockKey(expected[:]))
 }
 
 func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey AuxiliaryKey) {
@@ -298,8 +290,7 @@ type testActivateVolumeWithRecoveryKeyData struct {
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
 	s.addMockKeyslot(c, data.recoveryKey[:])
-
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
+	s.addTryPassphrases(c, data.recoveryPassphrases)
 
 	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries, KeyringPrefix: data.keyringPrefix}
 	c.Assert(ActivateVolumeWithRecoveryKey(data.volumeName, data.sourceDevicePath, nil, &options), IsNil)
@@ -416,11 +407,12 @@ type testActivateVolumeWithRecoveryKeyUsingKeyReaderData struct {
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyUsingKeyReader(c *C, data *testActivateVolumeWithRecoveryKeyUsingKeyReaderData) {
 	s.addMockKeyslot(c, data.recoveryKey[:])
+	s.addTryPassphrases(c, data.recoveryPassphrases)
 
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
-	c.Assert(ioutil.WriteFile(filepath.Join(s.dir, "keyfile"), []byte(data.recoveryKeyFileContents), 0644), IsNil)
+	dir := c.MkDir()
+	c.Assert(ioutil.WriteFile(filepath.Join(dir, "keyfile"), []byte(data.recoveryKeyFileContents), 0644), IsNil)
 
-	r, err := os.Open(filepath.Join(s.dir, "keyfile"))
+	r, err := os.Open(filepath.Join(dir, "keyfile"))
 	c.Assert(err, IsNil)
 	defer r.Close()
 
@@ -631,7 +623,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 	recoveryKey := s.newRecoveryKey()
 	s.addMockKeyslot(c, recoveryKey[:])
 
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(strings.Join(data.recoveryPassphrases, "\n")+"\n"), 0644), IsNil)
+	s.addTryPassphrases(c, data.recoveryPassphrases)
 
 	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries}
 	c.Check(ActivateVolumeWithRecoveryKey("data", "/dev/sda1", nil, &options), data.errChecker, data.errCheckerArgs...)
@@ -754,7 +746,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData1(c *C) {
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -773,7 +765,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData1(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithKeyData2(c *C) {
 	// Test with different volumeName / sourceDevicePath
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -792,14 +784,14 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData2(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithKeyData3(c *C) {
 	// Test with different authorized models
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -818,7 +810,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData3(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithKeyData4(c *C) {
 	// Test with unauthorized model
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -830,7 +822,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData4(c *C) {
 		authorizedModels: models,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model: s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -1074,7 +1066,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData1(c *C) {
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -1100,7 +1092,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData2(c *C) {
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -1126,7 +1118,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData3(c *C) {
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
 	models := []SnapModel{
-		s.makeMockCore20ModelAssertion(c, map[string]interface{}{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
@@ -1650,6 +1642,7 @@ func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey4(c *C) {
 }
 
 type cryptSuiteExpensive struct {
+	snapd_testutil.BaseTest
 	cryptTestBase
 }
 
@@ -1662,8 +1655,9 @@ func (s *cryptSuiteExpensive) SetUpSuite(c *C) {
 }
 
 func (s *cryptSuiteExpensive) SetUpTest(c *C) {
-	s.cryptTestBase.SetUpTest(c)
+	s.BaseTest.SetUpTest(c)
 
+	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 	s.AddCleanup(luks2test.WrapCryptsetup(c))
 }
 

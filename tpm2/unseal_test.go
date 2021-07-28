@@ -17,7 +17,7 @@
  *
  */
 
-package secboot_test
+package tpm2_test
 
 import (
 	"bytes"
@@ -29,8 +29,9 @@ import (
 	"testing"
 
 	"github.com/canonical/go-tpm2"
-	. "github.com/snapcore/secboot"
+
 	"github.com/snapcore/secboot/internal/tcg"
+	. "github.com/snapcore/secboot/tpm2"
 )
 
 func TestUnsealWithNo2FA(t *testing.T) {
@@ -256,7 +257,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	key := make([]byte, 64)
 	rand.Read(key)
 
-	run := func(t *testing.T, fn func(*TPMConnection, string, []byte)) error {
+	run := func(t *testing.T, fn func(*Connection, string, []byte)) error {
 		tpm, tcti := openTPMSimulatorForTesting(t)
 		defer func() {
 			tpm, _ = resetTPMSimulator(t, tpm, tcti)
@@ -292,7 +293,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	}
 
 	t.Run("TPMLockout", func(t *testing.T) {
-		err := run(t, func(tpm *TPMConnection, _ string, _ []byte) {
+		err := run(t, func(tpm *Connection, _ string, _ []byte) {
 			// Put the TPM in DA lockout mode
 			if err := tpm.DictionaryAttackParameters(tpm.LockoutHandleContext(), 0, 7200, 86400, nil); err != nil {
 				t.Errorf("DictionaryAttackParameters failed: %v", err)
@@ -304,7 +305,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("NoSRK", func(t *testing.T) {
-		err := run(t, func(tpm *TPMConnection, _ string, _ []byte) {
+		err := run(t, func(tpm *Connection, _ string, _ []byte) {
 			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK: %v", err)
@@ -319,7 +320,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("InvalidSRK", func(t *testing.T) {
-		err := run(t, func(tpm *TPMConnection, _ string, _ []byte) {
+		err := run(t, func(tpm *Connection, _ string, _ []byte) {
 			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 			if err != nil {
 				t.Fatalf("No SRK: %v", err)
@@ -345,7 +346,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("IncorrectPCRProfile", func(t *testing.T) {
-		err := run(t, func(tpm *TPMConnection, _ string, _ []byte) {
+		err := run(t, func(tpm *Connection, _ string, _ []byte) {
 			if _, err := tpm.PCREvent(tpm.PCRHandleContext(7), tpm2.Event("foo"), nil); err != nil {
 				t.Errorf("PCREvent failed: %v", err)
 			}
@@ -360,7 +361,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("RevokedPolicy", func(t *testing.T) {
-		err := run(t, func(tpm *TPMConnection, keyFile string, authKey []byte) {
+		err := run(t, func(tpm *Connection, keyFile string, authKey []byte) {
 			src, err := os.Open(keyFile)
 			if err != nil {
 				t.Fatalf("Open failed: %v", err)
@@ -387,7 +388,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("SealedKeyAccessLocked", func(t *testing.T) {
-		err := run(t, func(tpm *TPMConnection, _ string, _ []byte) {
+		err := run(t, func(tpm *Connection, _ string, _ []byte) {
 			if err := BlockPCRProtectionPolicies(tpm, []int{7}); err != nil {
 				t.Errorf("BlockPCRProtectionPolicies failed: %v", err)
 			}
@@ -400,7 +401,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 	})
 
 	t.Run("PINFail", func(t *testing.T) {
-		err := run(t, func(tpm *TPMConnection, keyFile string, _ []byte) {
+		err := run(t, func(tpm *Connection, keyFile string, _ []byte) {
 			if err := ChangePIN(tpm, keyFile, "", "1234"); err != nil {
 				t.Errorf("ChangePIN failed: %v", err)
 			}

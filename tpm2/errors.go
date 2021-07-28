@@ -17,7 +17,7 @@
  *
  */
 
-package secboot
+package tpm2
 
 import (
 	"bytes"
@@ -30,11 +30,11 @@ import (
 )
 
 var (
-	// ErrTPMClearRequiresPPI is returned from TPMConnection.EnsureProvisioned and indicates that clearing the TPM must be performed via
+	// ErrTPMClearRequiresPPI is returned from Connection.EnsureProvisioned and indicates that clearing the TPM must be performed via
 	// the Physical Presence Interface.
 	ErrTPMClearRequiresPPI = errors.New("clearing the TPM requires the use of the Physical Presence Interface")
 
-	// ErrTPMProvisioningRequiresLockout is returned from TPMConnection.EnsureProvisioned when fully provisioning the TPM requires
+	// ErrTPMProvisioningRequiresLockout is returned from Connection.EnsureProvisioned when fully provisioning the TPM requires
 	// the use of the lockout hierarchy. In this case, the provisioning steps that can be performed without the use of the lockout
 	// hierarchy are completed.
 	ErrTPMProvisioningRequiresLockout = errors.New("provisioning the TPM requires the use of the lockout hierarchy")
@@ -54,10 +54,6 @@ var (
 
 	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
 	ErrNoTPM2Device = errors.New("no TPM2 device is available")
-
-	// ErrNoActivationData is returned from GetActivationDataFromKernel if no activation data was found in the user keyring for
-	// the specified block device.
-	ErrNoActivationData = errors.New("no activation data found for the specified device")
 )
 
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists
@@ -131,8 +127,8 @@ func isInvalidKeyFileError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// ActivateWithTPMSealedKeyError is returned from ActivateVolumeWithTPMSealedKey if activation with the TPM protected key failed.
-type ActivateWithTPMSealedKeyError struct {
+// ActivateWithSealedKeyError is returned from ActivateVolumeWithSealedKey if activation with the TPM protected key failed.
+type ActivateWithSealedKeyError struct {
 	// TPMErr details the error that occurred during activation with the TPM sealed key.
 	TPMErr error
 
@@ -141,16 +137,16 @@ type ActivateWithTPMSealedKeyError struct {
 	RecoveryKeyUsageErr error
 }
 
-func (e *ActivateWithTPMSealedKeyError) Error() string {
+func (e *ActivateWithSealedKeyError) Error() string {
 	if e.RecoveryKeyUsageErr != nil {
 		return fmt.Sprintf("cannot activate with TPM sealed key (%v) and activation with recovery key failed (%v)", e.TPMErr, e.RecoveryKeyUsageErr)
 	}
 	return fmt.Sprintf("cannot activate with TPM sealed key (%v) but activation with recovery key was successful", e.TPMErr)
 }
 
-// ActivateWithMultipleTPMSealedKeysError is returned from ActivateVolumeWithMultipleTPMSealedKeys if activation with the
+// ActivateWithMultipleSealedKeysError is returned from ActivateVolumeWithMultipleSealedKeys if activation with the
 // TPM protected keys failed.
-type ActivateWithMultipleTPMSealedKeysError struct {
+type ActivateWithMultipleSealedKeysError struct {
 	// TPMErrs details the errors that occurred during activation with the TPM sealed keys.
 	TPMErrs []error
 
@@ -159,7 +155,7 @@ type ActivateWithMultipleTPMSealedKeysError struct {
 	RecoveryKeyUsageErr error
 }
 
-func (e *ActivateWithMultipleTPMSealedKeysError) Error() string {
+func (e *ActivateWithMultipleSealedKeysError) Error() string {
 	var s bytes.Buffer
 	fmt.Fprintf(&s, "cannot activate with TPM sealed keys:")
 	for _, err := range e.TPMErrs {
