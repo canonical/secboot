@@ -1,0 +1,42 @@
+name: Tests
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+jobs:
+  tests:
+    runs-on: ubuntu-20.04
+    env:
+      GOPATH: ${{ github.workspace }}
+    steps:
+    - name: Set up Go 1.9
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.9
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        path: ./src/github.com/snapcore/secboot
+    - name: Install dependencies
+      run: |
+          sudo apt-get update
+          sudo apt-get install -y sbsigntool
+          sudo snap install core core18
+          sudo snap install --edge tpm2-simulator-chrisccoulson
+    - name: Install govendor
+      run: go get -u github.com/kardianos/govendor
+    - name: Cache Go dependencies
+      id: cache-go-govendor
+      uses: actions/cache@v2
+      with:
+        path: ${{ github.workspace }}/.cache/govendor
+        key: go-govendor-{{ hashFiles('**/vendor.json') }}
+    - name: Get Go dependencies
+      run: cd ${{ github.workspace }}/src/github.com/snapcore/secboot && ${{ github.workspace }}/bin/govendor sync
+    - name: Build
+      run: go build -v github.com/snapcore/secboot/...
+    - name: Test
+      run: cd ${{ github.workspace }}/src/github.com/snapcore/secboot && ./run-tests --with-mssim
+    - name: Go vet
+      run: go vet github.com/snapcore/secboot/...
