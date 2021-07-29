@@ -6,11 +6,11 @@ MSSIM_ARGS=
 while [ $# -gt 0 ]; do
         case "$1" in
                 --with-mssim)
-                        WITH_MSSIM=1
+                        ENV="$ENV USE_MSSIM=1"
                         shift
                         ;;
                 --no-expensive-cryptsetup-tests)
-                        ENV="env NO_EXPENSIVE_CRYPTSETUP_TESTS=1"
+                        ENV="$ENV NO_EXPENSIVE_CRYPTSETUP_TESTS=1"
                         shift
                         ;;
                 --)
@@ -23,9 +23,4 @@ while [ $# -gt 0 ]; do
         esac
 done
 
-if [ $WITH_MSSIM -eq 1 ]; then
-        MSSIM_ARGS=-use-mssim
-fi
-
-
-$ENV go test -v -race -p 1 ./... -args -check.v $MSSIM_ARGS $@
+env $ENV go test -v -race -p 1 ./... -args -check.v $@

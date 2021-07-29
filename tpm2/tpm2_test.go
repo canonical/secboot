@@ -32,12 +32,13 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mssim"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 
-	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
 
@@ -48,45 +49,25 @@ var (
 	testAuth = []byte("1234")
 )
 
+func init() {
+	tpm2_testutil.AddCommandLineFlags()
+}
+
 func Test(t *testing.T) { TestingT(t) }
 
-// resetTPMSimulator executes reset sequence of the TPM (Shutdown(CLEAR) -> reset -> Startup(CLEAR)) and the re-initializes the
-// Connection.
-func resetTPMSimulator(t *testing.T, tpm *Connection, tcti *mssim.Tcti) (*Connection, *mssim.Tcti) {
-	tpm, tcti, err := testutil.ResetTPMSimulator(tpm, tcti)
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-	return tpm, tcti
-}
+func secureConnectToDefaultTPMHelper() (*Connection, error) {
+	buf := new(bytes.Buffer)
 
-func openTPMSimulatorForTesting(t *testing.T) (*Connection, *mssim.Tcti) {
-	tpm, tcti, err := testutil.OpenTPMSimulatorForTesting()
+	caCert, err := x509.ParseCertificate(testCACert)
 	if err != nil {
-		t.Fatalf("%v", err)
+		return nil, err
 	}
-	if tpm == nil {
-		t.SkipNow()
-	}
-	return tpm, tcti
-}
 
-func openTPMForTesting(t *testing.T) *Connection {
-	tpm, err := testutil.OpenTPMForTesting()
-	if err != nil {
-		t.Fatalf("%v", err)
+	if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, buf); err != nil {
+		return nil, err
 	}
-	if tpm == nil {
-		t.SkipNow()
-	}
-	return tpm
-}
 
-// Flush a handle context. Fails the test if it doesn't succeed.
-func flushContext(t *testing.T, tpm *Connection, context tpm2.HandleContext) {
-	if err := tpm.FlushContext(context); err != nil {
-		t.Errorf("FlushContext failed: %v", err)
-	}
+	return SecureConnectToDefaultTPM(buf, nil)
 }
 
 // Set the hierarchy auth to testAuth. Fatal on failure
@@ -96,61 +77,18 @@ func setHierarchyAuthForTest(t *testing.T, tpm *Connection, hierarchy tpm2.Resou
 	}
 }
 
-// Reset the hierarchy auth to nil.
-func resetHierarchyAuth(t *testing.T, tpm *Connection, hierarchy tpm2.ResourceContext) {
-	if err := tpm.HierarchyChangeAuth(hierarchy, nil, nil); err != nil {
-		t.Errorf("HierarchyChangeAuth failed: %v", err)
-	}
-}
-
-// Undefine a NV index set by a test. Fails the test if it doesn't succeed.
-func undefineNVSpace(t *testing.T, tpm *Connection, context, authHandle tpm2.ResourceContext) {
-	if err := tpm.NVUndefineSpace(authHandle, context, nil); err != nil {
-		t.Errorf("NVUndefineSpace failed: %v", err)
-	}
-}
-
-func undefineKeyNVSpace(t *testing.T, tpm *Connection, path string) {
-	k, err := ReadSealedKeyObjectFromFile(path)
-	if err != nil {
-		t.Fatalf("ReadSealedKeyObject failed: %v", err)
-	}
-	h := k.PCRPolicyCounterHandle()
-	if h == tpm2.HandleNull {
-		return
-	}
-	rc, err := tpm.CreateResourceContextFromTPM(h)
-	if tpm2.IsResourceUnavailableError(err, h) {
-		return
-	}
-	if err != nil {
-		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-	}
-	undefineNVSpace(t, tpm, rc, tpm.OwnerHandleContext())
-}
-
-// clearTPMWithPlatformAuth clears the TPM with platform hierarchy authorization - something that we can only do on the simulator
-func clearTPMWithPlatformAuth(t *testing.T, tpm *Connection) {
-	if err := tpm.ClearControl(tpm.PlatformHandleContext(), false, nil); err != nil {
-		t.Fatalf("ClearControl failed: %v", err)
-	}
-	if err := tpm.Clear(tpm.PlatformHandleContext(), nil); err != nil {
-		t.Fatalf("Clear failed: %v", err)
-	}
-}
-
-func closeTPM(t *testing.T, tpm *Connection) {
-	if err := tpm.Close(); err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
-}
-
 func TestMain(m *testing.M) {
+	// Provide a way for run-tests to configure this in a way that
+	// can be ignored by other suites
+	if _, ok := os.LookupEnv("USE_MSSIM"); ok {
+		tpm2_testutil.TPMBackend = tpm2_testutil.TPMBackendMssim
+	}
+
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
 	os.Exit(func() int {
-		if testutil.UseMssim {
-			simulatorCleanup, err := testutil.LaunchTPMSimulator(nil)
+		if tpm2_testutil.TPMBackend == tpm2_testutil.TPMBackendMssim {
+			simulatorCleanup, err := tpm2_testutil.LaunchTPMSimulator(nil)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot launch TPM simulator: %v\n", err)
 				return 1
@@ -158,39 +96,32 @@ func TestMain(m *testing.M) {
 			defer simulatorCleanup()
 
 			var caKey crypto.PrivateKey
-			testCACert, caKey, err = testutil.CreateTestCA()
+			testCACert, caKey, err = tpm2test.CreateTestCA()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot create test TPM CA certificate and private key: %v\n", err)
 				return 1
 			}
 
-			restoreCAHashes := testutil.TrustCA(testCACert)
+			restoreCAHashes := tpm2test.TrustCA(testCACert)
 			defer restoreCAHashes()
 
 			if err := func() error {
-				tpm, _, err := testutil.OpenTPMSimulatorForTesting()
+				tcti, err := mssim.OpenConnection("", tpm2_testutil.MssimPort)
 				if err != nil {
 					return xerrors.Errorf("cannot open connection: %w", err)
 				}
+				tpm := tpm2.NewTPMContext(tcti)
 				defer tpm.Close()
 
-				testEkCert, err = testutil.CreateTestEKCert(tpm.TPMContext, testCACert, caKey)
+				testEkCert, err = tpm2test.CreateTestEKCert(tpm, testCACert, caKey)
 				if err != nil {
 					return xerrors.Errorf("cannot create test EK certificate: %w", err)
 				}
-				return testutil.CertifyTPM(tpm.TPMContext, testEkCert)
+				return tpm2test.CertifyTPM(tpm, testEkCert)
 			}(); err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot certify TPM simulator: %v\n", err)
 				return 1
 			}
-
-			caCert, _ := x509.ParseCertificate(testCACert)
-			b := new(bytes.Buffer)
-			if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, b); err != nil {
-				fmt.Fprintf(os.Stderr, "Cannot encode EK certificate chain: %v\n", err)
-				return 1
-			}
-			testutil.EncodedTPMSimulatorEKCertChain = b.Bytes()
 		}
 
 		return m.Run()
