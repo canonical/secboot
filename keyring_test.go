@@ -35,6 +35,14 @@ type keyringSuite struct {
 
 var _ = Suite(&keyringSuite{})
 
+func (s *keyringSuite) SetUpSuite(c *C) {
+	s.KeyringTestBase.SetUpSuite(c)
+
+	if !s.ProcessPossessesUserKeyringKeys {
+		c.Skip("Test requires the user keyring to be linked from the process's session keyring")
+	}
+}
+
 type testGetDiskUnlockKeyFromKernelData struct {
 	key        DiskUnlockKey
 	prefix     string
