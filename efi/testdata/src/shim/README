@@ -1,6 +1,6 @@
 This directory contains the source code to build a mock EFI binary
 that is structured like shim for testing. It contains the minimum
-amount of code to make a validvEFI binary that just returns 0 and is
+amount of code to make a valid EFI binary that just returns 0 and is
 written in assembler to avoid depending on gnu-efi to set up a C
 runtime. This keeps dependencies to an absolute minimum in order
 to improve reproducibility.
