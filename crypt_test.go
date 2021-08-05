@@ -1589,10 +1589,10 @@ func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecov
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
 
 	call := s.mockCryptsetup.Calls()[0]
-	c.Assert(len(call), Equals, 10)
+	c.Assert(len(call), Equals, 8)
 	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
 	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:10], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
+	c.Check(call[4:8], DeepEquals, []string{"--pbkdf", "argon2i", data.devicePath, "-"})
 
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)

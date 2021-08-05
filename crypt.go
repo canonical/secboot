@@ -864,7 +864,7 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, options 
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
 func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey, options *KDFOptions) error {
 	if options == nil {
-		options = &KDFOptions{TargetDuration: 5 * time.Second}
+		options = &KDFOptions{}
 	}
 	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], options, nil)
 }
