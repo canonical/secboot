@@ -737,8 +737,12 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	}
 
 	// Simplify things a bit
+	defaultKdfOptions := &KDFOptions{TargetDuration: 100 * time.Millisecond}
 	if options == nil {
-		options = &InitializeLUKS2ContainerOptions{KDFOptions: &KDFOptions{TargetDuration: 100 * time.Millisecond}}
+		options = &InitializeLUKS2ContainerOptions{KDFOptions: defaultKdfOptions}
+	}
+	if options.KDFOptions == nil {
+		options.KDFOptions = defaultKdfOptions
 	}
 
 	if err := validateInitializeLUKS2Options(options); err != nil {

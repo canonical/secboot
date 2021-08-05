@@ -1585,7 +1585,7 @@ type testAddRecoveryKeyToLUKS2ContainerData struct {
 }
 
 func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecoveryKeyToLUKS2ContainerData) {
-	c.Check(AddRecoveryKeyToLUKS2Container(data.devicePath, data.key, data.recoveryKey), IsNil)
+	c.Check(AddRecoveryKeyToLUKS2Container(data.devicePath, data.key, data.recoveryKey, nil), IsNil)
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
 
 	call := s.mockCryptsetup.Calls()[0]
