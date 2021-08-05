@@ -1461,9 +1461,9 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	formatArgs := []string{"cryptsetup",
 		"-q", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", "aes-xts-plain64",
-		"--key-size", "512",
+		"--key-size", "512", "--label", data.label,
 		"--pbkdf", "argon2i", "--iter-time", "100",
-		"--label", data.label, data.devicePath,
+		data.devicePath,
 	}
 	if data.formatArgs != nil {
 		formatArgs = data.formatArgs
@@ -1517,10 +1517,10 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 			"-q", "luksFormat", "--type", "luks2",
 			"--key-file", "-", "--cipher", "aes-xts-plain64",
 			"--key-size", "512",
-			"--pbkdf", "argon2i", "--iter-time", "100",
 			"--label", "test",
 			"--luks2-metadata-size", "2048k",
 			"--luks2-keyslots-size", "3072k",
+			"--pbkdf", "argon2i", "--iter-time", "100",
 			"/dev/vdc2",
 		},
 	})

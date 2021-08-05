@@ -787,7 +787,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	return setLUKS2KeyslotPreferred(devicePath, 0)
 }
 
-func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, options *KDFOptions) error {
+func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, options *KDFOptions, extraArgs []string) error {
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
 		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
@@ -800,6 +800,7 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, options 
 		// read existing key from named pipe
 		"--key-file", fifoPath}
 	args = options.appendArguments(args)
+	args = append(args, extraArgs...)
 	args = append(args,
 		// container to add key to
 		devicePath,
@@ -849,7 +850,7 @@ func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey R
 	if options == nil {
 		options = &KDFOptions{TargetDuration: 5 * time.Second}
 	}
-	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], options)
+	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], options, nil)
 }
 
 // ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
@@ -873,7 +874,10 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		return osutil.OutputErr(output, err)
 	}
 
-	if err := addKeyToLUKS2Container(devicePath, recoveryKey[:], key, &KDFOptions{TargetDuration: 100 * time.Millisecond}); err != nil {
+	if err := addKeyToLUKS2Container(devicePath, recoveryKey[:], key, &KDFOptions{TargetDuration: 100 * time.Millisecond}, []string{
+		// always have the main key in slot 0 for now
+		"--key-slot", "0",
+	}); err != nil {
 		return err
 	}
 
