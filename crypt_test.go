@@ -1461,9 +1461,9 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	formatArgs := []string{"cryptsetup",
 		"-q", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", "aes-xts-plain64",
-		"--key-size", "512",
+		"--key-size", "512", "--label", data.label,
 		"--pbkdf", "argon2i", "--iter-time", "100",
-		"--label", data.label, data.devicePath,
+		data.devicePath,
 	}
 	if data.formatArgs != nil {
 		formatArgs = data.formatArgs
@@ -1517,10 +1517,10 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
 			"-q", "luksFormat", "--type", "luks2",
 			"--key-file", "-", "--cipher", "aes-xts-plain64",
 			"--key-size", "512",
-			"--pbkdf", "argon2i", "--iter-time", "100",
 			"--label", "test",
 			"--luks2-metadata-size", "2048k",
 			"--luks2-keyslots-size", "3072k",
+			"--pbkdf", "argon2i", "--iter-time", "100",
 			"/dev/vdc2",
 		},
 	})
@@ -1585,14 +1585,14 @@ type testAddRecoveryKeyToLUKS2ContainerData struct {
 }
 
 func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecoveryKeyToLUKS2ContainerData) {
-	c.Check(AddRecoveryKeyToLUKS2Container(data.devicePath, data.key, data.recoveryKey), IsNil)
+	c.Check(AddRecoveryKeyToLUKS2Container(data.devicePath, data.key, data.recoveryKey, nil), IsNil)
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
 
 	call := s.mockCryptsetup.Calls()[0]
-	c.Assert(len(call), Equals, 10)
+	c.Assert(len(call), Equals, 8)
 	c.Check(call[0:3], DeepEquals, []string{"cryptsetup", "luksAddKey", "--key-file"})
 	c.Check(call[3], Matches, filepath.Join(s.dir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[4:10], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
+	c.Check(call[4:8], DeepEquals, []string{"--pbkdf", "argon2i", data.devicePath, "-"})
 
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)

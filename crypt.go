@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/snapd/osutil"
@@ -628,6 +629,57 @@ func setLUKS2KeyslotPreferred(devicePath string, slot int) error {
 	return nil
 }
 
+// KDFOptions specifies parameters for the Argon2 KDF used by cryptsetup.
+type KDFOptions struct {
+	// MemoryKiB specifies the maximum memory cost in KiB when ForceIterations
+	// is zero. If ForceIterations is not zero, then this is used as the
+	// memory cost.
+	MemoryKiB int
+
+	// TargetDuration specifies the target duration for the KDF which
+	// is used to benchmark the time and memory cost parameters. If it
+	// is zero then the cryptsetup default is used. If ForceIterations
+	// is not zero then this field is ignored.
+	TargetDuration time.Duration
+
+	// ForceIterations can be used to turn off KDF benchmarking by
+	// setting the time cost directly. If this is zero then the cost
+	// parameters are benchmarked based on the value of TargetDuration.
+	ForceIterations int
+
+	// Parallel sets the maximum number of parallel threads for the
+	// KDF (up to 4). Cryptsetup will adjust this downwards based on
+	// the actual number of CPUs.
+	Parallel int
+}
+
+func (options *KDFOptions) appendArguments(args []string) []string {
+	// use argon2i for the KDF.
+	args = append(args, "--pbkdf", "argon2i")
+
+	if options.MemoryKiB != 0 {
+		args = append(args,
+			"--pbkdf-memory", strconv.Itoa(options.MemoryKiB))
+	}
+
+	switch {
+	case options.ForceIterations != 0:
+		// Disable benchmarking by forcing the time cost.
+		args = append(args,
+			"--pbkdf-force-iterations", strconv.Itoa(options.ForceIterations))
+	case options.TargetDuration != 0:
+		args = append(args,
+			"--iter-time", strconv.FormatInt(int64(options.TargetDuration/time.Millisecond), 10))
+	}
+
+	if options.Parallel != 0 {
+		args = append(args,
+			"--pbkdf-parallel", strconv.Itoa(options.Parallel))
+	}
+
+	return args
+}
+
 // InitializeLUKS2ContainerOptions carries options for initializing LUKS2
 // containers.
 type InitializeLUKS2ContainerOptions struct {
@@ -641,13 +693,13 @@ type InitializeLUKS2ContainerOptions struct {
 	// expressed in multiples of 1024 bytes. The value must be aligned to
 	// 4096 bytes, with the maximum size of 128MB.
 	KeyslotsAreaKiBSize int
+
+	// KDFOptions sets the KDF options for the initial keyslot. If this
+	// is nil then the defaults are used.
+	KDFOptions *KDFOptions
 }
 
 func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
-	if options == nil {
-		return nil
-	}
-
 	if options.MetadataKiBSize != 0 {
 		// metadata size is one of the allowed values (in kB)
 		allowedSizesKB := []int{16, 32, 64, 128, 256, 512, 1024, 2048, 4096}
@@ -692,6 +744,23 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	if len(key) < 32 {
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
+
+	// Simplify things a bit
+	// Use a reduced cost for the KDF. This is done because we have a high entropy key rather
+	// than a low entropy passphrase. Setting a higher cost provides no security benefit but
+	// does slow down unlocking. If an adversary is going to attempt to brute force this key,
+	// then they could instead turn their attention to one of the other keys involved in the
+	// protection of this key, some of which can be verified without running a KDF. For
+	// example, with a TPM sealed object, you can verify the parent storage key's seed by
+	// computing the key object's HMAC key and verifying the integrity value on the outer wrapper.
+	defaultKdfOptions := &KDFOptions{TargetDuration: 100 * time.Millisecond}
+	if options == nil {
+		options = &InitializeLUKS2ContainerOptions{KDFOptions: defaultKdfOptions}
+	}
+	if options.KDFOptions == nil {
+		options.KDFOptions = defaultKdfOptions
+	}
+
 	if err := validateInitializeLUKS2Options(options); err != nil {
 		return err
 	}
@@ -707,24 +776,21 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		"--key-file", "-",
 		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
 		"--cipher", "aes-xts-plain64", "--key-size", "512",
-		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
-		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
-		// this key and these settings are already more secure than the recovery key. Increased cost
-		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "100",
 		// set LUKS2 label
 		"--label", label,
 	}
-	if options != nil {
-		if options.MetadataKiBSize != 0 {
-			args = append(args,
-				"--luks2-metadata-size", fmt.Sprintf("%dk", options.MetadataKiBSize))
-		}
-		if options.KeyslotsAreaKiBSize != 0 {
-			args = append(args,
-				"--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
-		}
+
+	if options.MetadataKiBSize != 0 {
+		args = append(args,
+			"--luks2-metadata-size", fmt.Sprintf("%dk", options.MetadataKiBSize))
 	}
+	if options.KeyslotsAreaKiBSize != 0 {
+		args = append(args,
+			"--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
+	}
+
+	args = options.KDFOptions.appendArguments(args)
+
 	args = append(args,
 		// device to format
 		devicePath)
@@ -737,7 +803,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	return setLUKS2KeyslotPreferred(devicePath, 0)
 }
 
-func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOptionArgs []string) error {
+func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, options *KDFOptions, extraArgs []string) error {
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
 		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
@@ -749,7 +815,8 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOpt
 		"luksAddKey",
 		// read existing key from named pipe
 		"--key-file", fifoPath}
-	args = append(args, extraOptionArgs...)
+	args = options.appendArguments(args)
+	args = append(args, extraArgs...)
 	args = append(args,
 		// container to add key to
 		devicePath,
@@ -795,10 +862,11 @@ func addKeyToLUKS2Container(devicePath string, existingKey, key []byte, extraOpt
 // key argument.
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
-func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
-	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], []string{
-		// use argon2i as the KDF with an increased cost
-		"--pbkdf", "argon2i", "--iter-time", "5000"})
+func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey, options *KDFOptions) error {
+	if options == nil {
+		options = &KDFOptions{}
+	}
+	return addKeyToLUKS2Container(devicePath, key, recoveryKey[:], options, nil)
 }
 
 // ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
@@ -822,14 +890,10 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		return osutil.OutputErr(output, err)
 	}
 
-	if err := addKeyToLUKS2Container(devicePath, recoveryKey[:], key, []string{
-		// use argon2i as the KDF with reduced cost. This is done because the supplied input key has an
-		// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
-		// this key and these settings are already more secure than the recovery key. Increased cost
-		// here only slows down unlocking.
-		"--pbkdf", "argon2i", "--iter-time", "100",
+	if err := addKeyToLUKS2Container(devicePath, recoveryKey[:], key, &KDFOptions{TargetDuration: 100 * time.Millisecond}, []string{
 		// always have the main key in slot 0 for now
-		"--key-slot", "0"}); err != nil {
+		"--key-slot", "0",
+	}); err != nil {
 		return err
 	}
 
