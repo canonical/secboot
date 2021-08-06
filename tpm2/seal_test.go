@@ -734,8 +734,12 @@ func TestUpdateKeyPCRProtectionPolicy(t *testing.T) {
 		}
 	}
 	update := func(t *testing.T, keyFile string, authKey PolicyAuthKey, profile *PCRProtectionProfile) {
-		if err := UpdateKeyPCRProtectionPolicy(tpm, keyFile, authKey, profile); err != nil {
-			t.Errorf("UpdateKeyPCRProtectionPolicy failed: %v", err)
+		k, err := ReadSealedKeyObject(keyFile)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
+		if err := k.UpdatePCRProtectionPolicy(tpm, authKey, profile); err != nil {
+			t.Errorf("UpdatePCRProtectionPolicy failed: %v", err)
 		}
 	}
 
@@ -868,7 +872,15 @@ func TestUpdateKeyPCRProtectionPolicyMultiple(t *testing.T) {
 	}
 
 	update := func(t *testing.T, keyFiles []string, authKey PolicyAuthKey, profile *PCRProtectionProfile) {
-		if err := UpdateKeyPCRProtectionPolicyMultiple(tpm, keyFiles, authKey, profile); err != nil {
+		var keys []*SealedKeyObject
+		for _, p := range keyFiles {
+			k, err := ReadSealedKeyObject(p)
+			if err != nil {
+				t.Fatalf("ReadSealedKeyObject failed: %v", err)
+			}
+			keys = append(keys, k)
+		}
+		if err := UpdateKeyPCRProtectionPolicyMultiple(tpm, keys, authKey, profile); err != nil {
 			t.Errorf("UpdateKeyPCRProtectionPolicy failed: %v", err)
 		}
 	}
@@ -1009,7 +1021,7 @@ func TestUpdateKeyPCRProtectionPolicyMultipleUnrelated1(t *testing.T) {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
 
-	var keyFiles []string
+	var keys []*SealedKeyObject
 	for i := 0; i < 3; i++ {
 		keyFile := filepath.Join(tmpDir, fmt.Sprintf("keydata%d", i))
 		if _, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{
@@ -1019,11 +1031,16 @@ func TestUpdateKeyPCRProtectionPolicyMultipleUnrelated1(t *testing.T) {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
 		defer undefineKeyNVSpace(t, tpm, keyFile)
-		keyFiles = append(keyFiles, keyFile)
+
+		k, err := ReadSealedKeyObject(keyFile)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
+		keys = append(keys, k)
 	}
 
-	if err := UpdateKeyPCRProtectionPolicyMultiple(tpm, keyFiles, authKey.D.Bytes(), nil); err == nil ||
-		!strings.HasSuffix(err.Error(), "keydata1 is not a related key file") {
+	if err := UpdateKeyPCRProtectionPolicyMultiple(tpm, keys, authKey.D.Bytes(), nil); err == nil ||
+		!strings.HasSuffix(err.Error(), "key data at index 0 is not related to the primary key data") {
 		t.Errorf("Unexpected error: %v", err)
 	}
 }
@@ -1047,7 +1064,7 @@ func TestUpdateKeyPCRProtectionPolicyMultipleUnrelated2(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	var keyFiles []string
+	var keys []*SealedKeyObject
 
 	keyFile := filepath.Join(tmpDir, "keyfile0")
 	authKey, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{
@@ -1056,7 +1073,11 @@ func TestUpdateKeyPCRProtectionPolicyMultipleUnrelated2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SealKeyToTPM failed: %v", err)
 	}
-	keyFiles = append(keyFiles, keyFile)
+	k, err := ReadSealedKeyObject(keyFile)
+	if err != nil {
+		t.Fatalf("ReadSealedKeyObject failed: %v", err)
+	}
+	keys = append(keys, k)
 
 	for i := 1; i < 3; i++ {
 		keyFile := filepath.Join(tmpDir, fmt.Sprintf("keydata%d", i))
@@ -1065,11 +1086,16 @@ func TestUpdateKeyPCRProtectionPolicyMultipleUnrelated2(t *testing.T) {
 			PCRPolicyCounterHandle: tpm2.HandleNull}); err != nil {
 			t.Fatalf("SealKeyToTPM failed: %v", err)
 		}
-		keyFiles = append(keyFiles, keyFile)
+
+		k, err := ReadSealedKeyObject(keyFile)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
+		keys = append(keys, k)
 	}
 
-	if err := UpdateKeyPCRProtectionPolicyMultiple(tpm, keyFiles, authKey, nil); err == nil ||
-		!strings.HasSuffix(err.Error(), "keydata1 is not a related key file") {
+	if err := UpdateKeyPCRProtectionPolicyMultiple(tpm, keys, authKey, nil); err == nil ||
+		!strings.HasSuffix(err.Error(), "key data at index 0 is not related to the primary key data") {
 		t.Errorf("Unexpected error: %v", err)
 	}
 }

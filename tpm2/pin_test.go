@@ -136,11 +136,14 @@ func (s *pinSuite) checkPIN(c *C, pin string) {
 }
 
 func (s *pinSuite) TestSetAndClearPIN(c *C) {
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
 	testPIN := "1234"
-	c.Check(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Check(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 	s.checkPIN(c, testPIN)
 
-	c.Check(ChangePIN(s.TPM, s.keyFile, testPIN, ""), IsNil)
+	c.Check(k.ChangePIN(s.TPM, testPIN, ""), IsNil)
 	s.checkPIN(c, "")
 }
 
@@ -151,7 +154,9 @@ type testChangePINErrorHandlingData struct {
 }
 
 func (s *pinSuite) testChangePINErrorHandling(c *C, data *testChangePINErrorHandlingData) {
-	c.Check(ChangePIN(s.TPM, data.keyFile, "", "1234"), data.errChecker, data.errCheckerArgs...)
+	k, err := ReadSealedKeyObject(data.keyFile)
+	c.Assert(err, IsNil)
+	c.Check(k.ChangePIN(s.TPM, "", "1234"), data.errChecker, data.errCheckerArgs...)
 }
 
 func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
@@ -165,18 +170,12 @@ func (s *pinSuite) TestChangePINErrorHandling1(c *C) {
 }
 
 func (s *pinSuite) TestChangePINErrorHandling2(c *C) {
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
 	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
 		keyFile:        s.keyFile,
 		errChecker:     Equals,
 		errCheckerArgs: []interface{}{ErrPINFail},
-	})
-}
-
-func (s *pinSuite) TestChangePINErrorHandling3(c *C) {
-	s.testChangePINErrorHandling(c, &testChangePINErrorHandlingData{
-		keyFile:        "/path/to/nothing",
-		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"cannot open key data file: open /path/to/nothing: no such file or directory"},
 	})
 }
