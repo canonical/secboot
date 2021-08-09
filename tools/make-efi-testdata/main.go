@@ -17,6 +17,11 @@ func newSeededRNG(nonce, personalization []byte) (*drbg.DRBG, error) {
 	return drbg.NewCTRWithExternalEntropy(32, rngSeed, nonce, personalization, nil)
 }
 
+func cleanEnv() error {
+	os.Clearenv()
+	return os.Setenv("PATH", "/usr/sbin:/usr/bin:/sbin:/bin")
+}
+
 func run() error {
 	if len(os.Args) != 3 {
 		return fmt.Errorf("Usage: %s <in> <out>", os.Args[0])
@@ -32,6 +37,11 @@ func run() error {
 
 	if err := os.MkdirAll(dstDir, 0755); err != nil {
 		return xerrors.Errorf("cannot create destination directory: %w", err)
+	}
+
+	// Avoid the host environment influencing the creation of the test data.
+	if err := cleanEnv(); err != nil {
+		return xerrors.Errorf("cannot clean environment: %w", err)
 	}
 
 	if err := makeEFIVars(srcDir, dstDir); err != nil {
@@ -52,6 +62,10 @@ func run() error {
 
 	if err := makeTCGLogs(srcDir, dstDir); err != nil {
 		return xerrors.Errorf("cannot create mock TCG logs: %w", err)
+	}
+
+	if err := recordBuildEnv(dstDir); err != nil {
+		return xerrors.Errorf("cannot record build environment: %w", err)
 	}
 
 	return nil

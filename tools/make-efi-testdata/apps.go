@@ -19,11 +19,9 @@ var crossToolchains = map[string]string{
 }
 
 type mockAppData struct {
-	path           string
-	name           string
-	arch           string
-	crossToolchain string
-	makeExtraArgs  []string
+	path          string
+	name          string
+	makeExtraArgs []string
 
 	signKeys  []string
 	signCerts [][]byte

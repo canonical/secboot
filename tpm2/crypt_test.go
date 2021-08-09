@@ -174,7 +174,6 @@ func (s *cryptTPMSimulatorSuite) SetUpTest(c *C) {
 	s.recoveryKey = s.newRecoveryKey()
 	s.addMockKeyslot(c, s.recoveryKey[:])
 
-
 	sdAskPasswordBottom := `
 head -1 %[1]s
 sed -i -e '1,1d' %[1]s
