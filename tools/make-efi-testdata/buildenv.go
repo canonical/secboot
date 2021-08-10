@@ -23,9 +23,10 @@ var packageDeps = []string{
 }
 
 type buildEnv struct {
-	GoArch        string `yaml:"go-arch"`
-	GoVersion     string `yaml:"go-version"`
-	KernelVersion string `yaml:"kernel-version"`
+	GoArch        string            `yaml:"go-arch"`
+	GoVersion     string            `yaml:"go-version"`
+	KernelVersion string            `yaml:"kernel-version"`
+	OsRelease     map[string]string `yaml:"os-release"`
 	Packages      map[string]string
 }
 
@@ -102,13 +103,27 @@ func makeBuildEnvFromCurrent() (*buildEnv, error) {
 	env := &buildEnv{
 		GoArch:    runtime.GOARCH,
 		GoVersion: runtime.Version(),
+		OsRelease: make(map[string]string),
 		Packages:  make(map[string]string)}
 
 	kernelVersion, err := ioutil.ReadFile("/proc/version")
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read kernel version: %w", err)
+		return nil, err
 	}
 	env.KernelVersion = string(kernelVersion)
+
+	osrel, err := ioutil.ReadFile("/etc/os-release")
+	if err != nil {
+		return nil, err
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(osrel))
+	for scanner.Scan() {
+		s := strings.SplitN(scanner.Text(), "=", 2)
+		env.OsRelease[s[0]] = s[1]
+	}
+	if scanner.Err() != nil {
+		return nil, xerrors.Errorf("cannot scan /etc/os-release: %w", err)
+	}
 
 	if err := addEssentialPackages(env); err != nil {
 		return nil, xerrors.Errorf("cannot add essential packages: %w", err)
