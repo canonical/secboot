@@ -51,8 +51,8 @@ import (
 //
 // If the TPM is missing any persistent resources associated with this key file, then a InvalidKeyFileError error will be returned.
 //
-// If the key file has been superceded (eg, by a call to UpdateKeyPCRProtectionPolicy), then a InvalidKeyFileError error will be
-// returned.
+// If the key file has been superceded (eg, by a call to SealedKeyObject.UpdatePCRProtectionPolicy), then a InvalidKeyFileError error
+// will be returned.
 //
 // If the signature of the updatable part of the key file's authorization policy is invalid, then a InvalidKeyFileError error will
 // be returned.

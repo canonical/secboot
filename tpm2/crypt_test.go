@@ -365,7 +365,10 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleSealedKeys6(c *C)
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
-	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
+
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
 
 	s.testActivateVolumeWithMultipleSealedKeys(c, &testActivateVolumeWithMultipleSealedKeysData{
 		volumeName:       "data",
@@ -385,8 +388,12 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleSealedKeys7(c *C)
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
-	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	for _, p := range []string{keyFile, s.keyFile} {
+		k, err := ReadSealedKeyObject(p)
+		c.Assert(err, IsNil)
+		c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
+	}
 
 	s.testActivateVolumeWithMultipleSealedKeys(c, &testActivateVolumeWithMultipleSealedKeysData{
 		volumeName:       "data",
@@ -409,8 +416,12 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleSealedKeys8(c *C)
 
 	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
-	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	for _, p := range []string{keyFile, s.keyFile} {
+		k, err := ReadSealedKeyObject(p)
+		c.Assert(err, IsNil)
+		c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
+	}
 
 	s.testActivateVolumeWithMultipleSealedKeys(c, &testActivateVolumeWithMultipleSealedKeysData{
 		volumeName:       "data",
@@ -433,8 +444,12 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleSealedKeys9(c *C)
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
-	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	for _, p := range []string{keyFile, s.keyFile} {
+		k, err := ReadSealedKeyObject(p)
+		c.Assert(err, IsNil)
+		c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
+	}
 
 	s.testActivateVolumeWithMultipleSealedKeys(c, &testActivateVolumeWithMultipleSealedKeysData{
 		volumeName:       "data",
@@ -458,7 +473,10 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleSealedKeys10(c *C
 	pcrProfile := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).ExtendPCR(tpm2.HashAlgorithmSHA256, 7, make([]byte, 32))
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
 
 	s.testActivateVolumeWithMultipleSealedKeys(c, &testActivateVolumeWithMultipleSealedKeysData{
 		volumeName:       "data",
@@ -671,8 +689,12 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleSealedKeysErrorHa
 
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
-	c.Assert(ChangePIN(s.TPM, keyFile, "", "1234"), IsNil)
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+
+	for _, path := range []string{keyFile, s.keyFile} {
+		k, err := ReadSealedKeyObject(path)
+		c.Assert(err, IsNil)
+		c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
+	}
 
 	s.testActivateVolumeWithMultipleSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleSealedKeysErrorHandlingData{
 		keyFiles:         []string{s.keyFile, keyFile},
@@ -731,7 +753,9 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithMultipleSealedKeysErrorHa
 	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: pcrProfile, PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, IsNil)
 
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
 
 	s.testActivateVolumeWithMultipleSealedKeysErrorHandling(c, &testActivateVolumeWithMultipleSealedKeysErrorHandlingData{
 		keyFiles:         []string{s.keyFile, keyFile},
@@ -930,8 +954,11 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithSealedKeyAndPIN(c *C, dat
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPIN1(c *C) {
 	// Test with a single PIN attempt.
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 	s.testActivateVolumeWithSealedKeyAndPIN(c, &testActivateVolumeWithSealedKeyAndPINData{
 		pins:     []string{testPIN},
 		pinTries: 1,
@@ -940,8 +967,11 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPIN1(c *C) {
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPIN2(c *C) {
 	// Test with 2 PIN attempts.
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 	s.testActivateVolumeWithSealedKeyAndPIN(c, &testActivateVolumeWithSealedKeyAndPINData{
 		pins:     []string{"", testPIN},
 		pinTries: 2,
@@ -982,8 +1012,11 @@ func (s *cryptTPMSimulatorSuite) testActivateVolumeWithSealedKeyAndPINUsingPINRe
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPINUsingPINReader1(c *C) {
 	// Test with the correct PIN provided via the io.Reader.
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 
 	s.testActivateVolumeWithSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithSealedKeyAndPINUsingPINReaderData{
 		pinFileContents: testPIN + "\n",
@@ -993,8 +1026,11 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPINUsingPINRe
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPINUsingPINReader2(c *C) {
 	// Test with the correct PIN provided via the io.Reader when the file doesn't end in a newline.
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 
 	s.testActivateVolumeWithSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithSealedKeyAndPINUsingPINReaderData{
 		pinFileContents: testPIN,
@@ -1004,8 +1040,11 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPINUsingPINRe
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPINUsingPINReader3(c *C) {
 	// Test falling back to asking for a PIN if the wrong PIN is provided via the io.Reader.
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 
 	s.testActivateVolumeWithSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithSealedKeyAndPINUsingPINReaderData{
 		pins:            []string{testPIN},
@@ -1016,8 +1055,11 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPINUsingPINRe
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyAndPINUsingPINReader4(c *C) {
 	// Test falling back to asking for a PIN without using a try if the io.Reader has no contents.
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 
 	s.testActivateVolumeWithSealedKeyAndPINUsingPINReader(c, &testActivateVolumeWithSealedKeyAndPINUsingPINReaderData{
 		pins:     []string{testPIN},
@@ -1183,8 +1225,11 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyErrorHandling7(c
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyErrorHandling8(c *C) {
 	// Test that recovery fallback works if the wrong PIN is supplied.
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
 	testPIN := "1234"
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", testPIN), IsNil)
+	c.Assert(k.ChangePIN(s.TPM, "", testPIN), IsNil)
 	s.testActivateVolumeWithSealedKeyErrorHandling(c, &testActivateVolumeWithSealedKeyErrorHandlingData{
 		pinTries:         1,
 		recoveryKeyTries: 1,
@@ -1202,7 +1247,10 @@ func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyErrorHandling8(c
 
 func (s *cryptTPMSimulatorSuite) TestActivateVolumeWithSealedKeyErrorHandling9(c *C) {
 	// Test that recovery fallback works if a PIN is set but no PIN attempts are permitted.
-	c.Assert(ChangePIN(s.TPM, s.keyFile, "", "1234"), IsNil)
+	k, err := ReadSealedKeyObject(s.keyFile)
+	c.Assert(err, IsNil)
+
+	c.Assert(k.ChangePIN(s.TPM, "", "1234"), IsNil)
 	s.testActivateVolumeWithSealedKeyErrorHandling(c, &testActivateVolumeWithSealedKeyErrorHandlingData{
 		recoveryKeyTries: 1,
 		passphrases:      []string{s.recoveryKey.String()},
