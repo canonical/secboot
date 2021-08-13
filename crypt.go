@@ -530,7 +530,8 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
 	// this key and these settings are already more secure than the 16-byte recovery key. Increased
 	// cost here only slows down unlocking.
-	opts := luks2.FormatOptions{KDFTime: 100 * time.Millisecond}
+	opts := luks2.FormatOptions{
+		KDFOptions: luks2.KDFOptions{TargetDuration: 100 * time.Millisecond}}
 	if options != nil {
 		opts.MetadataKiBSize = options.MetadataKiBSize
 		opts.KeyslotsAreaKiBSize = options.KeyslotsAreaKiBSize
@@ -556,8 +557,8 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
 func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
 	options := luks2.AddKeyOptions{
-		KDFTime: 5 * time.Second,
-		Slot:    luks2.AnySlot}
+		KDFOptions: luks2.KDFOptions{TargetDuration: 5 * time.Second},
+		Slot:       luks2.AnySlot}
 	return luks2.AddKey(devicePath, key, recoveryKey[:], &options)
 }
 
@@ -585,8 +586,8 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 	// this key and these settings are already more secure than the 16-byte recovery key. Increased
 	// cost here only slows down unlocking.
 	options := luks2.AddKeyOptions{
-		KDFTime: 100 * time.Millisecond,
-		Slot:    0}
+		KDFOptions: luks2.KDFOptions{TargetDuration: 100 * time.Millisecond},
+		Slot:       0}
 	if err := luks2.AddKey(devicePath, recoveryKey[:], key, &options); err != nil {
 		return xerrors.Errorf("cannot add key: %w", err)
 	}
