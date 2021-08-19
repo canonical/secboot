@@ -58,9 +58,8 @@ func makeImportableSealedKeyTemplate() *tpm2.Public {
 // TPM supports the PCRs and algorithms defined in the TCG PC Client Platform TPM Profile
 // Specification for TPM 2.0.
 //
-// If tpm is not nil and counterPub is supplied, the current policy count will be read from
-// the TPM and the new PCR policy will have a count of this value + 1. If tpm is nil then
-// counterPub must also be nil, else an error will be returned.
+// If counterPub is supplied, the computed PCR policy will be revocable by incrementing the
+// associated counter index above the supplied policyCount value.
 func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey crypto.PrivateKey,
 	counterPub *tpm2.NVPublic, pcrProfile *PCRProtectionProfile, policyCount uint64,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
@@ -563,7 +562,9 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 		}
 	}
 
-	// Compute a new dynamic authorization policy
+	// Compute a new PCR policy. Increment the policy count by 1. If this key has a PCR
+	// policy counter, then the computed PCR policy can be subsequently revoked by incrementing
+	// the counter to a number higher than this new value.
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
