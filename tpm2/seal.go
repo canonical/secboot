@@ -138,8 +138,8 @@ type KeyCreationParams struct {
 	// PCRProfile defines the profile used to generate a PCR protection policy for the newly created sealed key file.
 	PCRProfile *PCRProtectionProfile
 
-	// PCRPolicyCounterHandle is the handle at which to create a NV index for dynamic authorization poliy revocation support. The handle
-	// must either be tpm2.HandleNull (in which case, no NV index will be created and the sealed key will not benefit from dynamic
+	// PCRPolicyCounterHandle is the handle at which to create a NV index for PCR authorization policy revocation support. The handle
+	// must either be tpm2.HandleNull (in which case, no NV index will be created and the sealed key will not benefit from PCR
 	// authorization policy revocation support), or it must be a valid NV index handle (MSO == 0x01). The choice of handle should take
 	// in to consideration the reserved indices from the "Registry of reserved TPM 2.0 handles and localities" specification. It is
 	// recommended that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
@@ -591,6 +591,10 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 // pcrProfile argument. This function only works with version 0 sealed key data objects. In order to do this, the caller
 // must also specify the path to the policy update data file that was originally saved by SealKeyToTPM.
 //
+// The sequence number of the new PCR policy will be incremented by 1 compared with the value associated with the current
+// PCR policy. This does not increment the PCR policy NV counter on the TPM - this can be done with a subsequent call to
+// RevokeOldPCRProtectionPoliciesV0.
+
 // If the policy update data file cannot be opened, a wrapped *os.PathError error will be returned.
 //
 // If validation of the sealed key data fails, a InvalidKeyFileError error will be returned.
@@ -615,9 +619,17 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, policyUpdateData.authKey, pcrProfile, tpm.HmacSession())
 }
 
-// RevokeOldPCRProtectionPoliciesV0 revokes old PCR protection policies associated with this sealed key. This
-// function only works with version 0 sealed key data objects. The caller must specify the path to the policy
-// update data file that was originally saved by SealKeyToTPM.
+// RevokeOldPCRProtectionPoliciesV0 revokes old PCR protection policies associated with this sealed key. It does
+// this by incrementing the PCR policy counter associated with this sealed key on the TPM so that it contains the
+// value of the current PCR policy sequence number. PCR policies with a lower sequence number cannot be satisfied
+// and become invalid. The PCR policy sequence number is incremented on each call to UpdatePCRProtectionPolicyV0.
+//
+// This function only works with version 0 sealed key data objects. The caller must specify the path to the
+// policy update data file that was originally saved by SealKeyToTPM.
+//
+// Note that this will perform a NV write for each call to UpdatePCRProtectionPolicyV0 since the last call
+// to RevokeOldPCRProtectionPoliciesV0. As TPMs may apply rate-limiting to NV writes, this should be called
+// after each call to UpdatePCRProtectionPolicyV0 that removes some PCR policy branches.
 //
 // If validation of the key data fails, a InvalidKeyFileError error will be returned.
 func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, policyUpdatePath string) error {
@@ -662,6 +674,10 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 // pcrProfile argument. In order to do this, the caller must also specify the private part of the authorization key
 // that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
 //
+// If the sealed key was created with a PCR policy counter, then the sequence number of the new PCR policy will be
+// incremented by 1 compared with the value associated with the current PCR policy. This does not increment the NV
+// counter on the TPM - this can be done with a subsequent call to RevokeOldPCRProtectionPolicies.
+//
 // If validation of the sealed key data fails, a InvalidKeyFileError error will be returned.
 //
 // On success, the sealed key data file is updated atomically with an updated authorization policy that includes a PCR policy
@@ -674,9 +690,18 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey Pol
 	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, ecdsaAuthKey, pcrProfile, tpm.HmacSession())
 }
 
-// RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. If the key
-// data was not created with a PCR policy counter, then this function does nothing. The caller must also specify
-// the private part of the authorization key that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
+// RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. It does
+// this by incrementing the PCR policy counter associated with this sealed key on the TPM so that it contains the
+// value of the current PCR policy sequence number. PCR policies with a lower sequence number cannot be satisfied
+// and become invalid. The PCR policy sequence number is incremented on each call to UpdatePCRProtectionPolicy.
+// If the key data was not created with a PCR policy counter, then this function does nothing.
+//
+// The caller must also specify the private part of the authorization key that was either returned by SealKeyToTPM
+// or SealedKeyObject.UnsealFromTPM.
+//
+// Note that this will perform a NV write for each call to UpdatePCRProtectionPolicy since the last call
+// to RevokeOldPCRProtectionPolicies. As TPMs may apply rate-limiting to NV writes, this should be called
+// after each call to UpdatePCRProtectionPolicy that removes some PCR policy branches.
 //
 // If validation of the key data fails, a InvalidKeyFileError error will be returned.
 func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey PolicyAuthKey) error {
