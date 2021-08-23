@@ -63,16 +63,16 @@ func TestPcrPolicyCounterHandleSet(t *testing.T) {
 		t.Fatalf("NewPcrPolicyCounterHandleV1 failed: %v", err)
 	}
 
-	if err := h.Set(tpm.TPMContext, initialCount+1, key, tpm.HmacSession()); err != nil {
-		t.Errorf("Set failed: %v", err)
+	if err := IncrementPcrPolicyCounterTo(tpm.TPMContext, h, initialCount+10, key, tpm.HmacSession()); err != nil {
+		t.Errorf("Increment failed: %v", err)
 	}
 
 	count, err := h.Get(tpm.TPMContext, tpm.HmacSession())
 	if err != nil {
 		t.Errorf("Get failed: %v", err)
 	}
-	if count != initialCount+1 {
-		t.Errorf("Get returned an unexpected count (got %d, expected %d)", count, initialCount+1)
+	if count != initialCount+10 {
+		t.Errorf("Get returned an unexpected count (got %d, expected %d)", count, initialCount+10)
 	}
 }
 

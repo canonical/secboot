@@ -59,7 +59,7 @@ func makeImportableSealedKeyTemplate() *tpm2.Public {
 // Specification for TPM 2.0.
 //
 // If counterPub is supplied, the computed PCR policy will be revocable by incrementing the
-// associated counter index above the supplied policyCount value.
+// associated counter index to a value that is greater than the supplied policyCount value.
 func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg, signAlg tpm2.HashAlgorithmId, authKey crypto.PrivateKey,
 	counterPub *tpm2.NVPublic, pcrProfile *PCRProtectionProfile, policyCount uint64,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
@@ -562,9 +562,9 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 		}
 	}
 
-	// Compute a new PCR policy. Increment the policy count by 1. If this key has a PCR
-	// policy counter, then the computed PCR policy can be subsequently revoked by incrementing
-	// the counter to a number higher than this new value.
+	// Compute a new PCR policy, incrementing the policy count by 1. If this key has a PCR
+	// policy counter, then previous PCR policies can be revoked by incrementing the counter
+	// to this new value.
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
@@ -647,9 +647,11 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 		return nil
 	}
 
-	handle := newPcrPolicyCounterHandleV0(pcrPolicyCounterPub, k.data.staticPolicyData.authPublicKey, k.data.staticPolicyData.v0PinIndexAuthPolicies)
+	handle := newPcrPolicyCounterHandleV0(pcrPolicyCounterPub, k.data.staticPolicyData.authPublicKey,
+		k.data.staticPolicyData.v0PinIndexAuthPolicies)
 
-	if err := handle.Set(tpm.TPMContext, k.data.dynamicPolicyData.policyCount, policyUpdateData.authKey, tpm.HmacSession()); err != nil {
+	if err := incrementPcrPolicyCounterTo(tpm.TPMContext, handle, k.data.dynamicPolicyData.policyCount,
+		policyUpdateData.authKey, tpm.HmacSession()); err != nil {
 		return xerrors.Errorf("cannot revoke old PCR policies: %w", err)
 	}
 
@@ -700,7 +702,8 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKe
 		return xerrors.Errorf("cannot create handle to revoke old PCR policies: %w", err)
 	}
 
-	if err := handle.Set(tpm.TPMContext, k.data.dynamicPolicyData.policyCount, ecdsaAuthKey, tpm.HmacSession()); err != nil {
+	if err := incrementPcrPolicyCounterTo(tpm.TPMContext, handle, k.data.dynamicPolicyData.policyCount,
+		ecdsaAuthKey, tpm.HmacSession()); err != nil {
 		return xerrors.Errorf("cannot revoke old PCR policies: %w", err)
 	}
 

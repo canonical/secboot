@@ -47,6 +47,7 @@ var (
 	ComputeStaticPolicy                   = computeStaticPolicy
 	CreateTPMPublicAreaForECDSAKey        = createTPMPublicAreaForECDSAKey
 	ExecutePolicySession                  = executePolicySession
+	IncrementPcrPolicyCounterTo           = incrementPcrPolicyCounterTo
 	IsDynamicPolicyDataError              = isDynamicPolicyDataError
 	IsStaticPolicyDataError               = isStaticPolicyDataError
 	LockNVIndex1Attrs                     = lockNVIndex1Attrs
