@@ -35,6 +35,14 @@
 			"versionExact": "main"
 		},
 		{
+			"checksumSHA1": "5zGeHDBvsYpgEyZ91hgSF0zLxyU=",
+			"path": "github.com/canonical/go-sp800.108-kdf",
+			"revision": "ead800bbf9a0ff709ebd9f3067d6f28dc700d1b5",
+			"revisionTime": "2021-03-15T10:40:21Z",
+			"version": "main",
+			"versionExact": "main"
+		},
+		{
 			"checksumSHA1": "CT15zzEmXx3dQ7/PJCSwZhqSV/o=",
 			"path": "github.com/canonical/go-sp800.90a-drbg",
 			"revision": "6eeb1040d6c3a6b618a8da5e42ef66b35e7a3ddd",
@@ -67,6 +75,12 @@
 		{
 			"checksumSHA1": "XhX0jJCdJOvsn4pIOL0H8J9YV54=",
 			"path": "github.com/canonical/go-tpm2/mu",
+			"revision": "09737a6617acced3befb8084e63dd6084b8f0d8a",
+			"revisionTime": "2021-08-24T19:02:25Z"
+		},
+		{
+			"checksumSHA1": "uZAV20wIyayJqOPyFAf3H5V4o3k=",
+			"path": "github.com/canonical/go-tpm2/templates",
 			"revision": "09737a6617acced3befb8084e63dd6084b8f0d8a",
 			"revisionTime": "2021-08-24T19:02:25Z"
 		},
