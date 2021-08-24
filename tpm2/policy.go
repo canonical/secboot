@@ -28,6 +28,7 @@ import (
 	"errors"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
 )
@@ -153,7 +154,7 @@ func makeStaticPolicyDataRaw_v1(data *staticPolicyData) *staticPolicyDataRaw_v1 
 
 // computePcrPolicyCounterAuthPolicies computes the authorization policy digests passed to TPM2_PolicyOR for a PCR
 // policy counter that can be updated with the key associated with updateKeyName.
-func computePcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) (tpm2.DigestList, error) {
+func computePcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
 	// The NV index requires 2 policies:
 	// - A policy to initialize the index with no authorization
 	// - A policy for updating the index to revoke old PCR policies using a signed assertion. This isn't done for security
@@ -164,18 +165,15 @@ func computePcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName
 	// authorization value, but it is always empty and this policy doesn't allow it to be changed).
 	var authPolicies tpm2.DigestList
 
-	trial, err := tpm2.ComputeAuthPolicy(alg)
-	if err != nil {
-		return nil, err
-	}
+	trial := util.ComputeAuthPolicy(alg)
 	trial.PolicyNvWritten(false)
 	authPolicies = append(authPolicies, trial.GetDigest())
 
-	trial, _ = tpm2.ComputeAuthPolicy(alg)
+	trial = util.ComputeAuthPolicy(alg)
 	trial.PolicySigned(updateKeyName, nil)
 	authPolicies = append(authPolicies, trial.GetDigest())
 
-	return authPolicies, nil
+	return authPolicies
 }
 
 // incrementPcrPolicyCounter will increment the NV counter index associated with nvPublic. This is designed to operate on a
@@ -201,9 +199,9 @@ func incrementPcrPolicyCounter(tpm *tpm2.TPMContext, version uint32, nvPublic *t
 
 	// Compute a digest for signing with the update key
 	signDigest := tpm2.HashAlgorithmNull
-	keyScheme := keyPublic.Params.AsymDetail().Scheme
+	keyScheme := keyPublic.Params.AsymDetail(keyPublic.Type).Scheme
 	if keyScheme.Scheme != tpm2.AsymSchemeNull {
-		signDigest = keyScheme.Details.Any().HashAlg
+		signDigest = keyScheme.Details.Any(keyScheme.Scheme).HashAlg
 	}
 	if signDigest == tpm2.HashAlgorithmNull {
 		signDigest = tpm2.HashAlgorithmSHA256
@@ -262,10 +260,9 @@ func incrementPcrPolicyCounter(tpm *tpm2.TPMContext, version uint32, nvPublic *t
 			return xerrors.Errorf("cannot execute assertion to increment counter: %w", err)
 		}
 	} else {
-		nvAuthPolicies, err = computePcrPolicyCounterAuthPolicies(nvPublic.NameAlg, keyLoaded.Name())
-		if err != nil {
-			return xerrors.Errorf("cannot compute auth policies for counter: %w", err)
-		}
+		// nvPublic.NameAlg is available because we successfully created a policy session
+		// with it.
+		nvAuthPolicies = computePcrPolicyCounterAuthPolicies(nvPublic.NameAlg, keyLoaded.Name())
 	}
 
 	if _, _, err := tpm.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, &signature); err != nil {
@@ -333,9 +330,9 @@ func readPcrPolicyCounter(tpm *tpm2.TPMContext, version uint32, nvPublic *tpm2.N
 func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKeyName tpm2.Name, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
-	authPolicies, _ := computePcrPolicyCounterAuthPolicies(nameAlg, updateKeyName)
+	authPolicies := computePcrPolicyCounterAuthPolicies(nameAlg, updateKeyName)
 
-	trial, _ := tpm2.ComputeAuthPolicy(nameAlg)
+	trial := util.ComputeAuthPolicy(nameAlg)
 	trial.PolicyOR(authPolicies)
 
 	// Define the NV index
@@ -452,7 +449,7 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 		}
 	}
 
-	trial, _ := tpm2.ComputeAuthPolicy(alg)
+	trial := util.ComputeAuthPolicy(alg)
 	trial.PolicyAuthorize(computePcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
 	trial.PolicyAuthValue()
 
@@ -468,12 +465,12 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 // for the final TPM2_PolicyOR assertion, and leaf nodes containing digests for each OR condition. Whilst the returned data is
 // conceptually a tree, the layout in memory is just a slice of tables of up to 8 digests, each with an index that enables the code
 // executing the assertions to traverse upwards through the tree by just advancing to another entry in the slice. This format is
-// easily serialized. After the computations are completed, the provided *tpm2.TrialAuthPolicy will be updated.
+// easily serialized. After the computations are completed, the provided *util.TrialAuthPolicy will be updated.
 //
 // The returned data is used by firstly finding the leaf node which contains the current session digest. Once this is found, a
 // TPM2_PolicyOR assertion is executed on the digests in that node, and then the tree is traversed upwards to the root node, executing
 // TPM2_PolicyOR assertions along the way - see executePolicyORAssertions.
-func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, digests tpm2.DigestList) policyOrDataTree {
+func computePolicyORData(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, digests tpm2.DigestList) policyOrDataTree {
 	var data policyOrDataTree
 	curNode := 0
 	var nextDigests tpm2.DigestList
@@ -492,7 +489,7 @@ func computePolicyORData(alg tpm2.HashAlgorithmId, trial *tpm2.TrialAuthPolicy, 
 		}
 
 		// Consume the next n digests to fit in to this node and produce a single digest that will go in to the parent node.
-		trial, _ := tpm2.ComputeAuthPolicy(alg)
+		trial := util.ComputeAuthPolicy(alg)
 		trial.PolicyOR(ensureSufficientORDigests(digests[:n]))
 		nextDigests = append(nextDigests, trial.GetDigest())
 
@@ -537,12 +534,12 @@ func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynam
 	// Compute the policy digest that would result from a TPM2_PolicyPCR assertion for each condition
 	var pcrOrDigests tpm2.DigestList
 	for _, d := range input.pcrDigests {
-		trial, _ := tpm2.ComputeAuthPolicy(alg)
+		trial := util.ComputeAuthPolicy(alg)
 		trial.PolicyPCR(d, input.pcrs)
 		pcrOrDigests = append(pcrOrDigests, trial.GetDigest())
 	}
 
-	trial, _ := tpm2.ComputeAuthPolicy(alg)
+	trial := util.ComputeAuthPolicy(alg)
 	pcrOrData := computePolicyORData(alg, trial, pcrOrDigests)
 
 	if len(input.policyCounterName) > 0 {
@@ -720,7 +717,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 			if err != nil {
 				return xerrors.Errorf("cannot read public area for PCR policy counter: %w", err)
 			}
-			if !policyCounterPub.NameAlg.Supported() {
+			if !policyCounterPub.NameAlg.Available() {
 				//If the NV index has an unsupported name algorithm, then this key file is invalid and must be recreated.
 				return staticPolicyDataError{errors.New("PCR policy counter has an unsupported name algorithm")}
 			}
@@ -762,7 +759,7 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 
 	authPublicKey := staticInput.authPublicKey
-	if !authPublicKey.NameAlg.Supported() {
+	if !authPublicKey.NameAlg.Available() {
 		return staticPolicyDataError{errors.New("public area of dynamic authorization policy signing key has an unsupported name algorithm")}
 	}
 	authorizeKey, err := tpm.LoadExternal(nil, authPublicKey, tpm2.HandleOwner)

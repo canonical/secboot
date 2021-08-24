@@ -21,6 +21,7 @@ package testutil
 
 import (
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mssim"
 	"github.com/snapcore/snapd/testutil"
 
 	"golang.org/x/sys/unix"
@@ -117,7 +118,7 @@ func (b *TPMTestBase) SetHierarchyAuth(c *C, hierarchy tpm2.Handle) {
 
 type TPMSimulatorTestBase struct {
 	TPMTestBase
-	tcti *tpm2.TctiMssim
+	tcti *mssim.Tcti
 }
 
 func (b *TPMSimulatorTestBase) SetUpTest(c *C) {

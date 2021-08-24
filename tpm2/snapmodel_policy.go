@@ -139,7 +139,7 @@ func measureSnapPropertyToTPM(tpm *Connection, pcrIndex int, computeDigest func(
 
 	var digests tpm2.TaggedHashList
 	for _, s := range pcrSelection {
-		if !s.Hash.Supported() {
+		if !s.Hash.Available() {
 			// We can't compute a digest for this algorithm, which is unfortunate. It's unlikely that we'll come across a TPM that supports a
 			// digest algorithm that go doesn't have an implementation of, so just skip it to avoid a panic - we can't generate a PCR profile
 			// bound to any PCRs in this bank anyway.

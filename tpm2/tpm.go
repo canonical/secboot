@@ -350,13 +350,8 @@ func connectToDefaultTPM() (*tpm2.TPMContext, error) {
 		return nil, xerrors.Errorf("cannot open TPM device: %w", err)
 	}
 
-	tpm, _ := tpm2.NewTPMContext(tcti)
-	isTpm2, err := tpm.IsTPM2()
-	if err != nil {
-		tpm.Close()
-		return nil, xerrors.Errorf("cannot determine if TPM is a TPM2 device: %w", err)
-	}
-	if !isTpm2 {
+	tpm := tpm2.NewTPMContext(tcti)
+	if !tpm.IsTPM2() {
 		tpm.Close()
 		return nil, ErrNoTPM2Device
 	}

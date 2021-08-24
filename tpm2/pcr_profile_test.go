@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
 
 	"github.com/snapcore/secboot/internal/testutil"
 	. "github.com/snapcore/secboot/tpm2"
@@ -327,7 +328,7 @@ func TestPCRProtectionProfile(t *testing.T) {
 			expectedPcrs := data.values[0].SelectionList()
 			var expectedDigests tpm2.DigestList
 			for _, v := range data.values {
-				d, _ := tpm2.ComputePCRDigest(data.alg, expectedPcrs, v)
+				d, _ := util.ComputePCRDigest(data.alg, expectedPcrs, v)
 				expectedDigests = append(expectedDigests, d)
 			}
 
@@ -409,7 +410,7 @@ func TestPCRProtectionProfileAddValueFromTPM(t *testing.T) {
 	if len(digests) != 1 {
 		t.Fatalf("ComputePCRDigests returned the wrong number of digests")
 	}
-	expectedDigest, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}, tpmValues)
+	expectedDigest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}}, tpmValues)
 	if !bytes.Equal(digests[0], expectedDigest) {
 		t.Errorf("ComputePCRDigests returned unexpected values")
 	}

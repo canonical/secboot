@@ -32,6 +32,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
 )
@@ -269,7 +270,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath str
 		panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
 	}
 	// Define the actual sensitive area. The initial auth value is empty - note
-	// that tpm2.CreateDuplicationObjectFromSensitive pads this to the length of
+	// that util.CreateDuplicationObjectFromSensitive pads this to the length of
 	// the name algorithm for us so we don't define it here.
 	sensitive := tpm2.Sensitive{
 		Type:      pub.Type,
@@ -286,7 +287,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath str
 	pub.Unique = &tpm2.PublicIDU{KeyedHash: h.Sum(nil)}
 
 	// Now create the importable sealed key object (duplication object).
-	_, priv, importSymSeed, err := tpm2.CreateDuplicationObjectFromSensitive(&sensitive, pub, tpmKey, nil, nil)
+	_, priv, importSymSeed, err := util.CreateDuplicationObjectFromSensitive(&sensitive, pub, tpmKey, nil, nil)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create duplication object: %w", err)
 	}

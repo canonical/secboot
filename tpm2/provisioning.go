@@ -119,7 +119,7 @@ func selectSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) *tpm2.
 		return tcg.SRKTemplate
 	}
 
-	if !tmpl.IsParent() {
+	if !tmpl.IsStorageParent() {
 		return tcg.SRKTemplate
 	}
 
@@ -357,7 +357,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 // completed without using the lockout hierarchy, but the function should be called again either with mode set to ProvisionModeFull
 // (if the authorization value for the lockout hierarchy is known), or ProvisionModeClear.
 func (t *Connection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public) error {
-	if srkTemplate != nil && !srkTemplate.IsParent() {
+	if srkTemplate != nil && !srkTemplate.IsStorageParent() {
 		return errors.New("supplied SRK template is not valid for a parent key")
 	}
 

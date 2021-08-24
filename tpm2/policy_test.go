@@ -31,6 +31,7 @@ import (
 	"unsafe"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
 
 	"github.com/snapcore/secboot/internal/testutil"
 	. "github.com/snapcore/secboot/tpm2"
@@ -137,8 +138,8 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 	publicKey := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	publicKeyName, _ := publicKey.Name()
 
-	pcrPolicyCounterAuthPolicies, _ := ComputePcrPolicyCounterAuthPolicies(tpm2.HashAlgorithmSHA256, publicKeyName)
-	trial, _ := tpm2.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
+	pcrPolicyCounterAuthPolicies := ComputePcrPolicyCounterAuthPolicies(tpm2.HashAlgorithmSHA256, publicKeyName)
+	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
 	trial.PolicyOR(pcrPolicyCounterAuthPolicies)
 
 	pcrPolicyCounterPub := &tpm2.NVPublic{
@@ -232,7 +233,7 @@ func (b *pcrDigestBuilder) addDigest(digest tpm2.Digest) *pcrDigestBuilder {
 }
 
 func (b *pcrDigestBuilder) end() tpm2.Digest {
-	digest, err := tpm2.ComputePCRDigest(b.alg, b.pcrs, b.values)
+	digest, err := util.ComputePCRDigest(b.alg, b.pcrs, b.values)
 	if err != nil {
 		b.t.Fatalf("ComputePCRDigest failed: %v", err)
 	}
@@ -443,7 +444,7 @@ func TestComputePolicyORData(t *testing.T) {
 		},
 	} {
 		t.Run(data.desc, func(t *testing.T) {
-			trial, _ := tpm2.ComputeAuthPolicy(data.alg)
+			trial := util.ComputeAuthPolicy(data.alg)
 			orData := ComputePolicyORData(data.alg, trial, data.inputDigests)
 			if !bytes.Equal(trial.GetDigest(), data.outputPolicy) {
 				t.Errorf("Unexpected policy digest (got %x, expected %x)", trial.GetDigest(), data.outputPolicy)
@@ -464,7 +465,7 @@ func TestComputePolicyORData(t *testing.T) {
 						break
 					}
 
-					trial, _ := tpm2.ComputeAuthPolicy(data.alg)
+					trial := util.ComputeAuthPolicy(data.alg)
 					if len(orData[n].Digests) == 1 {
 						trial.PolicyOR(tpm2.DigestList{orData[n].Digests[0], orData[n].Digests[0]})
 					} else {
@@ -718,7 +719,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 		t.Run(data.desc, func(t *testing.T) {
 			var pcrDigests tpm2.DigestList
 			for _, v := range data.pcrValues {
-				d, _ := tpm2.ComputePCRDigest(data.alg, data.pcrs, v)
+				d, _ := util.ComputePCRDigest(data.alg, data.pcrs, v)
 				pcrDigests = append(pcrDigests, d)
 			}
 			dataout, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg, NewDynamicPolicyComputeParams(key, data.signAlg, data.pcrs, pcrDigests, data.policyCounterName, data.policyCount))
@@ -824,7 +825,7 @@ func TestExecutePolicy(t *testing.T) {
 		signAlg := staticPolicyData.AuthPublicKey().NameAlg
 		var pcrDigests tpm2.DigestList
 		for _, v := range data.pcrValues {
-			d, _ := tpm2.ComputePCRDigest(data.alg, data.pcrs, v)
+			d, _ := util.ComputePCRDigest(data.alg, data.pcrs, v)
 			pcrDigests = append(pcrDigests, d)
 		}
 		dynamicPolicyData, err := ComputeDynamicPolicy(CurrentMetadataVersion, data.alg,
