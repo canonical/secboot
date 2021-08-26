@@ -25,6 +25,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
 )
@@ -364,7 +365,10 @@ func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 	// Compute the PCR digests for all branches, making sure that they all contain values for the same sets of PCRs.
 	var pcrDigests tpm2.DigestList
 	for _, v := range values {
-		p, digest, _ := tpm2.ComputePCRDigestSimple(alg, v)
+		p, digest, err := util.ComputePCRDigestFromAllValues(alg, v)
+		if err != nil {
+			return nil, nil, xerrors.Errorf("cannot compute PCR digest: %w", err)
+		}
 		if !p.Equal(pcrs) {
 			return nil, nil, errors.New("not all branches contain values for the same sets of PCRs")
 		}

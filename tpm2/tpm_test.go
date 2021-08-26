@@ -29,6 +29,7 @@ import (
 	"testing"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mssim"
 
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
@@ -69,7 +70,7 @@ func TestConnectionIsEnabled(t *testing.T) {
 
 func TestConnectToDefaultTPM(t *testing.T) {
 	restore := testutil.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tpm2.OpenMssim("", testutil.MssimPort, testutil.MssimPort+1)
+		return mssim.OpenConnection("", testutil.MssimPort)
 	})
 	defer restore()
 
@@ -214,7 +215,7 @@ func TestSecureConnectToDefaultTPM(t *testing.T) {
 	}
 
 	restore := testutil.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tpm2.OpenMssim("", testutil.MssimPort, testutil.MssimPort+1)
+		return mssim.OpenConnection("", testutil.MssimPort)
 	})
 	defer restore()
 

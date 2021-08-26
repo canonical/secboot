@@ -40,6 +40,8 @@ import (
 	"time"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/linux"
+	"github.com/canonical/go-tpm2/mssim"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 	"github.com/snapcore/snapd/snap"
@@ -214,13 +216,13 @@ func LaunchTPMSimulator(opts *TPMSimulatorOptions) (func(), error) {
 				}
 			}()
 
-			tcti, err := tpm2.OpenMssim("", MssimPort, MssimPort+1)
+			tcti, err := mssim.OpenConnection("", MssimPort)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot open TPM simulator connection for shutdown: %v\n", err)
 				return
 			}
 
-			tpm, _ := tpm2.NewTPMContext(tcti)
+			tpm := tpm2.NewTPMContext(tcti)
 			if err := tpm.Shutdown(tpm2.StartupClear); err != nil {
 				fmt.Fprintf(os.Stderr, "TPM simulator shutdown failed: %v\n", err)
 			}
@@ -281,12 +283,12 @@ func LaunchTPMSimulator(opts *TPMSimulatorOptions) (func(), error) {
 		return nil, xerrors.Errorf("cannot start simulator: %w", err)
 	}
 
-	var tcti *tpm2.TctiMssim
+	var tcti *mssim.Tcti
 	// Give the simulator 5 seconds to start up
 Loop:
 	for i := 0; ; i++ {
 		var err error
-		tcti, err = tpm2.OpenMssim("", MssimPort, MssimPort+1)
+		tcti, err = mssim.OpenConnection("", MssimPort)
 		switch {
 		case err != nil && i == 4:
 			return nil, xerrors.Errorf("cannot open simulator connection: %w", err)
@@ -297,7 +299,7 @@ Loop:
 		}
 	}
 
-	tpm, _ := tpm2.NewTPMContext(tcti)
+	tpm := tpm2.NewTPMContext(tcti)
 	defer tpm.Close()
 
 	if err := tpm.Startup(tpm2.StartupClear); err != nil {
@@ -439,7 +441,7 @@ func TrustCA(cert []byte) (restore func()) {
 }
 
 // ResetTPMSimulator issues a Shutdown -> Reset -> Startup cycle of the TPM simulator and then returns a new connection.
-func ResetTPMSimulator(tpm *secboot_tpm2.Connection, tcti *tpm2.TctiMssim) (*secboot_tpm2.Connection, *tpm2.TctiMssim, error) {
+func ResetTPMSimulator(tpm *secboot_tpm2.Connection, tcti *mssim.Tcti) (*secboot_tpm2.Connection, *mssim.Tcti, error) {
 	if err := tpm.Shutdown(tpm2.StartupClear); err != nil {
 		return nil, nil, fmt.Errorf("Shutdown failed: %v", err)
 	}
@@ -456,7 +458,7 @@ func ResetTPMSimulator(tpm *secboot_tpm2.Connection, tcti *tpm2.TctiMssim) (*sec
 	return OpenTPMSimulatorForTesting()
 }
 
-func OpenTPMSimulatorForTesting() (*secboot_tpm2.Connection, *tpm2.TctiMssim, error) {
+func OpenTPMSimulatorForTesting() (*secboot_tpm2.Connection, *mssim.Tcti, error) {
 	if !UseMssim {
 		return nil, nil, nil
 	}
@@ -465,11 +467,11 @@ func OpenTPMSimulatorForTesting() (*secboot_tpm2.Connection, *tpm2.TctiMssim, er
 		return nil, nil, errors.New("cannot specify both -use-tpm and -use-mssim")
 	}
 
-	var tcti *tpm2.TctiMssim
+	var tcti *mssim.Tcti
 
 	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
 		var err error
-		tcti, err = tpm2.OpenMssim("", MssimPort, MssimPort+1)
+		tcti, err = mssim.OpenConnection("", MssimPort)
 		return tcti, err
 	})
 	defer restore()
@@ -499,7 +501,7 @@ func OpenTPMForTesting() (*secboot_tpm2.Connection, error) {
 	}
 
 	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tpm2.OpenTPMDevice(tpmPathForTest)
+		return linux.OpenDevice(tpmPathForTest)
 	})
 	defer restore()
 

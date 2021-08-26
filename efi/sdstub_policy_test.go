@@ -21,6 +21,7 @@ package efi_test
 
 import (
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -48,7 +49,7 @@ func (s *sdstubPolicySuite) testAddSystemdStubProfile(c *C, data *testAddSystemd
 	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
 	var expectedDigests tpm2.DigestList
 	for _, v := range data.values {
-		d, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
+		d, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
 		expectedDigests = append(expectedDigests, d)
 	}
 
