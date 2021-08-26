@@ -23,6 +23,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"hash"
+	"io"
 
 	"github.com/canonical/go-tpm2"
 
@@ -39,29 +41,78 @@ func computeSnapSystemEpochDigest(alg tpm2.HashAlgorithmId, epoch uint32) tpm2.D
 	return h.Sum(nil)
 }
 
-func computeSnapModelDigest(alg tpm2.HashAlgorithmId, model secboot.SnapModel) (tpm2.Digest, error) {
+type snapModelHasher interface {
+	io.Writer
+	Complete() ([]byte, error)
+	Abort()
+}
+
+type goSnapModelHasher struct {
+	hash.Hash
+}
+
+func (h *goSnapModelHasher) Complete() ([]byte, error) {
+	return h.Sum(nil), nil
+}
+
+func (h *goSnapModelHasher) Abort() {}
+
+type tpmSnapModelHasher struct {
+	tpm *Connection
+	seq tpm2.ResourceContext
+	buf []byte
+}
+
+func (h *tpmSnapModelHasher) Write(data []byte) (int, error) {
+	h.buf = append(h.buf, data...)
+	return len(data), nil
+}
+
+func (h *tpmSnapModelHasher) Complete() ([]byte, error) {
+	digest, _, err := h.tpm.SequenceExecute(h.seq, h.buf, tpm2.HandleNull, h.tpm.HmacSession())
+	return digest, err
+}
+
+func (h *tpmSnapModelHasher) Abort() {
+	// This is flushed automatically by the TPM on a successful
+	// TPM2_SequenceComplete, we just need a manual flush if
+	// the sequence fails.
+	h.tpm.FlushContext(h.seq)
+}
+
+func computeSnapModelDigest(newHash func() (snapModelHasher, error), model secboot.SnapModel) (digest tpm2.Digest, err error) {
 	signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
 	if err != nil {
 		return nil, xerrors.Errorf("cannot decode signing key ID: %w", err)
 	}
 
-	h := alg.NewHash()
+	h, err := newHash()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { h.Abort() }()
+
 	binary.Write(h, binary.LittleEndian, uint16(tpm2.HashAlgorithmSHA384))
 	h.Write(signKeyId)
 	h.Write([]byte(model.BrandID()))
-	digest := h.Sum(nil)
+	digest, err = h.Complete()
+	if err != nil {
+		return nil, err
+	}
 
-	h = alg.NewHash()
+	h, err = newHash()
 	h.Write(digest)
 	h.Write([]byte(model.Model()))
-	digest = h.Sum(nil)
+	digest, err = h.Complete()
+	if err != nil {
+		return nil, err
+	}
 
-	h = alg.NewHash()
+	h, err = newHash()
 	h.Write(digest)
 	h.Write([]byte(model.Series()))
 	binary.Write(h, binary.LittleEndian, model.Grade().Code())
-
-	return h.Sum(nil), nil
+	return h.Complete()
 }
 
 // SnapModelProfileParams provides the parameters to AddSnapModelProfile.
@@ -120,7 +171,9 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 			return errors.New("nil model")
 		}
 
-		digest, err := computeSnapModelDigest(params.PCRAlgorithm, model)
+		digest, err := computeSnapModelDigest(func() (snapModelHasher, error) {
+			return &goSnapModelHasher{params.PCRAlgorithm.NewHash()}, nil
+		}, model)
 		if err != nil {
 			return err
 		}
@@ -131,7 +184,30 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 	return nil
 }
 
-func measureSnapPropertyToTPM(tpm *Connection, pcrIndex int, computeDigest func(tpm2.HashAlgorithmId) (tpm2.Digest, error)) error {
+// MeasureSnapSystemEpochToTPM measures a digest of uint32(0) to the specified PCR for all
+// supported PCR banks. See the documentation for AddSnapModelProfile for more details.
+func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
+	seq, err := tpm.HashSequenceStart(nil, tpm2.HashAlgorithmNull)
+	if err != nil {
+		return xerrors.Errorf("cannot begin event sequence: %w", err)
+	}
+
+	var epoch [4]byte
+	// This doesn't do anything whilst the epoch is zero, but keep it here
+	// in case it is ever bumped.
+	binary.LittleEndian.PutUint32(epoch[:], zeroSnapSystemEpoch)
+
+	if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcrIndex), seq, epoch[:], tpm.HmacSession(), nil); err != nil {
+		return xerrors.Errorf("cannot execute event sequence: %w", err)
+	}
+
+	return nil
+}
+
+// MeasureSnapModelToTPM measures a digest of the supplied model assertion to the specified PCR
+// for all supported PCR banks. See the documentation for AddSnapModelProfile for details of
+// how the digest of the model is computed.
+func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapModel) error {
 	pcrSelection, err := tpm.GetCapabilityPCRs(tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
 		return xerrors.Errorf("cannot determine supported PCR banks: %w", err)
@@ -139,14 +215,13 @@ func measureSnapPropertyToTPM(tpm *Connection, pcrIndex int, computeDigest func(
 
 	var digests tpm2.TaggedHashList
 	for _, s := range pcrSelection {
-		if !s.Hash.Supported() {
-			// We can't compute a digest for this algorithm, which is unfortunate. It's unlikely that we'll come across a TPM that supports a
-			// digest algorithm that go doesn't have an implementation of, so just skip it to avoid a panic - we can't generate a PCR profile
-			// bound to any PCRs in this bank anyway.
-			continue
-		}
-
-		digest, err := computeDigest(s.Hash)
+		digest, err := computeSnapModelDigest(func() (snapModelHasher, error) {
+			seq, err := tpm.HashSequenceStart(nil, s.Hash)
+			if err != nil {
+				return nil, err
+			}
+			return &tpmSnapModelHasher{tpm: tpm, seq: seq}, nil
+		}, model)
 		if err != nil {
 			return xerrors.Errorf("cannot compute digest for algorithm %v: %w", s.Hash, err)
 		}
@@ -155,20 +230,4 @@ func measureSnapPropertyToTPM(tpm *Connection, pcrIndex int, computeDigest func(
 	}
 
 	return tpm.PCRExtend(tpm.PCRHandleContext(pcrIndex), digests, tpm.HmacSession())
-}
-
-// MeasureSnapSystemEpochToTPM measures a digest of uint32(0) to the specified PCR for all supported PCR banks. See the documentation
-// for AddSnapModelProfile for more details.
-func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
-	return measureSnapPropertyToTPM(tpm, pcrIndex, func(alg tpm2.HashAlgorithmId) (tpm2.Digest, error) {
-		return computeSnapSystemEpochDigest(alg, zeroSnapSystemEpoch), nil
-	})
-}
-
-// MeasureSnapModelToTPM measures a digest of the supplied model assertion to the specified PCR for all supported PCR banks.
-// See the documentation for AddSnapModelProfile for details of how the digest of the model is computed.
-func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapModel) error {
-	return measureSnapPropertyToTPM(tpm, pcrIndex, func(alg tpm2.HashAlgorithmId) (tpm2.Digest, error) {
-		return computeSnapModelDigest(alg, model)
-	})
 }

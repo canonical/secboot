@@ -83,6 +83,9 @@ func (d *DynamicPolicyData) AuthorizedPolicySignature() *tpm2.Signature {
 	return d.authorizedPolicySignature
 }
 
+type GoSnapModelHasher = goSnapModelHasher
+type SnapModelHasher = snapModelHasher
+
 type StaticPolicyData = staticPolicyData
 
 func (d *StaticPolicyData) AuthPublicKey() *tpm2.Public {
