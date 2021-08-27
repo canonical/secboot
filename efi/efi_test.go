@@ -48,5 +48,5 @@ func (e *mockEFIEnvironment) ReadEventLog() (*tcglog.Log, error) {
 	}
 	defer f.Close()
 
-	return tcglog.ParseLog(f, &tcglog.LogOptions{})
+	return tcglog.ReadLog(f, &tcglog.LogOptions{})
 }

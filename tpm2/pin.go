@@ -21,6 +21,7 @@ package tpm2
 
 import (
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
 
@@ -34,45 +35,33 @@ import (
 // - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
 // - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
 // - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
-func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) (tpm2.DigestList, error) {
+func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
 	var out tpm2.DigestList
 	// Compute a policy for incrementing the index to revoke dynamic authorization policies, requiring an assertion signed by the
 	// key associated with updateKeyName.
-	trial, err := tpm2.ComputeAuthPolicy(alg)
-	if err != nil {
-		return nil, err
-	}
+	trial := util.ComputeAuthPolicy(alg)
 	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
 	trial.PolicyNvWritten(true)
 	trial.PolicySigned(updateKeyName, nil)
 	out = append(out, trial.GetDigest())
 
 	// Compute a policy for updating the authorization value of the index, requiring knowledge of the current authorization value.
-	trial, err = tpm2.ComputeAuthPolicy(alg)
-	if err != nil {
-		return nil, err
-	}
+	trial = util.ComputeAuthPolicy(alg)
 	trial.PolicyCommandCode(tpm2.CommandNVChangeAuth)
 	trial.PolicyAuthValue()
 	out = append(out, trial.GetDigest())
 
 	// Compute a policy for reading the counter value without knowing the authorization value.
-	trial, err = tpm2.ComputeAuthPolicy(alg)
-	if err != nil {
-		return nil, err
-	}
+	trial = util.ComputeAuthPolicy(alg)
 	trial.PolicyCommandCode(tpm2.CommandNVRead)
 	out = append(out, trial.GetDigest())
 
 	// Compute a policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
-	trial, err = tpm2.ComputeAuthPolicy(alg)
-	if err != nil {
-		return nil, err
-	}
+	trial = util.ComputeAuthPolicy(alg)
 	trial.PolicyCommandCode(tpm2.CommandPolicyNV)
 	out = append(out, trial.GetDigest())
 
-	return out, nil
+	return out
 }
 
 // performPinChangeV0 changes the authorization value of the dynamic authorization policy counter associated with the public

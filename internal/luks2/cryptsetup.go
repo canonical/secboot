@@ -76,11 +76,73 @@ func cryptsetupCmd(stdin io.Reader, callback func(cmd *exec.Cmd) error, args ...
 	return nil
 }
 
-// FormatOptions provide the options for formatting a new LUKS2 volume
+// KDFOptions specifies parameters for the Argon2 KDF.
+type KDFOptions struct {
+	// TargetDuration specifies the target time for benchmarking of the
+	// time and memory cost parameters. If it is zero then the cryptsetup
+	// default is used. If ForceIterations is not zero then this is ignored.
+	TargetDuration time.Duration
+
+	// MemoryKiB specifies the maximum memory cost in KiB when ForceIterations
+	// is zero, or the actual memory cost in KiB when ForceIterations is not zero.
+	// If this is set to zero, then the cryptsetup default is used.
+	MemoryKiB int
+
+	// ForceIterations specifies the time cost. If set to zero, the time
+	// and memory cost are determined by benchmarking the algorithm based on
+	// the specified TargetDuration. Set to a non-zero number to force the
+	// time cost to the value of this field, and the memory cost to the value
+	// of MemoryKiB, disabling benchmarking.
+	ForceIterations int
+
+	// Parallel sets the maximum number of parallel threads. Cryptsetup may
+	// choose a lower value based on its own maximum and the number of available
+	// CPU cores.
+	Parallel int
+}
+
+func (options *KDFOptions) appendArguments(args []string) []string {
+	// use argon2i as the KDF
+	args = append(args, "--pbkdf", "argon2i")
+
+	switch {
+	case options.ForceIterations != 0:
+		// Disable benchmarking by forcing the time cost
+		args = append(args,
+			"--pbkdf-force-iterations", strconv.Itoa(options.ForceIterations))
+	case options.TargetDuration != 0:
+		args = append(args,
+			"--iter-time", strconv.FormatInt(int64(options.TargetDuration/time.Millisecond), 10))
+	}
+
+	if options.MemoryKiB != 0 {
+		args = append(args, "--pbkdf-memory", strconv.Itoa(options.MemoryKiB))
+	}
+
+	if options.Parallel != 0 {
+		args = append(args, "--pbkdf-parallel", strconv.Itoa(options.Parallel))
+	}
+
+	return args
+}
+
+// FormatOptions provide the options for formatting a new LUKS2 volume.
 type FormatOptions struct {
-	KDFTime             time.Duration // the KDF benchmark time for the primary key
-	MetadataKiBSize     int           // the metadata size in KiB
-	KeyslotsAreaKiBSize int           // the keyslots area size in KiB
+	// MetadataKiBSize sets the size of the metadata area in KiB.
+	// This size includes the 4KiB fixed-size binary header, with
+	// the remaining space for the JSON area. Set to zero to use
+	// the cryptsetup default. Must be any power of 2 between
+	// 16KiB and 4MiB.
+	MetadataKiBSize int
+
+	// KeyslotsAreaKiBSize sets the size of the binary keyslots
+	// area in KiB. Set to zero to use the cryptsetup default.
+	// Must be a multiple of 4KiB.
+	KeyslotsAreaKiBSize int
+
+	// KDFOptions describes the KDF options for the initial
+	// key slot.
+	KDFOptions KDFOptions
 }
 
 // Format will initialize a LUKS2 container with the specified options and set the primary key to the
@@ -93,6 +155,11 @@ type FormatOptions struct {
 // WARNING: This function is destructive. Calling this on an existing LUKS2 container will make the
 // data contained inside of it irretrievable.
 func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
+	if opts == nil {
+		var defaultOpts FormatOptions
+		opts = &defaultOpts
+	}
+
 	args := []string{
 		// batch processing, no password verification for formatting an existing LUKS container
 		"-q",
@@ -105,13 +172,11 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
 		"--cipher", "aes-xts-plain64", "--key-size", strconv.Itoa(keySize * 8),
 		// set LUKS2 label
-		"--label", label,
-		// use argon2i as the KDF
-		"--pbkdf", "argon2i"}
-	if opts.KDFTime != 0 {
-		// set the KDF benchmark time
-		args = append(args, "--iter-time", strconv.FormatUint(uint64(opts.KDFTime/time.Millisecond), 10))
-	}
+		"--label", label}
+
+	// apply KDF options
+	args = opts.KDFOptions.appendArguments(args)
+
 	if opts.MetadataKiBSize != 0 {
 		// override the default metadata area size if specified
 		args = append(args, "--luks2-metadata-size", fmt.Sprintf("%dk", opts.MetadataKiBSize))
@@ -120,6 +185,7 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		// override the default keyslots area size if specified
 		args = append(args, "--luks2-keyslots-size", fmt.Sprintf("%dk", opts.KeyslotsAreaKiBSize))
 	}
+
 	args = append(args,
 		// device to format
 		devicePath)
@@ -129,7 +195,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 
 // AddKeyOptions provides the options for adding a key to a LUKS2 volume
 type AddKeyOptions struct {
-	KDFTime time.Duration // the KDF benchmark time for the new key
+	// KDFOptions describes the KDF options for the new key slot.
+	KDFOptions KDFOptions
 
 	// Slot is the keyslot to use. Note that the default value is slot 0. In
 	// order to automatically choose a slot, use AnySlot.
@@ -143,6 +210,10 @@ type AddKeyOptions struct {
 // If options is not supplied, the default KDF benchmark time is used and the command will
 // automatically choose an appropriate slot.
 func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) error {
+	if options == nil {
+		options = &AddKeyOptions{Slot: AnySlot}
+	}
+
 	fifoPath, cleanupFifo, err := mkFifo()
 	if err != nil {
 		return xerrors.Errorf("cannot create FIFO for passing existing key to cryptsetup: %w", err)
@@ -155,18 +226,15 @@ func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) 
 		// LUKS2 only
 		"--type", "luks2",
 		// read existing key from named pipe
-		"--key-file", fifoPath,
-		// use argon2i as the KDF
-		"--pbkdf", "argon2i"}
-	if options != nil {
-		if options.KDFTime != 0 {
-			// set the KDF benchmark time
-			args = append(args, "--iter-time", strconv.FormatUint(uint64(options.KDFTime/time.Millisecond), 10))
-		}
-		if options.Slot != AnySlot {
-			args = append(args, "--key-slot", strconv.Itoa(options.Slot))
-		}
+		"--key-file", fifoPath}
+
+	// apply KDF options
+	args = options.KDFOptions.appendArguments(args)
+
+	if options.Slot != AnySlot {
+		args = append(args, "--key-slot", strconv.Itoa(options.Slot))
 	}
+
 	args = append(args,
 		// container to add key to
 		devicePath,

@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mssim"
 
 	"golang.org/x/xerrors"
 
@@ -51,7 +52,7 @@ func Test(t *testing.T) { TestingT(t) }
 
 // resetTPMSimulator executes reset sequence of the TPM (Shutdown(CLEAR) -> reset -> Startup(CLEAR)) and the re-initializes the
 // Connection.
-func resetTPMSimulator(t *testing.T, tpm *Connection, tcti *tpm2.TctiMssim) (*Connection, *tpm2.TctiMssim) {
+func resetTPMSimulator(t *testing.T, tpm *Connection, tcti *mssim.Tcti) (*Connection, *mssim.Tcti) {
 	tpm, tcti, err := testutil.ResetTPMSimulator(tpm, tcti)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -59,7 +60,7 @@ func resetTPMSimulator(t *testing.T, tpm *Connection, tcti *tpm2.TctiMssim) (*Co
 	return tpm, tcti
 }
 
-func openTPMSimulatorForTesting(t *testing.T) (*Connection, *tpm2.TctiMssim) {
+func openTPMSimulatorForTesting(t *testing.T) (*Connection, *mssim.Tcti) {
 	tpm, tcti, err := testutil.OpenTPMSimulatorForTesting()
 	if err != nil {
 		t.Fatalf("%v", err)

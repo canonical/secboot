@@ -1,0 +1,70 @@
+Certificate:
+    Data:
+        Version: 1 (0x0)
+        Serial Number:
+            94:cb:af:49:cd:56:a7:d8
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN = Ubuntu OVMF Secure Boot (PK/KEK key), emailAddress = ubuntu-devel@lists.ubuntu.com
+        Validity
+            Not Before: Jun 20 21:48:46 2018 GMT
+            Not After : Jun 17 21:48:46 2028 GMT
+        Subject: CN = Ubuntu OVMF Secure Boot (PK/KEK key), emailAddress = ubuntu-devel@lists.ubuntu.com
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:cb:b0:2b:e9:77:9e:5e:71:e9:e6:eb:1d:85:52:
+                    86:cf:fb:8c:f0:0a:79:34:cc:bb:83:10:95:36:cd:
+                    a0:e6:6f:55:08:4e:71:e7:63:90:13:5a:3c:f7:5d:
+                    eb:74:c1:c5:81:40:9c:98:54:04:b9:7d:85:6f:c6:
+                    07:91:67:f6:2b:53:d3:28:79:1b:ae:17:08:16:9f:
+                    cb:7a:c9:2c:5f:0b:f7:d5:43:51:81:2e:bc:1f:9a:
+                    dd:ba:18:01:30:93:a1:59:ce:0d:bf:21:d0:89:8e:
+                    44:11:7c:b2:02:99:9b:ae:42:26:58:10:f7:76:06:
+                    65:b8:cb:78:f9:ee:6b:08:54:d8:45:47:d8:71:72:
+                    2d:91:16:8d:dd:c9:3f:1b:2d:97:31:a3:f8:98:b0:
+                    bc:44:dd:15:7f:df:1d:b9:eb:5b:e7:cb:08:b1:27:
+                    2c:b6:7f:60:fa:3a:59:ed:26:b5:54:c4:a8:75:a6:
+                    e8:6e:56:50:86:e9:cc:fc:ce:38:6a:62:08:a1:dd:
+                    23:e5:45:b1:7e:f0:d5:30:5d:32:10:aa:9f:17:29:
+                    2e:7e:cd:45:71:04:83:0f:8e:43:98:27:38:b4:7d:
+                    91:32:88:f8:c4:64:bb:1f:69:0c:66:79:bf:d5:4c:
+                    70:f6:62:da:26:53:1d:17:7d:6e:b8:88:18:e2:ff:
+                    7e:8d
+                Exponent: 65537 (0x10001)
+    Signature Algorithm: sha256WithRSAEncryption
+         18:b0:2d:52:ce:df:9d:fe:68:29:4e:c4:ef:ec:28:52:b1:cf:
+         d3:75:97:03:08:53:34:8f:5e:4e:ce:d8:2c:f8:30:0b:6a:86:
+         00:69:33:75:46:54:6f:37:38:cd:2e:12:68:8b:48:4e:56:18:
+         79:67:d9:f4:fb:cf:84:f1:b2:21:93:9e:b8:13:28:51:e0:64:
+         9e:c0:b6:75:a4:55:5f:5d:5a:01:c8:0e:9d:08:71:30:3d:16:
+         8d:24:46:e6:74:39:ad:74:59:fc:dc:18:bd:cb:49:47:cd:65:
+         e3:59:03:4e:83:6a:8c:12:23:27:71:53:87:3c:fc:84:7c:8c:
+         bf:f0:c2:87:77:21:fd:7d:87:8f:b8:9b:fb:52:0f:7e:81:c5:
+         93:e9:83:ff:a7:be:cb:8e:b0:1d:64:b9:bb:40:68:97:dc:38:
+         54:13:30:6b:71:58:9e:21:60:2a:b0:26:9e:88:ae:a3:66:eb:
+         e5:f0:5b:80:7f:fb:df:6e:a5:27:b4:1b:fc:7e:26:04:b2:b3:
+         fd:cd:e2:c3:83:c5:f8:a4:31:b2:97:34:e2:d2:5d:bd:0f:a9:
+         0c:4b:53:52:25:d5:13:4c:dc:06:2a:76:10:98:0f:54:ad:2c:
+         cc:ee:47:ea:0b:57:6d:fc:a8:4e:a0:eb:d4:32:9a:0f:8c:7d:
+         24:3d:f2:29
+-----BEGIN CERTIFICATE-----
+MIIDNjCCAh4CCQCUy69JzVan2DANBgkqhkiG9w0BAQsFADBdMS0wKwYDVQQDDCRV
+YnVudHUgT1ZNRiBTZWN1cmUgQm9vdCAoUEsvS0VLIGtleSkxLDAqBgkqhkiG9w0B
+CQEWHXVidW50dS1kZXZlbEBsaXN0cy51YnVudHUuY29tMB4XDTE4MDYyMDIxNDg0
+NloXDTI4MDYxNzIxNDg0NlowXTEtMCsGA1UEAwwkVWJ1bnR1IE9WTUYgU2VjdXJl
+IEJvb3QgKFBLL0tFSyBrZXkpMSwwKgYJKoZIhvcNAQkBFh11YnVudHUtZGV2ZWxA
+bGlzdHMudWJ1bnR1LmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB
+AMuwK+l3nl5x6ebrHYVShs/7jPAKeTTMu4MQlTbNoOZvVQhOcedjkBNaPPdd63TB
+xYFAnJhUBLl9hW/GB5Fn9itT0yh5G64XCBafy3rJLF8L99VDUYEuvB+a3boYATCT
+oVnODb8h0ImORBF8sgKZm65CJlgQ93YGZbjLePnuawhU2EVH2HFyLZEWjd3JPxst
+lzGj+JiwvETdFX/fHbnrW+fLCLEnLLZ/YPo6We0mtVTEqHWm6G5WUIbpzPzOOGpi
+CKHdI+VFsX7w1TBdMhCqnxcpLn7NRXEEgw+OQ5gnOLR9kTKI+MRkux9pDGZ5v9VM
+cPZi2iZTHRd9briIGOL/fo0CAwEAATANBgkqhkiG9w0BAQsFAAOCAQEAGLAtUs7f
+nf5oKU7E7+woUrHP03WXAwhTNI9eTs7YLPgwC2qGAGkzdUZUbzc4zS4SaItITlYY
+eWfZ9PvPhPGyIZOeuBMoUeBknsC2daRVX11aAcgOnQhxMD0WjSRG5nQ5rXRZ/NwY
+vctJR81l41kDToNqjBIjJ3FThzz8hHyMv/DCh3ch/X2Hj7ib+1IPfoHFk+mD/6e+
+y46wHWS5u0Bol9w4VBMwa3FYniFgKrAmnoiuo2br5fBbgH/7326lJ7Qb/H4mBLKz
+/c3iw4PF+KQxspc04tJdvQ+pDEtTUiXVE0zcBip2EJgPVK0szO5H6gtXbfyoTqDr
+1DKaD4x9JD3yKQ==
+-----END CERTIFICATE-----

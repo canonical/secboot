@@ -20,138 +20,138 @@
 package efi_test
 
 import (
-	"reflect"
-	"testing"
-
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
+
+	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
-func TestAddSystemdStubProfile(t *testing.T) {
-	for _, data := range []struct {
-		desc    string
-		initial *secboot_tpm2.PCRProtectionProfile
-		params  SystemdStubProfileParams
-		values  []tpm2.PCRValues
-	}{
-		{
-			desc: "UC20",
-			params: SystemdStubProfileParams{
-				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				PCRIndex:     12,
-				KernelCmdlines: []string{
-					"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
-					"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover",
-				},
-			},
-			values: []tpm2.PCRValues{
-				{
-					tpm2.HashAlgorithmSHA256: {
-						12: testutil.DecodeHexStringT(t, "fc433eaf039c6261f496a2a5bf2addfd8ff1104b0fc98af3fe951517e3bde824"),
-					},
-				},
-				{
-					tpm2.HashAlgorithmSHA256: {
-						12: testutil.DecodeHexStringT(t, "b3a29076eeeae197ae721c254da40480b76673038045305cfa78ec87421c4eea"),
-					},
-				},
-			},
-		},
-		{
-			desc: "SHA1",
-			params: SystemdStubProfileParams{
-				PCRAlgorithm: tpm2.HashAlgorithmSHA1,
-				PCRIndex:     12,
-				KernelCmdlines: []string{
-					"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
-					"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover",
-				},
-			},
-			values: []tpm2.PCRValues{
-				{
-					tpm2.HashAlgorithmSHA1: {
-						12: testutil.DecodeHexStringT(t, "eb6312b7db70fe16206c162326e36b2fcda74b68"),
-					},
-				},
-				{
-					tpm2.HashAlgorithmSHA1: {
-						12: testutil.DecodeHexStringT(t, "bd612bea9efa582fcbfae97973c89b163756fe0b"),
-					},
-				},
-			},
-		},
-		{
-			desc: "Classic",
-			params: SystemdStubProfileParams{
-				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				PCRIndex:     8,
-				KernelCmdlines: []string{
-					"root=/dev/mapper/vgubuntu-root ro quiet splash vt.handoff=7",
-				},
-			},
-			values: []tpm2.PCRValues{
-				{
-					tpm2.HashAlgorithmSHA256: {
-						8: testutil.DecodeHexStringT(t, "74fe9080b798f9220c18d0fcdd0ccb82d50ce2a317bc6cdaa2d8715d02d0efbe"),
-					},
-				},
-			},
-		},
-		{
-			desc: "WithInitialProfile",
-			initial: func() *secboot_tpm2.PCRProtectionProfile {
-				return secboot_tpm2.NewPCRProtectionProfile().
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-					AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
-			}(),
-			params: SystemdStubProfileParams{
-				PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-				PCRIndex:     8,
-				KernelCmdlines: []string{
-					"root=/dev/mapper/vgubuntu-root ro quiet splash vt.handoff=7",
-				},
-			},
-			values: []tpm2.PCRValues{
-				{
-					tpm2.HashAlgorithmSHA256: {
-						7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
-						8: testutil.DecodeHexStringT(t, "3d39c0db757b47b484006003724d990403d533044ed06e8798ab374bd73f32dc"),
-					},
-				},
-			},
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			profile := data.initial
-			if profile == nil {
-				profile = secboot_tpm2.NewPCRProtectionProfile()
-			}
-			expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
-			expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
-			var expectedDigests tpm2.DigestList
-			for _, v := range data.values {
-				d, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
-				expectedDigests = append(expectedDigests, d)
-			}
+type sdstubPolicySuite struct{}
 
-			if err := AddSystemdStubProfile(profile, &data.params); err != nil {
-				t.Fatalf("AddSystemdStubProfile failed: %v", err)
-			}
-			pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
-			if err != nil {
-				t.Fatalf("ComputePCRDigests failed: %v", err)
-			}
-			if !pcrs.Equal(expectedPcrs) {
-				t.Errorf("ComputePCRDigests returned the wrong PCR selection")
-			}
-			if !reflect.DeepEqual(digests, expectedDigests) {
-				t.Errorf("ComputePCRDigests returned unexpected values")
-				t.Logf("Profile:\n%s", profile)
-				t.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
-			}
-		})
+var _ = Suite(&sdstubPolicySuite{})
+
+type testAddSystemdStubProfileData struct {
+	initial *secboot_tpm2.PCRProtectionProfile
+	params  SystemdStubProfileParams
+	values  []tpm2.PCRValues
+}
+
+func (s *sdstubPolicySuite) testAddSystemdStubProfile(c *C, data *testAddSystemdStubProfileData) {
+	profile := data.initial
+	if profile == nil {
+		profile = secboot_tpm2.NewPCRProtectionProfile()
 	}
+	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
+	var expectedDigests tpm2.DigestList
+	for _, v := range data.values {
+		d, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
+		expectedDigests = append(expectedDigests, d)
+	}
+
+	c.Check(AddSystemdStubProfile(profile, &data.params), IsNil)
+
+	pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, IsNil)
+	c.Check(pcrs.Equal(expectedPcrs), Equals, true)
+	c.Check(digests, DeepEquals, expectedDigests)
+
+	if c.Failed() {
+		c.Logf("Profile:\n%s", profile)
+		c.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
+	}
+}
+
+func (s *sdstubPolicySuite) TestAddSystemdStubProfileUC20(c *C) {
+	s.testAddSystemdStubProfile(c, &testAddSystemdStubProfileData{
+		params: SystemdStubProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			KernelCmdlines: []string{
+				"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
+				"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover",
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: testutil.DecodeHexString(c, "fc433eaf039c6261f496a2a5bf2addfd8ff1104b0fc98af3fe951517e3bde824"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: testutil.DecodeHexString(c, "b3a29076eeeae197ae721c254da40480b76673038045305cfa78ec87421c4eea"),
+				},
+			},
+		}})
+}
+
+func (s *sdstubPolicySuite) TestAddSystemdStubProfileSHA1(c *C) {
+	s.testAddSystemdStubProfile(c, &testAddSystemdStubProfileData{
+		params: SystemdStubProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA1,
+			PCRIndex:     12,
+			KernelCmdlines: []string{
+				"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
+				"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover",
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA1: {
+					12: testutil.DecodeHexString(c, "eb6312b7db70fe16206c162326e36b2fcda74b68"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA1: {
+					12: testutil.DecodeHexString(c, "bd612bea9efa582fcbfae97973c89b163756fe0b"),
+				},
+			},
+		}})
+}
+
+func (s *sdstubPolicySuite) TestAddSystemdStubProfileClassic(c *C) {
+	s.testAddSystemdStubProfile(c, &testAddSystemdStubProfileData{
+		params: SystemdStubProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     8,
+			KernelCmdlines: []string{
+				"root=/dev/mapper/vgubuntu-root ro quiet splash vt.handoff=7",
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					8: testutil.DecodeHexString(c, "74fe9080b798f9220c18d0fcdd0ccb82d50ce2a317bc6cdaa2d8715d02d0efbe"),
+				},
+			},
+		}})
+}
+
+func (s *sdstubPolicySuite) TestAddSystemdStubProfileWithInitialProfile(c *C) {
+	s.testAddSystemdStubProfile(c, &testAddSystemdStubProfileData{
+		initial: func() *secboot_tpm2.PCRProtectionProfile {
+			return secboot_tpm2.NewPCRProtectionProfile().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+		}(),
+		params: SystemdStubProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     8,
+			KernelCmdlines: []string{
+				"root=/dev/mapper/vgubuntu-root ro quiet splash vt.handoff=7",
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					8: testutil.DecodeHexString(c, "3d39c0db757b47b484006003724d990403d533044ed06e8798ab374bd73f32dc"),
+				},
+			},
+		}})
 }

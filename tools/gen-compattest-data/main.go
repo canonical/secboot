@@ -30,6 +30,7 @@ import (
 
 	"github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mssim"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/snapd/asserts"
 
@@ -61,7 +62,7 @@ func (e *mockEFIEnvironment) ReadEventLog() (*tcglog.Log, error) {
 	}
 	defer f.Close()
 
-	return tcglog.ParseLog(f, &tcglog.LogOptions{})
+	return tcglog.ReadLog(f, &tcglog.LogOptions{})
 }
 
 func init() {
@@ -150,7 +151,7 @@ func run() int {
 	defer cleanupTpmSimulator()
 
 	restore := testutil.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tpm2.OpenMssim("", testutil.MssimPort, testutil.MssimPort+1)
+		return mssim.OpenConnection("", testutil.MssimPort)
 	})
 	defer restore()
 

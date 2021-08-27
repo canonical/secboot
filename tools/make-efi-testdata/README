@@ -1,0 +1,26 @@
+This directory contains a tool that is used to create the test
+data in the efi/testdata directory.
+
+It depends on a minimal set of source data (stored in the
+efi/testdata/src directory) that includes pre-generated RSA keys,
+public certificates, source code for mock EFI binaries and public
+dbx updates from uefi.org.
+
+It outputs event logs, EFI variable stores, EFI binaries and
+signature database updates for testing.
+
+It currently only supports being executed in a Debian-like
+environment.
+
+Note that recreating the EFI binaries and signature databases
+is not entirely reproducible because their signatures include
+timestamps. This means they are recreated with different file
+hashes, but this doesn't affect the actual tests.
+
+Reproducibility of test data is dependent on the environment
+in which the data is built. This is particularly true for the
+EFI binaries, which are only reproducible when built with the
+same toolchain. The tool saves information about the build
+environment to buildenv.yaml.
+
+This tool depends on make, sbsigntools, gcc and binutils.

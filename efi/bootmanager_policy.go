@@ -113,7 +113,7 @@ func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *B
 		return xerrors.Errorf("cannot parse TCG event log: %w", err)
 	}
 
-	if !log.Algorithms.Contains(tcglog.AlgorithmId(params.PCRAlgorithm)) {
+	if !log.Algorithms.Contains(params.PCRAlgorithm) {
 		return errors.New("cannot compute secure boot policy digests: the TCG event log does not have the requested algorithm")
 	}
 
@@ -127,7 +127,7 @@ func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *B
 			continue
 		}
 
-		profile.ExtendPCR(params.PCRAlgorithm, bootManagerCodePCR, tpm2.Digest(event.Digests[tcglog.AlgorithmId(params.PCRAlgorithm)]))
+		profile.ExtendPCR(params.PCRAlgorithm, bootManagerCodePCR, tpm2.Digest(event.Digests[params.PCRAlgorithm]))
 		if event.EventType == tcglog.EventTypeSeparator {
 			break
 		}
