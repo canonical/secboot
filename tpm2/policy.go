@@ -239,15 +239,6 @@ func (c *pcrPolicyCounterV0) Increment(tpm *tpm2.TPMContext, key crypto.PrivateK
 	}
 	defer tpm.FlushContext(policySession)
 
-	signDigest := tpm2.HashAlgorithmNull
-	keyScheme := c.updateKey.Params.AsymDetail(c.updateKey.Type).Scheme
-	if keyScheme.Scheme != tpm2.AsymSchemeNull {
-		signDigest = keyScheme.Details.Any(keyScheme.Scheme).HashAlg
-	}
-	if signDigest == tpm2.HashAlgorithmNull {
-		signDigest = c.updateKey.NameAlg
-	}
-
 	// Load the public part of the key in to the TPM. There's no integrity protection for this command as if it's altered in
 	// transit then either the signature verification fails or the policy digest will not match the one associated with the NV
 	// index.
@@ -257,27 +248,15 @@ func (c *pcrPolicyCounterV0) Increment(tpm *tpm2.TPMContext, key crypto.PrivateK
 	}
 	defer tpm.FlushContext(keyLoaded)
 
-	// Compute a digest for signing with the update key
-	h := signDigest.NewHash()
-	h.Write(policySession.NonceTPM())
-	binary.Write(h, binary.BigEndian, int32(0)) // expiration
-
-	// Sign the digest
-	var signature tpm2.Signature
-	switch k := key.(type) {
-	case *rsa.PrivateKey:
-		sig, err := rsa.SignPSS(rand.Reader, k, signDigest.GetHash(), h.Sum(nil), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
-		if err != nil {
-			return xerrors.Errorf("cannot sign authorization: %w", err)
-		}
-		signature = tpm2.Signature{
-			SigAlg: tpm2.SigSchemeAlgRSAPSS,
-			Signature: &tpm2.SignatureU{
-				RSAPSS: &tpm2.SignatureRSAPSS{
-					Hash: signDigest,
-					Sig:  tpm2.PublicKeyRSA(sig)}}}
-	default:
-		panic("invalid private key type")
+	// Create a signed authorization. keyData.validate checks that this scheme is compatible with the key
+	scheme := tpm2.SigScheme{
+		Scheme: tpm2.SigSchemeAlgRSAPSS,
+		Details: &tpm2.SigSchemeU{
+			RSAPSS: &tpm2.SigSchemeRSAPSS{
+				HashAlg: c.updateKey.NameAlg}}}
+	signature, err := util.SignPolicyAuthorization(key, &scheme, policySession.NonceTPM(), nil, nil, 0)
+	if err != nil {
+		return xerrors.Errorf("cannot sign authorization: %w", err)
 	}
 
 	// See the comment for computeV0PinNVIndexPostInitAuthPolicies for a description of the authorization policy
@@ -288,7 +267,7 @@ func (c *pcrPolicyCounterV0) Increment(tpm *tpm2.TPMContext, key crypto.PrivateK
 	if err := tpm.PolicyNvWritten(policySession, true); err != nil {
 		return xerrors.Errorf("cannot execute assertion to increment counter: %w", err)
 	}
-	if _, _, err := tpm.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, &signature); err != nil {
+	if _, _, err := tpm.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, signature); err != nil {
 		return xerrors.Errorf("cannot execute assertion to increment counter: %w", err)
 	}
 	if err := tpm.PolicyOR(policySession, c.authPolicies); err != nil {
@@ -342,15 +321,6 @@ func (c *pcrPolicyCounterV1) Increment(tpm *tpm2.TPMContext, key crypto.PrivateK
 	}
 	defer tpm.FlushContext(policySession)
 
-	signDigest := tpm2.HashAlgorithmNull
-	keyScheme := c.updateKey.Params.AsymDetail(c.updateKey.Type).Scheme
-	if keyScheme.Scheme != tpm2.AsymSchemeNull {
-		signDigest = keyScheme.Details.Any(keyScheme.Scheme).HashAlg
-	}
-	if signDigest == tpm2.HashAlgorithmNull {
-		signDigest = tpm2.HashAlgorithmSHA256
-	}
-
 	// Load the public part of the key in to the TPM. There's no integrity protection for this command as if it's altered in
 	// transit then either the signature verification fails or the policy digest will not match the one associated with the NV
 	// index.
@@ -360,31 +330,18 @@ func (c *pcrPolicyCounterV1) Increment(tpm *tpm2.TPMContext, key crypto.PrivateK
 	}
 	defer tpm.FlushContext(keyLoaded)
 
-	// Compute a digest for signing with the update key
-	h := signDigest.NewHash()
-	h.Write(policySession.NonceTPM())
-	binary.Write(h, binary.BigEndian, int32(0)) // expiration
-
-	// Sign the digest
-	var signature tpm2.Signature
-	switch k := key.(type) {
-	case *ecdsa.PrivateKey:
-		sigR, sigS, err := ecdsa.Sign(rand.Reader, k, h.Sum(nil))
-		if err != nil {
-			return xerrors.Errorf("cannot sign authorization: %w", err)
-		}
-		signature = tpm2.Signature{
-			SigAlg: tpm2.SigSchemeAlgECDSA,
-			Signature: &tpm2.SignatureU{
-				ECDSA: &tpm2.SignatureECDSA{
-					Hash:       signDigest,
-					SignatureR: sigR.Bytes(),
-					SignatureS: sigS.Bytes()}}}
-	default:
-		panic("invalid private key type")
+	// Create a signed authorization. keyData.validate checks that this scheme is compatible with the key
+	scheme := tpm2.SigScheme{
+		Scheme: tpm2.SigSchemeAlgECDSA,
+		Details: &tpm2.SigSchemeU{
+			ECDSA: &tpm2.SigSchemeECDSA{
+				HashAlg: c.updateKey.NameAlg}}}
+	signature, err := util.SignPolicyAuthorization(key, &scheme, policySession.NonceTPM(), nil, nil, 0)
+	if err != nil {
+		return xerrors.Errorf("cannot sign authorization: %w", err)
 	}
 
-	if _, _, err := tpm.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, &signature); err != nil {
+	if _, _, err := tpm.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, signature); err != nil {
 		return xerrors.Errorf("cannot execute assertion to increment counter: %w", err)
 	}
 	if err := tpm.PolicyOR(policySession, c.authPolicies); err != nil {
