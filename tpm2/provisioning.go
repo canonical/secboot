@@ -322,7 +322,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 //
 // If mode is ProvisionModeClear or ProvisionModeFull, this function performs operations that require the use of the lockout
 // hierarchy (detailed above), and knowledge of the lockout hierarchy's authorization value. This must be provided by calling
-// TPMConnection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
+// Connection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
 // provided, then a AuthFailError error will be returned. If this happens, the TPM will have entered dictionary attack lockout mode
 // for the lockout hierarchy. Further calls will result in a ErrTPMLockout error being returned. The only way to recover from this is
 // to either wait for the pre-programmed recovery time to expire, or to clear the TPM via the physical presence interface by calling
@@ -341,7 +341,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 // operations both require the use of the storage and endorsement hierarchies. If mode is ProvisionModeFull or
 // ProvisionModeWithoutLockout, then knowledge of the authorization values for these hierarchies is required. Whilst these will be
 // empty after clearing the TPM, if they have been set since clearing the TPM then they will need to be provided by calling
-// TPMConnection.EndorsementHandleContext().SetAuthValue() and TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling
+// Connection.EndorsementHandleContext().SetAuthValue() and Connection.OwnerHandleContext().SetAuthValue() prior to calling
 // this function. If the wrong value is provided for either authorization, then a AuthFailError error will be returned. If the
 // correct authorization values are not known, then the only way to recover from this is to clear the TPM either by calling this
 // function with mode set to ProvisionModeClear (and providing the correct authorization value for the lockout hierarchy), or by
@@ -378,7 +378,7 @@ func (t *Connection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLocko
 //
 // If mode is ProvisionModeClear or ProvisionModeFull, this function performs operations that require the use of the lockout
 // hierarchy (detailed above), and knowledge of the lockout hierarchy's authorization value. This must be provided by calling
-// TPMConnection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
+// Connection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
 // provided, then a AuthFailError error will be returned. If this happens, the TPM will have entered dictionary attack lockout mode
 // for the lockout hierarchy. Further calls will result in a ErrTPMLockout error being returned. The only way to recover from this is
 // to either wait for the pre-programmed recovery time to expire, or to clear the TPM via the physical presence interface by calling
@@ -398,7 +398,7 @@ func (t *Connection) EnsureProvisionedWithCustomSRK(mode ProvisionMode, newLocko
 // operations both require the use of the storage and endorsement hierarchies. If mode is ProvisionModeFull or
 // ProvisionModeWithoutLockout, then knowledge of the authorization values for these hierarchies is required. Whilst these will be
 // empty after clearing the TPM, if they have been set since clearing the TPM then they will need to be provided by calling
-// TPMConnection.EndorsementHandleContext().SetAuthValue() and TPMConnection.OwnerHandleContext().SetAuthValue() prior to calling
+// Connection.EndorsementHandleContext().SetAuthValue() and Connection.OwnerHandleContext().SetAuthValue() prior to calling
 // this function. If the wrong value is provided for either authorization, then a AuthFailError error will be returned. If the
 // correct authorization values are not known, then the only way to recover from this is to clear the TPM either by calling this
 // function with mode set to ProvisionModeClear (and providing the correct authorization value for the lockout hierarchy), or by
