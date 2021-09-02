@@ -1526,14 +1526,14 @@ type testAddRecoveryKeyToLUKS2ContainerData struct {
 }
 
 func (s *cryptSuite) testAddRecoveryKeyToLUKS2Container(c *C, data *testAddRecoveryKeyToLUKS2ContainerData) {
-	c.Check(AddRecoveryKeyToLUKS2Container(data.devicePath, data.key, data.recoveryKey), IsNil)
+	c.Check(AddRecoveryKeyToLUKS2Container(data.devicePath, data.key, data.recoveryKey, nil), IsNil)
 	c.Assert(len(s.mockCryptsetup.Calls()), Equals, 1)
 
 	call := s.mockCryptsetup.Calls()[0]
-	c.Assert(len(call), Equals, 12)
+	c.Assert(len(call), Equals, 10)
 	c.Check(call[0:5], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file"})
 	c.Check(call[5], Matches, filepath.Join(paths.RunDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[6:12], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "5000", data.devicePath, "-"})
+	c.Check(call[6:10], DeepEquals, []string{"--pbkdf", "argon2i", data.devicePath, "-"})
 
 	key, err := ioutil.ReadFile(s.cryptsetupKey + ".1")
 	c.Assert(err, IsNil)
@@ -1725,7 +1725,7 @@ func (s *cryptSuiteExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
 	c.Assert(err, IsNil)
 
 	recoveryKey := s.newRecoveryKey()
-	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey), IsNil)
+	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey, nil), IsNil)
 
 	endInfo, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -1745,7 +1745,7 @@ func (s *cryptSuiteExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.Priority, Equals, luks2.SlotPriorityNormal)
 
-	expectedKDFTime := 5000 * time.Millisecond
+	expectedKDFTime := 2000 * time.Millisecond
 
 	start := time.Now()
 	luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
@@ -1762,7 +1762,7 @@ func (s *cryptSuiteExpensive) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
 	c.Check(InitializeLUKS2Container(path, "", key, nil), IsNil)
-	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey), IsNil)
+	c.Check(AddRecoveryKeyToLUKS2Container(path, key, recoveryKey, nil), IsNil)
 
 	newKey := s.newPrimaryKey()
 	c.Check(ChangeLUKS2KeyUsingRecoveryKey(path, recoveryKey, newKey), IsNil)

@@ -458,6 +458,38 @@ func DeactivateVolume(volumeName string) error {
 	return luks2Deactivate(volumeName)
 }
 
+// KDFOptions specifies parameters for the Argon2 KDF used by cryptsetup.
+type KDFOptions struct {
+	// MemoryKiB specifies the maximum memory cost in KiB when ForceIterations
+	// is zero. If ForceIterations is not zero, then this is used as the
+	// memory cost.
+	MemoryKiB int
+
+	// TargetDuration specifies the target duration for the KDF which
+	// is used to benchmark the time and memory cost parameters. If it
+	// is zero then the cryptsetup default is used. If ForceIterations
+	// is not zero then this field is ignored.
+	TargetDuration time.Duration
+
+	// ForceIterations can be used to turn off KDF benchmarking by
+	// setting the time cost directly. If this is zero then the cost
+	// parameters are benchmarked based on the value of TargetDuration.
+	ForceIterations int
+
+	// Parallel sets the maximum number of parallel threads for the
+	// KDF (up to 4). Cryptsetup will adjust this downwards based on
+	// the actual number of CPUs.
+	Parallel int
+}
+
+func (o *KDFOptions) internalOpts() *luks2.KDFOptions {
+	return &luks2.KDFOptions{
+		TargetDuration:  o.TargetDuration,
+		MemoryKiB:       o.MemoryKiB,
+		ForceIterations: o.ForceIterations,
+		Parallel:        o.Parallel}
+}
+
 // InitializeLUKS2ContainerOptions carries options for initializing LUKS2
 // containers.
 type InitializeLUKS2ContainerOptions struct {
@@ -471,6 +503,17 @@ type InitializeLUKS2ContainerOptions struct {
 	// expressed in multiples of 1024 bytes. The value must be aligned to
 	// 4096 bytes, with the maximum size of 128MB.
 	KeyslotsAreaKiBSize int
+
+	// KDFOptions sets the KDF options for the initial keyslot. If this
+	// is nil then the defaults are used.
+	KDFOptions *KDFOptions
+}
+
+func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
+	return &luks2.FormatOptions{
+		MetadataKiBSize:     o.MetadataKiBSize,
+		KeyslotsAreaKiBSize: o.KeyslotsAreaKiBSize,
+		KDFOptions:          *o.KDFOptions.internalOpts()}
 }
 
 func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
@@ -522,22 +565,28 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	if len(key) < 32 {
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
+
+	// Simplify things a bit
+	// Use a reduced cost for the KDF. This is done because we have a high entropy key rather
+	// than a low entropy passphrase. Setting a higher cost provides no security benefit but
+	// does slow down unlocking. If an adversary is going to attempt to brute force this key,
+	// then they could instead turn their attention to one of the other keys involved in the
+	// protection of this key, some of which can be verified without running a KDF. For
+	// example, with a TPM sealed object, you can verify the parent storage key's seed by
+	// computing the key object's HMAC key and verifying the integrity value on the outer wrapper.
+	defaultKdfOptions := &KDFOptions{TargetDuration: 100 * time.Millisecond}
+	if options == nil {
+		options = &InitializeLUKS2ContainerOptions{KDFOptions: defaultKdfOptions}
+	}
+	if options.KDFOptions == nil {
+		options.KDFOptions = defaultKdfOptions
+	}
+
 	if err := validateInitializeLUKS2Options(options); err != nil {
 		return err
 	}
 
-	// Configure the KDF with reduced cost. This is done because the supplied input key has an
-	// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
-	// this key and these settings are already more secure than the 16-byte recovery key. Increased
-	// cost here only slows down unlocking.
-	opts := luks2.FormatOptions{
-		KDFOptions: luks2.KDFOptions{TargetDuration: 100 * time.Millisecond}}
-	if options != nil {
-		opts.MetadataKiBSize = options.MetadataKiBSize
-		opts.KeyslotsAreaKiBSize = options.KeyslotsAreaKiBSize
-	}
-
-	if err := luks2.Format(devicePath, label, key, &opts); err != nil {
+	if err := luks2.Format(devicePath, label, key, options.formatOpts()); err != nil {
 		return xerrors.Errorf("cannot format %s: %w", err)
 	}
 
@@ -555,11 +604,14 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 // key argument.
 //
 // The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
-func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey) error {
-	options := luks2.AddKeyOptions{
-		KDFOptions: luks2.KDFOptions{TargetDuration: 5 * time.Second},
-		Slot:       luks2.AnySlot}
-	return luks2.AddKey(devicePath, key, recoveryKey[:], &options)
+func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey, options *KDFOptions) error {
+	if options == nil {
+		options = &KDFOptions{}
+	}
+	return luks2.AddKey(devicePath, key, recoveryKey[:],
+		&luks2.AddKeyOptions{
+			KDFOptions: *options.internalOpts(),
+			Slot:       luks2.AnySlot})
 }
 
 // ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
@@ -581,10 +633,13 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		return xerrors.Errorf("cannot kill existing slot: %w", err)
 	}
 
-	// Configure the KDF with reduced cost. This is done because the supplied input key has an
-	// entropy of at least 32 bytes, and increased cost doesn't provide a security benefit because
-	// this key and these settings are already more secure than the 16-byte recovery key. Increased
-	// cost here only slows down unlocking.
+	// Use a reduced cost for the KDF. This is done because we have a high entropy key rather
+	// than a low entropy passphrase. Setting a higher cost provides no security benefit but
+	// does slow down unlocking. If an adversary is going to attempt to brute force this key,
+	// then they could instead turn their attention to one of the other keys involved in the
+	// protection of this key, some of which can be verified without running a KDF. For
+	// example, with a TPM sealed object, you can verify the parent storage key's seed by
+	// computing the key object's HMAC key and verifying the integrity value on the outer wrapper.
 	options := luks2.AddKeyOptions{
 		KDFOptions: luks2.KDFOptions{TargetDuration: 100 * time.Millisecond},
 		Slot:       0}
