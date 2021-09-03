@@ -482,8 +482,8 @@ type KDFOptions struct {
 	Parallel int
 }
 
-func (o *KDFOptions) internalOpts() *luks2.KDFOptions {
-	return &luks2.KDFOptions{
+func (o *KDFOptions) internalOpts() luks2.KDFOptions {
+	return luks2.KDFOptions{
 		TargetDuration:  o.TargetDuration,
 		MemoryKiB:       o.MemoryKiB,
 		ForceIterations: o.ForceIterations,
@@ -513,7 +513,7 @@ func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 	return &luks2.FormatOptions{
 		MetadataKiBSize:     o.MetadataKiBSize,
 		KeyslotsAreaKiBSize: o.KeyslotsAreaKiBSize,
-		KDFOptions:          *o.KDFOptions.internalOpts()}
+		KDFOptions:          o.KDFOptions.internalOpts()}
 }
 
 func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
@@ -577,8 +577,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	defaultKdfOptions := &KDFOptions{TargetDuration: 100 * time.Millisecond}
 	if options == nil {
 		options = &InitializeLUKS2ContainerOptions{KDFOptions: defaultKdfOptions}
-	}
-	if options.KDFOptions == nil {
+	} else if options.KDFOptions == nil {
 		options.KDFOptions = defaultKdfOptions
 	}
 
@@ -610,7 +609,7 @@ func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey R
 	}
 	return luks2.AddKey(devicePath, key, recoveryKey[:],
 		&luks2.AddKeyOptions{
-			KDFOptions: *options.internalOpts(),
+			KDFOptions: options.internalOpts(),
 			Slot:       luks2.AnySlot})
 }
 
