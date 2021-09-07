@@ -3,34 +3,34 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "Lx9VsnbaBLBCL+L1UPvsULum1dE=",
+			"checksumSHA1": "WI/gwrq/7CJN5ILfLuktuCqSVCk=",
 			"path": "github.com/canonical/go-efilib",
-			"revision": "7d3f2e29397f8cf8b516710c609fde8bd6fe0550",
-			"revisionTime": "2021-07-08T20:55:05Z",
+			"revision": "1b2ee02a16c1aaf7d1fb45142922d204c66a76aa",
+			"revisionTime": "2021-09-06T10:33:18Z",
 			"version": "main",
 			"versionExact": "main"
 		},
 		{
 			"checksumSHA1": "w0EI7UJmvC1OS1fFXdr0CAGIFgY=",
 			"path": "github.com/canonical/go-efilib/internal/ioerr",
-			"revision": "7d3f2e29397f8cf8b516710c609fde8bd6fe0550",
-			"revisionTime": "2021-07-08T20:55:05Z",
+			"revision": "1b2ee02a16c1aaf7d1fb45142922d204c66a76aa",
+			"revisionTime": "2021-09-06T10:33:18Z",
 			"version": "main",
 			"versionExact": "main"
 		},
 		{
 			"checksumSHA1": "32kmrchV6DeWsy/jCE5jg6gYGig=",
 			"path": "github.com/canonical/go-efilib/internal/pe1.14",
-			"revision": "8a92bd81a83437ea5c5ddb86745972cb35cf1d45",
-			"revisionTime": "2021-04-19T17:55:38Z",
+			"revision": "1b2ee02a16c1aaf7d1fb45142922d204c66a76aa",
+			"revisionTime": "2021-09-06T10:33:18Z",
 			"version": "main",
 			"versionExact": "main"
 		},
 		{
-			"checksumSHA1": "+TWu/BOvV/iqfrN+Mo8d0p97a2w=",
+			"checksumSHA1": "/mFS/B1tgxcSJDo79kmAh3CNskU=",
 			"path": "github.com/canonical/go-efilib/internal/uefi",
-			"revision": "7d3f2e29397f8cf8b516710c609fde8bd6fe0550",
-			"revisionTime": "2021-07-08T20:55:05Z",
+			"revision": "1b2ee02a16c1aaf7d1fb45142922d204c66a76aa",
+			"revisionTime": "2021-09-06T10:33:18Z",
 			"version": "main",
 			"versionExact": "main"
 		},
@@ -347,10 +347,10 @@
 			"revisionTime": "2020-04-10T17:18:43Z"
 		},
 		{
-			"checksumSHA1": "Ola9GKVm7hRQO+Wworwy7zE16L0=",
+			"checksumSHA1": "oy1Jeoa2mt9xaoYsL44J6mt0+Mk=",
 			"path": "golang.org/x/sys/unix",
-			"revision": "12a6c2dcc1e4cb348b57847c73987099e261714b",
-			"revisionTime": "2020-02-12T08:54:49Z"
+			"revision": "6f6e22806c3450b5b4d275e186976d3b5758db41",
+			"revisionTime": "2021-09-06T14:56:19Z"
 		},
 		{
 			"checksumSHA1": "uIgpefsunMZTr8uZTJKcevvU/yg=",
