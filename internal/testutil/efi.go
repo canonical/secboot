@@ -34,7 +34,7 @@ func EFIReadVar(dir, name string, guid efi.GUID) ([]byte, efi.VariableAttributes
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, 0, efi.ErrVariableNotFound
+			return nil, 0, efi.ErrVarNotExist
 		}
 		return nil, 0, err
 	}

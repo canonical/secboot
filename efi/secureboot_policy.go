@@ -475,7 +475,7 @@ func (b *secureBootPolicyGenBranch) computeAndExtendVariableMeasurement(varName 
 // updates, and then extends that in to this branch.
 func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid efi.GUID, name string, updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) ([]byte, error) {
 	db, _, err := b.gen.env.ReadVar(name, guid)
-	if err != nil && err != efi.ErrVariableNotFound {
+	if err != nil && err != efi.ErrVarNotExist {
 		return nil, xerrors.Errorf("cannot read current variable: %w", err)
 	}
 
