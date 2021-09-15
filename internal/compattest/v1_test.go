@@ -73,7 +73,7 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
 }
 
-func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
+func (s *compatTestV1Suite) TestRevokeOldPCRProtectionPolicies(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
@@ -84,6 +84,7 @@ func (s *compatTestV1Suite) TestUpdateKeyPCRProtectionPolicyRevokes(c *C) {
 	c.Assert(err, IsNil)
 
 	c.Check(k.UpdatePCRProtectionPolicy(s.TPM, s.readFile(c, "authKey"), profile), IsNil)
+	c.Check(k.RevokeOldPCRProtectionPolicies(s.TPM, s.readFile(c, "authKey")), IsNil)
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
 	s.testUnsealErrorMatchesCommon(c, "invalid key data file: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }

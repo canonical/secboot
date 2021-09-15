@@ -385,6 +385,9 @@ func TestUnsealErrorHandling(t *testing.T) {
 			if err := k.UpdatePCRProtectionPolicy(tpm, authKey, getTestPCRProfile()); err != nil {
 				t.Fatalf("UpdatePCRProtectionPolicy failed: %v", err)
 			}
+			if err := k.RevokeOldPCRProtectionPolicies(tpm, authKey); err != nil {
+				t.Fatalf("RevokeOldPCRProtectionPolicies failed: %v", err)
+			}
 		})
 		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
 			"assertions: the PCR policy has been revoked" {
