@@ -42,7 +42,6 @@ import (
 
 	"maze.io/x/crypto/afis"
 
-	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 )
 
@@ -50,13 +49,6 @@ const (
 	currentMetadataVersion    uint32 = 2
 	keyDataHeader             uint32 = 0x55534b24
 	keyPolicyUpdateDataHeader uint32 = 0x55534b50
-)
-
-type authMode uint8
-
-const (
-	authModeNone authMode = iota
-	authModePIN
 )
 
 // PolicyAuthKey corresponds to the private part of the key used for signing updates to the authorization policy for a sealed key.
@@ -236,7 +228,7 @@ func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData, error) {
 type keyDataRaw_v0 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
-	AuthModeHint      authMode
+	Unused            uint8 // previously AuthModeHint
 	StaticPolicyData  *staticPolicyDataRaw_v0
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
@@ -245,7 +237,7 @@ type keyDataRaw_v0 struct {
 type keyDataRaw_v1 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
-	AuthModeHint      authMode
+	Unused            uint8 // previously AuthModeHint
 	StaticPolicyData  *staticPolicyDataRaw_v1
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
@@ -254,7 +246,7 @@ type keyDataRaw_v1 struct {
 type keyDataRaw_v2 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
-	AuthModeHint      authMode
+	Unused            uint8 // previously AuthModeHint
 	ImportSymSeed     tpm2.EncryptedSecret
 	StaticPolicyData  *staticPolicyDataRaw_v1
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
@@ -266,7 +258,6 @@ type keyData struct {
 	version           uint32
 	keyPrivate        tpm2.Private
 	keyPublic         *tpm2.Public
-	authModeHint      authMode
 	importSymSeed     tpm2.EncryptedSecret
 	staticPolicyData  *staticPolicyData
 	dynamicPolicyData *dynamicPolicyData
@@ -286,7 +277,6 @@ func (d keyData) Marshal(w io.Writer) error {
 		raw := keyDataRaw_v0{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
-			AuthModeHint:      d.authModeHint,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v0(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
 		if _, err := mu.MarshalToWriter(w, raw); err != nil {
@@ -297,7 +287,6 @@ func (d keyData) Marshal(w io.Writer) error {
 		raw := keyDataRaw_v2{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
-			AuthModeHint:      d.authModeHint,
 			ImportSymSeed:     d.importSymSeed,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
@@ -333,7 +322,6 @@ func (d *keyData) Unmarshal(r mu.Reader) error {
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
-			authModeHint:      raw.AuthModeHint,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	case 1:
@@ -355,7 +343,6 @@ func (d *keyData) Unmarshal(r mu.Reader) error {
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
-			authModeHint:      raw.AuthModeHint,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	case 2:
@@ -377,7 +364,6 @@ func (d *keyData) Unmarshal(r mu.Reader) error {
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
-			authModeHint:      raw.AuthModeHint,
 			importSymSeed:     raw.ImportSymSeed,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
@@ -696,14 +682,6 @@ type SealedKeyObject struct {
 // Version returns the version number that this sealed key object was created with.
 func (k *SealedKeyObject) Version() uint32 {
 	return k.data.version
-}
-
-// AuthMode2F indicates the 2nd-factor authentication type for this sealed key object.
-func (k *SealedKeyObject) AuthMode2F() secboot.AuthMode {
-	if k.data.authModeHint == authModePIN {
-		return secboot.AuthModePassphrase
-	}
-	return secboot.AuthModeNone
 }
 
 // PCRPolicyCounterHandle indicates the handle of the NV counter used for PCR policy revocation for this sealed key object (and for

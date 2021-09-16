@@ -153,6 +153,42 @@ func makeStaticPolicyDataRaw_v1(data *staticPolicyData) *staticPolicyDataRaw_v1 
 		PCRPolicyCounterHandle: data.pcrPolicyCounterHandle}
 }
 
+// computeV0PinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
+// actions on a NV index created with the removed createPinNVIndex for version 0 key files. These are:
+// - A policy for updating the index to revoke old dynamic authorization policies, requiring an assertion signed by the key
+//   associated with updateKeyName.
+// - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
+// - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
+// - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
+func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
+	var out tpm2.DigestList
+	// Compute a policy for incrementing the index to revoke dynamic authorization policies, requiring an assertion signed by the
+	// key associated with updateKeyName.
+	trial := util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
+	trial.PolicyNvWritten(true)
+	trial.PolicySigned(updateKeyName, nil)
+	out = append(out, trial.GetDigest())
+
+	// Compute a policy for updating the authorization value of the index, requiring knowledge of the current authorization value.
+	trial = util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandNVChangeAuth)
+	trial.PolicyAuthValue()
+	out = append(out, trial.GetDigest())
+
+	// Compute a policy for reading the counter value without knowing the authorization value.
+	trial = util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandNVRead)
+	out = append(out, trial.GetDigest())
+
+	// Compute a policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
+	trial = util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandPolicyNV)
+	out = append(out, trial.GetDigest())
+
+	return out
+}
+
 // pcrPolicyCounterHandle abstracts access to the PCR policy counter in order to
 // support the current style of index created with createPcrPolicyCounter, and the
 // legacy PIN index originally created by (the now deleted) createPinNVINdex.
@@ -517,8 +553,7 @@ func computePcrPolicyRefFromCounterContext(context tpm2.ResourceContext) tpm2.No
 // - The signed PCR policy created by computeDynamicPolicy is valid and has been satisfied (by way of a PolicyAuthorize assertion,
 //   which allows the PCR policy to be updated without creating a new sealed key object).
 // - Knowledge of the the authorization value for the entity on which the policy session is used has been demonstrated by the
-//   caller (in SealedKeyObject.UnsealFromTPM where the policy session is used for authorizing unsealing the sealed key object,
-//   this means that the PIN / passhphrase has been provided).
+//   caller - this will be used in the future as part of the passphrase integration.
 func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputeParams) (*staticPolicyData, tpm2.Digest, error) {
 	keyName, err := input.key.Name()
 	if err != nil {
@@ -764,7 +799,7 @@ func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext
 // executePolicySession executes an authorization policy session using the supplied metadata. On success, the supplied policy
 // session can be used for authorization.
 func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContext, version uint32, staticInput *staticPolicyData,
-	dynamicInput *dynamicPolicyData, pin string, hmacSession tpm2.SessionContext) error {
+	dynamicInput *dynamicPolicyData, hmacSession tpm2.SessionContext) error {
 	if err := tpm.PolicyPCR(policySession, nil, dynamicInput.pcrSelection); err != nil {
 		return xerrors.Errorf("cannot execute PCR assertion: %w", err)
 	}
@@ -890,15 +925,17 @@ func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContex
 	}
 
 	if version == 0 {
-		// For metadata version 0, PIN support is implemented by asserting knowlege of the authorization value
-		// for the PCR policy counter.
-		policyCounter.SetAuthValue([]byte(pin))
+		// For metadata version 0, PIN support was implemented by asserting knowlege of the authorization value
+		// for the PCR policy counter, although this support was never used and has been removed.
 		if _, _, err := tpm.PolicySecret(policyCounter, policySession, nil, nil, 0, hmacSession); err != nil {
 			return xerrors.Errorf("cannot execute PolicySecret assertion: %w", err)
 		}
 	} else {
-		// For metadata versions > 0, PIN support is implemented by requiring knowlege of the authorization value for
-		// the sealed key object when this policy session is used to unseal it.
+		// For metadata versions > 0, PIN support was implemented by requiring knowlege of the authorization value for
+		// the sealed key object when this policy session is used to unseal it, although this support was never
+		// used and has been removed.
+		// XXX: This mechanism will be re-used as part of the passphrase integration in the future, although the
+		//  authorization value will be a passphrase derived key.
 		if err := tpm.PolicyAuthValue(policySession); err != nil {
 			return xerrors.Errorf("cannot execute PolicyAuthValue assertion: %w", err)
 		}

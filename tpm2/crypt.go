@@ -77,8 +77,8 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
-func unsealKeyFromTPM(tpm *Connection, k *SealedKeyObject, pin string) ([]byte, error) {
-	sealedKey, _, err := k.UnsealFromTPM(tpm, pin)
+func unsealKeyFromTPM(tpm *Connection, k *SealedKeyObject) ([]byte, error) {
+	sealedKey, _, err := k.UnsealFromTPM(tpm)
 	if err == ErrTPMProvisioning {
 		// XXX: We should update this to execute on InvalidKeyFileError as well.
 		// ErrTPMProvisioning in this context might indicate that there isn't a valid persistent SRK. Have a go at creating one now and then
@@ -87,14 +87,14 @@ func unsealKeyFromTPM(tpm *Connection, k *SealedKeyObject, pin string) ([]byte, 
 		// storage hierarchy has a non-null authorization value, ProvisionTPM will fail. If the TPM owner has changed, ProvisionTPM might
 		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
 		if pErr := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); pErr == nil || pErr == ErrTPMProvisioningRequiresLockout {
-			sealedKey, _, err = k.UnsealFromTPM(tpm, pin)
+			sealedKey, _, err = k.UnsealFromTPM(tpm)
 		}
 	}
 	return sealedKey, err
 }
 
-func unsealKeyFromTPMAndActivate(tpm *Connection, volumeName, sourceDevicePath, keyringPrefix string, k *SealedKeyObject, pin string) error {
-	sealedKey, err := unsealKeyFromTPM(tpm, k, pin)
+func unsealKeyFromTPMAndActivate(tpm *Connection, volumeName, sourceDevicePath, keyringPrefix string, k *SealedKeyObject) error {
+	sealedKey, err := unsealKeyFromTPM(tpm, k)
 	if err != nil {
 		return xerrors.Errorf("cannot unseal key: %w", err)
 	}
@@ -134,7 +134,7 @@ func (c *activateTPMKeyContext) Err() *activateWithTPMKeyError {
 	return &activateWithTPMKeyError{path: c.path, err: c.err}
 }
 
-func activateWithTPMKeys(tpm *Connection, volumeName, sourceDevicePath string, keyPaths []string, passphraseReader io.Reader, passphraseTries int, keyringPrefix string) (succeeded bool, errs []*activateWithTPMKeyError) {
+func activateWithTPMKeys(tpm *Connection, volumeName, sourceDevicePath string, keyPaths []string, keyringPrefix string) (succeeded bool, errs []*activateWithTPMKeyError) {
 	var contexts []*activateTPMKeyContext
 	// Read key files
 	for _, path := range keyPaths {
@@ -145,53 +145,12 @@ func activateWithTPMKeys(tpm *Connection, volumeName, sourceDevicePath string, k
 		contexts = append(contexts, &activateTPMKeyContext{path: path, k: k, err: err})
 	}
 
-	// Try key files that don't require a passphrase first.
 	for _, c := range contexts {
 		if c.err != nil {
 			continue
 		}
-		if c.k.AuthMode2F() != secboot.AuthModeNone {
-			continue
-		}
 
-		if err := unsealKeyFromTPMAndActivate(tpm, volumeName, sourceDevicePath, keyringPrefix, c.k, ""); err != nil {
-			c.err = err
-			continue
-		}
-
-		return true, nil
-	}
-
-	// Try key files that do require a passhprase last.
-	for _, c := range contexts {
-		if c.err != nil {
-			continue
-		}
-		if c.k.AuthMode2F() != secboot.AuthModePassphrase {
-			continue
-		}
-		if passphraseTries == 0 {
-			c.err = requiresPinErr
-			continue
-		}
-
-		var pin string
-		for i := 0; i < passphraseTries; i++ {
-			r := passphraseReader
-			passphraseReader = nil
-			var err error
-			pin, err = getPassword(sourceDevicePath, "PIN", r)
-			if err != nil {
-				c.err = xerrors.Errorf("cannot obtain PIN: %w", err)
-				break
-			}
-		}
-
-		if c.err != nil {
-			continue
-		}
-
-		if err := unsealKeyFromTPMAndActivate(tpm, volumeName, sourceDevicePath, keyringPrefix, c.k, pin); err != nil {
+		if err := unsealKeyFromTPMAndActivate(tpm, volumeName, sourceDevicePath, keyringPrefix, c.k); err != nil {
 			c.err = err
 			continue
 		}
@@ -213,17 +172,12 @@ func activateWithTPMKeys(tpm *Connection, volumeName, sourceDevicePath string, k
 // try sealed key objects that do require a passphrase. Sealed key objects are otherwise tried in the order in which
 // they are provided.
 //
-// If this function tries a TPM sealed key object that has a user passphrase/PIN defined, then this function will use
-// systemd-ask-password to request it. If passphraseReader is not nil, then an attempt to read the user passphrase/PIN from this
-// will be made instead by reading all characters until the first newline. The PassphraseTries field of options defines how many
-// attempts should be made to obtain the correct passphrase for each TPM sealed key before failing.
-//
 // If activation with the TPM sealed key objects fails, this function will attempt to activate it with the fallback recovery key
 // instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of options specifies
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
 // will be made to activate the encrypted volume with the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If the RecoveryKeyTries field of options is less than zero, an error will be returned.
 //
 // If activation with the TPM sealed keys fails, a *ActivateWithMultipleSealedKeysError error will be returned, even if the
 // subsequent fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will
@@ -233,19 +187,16 @@ func activateWithTPMKeys(tpm *Connection, volumeName, sourceDevicePath string, k
 //
 // If the volume is successfully activated, either with a TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
-func ActivateVolumeWithMultipleSealedKeys(tpm *Connection, volumeName, sourceDevicePath string, keyPaths []string, passphraseReader io.Reader, options *secboot.ActivateVolumeOptions) (bool, error) {
+func ActivateVolumeWithMultipleSealedKeys(tpm *Connection, volumeName, sourceDevicePath string, keyPaths []string, options *secboot.ActivateVolumeOptions) (bool, error) {
 	if len(keyPaths) == 0 {
 		return false, errors.New("no key files provided")
 	}
 
-	if options.PassphraseTries < 0 {
-		return false, errors.New("invalid PassphraseTries")
-	}
 	if options.RecoveryKeyTries < 0 {
 		return false, errors.New("invalid RecoveryKeyTries")
 	}
 
-	if success, errs := activateWithTPMKeys(tpm, volumeName, sourceDevicePath, keyPaths, passphraseReader, options.PassphraseTries, options.KeyringPrefix); !success {
+	if success, errs := activateWithTPMKeys(tpm, volumeName, sourceDevicePath, keyPaths, options.KeyringPrefix); !success {
 		var tpmErrs []error
 		for _, e := range errs {
 			tpmErrs = append(tpmErrs, e)
@@ -260,17 +211,12 @@ func ActivateVolumeWithMultipleSealedKeys(tpm *Connection, volumeName, sourceDev
 // ActivateVolumeWithSealedKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
 // name volumeName, using the TPM sealed key object at the specified keyPath. This makes use of systemd-cryptsetup.
 //
-// If the TPM sealed key object has a user passphrase/PIN defined, then this function will use systemd-ask-password to request
-// it. If passphraseReader is not nil, then an attempt to read the user passphrase/PIN from this will be made instead by reading
-// all characters until the first newline. The PassphraseTries field of options defines how many attempts should be made to
-// obtain the correct passphrase before failing.
-//
 // If activation with the TPM sealed key object fails, this function will attempt to activate it with the fallback recovery key
 // instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of options specifies
 // how many attempts should be made to activate the volume with the recovery key before failing. If this is set to 0, then no attempts
 // will be made to activate the encrypted volume with the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If the RecoveryKeyTries field of options is less than zero, an error will be returned.
 //
 // If activation with the TPM sealed key fails, a *ActivateWithSealedKeyError error will be returned, even if the subsequent
 // fallback recovery activation is successful. In this case, the RecoveryKeyUsageErr field of the returned error will be nil, and the
@@ -279,8 +225,8 @@ func ActivateVolumeWithMultipleSealedKeys(tpm *Connection, volumeName, sourceDev
 //
 // If the volume is successfully activated, either with the TPM sealed key or the fallback recovery key, this function returns true.
 // If it is not successfully activated, then this function returns false.
-func ActivateVolumeWithSealedKey(tpm *Connection, volumeName, sourceDevicePath, keyPath string, passphraseReader io.Reader, options *secboot.ActivateVolumeOptions) (bool, error) {
-	succeeded, err := ActivateVolumeWithMultipleSealedKeys(tpm, volumeName, sourceDevicePath, []string{keyPath}, passphraseReader, options)
+func ActivateVolumeWithSealedKey(tpm *Connection, volumeName, sourceDevicePath, keyPath string, options *secboot.ActivateVolumeOptions) (bool, error) {
+	succeeded, err := ActivateVolumeWithMultipleSealedKeys(tpm, volumeName, sourceDevicePath, []string{keyPath}, options)
 	if e1, ok := err.(*ActivateWithMultipleSealedKeysError); ok {
 		if e2, ok := e1.TPMErrs[0].(*activateWithTPMKeyError); ok {
 			err = &ActivateWithSealedKeyError{e2.err, e1.RecoveryKeyUsageErr}

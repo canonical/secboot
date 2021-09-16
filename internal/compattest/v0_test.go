@@ -66,14 +66,6 @@ func (s *compatTestV0Suite) TestUnsealAfterReprovision(c *C) {
 	s.testUnseal(c, s.absPath("pcrSequence.1"))
 }
 
-func (s *compatTestV0Suite) TestUnsealWithPIN1(c *C) {
-	s.testUnsealWithPIN(c, s.absPath("pcrSequence.1"))
-}
-
-func (s *compatTestV0Suite) TestUnsealWithPIN2(c *C) {
-	s.testUnsealWithPIN(c, s.absPath("pcrSequence.2"))
-}
-
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicy(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 	profile.ExtendPCR(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo"))
@@ -114,7 +106,7 @@ func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAndUnseal(c *C) {
 	fmt.Fprintf(&b, "12 11 %x\n", testutil.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar"))
 	s.replayPCRSequenceFromReader(c, &b)
 
-	s.testUnsealCommon(c, "")
+	s.testUnsealCommon(c)
 }
 
 func (s *compatTestV0Suite) TestUpdateKeyPCRProtectionPolicyAfterLock(c *C) {

@@ -285,7 +285,6 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath str
 		version:           currentMetadataVersion,
 		keyPrivate:        priv,
 		keyPublic:         pub,
-		authModeHint:      authModeNone,
 		importSymSeed:     importSymSeed,
 		staticPolicyData:  staticPolicyData,
 		dynamicPolicyData: dynamicPolicyData}
@@ -480,7 +479,6 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 			version:           currentMetadataVersion,
 			keyPrivate:        priv,
 			keyPublic:         pub,
-			authModeHint:      authModeNone,
 			staticPolicyData:  staticPolicyData,
 			dynamicPolicyData: dynamicPolicyData}
 
