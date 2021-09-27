@@ -23,6 +23,7 @@ import (
 	"encoding/binary"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -50,7 +51,7 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
 	var expectedDigests tpm2.DigestList
 	for _, v := range data.values {
-		d, _ := tpm2.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
+		d, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
 		expectedDigests = append(expectedDigests, d)
 	}
 
@@ -418,7 +419,9 @@ func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMe
 	c.Assert(err, IsNil)
 
 	for _, s := range pcrSelection {
-		snapModelDigest, err := ComputeSnapModelDigest(s.Hash, data.model)
+		snapModelDigest, err := ComputeSnapModelDigest(func() (SnapModelHasher, error) {
+			return &GoSnapModelHasher{s.Hash.NewHash()}, nil
+		}, data.model)
 		c.Assert(err, IsNil)
 
 		h := s.Hash.NewHash()

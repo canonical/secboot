@@ -47,12 +47,11 @@ var (
 	ComputeStaticPolicy                   = computeStaticPolicy
 	CreateTPMPublicAreaForECDSAKey        = createTPMPublicAreaForECDSAKey
 	ExecutePolicySession                  = executePolicySession
-	IncrementPcrPolicyCounter             = incrementPcrPolicyCounter
+	IncrementPcrPolicyCounterTo           = incrementPcrPolicyCounterTo
 	IsDynamicPolicyDataError              = isDynamicPolicyDataError
 	IsStaticPolicyDataError               = isStaticPolicyDataError
 	LockNVIndex1Attrs                     = lockNVIndex1Attrs
-	PerformPinChange                      = performPinChange
-	ReadPcrPolicyCounter                  = readPcrPolicyCounter
+	NewPcrPolicyCounterHandleV1           = newPcrPolicyCounterHandleV1
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -82,6 +81,10 @@ func (d *DynamicPolicyData) AuthorizedPolicy() tpm2.Digest {
 func (d *DynamicPolicyData) AuthorizedPolicySignature() *tpm2.Signature {
 	return d.authorizedPolicySignature
 }
+
+type GoSnapModelHasher = goSnapModelHasher
+type PcrPolicyCounterHandle = pcrPolicyCounterHandle
+type SnapModelHasher = snapModelHasher
 
 type StaticPolicyData = staticPolicyData
 

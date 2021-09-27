@@ -65,7 +65,7 @@ func TestUnsealWithNo2FA(t *testing.T) {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm, "")
+		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm)
 		if err != nil {
 			t.Fatalf("UnsealFromTPM failed: %v", err)
 		}
@@ -139,7 +139,7 @@ func TestUnsealImportable(t *testing.T) {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm, "")
+		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm)
 		if err != nil {
 			t.Fatalf("UnsealFromTPM failed: %v", err)
 		}
@@ -194,7 +194,7 @@ func TestUnsealRelated(t *testing.T) {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm, "")
+		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm)
 		if err != nil {
 			t.Fatalf("UnsealFromTPM failed: %v", err)
 		}
@@ -205,51 +205,6 @@ func TestUnsealRelated(t *testing.T) {
 		if !bytes.Equal(authKeyUnsealed, authKey) {
 			t.Errorf("TPM returned the wrong auth key")
 		}
-	}
-}
-
-func TestUnsealWithPIN(t *testing.T) {
-	tpm := openTPMForTesting(t)
-	defer closeTPM(t, tpm)
-
-	if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
-		t.Fatalf("Failed to provision TPM for test: %v", err)
-	}
-
-	key := make([]byte, 64)
-	rand.Read(key)
-
-	tmpDir, err := ioutil.TempDir("", "_TestUnsealWithPIN_")
-	if err != nil {
-		t.Fatalf("Creating temporary directory failed: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	keyFile := tmpDir + "/keydata"
-
-	if _, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0}); err != nil {
-		t.Fatalf("SealKeyToTPM failed: %v", err)
-	}
-	defer undefineKeyNVSpace(t, tpm, keyFile)
-
-	k, err := ReadSealedKeyObject(keyFile)
-	if err != nil {
-		t.Fatalf("ReadSealedKeyObject failed: %v", err)
-	}
-
-	testPIN := "1234"
-
-	if err := k.ChangePIN(tpm, "", testPIN); err != nil {
-		t.Errorf("ChangePIN failed: %v", err)
-	}
-
-	keyUnsealed, _, err := k.UnsealFromTPM(tpm, testPIN)
-	if err != nil {
-		t.Fatalf("UnsealFromTPM failed: %v", err)
-	}
-
-	if !bytes.Equal(key, keyUnsealed) {
-		t.Errorf("TPM returned the wrong key")
 	}
 }
 
@@ -288,7 +243,7 @@ func TestUnsealErrorHandling(t *testing.T) {
 			t.Fatalf("ReadSealedKeyObject failed: %v", err)
 		}
 
-		_, _, err = k.UnsealFromTPM(tpm, "")
+		_, _, err = k.UnsealFromTPM(tpm)
 		return err
 	}
 
@@ -385,6 +340,9 @@ func TestUnsealErrorHandling(t *testing.T) {
 			if err := k.UpdatePCRProtectionPolicy(tpm, authKey, getTestPCRProfile()); err != nil {
 				t.Fatalf("UpdatePCRProtectionPolicy failed: %v", err)
 			}
+			if err := k.RevokeOldPCRProtectionPolicies(tpm, authKey); err != nil {
+				t.Fatalf("RevokeOldPCRProtectionPolicies failed: %v", err)
+			}
 		})
 		if _, ok := err.(InvalidKeyFileError); !ok || err.Error() != "invalid key data file: cannot complete authorization policy "+
 			"assertions: the PCR policy has been revoked" {
@@ -401,21 +359,6 @@ func TestUnsealErrorHandling(t *testing.T) {
 		if _, ok := err.(InvalidKeyFileError); !ok ||
 			err.Error() != "invalid key data file: cannot complete authorization policy assertions: cannot complete OR assertions: current "+
 				"session digest not found in policy data" {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
-
-	t.Run("PINFail", func(t *testing.T) {
-		err := run(t, func(tpm *Connection, keyFile string, _ []byte) {
-			k, err := ReadSealedKeyObject(keyFile)
-			if err != nil {
-				t.Fatalf("ReadSealedKeyObject failed: %v", err)
-			}
-			if err := k.ChangePIN(tpm, "", "1234"); err != nil {
-				t.Errorf("ChangePIN failed: %v", err)
-			}
-		})
-		if err != ErrPINFail {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

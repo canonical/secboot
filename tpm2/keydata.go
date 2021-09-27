@@ -34,6 +34,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/canonical/go-tpm2/util"
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
@@ -41,7 +42,6 @@ import (
 
 	"maze.io/x/crypto/afis"
 
-	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 )
 
@@ -49,13 +49,6 @@ const (
 	currentMetadataVersion    uint32 = 2
 	keyDataHeader             uint32 = 0x55534b24
 	keyPolicyUpdateDataHeader uint32 = 0x55534b50
-)
-
-type authMode uint8
-
-const (
-	authModeNone authMode = iota
-	authModePIN
 )
 
 // PolicyAuthKey corresponds to the private part of the key used for signing updates to the authorization policy for a sealed key.
@@ -130,7 +123,7 @@ func (d *afSplitData) merge() ([]byte, error) {
 	if d.stripes < 1 {
 		return nil, errors.New("invalid number of stripes")
 	}
-	if !d.hashAlg.Supported() {
+	if !d.hashAlg.Available() {
 		return nil, errors.New("unsupported digest algorithm")
 	}
 	return afis.MergeHash(d.data, int(d.stripes), func() hash.Hash { return d.hashAlg.NewHash() })
@@ -235,7 +228,7 @@ func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData, error) {
 type keyDataRaw_v0 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
-	AuthModeHint      authMode
+	Unused            uint8 // previously AuthModeHint
 	StaticPolicyData  *staticPolicyDataRaw_v0
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
@@ -244,7 +237,7 @@ type keyDataRaw_v0 struct {
 type keyDataRaw_v1 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
-	AuthModeHint      authMode
+	Unused            uint8 // previously AuthModeHint
 	StaticPolicyData  *staticPolicyDataRaw_v1
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
@@ -253,7 +246,7 @@ type keyDataRaw_v1 struct {
 type keyDataRaw_v2 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
-	AuthModeHint      authMode
+	Unused            uint8 // previously AuthModeHint
 	ImportSymSeed     tpm2.EncryptedSecret
 	StaticPolicyData  *staticPolicyDataRaw_v1
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
@@ -265,7 +258,6 @@ type keyData struct {
 	version           uint32
 	keyPrivate        tpm2.Private
 	keyPublic         *tpm2.Public
-	authModeHint      authMode
 	importSymSeed     tpm2.EncryptedSecret
 	staticPolicyData  *staticPolicyData
 	dynamicPolicyData *dynamicPolicyData
@@ -285,7 +277,6 @@ func (d keyData) Marshal(w io.Writer) error {
 		raw := keyDataRaw_v0{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
-			AuthModeHint:      d.authModeHint,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v0(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
 		if _, err := mu.MarshalToWriter(w, raw); err != nil {
@@ -296,7 +287,6 @@ func (d keyData) Marshal(w io.Writer) error {
 		raw := keyDataRaw_v2{
 			KeyPrivate:        d.keyPrivate,
 			KeyPublic:         d.keyPublic,
-			AuthModeHint:      d.authModeHint,
 			ImportSymSeed:     d.importSymSeed,
 			StaticPolicyData:  makeStaticPolicyDataRaw_v1(d.staticPolicyData),
 			DynamicPolicyData: makeDynamicPolicyDataRaw_v0(d.dynamicPolicyData)}
@@ -332,7 +322,6 @@ func (d *keyData) Unmarshal(r mu.Reader) error {
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
-			authModeHint:      raw.AuthModeHint,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	case 1:
@@ -354,7 +343,6 @@ func (d *keyData) Unmarshal(r mu.Reader) error {
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
-			authModeHint:      raw.AuthModeHint,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
 	case 2:
@@ -376,7 +364,6 @@ func (d *keyData) Unmarshal(r mu.Reader) error {
 			version:           version,
 			keyPrivate:        raw.KeyPrivate,
 			keyPublic:         raw.KeyPublic,
-			authModeHint:      raw.AuthModeHint,
 			importSymSeed:     raw.ImportSymSeed,
 			staticPolicyData:  raw.StaticPolicyData.data(),
 			dynamicPolicyData: raw.DynamicPolicyData.data()}
@@ -535,21 +522,21 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	if authPublicKey.Type != expectedAuthKeyType {
 		return nil, keyFileError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
 	}
-	authKeyScheme := authPublicKey.Params.AsymDetail().Scheme
+	authKeyScheme := authPublicKey.Params.AsymDetail(authPublicKey.Type).Scheme
 	if authKeyScheme.Scheme != tpm2.AsymSchemeNull {
 		if authKeyScheme.Scheme != expectedAuthKeyScheme {
 			return nil, keyFileError{errors.New("dynamic authorization policy signing key has unexpected scheme")}
 		}
-		if authKeyScheme.Details.Any().HashAlg != authPublicKey.NameAlg {
+		if authKeyScheme.Details.Any(authKeyScheme.Scheme).HashAlg != authPublicKey.NameAlg {
 			return nil, keyFileError{errors.New("dynamic authorization policy signing key algorithm must match name algorithm")}
 		}
 	}
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
-	trial, err := tpm2.ComputeAuthPolicy(keyPublic.NameAlg)
-	if err != nil {
-		return nil, keyFileError{xerrors.Errorf("cannot determine if static authorization policy matches sealed key object: %w", err)}
+	if !keyPublic.NameAlg.Available() {
+		return nil, keyFileError{errors.New("cannot determine if static authorization policy matches sealed key object: algorithm unavailable")}
 	}
+	trial := util.ComputeAuthPolicy(keyPublic.NameAlg)
 
 	trial.PolicyAuthorize(pcrPolicyRef, authKeyName)
 	if d.version == 0 {
@@ -575,11 +562,12 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 
 	// For v0 metadata, validate that the OR policy digests for the PCR policy counter match the public area of the index.
 	if d.version == 0 {
-		pcrPolicyCounterAuthPolicies := d.staticPolicyData.v0PinIndexAuthPolicies
-		expectedPcrPolicyCounterAuthPolicies, err := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authKeyName)
-		if err != nil {
-			return nil, keyFileError{xerrors.Errorf("cannot determine if PCR policy counter has a valid authorization policy: %w", err)}
+		if !pcrPolicyCounterPub.NameAlg.Available() {
+			return nil, keyFileError{errors.New("cannot determine if PCR policy counter has a valid authorization policy: algorithm unavailable")}
 		}
+
+		pcrPolicyCounterAuthPolicies := d.staticPolicyData.v0PinIndexAuthPolicies
+		expectedPcrPolicyCounterAuthPolicies := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authKeyName)
 		if len(pcrPolicyCounterAuthPolicies)-1 != len(expectedPcrPolicyCounterAuthPolicies) {
 			return nil, keyFileError{errors.New("unexpected number of OR policy digests for PCR policy counter")}
 		}
@@ -589,7 +577,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 			}
 		}
 
-		trial, _ = tpm2.ComputeAuthPolicy(pcrPolicyCounterPub.NameAlg)
+		trial = util.ComputeAuthPolicy(pcrPolicyCounterPub.NameAlg)
 		trial.PolicyOR(pcrPolicyCounterAuthPolicies)
 		if !bytes.Equal(pcrPolicyCounterPub.AuthPolicy, trial.GetDigest()) {
 			return nil, keyFileError{errors.New("PCR policy counter has unexpected authorization policy")}
@@ -694,14 +682,6 @@ type SealedKeyObject struct {
 // Version returns the version number that this sealed key object was created with.
 func (k *SealedKeyObject) Version() uint32 {
 	return k.data.version
-}
-
-// AuthMode2F indicates the 2nd-factor authentication type for this sealed key object.
-func (k *SealedKeyObject) AuthMode2F() secboot.AuthMode {
-	if k.data.authModeHint == authModePIN {
-		return secboot.AuthModePassphrase
-	}
-	return secboot.AuthModeNone
 }
 
 // PCRPolicyCounterHandle indicates the handle of the NV counter used for PCR policy revocation for this sealed key object (and for

@@ -29,8 +29,6 @@ import (
 )
 
 // UnsealFromTPM will load the TPM sealed object in to the TPM and attempt to unseal it, returning the cleartext key on success.
-// If a PIN has been set, the correct PIN must be provided via the pin argument. If the wrong PIN is provided, a ErrPINFail error
-// will be returned, and the TPM's dictionary attack counter will be incremented.
 //
 // If the TPM's dictionary attack logic has been triggered, a ErrTPMLockout error will be returned.
 //
@@ -60,16 +58,13 @@ import (
 // If the metadata for the updatable part of the key file's authorization policy is not consistent with the approved policy, then a
 // InvalidKeyFileError error will be returned.
 //
-// If the provided PIN is incorrect, then a ErrPINFail error will be returned and the TPM's dictionary attack counter will be
-// incremented.
-//
 // If the authorization policy check fails during unsealing, then a InvalidKeyFileError error will be returned. Note that this
 // condition can also occur as the result of an incorrectly provisioned TPM, which will be detected during a subsequent call to
 // SealKeyToTPM.
 //
 // On success, the unsealed cleartext key is returned as the first return value, and the private part of the key used for
 // authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is returned as the second return value.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection, pin string) (key []byte, authKey PolicyAuthKey, err error) {
+func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey PolicyAuthKey, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
@@ -122,7 +117,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection, pin string) (key []byte
 	}
 	defer tpm.FlushContext(policySession)
 
-	if err := executePolicySession(tpm.TPMContext, policySession, k.data.version, k.data.staticPolicyData, k.data.dynamicPolicyData, pin, hmacSession); err != nil {
+	if err := executePolicySession(tpm.TPMContext, policySession, k.data.version, k.data.staticPolicyData, k.data.dynamicPolicyData, hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
 		case isDynamicPolicyDataError(err):
@@ -130,25 +125,17 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection, pin string) (key []byte
 			return nil, nil, InvalidKeyFileError{err.Error()}
 		case isStaticPolicyDataError(err):
 			return nil, nil, InvalidKeyFileError{err.Error()}
-		case isAuthFailError(err, tpm2.CommandPolicySecret, 1):
-			return nil, nil, ErrPINFail
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
 			return nil, nil, InvalidKeyFileError{"required legacy lock NV index is not present"}
 		}
 		return nil, nil, err
 	}
 
-	// For metadata version > 0, the PIN is the auth value for the sealed key object, and the authorization
-	// policy asserts that this value is known when the policy session is used.
-	keyObject.SetAuthValue([]byte(pin))
-
 	// Unseal
 	keyData, err := tpm.Unseal(keyObject, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
 	switch {
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
 		return nil, nil, InvalidKeyFileError{"the authorization policy check failed during unsealing"}
-	case isAuthFailError(err, tpm2.CommandUnseal, 1):
-		return nil, nil, ErrPINFail
 	case err != nil:
 		return nil, nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}

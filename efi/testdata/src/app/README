@@ -1,0 +1,10 @@
+This directory contains the source code to build a mock EFI binary
+for testing. It contains the minimum amount of code to make a valid
+EFI binary that just returns 0 and is written in assembler to avoid
+depending on gnu-efi to set up a C runtime. This keeps dependencies
+to an absolute minimum in order to improve reproducibility.
+
+The NAME variable in the makefile can be specified in order to set
+the output filename. The value of this variable is also included in
+the compiled binary's .data section in order to make it possible to
+produce binaries with different hashes. The default value is "mock".

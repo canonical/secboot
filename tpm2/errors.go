@@ -49,9 +49,6 @@ var (
 	// the TPM (eg, a recovery key)
 	ErrTPMLockout = errors.New("the TPM is in DA lockout mode")
 
-	// ErrPINFail is returned from SealedKeyObject.UnsealFromTPM if the provided PIN is incorrect.
-	ErrPINFail = errors.New("the provided PIN is incorrect")
-
 	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
 	ErrNoTPM2Device = errors.New("no TPM2 device is available")
 )

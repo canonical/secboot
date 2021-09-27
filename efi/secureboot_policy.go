@@ -432,6 +432,7 @@ func (b *secureBootPolicyGenBranch) branch() *secureBootPolicyGenBranch {
 	copy(c.firmwareVerificationEvents, b.firmwareVerificationEvents)
 	c.shimVerificationEvents = make(tpm2.DigestList, len(b.shimVerificationEvents))
 	copy(c.shimVerificationEvents, b.shimVerificationEvents)
+	c.shimFlags = b.shimFlags
 
 	return c
 }
@@ -474,7 +475,7 @@ func (b *secureBootPolicyGenBranch) computeAndExtendVariableMeasurement(varName 
 // updates, and then extends that in to this branch.
 func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid efi.GUID, name string, updates []*secureBootDbUpdate, updateQuirkMode sigDbUpdateQuirkMode) ([]byte, error) {
 	db, _, err := b.gen.env.ReadVar(name, guid)
-	if err != nil && err != efi.ErrVariableNotFound {
+	if err != nil && err != efi.ErrVarNotExist {
 		return nil, xerrors.Errorf("cannot read current variable: %w", err)
 	}
 
@@ -552,7 +553,7 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, s
 		case isVerificationEvent(e):
 			// This is a verification event corresponding to a UEFI driver or system
 			// preparation application.
-			b.extendFirmwareVerificationMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
+			b.extendFirmwareVerificationMeasurement(tpm2.Digest(e.Digests[b.gen.pcrAlgorithm]))
 		case isSecureBootEvent(e):
 			// This is any secure boot event that isn't a verification event or signature
 			// database measurement. Secure boot configuration variables that aren't signature
@@ -560,7 +561,7 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, s
 			// non-volatile boot services only variable (eg, SecureBoot or DeployedMode).
 			// The non-volatile variable can only be accessed by boot services code, so
 			// always replay the log digest.
-			b.extendMeasurement(tpm2.Digest(e.Digests[tcglog.AlgorithmId(b.gen.pcrAlgorithm)]))
+			b.extendMeasurement(tpm2.Digest(e.Digests[b.gen.pcrAlgorithm]))
 			if e.EventType == tcglog.EventTypeSeparator {
 				seenSecureBootPCRSeparator = true
 			}
@@ -1118,7 +1119,7 @@ func AddSecureBootPolicyProfile(profile *secboot_tpm2.PCRProtectionProfile, para
 		return xerrors.Errorf("cannot parse TCG event log: %w", err)
 	}
 
-	if !log.Algorithms.Contains(tcglog.AlgorithmId(params.PCRAlgorithm)) {
+	if !log.Algorithms.Contains(params.PCRAlgorithm) {
 		return errors.New("cannot compute secure boot policy profile: the TCG event log does not have the requested algorithm")
 	}
 
