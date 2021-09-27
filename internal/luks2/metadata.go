@@ -418,32 +418,32 @@ func (t *rawToken) UnmarshalJSON(data []byte) error {
 // Token corresponds to a token object in the JSON metadata of a LUKS2 volume. It
 // describes how to retrieve a passphrase or key for a keyslot. Tokens decoded by
 // ReadHeader will be represented by a type-specific implementation if a
-// TokenHandler is registered for it, or GenericToken.
+// TokenDecoder is registered for it, or GenericToken.
 type Token interface {
-	GetType() TokenType // Token type ("luks2-" prefixed types are reserved for cryptsetup)
-	GetKeyslots() []int // Keyslots assigned to this token
+	Type() TokenType // Token type ("luks2-" prefixed types are reserved for cryptsetup)
+	Keyslots() []int // Keyslots assigned to this token
 }
 
-// TokenHandler provides a mechanism for an external package to decode
+// TokenDecoder provides a mechanism for an external package to decode
 // custom token types.
-type TokenHandler func([]byte) (Token, error)
+type TokenDecoder func([]byte) (Token, error)
 
-var tokenHandlers = make(map[TokenType]TokenHandler)
+var tokenDecoders = make(map[TokenType]TokenDecoder)
 
 // GenericToken corresponds to a token that doesn't have a more type-specific
 // representation.
 type GenericToken struct {
-	Type     TokenType              // Token type ("luks2-" prefixed types are reserved for cryptsetup)
-	Keyslots []int                  // Keyslots assigned to this token
-	Params   map[string]interface{} // Type-specific parameters for this token
+	TokenType     TokenType              // Token type ("luks2-" prefixed types are reserved for cryptsetup)
+	TokenKeyslots []int                  // Keyslots assigned to this token
+	Params        map[string]interface{} // Type-specific parameters for this token
 }
 
-func (t *GenericToken) GetType() TokenType {
-	return t.Type
+func (t *GenericToken) Type() TokenType {
+	return t.TokenType
 }
 
-func (t *GenericToken) GetKeyslots() []int {
-	return t.Keyslots
+func (t *GenericToken) Keyslots() []int {
+	return t.TokenKeyslots
 }
 
 func (t *GenericToken) MarshalJSON() ([]byte, error) {
@@ -452,10 +452,10 @@ func (t *GenericToken) MarshalJSON() ([]byte, error) {
 		m[k] = v
 	}
 
-	m["type"] = t.Type
+	m["type"] = t.TokenType
 
 	var keyslots []JsonNumber
-	for _, s := range t.Keyslots {
+	for _, s := range t.TokenKeyslots {
 		keyslots = append(keyslots, JsonNumber(strconv.Itoa(s)))
 	}
 	m["keyslots"] = keyslots
@@ -471,13 +471,13 @@ func (t *GenericToken) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &d); err != nil {
 		return err
 	}
-	t.Type = d.Type
+	t.TokenType = d.Type
 	for _, v := range d.Keyslots {
 		s, err := v.Int()
 		if err != nil {
 			return xerrors.Errorf("invalid keyslot id: %w", err)
 		}
-		t.Keyslots = append(t.Keyslots, s)
+		t.TokenKeyslots = append(t.TokenKeyslots, s)
 	}
 
 	t.Params = make(map[string]interface{})
@@ -769,8 +769,8 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 			return xerrors.Errorf("invalid token index: %w", err)
 		}
 		var token Token
-		if handler, ok := tokenHandlers[v.typ]; ok {
-			token, err = handler(v.data)
+		if decoder, ok := tokenDecoders[v.typ]; ok {
+			token, err = decoder(v.data)
 			if err != nil {
 				return err
 			}
@@ -965,6 +965,9 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 		Metadata:   *metadata}, nil
 }
 
-func RegisterTokenHandler(typ TokenType, handler TokenHandler) {
-	tokenHandlers[typ] = handler
+// RegisterTokenDecoder registers a custom decoder for the specified token type,
+// in order for external packages to be able to create type-spcific token structures
+// as opposed to relying on GenericToken.
+func RegisterTokenDecoder(typ TokenType, decoder TokenDecoder) {
+	tokenDecoders[typ] = decoder
 }
