@@ -108,19 +108,19 @@ func isTPMVerificationError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// InvalidKeyFileError indicates that the provided key data file is invalid. This error may also be returned in some
+// InvalidKeyDataError indicates that the provided key data file is invalid. This error may also be returned in some
 // scenarious where the TPM is incorrectly provisioned, but it isn't possible to determine whether the error is with
 // the provisioning status or because the key data file is invalid.
-type InvalidKeyFileError struct {
+type InvalidKeyDataError struct {
 	msg string
 }
 
-func (e InvalidKeyFileError) Error() string {
-	return fmt.Sprintf("invalid key data file: %s", e.msg)
+func (e InvalidKeyDataError) Error() string {
+	return fmt.Sprintf("invalid key data: %s", e.msg)
 }
 
-func isInvalidKeyFileError(err error) bool {
-	var e InvalidKeyFileError
+func isInvalidKeyDataError(err error) bool {
+	var e InvalidKeyDataError
 	return xerrors.As(err, &e)
 }
 

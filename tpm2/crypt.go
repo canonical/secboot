@@ -80,12 +80,12 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 func unsealKeyFromTPM(tpm *Connection, k *SealedKeyObject) ([]byte, error) {
 	sealedKey, _, err := k.UnsealFromTPM(tpm)
 	if err == ErrTPMProvisioning {
-		// XXX: We should update this to execute on InvalidKeyFileError as well.
+		// XXX: We should update this to execute on InvalidKeyDataError as well.
 		// ErrTPMProvisioning in this context might indicate that there isn't a valid persistent SRK. Have a go at creating one now and then
 		// retrying the unseal operation - if the previous SRK was evicted, the TPM owner hasn't changed and the storage hierarchy still
 		// has a null authorization value, then this will allow us to unseal the key without requiring any type of manual recovery. If the
 		// storage hierarchy has a non-null authorization value, ProvisionTPM will fail. If the TPM owner has changed, ProvisionTPM might
-		// succeed, but UnsealFromTPM will fail with InvalidKeyFileError when retried.
+		// succeed, but UnsealFromTPM will fail with InvalidKeyDataError when retried.
 		if pErr := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); pErr == nil || pErr == ErrTPMProvisioningRequiresLockout {
 			sealedKey, _, err = k.UnsealFromTPM(tpm)
 		}
@@ -138,7 +138,7 @@ func activateWithTPMKeys(tpm *Connection, volumeName, sourceDevicePath string, k
 	var contexts []*activateTPMKeyContext
 	// Read key files
 	for _, path := range keyPaths {
-		k, err := ReadSealedKeyObject(path)
+		k, err := ReadSealedKeyObjectFromFile(path)
 		if err != nil {
 			err = xerrors.Errorf("cannot read sealed key object: %w", err)
 		}

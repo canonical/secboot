@@ -111,7 +111,7 @@ func undefineNVSpace(t *testing.T, tpm *Connection, context, authHandle tpm2.Res
 }
 
 func undefineKeyNVSpace(t *testing.T, tpm *Connection, path string) {
-	k, err := ReadSealedKeyObject(path)
+	k, err := ReadSealedKeyObjectFromFile(path)
 	if err != nil {
 		t.Fatalf("ReadSealedKeyObject failed: %v", err)
 	}
