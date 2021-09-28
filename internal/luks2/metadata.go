@@ -298,6 +298,12 @@ const (
 	KeyslotTypeLUKS2 KeyslotType = "luks2"
 )
 
+type TokenType string
+
+const (
+	TokenTypeKeyring TokenType = "luks2-keyring"
+)
+
 // AFType corresponds to an anti-forensic splitter algorithm.
 type AFType string
 
@@ -341,13 +347,16 @@ type binaryHdr struct {
 	Padding4096 [7 * 512]byte
 }
 
-type luksJsonNumber string
+// JsonNumber represents a JSON number literal. It is similar to
+// json.Number but supports uint64 and int literals as required by
+// the LUKS2 specification.
+type JsonNumber string
 
-func (n luksJsonNumber) int() (int, error) {
+func (n JsonNumber) Int() (int, error) {
 	return strconv.Atoi(string(n))
 }
 
-func (n luksJsonNumber) uint64() (uint64, error) {
+func (n JsonNumber) Uint64() (uint64, error) {
 	return strconv.ParseUint(string(n), 10, 64)
 }
 
@@ -361,8 +370,8 @@ type Config struct {
 
 func (c *Config) UnmarshalJSON(data []byte) error {
 	var d struct {
-		JSONSize     luksJsonNumber `json:"json_size"`
-		KeyslotsSize luksJsonNumber `json:"keyslots_size"`
+		JSONSize     JsonNumber `json:"json_size"`
+		KeyslotsSize JsonNumber `json:"keyslots_size"`
 		Flags        []string
 		Requirements []string
 	}
@@ -373,13 +382,13 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	*c = Config{
 		Flags:        d.Flags,
 		Requirements: d.Requirements}
-	jsonSize, err := d.JSONSize.uint64()
+	jsonSize, err := d.JSONSize.Uint64()
 	if err != nil {
 		return xerrors.Errorf("invalid json_size value: %w", err)
 	}
 	c.JSONSize = jsonSize
 
-	keyslotsSize, err := d.KeyslotsSize.uint64()
+	keyslotsSize, err := d.KeyslotsSize.Uint64()
 	if err != nil {
 		return xerrors.Errorf("invalid keyslots_size value: %w", err)
 	}
@@ -388,64 +397,96 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Token corresponds to a token object in the JSON metadata of a LUKS2 volume. It
-// describes how to retrieve a passphrase or key for a keyslot.
-type Token struct {
-	Type     string                 // Token type ("luks2-" prefixed types are reserved for cryptsetup)
-	Keyslots []int                  // Keyslots assigned to this token
-	Params   map[string]interface{} // Type-specific parameters for this token
+type rawToken struct {
+	typ  TokenType
+	data []byte
 }
 
-func (t Token) MarshalJSON() ([]byte, error) {
+func (t *rawToken) UnmarshalJSON(data []byte) error {
+	var d struct {
+		Type TokenType
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+
+	t.typ = d.Type
+	t.data = data
+	return nil
+}
+
+// Token corresponds to a token object in the JSON metadata of a LUKS2 volume. It
+// describes how to retrieve a passphrase or key for a keyslot. Tokens decoded by
+// ReadHeader will be represented by a type-specific implementation if a
+// TokenDecoder is registered for it, or GenericToken.
+type Token interface {
+	Type() TokenType // Token type ("luks2-" prefixed types are reserved for cryptsetup)
+	Keyslots() []int // Keyslots assigned to this token
+}
+
+// TokenDecoder provides a mechanism for an external package to decode
+// custom token types.
+type TokenDecoder func([]byte) (Token, error)
+
+var tokenDecoders = make(map[TokenType]TokenDecoder)
+
+// GenericToken corresponds to a token that doesn't have a more type-specific
+// representation.
+type GenericToken struct {
+	TokenType     TokenType              // Token type ("luks2-" prefixed types are reserved for cryptsetup)
+	TokenKeyslots []int                  // Keyslots assigned to this token
+	Params        map[string]interface{} // Type-specific parameters for this token
+}
+
+func (t *GenericToken) Type() TokenType {
+	return t.TokenType
+}
+
+func (t *GenericToken) Keyslots() []int {
+	return t.TokenKeyslots
+}
+
+func (t *GenericToken) MarshalJSON() ([]byte, error) {
 	m := make(map[string]interface{})
 	for k, v := range t.Params {
 		m[k] = v
 	}
-	m["type"] = t.Type
-	var keyslots []luksJsonNumber
-	for _, s := range t.Keyslots {
-		keyslots = append(keyslots, luksJsonNumber(strconv.Itoa(s)))
+
+	m["type"] = t.TokenType
+
+	var keyslots []JsonNumber
+	for _, s := range t.TokenKeyslots {
+		keyslots = append(keyslots, JsonNumber(strconv.Itoa(s)))
 	}
 	m["keyslots"] = keyslots
 
 	return json.Marshal(m)
 }
 
-func (t *Token) UnmarshalJSON(data []byte) error {
-	m := make(map[string]interface{})
-	if err := json.Unmarshal(data, &m); err != nil {
+func (t *GenericToken) UnmarshalJSON(data []byte) error {
+	var d struct {
+		Type     TokenType
+		Keyslots []JsonNumber
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
 		return err
 	}
-
-	if ty, ok := m["type"]; ok {
-		ts, ok := ty.(string)
-		if !ok {
-			return errors.New("invalid type field type")
+	t.TokenType = d.Type
+	for _, v := range d.Keyslots {
+		s, err := v.Int()
+		if err != nil {
+			return xerrors.Errorf("invalid keyslot id: %w", err)
 		}
-		t.Type = ts
+		t.TokenKeyslots = append(t.TokenKeyslots, s)
 	}
-	delete(m, "type")
 
-	if slots, ok := m["keyslots"]; ok {
-		slotsI, ok := slots.([]interface{})
-		if !ok {
-			return errors.New("invalid keyslots field type")
-		}
-		for _, i := range slotsI {
-			s, ok := i.(string)
-			if !ok {
-				return errors.New("invalid keyslot id type")
-			}
-			n, err := luksJsonNumber(s).int()
-			if err != nil {
-				return xerrors.Errorf("invalid keyslot id: %w", err)
-			}
-			t.Keyslots = append(t.Keyslots, n)
-		}
+	t.Params = make(map[string]interface{})
+	if err := json.Unmarshal(data, &t.Params); err != nil {
+		return err
 	}
-	delete(m, "keyslots")
+	delete(t.Params, "type")
+	delete(t.Params, "keyslots")
 
-	t.Params = m
 	return nil
 }
 
@@ -465,8 +506,8 @@ type Digest struct {
 func (d *Digest) UnmarshalJSON(data []byte) error {
 	var t struct {
 		Type       KDFType
-		Keyslots   []luksJsonNumber
-		Segments   []luksJsonNumber
+		Keyslots   []JsonNumber
+		Segments   []JsonNumber
 		Salt       []byte
 		Digest     []byte
 		Hash       Hash
@@ -484,7 +525,7 @@ func (d *Digest) UnmarshalJSON(data []byte) error {
 		Iterations: t.Iterations}
 
 	for _, v := range t.Keyslots {
-		s, err := v.int()
+		s, err := v.Int()
 		if err != nil {
 			return xerrors.Errorf("invalid keyslot id: %w", err)
 		}
@@ -492,7 +533,7 @@ func (d *Digest) UnmarshalJSON(data []byte) error {
 	}
 
 	for _, v := range t.Segments {
-		s, err := v.int()
+		s, err := v.Int()
 		if err != nil {
 			return xerrors.Errorf("invalid segment id: %w", err)
 		}
@@ -527,9 +568,9 @@ type Segment struct {
 func (s *Segment) UnmarshalJSON(data []byte) error {
 	var d struct {
 		Type       string
-		Offset     luksJsonNumber
-		Size       luksJsonNumber
-		IVTweak    luksJsonNumber `json:"iv_tweak"`
+		Offset     JsonNumber
+		Size       JsonNumber
+		IVTweak    JsonNumber `json:"iv_tweak"`
 		Encryption string
 		SectorSize int `json:"sector_size"`
 		Integrity  *Integrity
@@ -546,7 +587,7 @@ func (s *Segment) UnmarshalJSON(data []byte) error {
 		Integrity:  d.Integrity,
 		Flags:      d.Flags}
 
-	offset, err := d.Offset.uint64()
+	offset, err := d.Offset.Uint64()
 	if err != nil {
 		return xerrors.Errorf("invalid offset value: %w", err)
 	}
@@ -556,14 +597,14 @@ func (s *Segment) UnmarshalJSON(data []byte) error {
 	case "dynamic":
 		s.DynamicSize = true
 	default:
-		sz, err := d.Size.uint64()
+		sz, err := d.Size.Uint64()
 		if err != nil {
 			return xerrors.Errorf("invalid size value: %w", err)
 		}
 		s.Size = sz
 	}
 
-	ivTweak, err := d.IVTweak.uint64()
+	ivTweak, err := d.IVTweak.Uint64()
 	if err != nil {
 		return xerrors.Errorf("invalid iv_tweak value: %w", err)
 	}
@@ -586,8 +627,8 @@ type Area struct {
 func (a *Area) UnmarshalJSON(data []byte) error {
 	var d struct {
 		Type       AreaType
-		Offset     luksJsonNumber
-		Size       luksJsonNumber
+		Offset     JsonNumber
+		Size       JsonNumber
 		Encryption string
 		KeySize    int `json:"key_size"`
 	}
@@ -600,13 +641,13 @@ func (a *Area) UnmarshalJSON(data []byte) error {
 		Encryption: d.Encryption,
 		KeySize:    d.KeySize}
 
-	offset, err := d.Offset.uint64()
+	offset, err := d.Offset.Uint64()
 	if err != nil {
 		return xerrors.Errorf("invalid offset value: %w", err)
 	}
 	a.Offset = offset
 
-	sz, err := d.Size.uint64()
+	sz, err := d.Size.Uint64()
 	if err != nil {
 		return xerrors.Errorf("invalid size value: %w", err)
 	}
@@ -678,16 +719,16 @@ type Metadata struct {
 	Keyslots map[int]*Keyslot // Keyslot objects
 	Segments map[int]*Segment // Segment objects
 	Digests  map[int]*Digest  // Digest objects
-	Tokens   map[int]*Token   // Token objects
+	Tokens   map[int]Token    // Token objects
 	Config   Config           // Config object
 }
 
 func (m *Metadata) UnmarshalJSON(data []byte) error {
 	var d struct {
-		Keyslots map[luksJsonNumber]*Keyslot
-		Segments map[luksJsonNumber]*Segment
-		Digests  map[luksJsonNumber]*Digest
-		Tokens   map[luksJsonNumber]*Token
+		Keyslots map[JsonNumber]*Keyslot
+		Segments map[JsonNumber]*Segment
+		Digests  map[JsonNumber]*Digest
+		Tokens   map[JsonNumber]*rawToken
 		Config   Config
 	}
 	if err := json.Unmarshal(data, &d); err != nil {
@@ -696,7 +737,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 
 	m.Keyslots = make(map[int]*Keyslot)
 	for k, v := range d.Keyslots {
-		id, err := k.int()
+		id, err := k.Int()
 		if err != nil {
 			return xerrors.Errorf("invalid keyslot index: %w", err)
 		}
@@ -705,7 +746,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 
 	m.Segments = make(map[int]*Segment)
 	for k, v := range d.Segments {
-		id, err := k.int()
+		id, err := k.Int()
 		if err != nil {
 			return xerrors.Errorf("invalid segment index: %w", err)
 		}
@@ -714,20 +755,33 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 
 	m.Digests = make(map[int]*Digest)
 	for k, v := range d.Digests {
-		id, err := k.int()
+		id, err := k.Int()
 		if err != nil {
 			return xerrors.Errorf("invalid digest index: %w", err)
 		}
 		m.Digests[id] = v
 	}
 
-	m.Tokens = make(map[int]*Token)
+	m.Tokens = make(map[int]Token)
 	for k, v := range d.Tokens {
-		id, err := k.int()
+		id, err := k.Int()
 		if err != nil {
 			return xerrors.Errorf("invalid token index: %w", err)
 		}
-		m.Tokens[id] = v
+		var token Token
+		if decoder, ok := tokenDecoders[v.typ]; ok {
+			token, err = decoder(v.data)
+			if err != nil {
+				return err
+			}
+		} else {
+			var t *GenericToken
+			if err := json.Unmarshal(v.data, &t); err != nil {
+				return err
+			}
+			token = t
+		}
+		m.Tokens[id] = token
 	}
 
 	m.Config = d.Config
@@ -909,4 +963,11 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 		HeaderSize: hdr.HdrSize,
 		Label:      hdr.Label.String(),
 		Metadata:   *metadata}, nil
+}
+
+// RegisterTokenDecoder registers a custom decoder for the specified token type,
+// in order for external packages to be able to create type-specific token structures
+// as opposed to relying on GenericToken.
+func RegisterTokenDecoder(typ TokenType, decoder TokenDecoder) {
+	tokenDecoders[typ] = decoder
 }
