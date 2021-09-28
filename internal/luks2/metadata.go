@@ -966,7 +966,7 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 }
 
 // RegisterTokenDecoder registers a custom decoder for the specified token type,
-// in order for external packages to be able to create type-spcific token structures
+// in order for external packages to be able to create type-specific token structures
 // as opposed to relying on GenericToken.
 func RegisterTokenDecoder(typ TokenType, decoder TokenDecoder) {
 	tokenDecoders[typ] = decoder
