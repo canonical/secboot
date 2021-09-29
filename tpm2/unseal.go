@@ -79,7 +79,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 	hmacSession := tpm.HmacSession()
 
 	// Load the key data
-	keyObject, err := k.data.load(tpm.TPMContext, hmacSession)
+	keyObject, err := k.load(tpm.TPMContext, hmacSession)
 	switch {
 	case isKeyDataError(err):
 		// A keyDataError can be as a result of an improperly provisioned TPM - detect if the object at tcg.SRKHandle is a valid primary key

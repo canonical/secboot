@@ -492,10 +492,10 @@ func SealKeyToTPM(tpm *Connection, key []byte, keyPath string, params *KeyCreati
 }
 
 func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyObject, authKey crypto.PrivateKey, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
-	primaryData := keys[0].data
+	primaryKey := keys[0]
 
 	// Validate the primary key object
-	pcrPolicyCounterPub, err := primaryData.validate(tpm, authKey, session)
+	pcrPolicyCounterPub, err := primaryKey.validate(tpm, authKey, session)
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
@@ -506,7 +506,7 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 
 	// Validate secondary key objects and make sure they are related
 	for i, k := range keys[1:] {
-		if _, err := k.data.validate(tpm, nil, session); err != nil {
+		if _, err := k.validate(tpm, nil, session); err != nil {
 			if isKeyDataError(err) {
 				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i)}
 			}
@@ -518,7 +518,7 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 		// to this function. This policy digest includes a cryptographic record of the PCR policy counter
 		// and dynamic authorization policy signing key, so this is the only check required to determine
 		// if 2 keys are related.
-		if !bytes.Equal(k.data.keyPublic.AuthPolicy, primaryData.keyPublic.AuthPolicy) {
+		if !bytes.Equal(k.data.keyPublic.AuthPolicy, primaryKey.data.keyPublic.AuthPolicy) {
 			return InvalidKeyDataError{fmt.Sprintf("key data at index %d is not related to the primary key data", i)}
 		}
 	}
@@ -529,9 +529,9 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 	if pcrProfile == nil {
 		pcrProfile = &PCRProtectionProfile{}
 	}
-	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm, primaryData.version, primaryData.keyPublic.NameAlg,
-		primaryData.staticPolicyData.authPublicKey.NameAlg, authKey, pcrPolicyCounterPub, pcrProfile,
-		primaryData.dynamicPolicyData.policyCount+1, session)
+	policyData, err := computeSealedKeyDynamicAuthPolicy(tpm, primaryKey.data.version, primaryKey.data.keyPublic.NameAlg,
+		primaryKey.data.staticPolicyData.authPublicKey.NameAlg, authKey, pcrPolicyCounterPub, pcrProfile,
+		primaryKey.data.dynamicPolicyData.policyCount+1, session)
 	if err != nil {
 		return xerrors.Errorf("cannot compute dynamic authorization policy: %w", err)
 	}
@@ -603,7 +603,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 		return InvalidKeyDataError{"mismatched metadata versions"}
 	}
 
-	pcrPolicyCounterPub, err := k.data.validate(tpm.TPMContext, policyUpdateData.authKey, tpm.HmacSession())
+	pcrPolicyCounterPub, err := k.validate(tpm.TPMContext, policyUpdateData.authKey, tpm.HmacSession())
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
@@ -664,7 +664,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKe
 		return InvalidKeyDataError{fmt.Sprintf("cannot create auth key: %v", err)}
 	}
 
-	pcrPolicyCounterPub, err := k.data.validate(tpm.TPMContext, nil, tpm.HmacSession())
+	pcrPolicyCounterPub, err := k.validate(tpm.TPMContext, nil, tpm.HmacSession())
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
