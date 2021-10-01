@@ -65,7 +65,6 @@ func computeSealedKeyDynamicAuthPolicy(tpm *tpm2.TPMContext, version uint32, alg
 	counterPub *tpm2.NVPublic, pcrProfile *PCRProtectionProfile, policyCount uint64,
 	session tpm2.SessionContext) (*dynamicPolicyData, error) {
 	var counterName tpm2.Name
-	// Obtain the count for the new policy
 	if counterPub != nil {
 		var err error
 		counterName, err = counterPub.Name()
@@ -262,13 +261,13 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath str
 	w := NewFileSealedKeyObjectWriter(keyPath)
 
 	// Marshal the entire object (sealed key object and auxiliary data) to disk
-	sko := &SealedKeyObject{&keyData{
+	sko := newSealedKeyObject(&keyData{
 		version:           currentMetadataVersion,
 		keyPrivate:        priv,
 		keyPublic:         pub,
 		importSymSeed:     importSymSeed,
 		staticPolicyData:  staticPolicyData,
-		dynamicPolicyData: dynamicPolicyData}}
+		dynamicPolicyData: dynamicPolicyData})
 	if err := sko.WriteAtomic(w); err != nil {
 		return nil, xerrors.Errorf("cannot write key data file: %w", err)
 	}
@@ -443,12 +442,12 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		w := NewFileSealedKeyObjectWriter(key.Path)
 
 		// Marshal the entire object (sealed key object and auxiliary data) to disk
-		sko := &SealedKeyObject{&keyData{
+		sko := newSealedKeyObject(&keyData{
 			version:           currentMetadataVersion,
 			keyPrivate:        priv,
 			keyPublic:         pub,
 			staticPolicyData:  staticPolicyData,
-			dynamicPolicyData: dynamicPolicyData}}
+			dynamicPolicyData: dynamicPolicyData})
 
 		if err := sko.WriteAtomic(w); err != nil {
 			return nil, xerrors.Errorf("cannot write key data file: %w", err)
@@ -495,22 +494,26 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 	primaryKey := keys[0]
 
 	// Validate the primary key object
-	pcrPolicyCounterPub, err := primaryKey.validate(tpm, authKey, session)
+	pcrPolicyCounterPub, err := primaryKey.validateData(tpm, session)
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
 		}
-		// FIXME: Turn the missing lock NV index in to ErrTPMProvisioning
 		return xerrors.Errorf("cannot validate key data: %w", err)
+	}
+	if err := primaryKey.validateAuthKey(authKey); err != nil {
+		if isKeyDataError(err) {
+			return InvalidKeyDataError{err.Error()}
+		}
+		return xerrors.Errorf("cannot validate auth key: %w", err)
 	}
 
 	// Validate secondary key objects and make sure they are related
 	for i, k := range keys[1:] {
-		if _, err := k.validate(tpm, nil, session); err != nil {
+		if _, err := k.validateData(tpm, session); err != nil {
 			if isKeyDataError(err) {
 				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i)}
 			}
-			// FIXME: Turn the missing lock NV index in to ErrTPMProvisioning
 			return xerrors.Errorf("cannot validate related key data: %w", err)
 		}
 		// The metadata is valid and consistent with the object's static authorization policy.
@@ -603,16 +606,12 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 		return InvalidKeyDataError{"mismatched metadata versions"}
 	}
 
-	pcrPolicyCounterPub, err := k.validate(tpm.TPMContext, policyUpdateData.authKey, tpm.HmacSession())
+	pcrPolicyCounterPub, err := k.validateData(tpm.TPMContext, tpm.HmacSession())
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
 		}
 		return xerrors.Errorf("cannot validate key data: %w", err)
-	}
-
-	if pcrPolicyCounterPub == nil {
-		return nil
 	}
 
 	handle := newPcrPolicyCounterHandleV0(pcrPolicyCounterPub, k.data.staticPolicyData.authPublicKey,
@@ -664,7 +663,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKe
 		return InvalidKeyDataError{fmt.Sprintf("cannot create auth key: %v", err)}
 	}
 
-	pcrPolicyCounterPub, err := k.validate(tpm.TPMContext, nil, tpm.HmacSession())
+	pcrPolicyCounterPub, err := k.validateData(tpm.TPMContext, tpm.HmacSession())
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
