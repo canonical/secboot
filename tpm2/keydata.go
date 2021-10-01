@@ -255,12 +255,34 @@ func (d *keyData) Unmarshal(r mu.Reader) error {
 	return nil
 }
 
+type keyDataError struct {
+	err error
+}
+
+func (e keyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e keyDataError) Unwrap() error {
+	return e.err
+}
+
+func isKeyDataError(err error) bool {
+	var e keyDataError
+	return xerrors.As(err, &e)
+}
+
+// SealedKeyObject corresponds to a sealed key data file.
+type SealedKeyObject struct {
+	data *keyData
+}
+
 // ensureImported will import the sealed key object into the TPM's storage hierarchy if
 // required, as indicated by an import symmetric seed of non-zero length. The tpmKeyData
 // structure will be updated with the newly imported private area and the import
 // symmetric seed will be cleared.
-func (d *keyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
-	if len(d.importSymSeed) == 0 {
+func (k *SealedKeyObject) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+	if len(k.data.importSymSeed) == 0 {
 		return nil
 	}
 
@@ -269,7 +291,7 @@ func (d *keyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionConte
 		return xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
-	priv, err := tpm.Import(srkContext, nil, d.keyPublic, d.keyPrivate, d.importSymSeed, nil, session)
+	priv, err := tpm.Import(srkContext, nil, k.data.keyPublic, k.data.keyPrivate, k.data.importSymSeed, nil, session)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandImport, tpm2.AnyParameterIndex) {
 			return keyDataError{errors.New("cannot import sealed key object in to TPM: bad sealed key object, invalid symmetric seed, TPM owner changed or wrong TPM")}
@@ -277,16 +299,16 @@ func (d *keyData) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionConte
 		return xerrors.Errorf("cannot import sealed key object in to TPM: %w", err)
 	}
 
-	d.keyPrivate = priv
-	d.importSymSeed = nil
+	k.data.keyPrivate = priv
+	k.data.importSymSeed = nil
 
 	return nil
 }
 
 // load loads the TPM sealed object associated with this keyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
-func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
-	if err := d.ensureImported(tpm, session); err != nil {
+func (k *SealedKeyObject) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+	if err := k.ensureImported(tpm, session); err != nil {
 		return nil, err
 	}
 
@@ -295,7 +317,7 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
-	keyContext, err := tpm.Load(srkContext, d.keyPrivate, d.keyPublic, session)
+	keyContext, err := tpm.Load(srkContext, k.data.keyPrivate, k.data.keyPublic, session)
 	if err != nil {
 		invalidObject := false
 		switch {
@@ -315,14 +337,14 @@ func (d *keyData) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.
 
 // validate performs some correctness checking on the provided keyData and authKey. On success, it returns the validated public area
 // for the PCR policy counter.
-func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
-	if d.version > currentMetadataVersion {
+func (k *SealedKeyObject) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
+	if k.data.version > currentMetadataVersion {
 		return nil, keyDataError{errors.New("invalid metadata version")}
 	}
 
 	sealedKeyTemplate := makeImportableSealedKeyTemplate()
 
-	keyPublic := d.keyPublic
+	keyPublic := k.data.keyPublic
 
 	// Perform some initial checks on the sealed data object's public area
 	if keyPublic.Type != sealedKeyTemplate.Type {
@@ -333,7 +355,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	}
 
 	// Load the sealed data object in to the TPM for integrity checking
-	keyContext, err := d.load(tpm, session)
+	keyContext, err := k.load(tpm, session)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +363,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	tpm.FlushContext(keyContext)
 
 	var legacyLockIndexName tpm2.Name
-	if d.version == 0 {
+	if k.data.version == 0 {
 		index, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
 			if tpm2.IsResourceUnavailableError(err, lockNVHandle) {
@@ -364,8 +386,8 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	// session, and there is also verification that the returned public area is for the specified handle so that we know that the
 	// returned ResourceContext corresponds to an actual entity on the TPM at the specified handle. This index is used for PCR policy
 	// revocation, and also for PIN integration with v0 metadata only.
-	pcrPolicyCounterHandle := d.staticPolicyData.pcrPolicyCounterHandle
-	if (pcrPolicyCounterHandle != tpm2.HandleNull || d.version == 0) && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
+	pcrPolicyCounterHandle := k.data.staticPolicyData.pcrPolicyCounterHandle
+	if (pcrPolicyCounterHandle != tpm2.HandleNull || k.data.version == 0) && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
 		return nil, keyDataError{errors.New("PCR policy counter handle is invalid")}
 	}
 
@@ -381,19 +403,19 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	}
 
 	var pcrPolicyRef tpm2.Nonce
-	if d.version > 0 {
+	if k.data.version > 0 {
 		pcrPolicyRef = computePcrPolicyRefFromCounterContext(pcrPolicyCounter)
 	}
 
 	// Validate the type and scheme of the dynamic authorization policy signing key.
-	authPublicKey := d.staticPolicyData.authPublicKey
+	authPublicKey := k.data.staticPolicyData.authPublicKey
 	authKeyName, err := authPublicKey.Name()
 	if err != nil {
 		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}
 	var expectedAuthKeyType tpm2.ObjectTypeId
 	var expectedAuthKeyScheme tpm2.AsymSchemeId
-	switch d.version {
+	switch k.data.version {
 	case 0:
 		expectedAuthKeyType = tpm2.ObjectTypeRSA
 		expectedAuthKeyScheme = tpm2.AsymSchemeRSAPSS
@@ -421,7 +443,7 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	trial := util.ComputeAuthPolicy(keyPublic.NameAlg)
 
 	trial.PolicyAuthorize(pcrPolicyRef, authKeyName)
-	if d.version == 0 {
+	if k.data.version == 0 {
 		trial.PolicySecret(pcrPolicyCounter.Name(), nil)
 		trial.PolicyNV(legacyLockIndexName, nil, 0, tpm2.OpEq)
 	} else {
@@ -443,12 +465,12 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	}
 
 	// For v0 metadata, validate that the OR policy digests for the PCR policy counter match the public area of the index.
-	if d.version == 0 {
+	if k.data.version == 0 {
 		if !pcrPolicyCounterPub.NameAlg.Available() {
 			return nil, keyDataError{errors.New("cannot determine if PCR policy counter has a valid authorization policy: algorithm unavailable")}
 		}
 
-		pcrPolicyCounterAuthPolicies := d.staticPolicyData.v0PinIndexAuthPolicies
+		pcrPolicyCounterAuthPolicies := k.data.staticPolicyData.v0PinIndexAuthPolicies
 		expectedPcrPolicyCounterAuthPolicies := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authKeyName)
 		if len(pcrPolicyCounterAuthPolicies)-1 != len(expectedPcrPolicyCounterAuthPolicies) {
 			return nil, keyDataError{errors.New("unexpected number of OR policy digests for PCR policy counter")}
@@ -469,20 +491,20 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	// At this point, we know that the sealed object is an object with an authorization policy created by this package and with
 	// matching static metadata and persistent TPM resources.
 
-	switch k := authKey.(type) {
+	switch key := authKey.(type) {
 	case *rsa.PrivateKey:
 		goAuthPublicKey := rsa.PublicKey{
 			N: new(big.Int).SetBytes(authPublicKey.Unique.RSA),
 			E: int(authPublicKey.Params.RSADetail.Exponent)}
-		if k.E != goAuthPublicKey.E || k.N.Cmp(goAuthPublicKey.N) != 0 {
+		if key.E != goAuthPublicKey.E || key.N.Cmp(goAuthPublicKey.N) != 0 {
 			return nil, keyDataError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
 		}
 	case *ecdsa.PrivateKey:
-		if d.version == 0 {
+		if k.data.version == 0 {
 			return nil, keyDataError{errors.New("unexpected dynamic authorization policy signing private key type")}
 		}
-		expectedX, expectedY := k.Curve.ScalarBaseMult(k.D.Bytes())
-		if expectedX.Cmp(k.X) != 0 || expectedY.Cmp(k.Y) != 0 {
+		expectedX, expectedY := key.Curve.ScalarBaseMult(key.D.Bytes())
+		if expectedX.Cmp(key.X) != 0 || expectedY.Cmp(key.Y) != 0 {
 			return nil, keyDataError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
 		}
 	case nil:
@@ -491,28 +513,6 @@ func (d *keyData) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateKey, sess
 	}
 
 	return pcrPolicyCounterPub, nil
-}
-
-type keyDataError struct {
-	err error
-}
-
-func (e keyDataError) Error() string {
-	return e.err.Error()
-}
-
-func (e keyDataError) Unwrap() error {
-	return e.err
-}
-
-func isKeyDataError(err error) bool {
-	var e keyDataError
-	return xerrors.As(err, &e)
-}
-
-// SealedKeyObject corresponds to a sealed key data file.
-type SealedKeyObject struct {
-	data *keyData
 }
 
 // Version returns the version number that this sealed key object was created with.

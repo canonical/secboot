@@ -183,7 +183,7 @@ func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authPrivateKey PolicyAu
 		return err
 	}
 
-	_, err = k.data.validate(tpm, authKey, session)
+	_, err = k.validate(tpm, authKey, session)
 	return err
 }
 
