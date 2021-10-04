@@ -36,6 +36,18 @@ const (
 	tryMax
 )
 
+// loadForUnseal loads the sealed key object into the TPM and returns a context
+// for it. It first tries by using the persistent shared SRK at the well known
+// handle as the parent object. If this object doesn't exist or loading fails with
+// an error indicating that the supplied sealed key object data is invalid, this
+// function will try to create a transient SRK and then retry loading of the sealed
+// key object by specifying the newly created transient object as the parent.
+//
+// If both attempts to load the sealed key object fail, or if the first attempt fails
+// and a transient SRK cannot be created, an error will be returned.
+//
+// If a transient SRK is created, it is flushed from the TPM before this function
+// returns.
 func (k *SealedKeyObject) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	var lastError error
 	for try := tryPersistentSRK; try <= tryMax; try++ {
