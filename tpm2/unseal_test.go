@@ -373,8 +373,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if _, ok := err.(InvalidKeyDataError); !ok || err.Error() != "invalid key data: cannot complete authorization policy "+
-			"assertions: cannot complete OR assertions: current session digest not found in policy data" {
+		if _, ok := err.(InvalidKeyDataError); !ok || err.Error() != "invalid key data: cannot complete authorization policy assertions: "+
+			"cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -421,8 +421,8 @@ func TestUnsealErrorHandling(t *testing.T) {
 			}
 		})
 		if _, ok := err.(InvalidKeyDataError); !ok ||
-			err.Error() != "invalid key data: cannot complete authorization policy assertions: cannot complete OR assertions: current "+
-				"session digest not found in policy data" {
+			err.Error() != "invalid key data: cannot complete authorization policy assertions: "+
+				"cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})

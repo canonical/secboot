@@ -21,8 +21,6 @@ package tpm2
 
 import (
 	"bytes"
-	"crypto"
-	"crypto/ecdsa"
 	"errors"
 	"io"
 
@@ -35,11 +33,10 @@ import (
 
 // keyData_v1 represents version 1 of keyData.
 type keyData_v1 struct {
-	KeyPrivate        tpm2.Private
-	KeyPublic         *tpm2.Public
-	Unused            uint8 // previously AuthModeHint
-	StaticPolicyData  *staticPolicyDataRaw_v1
-	DynamicPolicyData *dynamicPolicyDataRaw_v0
+	KeyPrivate tpm2.Private
+	KeyPublic  *tpm2.Public
+	Unused     uint8 // previously AuthModeHint
+	PolicyData *keyDataPolicy_v1
 }
 
 func readKeyDataV1(r io.Reader) (keyData, error) {
@@ -68,7 +65,7 @@ func (_ *keyData_v1) Imported(_ tpm2.Private) {
 
 func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	// Validate the type and scheme of the dynamic authorization policy signing key.
-	authPublicKey := d.StaticPolicyData.AuthPublicKey
+	authPublicKey := d.PolicyData.StaticData.AuthPublicKey
 	authKeyName, err := authPublicKey.Name()
 	if err != nil {
 		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
@@ -87,7 +84,7 @@ func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 	}
 
 	// Create a context for the PCR policy counter.
-	pcrPolicyCounterHandle := d.StaticPolicyData.PCRPolicyCounterHandle
+	pcrPolicyCounterHandle := d.PolicyData.StaticData.PCRPolicyCounterHandle
 	var pcrPolicyCounter tpm2.ResourceContext
 	switch {
 	case pcrPolicyCounterHandle != tpm2.HandleNull && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex:
@@ -107,7 +104,7 @@ func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 		return nil, keyDataError{errors.New("cannot determine if static authorization policy matches sealed key object: algorithm unavailable")}
 	}
 	trial := util.ComputeAuthPolicy(d.KeyPublic.NameAlg)
-	trial.PolicyAuthorize(computePcrPolicyRefFromCounterContext(pcrPolicyCounter), authKeyName)
+	trial.PolicyAuthorize(computeV1PcrPolicyRefFromCounterContext(pcrPolicyCounter), authKeyName)
 	trial.PolicyAuthValue()
 
 	if !bytes.Equal(trial.GetDigest(), d.KeyPublic.AuthPolicy) {
@@ -122,37 +119,6 @@ func (d *keyData_v1) Write(w io.Writer) error {
 	return err
 }
 
-func (d *keyData_v1) PcrPolicyCounterHandle() tpm2.Handle {
-	return d.StaticPolicyData.PCRPolicyCounterHandle
-}
-
-func (d *keyData_v1) ValidateAuthKey(key crypto.PrivateKey) error {
-	pub, ok := d.StaticPolicyData.AuthPublicKey.Public().(*ecdsa.PublicKey)
-	if !ok {
-		return keyDataError{errors.New("unexpected dynamic authorization policy public key type")}
-	}
-
-	priv, ok := key.(*ecdsa.PrivateKey)
-	if !ok {
-		return errors.New("unexpected dynamic authorization policy signing private key type")
-	}
-
-	expectedX, expectedY := priv.Curve.ScalarBaseMult(priv.D.Bytes())
-	if expectedX.Cmp(pub.X) != 0 || expectedY.Cmp(pub.Y) != 0 {
-		return keyDataError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
-	}
-
-	return nil
-}
-
-func (d *keyData_v1) StaticPolicy() *staticPolicyData {
-	return d.StaticPolicyData.data()
-}
-
-func (d *keyData_v1) DynamicPolicy() *dynamicPolicyData {
-	return d.DynamicPolicyData.data()
-}
-
-func (d *keyData_v1) SetDynamicPolicy(data *dynamicPolicyData) {
-	d.DynamicPolicyData = makeDynamicPolicyDataRaw_v0(data)
+func (d *keyData_v1) Policy() keyDataPolicy {
+	return d.PolicyData
 }

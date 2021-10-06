@@ -73,8 +73,8 @@
 		{
 			"checksumSHA1": "0wuA3btHc67a/DaiXem7zlpPRw4=",
 			"path": "github.com/canonical/go-tpm2/internal",
-			"revision": "3e2b334e4aa6bc83175ebe0d0cc9524140737632",
-			"revisionTime": "2021-08-24T13:09:21Z"
+			"revision": "1e41994e137391ff77b39c416e625575afb18872",
+			"revisionTime": "2021-09-30T14:01:45Z"
 		},
 		{
 			"checksumSHA1": "hcs0X8rKQni3LBBPquw7GZ7KF4A=",

@@ -130,5 +130,5 @@ func (s *compatTestV0Suite) TestUnsealAfterLock(c *C) {
 	// but keep this here just to make sure.
 	s.replayPCRSequenceFromFile(c, s.absPath("pcrSequence.1"))
 	c.Assert(secboot_tpm2.BlockPCRProtectionPolicies(s.TPM(), []int{12}), IsNil)
-	s.testUnsealErrorMatchesCommon(c, "invalid key data: cannot complete authorization policy assertions: cannot complete OR assertions: current session digest not found in policy data")
+	s.testUnsealErrorMatchesCommon(c, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }

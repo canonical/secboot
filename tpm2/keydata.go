@@ -42,7 +42,6 @@ import (
 )
 
 const (
-	currentMetadataVersion uint32 = 2
 	keyDataHeader          uint32 = 0x55534b24
 )
 
@@ -98,19 +97,8 @@ type keyData interface {
 	// Write serializes the key data to w
 	Write(w io.Writer) error
 
-	// XXX: Everything below here is temporary and is going to be replaced
-	// in a follow-up PR which provides an abstraction for the code in
-	// policy.go.
-
-	PcrPolicyCounterHandle() tpm2.Handle // Handle of PCR policy counter, or HandleNull
-
-	// ValidateAuthKey verifies that the supplied private key is
-	// associated with this key data.
-	ValidateAuthKey(key crypto.PrivateKey) error
-
-	StaticPolicy() *staticPolicyData
-	DynamicPolicy() *dynamicPolicyData
-	SetDynamicPolicy(data *dynamicPolicyData)
+	// Policy corresponds to the authorization policy for this key data.
+	Policy() keyDataPolicy
 }
 
 func readKeyData(r io.Reader, version uint32) (keyData, error) {
@@ -124,6 +112,14 @@ func readKeyData(r io.Reader, version uint32) (keyData, error) {
 	default:
 		return nil, fmt.Errorf("unexpected version number (%d)", version)
 	}
+}
+
+func newKeyData(keyPrivate tpm2.Private, keyPublic *tpm2.Public, importSymSeed tpm2.EncryptedSecret, policy keyDataPolicy) keyData {
+	return &keyData_v2{
+		KeyPrivate:       keyPrivate,
+		KeyPublic:        keyPublic,
+		KeyImportSymSeed: importSymSeed,
+		PolicyData:       policy.(*keyDataPolicy_v2)}
 }
 
 // SealedKeyObject corresponds to a sealed key data file.
@@ -214,11 +210,6 @@ func (k *SealedKeyObject) validateData(tpm *tpm2.TPMContext, session tpm2.Sessio
 	return pcrPolicyCounterPub, nil
 }
 
-// validateAuthKey checks that the supplied auth key is correct for this object.
-func (k *SealedKeyObject) validateAuthKey(key crypto.PrivateKey) error {
-	return k.data.ValidateAuthKey(key)
-}
-
 // Version returns the version number that this sealed key object was created with.
 func (k *SealedKeyObject) Version() uint32 {
 	return k.data.Version()
@@ -227,7 +218,7 @@ func (k *SealedKeyObject) Version() uint32 {
 // PCRPolicyCounterHandle indicates the handle of the NV counter used for PCR policy revocation for this sealed key object (and for
 // PIN integration for version 0 key files).
 func (k *SealedKeyObject) PCRPolicyCounterHandle() tpm2.Handle {
-	return k.data.PcrPolicyCounterHandle()
+	return k.data.Policy().PCRPolicyCounterHandle()
 }
 
 // WriteAtomic will serialize this SealedKeyObject to the supplied writer.

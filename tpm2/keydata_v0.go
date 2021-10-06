@@ -21,9 +21,6 @@ package tpm2
 
 import (
 	"bytes"
-	"crypto"
-	"crypto/rsa"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -37,73 +34,29 @@ import (
 
 const keyPolicyUpdateDataHeader uint32 = 0x55534b50
 
-// keyPolicyUpdateDataRaw_v0 is version 0 of the on-disk format of keyPolicyUpdateData.
-type keyPolicyUpdateDataRaw_v0 struct {
-	AuthKey        []byte
-	CreationData   *tpm2.CreationData
-	CreationTicket *tpm2.TkCreation
-}
-
-// keyPolicyUpdateData corresponds to the private part of a sealed key object that is required in order to create new dynamic
+// keyPolicyUpdateData_v0 corresponds to the private part of a sealed key object that is required in order to create new dynamic
 // authorization policies.
-type keyPolicyUpdateData struct {
-	version        uint32
-	authKey        crypto.PrivateKey
-	creationInfo   tpm2.Data
-	creationData   *tpm2.CreationData
-	creationTicket *tpm2.TkCreation
+type keyPolicyUpdateData_v0 struct {
+	AuthKey        []byte
+	CreationData   *tpm2.CreationData // unused
+	CreationTicket *tpm2.TkCreation   // unused
 }
 
-func (d keyPolicyUpdateData) Marshal(w io.Writer) error {
-	panic("not implemented")
-}
-
-func (d *keyPolicyUpdateData) Unmarshal(r mu.Reader) error {
-	var version uint32
-	if _, err := mu.UnmarshalFromReader(r, &version); err != nil {
-		return xerrors.Errorf("cannot unmarshal version number: %w", err)
-	}
-
-	switch version {
-	case 0:
-		var raw keyPolicyUpdateDataRaw_v0
-		if _, err := mu.UnmarshalFromReader(r, &raw); err != nil {
-			return xerrors.Errorf("cannot unmarshal data: %w", err)
-		}
-
-		authKey, err := x509.ParsePKCS1PrivateKey(raw.AuthKey)
-		if err != nil {
-			return xerrors.Errorf("cannot parse dynamic authorization policy signing key: %w", err)
-		}
-
-		h := crypto.SHA256.New()
-		if _, err := mu.MarshalToWriter(h, raw.AuthKey); err != nil {
-			panic(fmt.Sprintf("cannot marshal dynamic authorization policy signing key: %v", err))
-		}
-
-		*d = keyPolicyUpdateData{
-			version:        version,
-			authKey:        authKey,
-			creationInfo:   h.Sum(nil),
-			creationData:   raw.CreationData,
-			creationTicket: raw.CreationTicket}
-	default:
-		return fmt.Errorf("unexpected version number (%d)", version)
-	}
-	return nil
-}
-
-// decodeKeyPolicyUpdateData deserializes keyPolicyUpdateData from the provided io.Reader.
-func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData, error) {
+// decodeKeyPolicyUpdateData deserializes keyPolicyUpdateData_v0 from the provided io.Reader.
+func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData_v0, error) {
 	var header uint32
-	if _, err := mu.UnmarshalFromReader(r, &header); err != nil {
+	var version uint32
+	if _, err := mu.UnmarshalFromReader(r, &header, &version); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal header: %w", err)
 	}
 	if header != keyPolicyUpdateDataHeader {
 		return nil, fmt.Errorf("unexpected header (%d)", header)
 	}
+	if version != 0 {
+		return nil, fmt.Errorf("unexpected version number (%d)", version)
+	}
 
-	var d keyPolicyUpdateData
+	var d keyPolicyUpdateData_v0
 	if _, err := mu.UnmarshalFromReader(r, &d); err != nil {
 		return nil, xerrors.Errorf("cannot unmarshal data: %w", err)
 	}
@@ -113,11 +66,10 @@ func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData, error) {
 
 // keyData_v0 represents version 0 of keyData
 type keyData_v0 struct {
-	KeyPrivate        tpm2.Private
-	KeyPublic         *tpm2.Public
-	Unused            uint8 // previously AuthModeHint
-	StaticPolicyData  *staticPolicyDataRaw_v0
-	DynamicPolicyData *dynamicPolicyDataRaw_v0
+	KeyPrivate tpm2.Private
+	KeyPublic  *tpm2.Public
+	Unused     uint8 // previously AuthModeHint
+	PolicyData *keyDataPolicy_v0
 }
 
 func readKeyDataV0(r io.Reader) (keyData, error) {
@@ -164,7 +116,7 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 	}
 
 	// Validate the type and scheme of the dynamic authorization policy signing key.
-	authPublicKey := d.StaticPolicyData.AuthPublicKey
+	authPublicKey := d.PolicyData.StaticData.AuthPublicKey
 	authKeyName, err := authPublicKey.Name()
 	if err != nil {
 		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
@@ -182,17 +134,17 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 		}
 	}
 
-	// Create a context for the PIN index.
-	pinIndexHandle := d.StaticPolicyData.PinIndexHandle
-	if pinIndexHandle.Type() != tpm2.HandleTypeNVIndex {
-		return nil, keyDataError{errors.New("PIN index handle is invalid")}
+	// Create a context for the PCR policy counter.
+	pcrPolicyCounterHandle := d.PolicyData.StaticData.PCRPolicyCounterHandle
+	if pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
+		return nil, keyDataError{errors.New("PCR policy counter handle is invalid")}
 	}
-	pinIndex, err := tpm.CreateResourceContextFromTPM(pinIndexHandle, session.IncludeAttrs(tpm2.AttrAudit))
+	pcrPolicyCounter, err := tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		if tpm2.IsResourceUnavailableError(err, pinIndexHandle) {
-			return nil, keyDataError{errors.New("PIN index is unavailable")}
+		if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
+			return nil, keyDataError{errors.New("PCR policy counter is unavailable")}
 		}
-		return nil, xerrors.Errorf("cannot create context for PIN index: %w", err)
+		return nil, xerrors.Errorf("cannot create context for PCR policy counter: %w", err)
 	}
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
@@ -201,39 +153,39 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 	}
 	trial := util.ComputeAuthPolicy(d.KeyPublic.NameAlg)
 	trial.PolicyAuthorize(nil, authKeyName)
-	trial.PolicySecret(pinIndex.Name(), nil)
+	trial.PolicySecret(pcrPolicyCounter.Name(), nil)
 	trial.PolicyNV(lockNVName, nil, 0, tpm2.OpEq)
 
 	if !bytes.Equal(trial.GetDigest(), d.KeyPublic.AuthPolicy) {
 		return nil, keyDataError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
 	}
 
-	// Validate that the OR policy digests for the PIN index match the public area of the index.
-	pinIndexPub, _, err := tpm.NVReadPublic(pinIndex, session.IncludeAttrs(tpm2.AttrAudit))
+	// Validate that the OR policy digests for the PCR policy counter match the public area of the index.
+	pcrPolicyCounterPub, _, err := tpm.NVReadPublic(pcrPolicyCounter, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read public area of PIN index: %w", err)
+		return nil, xerrors.Errorf("cannot read public area of PCR policy counter: %w", err)
 	}
-	if !pinIndexPub.NameAlg.Available() {
-		return nil, keyDataError{errors.New("cannot determine if PIN index has a valid authorization policy: algorithm unavailable")}
+	if !pcrPolicyCounterPub.NameAlg.Available() {
+		return nil, keyDataError{errors.New("cannot determine if PCR policy counter has a valid authorization policy: algorithm unavailable")}
 	}
-	pinIndexAuthPolicies := d.StaticPolicyData.PinIndexAuthPolicies
-	expectedPinIndexAuthPolicies := computeV0PinNVIndexPostInitAuthPolicies(pinIndexPub.NameAlg, authKeyName)
-	if len(pinIndexAuthPolicies)-1 != len(expectedPinIndexAuthPolicies) {
-		return nil, keyDataError{errors.New("unexpected number of OR policy digests for PIN index")}
+	pcrPolicyCounterAuthPolicies := d.PolicyData.StaticData.PCRPolicyCounterAuthPolicies
+	expectedPCRPolicyCounterAuthPolicies := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authKeyName)
+	if len(pcrPolicyCounterAuthPolicies)-1 != len(expectedPCRPolicyCounterAuthPolicies) {
+		return nil, keyDataError{errors.New("unexpected number of OR policy digests for PCR policy counter")}
 	}
-	for i, expected := range expectedPinIndexAuthPolicies {
-		if !bytes.Equal(expected, pinIndexAuthPolicies[i+1]) {
-			return nil, keyDataError{errors.New("unexpected OR policy digest for PIN index")}
+	for i, expected := range expectedPCRPolicyCounterAuthPolicies {
+		if !bytes.Equal(expected, pcrPolicyCounterAuthPolicies[i+1]) {
+			return nil, keyDataError{errors.New("unexpected OR policy digest for PCR policy counter")}
 		}
 	}
 
-	trial = util.ComputeAuthPolicy(pinIndexPub.NameAlg)
-	trial.PolicyOR(pinIndexAuthPolicies)
-	if !bytes.Equal(pinIndexPub.AuthPolicy, trial.GetDigest()) {
-		return nil, keyDataError{errors.New("PIN index has unexpected authorization policy")}
+	trial = util.ComputeAuthPolicy(pcrPolicyCounterPub.NameAlg)
+	trial.PolicyOR(pcrPolicyCounterAuthPolicies)
+	if !bytes.Equal(pcrPolicyCounterPub.AuthPolicy, trial.GetDigest()) {
+		return nil, keyDataError{errors.New("PCR policy counter has unexpected authorization policy")}
 	}
 
-	return pinIndex, nil
+	return pcrPolicyCounter, nil
 }
 
 func (d *keyData_v0) Write(w io.Writer) error {
@@ -241,36 +193,6 @@ func (d *keyData_v0) Write(w io.Writer) error {
 	return err
 }
 
-func (d *keyData_v0) PcrPolicyCounterHandle() tpm2.Handle {
-	return d.StaticPolicyData.PinIndexHandle
-}
-
-func (d *keyData_v0) ValidateAuthKey(key crypto.PrivateKey) error {
-	pub, ok := d.StaticPolicyData.AuthPublicKey.Public().(*rsa.PublicKey)
-	if !ok {
-		return keyDataError{errors.New("unexpected dynamic authorization policy public key type")}
-	}
-
-	priv, ok := key.(*rsa.PrivateKey)
-	if !ok {
-		return errors.New("unexpected dynamic authorization policy signing private key type")
-	}
-
-	if priv.E != pub.E || priv.N.Cmp(pub.N) != 0 {
-		return keyDataError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
-	}
-
-	return nil
-}
-
-func (d *keyData_v0) StaticPolicy() *staticPolicyData {
-	return d.StaticPolicyData.data()
-}
-
-func (d *keyData_v0) DynamicPolicy() *dynamicPolicyData {
-	return d.DynamicPolicyData.data()
-}
-
-func (d *keyData_v0) SetDynamicPolicy(data *dynamicPolicyData) {
-	d.DynamicPolicyData = makeDynamicPolicyDataRaw_v0(data)
+func (d *keyData_v0) Policy() keyDataPolicy {
+	return d.PolicyData
 }

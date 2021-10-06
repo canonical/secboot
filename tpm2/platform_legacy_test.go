@@ -108,7 +108,7 @@ func (s *platformLegacySuite) TestRecoverKeysInvalidPCRPolicy(c *C) {
 
 	_, _, err = k.RecoverKeys()
 	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
-		"cannot complete OR assertions: current session digest not found in policy data")
+		"cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
 func (s *platformLegacySuite) TestRecoverKeysTPMLockout(c *C) {

@@ -61,17 +61,15 @@ func (s *keyDataV2Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
 	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
-	authKeyName, err := authKeyPublic.Name()
-	c.Assert(err, IsNil)
 
 	// Create a mock PCR policy counter
+	var policyCounterPub *tpm2.NVPublic
+	var policyCount uint64
 	var policyCounterName tpm2.Name
-	var count uint64
 	if pcrPolicyCounterHandle != tpm2.HandleNull {
-		var nvPub *tpm2.NVPublic
-		nvPub, count, err = CreatePcrPolicyCounter(s.TPM().TPMContext, pcrPolicyCounterHandle, authKeyPublic, s.TPM().HmacSession())
+		policyCounterPub, policyCount, err = CreatePcrPolicyCounter(s.TPM().TPMContext, pcrPolicyCounterHandle, authKeyPublic, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
-		policyCounterName, err = nvPub.Name()
+		policyCounterName, err = policyCounterPub.Name()
 		c.Check(err, IsNil)
 	}
 
@@ -80,11 +78,24 @@ func (s *keyDataV2Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	template := tpm2_testutil.NewSealedObjectTemplate()
 
-	trial := util.ComputeAuthPolicy(template.NameAlg)
-	trial.PolicyAuthorize(ComputePcrPolicyRefFromCounterName(policyCounterName), authKeyName)
-	trial.PolicyAuthValue()
+	policyData, policy, err := NewKeyDataPolicy(template.NameAlg, authKeyPublic, policyCounterPub, policyCount)
+	c.Assert(err, IsNil)
+	c.Assert(policyData, tpm2_testutil.ConvertibleTo, &KeyDataPolicy_v2{})
 
-	template.AuthPolicy = trial.GetDigest()
+	template.AuthPolicy = policy
+
+	policyData.(*KeyDataPolicy_v2).PCRData = &PcrPolicyData_v2{
+		Selection:        tpm2.PCRSelectionList{},
+		OrData:           PolicyOrData_v0{},
+		PolicySequence:   policyData.PCRPolicySequence(),
+		AuthorizedPolicy: make(tpm2.Digest, 32),
+		AuthorizedPolicySignature: &tpm2.Signature{
+			SigAlg: tpm2.SigSchemeAlgECDSA,
+			Signature: &tpm2.SignatureU{
+				ECDSA: &tpm2.SignatureECDSA{
+					Hash:       tpm2.HashAlgorithmSHA256,
+					SignatureR: make(tpm2.ECCParameter, 32),
+					SignatureS: make(tpm2.ECCParameter, 32)}}}}
 
 	sensitive := tpm2.SensitiveCreate{Data: secret}
 
@@ -92,24 +103,9 @@ func (s *keyDataV2Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	c.Assert(err, IsNil)
 
 	return &KeyData_v2{
-		KeyPrivate:       priv,
-		KeyPublic:        pub,
-		KeyImportSymSeed: tpm2.EncryptedSecret(nil),
-		StaticPolicyData: &StaticPolicyDataRaw_v1{
-			AuthPublicKey:          authKeyPublic,
-			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
-		DynamicPolicyData: &DynamicPolicyDataRaw_v0{
-			PCRSelection:     tpm2.PCRSelectionList{},
-			PCROrData:        PolicyOrDataTree{},
-			PolicyCount:      count,
-			AuthorizedPolicy: make(tpm2.Digest, 32),
-			AuthorizedPolicySignature: &tpm2.Signature{
-				SigAlg: tpm2.SigSchemeAlgECDSA,
-				Signature: &tpm2.SignatureU{
-					ECDSA: &tpm2.SignatureECDSA{
-						Hash:       tpm2.HashAlgorithmSHA256,
-						SignatureR: make(tpm2.ECCParameter, 32),
-						SignatureS: make(tpm2.ECCParameter, 32)}}}}}, policyCounterName
+		KeyPrivate: priv,
+		KeyPublic:  pub,
+		PolicyData: policyData.(*KeyDataPolicy_v2)}, policyCounterName
 }
 
 func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
@@ -119,8 +115,6 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 
 	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
 	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
-	authKeyName, err := authKeyPublic.Name()
-	c.Assert(err, IsNil)
 
 	// Create sealed object
 	secret := []byte("secret data")
@@ -128,11 +122,24 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 	pub, sensitive := tpm2_testutil.NewExternalSealedObject(nil, secret)
 	mu.MustCopyValue(&pub, pub)
 
-	trial := util.ComputeAuthPolicy(pub.NameAlg)
-	trial.PolicyAuthorize(ComputePcrPolicyRefFromCounterName(nil), authKeyName)
-	trial.PolicyAuthValue()
+	policyData, policy, err := NewKeyDataPolicy(pub.NameAlg, authKeyPublic, nil, 0)
+	c.Assert(err, IsNil)
+	c.Assert(policyData, tpm2_testutil.ConvertibleTo, &KeyDataPolicy_v2{})
 
-	pub.AuthPolicy = trial.GetDigest()
+	pub.AuthPolicy = policy
+
+	policyData.(*KeyDataPolicy_v2).PCRData = &PcrPolicyData_v2{
+		Selection:        tpm2.PCRSelectionList{},
+		OrData:           PolicyOrData_v0{},
+		PolicySequence:   policyData.PCRPolicySequence(),
+		AuthorizedPolicy: make(tpm2.Digest, 32),
+		AuthorizedPolicySignature: &tpm2.Signature{
+			SigAlg: tpm2.SigSchemeAlgECDSA,
+			Signature: &tpm2.SignatureU{
+				ECDSA: &tpm2.SignatureECDSA{
+					Hash:       tpm2.HashAlgorithmSHA256,
+					SignatureR: make(tpm2.ECCParameter, 32),
+					SignatureS: make(tpm2.ECCParameter, 32)}}}}
 
 	srkPub, _, _, err := s.TPM().ReadPublic(s.primary)
 	c.Assert(err, IsNil)
@@ -144,20 +151,7 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 		KeyPrivate:       priv,
 		KeyPublic:        pub,
 		KeyImportSymSeed: symSeed,
-		StaticPolicyData: &StaticPolicyDataRaw_v1{
-			AuthPublicKey:          authKeyPublic,
-			PCRPolicyCounterHandle: tpm2.HandleNull},
-		DynamicPolicyData: &DynamicPolicyDataRaw_v0{
-			PCRSelection:     tpm2.PCRSelectionList{},
-			PCROrData:        PolicyOrDataTree{},
-			AuthorizedPolicy: make(tpm2.Digest, 32),
-			AuthorizedPolicySignature: &tpm2.Signature{
-				SigAlg: tpm2.SigSchemeAlgECDSA,
-				Signature: &tpm2.SignatureU{
-					ECDSA: &tpm2.SignatureECDSA{
-						Hash:       tpm2.HashAlgorithmSHA256,
-						SignatureR: make(tpm2.ECCParameter, 32),
-						SignatureS: make(tpm2.ECCParameter, 32)}}}}}
+		PolicyData:       policyData.(*KeyDataPolicy_v2)}
 }
 
 var _ = Suite(&keyDataV2Suite{})
@@ -279,7 +273,7 @@ func (s *keyDataV2Suite) TestReadNonImportableAsV2Fails(c *C) {
 	// This means it will read the size field of the auth policy digest from
 	// somewhere inside the auth policy digest. Fill the digest with 1s in
 	// order to trigger a reproduceable error, and test that for fun!
-	data.(*KeyData_v2).StaticPolicyData.AuthPublicKey.AuthPolicy = testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+	data.(*KeyData_v2).PolicyData.StaticData.AuthPublicKey.AuthPolicy = testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
 	buf := new(bytes.Buffer)
 	c.Check(data.Write(buf), IsNil)
@@ -289,7 +283,8 @@ func (s *keyDataV2Suite) TestReadNonImportableAsV2Fails(c *C) {
 		"sized value has a size larger than the remaining bytes\n\n"+
 		"=== BEGIN STACK ===\n"+
 		"... tpm2.Public field AuthPolicy\n"+
-		"... tpm2.staticPolicyDataRaw_v1 field AuthPublicKey\n"+
-		"... tpm2.keyData_v2 field StaticPolicyData\n"+
+		"... tpm2.staticPolicyData_v1 field AuthPublicKey\n"+
+		"... tpm2.keyDataPolicy_v1 field StaticData\n"+
+		"... tpm2.keyData_v2 field PolicyData\n"+
 		"=== END STACK ===\n")
 }

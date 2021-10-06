@@ -476,8 +476,8 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "cannot compute dynamic authorization policy: cannot compute PCR digests from protection profile: not all "+
-			"branches contain values for the same sets of PCRs" {
+		if err.Error() != "cannot create initial PCR policy: cannot compute PCR digests from protection profile: "+
+			"not all branches contain values for the same sets of PCRs" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -491,7 +491,7 @@ func TestSealKeyToTPMErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "cannot compute dynamic authorization policy: PCR protection profile contains digests for unsupported PCRs" {
+		if err.Error() != "cannot create initial PCR policy: PCR protection profile contains digests for unsupported PCRs" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -649,8 +649,8 @@ func TestSealKeyToExternalTPMStorageKeyErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "cannot compute dynamic authorization policy: cannot compute PCR digests from protection profile: cannot read "+
-			"current value of PCR 7 from bank TPM_ALG_SHA256: no TPM context" {
+		if err.Error() != "cannot create initial PCR policy: cannot compute PCR digests from protection profile: "+
+			"cannot read current value of PCR 7 from bank TPM_ALG_SHA256: no TPM context" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
@@ -661,7 +661,7 @@ func TestSealKeyToExternalTPMStorageKeyErrorHandling(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error")
 		}
-		if err.Error() != "cannot compute dynamic authorization policy: PCR protection profile contains digests for unsupported PCRs" {
+		if err.Error() != "cannot create initial PCR policy: PCR protection profile contains digests for unsupported PCRs" {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
