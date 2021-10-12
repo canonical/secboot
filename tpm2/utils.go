@@ -45,6 +45,32 @@ func isAuthFailError(err error, command tpm2.CommandCode, index int) bool {
 		tpm2.IsTPMSessionError(err, tpm2.ErrorBadAuth, command, index)
 }
 
+// isLoadInvalidParamError indicates whether the specified error is a TPM error associated with an invalid param
+// supplied to a TPM2_Load command.
+func isLoadInvalidParamError(err error) bool {
+	return tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoad, tpm2.AnyParameterIndex)
+}
+
+func isImportInvalidParamError(err error) bool {
+	// Ignore TPM_RC_SCHEME for inSymSeed, which is really an invalid parent.
+	return tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandImport, tpm2.AnyParameterIndex) &&
+		!tpm2.IsTPMParameterError(err, tpm2.ErrorScheme, tpm2.CommandImport, 4)
+}
+
+// isLoadInvalidParentError indicates whether the specified error is a TPM error associated with an invalid parent
+// handle supplied to a TPM2_Load command.
+func isLoadInvalidParentError(err error) bool {
+	// TPM_RC_TYPE associated with the parent handle is an invalid parent
+	return tpm2.IsTPMHandleError(err, tpm2.ErrorType, tpm2.CommandLoad, 1)
+}
+
+func isImportInvalidParentError(err error) bool {
+	// TPM_RC_TYPE associated with the parent handle is an invalid parent, as is
+	// TPM_RC_SCHEME associated with inSymSeed.
+	return tpm2.IsTPMHandleError(err, tpm2.ErrorType, tpm2.CommandImport, 1) ||
+		tpm2.IsTPMParameterError(err, tpm2.ErrorScheme, tpm2.CommandImport, 4)
+}
+
 type tpmErrorWithHandle struct {
 	handle tpm2.Handle
 	err    *tpm2.TPMError

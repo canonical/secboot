@@ -939,3 +939,10 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 	succeeded = true
 	return t, nil
 }
+
+// ConnectToTPM will attempt to connect to a TPM using the currently
+// defined connection function. This is used internally by the tpm2
+// package when a connection is required, and defaults to
+// ConnectToDefaultTPM. This can be overridden with a custom connection
+// function.
+var ConnectToTPM func() (*Connection, error) = ConnectToDefaultTPM
