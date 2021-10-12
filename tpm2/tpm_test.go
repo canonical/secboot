@@ -22,490 +22,334 @@ package tpm2_test
 import (
 	"bytes"
 	"crypto/x509"
-	"encoding/binary"
 	"io"
 	"os"
 	"syscall"
-	"testing"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
+
+	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
 
-func TestConnectionIsEnabled(t *testing.T) {
-	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-		tpm2test.TPMFeatureOwnerHierarchy|
-			tpm2test.TPMFeatureEndorsementHierarchy|
-			tpm2test.TPMFeaturePlatformHierarchy|
-			tpm2test.TPMFeatureNV)
-	defer closeTPM()
-
-	if !tpm.IsEnabled() {
-		t.Errorf("IsEnabled returned the wrong value")
-	}
-
-	hierarchyControl := func(auth tpm2.ResourceContext, hierarchy tpm2.Handle, enable bool) {
-		if err := tpm.HierarchyControl(auth, hierarchy, enable, nil); err != nil {
-			t.Errorf("HierarchyControl failed: %v", err)
-		}
-	}
-
-	hierarchyControl(tpm.OwnerHandleContext(), tpm2.HandleOwner, false)
-	if tpm.IsEnabled() {
-		t.Errorf("IsEnabled returned the wrong value")
-	}
-
-	hierarchyControl(tpm.EndorsementHandleContext(), tpm2.HandleEndorsement, false)
-	if tpm.IsEnabled() {
-		t.Errorf("IsEnabled returned the wrong value")
-	}
+type tpmSuiteNoTPM struct {
+	tpm2_testutil.BaseTest
 }
 
-func TestConnectToDefaultTPM(t *testing.T) {
-	run := func(t *testing.T, tcti tpm2.TCTI, hasEk bool) {
-		restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-			return tcti, nil
-		})
-		defer restore()
+type tpmSuiteCommon struct{}
 
-		tpm, err := ConnectToDefaultTPM()
-		if err != nil {
-			t.Fatalf("ConnectToDefaultTPM failed: %v", err)
-		}
-		defer func() {
-			if err := tpm.Close(); err != nil {
-				t.Errorf("close failed: %v", err)
-			}
-		}()
-
-		if len(tpm.VerifiedEKCertChain()) > 0 {
-			t.Errorf("Should be no verified EK cert chain")
-		}
-		if tpm.VerifiedDeviceAttributes() != nil {
-			t.Errorf("Should be no verified device attributes")
-		}
-		rc, err := tpm.EndorsementKey()
-		if !hasEk {
-			if err == nil {
-				t.Fatalf("Connection.EndorsementKey should have returned an error")
-			}
-			if rc != nil {
-				t.Errorf("Connection.EndorsementKey should have returned a nil context")
-			}
-			if err != ErrTPMProvisioning {
-				t.Errorf("Connection.EndorsementKey returned an unexpected error: %v", err)
-			}
-		} else {
-			if err != nil {
-				t.Fatalf("Connection.EndorsementKey failed: %v", err)
-			}
-			if rc == nil {
-				t.Fatalf("Connection.EndorsementKey returned a nil context")
-			}
-			if rc.Handle() != tcg.EKHandle {
-				t.Errorf("Connection.EndorsementKey returned an unexpected context")
-			}
-		}
-		session := tpm.HmacSession()
-		if session == nil || session.Handle().Type() != tpm2.HandleTypeHMACSession {
-			t.Fatalf("Connection.HmacSession returned invalid session context")
-		}
-	}
-
-	t.Run("Unprovisioned", func(t *testing.T) {
-		tcti := tpm2_testutil.NewTCTIT(t, 0)
-		run(t, tcti, false)
-	})
-
-	t.Run("Provisioned", func(t *testing.T) {
-		tpm, tcti, closeTPM := tpm2test.OpenTPMConnectionT(t,
-			tpm2test.TPMFeatureOwnerHierarchy|
-				tpm2test.TPMFeatureEndorsementHierarchy|
-				tpm2test.TPMFeatureNV)
-		if err := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); err != ErrTPMProvisioningRequiresLockout {
-			t.Errorf("EnsureProvisioned failed: %v", err)
-		}
-
-		// Close the *Connection to delete the session associated with it but keep the underlying TCTI open
-		tcti.SetKeepOpen(true)
-		closeTPM()
-
-		run(t, tcti.Unwrap(), true)
-	})
-
-	t.Run("InvalidEK", func(t *testing.T) {
-		tpm, tcti, _ := tpm2_testutil.NewTPMContextT(t, tpm2test.TPMFeatureOwnerHierarchy|tpm2test.TPMFeatureEndorsementHierarchy|tpm2test.TPMFeatureNV)
-		defer tpm.Close()
-
-		primary, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, tcg.SRKTemplate, nil, nil, nil)
-		if err != nil {
-			t.Fatalf("CreatePrimary failed: %v", err)
-		}
-		if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), primary, tcg.EKHandle, nil); err != nil {
-			t.Errorf("EvictControl failed: %v", err)
-		}
-
-		run(t, tcti, false)
-	})
+type tpmSuite struct {
+	tpm2test.TPMTest
+	tpmSuiteCommon
 }
 
-func TestConnectToDefaultTPMNoTPM(t *testing.T) {
+func (s *tpmSuite) SetUpSuite(c *C) {
+	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
+		tpm2test.TPMFeatureEndorsementHierarchy |
+		tpm2test.TPMFeatureNV
+}
+
+type tpmSuitePlatform struct {
+	tpm2test.TPMTest
+	tpmSuiteCommon
+}
+
+func (s *tpmSuitePlatform) SetUpSuite(c *C) {
+	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
+		tpm2test.TPMFeatureEndorsementHierarchy |
+		tpm2test.TPMFeaturePlatformHierarchy |
+		tpm2test.TPMFeatureNV
+}
+
+type tpmSuiteSimulator struct {
+	tpm2test.TPMSimulatorTest
+	tpmSuiteCommon
+}
+
+func (s *tpmSuiteSimulator) ekCert(c *C) *x509.Certificate {
+	cert, err := x509.ParseCertificate(testEkCert)
+	c.Assert(err, IsNil)
+	return cert
+}
+
+func (s *tpmSuiteSimulator) caCert(c *C) *x509.Certificate {
+	cert, err := x509.ParseCertificate(testCACert)
+	c.Assert(err, IsNil)
+	return cert
+}
+
+var _ = Suite(&tpmSuiteNoTPM{})
+var _ = Suite(&tpmSuite{})
+var _ = Suite(&tpmSuitePlatform{})
+var _ = Suite(&tpmSuiteSimulator{})
+
+func (s *tpmSuitePlatform) TestConnectionIsEnabled(c *C) {
+	c.Check(s.TPM().IsEnabled(), tpm2_testutil.IsTrue)
+
+	c.Check(s.TPM().HierarchyControl(s.TPM().OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
+	c.Check(s.TPM().IsEnabled(), tpm2_testutil.IsFalse)
+
+	c.Check(s.TPM().HierarchyControl(s.TPM().EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
+	c.Check(s.TPM().IsEnabled(), tpm2_testutil.IsFalse)
+
+	c.Check(s.TPM().HierarchyControl(s.TPM().PlatformHandleContext(), tpm2.HandleOwner, true, nil), IsNil)
+	c.Check(s.TPM().IsEnabled(), tpm2_testutil.IsFalse)
+}
+
+func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEk bool) {
+	tpm, err := ConnectToDefaultTPM()
+	c.Assert(err, IsNil)
+	defer func() {
+		c.Check(tpm.Close(), IsNil)
+	}()
+
+	c.Check(tpm.VerifiedEKCertChain(), tpm2_testutil.LenEquals, 0)
+	c.Check(tpm.VerifiedDeviceAttributes(), IsNil)
+
+	ek, err := tpm.EndorsementKey()
+	if !hasEk {
+		c.Check(ek, IsNil)
+		c.Check(err, Equals, ErrTPMProvisioning)
+	} else {
+		c.Check(ek.Handle(), Equals, tcg.EKHandle)
+		c.Check(err, IsNil)
+	}
+
+	session := tpm.HmacSession()
+	c.Check(session, NotNil)
+	c.Check(session.Handle().Type(), Equals, tpm2.HandleTypeHMACSession)
+}
+
+func (s *tpmSuiteSimulator) TestConnectToDefaultTPMUnprovisioned(c *C) {
+	s.testConnectToDefaultTPM(c, false)
+}
+
+func (s *tpmSuite) TestConnectToDefaultTPMProvisioned(c *C) {
+	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
+		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+	s.testConnectToDefaultTPM(c, true)
+}
+
+func (s *tpmSuite) TestConnectToDefaultTPMInvalidEK(c *C) {
+	primary := s.CreatePrimary(c, tpm2.HandleEndorsement, tcg.SRKTemplate)
+	s.EvictControl(c, tpm2.HandleOwner, primary, tcg.EKHandle)
+	s.testConnectToDefaultTPM(c, false)
+}
+
+func (s *tpmSuiteNoTPM) TestConnectToDefaultTPMNoTPM(c *C) {
 	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
 		return nil, &os.PathError{Op: "open", Path: "/dev/tpm0", Err: syscall.ENOENT}
 	})
-	defer restore()
+	s.AddCleanup(restore)
 
 	tpm, err := ConnectToDefaultTPM()
-	if tpm != nil {
-		t.Errorf("ConnectToDefaultTPM should have failed")
-	}
-	if err != ErrNoTPM2Device {
-		t.Errorf("Unexpected error: %v", err)
-	}
+	c.Check(err, Equals, ErrNoTPM2Device)
+	c.Check(tpm, IsNil)
 }
 
-func TestSecureConnectToDefaultTPM(t *testing.T) {
-	if tpm2_testutil.TPMBackend != tpm2_testutil.TPMBackendMssim {
-		t.SkipNow()
+// We don't have a TPM1.2 simulator, so create a mock TCTI that just returns
+// a TPM_BAD_ORDINAL error
+type mockTPM12Tcti struct{}
+
+func (t *mockTPM12Tcti) Read(data []byte) (int, error) {
+	// tag = TPM_TAG_RSP_COMMAND (0xc4)
+	// paramSize = 10
+	// returnCode = TPM_BAD_ORDINAL (10)
+	b := mu.MustMarshalToBytes(tpm2.TagRspCommand, uint32(10), tpm2.ResponseBadTag)
+	return copy(data, b), io.EOF
+}
+
+func (t *mockTPM12Tcti) Write(data []byte) (int, error) {
+	return len(data), nil
+}
+
+func (t *mockTPM12Tcti) Close() error {
+	return nil
+}
+
+func (t *mockTPM12Tcti) SetLocality(locality uint8) error {
+	return nil
+}
+
+func (t *mockTPM12Tcti) MakeSticky(handle tpm2.Handle, sticky bool) error {
+	return nil
+}
+
+func (s *tpmSuiteNoTPM) TestConnectToDefaultTPM12(c *C) {
+	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
+		return &mockTPM12Tcti{}, nil
+	})
+	s.AddCleanup(restore)
+
+	tpm, err := ConnectToDefaultTPM()
+	c.Check(err, Equals, ErrNoTPM2Device)
+	c.Check(tpm, IsNil)
+}
+
+type testSecureConnectToDefaultTPMData struct {
+	ekCertData io.Reader
+	auth       []byte
+	expectEk   bool
+}
+
+func (s *tpmSuiteSimulator) testSecureConnectToDefaultTPM(c *C, data *testSecureConnectToDefaultTPMData) {
+	tpm, err := SecureConnectToDefaultTPM(data.ekCertData, data.auth)
+	c.Assert(err, IsNil)
+	s.AddCleanup(func() {
+		c.Check(tpm.Close(), IsNil)
+	})
+
+	c.Check(tpm.VerifiedEKCertChain(), tpm2_testutil.LenEquals, 2)
+	c.Check(tpm.VerifiedEKCertChain()[0].Raw, DeepEquals, testEkCert)
+
+	c.Check(tpm.VerifiedDeviceAttributes(), NotNil)
+	c.Check(tpm.VerifiedDeviceAttributes().Manufacturer, Equals, tpm2.TPMManufacturerIBM)
+	c.Check(tpm.VerifiedDeviceAttributes().Model, Equals, "FakeTPM")
+	c.Check(tpm.VerifiedDeviceAttributes().FirmwareVersion, Equals, uint32(0x00010002))
+
+	ek, err := tpm.EndorsementKey()
+	if !data.expectEk {
+		c.Check(ek, IsNil)
+		c.Check(err, Equals, ErrTPMProvisioning)
+	} else {
+		c.Check(ek.Handle(), Equals, tcg.EKHandle)
+		c.Check(err, IsNil)
 	}
 
-	ekCert, err := x509.ParseCertificate(testEkCert)
-	if err != nil {
-		t.Fatalf("cannot parse EK cert: %v", err)
-	}
-	caCert, err := x509.ParseCertificate(testCACert)
-	if err != nil {
-		t.Fatalf("cannot parse CA cert: %v", err)
-	}
+	session := tpm.HmacSession()
+	c.Check(session, NotNil)
+	c.Check(session.Handle().Type(), Equals, tpm2.HandleTypeHMACSession)
+}
 
-	run := func(t *testing.T, tcti tpm2.TCTI, ekCertData io.Reader, hasEk bool, auth []byte) {
-		restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-			return tcti, nil
-		})
-		defer restore()
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMUnprovisioned(c *C) {
+	// Test that we verify successfully with a transient EK
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(nil, []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
+	s.testSecureConnectToDefaultTPM(c, &testSecureConnectToDefaultTPMData{
+		ekCertData: ekCertData})
+}
 
-		tpm, err := SecureConnectToDefaultTPM(ekCertData, auth)
-		if err != nil {
-			if err := tcti.Close(); err != nil {
-				t.Errorf("close on error failed: %v", err)
-			}
-			t.Fatalf("SecureConnectToDefaultTPM failed: %v", err)
-		}
-		defer func() {
-			if err := tpm.Close(); err != nil {
-				t.Errorf("close failed: %v", err)
-			}
-		}()
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMUnprovisionedWithEndorsementAuth(c *C) {
+	// Test that we verify successfully with a transient EK when the endorsement hierarchy has an authorization value and we know it
+	testAuth := []byte("56789")
+	s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, testAuth)
 
-		if len(tpm.VerifiedEKCertChain()) != 2 {
-			t.Fatalf("Unexpected number of certificates in chain")
-		}
-		if !bytes.Equal(tpm.VerifiedEKCertChain()[0].Raw, testEkCert) {
-			t.Errorf("Unexpected leaf certificate")
-		}
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(nil, []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
+	s.testSecureConnectToDefaultTPM(c, &testSecureConnectToDefaultTPMData{
+		ekCertData: ekCertData,
+		auth:       testAuth})
+}
 
-		if tpm.VerifiedDeviceAttributes() == nil {
-			t.Fatalf("Should have verified device attributes")
-		}
-		if tpm.VerifiedDeviceAttributes().Manufacturer != tpm2.TPMManufacturerIBM {
-			t.Errorf("Unexpected verified manufacturer")
-		}
-		if tpm.VerifiedDeviceAttributes().Model != "FakeTPM" {
-			t.Errorf("Unexpected verified model")
-		}
-		if tpm.VerifiedDeviceAttributes().FirmwareVersion != binary.BigEndian.Uint32([]byte{0x00, 0x01, 0x00, 0x02}) {
-			t.Errorf("Unexpected verified firmware version")
-		}
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMProvisioned(c *C) {
+	// Test that we verify successfully with the properly provisioned persistent EK
+	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil), Equals, ErrTPMProvisioningRequiresLockout)
 
-		rc, err := tpm.EndorsementKey()
-		if !hasEk {
-			if err == nil {
-				t.Fatalf("Connection.EndorsementKey should have returned an error")
-			}
-			if rc != nil {
-				t.Errorf("Connection.EndorsementKey should have returned a nil context")
-			}
-			if err != ErrTPMProvisioning {
-				t.Errorf("Connection.EndorsementKey returned an unexpected error: %v", err)
-			}
-		} else {
-			if err != nil {
-				t.Fatalf("Connection.EndorsementKey failed: %v", err)
-			}
-			if rc == nil {
-				t.Fatalf("Connection.EndorsementKey returned a nil context")
-			}
-			if rc.Handle() != tcg.EKHandle {
-				t.Errorf("Connection.EndorsementKey returned an unexpected context")
-			}
-		}
-		session := tpm.HmacSession()
-		if session == nil || session.Handle().Type() != tpm2.HandleTypeHMACSession {
-			t.Fatalf("Connection.HmacSession returned invalid session context")
-		}
-	}
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(nil, []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
+	s.testSecureConnectToDefaultTPM(c, &testSecureConnectToDefaultTPMData{
+		ekCertData: ekCertData,
+		expectEk:   true})
+}
 
-	t.Run("Unprovisioned", func(t *testing.T) {
-		// Test that we verify successfully with a transient EK
-		tcti := tpm2_testutil.NewSimulatorTCTIT(t)
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMCallerProvidedEKCert(c *C) {
+	// Test that we can verify without a TPM provisioned EK certificate
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(s.ekCert(c), []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
+	s.testSecureConnectToDefaultTPM(c, &testSecureConnectToDefaultTPMData{
+		ekCertData: ekCertData})
+}
 
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("cannot encode EK cert chain: %v", err)
-		}
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMIncorrectPersistentEK(c *C) {
+	// Test that we verify successfully using a transient EK if the persistent EK doesn't match the certificate
 
-		run(t, tcti, ekCertData, false, nil)
-	})
+	// This produces a primary key that doesn't match the certificate created in TestMain
+	sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
+	ek, _, _, _, _, err := s.TPM().CreatePrimary(s.TPM().EndorsementHandleContext(), &sensitive, tcg.EKTemplate, nil, nil, nil)
+	c.Assert(err, IsNil)
+	s.EvictControl(c, tpm2.HandleOwner, ek, tcg.EKHandle)
 
-	t.Run("UnprovisionedWithEndorsementAuth", func(t *testing.T) {
-		// Test that we verify successfully with a transient EK when the endorsement hierarchy has an authorization value and we know it
-		tpm, tcti, _ := tpm2_testutil.NewTPMSimulatorContextT(t)
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(nil, []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
+	s.testSecureConnectToDefaultTPM(c, &testSecureConnectToDefaultTPMData{
+		ekCertData: ekCertData})
+}
 
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("cannot encode EK cert chain: %v", err)
-		}
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMIncorrectPersistentEKWithEndorsementAuth(c *C) {
+	// Test that we verify successfully using a transient EK if the persistent EK doesn't match the certificate and we have set the
+	// endorsement hierarchy authorization value
 
-		testAuth := []byte("56789")
-		if err := tpm.HierarchyChangeAuth(tpm.EndorsementHandleContext(), testAuth, nil); err != nil {
-			t.Errorf("HierarchyChangeAuth failed: %v", err)
-		}
+	// This produces a primary key that doesn't match the certificate created in TestMain
+	sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
+	ek, _, _, _, _, err := s.TPM().CreatePrimary(s.TPM().EndorsementHandleContext(), &sensitive, tcg.EKTemplate, nil, nil, nil)
+	c.Assert(err, IsNil)
+	s.EvictControl(c, tpm2.HandleOwner, ek, tcg.EKHandle)
 
-		run(t, tcti, ekCertData, false, testAuth)
-	})
+	testAuth := []byte("12345")
+	s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, testAuth)
 
-	t.Run("UnprovisionedWithUnknownEndorsementAuth", func(t *testing.T) {
-		// Test that we get the correct error if there is no persistent EK and we can't create a transient one
-		tpm, tcti, closeTPM := tpm2_testutil.NewTPMSimulatorContextT(t)
-		defer func() {
-			if closeTPM == nil {
-				return
-			}
-			closeTPM()
-		}()
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(nil, []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
+	s.testSecureConnectToDefaultTPM(c, &testSecureConnectToDefaultTPMData{
+		ekCertData: ekCertData,
+		auth:       testAuth})
+}
 
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("cannot encode EK cert chain: %v", err)
-		}
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMUnprovisionedWithUnknownEndorsementAuth(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
 
-		if err := tpm.HierarchyChangeAuth(tpm.EndorsementHandleContext(), []byte("1234"), nil); err != nil {
-			t.Errorf("HierarchyChangeAuth failed: %v", err)
-		}
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(nil, []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
+	_, err := SecureConnectToDefaultTPM(ekCertData, nil)
+	c.Check(err, Equals, ErrTPMProvisioning)
+}
 
-		restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-			closeTPM = nil
-			return tcti, nil
-		})
-		defer restore()
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMInvalidEKCert(c *C) {
+	// Test that we get the right error if the provided EK cert data is invalid
+	ekCertData := new(bytes.Buffer)
+	ekCertData.Write([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+	_, err := SecureConnectToDefaultTPM(ekCertData, nil)
+	c.Check(err, tpm2_testutil.ConvertibleTo, EKCertVerificationError{})
+	c.Check(err, ErrorMatches, "cannot verify the endorsement key certificate: certificate verification failed: x509: certificate signed by unknown authority")
+}
 
-		_, err := SecureConnectToDefaultTPM(ekCertData, nil)
-		if err == nil {
-			t.Fatalf("SecureConnectToDefaultTPM should have failed")
-		}
-		if err != ErrTPMProvisioning {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMEKCertUnknownIssuer(c *C) {
+	// Test that we get the right error if the provided EK cert has an unknown issuer
+	caCertRaw, caKey, err := tpm2test.CreateTestCA()
+	c.Assert(err, IsNil)
+	certRaw, err := tpm2test.CreateTestEKCert(s.TPM().TPMContext, caCertRaw, caKey)
+	c.Assert(err, IsNil)
+	cert, _ := x509.ParseCertificate(certRaw)
+	caCert, _ := x509.ParseCertificate(caCertRaw)
 
-	t.Run("Provisioned", func(t *testing.T) {
-		// Test that we verify successfully with the properly provisioned persistent EK
-		tpm, tcti, closeTPM := tpm2test.OpenTPMSimulatorConnectionT(t)
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(cert, []*x509.Certificate{caCert}, ekCertData), IsNil)
+	_, err = SecureConnectToDefaultTPM(ekCertData, nil)
+	c.Check(err, tpm2_testutil.ConvertibleTo, EKCertVerificationError{})
+	c.Check(err, ErrorMatches, "cannot verify the endorsement key certificate: certificate verification failed: x509: certificate signed by unknown authority")
+}
 
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("cannot encode EK cert chain: %v", err)
-		}
+func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMIncorrectPersistentEKWithUnknownEndorsementAuth(c *C) {
+	// Verify that we get the expected error if the persistent EK doesn't match the certificate and we can't create a transient EK
 
-		if err := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); err != ErrTPMProvisioningRequiresLockout {
-			t.Errorf("EnsureProvisioned failed: %v", err)
-		}
+	// This produces a primary key that doesn't match the certificate created in TestMain
+	sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
+	ek, _, _, _, _, err := s.TPM().CreatePrimary(s.TPM().EndorsementHandleContext(), &sensitive, tcg.EKTemplate, nil, nil, nil)
+	c.Assert(err, IsNil)
+	s.EvictControl(c, tpm2.HandleOwner, ek, tcg.EKHandle)
 
-		// Close the *Connection to delete the session associated with it but keep the underlying TCTI open
-		tcti.SetKeepOpen(true)
-		closeTPM()
+	testAuth := []byte("12345")
+	s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, testAuth)
 
-		run(t, tcti.Unwrap(), ekCertData, true, nil)
-	})
-
-	t.Run("CallerProvidedEkCert", func(t *testing.T) {
-		// Test that we can verify without a TPM provisioned EK certificate
-		tcti := tpm2_testutil.NewSimulatorTCTIT(t)
-
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(ekCert, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("cannot encode EK cert chain: %v", err)
-		}
-
-		run(t, tcti, ekCertData, false, nil)
-	})
-
-	t.Run("InvalidEkCert", func(t *testing.T) {
-		// Test that we get the right error if the provided EK cert data is invalid
-		_, tcti, closeTPM := tpm2_testutil.NewTPMSimulatorContextT(t)
-		defer func() {
-			if closeTPM == nil {
-				return
-			}
-			closeTPM()
-		}()
-
-		restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-			closeTPM = nil
-			return tcti, nil
-		})
-		defer restore()
-
-		certData := new(bytes.Buffer)
-		certData.Write([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
-
-		_, err := SecureConnectToDefaultTPM(certData, nil)
-		if err == nil {
-			t.Fatalf("SecureConnectToDefaultTPM should have failed")
-		}
-		if _, ok := err.(EKCertVerificationError); !ok {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
-
-	t.Run("EkCertUnknownIssuer", func(t *testing.T) {
-		// Test that we get the right error if the provided EK cert has an unknown issuer
-		tpm, tcti, closeTPM := tpm2_testutil.NewTPMSimulatorContextT(t)
-		defer func() {
-			if closeTPM == nil {
-				return
-			}
-			closeTPM()
-		}()
-
-		caCertRaw, caKey, err := tpm2test.CreateTestCA()
-		if err != nil {
-			t.Fatalf("createTestCA failed: %v", err)
-		}
-		certRaw, err := tpm2test.CreateTestEKCert(tpm, caCertRaw, caKey)
-		if err != nil {
-			t.Fatalf("createTestEkCert failed: %v", err)
-		}
-		cert, _ := x509.ParseCertificate(certRaw)
-		caCert, _ := x509.ParseCertificate(caCertRaw)
-
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(cert, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("EncodeEKCertificateChain failed: %v", err)
-		}
-
-		restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-			closeTPM = nil
-			return tcti, nil
-		})
-		defer restore()
-
-		_, err = SecureConnectToDefaultTPM(ekCertData, nil)
-		if err == nil {
-			t.Fatalf("SecureConnectToDefaultTPM should have failed")
-		}
-		if _, ok := err.(EKCertVerificationError); !ok {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
-
-	t.Run("IncorrectPersistentEK", func(t *testing.T) {
-		// Test that we verify successfully using a transient EK if the persistent EK doesn't match the certificate
-		tpm, tcti, _ := tpm2_testutil.NewTPMSimulatorContextT(t)
-		defer tpm.Close()
-
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("cannot encode EK cert chain: %v", err)
-		}
-
-		// This produces a primary key that doesn't match the certificate created in TestMain
-		sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
-		ek, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, tcg.EKTemplate, nil, nil, nil)
-		if err != nil {
-			t.Fatalf("CreatePrimary failed: %v", err)
-		}
-		if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ek, tcg.EKHandle, nil); err != nil {
-			t.Errorf("EvictControl failed: %v", err)
-		}
-
-		run(t, tcti, ekCertData, false, nil)
-	})
-
-	t.Run("IncorrectPersistentEKWithEndorsementAuth", func(t *testing.T) {
-		// Test that we verify successfully using a transient EK if the persistent EK doesn't match the certificate and we have set the
-		// endorsement hierarchy authorization value
-		tpm, tcti, _ := tpm2_testutil.NewTPMSimulatorContextT(t)
-		defer tpm.Close()
-
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("cannot encode EK cert chain: %v", err)
-		}
-
-		// This produces a primary key that doesn't match the certificate created in TestMain
-		sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
-		ek, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, tcg.EKTemplate, nil, nil, nil)
-		if err != nil {
-			t.Fatalf("CreatePrimary failed: %v", err)
-		}
-		if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ek, tcg.EKHandle, nil); err != nil {
-			t.Errorf("EvictControl failed: %v", err)
-		}
-
-		testAuth := []byte("12345")
-		if err := tpm.HierarchyChangeAuth(tpm.EndorsementHandleContext(), testAuth, nil); err != nil {
-			t.Errorf("HierarchyChangeAuth failed: %v", err)
-		}
-
-		run(t, tcti, ekCertData, false, testAuth)
-	})
-
-	t.Run("IncorrectPersistentEKWithUnknownEndorsementAuth", func(t *testing.T) {
-		// Verify that we get the expected error if the persistent EK doesn't match the certificate and we can't create a transient EK
-		tpm, tcti, closeTPM := tpm2_testutil.NewTPMSimulatorContextT(t)
-		defer func() {
-			if closeTPM == nil {
-				return
-			}
-			closeTPM()
-		}()
-
-		ekCertData := new(bytes.Buffer)
-		if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, ekCertData); err != nil {
-			t.Errorf("cannot encode EK cert chain: %v", err)
-		}
-
-		// This produces a primary key that doesn't match the certificate created in TestMain
-		sensitive := tpm2.SensitiveCreate{Data: []byte("foo")}
-		ek, _, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), &sensitive, tcg.EKTemplate, nil, nil, nil)
-		if err != nil {
-			t.Fatalf("CreatePrimary failed: %v", err)
-		}
-		if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ek, tcg.EKHandle, nil); err != nil {
-			t.Errorf("EvictControl failed: %v", err)
-		}
-
-		if err := tpm.HierarchyChangeAuth(tpm.EndorsementHandleContext(), []byte("12345"), nil); err != nil {
-			t.Errorf("HierarchyChangeAuth failed: %v", err)
-		}
-
-		restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-			closeTPM = nil
-			return tcti, nil
-		})
-		defer restore()
-
-		_, err = SecureConnectToDefaultTPM(ekCertData, nil)
-		if err == nil {
-			t.Fatalf("SecureConnectToDefaultTPM should have failed")
-		}
-		if _, ok := err.(TPMVerificationError); !ok {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
+	ekCertData := new(bytes.Buffer)
+	c.Check(EncodeEKCertificateChain(nil, []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
+	_, err = SecureConnectToDefaultTPM(ekCertData, nil)
+	c.Check(err, tpm2_testutil.ConvertibleTo, EKCertVerificationError{})
+	c.Check(err, ErrorMatches, "cannot verify that the TPM is the device for which the supplied EK certificate was issued: "+
+		"cannot verify public area of endorsement key read from the TPM: public area doesn't match certificate")
 }

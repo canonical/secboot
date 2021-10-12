@@ -20,616 +20,430 @@
 package tpm2_test
 
 import (
-	"bytes"
-	"testing"
-
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
-	"golang.org/x/xerrors"
+	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
 
-func validatePrimaryKeyAgainstTemplate(t *testing.T, tpm *tpm2.TPMContext, hierarchy, handle tpm2.Handle, template *tpm2.Public) {
-	key, err := tpm.CreateResourceContextFromTPM(handle)
-	if err != nil {
-		t.Errorf("Cannot create context: %v", err)
-	}
+type primaryKeyMixin struct {
+	tpmTest *tpm2_testutil.TPMTest
+}
+
+func (m *primaryKeyMixin) validatePrimaryKeyAgainstTemplate(c *C, hierarchy, handle tpm2.Handle, template *tpm2.Public) {
+	c.Assert(m.tpmTest, NotNil) // primaryKeyMixin.tpmTest must be set!
 
 	// The easiest way to validate that the primary key was created with the supplied
 	// template is to just create it again and compare the names
-	expected, _, _, _, _, err := tpm.CreatePrimary(tpm.GetPermanentContext(hierarchy), nil, template, nil, nil, nil)
-	if err != nil {
-		t.Fatalf("CreatePrimary failed: %v", err)
-	}
-	defer tpm.FlushContext(expected)
+	expected := m.tpmTest.CreatePrimary(c, hierarchy, template)
+	defer m.tpmTest.TPM.FlushContext(expected)
 
-	if !bytes.Equal(key.Name(), expected.Name()) {
-		t.Errorf("Key doesn't match")
-	}
+	key, err := m.tpmTest.TPM.CreateResourceContextFromTPM(handle)
+	c.Assert(err, IsNil)
+	c.Check(key.Name(), DeepEquals, expected.Name())
 }
 
-func validateSRK(t *testing.T, tpm *tpm2.TPMContext) {
-	validatePrimaryKeyAgainstTemplate(t, tpm, tpm2.HandleOwner, tcg.SRKHandle, tcg.SRKTemplate)
+func (m *primaryKeyMixin) validateSRK(c *C) {
+	m.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, tcg.SRKTemplate)
 }
 
-func validateEK(t *testing.T, tpm *tpm2.TPMContext) {
-	validatePrimaryKeyAgainstTemplate(t, tpm, tpm2.HandleEndorsement, tcg.EKHandle, tcg.EKTemplate)
+func (m *primaryKeyMixin) validateEK(c *C) {
+	m.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleEndorsement, tcg.EKHandle, tcg.EKTemplate)
 }
 
-func TestProvisionNewTPM(t *testing.T) {
-	for _, data := range []struct {
-		desc string
-		mode ProvisionMode
-	}{
-		{
-			desc: "Clear",
-			mode: ProvisionModeClear,
-		},
-		{
-			desc: "Full",
-			mode: ProvisionModeFull,
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-				tpm2test.TPMFeatureOwnerHierarchy|
-					tpm2test.TPMFeatureEndorsementHierarchy|
-					tpm2test.TPMFeatureLockoutHierarchy|
-					tpm2test.TPMFeaturePlatformHierarchy|
-					tpm2test.TPMFeatureClear|
-					tpm2test.TPMFeatureNV)
-			defer closeTPM()
-
-			lockoutAuth := []byte("1234")
-
-			origEk, _ := tpm.EndorsementKey()
-			origHmacSession := tpm.HmacSession()
-
-			if err := tpm.EnsureProvisioned(data.mode, lockoutAuth); err != nil {
-				t.Errorf("EnsureProvisioned failed: %v", err)
-			}
-			defer func() {
-				// github.com/canonical/go-tpm2/testutil cannot restore this because
-				// EnsureProvisioned uses command parameter encryption. We have to do
-				// this manually else the test fixture fails
-				if err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), nil, nil); err != nil {
-					t.Errorf("HierarchyChangeAuth failed: %v", err)
-				}
-			}()
-
-			validateEK(t, tpm.TPMContext)
-			validateSRK(t, tpm.TPMContext)
-
-			// Validate the DA parameters
-			props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3)
-			if err != nil {
-				t.Fatalf("GetCapability failed: %v", err)
-			}
-			if props[0].Value != uint32(32) || props[1].Value != uint32(7200) ||
-				props[2].Value != uint32(86400) {
-				t.Errorf("ProvisionTPM didn't set the DA parameters correctly")
-			}
-
-			// Verify that owner control is disabled, that the lockout hierarchy auth is set, and no
-			// other hierarchy auth is set
-			props, err = tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
-			if err != nil {
-				t.Fatalf("GetCapability failed: %v", err)
-			}
-			if tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrLockoutAuthSet == 0 {
-				t.Errorf("ProvisionTPM didn't set the lockout hierarchy auth")
-			}
-			if tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrDisableClear == 0 {
-				t.Errorf("ProvisionTPM didn't disable owner clear")
-			}
-			if tpm2.PermanentAttributes(props[0].Value)&(tpm2.AttrOwnerAuthSet|tpm2.AttrEndorsementAuthSet) > 0 {
-				t.Errorf("ProvisionTPM returned with authorizations set for owner or endorsement hierarchies")
-			}
-
-			// Test the lockout hierarchy auth
-			tpm.LockoutHandleContext().SetAuthValue(lockoutAuth)
-			if err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil); err != nil {
-				t.Errorf("Use of the lockout hierarchy auth failed: %v", err)
-			}
-
-			hmacSession := tpm.HmacSession()
-			if hmacSession == nil || hmacSession.Handle().Type() != tpm2.HandleTypeHMACSession {
-				t.Errorf("Invalid HMAC session handle")
-			}
-			if hmacSession == origHmacSession {
-				t.Errorf("Invalid HMAC session handle")
-			}
-
-			ek, err := tpm.EndorsementKey()
-			if err != nil {
-				t.Fatalf("No EK context: %v", err)
-			}
-			if ek.Handle().Type() != tpm2.HandleTypePersistent {
-				t.Errorf("Invalid EK handle")
-			}
-			if ek == origEk {
-				t.Errorf("Invalid EK handle")
-			}
-
-			// Make sure ProvisionTPM didn't leak transient objects
-			handles, err := tpm.GetCapabilityHandles(tpm2.HandleTypeTransient.BaseHandle(), tpm2.CapabilityMaxProperties)
-			if err != nil {
-				t.Fatalf("GetCapability failed: %v", err)
-			}
-			if len(handles) > 0 {
-				t.Errorf("ProvisionTPM leaked transient handles")
-			}
-
-			handles, err = tpm.GetCapabilityHandles(tpm2.HandleTypeLoadedSession.BaseHandle(), tpm2.CapabilityMaxProperties)
-			if err != nil {
-				t.Fatalf("GetCapability failed: %v", err)
-			}
-			if len(handles) > 1 || (len(handles) > 0 && handles[0] != hmacSession.Handle()) {
-				t.Errorf("ProvisionTPM leaked loaded session handles")
-			}
-		})
-	}
+type provisioningSuite struct {
+	tpm2test.TPMTest
+	primaryKeyMixin
 }
 
-func TestProvisionErrorHandling(t *testing.T) {
-	errEndorsementAuthFail := AuthFailError{Handle: tpm2.HandleEndorsement}
-	errOwnerAuthFail := AuthFailError{Handle: tpm2.HandleOwner}
-	errLockoutAuthFail := AuthFailError{Handle: tpm2.HandleLockout}
+func (s *provisioningSuite) SetUpSuite(c *C) {
+	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
+		tpm2test.TPMFeatureEndorsementHierarchy |
+		tpm2test.TPMFeatureLockoutHierarchy |
+		tpm2test.TPMFeaturePlatformHierarchy | // Allow the test fixture to reenable owner clear
+		tpm2test.TPMFeatureClear |
+		tpm2test.TPMFeatureNV
+}
 
+func (s *provisioningSuite) SetUpTest(c *C) {
+	s.TPMTest.SetUpTest(c)
+	s.primaryKeyMixin.tpmTest = &s.TPMTest.TPMTest
+}
+
+type provisioningSimulatorSuite struct {
+	tpm2test.TPMSimulatorTest
+	primaryKeyMixin
+}
+
+func (s *provisioningSimulatorSuite) SetUpTest(c *C) {
+	s.TPMSimulatorTest.SetUpTest(c)
+	s.primaryKeyMixin.tpmTest = &s.TPMTest
+}
+
+// Split the tests into 2 suites - one which requires a simulator because we want to
+// control the initial conditions of the test.
+var _ = Suite(&provisioningSuite{})
+var _ = Suite(&provisioningSimulatorSuite{})
+
+type testProvisionNewTPMData struct {
+	mode        ProvisionMode
+	lockoutAuth []byte
+}
+
+func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisionNewTPMData) {
+	origEk, _ := s.TPM().EndorsementKey()
+	origHmacSession := s.TPM().HmacSession()
+
+	c.Check(s.TPM().EnsureProvisioned(data.mode, data.lockoutAuth), IsNil)
+	s.AddCleanup(func() {
+		// github.com/canonical/go-tpm2/testutil cannot restore this because
+		// EnsureProvisioned uses command parameter encryption. We have to do
+		// this manually else the test fixture fails the test.
+		c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), IsNil)
+	})
+
+	s.validateEK(c)
+	s.validateSRK(c)
+
+	// Validate the DA parameters
+	value, err := s.TPM().GetCapabilityTPMProperty(tpm2.PropertyMaxAuthFail)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(32))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutInterval)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(7200))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(86400))
+
+	// Verify that owner control is disabled, that the lockout hierarchy auth is set, and no
+	// other hierarchy auth is set
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	c.Check(err, IsNil)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet, Equals, tpm2.AttrLockoutAuthSet)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrDisableClear, Equals, tpm2.AttrDisableClear)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrOwnerAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrEndorsementAuthSet, Equals, tpm2.PermanentAttributes(0))
+
+	// Test the lockout hierarchy auth
+	s.TPM().LockoutHandleContext().SetAuthValue(data.lockoutAuth)
+	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
+
+	c.Check(s.TPM().HmacSession(), NotNil)
+	c.Check(s.TPM().HmacSession().Handle().Type(), Equals, tpm2.HandleTypeHMACSession)
+	c.Check(s.TPM().HmacSession(), Not(Equals), origHmacSession)
+
+	ek, err := s.TPM().EndorsementKey()
+	c.Check(err, IsNil)
+	c.Check(ek.Handle(), Equals, tcg.EKHandle)
+	c.Check(ek, Not(Equals), origEk)
+
+	// Make sure ProvisionTPM didn't leak transient objects
+	handles, err := s.TPM().GetCapabilityHandles(tpm2.HandleTypeTransient.BaseHandle(), tpm2.CapabilityMaxProperties)
+	c.Check(err, IsNil)
+	c.Check(handles, tpm2_testutil.LenEquals, 0)
+
+	handles, err = s.TPM().GetCapabilityHandles(tpm2.HandleTypeLoadedSession.BaseHandle(), tpm2.CapabilityMaxProperties)
+	c.Check(err, IsNil)
+	c.Check(handles, tpm2_testutil.LenEquals, 1)
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionNewTPMClear(c *C) {
+	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
+		mode:        ProvisionModeClear,
+		lockoutAuth: []byte("1234")})
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionNewTPMFull(c *C) {
+	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
+		mode:        ProvisionModeFull,
+		lockoutAuth: []byte("1234")})
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionNewTPMDifferentLockoutAuth(c *C) {
+	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
+		mode:        ProvisionModeClear,
+		lockoutAuth: []byte("foo")})
+}
+
+func (s *provisioningSimulatorSuite) testProvisionErrorHandling(c *C, mode ProvisionMode) error {
+	defer func() {
+		// Some of these tests trip the lockout for the lockout auth,
+		// which can't be undone by the test fixture. Clear the TPM
+		// else the test fixture fails the test.
+		s.ClearTPMUsingPlatformHierarchy(c)
+	}()
+	return s.TPM().EnsureProvisioned(mode, nil)
+}
+
+func (s *provisioningSuite) testProvisionErrorHandling(c *C, mode ProvisionMode) error {
+	defer func() {
+		// Some of these tests trip the lockout for the lockout auth,
+		// which can't be undone by the test fixture. Clear the TPM
+		// else the test fixture fails the test.
+		s.ClearTPMUsingPlatformHierarchy(c)
+	}()
+	return s.TPM().EnsureProvisioned(mode, nil)
+}
+
+func (s *provisioningSuite) TestProvisionErrorHandlingClearRequiresPPI(c *C) {
+	c.Check(s.TPM().ClearControl(s.TPM().LockoutHandleContext(), true, nil), IsNil)
+
+	err := s.testProvisionErrorHandling(c, ProvisionModeClear)
+	c.Check(err, Equals, ErrTPMClearRequiresPPI)
+}
+
+func (s *provisioningSuite) TestProvisionErrorHandlingLockoutAuthFail1(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+	s.TPM().LockoutHandleContext().SetAuthValue(nil)
+
+	err := s.testProvisionErrorHandling(c, ProvisionModeFull)
+	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleLockout)
+}
+
+func (s *provisioningSuite) TestProvisionErrorHandlingLockoutAuthFail2(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+	s.TPM().LockoutHandleContext().SetAuthValue(nil)
+
+	err := s.testProvisionErrorHandling(c, ProvisionModeClear)
+	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleLockout)
+}
+
+func (s *provisioningSuite) TestProvisionErrorHandlingInLockout1(c *C) {
 	authValue := []byte("1234")
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, authValue)
 
-	setLockoutAuth := func(t *testing.T, tpm *Connection) {
-		if err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), authValue, nil); err != nil {
-			t.Fatalf("HierarchyChangeAuth failed: %v", err)
-		}
-	}
-	disableOwnerClear := func(t *testing.T, tpm *Connection) {
-		if err := tpm.ClearControl(tpm.LockoutHandleContext(), true, nil); err != nil {
-			t.Fatalf("ClearControl failed: %v", err)
-		}
-	}
+	// Trip the DA lockout
+	s.TPM().LockoutHandleContext().SetAuthValue(nil)
+	c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), tpm2_testutil.ErrorIs,
+		&tpm2.TPMSessionError{TPMError: &tpm2.TPMError{Command: tpm2.CommandHierarchyChangeAuth, Code: tpm2.ErrorAuthFail}, Index: 1})
+	s.TPM().LockoutHandleContext().SetAuthValue(authValue)
 
-	for _, data := range []struct {
-		desc        string
-		mode        ProvisionMode
-		lockoutAuth []byte
-		prepare     func(*testing.T, *Connection)
-		err         error
-	}{
-		{
-			desc: "ErrTPMClearRequiresPPI",
-			mode: ProvisionModeClear,
-			prepare: func(t *testing.T, tpm *Connection) {
-				disableOwnerClear(t, tpm)
-			},
-			err: ErrTPMClearRequiresPPI,
-		},
-		{
-			desc: "ErrTPMLockoutAuthFail/1",
-			mode: ProvisionModeFull,
-			prepare: func(t *testing.T, tpm *Connection) {
-				setLockoutAuth(t, tpm)
-			},
-			lockoutAuth: []byte("5678"),
-			err:         errLockoutAuthFail,
-		},
-		{
-			desc: "ErrTPMLockoutAuthFail/2",
-			mode: ProvisionModeClear,
-			prepare: func(t *testing.T, tpm *Connection) {
-				setLockoutAuth(t, tpm)
-			},
-			lockoutAuth: []byte("5678"),
-			err:         errLockoutAuthFail,
-		},
-		{
-			desc: "ErrInLockout/1",
-			mode: ProvisionModeFull,
-			prepare: func(t *testing.T, tpm *Connection) {
-				setLockoutAuth(t, tpm)
-				tpm.LockoutHandleContext().SetAuthValue(nil)
-				tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), nil, nil)
-			},
-			lockoutAuth: authValue,
-			err:         ErrTPMLockout,
-		},
-		{
-			desc: "ErrInLockout/2",
-			mode: ProvisionModeClear,
-			prepare: func(t *testing.T, tpm *Connection) {
-				setLockoutAuth(t, tpm)
-				tpm.LockoutHandleContext().SetAuthValue(nil)
-				tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), nil, nil)
-			},
-			lockoutAuth: authValue,
-			err:         ErrTPMLockout,
-		},
-		{
-			desc: "ErrOwnerAuthFail",
-			mode: ProvisionModeWithoutLockout,
-			prepare: func(t *testing.T, tpm *Connection) {
-				if err := tpm.HierarchyChangeAuth(tpm.OwnerHandleContext(), authValue, nil); err != nil {
-					t.Fatalf("HierarchyChangeAuth failed: %v", err)
-				}
-			},
-			err: errOwnerAuthFail,
-		},
-		{
-			desc: "ErrEndorsementAuthFail",
-			mode: ProvisionModeWithoutLockout,
-			prepare: func(t *testing.T, tpm *Connection) {
-				if err := tpm.HierarchyChangeAuth(tpm.EndorsementHandleContext(), authValue, nil); err != nil {
-					t.Fatalf("HierarchyChangeAuth failed: %v", err)
-				}
-			},
-			err: errEndorsementAuthFail,
-		},
-		{
-			desc: "ErrTPMProvisioningRequiresLockout/1",
-			mode: ProvisionModeWithoutLockout,
-			err:  ErrTPMProvisioningRequiresLockout,
-		},
-		{
-			desc: "ErrTPMProvisioningRequiresLockout/2",
-			mode: ProvisionModeWithoutLockout,
-			prepare: func(t *testing.T, tpm *Connection) {
-				disableOwnerClear(t, tpm)
-			},
-			err: ErrTPMProvisioningRequiresLockout,
-		},
-		{
-			desc: "ErrTPMProvisioningRequiresLockout/3",
-			mode: ProvisionModeWithoutLockout,
-			prepare: func(t *testing.T, tpm *Connection) {
-				setLockoutAuth(t, tpm)
-			},
-			err: ErrTPMProvisioningRequiresLockout,
-		},
-		{
-			desc: "ErrTPMProvisioningRequiresLockout/4",
-			mode: ProvisionModeWithoutLockout,
-			prepare: func(t *testing.T, tpm *Connection) {
-				setLockoutAuth(t, tpm)
-				disableOwnerClear(t, tpm)
-			},
-			err: ErrTPMProvisioningRequiresLockout,
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-				tpm2test.TPMFeatureOwnerHierarchy|
-					tpm2test.TPMFeatureEndorsementHierarchy|
-					tpm2test.TPMFeatureLockoutHierarchy|
-					tpm2test.TPMFeaturePlatformHierarchy|
-					tpm2test.TPMFeatureClear|
-					tpm2test.TPMFeatureNV)
-			defer func() {
-				// Some of these tests trip the lockout for the lockout auth,
-				// which can't be undone by the test fixture. Clear the TPM
-				// else the test fixture fails the test.
-				tpm2_testutil.ClearTPMUsingPlatformHierarchyT(t, tpm.TPMContext)
-				closeTPM()
-			}()
-
-			if data.prepare != nil {
-				data.prepare(t, tpm)
-			}
-			tpm.LockoutHandleContext().SetAuthValue(data.lockoutAuth)
-			tpm.OwnerHandleContext().SetAuthValue(nil)
-			tpm.EndorsementHandleContext().SetAuthValue(nil)
-
-			err := tpm.EnsureProvisioned(data.mode, nil)
-			if err == nil {
-				t.Fatalf("EnsureProvisioned should have returned an error")
-			}
-			if err != data.err {
-				t.Errorf("EnsureProvisioned returned an unexpected error: %v", err)
-			}
-		})
-	}
+	err := s.testProvisionErrorHandling(c, ProvisionModeFull)
+	c.Check(err, Equals, ErrTPMLockout)
 }
 
-func TestRecreateEK(t *testing.T) {
-	for _, data := range []struct {
-		desc string
-		mode ProvisionMode
-	}{
-		{
-			desc: "Full",
-			mode: ProvisionModeFull,
-		},
-		{
-			desc: "WithoutLockout",
-			mode: ProvisionModeWithoutLockout,
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-				tpm2test.TPMFeatureOwnerHierarchy|
-					tpm2test.TPMFeatureEndorsementHierarchy|
-					tpm2test.TPMFeatureLockoutHierarchy|
-					tpm2test.TPMFeaturePlatformHierarchy|
-					tpm2test.TPMFeatureNV)
-			defer closeTPM()
+func (s *provisioningSuite) TestProvisionErrorHandlingInLockout2(c *C) {
+	authValue := []byte("1234")
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, authValue)
 
-			lockoutAuth := []byte("1234")
+	// Trip the DA lockout
+	s.TPM().LockoutHandleContext().SetAuthValue(nil)
+	c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), tpm2_testutil.ErrorIs,
+		&tpm2.TPMSessionError{TPMError: &tpm2.TPMError{Command: tpm2.CommandHierarchyChangeAuth, Code: tpm2.ErrorAuthFail}, Index: 1})
+	s.TPM().LockoutHandleContext().SetAuthValue(authValue)
 
-			if err := tpm.EnsureProvisioned(ProvisionModeFull, lockoutAuth); err != nil {
-				t.Errorf("EnsureProvisioned failed: %v", err)
-			}
-			defer func() {
-				// github.com/canonical/go-tpm2/testutil cannot restore this because
-				// EnsureProvisioned uses command parameter encryption. We have to do
-				// this manually else the test fixture fails
-				if err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), nil, nil); err != nil {
-					t.Errorf("HierarchyChangeAuth failed: %v", err)
-				}
-			}()
-
-			ek, err := tpm.EndorsementKey()
-			if err != nil {
-				t.Fatalf("No EK context: %v", err)
-			}
-			if ek.Handle().Type() != tpm2.HandleTypePersistent {
-				t.Errorf("Invalid EK handle type")
-			}
-			hmacSession := tpm.HmacSession()
-			if hmacSession == nil || hmacSession.Handle().Type() != tpm2.HandleTypeHMACSession {
-				t.Errorf("Invalid HMAC session handle")
-			}
-
-			ek, err = tpm.CreateResourceContextFromTPM(tcg.EKHandle)
-			if err != nil {
-				t.Fatalf("No EK context: %v", err)
-			}
-			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), ek, ek.Handle(), nil); err != nil {
-				t.Errorf("EvictControl failed: %v", err)
-			}
-
-			if err := tpm.EnsureProvisioned(data.mode, lockoutAuth); err != nil {
-				t.Errorf("EnsureProvisioned failed: %v", err)
-			}
-
-			validateEK(t, tpm.TPMContext)
-
-			hmacSession2 := tpm.HmacSession()
-			if hmacSession2 == nil || hmacSession2.Handle().Type() != tpm2.HandleTypeHMACSession {
-				t.Errorf("Invalid HMAC session handle")
-			}
-			ek2, err := tpm.EndorsementKey()
-			if err != nil {
-				t.Fatalf("No EK context: %v", err)
-			}
-			if ek2.Handle().Type() != tpm2.HandleTypePersistent {
-				t.Errorf("Invalid EK handle")
-			}
-			if hmacSession.Handle() != tpm2.HandleUnassigned {
-				t.Errorf("Original HMAC session should have been flushed")
-			}
-			if ek == ek2 {
-				t.Errorf("Original EK context should have been evicted")
-			}
-		})
-	}
+	err := s.testProvisionErrorHandling(c, ProvisionModeClear)
+	c.Check(err, Equals, ErrTPMLockout)
 }
 
-func TestRecreateSRK(t *testing.T) {
-	for _, data := range []struct {
-		desc string
-		mode ProvisionMode
-	}{
-		{
-			desc: "Full",
-			mode: ProvisionModeFull,
-		},
-		{
-			desc: "WithoutLockout",
-			mode: ProvisionModeWithoutLockout,
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-				tpm2test.TPMFeatureOwnerHierarchy|
-					tpm2test.TPMFeatureEndorsementHierarchy|
-					tpm2test.TPMFeatureLockoutHierarchy|
-					tpm2test.TPMFeaturePlatformHierarchy|
-					tpm2test.TPMFeatureNV)
-			defer closeTPM()
+func (s *provisioningSuite) TestProvisionErrorHandlingOwnerAuthFail(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
+	s.TPM().OwnerHandleContext().SetAuthValue(nil)
 
-			lockoutAuth := []byte("1234")
-
-			if err := tpm.EnsureProvisioned(ProvisionModeFull, lockoutAuth); err != nil {
-				t.Errorf("EnsureProvisioned failed: %v", err)
-			}
-			defer func() {
-				// github.com/canonical/go-tpm2/testutil cannot restore this because
-				// EnsureProvisioned uses command parameter encryption. We have to do
-				// this manually else the test fixture fails
-				if err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), nil, nil); err != nil {
-					t.Errorf("HierarchyChangeAuth failed: %v", err)
-				}
-			}()
-
-			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-			if err != nil {
-				t.Fatalf("No SRK context: %v", err)
-			}
-			expectedName := srk.Name()
-
-			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
-				t.Errorf("EvictControl failed: %v", err)
-			}
-
-			if err := tpm.EnsureProvisioned(data.mode, lockoutAuth); err != nil {
-				t.Errorf("EnsureProvisioned failed: %v", err)
-			}
-
-			srk, err = tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-			if err != nil {
-				t.Fatalf("No SRK context: %v", err)
-			}
-			if !bytes.Equal(srk.Name(), expectedName) {
-				t.Errorf("Unexpected SRK name")
-			}
-
-			validateSRK(t, tpm.TPMContext)
-		})
-	}
+	err := s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
+	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleOwner)
 }
 
-func TestProvisionWithEndorsementAuth(t *testing.T) {
-	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-		tpm2test.TPMFeatureOwnerHierarchy|
-			tpm2test.TPMFeatureEndorsementHierarchy|
-			tpm2test.TPMFeatureNV)
-	defer closeTPM()
+func (s *provisioningSuite) TestProvisionErrorHandlingEndorsementAuthFail(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
+	s.TPM().EndorsementHandleContext().SetAuthValue(nil)
 
-	testAuth := []byte("1234")
-
-	if err := tpm.HierarchyChangeAuth(tpm.EndorsementHandleContext(), testAuth, nil); err != nil {
-		t.Fatalf("HierarchyChangeAuth failed: %v", err)
-	}
-
-	if err := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); err != ErrTPMProvisioningRequiresLockout {
-		t.Fatalf("EnsureProvisioned failed: %v", err)
-	}
-
-	validateEK(t, tpm.TPMContext)
-	validateSRK(t, tpm.TPMContext)
+	err := s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
+	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleEndorsement)
 }
 
-func TestProvisionWithOwnerAuth(t *testing.T) {
-	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-		tpm2test.TPMFeatureOwnerHierarchy|
-			tpm2test.TPMFeatureEndorsementHierarchy|
-			tpm2test.TPMFeatureNV)
-	defer closeTPM()
-
-	testAuth := []byte("1234")
-
-	if err := tpm.HierarchyChangeAuth(tpm.OwnerHandleContext(), testAuth, nil); err != nil {
-		t.Fatalf("HierarchyChangeAuth failed: %v", err)
-	}
-
-	if err := tpm.EnsureProvisioned(ProvisionModeWithoutLockout, nil); err != ErrTPMProvisioningRequiresLockout {
-		t.Fatalf("EnsureProvisioned failed: %v", err)
-	}
-
-	validateEK(t, tpm.TPMContext)
-	validateSRK(t, tpm.TPMContext)
+func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout1(c *C) {
+	err := s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
+	c.Check(err, Equals, ErrTPMProvisioningRequiresLockout)
 }
 
-func TestProvisionWithInvalidEkCert(t *testing.T) {
+func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout2(c *C) {
+	c.Check(s.TPM().ClearControl(s.TPM().LockoutHandleContext(), true, nil), IsNil)
+
+	err := s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
+	c.Check(err, Equals, ErrTPMProvisioningRequiresLockout)
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout3(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+
+	err := s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
+	c.Check(err, Equals, ErrTPMProvisioningRequiresLockout)
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout4(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+	c.Check(s.TPM().ClearControl(s.TPM().LockoutHandleContext(), true, nil), IsNil)
+
+	err := s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
+	c.Check(err, Equals, ErrTPMProvisioningRequiresLockout)
+}
+
+func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
+	lockoutAuth := []byte("1234")
+
+	c.Check(s.TPM().EnsureProvisioned(ProvisionModeFull, lockoutAuth), IsNil)
+	s.AddCleanup(func() {
+		// github.com/canonical/go-tpm2/testutil cannot restore this because
+		// EnsureProvisioned uses command parameter encryption. We have to do
+		// this manually else the test fixture fails the test.
+		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
+	})
+
+	origEk, _ := s.TPM().EndorsementKey()
+	origHmacSession := s.TPM().HmacSession()
+
+	ek, err := s.TPM().CreateResourceContextFromTPM(tcg.EKHandle)
+	s.EvictControl(c, tpm2.HandleOwner, ek, ek.Handle())
+
+	c.Check(s.TPM().EnsureProvisioned(mode, lockoutAuth), IsNil)
+
+	s.validateEK(c)
+	s.validateSRK(c)
+
+	c.Check(s.TPM().HmacSession(), NotNil)
+	c.Check(s.TPM().HmacSession().Handle().Type(), Equals, tpm2.HandleTypeHMACSession)
+	c.Check(s.TPM().HmacSession(), Not(Equals), origHmacSession)
+	c.Check(origHmacSession.Handle(), Equals, tpm2.HandleUnassigned)
+
+	ek, err = s.TPM().EndorsementKey()
+	c.Check(err, IsNil)
+	c.Check(ek.Handle(), Equals, tcg.EKHandle)
+	c.Check(ek, Not(Equals), origEk)
+}
+
+func (s *provisioningSuite) TestRecreateEKFull(c *C) {
+	s.testProvisionRecreateEK(c, ProvisionModeFull)
+}
+
+func (s *provisioningSuite) TestRecreateEKWithoutLockout(c *C) {
+	s.testProvisionRecreateEK(c, ProvisionModeWithoutLockout)
+}
+
+func (s *provisioningSuite) testProvisionRecreateSRK(c *C, mode ProvisionMode) {
+	lockoutAuth := []byte("1234")
+
+	c.Check(s.TPM().EnsureProvisioned(ProvisionModeFull, lockoutAuth), IsNil)
+	s.AddCleanup(func() {
+		// github.com/canonical/go-tpm2/testutil cannot restore this because
+		// EnsureProvisioned uses command parameter encryption. We have to do
+		// this manually else the test fixture fails the test.
+		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
+	})
+
+	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	c.Assert(err, IsNil)
+	expectedName := srk.Name()
+	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
+
+	c.Check(s.TPM().EnsureProvisioned(mode, lockoutAuth), IsNil)
+
+	s.validateEK(c)
+	s.validateSRK(c)
+
+	srk, err = s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	c.Assert(err, IsNil)
+	c.Check(srk.Name(), DeepEquals, expectedName)
+}
+
+func (s *provisioningSuite) TestProvisionRecreateSRKFull(c *C) {
+	s.testProvisionRecreateSRK(c, ProvisionModeFull)
+}
+
+func (s *provisioningSuite) TestProvisionRecreateSRKWithoutLockout(c *C) {
+	s.testProvisionRecreateSRK(c, ProvisionModeWithoutLockout)
+}
+
+func (s *provisioningSuite) TestProvisionWithEndorsementAuth(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
+
+	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
+		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+
+	s.validateEK(c)
+	s.validateSRK(c)
+}
+
+func (s *provisioningSuite) TestProvisionWithOwnerAuth(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
+
+	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
+		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+
+	s.validateEK(c)
+	s.validateSRK(c)
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionWithInvalidEkCert(c *C) {
 	ConnectToTPM = secureConnectToDefaultTPMHelper
 	defer func() { ConnectToTPM = ConnectToDefaultTPM }()
 
-	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-		tpm2test.TPMFeatureOwnerHierarchy|
-			tpm2test.TPMFeatureEndorsementHierarchy|
-			tpm2test.TPMFeatureNV)
-	defer closeTPM()
+	s.ReinitTPMConnectionFromExisting(c)
 
 	// Temporarily modify the public template so that ProvisionTPM generates a primary key that doesn't match the EK cert
 	ekTemplate := tcg.MakeDefaultEKTemplate()
 	ekTemplate.Unique.RSA[0] = 0xff
 	restore := tpm2test.MockEKTemplate(ekTemplate)
-	defer restore()
+	s.AddCleanup(restore)
 
-	err := tpm.EnsureProvisioned(ProvisionModeFull, nil)
-	if err == nil {
-		t.Fatalf("EnsureProvisioned should have returned an error")
-	}
-	var ve TPMVerificationError
-	if !xerrors.As(err, &ve) && err.Error() != "verification of the TPM failed: cannot verify TPM: endorsement key returned from the "+
-		"TPM doesn't match the endorsement certificate" {
-		t.Errorf("ProvisionTPM returned an unexpected error: %v", err)
-	}
+	err := s.TPM().EnsureProvisioned(ProvisionModeFull, nil)
+	c.Assert(err, tpm2_testutil.ConvertibleTo, TPMVerificationError{})
+	c.Check(err, ErrorMatches, "cannot verify that the TPM is the device for which "+
+		"the supplied EK certificate was issued: cannot reinitialize TPM connection "+
+		"after provisioning endorsement key: cannot verify public area of endorsement "+
+		"key read from the TPM: public area doesn't match certificate")
 }
 
-func TestProvisionWithCustomSRKTemplate(t *testing.T) {
-	for _, data := range []struct {
-		desc string
-		mode ProvisionMode
-	}{
-		{
-			desc: "Clear",
-			mode: ProvisionModeClear,
-		},
-		{
-			desc: "Full",
-			mode: ProvisionModeFull,
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-				tpm2test.TPMFeatureOwnerHierarchy|
-					tpm2test.TPMFeatureEndorsementHierarchy|
-					tpm2test.TPMFeatureLockoutHierarchy|
-					tpm2test.TPMFeaturePlatformHierarchy|
-					tpm2test.TPMFeatureClear|
-					tpm2test.TPMFeatureNV)
-			defer closeTPM()
+func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, mode ProvisionMode) {
+	template := tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrDecrypt,
+		Params: &tpm2.PublicParamsU{
+			RSADetail: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+					Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}}}
+	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(mode, nil, &template), IsNil)
 
-			template := tpm2.Public{
-				Type:    tpm2.ObjectTypeRSA,
-				NameAlg: tpm2.HashAlgorithmSHA256,
-				Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
-					tpm2.AttrRestricted | tpm2.AttrDecrypt,
-				Params: &tpm2.PublicParamsU{
-					RSADetail: &tpm2.RSAParams{
-						Symmetric: tpm2.SymDefObject{
-							Algorithm: tpm2.SymObjectAlgorithmAES,
-							KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
-							Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
-						Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
-						KeyBits:  2048,
-						Exponent: 0}}}
+	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
-			if err := tpm.EnsureProvisionedWithCustomSRK(data.mode, nil, &template); err != nil {
-				t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
-			}
+	nv, err := s.TPM().CreateResourceContextFromTPM(0x01810001)
+	c.Assert(err, IsNil)
 
-			validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
+	nvPub, _, err := s.TPM().NVReadPublic(nv)
+	c.Assert(err, IsNil)
+	c.Check(nvPub.Attrs, Equals, tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite|tpm2.AttrNVWriteDefine|tpm2.AttrNVOwnerRead|tpm2.AttrNVNoDA|tpm2.AttrNVWriteLocked|tpm2.AttrNVWritten))
 
-			nv, err := tpm.CreateResourceContextFromTPM(0x01810001)
-			if err != nil {
-				t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-			}
-
-			nvPub, _, err := tpm.NVReadPublic(nv)
-			if err != nil {
-				t.Fatalf("NVReadPublic failed: %v", err)
-			}
-
-			if nvPub.Attrs != tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite|tpm2.AttrNVWriteDefine|tpm2.AttrNVOwnerRead|tpm2.AttrNVNoDA|tpm2.AttrNVWriteLocked|tpm2.AttrNVWritten) {
-				t.Errorf("Unexpected attributes")
-			}
-
-			tmplB, err := tpm.NVRead(tpm.OwnerHandleContext(), nv, nvPub.Size, 0, nil)
-			if err != nil {
-				t.Errorf("NVRead failed: %v", err)
-			}
-
-			expected, _ := mu.MarshalToBytes(&template)
-			if !bytes.Equal(tmplB, expected) {
-				t.Errorf("Unexpected template")
-			}
-		})
-	}
+	tmplBytes, err := s.TPM().NVRead(s.TPM().OwnerHandleContext(), nv, nvPub.Size, 0, nil)
+	c.Check(err, IsNil)
+	c.Check(tmplBytes, DeepEquals, mu.MustMarshalToBytes(&template))
 }
 
-func TestProvisionWithInvalidCustomSRKTemplate(t *testing.T) {
-	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-		tpm2test.TPMFeatureOwnerHierarchy|
-			tpm2test.TPMFeatureEndorsementHierarchy|
-			tpm2test.TPMFeatureNV)
-	defer closeTPM()
+func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateClear(c *C) {
+	s.testProvisionWithCustomSRKTemplate(c, ProvisionModeClear)
+}
 
+func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateFull(c *C) {
+	s.testProvisionWithCustomSRKTemplate(c, ProvisionModeFull)
+}
+
+func (s *provisioningSuite) TestProvisionWithInvalidCustomSRKTemplate(c *C) {
 	template := tpm2.Public{
 		Type:    tpm2.ObjectTypeRSA,
 		NameAlg: tpm2.HashAlgorithmSHA256,
@@ -644,95 +458,11 @@ func TestProvisionWithInvalidCustomSRKTemplate(t *testing.T) {
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
-	err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeWithoutLockout, nil, &template)
-	if err == nil {
-		t.Fatalf("EnsureProvisionedWithCustomSRK should have failed")
-	}
-
-	if err.Error() != "supplied SRK template is not valid for a parent key" {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	err := s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template)
+	c.Check(err, ErrorMatches, "supplied SRK template is not valid for a parent key")
 }
 
-func TestProvisionDefaultPreservesCustomSRKTemplate(t *testing.T) {
-	for _, data := range []struct {
-		desc string
-		mode ProvisionMode
-	}{
-		{
-			desc: "Full",
-			mode: ProvisionModeFull,
-		},
-		{
-			desc: "WithoutLockout",
-			mode: ProvisionModeWithoutLockout,
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-				tpm2test.TPMFeatureOwnerHierarchy|
-					tpm2test.TPMFeatureEndorsementHierarchy|
-					tpm2test.TPMFeatureLockoutHierarchy|
-					tpm2test.TPMFeaturePlatformHierarchy|
-					tpm2test.TPMFeatureNV)
-			defer closeTPM()
-
-			template := tpm2.Public{
-				Type:    tpm2.ObjectTypeRSA,
-				NameAlg: tpm2.HashAlgorithmSHA256,
-				Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
-					tpm2.AttrRestricted | tpm2.AttrDecrypt,
-				Params: &tpm2.PublicParamsU{
-					RSADetail: &tpm2.RSAParams{
-						Symmetric: tpm2.SymDefObject{
-							Algorithm: tpm2.SymObjectAlgorithmAES,
-							KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
-							Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
-						Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
-						KeyBits:  2048,
-						Exponent: 0}}}
-
-			lockoutAuth := []byte("1234")
-			if err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeFull, lockoutAuth, &template); err != nil {
-				t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
-			}
-			defer func() {
-				// github.com/canonical/go-tpm2/testutil cannot restore this because
-				// EnsureProvisioned uses command parameter encryption. We have to do
-				// this manually else the test fixture fails
-				if err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), nil, nil); err != nil {
-					t.Errorf("HierarchyChangeAuth failed: %v", err)
-				}
-			}()
-
-			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-			if err != nil {
-				t.Fatalf("No SRK context: %v", err)
-			}
-
-			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
-				t.Errorf("EvictControl failed: %v", err)
-			}
-
-			if err := tpm.EnsureProvisioned(data.mode, lockoutAuth); err != nil {
-				t.Fatalf("EnsureProvisioned failed: %v", err)
-			}
-
-			validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
-		})
-	}
-}
-
-func TestProvisionDefaultClearRemovesCustomSRKTemplate(t *testing.T) {
-	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-		tpm2test.TPMFeatureOwnerHierarchy|
-			tpm2test.TPMFeatureEndorsementHierarchy|
-			tpm2test.TPMFeatureLockoutHierarchy|
-			tpm2test.TPMFeaturePlatformHierarchy|
-			tpm2test.TPMFeatureClear|
-			tpm2test.TPMFeatureNV)
-	defer closeTPM()
-
+func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C, mode ProvisionMode) {
 	template := tpm2.Public{
 		Type:    tpm2.ObjectTypeRSA,
 		NameAlg: tpm2.HashAlgorithmSHA256,
@@ -748,28 +478,56 @@ func TestProvisionDefaultClearRemovesCustomSRKTemplate(t *testing.T) {
 				KeyBits:  2048,
 				Exponent: 0}}}
 
-	if err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeWithoutLockout, nil, &template); err != ErrTPMProvisioningRequiresLockout {
-		t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
-	}
+	lockoutAuth := []byte("1234")
+	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, lockoutAuth, &template), IsNil)
+	s.AddCleanup(func() {
+		// github.com/canonical/go-tpm2/testutil cannot restore this because
+		// EnsureProvisioned uses command parameter encryption. We have to do
+		// this manually else the test fixture fails the test.
+		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
+	})
 
-	validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
+	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	c.Assert(err, IsNil)
+	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
-	if err := tpm.EnsureProvisioned(ProvisionModeClear, nil); err != nil {
-		t.Fatalf("EnsureProvisioned failed: %v", err)
-	}
+	c.Check(s.TPM().EnsureProvisioned(mode, lockoutAuth), IsNil)
 
-	validateSRK(t, tpm.TPMContext)
+	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 }
 
-func TestProvisionWithCustomSRKTemplateOverwritesExisting(t *testing.T) {
-	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-		tpm2test.TPMFeatureOwnerHierarchy|
-			tpm2test.TPMFeatureEndorsementHierarchy|
-			tpm2test.TPMFeatureLockoutHierarchy|
-			tpm2test.TPMFeaturePlatformHierarchy|
-			tpm2test.TPMFeatureNV)
-	defer closeTPM()
+func (s *provisioningSuite) TestProvisionDefaultPreservesCustomSRKTemplateFull(c *C) {
+	s.testProvisionDefaultPreservesCustomSRKTemplate(c, ProvisionModeFull)
+}
 
+func (s *provisioningSuite) TestProvisionDefaultPreservesCustomSRKTemplateWithoutLockout(c *C) {
+	s.testProvisionDefaultPreservesCustomSRKTemplate(c, ProvisionModeWithoutLockout)
+}
+
+func (s *provisioningSuite) TestProvisionDefaultClearRemovesCustomSRKTemplate(c *C) {
+	template := tpm2.Public{
+		Type:    tpm2.ObjectTypeRSA,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs: tpm2.AttrFixedTPM | tpm2.AttrFixedParent | tpm2.AttrSensitiveDataOrigin | tpm2.AttrUserWithAuth | tpm2.AttrNoDA |
+			tpm2.AttrRestricted | tpm2.AttrDecrypt,
+		Params: &tpm2.PublicParamsU{
+			RSADetail: &tpm2.RSAParams{
+				Symmetric: tpm2.SymDefObject{
+					Algorithm: tpm2.SymObjectAlgorithmAES,
+					KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+					Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}},
+				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
+				KeyBits:  2048,
+				Exponent: 0}}}
+	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeWithoutLockout, nil, &template),
+		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
+
+	c.Check(s.TPM().EnsureProvisioned(ProvisionModeClear, nil), IsNil)
+	s.validateSRK(c)
+}
+
+func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateOverwritesExisting(c *C) {
 	template1 := tpm2.Public{
 		Type:    tpm2.ObjectTypeRSA,
 		NameAlg: tpm2.HashAlgorithmSHA256,
@@ -784,12 +542,8 @@ func TestProvisionWithCustomSRKTemplateOverwritesExisting(t *testing.T) {
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
-
-	if err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template1); err != nil {
-		t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
-	}
-
-	validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template1)
+	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template1), IsNil)
+	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template1)
 
 	template2 := tpm2.Public{
 		Type:    tpm2.ObjectTypeRSA,
@@ -805,34 +559,17 @@ func TestProvisionWithCustomSRKTemplateOverwritesExisting(t *testing.T) {
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
+	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template2), IsNil)
+	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template2)
 
-	if err := tpm.EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template2); err != nil {
-		t.Errorf("EnsureProvisionedWithCustomSRK failed: %v", err)
-	}
+	nv, err := s.TPM().CreateResourceContextFromTPM(0x01810001)
+	c.Assert(err, IsNil)
 
-	validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template2)
+	nvPub, _, err := s.TPM().NVReadPublic(nv)
+	c.Assert(err, IsNil)
+	c.Check(nvPub.Attrs, Equals, tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite|tpm2.AttrNVWriteDefine|tpm2.AttrNVOwnerRead|tpm2.AttrNVNoDA|tpm2.AttrNVWriteLocked|tpm2.AttrNVWritten))
 
-	nv, err := tpm.CreateResourceContextFromTPM(0x01810001)
-	if err != nil {
-		t.Fatalf("CreateResourceContextFromTPM failed: %v", err)
-	}
-
-	nvPub, _, err := tpm.NVReadPublic(nv)
-	if err != nil {
-		t.Fatalf("NVReadPublic failed: %v", err)
-	}
-
-	if nvPub.Attrs != tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite|tpm2.AttrNVWriteDefine|tpm2.AttrNVOwnerRead|tpm2.AttrNVNoDA|tpm2.AttrNVWriteLocked|tpm2.AttrNVWritten) {
-		t.Errorf("Unexpected attributes")
-	}
-
-	tmplB, err := tpm.NVRead(tpm.OwnerHandleContext(), nv, nvPub.Size, 0, nil)
-	if err != nil {
-		t.Errorf("NVRead failed: %v", err)
-	}
-
-	expected, _ := mu.MarshalToBytes(&template2)
-	if !bytes.Equal(tmplB, expected) {
-		t.Errorf("Unexpected template")
-	}
+	tmplBytes, err := s.TPM().NVRead(s.TPM().OwnerHandleContext(), nv, nvPub.Size, 0, nil)
+	c.Check(err, IsNil)
+	c.Check(tmplBytes, DeepEquals, mu.MustMarshalToBytes(&template2))
 }
