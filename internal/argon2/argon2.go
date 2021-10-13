@@ -73,11 +73,11 @@ type CostParams struct {
 }
 
 type benchmarkContext struct {
-	keyLen           uint32        // desired key length
-	keyFn            KeyDurationFn // callback for running an individual measurement
-	maxMemoryCostKiB uint32        // maximum memory cost
-	cost             CostParams    // current computed cost parameters
-	duration         time.Duration // last measured duration
+	keyLen           uint32          // desired key length
+	keyFn            KeyDurationFunc // callback for running an individual measurement
+	maxMemoryCostKiB uint32          // maximum memory cost
+	cost             CostParams      // current computed cost parameters
+	duration         time.Duration   // last measured duration
 }
 
 // timeExecution measures the amount of time it takes to execute the Argon2i key
@@ -178,7 +178,7 @@ func (c *benchmarkContext) computeNextCostParams(targetDuration time.Duration) (
 	return done
 }
 
-func (c *benchmarkContext) run(params *BenchmarkParams, keyLen uint32, keyFn KeyDurationFn, sysInfo *unix.Sysinfo_t, numCpu int) (*CostParams, error) {
+func (c *benchmarkContext) run(params *BenchmarkParams, keyLen uint32, keyFn KeyDurationFunc, sysInfo *unix.Sysinfo_t, numCpu int) (*CostParams, error) {
 	c.keyLen = keyLen
 	c.keyFn = keyFn
 
@@ -248,9 +248,9 @@ func KeyDuration(params *CostParams, keyLen uint32) time.Duration {
 	return time.Now().Sub(start)
 }
 
-// KeyDurationFn provides a mechanism to delegate key derivation measurements
+// KeyDurationFunc provides a mechanism to delegate key derivation measurements
 // to a short-lived utility process during benchmarking.
-type KeyDurationFn func(params *CostParams, keyLen uint32) (time.Duration, error)
+type KeyDurationFunc func(params *CostParams, keyLen uint32) (time.Duration, error)
 
 // Benchmark computes the cost parameters for the desired duration, key length
 // and maximum memory cost.
@@ -270,10 +270,11 @@ type KeyDurationFn func(params *CostParams, keyLen uint32) (time.Duration, error
 //
 // The supplied callback is used to actually run the key derivation measurement,
 // which will consume a lot of memory depending on the supplied parameters. Each
-// measurement should generally be delegated to a short-lived utility process. If
-// the measurement is performed in the current process, the garbage collector must
-// be executed at the end of each measurement.
-func Benchmark(params *BenchmarkParams, keyLen uint32, keyFn KeyDurationFn) (*CostParams, error) {
+// measurement should generally be delegated to a short-lived utility process,
+// which should call the KeyDuration function from this package. If the measurement
+// is performed in the current process, the garbage collector must be executed at
+// the end of each measurement.
+func Benchmark(params *BenchmarkParams, keyLen uint32, keyFn KeyDurationFunc) (*CostParams, error) {
 	var sysInfo unix.Sysinfo_t
 	if err := unix.Sysinfo(&sysInfo); err != nil {
 		return nil, xerrors.Errorf("cannot determine available memory: %w", err)
