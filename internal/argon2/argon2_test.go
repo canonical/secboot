@@ -115,6 +115,19 @@ func (s *argon2Suite) TestBenchmarkShorterKey(c *C) {
 		keyLen: 16})
 }
 
+func (s *argon2Suite) TestBenchmarkNoProgress(c *C) {
+	params := &BenchmarkParams{
+		MaxMemoryCostKiB: 1 * 1024 * 1024,
+		TargetDuration:   100 * time.Millisecond}
+
+	keyDuration := func(params *CostParams, keyLen uint32) (time.Duration, error) {
+		return 30 * time.Millisecond, nil
+	}
+
+	_, err := Benchmark(params, 32, keyDuration)
+	c.Check(err, ErrorMatches, "not making sufficient progress")
+}
+
 type testKeyData struct {
 	passphrase string
 	saltLen    int

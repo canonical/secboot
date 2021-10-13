@@ -20,6 +20,7 @@
 package argon2
 
 import (
+	"errors"
 	"runtime"
 	"time"
 
@@ -78,6 +79,10 @@ type benchmarkContext struct {
 	maxMemoryCostKiB uint32          // maximum memory cost
 	cost             CostParams      // current computed cost parameters
 	duration         time.Duration   // last measured duration
+
+	// timeCostIncreaseCount tracks the number of consecutive increases
+	// in the time cost.
+	timeCostIncreaseCount int
 }
 
 // timeExecution measures the amount of time it takes to execute the Argon2i key
@@ -110,11 +115,20 @@ func (c *benchmarkContext) timeExecution(iterations int, targetDuration time.Dur
 	return nil
 }
 
+// isMakingProgress returns true if the number of consecutive increases in the time cost
+// is less than 10. As there is no ceiling on the time cost, benchmarking should abort
+// if this returns true, which might be an indication that the function used to time
+// the algorithm is returning bogus numbers.
+func (c *benchmarkContext) isMakingProgress() bool {
+	return c.timeCostIncreaseCount < 10
+}
+
 // computeNextCostParameters calculates the next cost parameters to try based on the
 // previous execution duration, target duration and current cost parameters.
 func (c *benchmarkContext) computeNextCostParams(targetDuration time.Duration) (done bool) {
 	newTimeCost := c.cost.Time
 	newMemoryCostKiB := c.cost.MemoryKiB
+	newTimeCostIncreaseCount := 0
 
 	switch {
 	case c.duration < targetDuration:
@@ -129,11 +143,13 @@ func (c *benchmarkContext) computeNextCostParams(targetDuration time.Duration) (
 				// and increase the time cost by a proportionate amount.
 				newMemoryCostKiB = c.maxMemoryCostKiB
 				newTimeCost = uint32((int64(c.cost.Time*c.cost.MemoryKiB) * int64(targetDuration)) / (int64(c.duration) * int64(c.maxMemoryCostKiB)))
+				newTimeCostIncreaseCount = c.timeCostIncreaseCount + 1
 			}
 		default:
 			// Current memory cost is at the maximum, so increase the time cost.
 			// There is no maximum time cost.
 			newTimeCost = uint32((int64(c.cost.Time) * int64(targetDuration)) / int64(c.duration))
+			newTimeCostIncreaseCount = c.timeCostIncreaseCount + 1
 		}
 	case c.duration > targetDuration:
 		// Previous duration was longer than the target duration, so
@@ -174,6 +190,7 @@ func (c *benchmarkContext) computeNextCostParams(targetDuration time.Duration) (
 
 	c.cost.Time = newTimeCost
 	c.cost.MemoryKiB = newMemoryCostKiB
+	c.timeCostIncreaseCount = newTimeCostIncreaseCount
 
 	return done
 }
@@ -214,6 +231,9 @@ func (c *benchmarkContext) run(params *BenchmarkParams, keyLen uint32, keyFn Key
 			}
 		}
 
+		if !c.isMakingProgress() {
+			return nil, errors.New("not making sufficient progress")
+		}
 		if err := c.timeExecution(3, initialTargetDuration); err != nil {
 			return nil, err
 		}
@@ -228,6 +248,9 @@ func (c *benchmarkContext) run(params *BenchmarkParams, keyLen uint32, keyFn Key
 			break
 		}
 
+		if !c.isMakingProgress() {
+			return nil, errors.New("not making sufficient progress")
+		}
 		if err := c.timeExecution(1, params.TargetDuration); err != nil {
 			return nil, err
 		}
