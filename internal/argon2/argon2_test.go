@@ -81,12 +81,7 @@ func (s *argon2Suite) testBenchmark(c *C, data *testBenchmarkData) {
 	restoreSysinfo := MockUnixSysinfo(&si)
 	defer restoreSysinfo()
 
-	threads := data.numCPU
-	if threads > 4 {
-		threads = 4
-	}
-
-	costParams, err := Benchmark(data.params, data.keyLen, s.newMockKeyDurationFunc(c, data.memBandwidthKiBPerMs, data.keyLen, uint8(threads)))
+	costParams, err := Benchmark(data.params, data.keyLen, s.newMockKeyDurationFunc(c, data.memBandwidthKiBPerMs, data.keyLen, data.expected.Threads))
 	c.Assert(err, IsNil)
 	c.Check(costParams, DeepEquals, data.expected)
 }
@@ -259,6 +254,36 @@ func (s *argon2Suite) TestBenchmarkMoreCPUs(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 4},
+	})
+}
+
+func (s *argon2Suite) TestBenchmarkSpecifyThreads(c *C) {
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   2 * time.Second,
+			Threads:          4},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 4},
+	})
+}
+
+func (s *argon2Suite) TestBenchmarkSpecifyMoreThreads(c *C) {
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   2 * time.Second,
+			Threads:          8},
 		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 4},

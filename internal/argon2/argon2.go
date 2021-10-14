@@ -55,6 +55,11 @@ type BenchmarkParams struct {
 	// TargetDuration sets the target time for which the benchmark will
 	// compute cost parameters.
 	TargetDuration time.Duration
+
+	// Threads is the number of parallel threads that will be used
+	// for the key derivation. Set this to zero to derive it from
+	// the number of CPUs.
+	Threads uint8
 }
 
 // CostParams defines the cost parameters for key derivation using Argon2. It
@@ -214,11 +219,16 @@ func (c *benchmarkContext) run(params *BenchmarkParams, keyLen uint32, keyFn Key
 		c.maxMemoryCostKiB = params.MaxMemoryCostKiB
 	}
 
-	// Set the number of threads to the number of CPUs (maximum 4)
-	c.cost.Threads = uint8(numCpu)
-	if numCpu > 4 {
-		c.cost.Threads = 4
+	// Set the number of threads to the number of CPUs or use
+	// the number supplied (maximum 4)
+	threads := numCpu
+	if params.Threads > 0 {
+		threads = int(params.Threads)
 	}
+	if threads > 4 {
+		threads = 4
+	}
+	c.cost.Threads = uint8(threads)
 
 	// Set the time and memory cost to their minimum values.
 	c.cost.Time = minTimeCost
