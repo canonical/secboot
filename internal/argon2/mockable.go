@@ -20,31 +20,13 @@
 package argon2
 
 import (
+	"runtime"
+
 	"golang.org/x/sys/unix"
 )
 
-const (
-	MinTimeCost      = minTimeCost
-	MinMemoryCostKiB = minMemoryCostKiB
+var (
+	runtimeNumCPU = runtime.NumCPU
+
+	unixSysinfo = unix.Sysinfo
 )
-
-func MockRuntimeNumCPU(n int) (restore func()) {
-	orig := runtimeNumCPU
-	runtimeNumCPU = func() int {
-		return n
-	}
-	return func() {
-		runtimeNumCPU = orig
-	}
-}
-
-func MockUnixSysinfo(info *unix.Sysinfo_t) (restore func()) {
-	orig := unixSysinfo
-	unixSysinfo = func(out *unix.Sysinfo_t) error {
-		*out = *info
-		return nil
-	}
-	return func() {
-		unixSysinfo = orig
-	}
-}

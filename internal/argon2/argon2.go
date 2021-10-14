@@ -21,7 +21,7 @@ package argon2
 
 import (
 	"errors"
-	"runtime"
+	"math"
 	"time"
 
 	"golang.org/x/crypto/argon2"
@@ -201,10 +201,14 @@ func (c *benchmarkContext) run(params *BenchmarkParams, keyLen uint32, keyFn Key
 
 	// Set a ceiling on the maximum memory cost of half of the
 	// available RAM or 4GB, whichever is less.
+	halfTotalRamKiB := uint64(sysInfo.Totalram) * uint64(sysInfo.Unit) / 2048
+	if halfTotalRamKiB > math.MaxUint32 {
+		halfTotalRamKiB = math.MaxUint32
+	}
+
 	c.maxMemoryCostKiB = uint32(maxMemoryCostKiB)
-	halfTotalRamKiB := uint32(sysInfo.Totalram) / 2048
-	if halfTotalRamKiB < c.maxMemoryCostKiB {
-		c.maxMemoryCostKiB = halfTotalRamKiB
+	if uint32(halfTotalRamKiB) < c.maxMemoryCostKiB {
+		c.maxMemoryCostKiB = uint32(halfTotalRamKiB)
 	}
 	if params.MaxMemoryCostKiB < c.maxMemoryCostKiB {
 		c.maxMemoryCostKiB = params.MaxMemoryCostKiB
@@ -299,12 +303,12 @@ type KeyDurationFunc func(params *CostParams, keyLen uint32) (time.Duration, err
 // the end of each measurement.
 func Benchmark(params *BenchmarkParams, keyLen uint32, keyFn KeyDurationFunc) (*CostParams, error) {
 	var sysInfo unix.Sysinfo_t
-	if err := unix.Sysinfo(&sysInfo); err != nil {
+	if err := unixSysinfo(&sysInfo); err != nil {
 		return nil, xerrors.Errorf("cannot determine available memory: %w", err)
 	}
 
 	context := new(benchmarkContext)
-	return context.run(params, keyLen, keyFn, &sysInfo, runtime.NumCPU())
+	return context.run(params, keyLen, keyFn, &sysInfo, runtimeNumCPU())
 }
 
 // Key derives a key of the desired length from the supplied passphrase and salt using the

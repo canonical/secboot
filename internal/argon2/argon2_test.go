@@ -25,15 +25,15 @@ import (
 	"runtime"
 	"testing"
 	"time"
-
-	"github.com/snapcore/snapd/testutil"
+	"unsafe"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/sys/unix"
 
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/internal/argon2"
-	_ "github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -42,77 +42,270 @@ type argon2Suite struct{}
 
 var _ = Suite(&argon2Suite{})
 
-func (s *argon2Suite) SetUpSuite(c *C) {
-	for _, e := range os.Environ() {
-		if e == "NO_ARGON2_TESTS=1" {
-			c.Skip("skipping expensive argon2 tests")
-		}
+func (s *argon2Suite) newMockKeyDurationFunc(c *C, memBandwidthKiBPerMs, expectedKeyLen uint32, expectedThreads uint8) func(*CostParams, uint32) (time.Duration, error) {
+	return func(params *CostParams, keyLen uint32) (time.Duration, error) {
+		c.Check(keyLen, Equals, expectedKeyLen)
+		c.Check(params.Threads, Equals, expectedThreads)
+
+		duration := (time.Duration(float64(params.MemoryKiB)/float64(memBandwidthKiBPerMs)) * time.Duration(params.Time)) * time.Millisecond
+		c.Logf("params: %#v, duration: %v", params, duration)
+		return duration, nil
 	}
 }
 
 type testBenchmarkData struct {
-	params *BenchmarkParams
-	keyLen uint32
-}
-
-func keyDuration(params *CostParams, keyLen uint32) (time.Duration, error) {
-	defer runtime.GC()
-	return KeyDuration(params, keyLen), nil
+	numCPU               int
+	totalRam             uint
+	memUnit              uint32
+	params               *BenchmarkParams
+	keyLen               uint32
+	memBandwidthKiBPerMs uint32
+	expected             *CostParams
 }
 
 func (s *argon2Suite) testBenchmark(c *C, data *testBenchmarkData) {
-	costParams, err := Benchmark(data.params, data.keyLen, keyDuration)
+	restoreNumCPU := MockRuntimeNumCPU(data.numCPU)
+	defer restoreNumCPU()
+
+	var si unix.Sysinfo_t
+	// struct sysinfo uses unsigned long integers which are 32-bits
+	// wide on 32-bit platforms (defined as uint32 in x/sys/unix) and
+	// 64-bits wide on 64-bit platforms (defined as uint64). Go's
+	// stricter type-safety checks compared to C makes it difficult to
+	// write code that can compile on all architectures.
+	// We use the unsafe package here to write it as a uint, which has
+	// the same size as C's unsigned long.
+	*(*uint)(unsafe.Pointer(&si.Totalram)) = data.totalRam
+	si.Unit = uint32(data.memUnit)
+
+	restoreSysinfo := MockUnixSysinfo(&si)
+	defer restoreSysinfo()
+
+	threads := data.numCPU
+	if threads > 4 {
+		threads = 4
+	}
+
+	costParams, err := Benchmark(data.params, data.keyLen, s.newMockKeyDurationFunc(c, data.memBandwidthKiBPerMs, data.keyLen, uint8(threads)))
 	c.Assert(err, IsNil)
-
-	maxMemoryCostKiB := data.params.MaxMemoryCostKiB
-	if maxMemoryCostKiB < MinMemoryCostKiB {
-		maxMemoryCostKiB = MinMemoryCostKiB
-	}
-
-	c.Check(int(costParams.Time), testutil.IntGreaterEqual, MinTimeCost)
-	c.Check(int(costParams.MemoryKiB), testutil.IntLessEqual, int(maxMemoryCostKiB))
-	expectedThreads := uint8(runtime.NumCPU())
-	if expectedThreads > 4 {
-		expectedThreads = 4
-	}
-	c.Check(costParams.Threads, Equals, expectedThreads)
-
-	start := time.Now()
-	Key("foo", []byte("0123456789abcdefghijklmnopqrstuv"), costParams, data.keyLen)
-	elapsed := time.Now().Sub(start)
-	// Check KDF time here with +/-20% tolerance
-	c.Check(int(elapsed/time.Millisecond), testutil.IntGreaterThan, int(float64(data.params.TargetDuration/time.Millisecond)*0.8))
-	c.Check(int(elapsed/time.Millisecond), testutil.IntLessThan, int(float64(data.params.TargetDuration/time.Millisecond)*1.2))
+	c.Check(costParams, DeepEquals, data.expected)
 }
 
-func (s *argon2Suite) TestBenchmark2s(c *C) {
+func (s *argon2Suite) TestBenchmark1(c *C) {
+	// Test where the initial target duration (250ms) is met with minimum cost parameters
+	// and the supplied target duration is less than this.
 	s.testBenchmark(c, &testBenchmarkData{
-		params: &BenchmarkParams{
-			MaxMemoryCostKiB: 1 * 1024 * 1024,
-			TargetDuration:   2 * time.Second},
-		keyLen: 32})
-}
-
-func (s *argon2Suite) TestBenchmark100ms(c *C) {
-	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   100 * time.Millisecond},
-		keyLen: 32})
+		keyLen:               32,
+		memBandwidthKiBPerMs: 512,
+		expected:             &CostParams{Time: 4, MemoryKiB: 32768, Threads: 2},
+	})
 }
 
-func (s *argon2Suite) TestBenchmarkReducedMemory(c *C) {
+func (s *argon2Suite) TestBenchmark2(c *C) {
+	// Test where the initial target duration (250ms) is met with minimum cost parameters
+	// and the supplied target duration is met by increased memory cost.
 	s.testBenchmark(c, &testBenchmarkData{
-		params: &BenchmarkParams{TargetDuration: 2 * time.Second},
-		keyLen: 32})
-}
-
-func (s *argon2Suite) TestBenchmarkShorterKey(c *C) {
-	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen: 16})
+		keyLen:               32,
+		memBandwidthKiBPerMs: 512,
+		expected:             &CostParams{Time: 4, MemoryKiB: 256000, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmark3(c *C) {
+	// Test where the initial target duration (250ms) is met by increasing memory cost
+	// and the supplied target duration is met be decreasing memory cost.
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   100 * time.Millisecond},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 51203, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmark4(c *C) {
+	// Test where the initial target duration (250ms) is met by increasing memory cost
+	// and the supplied target duration is met be increasing memory cost.
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   2 * time.Second},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmark5(c *C) {
+	// Test where the initial target duration (250ms) is met by increasing memory
+	// and time cost, and the supplied target duration is met by further increasing
+	// time cost.
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 64 * 1024,
+			TargetDuration:   2 * time.Second},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 62, MemoryKiB: 65536, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmark6(c *C) {
+	// Test where the initial target duration (250ms) is met by increasing memory
+	// and time cost, and the supplied target duration is met by decreasing the
+	// time cost.
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 64 * 1024,
+			TargetDuration:   200 * time.Millisecond},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 6, MemoryKiB: 65536, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmark7(c *C) {
+	// Test where the initial target duration (250ms) is met by increasing memory
+	// and time cost, and the supplied target duration is met by decreasing the
+	// time and memory cost.
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 64 * 1024,
+			TargetDuration:   100 * time.Millisecond},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 51200, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmark8(c *C) {
+	// Test where the initial target duration (250ms) is met by increasing memory
+	// and time cost, and the supplied target duration is met with minimum cost
+	// parameters.
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 64 * 1024,
+			TargetDuration:   50 * time.Millisecond},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 32768, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmarkLowMem1(c *C) {
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 1 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   2 * time.Second},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 7, MemoryKiB: 524288, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmarkLowMem2(c *C) {
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 1 * 1024 * 1024,
+		memUnit:  1024,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   2 * time.Second},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 7, MemoryKiB: 524288, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmarkMoreCPUs(c *C) {
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   8,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   2 * time.Second},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 4},
+	})
+}
+
+func (s *argon2Suite) TestBenchmarkBiggerKey(c *C) {
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  1,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   2 * time.Second},
+		keyLen:               64,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmarkLotsOfMemory(c *C) {
+	// Specify an amount of system memory that overflows uint32
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  4096,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 1 * 1024 * 1024,
+			TargetDuration:   2 * time.Second},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 2048,
+		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 2},
+	})
+}
+
+func (s *argon2Suite) TestBenchmarkBuiltinMaxMemoryCost(c *C) {
+	s.testBenchmark(c, &testBenchmarkData{
+		numCPU:   2,
+		totalRam: 4 * 1024 * 1024 * 1024,
+		memUnit:  16,
+		params: &BenchmarkParams{
+			MaxMemoryCostKiB: 8 * 1024 * 1024,
+			TargetDuration:   2 * time.Second},
+		keyLen:               32,
+		memBandwidthKiBPerMs: 16384,
+		expected:             &CostParams{Time: 7, MemoryKiB: 4194304, Threads: 2},
+	})
 }
 
 func (s *argon2Suite) TestBenchmarkNoProgress(c *C) {
@@ -121,11 +314,24 @@ func (s *argon2Suite) TestBenchmarkNoProgress(c *C) {
 		TargetDuration:   100 * time.Millisecond}
 
 	keyDuration := func(params *CostParams, keyLen uint32) (time.Duration, error) {
+		c.Logf("params: %#v", params)
 		return 30 * time.Millisecond, nil
 	}
 
 	_, err := Benchmark(params, 32, keyDuration)
 	c.Check(err, ErrorMatches, "not making sufficient progress")
+}
+
+type argon2SuiteExpensive struct{}
+
+var _ = Suite(&argon2SuiteExpensive{})
+
+func (s *argon2SuiteExpensive) SetUpSuite(c *C) {
+	for _, e := range os.Environ() {
+		if e == "NO_ARGON2_TESTS=1" {
+			c.Skip("skipping expensive argon2 tests")
+		}
+	}
 }
 
 type testKeyData struct {
@@ -135,7 +341,7 @@ type testKeyData struct {
 	keyLen     uint32
 }
 
-func (s *argon2Suite) testKey(c *C, data *testKeyData) {
+func (s *argon2SuiteExpensive) testKey(c *C, data *testKeyData) {
 	salt := make([]byte, data.saltLen)
 	rand.Read(salt[:])
 
@@ -153,7 +359,7 @@ func (s *argon2Suite) testKey(c *C, data *testKeyData) {
 	c.Check(key, DeepEquals, expectedKey)
 }
 
-func (s *argon2Suite) TestKey1(c *C) {
+func (s *argon2SuiteExpensive) TestKey1(c *C) {
 	s.testKey(c, &testKeyData{
 		passphrase: "ubuntu",
 		saltLen:    16,
@@ -164,7 +370,7 @@ func (s *argon2Suite) TestKey1(c *C) {
 		keyLen: 32})
 }
 
-func (s *argon2Suite) TestKey2(c *C) {
+func (s *argon2SuiteExpensive) TestKey2(c *C) {
 	s.testKey(c, &testKeyData{
 		passphrase: "bar",
 		saltLen:    16,
@@ -175,7 +381,7 @@ func (s *argon2Suite) TestKey2(c *C) {
 		keyLen: 32})
 }
 
-func (s *argon2Suite) TestKey3(c *C) {
+func (s *argon2SuiteExpensive) TestKey3(c *C) {
 	s.testKey(c, &testKeyData{
 		passphrase: "ubuntu",
 		saltLen:    16,
@@ -186,7 +392,7 @@ func (s *argon2Suite) TestKey3(c *C) {
 		keyLen: 16})
 }
 
-func (s *argon2Suite) TestKey4(c *C) {
+func (s *argon2SuiteExpensive) TestKey4(c *C) {
 	s.testKey(c, &testKeyData{
 		passphrase: "ubuntu",
 		saltLen:    16,
@@ -197,7 +403,7 @@ func (s *argon2Suite) TestKey4(c *C) {
 		keyLen: 32})
 }
 
-func (s *argon2Suite) TestKey5(c *C) {
+func (s *argon2SuiteExpensive) TestKey5(c *C) {
 	s.testKey(c, &testKeyData{
 		passphrase: "ubuntu",
 		saltLen:    16,
@@ -208,7 +414,7 @@ func (s *argon2Suite) TestKey5(c *C) {
 		keyLen: 32})
 }
 
-func (s *argon2Suite) TestKey6(c *C) {
+func (s *argon2SuiteExpensive) TestKey6(c *C) {
 	s.testKey(c, &testKeyData{
 		passphrase: "ubuntu",
 		saltLen:    16,
@@ -217,4 +423,27 @@ func (s *argon2Suite) TestKey6(c *C) {
 			MemoryKiB: 32 * 1024,
 			Threads:   1},
 		keyLen: 32})
+}
+
+func (s *argon2SuiteExpensive) TestKeyDuration(c *C) {
+	time1 := KeyDuration(&CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4}, 32)
+	runtime.GC()
+
+	time2 := KeyDuration(&CostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4}, 32)
+	runtime.GC()
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	time2 = KeyDuration(&CostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4}, 32)
+	runtime.GC()
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	time2 = KeyDuration(&CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1}, 32)
+	runtime.GC()
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
 }
