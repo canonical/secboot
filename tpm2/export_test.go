@@ -21,11 +21,8 @@ package tpm2
 
 import (
 	"crypto/ecdsa"
-	"io"
 
 	"github.com/canonical/go-tpm2"
-
-	"github.com/snapcore/secboot"
 )
 
 // Export constants for testing
@@ -105,22 +102,6 @@ func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
 }
 
 // Export some helpers for testing.
-func MockActivateVolumeWithRecoveryKey(fn func(string, string, io.Reader, *secboot.ActivateVolumeOptions) error) (restore func()) {
-	orig := secbootActivateVolumeWithRecoveryKey
-	secbootActivateVolumeWithRecoveryKey = fn
-	return func() {
-		secbootActivateVolumeWithRecoveryKey = orig
-	}
-}
-
-func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
-	orig := luks2Activate
-	luks2Activate = fn
-	return func() {
-		luks2Activate = orig
-	}
-}
-
 type MockPolicyPCRParam struct {
 	PCR     int
 	Alg     tpm2.HashAlgorithmId
@@ -177,17 +158,21 @@ func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NV
 	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub}
 }
 
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
-	k, err := ReadSealedKeyObject(keyFile)
-	if err != nil {
-		return err
-	}
-
+func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
 	authKey, err := createECDSAPrivateKeyFromTPM(k.data.staticPolicyData.authPublicKey, tpm2.ECCParameter(authPrivateKey))
 	if err != nil {
 		return err
 	}
 
-	_, err = k.data.validate(tpm, authKey, session)
+	_, err = k.validate(tpm, authKey, session)
 	return err
+}
+
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
+	k, err := ReadSealedKeyObjectFromFile(keyFile)
+	if err != nil {
+		return err
+	}
+
+	return k.Validate(tpm, authPrivateKey, session)
 }

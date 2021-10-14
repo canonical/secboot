@@ -151,7 +151,7 @@ func (s *compatTestSuiteBase) copyFile(c *C, path string) string {
 }
 
 func (s *compatTestSuiteBase) testUnsealCommon(c *C) {
-	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot_tpm2.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 
 	key, authPrivateKey, err := k.UnsealFromTPM(s.TPM)
@@ -176,7 +176,7 @@ func (s *compatTestSuiteBase) testUnseal(c *C, pcrEventsFile string) {
 }
 
 func (s *compatTestSuiteBase) testUnsealErrorMatchesCommon(c *C, pattern string) {
-	k, err := secboot_tpm2.ReadSealedKeyObject(s.absPath("key"))
+	k, err := secboot_tpm2.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 
 	_, _, err = k.UnsealFromTPM(s.TPM)

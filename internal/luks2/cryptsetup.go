@@ -278,7 +278,7 @@ func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) 
 }
 
 // ImportToken imports the supplied token in to the JSON metadata area of the specified LUKS2 container.
-func ImportToken(devicePath string, token *Token) error {
+func ImportToken(devicePath string, token Token) error {
 	tokenJSON, err := json.Marshal(token)
 	if err != nil {
 		return xerrors.Errorf("cannot serialize token: %w", err)

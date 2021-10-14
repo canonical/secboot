@@ -232,27 +232,27 @@ func (s *metadataSuite) TestAcquireManySharedLocksOnDevice(c *C) {
 	c.Check(err, ErrorMatches, ".*: no such file or directory")
 }
 
-type testMarshalTokenData struct {
-	token          *Token
+type testMarshalGenericTokenData struct {
+	token          *GenericToken
 	expectedParams map[string]interface{}
 }
 
-func (s *metadataSuite) testMarshalToken(c *C, data *testMarshalTokenData) {
+func (s *metadataSuite) testMarshalGenericToken(c *C, data *testMarshalGenericTokenData) {
 	b, err := json.Marshal(data.token)
 	c.Assert(err, IsNil)
 
-	var token *Token
+	var token *GenericToken
 	c.Assert(json.Unmarshal(b, &token), IsNil)
-	c.Check(token.Type, Equals, data.token.Type)
-	c.Check(token.Keyslots, DeepEquals, data.token.Keyslots)
+	c.Check(token.TokenType, Equals, data.token.TokenType)
+	c.Check(token.TokenKeyslots, DeepEquals, data.token.TokenKeyslots)
 	c.Check(token.Params, DeepEquals, data.expectedParams)
 }
 
-func (s *metadataSuite) TestMarshalToken1(c *C) {
-	s.testMarshalToken(c, &testMarshalTokenData{
-		token: &Token{
-			Type:     "luks2-keyring",
-			Keyslots: []int{0},
+func (s *metadataSuite) TestMarshalGenericToken1(c *C) {
+	s.testMarshalGenericToken(c, &testMarshalGenericTokenData{
+		token: &GenericToken{
+			TokenType:     "luks2-keyring",
+			TokenKeyslots: []int{0},
 			Params: map[string]interface{}{
 				"key_description": "foo",
 			},
@@ -263,14 +263,14 @@ func (s *metadataSuite) TestMarshalToken1(c *C) {
 	})
 }
 
-func (s *metadataSuite) TestMarshalToken2(c *C) {
+func (s *metadataSuite) TestMarshalGenericToken2(c *C) {
 	data := make([]byte, 128)
 	rand.Read(data)
 
-	s.testMarshalToken(c, &testMarshalTokenData{
-		token: &Token{
-			Type:     "secboot-test",
-			Keyslots: []int{1, 2},
+	s.testMarshalGenericToken(c, &testMarshalGenericTokenData{
+		token: &GenericToken{
+			TokenType:     "secboot-test",
+			TokenKeyslots: []int{1, 2},
 			Params: map[string]interface{}{
 				"secboot-a": 50,
 				"secboot-b": data,
@@ -347,9 +347,11 @@ func (s *metadataSuite) testReadHeader(c *C, data *testReadHeaderData) {
 	c.Check(hdr.Metadata.Segments[0].Integrity, IsNil)
 
 	c.Assert(hdr.Metadata.Tokens, HasLen, 1)
-	c.Check(hdr.Metadata.Tokens[0].Type, Equals, "secboot-test")
-	c.Check(hdr.Metadata.Tokens[0].Keyslots, DeepEquals, []int{0})
-	c.Check(hdr.Metadata.Tokens[0].Params, DeepEquals, map[string]interface{}{"secboot-a": "foo", "secboot-b": float64(7)})
+	c.Check(hdr.Metadata.Tokens[0].Type(), Equals, TokenType("secboot-test"))
+	c.Check(hdr.Metadata.Tokens[0].Keyslots(), DeepEquals, []int{0})
+	token, ok := hdr.Metadata.Tokens[0].(*GenericToken)
+	c.Assert(ok, testutil.IsTrue)
+	c.Check(token.Params, DeepEquals, map[string]interface{}{"secboot-a": "foo", "secboot-b": float64(7)})
 
 	c.Assert(hdr.Metadata.Digests, HasLen, 1)
 	c.Check(hdr.Metadata.Digests[0].Type, Equals, KDFTypePBKDF2)
@@ -444,4 +446,27 @@ func (s *metadataSuite) TestReadHeaderInvalidVersion(c *C) {
 	// Test where both headers have an invalid version to check we get the right error.
 	_, err := ReadHeader(s.decompress(c, "testdata/luks2-hdr-invalid-version-both.img"), LockModeBlocking)
 	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: invalid version")
+}
+
+func (s *metadataSuite) TestReadHeaderWithExternalToken(c *C) {
+	RegisterTokenDecoder("secboot-test", func(data []byte) (Token, error) {
+		var token *mockToken
+		if err := json.Unmarshal(data, &token); err != nil {
+			return nil, err
+		}
+		return token, nil
+	})
+	defer RegisterTokenDecoder("secboot-test", nil)
+
+	hdr, err := ReadHeader(s.decompress(c, "testdata/luks2-valid-hdr.img"), LockModeBlocking)
+	c.Assert(err, IsNil)
+
+	c.Check(hdr.Metadata.Tokens, HasLen, 1)
+
+	token, ok := hdr.Metadata.Tokens[0].(*mockToken)
+	c.Assert(ok, testutil.IsTrue)
+	c.Check(token.TokenType, Equals, TokenType("secboot-test"))
+	c.Check(token.TokenKeyslots, DeepEquals, []JsonNumber{"0"})
+	c.Check(token.A, Equals, "foo")
+	c.Check(token.B, Equals, 7)
 }

@@ -20,7 +20,6 @@
 package tpm2
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -108,60 +107,18 @@ func isTPMVerificationError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// InvalidKeyFileError indicates that the provided key data file is invalid. This error may also be returned in some
+// InvalidKeyDataError indicates that the provided key data file is invalid. This error may also be returned in some
 // scenarious where the TPM is incorrectly provisioned, but it isn't possible to determine whether the error is with
 // the provisioning status or because the key data file is invalid.
-type InvalidKeyFileError struct {
+type InvalidKeyDataError struct {
 	msg string
 }
 
-func (e InvalidKeyFileError) Error() string {
-	return fmt.Sprintf("invalid key data file: %s", e.msg)
+func (e InvalidKeyDataError) Error() string {
+	return fmt.Sprintf("invalid key data: %s", e.msg)
 }
 
-func isInvalidKeyFileError(err error) bool {
-	var e InvalidKeyFileError
+func isInvalidKeyDataError(err error) bool {
+	var e InvalidKeyDataError
 	return xerrors.As(err, &e)
-}
-
-// ActivateWithSealedKeyError is returned from ActivateVolumeWithSealedKey if activation with the TPM protected key failed.
-type ActivateWithSealedKeyError struct {
-	// TPMErr details the error that occurred during activation with the TPM sealed key.
-	TPMErr error
-
-	// RecoveryKeyUsageErr details the error that occurred during activation with the fallback recovery key, if activation with the recovery key
-	// was also unsuccessful.
-	RecoveryKeyUsageErr error
-}
-
-func (e *ActivateWithSealedKeyError) Error() string {
-	if e.RecoveryKeyUsageErr != nil {
-		return fmt.Sprintf("cannot activate with TPM sealed key (%v) and activation with recovery key failed (%v)", e.TPMErr, e.RecoveryKeyUsageErr)
-	}
-	return fmt.Sprintf("cannot activate with TPM sealed key (%v) but activation with recovery key was successful", e.TPMErr)
-}
-
-// ActivateWithMultipleSealedKeysError is returned from ActivateVolumeWithMultipleSealedKeys if activation with the
-// TPM protected keys failed.
-type ActivateWithMultipleSealedKeysError struct {
-	// TPMErrs details the errors that occurred during activation with the TPM sealed keys.
-	TPMErrs []error
-
-	// RecoveryKeyUsageErr details the error that occurred during activation with the fallback recovery key, if activation
-	// with the recovery key was also unsuccessful.
-	RecoveryKeyUsageErr error
-}
-
-func (e *ActivateWithMultipleSealedKeysError) Error() string {
-	var s bytes.Buffer
-	fmt.Fprintf(&s, "cannot activate with TPM sealed keys:")
-	for _, err := range e.TPMErrs {
-		fmt.Fprintf(&s, "\n- %v", err)
-	}
-	if e.RecoveryKeyUsageErr != nil {
-		fmt.Fprintf(&s, "\nand activation with recovery key failed: %v", e.RecoveryKeyUsageErr)
-	} else {
-		fmt.Fprintf(&s, "\nbut activation with recovery key was successful")
-	}
-	return s.String()
 }
