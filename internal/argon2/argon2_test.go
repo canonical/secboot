@@ -42,9 +42,8 @@ type argon2Suite struct{}
 
 var _ = Suite(&argon2Suite{})
 
-func (s *argon2Suite) newMockKeyDurationFunc(c *C, memBandwidthKiBPerMs, expectedKeyLen uint32, expectedThreads uint8) func(*CostParams, uint32) (time.Duration, error) {
-	return func(params *CostParams, keyLen uint32) (time.Duration, error) {
-		c.Check(keyLen, Equals, expectedKeyLen)
+func (s *argon2Suite) newMockKeyDurationFunc(c *C, memBandwidthKiBPerMs uint32, expectedThreads uint8) KeyDurationFunc {
+	return func(params *CostParams) (time.Duration, error) {
 		c.Check(params.Threads, Equals, expectedThreads)
 
 		duration := (time.Duration(float64(params.MemoryKiB)/float64(memBandwidthKiBPerMs)) * time.Duration(params.Time)) * time.Millisecond
@@ -58,7 +57,6 @@ type testBenchmarkData struct {
 	totalRam             uint
 	memUnit              uint32
 	params               *BenchmarkParams
-	keyLen               uint32
 	memBandwidthKiBPerMs uint32
 	expected             *CostParams
 }
@@ -81,7 +79,7 @@ func (s *argon2Suite) testBenchmark(c *C, data *testBenchmarkData) {
 	restoreSysinfo := MockUnixSysinfo(&si)
 	defer restoreSysinfo()
 
-	costParams, err := Benchmark(data.params, data.keyLen, s.newMockKeyDurationFunc(c, data.memBandwidthKiBPerMs, data.keyLen, data.expected.Threads))
+	costParams, err := Benchmark(data.params, s.newMockKeyDurationFunc(c, data.memBandwidthKiBPerMs, data.expected.Threads))
 	c.Assert(err, IsNil)
 	c.Check(costParams, DeepEquals, data.expected)
 }
@@ -96,7 +94,6 @@ func (s *argon2Suite) TestBenchmark1(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   100 * time.Millisecond},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 512,
 		expected:             &CostParams{Time: 4, MemoryKiB: 32768, Threads: 2},
 	})
@@ -112,7 +109,6 @@ func (s *argon2Suite) TestBenchmark2(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 512,
 		expected:             &CostParams{Time: 4, MemoryKiB: 256000, Threads: 2},
 	})
@@ -128,7 +124,6 @@ func (s *argon2Suite) TestBenchmark3(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   100 * time.Millisecond},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 51203, Threads: 2},
 	})
@@ -144,7 +139,6 @@ func (s *argon2Suite) TestBenchmark4(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 2},
 	})
@@ -161,7 +155,6 @@ func (s *argon2Suite) TestBenchmark5(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 64 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 62, MemoryKiB: 65536, Threads: 2},
 	})
@@ -178,7 +171,6 @@ func (s *argon2Suite) TestBenchmark6(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 64 * 1024,
 			TargetDuration:   200 * time.Millisecond},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 6, MemoryKiB: 65536, Threads: 2},
 	})
@@ -195,7 +187,6 @@ func (s *argon2Suite) TestBenchmark7(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 64 * 1024,
 			TargetDuration:   100 * time.Millisecond},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 51200, Threads: 2},
 	})
@@ -212,7 +203,6 @@ func (s *argon2Suite) TestBenchmark8(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 64 * 1024,
 			TargetDuration:   50 * time.Millisecond},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 32768, Threads: 2},
 	})
@@ -226,7 +216,6 @@ func (s *argon2Suite) TestBenchmarkLowMem1(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 7, MemoryKiB: 524288, Threads: 2},
 	})
@@ -240,7 +229,6 @@ func (s *argon2Suite) TestBenchmarkLowMem2(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 7, MemoryKiB: 524288, Threads: 2},
 	})
@@ -254,7 +242,6 @@ func (s *argon2Suite) TestBenchmarkMoreCPUs(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 4},
 	})
@@ -269,7 +256,6 @@ func (s *argon2Suite) TestBenchmarkSpecifyThreads(c *C) {
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second,
 			Threads:          4},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 4},
 	})
@@ -284,7 +270,6 @@ func (s *argon2Suite) TestBenchmarkSpecifyMoreThreads(c *C) {
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second,
 			Threads:          8},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 4},
 	})
@@ -298,7 +283,6 @@ func (s *argon2Suite) TestBenchmarkBiggerKey(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               64,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 2},
 	})
@@ -313,7 +297,6 @@ func (s *argon2Suite) TestBenchmarkLotsOfMemory(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 2048,
 		expected:             &CostParams{Time: 4, MemoryKiB: 1024063, Threads: 2},
 	})
@@ -327,7 +310,6 @@ func (s *argon2Suite) TestBenchmarkBuiltinMaxMemoryCost(c *C) {
 		params: &BenchmarkParams{
 			MaxMemoryCostKiB: 8 * 1024 * 1024,
 			TargetDuration:   2 * time.Second},
-		keyLen:               32,
 		memBandwidthKiBPerMs: 16384,
 		expected:             &CostParams{Time: 7, MemoryKiB: 4194304, Threads: 2},
 	})
@@ -338,12 +320,12 @@ func (s *argon2Suite) TestBenchmarkNoProgress(c *C) {
 		MaxMemoryCostKiB: 1 * 1024 * 1024,
 		TargetDuration:   100 * time.Millisecond}
 
-	keyDuration := func(params *CostParams, keyLen uint32) (time.Duration, error) {
+	keyDuration := func(params *CostParams) (time.Duration, error) {
 		c.Logf("params: %#v", params)
 		return 30 * time.Millisecond, nil
 	}
 
-	_, err := Benchmark(params, 32, keyDuration)
+	_, err := Benchmark(params, keyDuration)
 	c.Check(err, ErrorMatches, "not making sufficient progress")
 }
 

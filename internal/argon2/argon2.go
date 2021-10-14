@@ -100,7 +100,7 @@ func (c *benchmarkContext) timeExecution(iterations int, targetDuration time.Dur
 	var minDuration time.Duration
 
 	for i := 0; i < iterations; i++ {
-		duration, err := c.keyFn(&c.cost, c.keyLen)
+		duration, err := c.keyFn(&c.cost)
 		if err != nil {
 			return err
 		}
@@ -200,8 +200,7 @@ func (c *benchmarkContext) computeNextCostParams(targetDuration time.Duration) (
 	return done
 }
 
-func (c *benchmarkContext) run(params *BenchmarkParams, keyLen uint32, keyFn KeyDurationFunc, sysInfo *unix.Sysinfo_t, numCpu int) (*CostParams, error) {
-	c.keyLen = keyLen
+func (c *benchmarkContext) run(params *BenchmarkParams, keyFn KeyDurationFunc, sysInfo *unix.Sysinfo_t, numCpu int) (*CostParams, error) {
 	c.keyFn = keyFn
 
 	// Set a ceiling on the maximum memory cost of half of the
@@ -287,10 +286,10 @@ func KeyDuration(params *CostParams, keyLen uint32) time.Duration {
 
 // KeyDurationFunc provides a mechanism to delegate key derivation measurements
 // to a short-lived utility process during benchmarking.
-type KeyDurationFunc func(params *CostParams, keyLen uint32) (time.Duration, error)
+type KeyDurationFunc func(params *CostParams) (time.Duration, error)
 
-// Benchmark computes the cost parameters for the desired duration, key length
-// and maximum memory cost.
+// Benchmark computes the cost parameters for the desired duration and maximum
+// memory cost.
 //
 // The algorithm is based on the one implemented in cryptsetup. If the current
 // duration is shorter than the target duration, then increasing the memory cost
@@ -311,14 +310,14 @@ type KeyDurationFunc func(params *CostParams, keyLen uint32) (time.Duration, err
 // which should call the KeyDuration function from this package. If the measurement
 // is performed in the current process, the garbage collector must be executed at
 // the end of each measurement.
-func Benchmark(params *BenchmarkParams, keyLen uint32, keyFn KeyDurationFunc) (*CostParams, error) {
+func Benchmark(params *BenchmarkParams, keyFn KeyDurationFunc) (*CostParams, error) {
 	var sysInfo unix.Sysinfo_t
 	if err := unixSysinfo(&sysInfo); err != nil {
 		return nil, xerrors.Errorf("cannot determine available memory: %w", err)
 	}
 
 	context := new(benchmarkContext)
-	return context.run(params, keyLen, keyFn, &sysInfo, runtimeNumCPU())
+	return context.run(params, keyFn, &sysInfo, runtimeNumCPU())
 }
 
 // Key derives a key of the desired length from the supplied passphrase and salt using the
