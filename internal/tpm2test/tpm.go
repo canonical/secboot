@@ -235,8 +235,9 @@ func newTPMConnectionFromExisting(tpm *secboot_tpm2.Connection, tcti *TCTI) (*se
 // NewTPMConnectionFromExistingT creates a new connection and TCTI from the
 // supplied ones. This is useful in scenarios where test fixture setup and
 // test execution require a different connection. The returned connection
-// uses the same underlying connection as the one supplied.
-func NewTPMConnectionFromExistingT(t *testing.T, tpm *secboot_tpm2.Connection, tcti *TCTI) (*secboot_tpm2.Connection, *TCTI, func()) {
+// uses the same underlying connection as the one supplied. The supplied
+// source connection does not need to be closed afterwards.
+func NewTPMConnectionFromExistingT(t *testing.T, tpm *secboot_tpm2.Connection, tcti *TCTI) (newTpm *secboot_tpm2.Connection, newTcti *TCTI, close func()) {
 	tpm, tcti, err := newTPMConnectionFromExisting(tpm, tcti)
 	if err != nil {
 		t.Fatal(err)
@@ -249,8 +250,9 @@ func NewTPMConnectionFromExistingT(t *testing.T, tpm *secboot_tpm2.Connection, t
 }
 
 // ResetTPMSimulatorT issues a Shutdown -> Reset -> Startup cycle of the TPM
-// simulator and returns a newly initialized TPM connection.
-func ResetTPMSimulatorT(t *testing.T, tpm *secboot_tpm2.Connection, tcti *TCTI) (*secboot_tpm2.Connection, *TCTI, func()) {
+// simulator and returns a newly initialized TPM connection. The supplied
+// source connection does not need to be closed afterwards.
+func ResetTPMSimulatorT(t *testing.T, tpm *secboot_tpm2.Connection, tcti *TCTI) (newTpm *secboot_tpm2.Connection, newTcti *TCTI, close func()) {
 	tpm2_testutil.ResetTPMSimulatorT(t, tpm.TPMContext, tcti.Unwrap().(*tpm2_testutil.TCTI))
 	return NewTPMConnectionFromExistingT(t, tpm, tcti)
 }
