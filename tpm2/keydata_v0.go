@@ -128,23 +128,23 @@ func readKeyDataV0(r io.Reader) (keyData, error) {
 	return d, nil
 }
 
-func (d *keyData_v0) version() uint32 { return 0 }
+func (_ *keyData_v0) Version() uint32 { return 0 }
 
-func (d *keyData_v0) keyPrivate() tpm2.Private {
+func (d *keyData_v0) Private() tpm2.Private {
 	return d.KeyPrivate
 }
 
-func (d *keyData_v0) keyPublic() *tpm2.Public {
+func (d *keyData_v0) Public() *tpm2.Public {
 	return d.KeyPublic
 }
 
-func (d *keyData_v0) importSymSeed() tpm2.EncryptedSecret { return nil }
+func (_ *keyData_v0) ImportSymSeed() tpm2.EncryptedSecret { return nil }
 
-func (d *keyData_v0) imported(_ tpm2.Private) {
+func (_ *keyData_v0) Imported(_ tpm2.Private) {
 	panic("not supported")
 }
 
-func (d *keyData_v0) validateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	// Obtain the name of the legacy lock NV index.
 	lockNV, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
@@ -236,16 +236,16 @@ func (d *keyData_v0) validateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 	return pinIndex, nil
 }
 
-func (d *keyData_v0) write(w io.Writer) error {
+func (d *keyData_v0) Write(w io.Writer) error {
 	_, err := mu.MarshalToWriter(w, d)
 	return err
 }
 
-func (d *keyData_v0) pcrPolicyCounterHandle() tpm2.Handle {
+func (d *keyData_v0) PcrPolicyCounterHandle() tpm2.Handle {
 	return d.StaticPolicyData.PinIndexHandle
 }
 
-func (d *keyData_v0) validateAuthKey(key crypto.PrivateKey) error {
+func (d *keyData_v0) ValidateAuthKey(key crypto.PrivateKey) error {
 	pub, ok := d.StaticPolicyData.AuthPublicKey.Public().(*rsa.PublicKey)
 	if !ok {
 		return keyDataError{errors.New("unexpected dynamic authorization policy public key type")}
@@ -263,14 +263,14 @@ func (d *keyData_v0) validateAuthKey(key crypto.PrivateKey) error {
 	return nil
 }
 
-func (d *keyData_v0) staticPolicyData() *staticPolicyData {
+func (d *keyData_v0) StaticPolicy() *staticPolicyData {
 	return d.StaticPolicyData.data()
 }
 
-func (d *keyData_v0) dynamicPolicyData() *dynamicPolicyData {
+func (d *keyData_v0) DynamicPolicy() *dynamicPolicyData {
 	return d.DynamicPolicyData.data()
 }
 
-func (d *keyData_v0) setDynamicPolicyData(data *dynamicPolicyData) {
+func (d *keyData_v0) SetDynamicPolicy(data *dynamicPolicyData) {
 	d.DynamicPolicyData = makeDynamicPolicyDataRaw_v0(data)
 }

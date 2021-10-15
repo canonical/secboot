@@ -20,7 +20,6 @@
 package tpm2
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"errors"
@@ -28,9 +27,6 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/util"
-
-	"golang.org/x/xerrors"
 )
 
 // keyData_v2 represents version 2 of keyData.
@@ -38,7 +34,7 @@ type keyData_v2 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
 	Unused            uint8 // previously AuthModeHint
-	ImportSymSeed     tpm2.EncryptedSecret
+	KeyImportSymSeed     tpm2.EncryptedSecret
 	StaticPolicyData  *staticPolicyDataRaw_v1
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
@@ -56,13 +52,24 @@ func newKeyData(keyPrivate tpm2.Private, keyPublic *tpm2.Public, importSymSeed t
 	return &keyData_v2{
 		KeyPrivate:        keyPrivate,
 		KeyPublic:         keyPublic,
-		ImportSymSeed:     importSymSeed,
+		KeyImportSymSeed:     importSymSeed,
 		StaticPolicyData:  staticPolicyData,
 		DynamicPolicyData: dynamicPolicyData}
 }
 
-func (d *keyData_v2) version() uint32 {
-	if d.ImportSymSeed == nil {
+func (d *keyData_v2) asV1() keyData {
+	if d.KeyImportSymSeed != nil {
+		panic("importable object cannot be converted to v1")
+	}
+	return &keyData_v1{
+		KeyPrivate:        d.KeyPrivate,
+		KeyPublic:         d.KeyPublic,
+		StaticPolicyData:  d.StaticPolicyData,
+		DynamicPolicyData: d.DynamicPolicyData}
+}
+
+func (d *keyData_v2) Version() uint32 {
+	if d.KeyImportSymSeed == nil {
 		// The only difference between v1 and v2 is support for
 		// importable objects. Pretend to be v1 if the object
 		// doesn't need importing.
@@ -71,96 +78,47 @@ func (d *keyData_v2) version() uint32 {
 	return 2
 }
 
-func (d *keyData_v2) keyPrivate() tpm2.Private {
+func (d *keyData_v2) Private() tpm2.Private {
 	return d.KeyPrivate
 }
 
-func (d *keyData_v2) keyPublic() *tpm2.Public {
+func (d *keyData_v2) Public() *tpm2.Public {
 	return d.KeyPublic
 }
 
-func (d *keyData_v2) importSymSeed() tpm2.EncryptedSecret {
-	return d.ImportSymSeed
+func (d *keyData_v2) ImportSymSeed() tpm2.EncryptedSecret {
+	return d.KeyImportSymSeed
 }
 
-func (d *keyData_v2) imported(priv tpm2.Private) {
+func (d *keyData_v2) Imported(priv tpm2.Private) {
 	d.KeyPrivate = priv
-	d.ImportSymSeed = nil
+	d.KeyImportSymSeed = nil
 }
 
-func (d *keyData_v2) validateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
-	// Validate the type and scheme of the dynamic authorization policy signing key.
-	authPublicKey := d.StaticPolicyData.AuthPublicKey
-	authKeyName, err := authPublicKey.Name()
-	if err != nil {
-		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
+func (d *keyData_v2) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+	if d.KeyImportSymSeed != nil {
+		return nil, errors.New("cannot validate importable key data")
 	}
-	if authPublicKey.Type != tpm2.ObjectTypeECC {
-		return nil, keyDataError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
-	}
-	authKeyScheme := authPublicKey.Params.AsymDetail(authPublicKey.Type).Scheme
-	if authKeyScheme.Scheme != tpm2.AsymSchemeNull {
-		if authKeyScheme.Scheme != tpm2.AsymSchemeECDSA {
-			return nil, keyDataError{errors.New("dynamic authorization policy signing key has unexpected scheme")}
-		}
-		if authKeyScheme.Details.Any(authKeyScheme.Scheme).HashAlg != authPublicKey.NameAlg {
-			return nil, keyDataError{errors.New("dynamic authorization policy signing key algorithm must match name algorithm")}
-		}
-	}
-
-	// Create a context for the PCR policy counter.
-	pcrPolicyCounterHandle := d.StaticPolicyData.PCRPolicyCounterHandle
-	var pcrPolicyCounter tpm2.ResourceContext
-	switch {
-	case pcrPolicyCounterHandle != tpm2.HandleNull && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex:
-		return nil, keyDataError{errors.New("PCR policy counter handle is invalid")}
-	case pcrPolicyCounterHandle != tpm2.HandleNull:
-		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
-		if err != nil {
-			if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
-				return nil, keyDataError{errors.New("PCR policy counter is unavailable")}
-			}
-			return nil, xerrors.Errorf("cannot create context for PCR policy counter: %w", err)
-		}
-	}
-
-	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
-	if !d.KeyPublic.NameAlg.Available() {
-		return nil, keyDataError{errors.New("cannot determine if static authorization policy matches sealed key object: algorithm unavailable")}
-	}
-	trial := util.ComputeAuthPolicy(d.KeyPublic.NameAlg)
-	trial.PolicyAuthorize(computePcrPolicyRefFromCounterContext(pcrPolicyCounter), authKeyName)
-	trial.PolicyAuthValue()
-
-	if !bytes.Equal(trial.GetDigest(), d.KeyPublic.AuthPolicy) {
-		return nil, keyDataError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
-	}
-
-	return pcrPolicyCounter, nil
+	return d.asV1().ValidateData(tpm, session)
 }
 
-func (d *keyData_v2) write(w io.Writer) error {
-	if d.ImportSymSeed == nil {
+func (d *keyData_v2) Write(w io.Writer) error {
+	if d.KeyImportSymSeed == nil {
 		// The only difference between v1 and v2 is support for
 		// importable objects. Implicitly downgrade to v1 on write
 		// if the object doesn't need importing.
-		data := &keyData_v1{
-			KeyPrivate:        d.KeyPrivate,
-			KeyPublic:         d.KeyPublic,
-			StaticPolicyData:  d.StaticPolicyData,
-			DynamicPolicyData: d.DynamicPolicyData}
-		return data.write(w)
+		return d.asV1().Write(w)
 	}
 
 	_, err := mu.MarshalToWriter(w, d)
 	return err
 }
 
-func (d *keyData_v2) pcrPolicyCounterHandle() tpm2.Handle {
+func (d *keyData_v2) PcrPolicyCounterHandle() tpm2.Handle {
 	return d.StaticPolicyData.PCRPolicyCounterHandle
 }
 
-func (d *keyData_v2) validateAuthKey(key crypto.PrivateKey) error {
+func (d *keyData_v2) ValidateAuthKey(key crypto.PrivateKey) error {
 	pub, ok := d.StaticPolicyData.AuthPublicKey.Public().(*ecdsa.PublicKey)
 	if !ok {
 		return keyDataError{errors.New("unexpected dynamic authorization policy public key type")}
@@ -179,14 +137,14 @@ func (d *keyData_v2) validateAuthKey(key crypto.PrivateKey) error {
 	return nil
 }
 
-func (d *keyData_v2) staticPolicyData() *staticPolicyData {
+func (d *keyData_v2) StaticPolicy() *staticPolicyData {
 	return d.StaticPolicyData.data()
 }
 
-func (d *keyData_v2) dynamicPolicyData() *dynamicPolicyData {
+func (d *keyData_v2) DynamicPolicy() *dynamicPolicyData {
 	return d.DynamicPolicyData.data()
 }
 
-func (d *keyData_v2) setDynamicPolicyData(data *dynamicPolicyData) {
+func (d *keyData_v2) SetDynamicPolicy(data *dynamicPolicyData) {
 	d.DynamicPolicyData = makeDynamicPolicyDataRaw_v0(data)
 }

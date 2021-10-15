@@ -73,44 +73,44 @@ func isKeyDataError(err error) bool {
 
 // keyData represents the actual data for a SealedKeyObject.
 type keyData interface {
-	// version is the metadata version. Note that the keyData
+	// Version is the metadata version. Note that the keyData
 	// implementation is not responsible for serializing this.
-	version() uint32
+	Version() uint32
 
-	keyPrivate() tpm2.Private // Private area of sealed key object
-	keyPublic() *tpm2.Public  // Public area of sealed key object
+	Private() tpm2.Private // Private area of sealed key object
+	Public() *tpm2.Public  // Public area of sealed key object
 
-	// importSymSeed is the encrypted seed used for importing the
+	// ImportSymSeed is the encrypted seed used for importing the
 	// sealed key object. This will be nil if the sealed object does
 	// not need to be imported.
-	importSymSeed() tpm2.EncryptedSecret
+	ImportSymSeed() tpm2.EncryptedSecret
 
-	// imported indicates that the sealed key object has been imported,
+	// Imported indicates that the sealed key object has been imported,
 	// and that the keyData implementation should update its private
 	// area and clear the encrypted import seed.
-	imported(priv tpm2.Private)
+	Imported(priv tpm2.Private)
 
-	// validateData performs consistency checks on the key data,
+	// ValidateData performs consistency checks on the key data,
 	// returning a validated context for the PCR policy counter, if
 	// one is defined.
-	validateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error)
+	ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error)
 
-	// write serializes the key data to w
-	write(w io.Writer) error
+	// Write serializes the key data to w
+	Write(w io.Writer) error
 
 	// XXX: Everything below here is temporary and is going to be replaced
 	// in a follow-up PR which provides an abstraction for the code in
 	// policy.go.
 
-	pcrPolicyCounterHandle() tpm2.Handle // Handle of PCR policy counter, or HandleNull
+	PcrPolicyCounterHandle() tpm2.Handle // Handle of PCR policy counter, or HandleNull
 
-	// validateAuthKey verifies that the supplied private key is
+	// ValidateAuthKey verifies that the supplied private key is
 	// associated with this key data.
-	validateAuthKey(key crypto.PrivateKey) error
+	ValidateAuthKey(key crypto.PrivateKey) error
 
-	staticPolicyData() *staticPolicyData
-	dynamicPolicyData() *dynamicPolicyData
-	setDynamicPolicyData(data *dynamicPolicyData)
+	StaticPolicy() *staticPolicyData
+	DynamicPolicy() *dynamicPolicyData
+	SetDynamicPolicy(data *dynamicPolicyData)
 }
 
 func readKeyData(r io.Reader, version uint32) (keyData, error) {
@@ -140,7 +140,7 @@ func newSealedKeyObject(data keyData) *SealedKeyObject {
 // structure will be updated with the newly imported private area and the import
 // symmetric seed will be cleared.
 func (k *SealedKeyObject) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
-	if len(k.data.importSymSeed()) == 0 {
+	if len(k.data.ImportSymSeed()) == 0 {
 		return nil
 	}
 
@@ -149,7 +149,7 @@ func (k *SealedKeyObject) ensureImported(tpm *tpm2.TPMContext, session tpm2.Sess
 		return xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
-	priv, err := tpm.Import(srkContext, nil, k.data.keyPublic(), k.data.keyPrivate(), k.data.importSymSeed(), nil, session)
+	priv, err := tpm.Import(srkContext, nil, k.data.Public(), k.data.Private(), k.data.ImportSymSeed(), nil, session)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandImport, tpm2.AnyParameterIndex) {
 			return keyDataError{errors.New("cannot import sealed key object in to TPM: bad sealed key object, invalid symmetric seed, TPM owner changed or wrong TPM")}
@@ -157,7 +157,7 @@ func (k *SealedKeyObject) ensureImported(tpm *tpm2.TPMContext, session tpm2.Sess
 		return xerrors.Errorf("cannot import sealed key object in to TPM: %w", err)
 	}
 
-	k.data.imported(priv)
+	k.data.Imported(priv)
 	return nil
 }
 
@@ -173,7 +173,7 @@ func (k *SealedKeyObject) load(tpm *tpm2.TPMContext, session tpm2.SessionContext
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
-	keyContext, err := tpm.Load(srkContext, k.data.keyPrivate(), k.data.keyPublic(), session)
+	keyContext, err := tpm.Load(srkContext, k.data.Private(), k.data.Public(), session)
 	if err != nil {
 		invalidObject := false
 		switch {
@@ -197,10 +197,10 @@ func (k *SealedKeyObject) validateData(tpm *tpm2.TPMContext, session tpm2.Sessio
 
 	// Perform some initial checks on the sealed data object's public area to
 	// make sure it's a sealed data object.
-	if k.data.keyPublic().Type != sealedKeyTemplate.Type {
+	if k.data.Public().Type != sealedKeyTemplate.Type {
 		return nil, keyDataError{errors.New("sealed key object has the wrong type")}
 	}
-	if k.data.keyPublic().Attrs&^(tpm2.AttrFixedTPM|tpm2.AttrFixedParent) != sealedKeyTemplate.Attrs {
+	if k.data.Public().Attrs&^(tpm2.AttrFixedTPM|tpm2.AttrFixedParent) != sealedKeyTemplate.Attrs {
 		return nil, keyDataError{errors.New("sealed key object has the wrong attributes")}
 	}
 
@@ -213,7 +213,7 @@ func (k *SealedKeyObject) validateData(tpm *tpm2.TPMContext, session tpm2.Sessio
 	tpm.FlushContext(keyContext)
 
 	// Version specific validation.
-	pcrPolicyCounter, err := k.data.validateData(tpm, session)
+	pcrPolicyCounter, err := k.data.ValidateData(tpm, session)
 	if err != nil {
 		return nil, err
 	}
@@ -236,26 +236,26 @@ func (k *SealedKeyObject) validateData(tpm *tpm2.TPMContext, session tpm2.Sessio
 
 // validateAuthKey checks that the supplied auth key is correct for this object.
 func (k *SealedKeyObject) validateAuthKey(key crypto.PrivateKey) error {
-	return k.data.validateAuthKey(key)
+	return k.data.ValidateAuthKey(key)
 }
 
 // Version returns the version number that this sealed key object was created with.
 func (k *SealedKeyObject) Version() uint32 {
-	return k.data.version()
+	return k.data.Version()
 }
 
 // PCRPolicyCounterHandle indicates the handle of the NV counter used for PCR policy revocation for this sealed key object (and for
 // PIN integration for version 0 key files).
 func (k *SealedKeyObject) PCRPolicyCounterHandle() tpm2.Handle {
-	return k.data.pcrPolicyCounterHandle()
+	return k.data.PcrPolicyCounterHandle()
 }
 
 // WriteAtomic will serialize this SealedKeyObject to the supplied writer.
 func (k *SealedKeyObject) WriteAtomic(w secboot.KeyDataWriter) error {
-	if _, err := mu.MarshalToWriter(w, k.data.version()); err != nil {
+	if _, err := mu.MarshalToWriter(w, k.data.Version()); err != nil {
 		return err
 	}
-	if err := k.data.write(w); err != nil {
+	if err := k.data.Write(w); err != nil {
 		return err
 	}
 	return w.Commit()

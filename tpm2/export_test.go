@@ -182,7 +182,7 @@ func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authPrivateKey PolicyAu
 		return err
 	}
 
-	authKey, err := createECDSAPrivateKeyFromTPM(k.data.staticPolicyData().authPublicKey, tpm2.ECCParameter(authPrivateKey))
+	authKey, err := createECDSAPrivateKeyFromTPM(k.data.StaticPolicy().authPublicKey, tpm2.ECCParameter(authPrivateKey))
 	if err != nil {
 		return err
 	}
