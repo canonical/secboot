@@ -29,6 +29,7 @@ import (
 
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
 
@@ -62,7 +63,7 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 	c.Check(digests, DeepEquals, expectedDigests)
 	if c.Failed() {
 		c.Logf("Profile:\n%s", profile)
-		c.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
+		c.Logf("Values:\n%s", tpm2test.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
 	}
 }
 
@@ -289,8 +290,8 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile9(c *C) {
 	// Test extending in to an initial profile.
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
 		profile: NewPCRProtectionProfile().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 12, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 		params: &SnapModelProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     12,
@@ -314,13 +315,13 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile9(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
 					12: testutil.DecodeHexString(c, "3089d679b1cda31c76fe57e6cf0c3eb35c221acde76a678c3c4771ee9b99a8c9"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					7:  testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
 					12: testutil.DecodeHexString(c, "cb7a1cf1afbc73e0e4348f771cf7475e7ec278549af042e2617e717ca38d3416"),
 				},
 			},
@@ -382,14 +383,13 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile11(c *C) {
 }
 
 type snapModelMeasureSuite struct {
-	testutil.TPMSimulatorTestBase
+	tpm2test.TPMTest
 }
 
 var _ = Suite(&snapModelMeasureSuite{})
 
-func (s *snapModelMeasureSuite) SetUpTest(c *C) {
-	s.TPMSimulatorTestBase.SetUpTest(c)
-	s.ResetTPMSimulator(c)
+func (s *snapModelMeasureSuite) SetUpSuite(c *C) {
+	s.TPMFeatures = tpm2test.TPMFeaturePCR | tpm2test.TPMFeatureNV
 }
 
 type testMeasureSnapModelToTPMTestData struct {
@@ -398,7 +398,7 @@ type testMeasureSnapModelToTPMTestData struct {
 }
 
 func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMeasureSnapModelToTPMTestData) {
-	pcrSelection, err := s.TPM.GetCapabilityPCRs()
+	pcrSelection, err := s.TPM().GetCapabilityPCRs()
 	c.Assert(err, IsNil)
 
 	var pcrs []int
@@ -410,12 +410,12 @@ func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMe
 		readPcrSelection = append(readPcrSelection, tpm2.PCRSelection{Hash: s.Hash, Select: pcrs})
 	}
 
-	_, origPcrValues, err := s.TPM.PCRRead(readPcrSelection)
+	_, origPcrValues, err := s.TPM().PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
-	c.Check(MeasureSnapModelToTPM(s.TPM, data.pcrIndex, data.model), IsNil)
+	c.Check(MeasureSnapModelToTPM(s.TPM(), data.pcrIndex, data.model), IsNil)
 
-	_, pcrValues, err := s.TPM.PCRRead(readPcrSelection)
+	_, pcrValues, err := s.TPM().PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
 	for _, s := range pcrSelection {
@@ -536,7 +536,7 @@ func (s *snapModelMeasureSuite) TestMeasureSnapModelToTPMTest7(c *C) {
 }
 
 func (s *snapModelMeasureSuite) testMeasureSnapSystemEpochToTPM(c *C, pcrIndex int) {
-	pcrSelection, err := s.TPM.GetCapabilityPCRs()
+	pcrSelection, err := s.TPM().GetCapabilityPCRs()
 	c.Assert(err, IsNil)
 
 	var pcrs []int
@@ -548,12 +548,12 @@ func (s *snapModelMeasureSuite) testMeasureSnapSystemEpochToTPM(c *C, pcrIndex i
 		readPcrSelection = append(readPcrSelection, tpm2.PCRSelection{Hash: s.Hash, Select: pcrs})
 	}
 
-	_, origPcrValues, err := s.TPM.PCRRead(readPcrSelection)
+	_, origPcrValues, err := s.TPM().PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
-	c.Check(MeasureSnapSystemEpochToTPM(s.TPM, pcrIndex), IsNil)
+	c.Check(MeasureSnapSystemEpochToTPM(s.TPM(), pcrIndex), IsNil)
 
-	_, pcrValues, err := s.TPM.PCRRead(readPcrSelection)
+	_, pcrValues, err := s.TPM().PCRRead(readPcrSelection)
 	c.Assert(err, IsNil)
 
 	for _, s := range pcrSelection {

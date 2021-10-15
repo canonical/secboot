@@ -20,123 +20,12 @@
 package testutil
 
 import (
-	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/mssim"
 	"github.com/snapcore/snapd/testutil"
 
 	"golang.org/x/sys/unix"
 
 	. "gopkg.in/check.v1"
-
-	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
-
-var (
-	TestAuth = []byte("1234")
-)
-
-type TPMTestBase struct {
-	testutil.BaseTest
-	TPM *secboot_tpm2.Connection // Not anonymous because of tpm2.TPMContext.TestParms
-}
-
-func (b *TPMTestBase) setUpTestBase(c *C, tpm *secboot_tpm2.Connection) {
-	b.BaseTest.SetUpTest(c)
-	b.TPM = tpm
-
-	getFlushableHandles := func() (out []tpm2.Handle) {
-		for _, t := range []tpm2.HandleType{tpm2.HandleTypeTransient, tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession} {
-			h, err := b.TPM.GetCapabilityHandles(t.BaseHandle(), tpm2.CapabilityMaxProperties, nil)
-			c.Assert(err, IsNil)
-			out = append(out, h...)
-		}
-		for i, h := range out {
-			if h.Type() == tpm2.HandleTypePolicySession {
-				out[i] = (h & 0xffffff) | (tpm2.Handle(tpm2.HandleTypeHMACSession) << 24)
-			}
-		}
-		return
-	}
-	startFlushableHandles := getFlushableHandles()
-
-	b.AddCleanup(func() {
-		for _, h := range getFlushableHandles() {
-			found := false
-			for _, sh := range startFlushableHandles {
-				if sh == h {
-					found = true
-					break
-				}
-			}
-			if found {
-				continue
-			}
-			var hc tpm2.HandleContext
-			switch h.Type() {
-			case tpm2.HandleTypeTransient:
-				var err error
-				hc, err = b.TPM.CreateResourceContextFromTPM(h)
-				c.Check(err, IsNil)
-			case tpm2.HandleTypeHMACSession:
-				hc = tpm2.CreatePartialHandleContext(h)
-			default:
-				c.Fatalf("Unexpected handle type")
-			}
-			c.Check(b.TPM.FlushContext(hc), IsNil)
-		}
-	})
-}
-
-func (b *TPMTestBase) SetUpTest(c *C) {
-	tpm, err := OpenTPMForTesting()
-	c.Assert(err, IsNil)
-	if tpm == nil {
-		c.Skip("-use-mssim and -use-tpm not supplied")
-	}
-	b.setUpTestBase(c, tpm)
-}
-
-func (b *TPMTestBase) TearDownTest(c *C) {
-	// testutil.BaseTest doesn't execute cleanup handlers in reverse order, so we don't use AddCleanup for closing the TPM
-	// connection, as this is opened first and should be cleanup up last.
-	b.BaseTest.TearDownTest(c)
-	c.Assert(b.TPM.Close(), IsNil)
-}
-
-func (b *TPMTestBase) AddCleanupNVSpace(c *C, authHandle, index tpm2.ResourceContext) {
-	b.AddCleanup(func() {
-		c.Check(b.TPM.NVUndefineSpace(authHandle, index, nil), IsNil)
-	})
-}
-
-func (b *TPMTestBase) SetHierarchyAuth(c *C, hierarchy tpm2.Handle) {
-	c.Assert(b.TPM.HierarchyChangeAuth(b.TPM.GetPermanentContext(hierarchy), TestAuth, nil), IsNil)
-	b.AddCleanup(func() {
-		c.Check(b.TPM.HierarchyChangeAuth(b.TPM.GetPermanentContext(hierarchy), nil, nil), IsNil)
-	})
-}
-
-type TPMSimulatorTestBase struct {
-	TPMTestBase
-	tcti *mssim.Tcti
-}
-
-func (b *TPMSimulatorTestBase) SetUpTest(c *C) {
-	tpm, tcti, err := OpenTPMSimulatorForTesting()
-	c.Assert(err, IsNil)
-	if tpm == nil {
-		c.Skip("-use-mssim not supplied")
-	}
-	b.setUpTestBase(c, tpm)
-	b.tcti = tcti
-}
-
-func (b *TPMSimulatorTestBase) ResetTPMSimulator(c *C) {
-	tpm, tcti, err := ResetTPMSimulator(b.TPM, b.tcti)
-	c.Assert(err, IsNil)
-	b.TPM = tpm
-	b.tcti = tcti
-}
 
 type KeyringTestBase struct {
 	testutil.BaseTest

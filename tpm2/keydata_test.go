@@ -32,12 +32,18 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
 
 type keydataSuite struct {
-	testutil.TPMSimulatorTestBase
+	tpm2test.TPMTest
+}
+
+func (s *keydataSuite) SetUpSuite(c *C) {
+	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
+		tpm2test.TPMFeatureEndorsementHierarchy |
+		tpm2test.TPMFeatureNV
 }
 
 var _ = Suite(&keydataSuite{})
@@ -72,13 +78,11 @@ func newMockKeyDataWriter() *mockKeyDataWriter {
 }
 
 func (s *keydataSuite) TestFileReadAndWrite(c *C) {
-	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
-
 	key := make([]byte, 32)
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	var st1 unix.Stat_t
@@ -86,7 +90,7 @@ func (s *keydataSuite) TestFileReadAndWrite(c *C) {
 
 	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	c.Assert(err, IsNil)
-	c.Check(k.Validate(s.TPM.TPMContext, authPrivateKey, s.TPM.HmacSession()), IsNil)
+	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey, s.TPM().HmacSession()), IsNil)
 
 	w := NewFileSealedKeyObjectWriter(keyFile)
 	c.Check(k.WriteAtomic(w), IsNil)
@@ -97,17 +101,15 @@ func (s *keydataSuite) TestFileReadAndWrite(c *C) {
 
 	k, err = ReadSealedKeyObjectFromFile(keyFile)
 	c.Assert(err, IsNil)
-	c.Check(k.Validate(s.TPM.TPMContext, authPrivateKey, s.TPM.HmacSession()), IsNil)
+	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey, s.TPM().HmacSession()), IsNil)
 }
 
 func (s *keydataSuite) TestReadAndWrite(c *C) {
-	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
-
 	key := make([]byte, 32)
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	k, err := ReadSealedKeyObjectFromFile(keyFile)
@@ -118,5 +120,5 @@ func (s *keydataSuite) TestReadAndWrite(c *C) {
 
 	k, err = ReadSealedKeyObject(w.Reader())
 	c.Assert(err, IsNil)
-	c.Check(k.Validate(s.TPM.TPMContext, authPrivateKey, s.TPM.HmacSession()), IsNil)
+	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey, s.TPM().HmacSession()), IsNil)
 }

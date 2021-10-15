@@ -418,10 +418,10 @@ func (k *SealedKeyObject) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateK
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
 	if !keyPublic.NameAlg.Available() {
-		return nil, keyDataError{errors.New("cannot determine if static authorization policy matches sealed key object: algorithm unavailable")}
+		return nil, keyDataError{fmt.Errorf("sealed key object name algorithm %v is not available", keyPublic.NameAlg)}
 	}
+	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
 	trial := util.ComputeAuthPolicy(keyPublic.NameAlg)
-
 	trial.PolicyAuthorize(pcrPolicyRef, authKeyName)
 	if k.data.version == 0 {
 		trial.PolicySecret(pcrPolicyCounter.Name(), nil)
@@ -447,7 +447,7 @@ func (k *SealedKeyObject) validate(tpm *tpm2.TPMContext, authKey crypto.PrivateK
 	// For v0 metadata, validate that the OR policy digests for the PCR policy counter match the public area of the index.
 	if k.data.version == 0 {
 		if !pcrPolicyCounterPub.NameAlg.Available() {
-			return nil, keyDataError{errors.New("cannot determine if PCR policy counter has a valid authorization policy: algorithm unavailable")}
+			return nil, keyDataError{fmt.Errorf("PCR policy counter name algorithm %v is not available", pcrPolicyCounterPub.NameAlg)}
 		}
 
 		pcrPolicyCounterAuthPolicies := k.data.staticPolicyData.v0PinIndexAuthPolicies

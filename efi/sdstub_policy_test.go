@@ -27,6 +27,7 @@ import (
 
 	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2test"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -62,7 +63,7 @@ func (s *sdstubPolicySuite) testAddSystemdStubProfile(c *C, data *testAddSystemd
 
 	if c.Failed() {
 		c.Logf("Profile:\n%s", profile)
-		c.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
+		c.Logf("Values:\n%s", tpm2test.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
 	}
 }
 
@@ -136,8 +137,8 @@ func (s *sdstubPolicySuite) TestAddSystemdStubProfileWithInitialProfile(c *C) {
 	s.testAddSystemdStubProfile(c, &testAddSystemdStubProfileData{
 		initial: func() *secboot_tpm2.PCRProtectionProfile {
 			return secboot_tpm2.NewPCRProtectionProfile().
-				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
 		}(),
 		params: SystemdStubProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
@@ -149,7 +150,7 @@ func (s *sdstubPolicySuite) TestAddSystemdStubProfileWithInitialProfile(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
 					8: testutil.DecodeHexString(c, "3d39c0db757b47b484006003724d990403d533044ed06e8798ab374bd73f32dc"),
 				},
 			},
