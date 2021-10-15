@@ -21,45 +21,51 @@ package tpm2_test
 
 import (
 	"math/rand"
+	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/canonical/go-tpm2"
 
 	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
 
 type platformLegacySuite struct {
-	testutil.TPMSimulatorTestBase
+	tpm2test.TPMTest
+}
+
+func (s *platformLegacySuite) SetUpSuite(c *C) {
+	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
+		tpm2test.TPMFeatureEndorsementHierarchy |
+		tpm2test.TPMFeatureLockoutHierarchy |
+		tpm2test.TPMFeaturePCR |
+		tpm2test.TPMFeatureNV
 }
 
 func (s *platformLegacySuite) SetUpTest(c *C) {
-	s.TPMSimulatorTestBase.SetUpTest(c)
+	s.TPMTest.SetUpTest(c)
 
-	origConnect := ConnectToTPM
-	ConnectToTPM = func() (*Connection, error) { return s.TPM, nil }
-	s.AddCleanup(func() { ConnectToTPM = origConnect })
+	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil), Equals, ErrTPMProvisioningRequiresLockout)
 }
 
 var _ = Suite(&platformLegacySuite{})
 
 func (s *platformLegacySuite) TestRecoverKeys(c *C) {
-	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
-
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	authPrivateKey, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
 	c.Assert(err, IsNil)
 
-	// Note that this closes the TPM connection
 	recoveredKey, recoveredAuthPrivateKey, err := k.RecoverKeys()
 	c.Check(err, IsNil)
 	c.Check(recoveredKey, DeepEquals, key)
@@ -67,16 +73,17 @@ func (s *platformLegacySuite) TestRecoverKeys(c *C) {
 }
 
 func (s *platformLegacySuite) TestRecoverKeysNoTPMConnection(c *C) {
-	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
-
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
-	ConnectToTPM = func() (*Connection, error) { return nil, ErrNoTPM2Device }
+	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
+		return nil, &os.PathError{Op: "open", Path: "/dev/tpm0", Err: syscall.ENOENT}
+	})
+	s.AddCleanup(restore)
 
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
 	c.Assert(err, IsNil)
@@ -86,56 +93,59 @@ func (s *platformLegacySuite) TestRecoverKeysNoTPMConnection(c *C) {
 }
 
 func (s *platformLegacySuite) TestRecoverKeysInvalidPCRPolicy(c *C) {
-	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
-
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
-	_, err = s.TPM.PCREvent(s.TPM.PCRHandleContext(7), tpm2.Event("foo"), nil)
+	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(7), tpm2.Event("foo"), nil)
 	c.Check(err, IsNil)
 
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
 	c.Assert(err, IsNil)
 
-	// Note that this closes the TPM connection
 	_, _, err = k.RecoverKeys()
 	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
 		"cannot complete OR assertions: current session digest not found in policy data")
 }
 
 func (s *platformLegacySuite) TestRecoverKeysTPMLockout(c *C) {
-	c.Assert(s.TPM.EnsureProvisioned(ProvisionModeFull, nil), IsNil)
-
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	_, err := SealKeyToTPM(s.TPM, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	// Put the TPM in DA lockout mode
-	c.Check(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
 	c.Assert(err, IsNil)
 
-	// Note that this closes the TPM connection
 	_, _, err = k.RecoverKeys()
 	c.Check(err, ErrorMatches, "the platform's secure device is unavailable: the TPM is in DA lockout mode")
 }
 
-// TODO: Test the ErrTPMProvisioning path.
-//  The only way to properly do this is to delete the persistent SRK
-//  and then prevent the use of the storage hierarchy by changing its
-//  auth value. Changing the auth value must be restored at the end of
-//  the test though, but the platform handler closes the TPM connection
-//  before we get a chance to do that.
-//
-//  This will be possible by porting the test code to
-//  github.com/canonical/go-tpm2/testutil, which has a mechanism to
-//  revert changes when the connection is closed by providing a special
-//  transmission interface.
+func (s *platformLegacySuite) TestRecoverKeysErrTPMProvisioning(c *C) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+	keyFile := filepath.Join(c.MkDir(), "keydata")
+
+	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Check(err, IsNil)
+
+	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	c.Assert(err, IsNil)
+
+	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
+	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("foo"))
+
+	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
+	c.Assert(err, IsNil)
+
+	_, _, err = k.RecoverKeys()
+	c.Check(err, ErrorMatches, "the platform's secure device is not properly initialized: the TPM is not correctly provisioned")
+}

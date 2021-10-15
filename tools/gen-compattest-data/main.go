@@ -31,6 +31,7 @@ import (
 	"github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mssim"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/snapd/asserts"
 
@@ -39,6 +40,7 @@ import (
 	"github.com/snapcore/secboot"
 	secboot_efi "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2test"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -66,6 +68,7 @@ func (e *mockEFIEnvironment) ReadEventLog() (*tcglog.Log, error) {
 }
 
 func init() {
+	tpm2_testutil.AddCommandLineFlags()
 	flag.StringVar(&outputDir, "output", "", "Specify the output directory")
 }
 
@@ -143,15 +146,16 @@ func run() int {
 		}
 	}
 
-	cleanupTpmSimulator, err := testutil.LaunchTPMSimulator(&testutil.TPMSimulatorOptions{SourceDir: outputDir, Manufacture: true, SavePersistent: true})
+	cleanupTpmSimulator, err := tpm2_testutil.LaunchTPMSimulator(
+		&tpm2_testutil.TPMSimulatorOptions{SourceDir: outputDir, Manufacture: true, SavePersistent: true})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot launch TPM simulator: %v\n", err)
 		return 1
 	}
 	defer cleanupTpmSimulator()
 
-	restore := testutil.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return mssim.OpenConnection("", testutil.MssimPort)
+	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
+		return mssim.OpenConnection("", tpm2_testutil.MssimPort)
 	})
 	defer restore()
 
@@ -164,19 +168,19 @@ func run() int {
 	}
 	defer tpm.Close()
 
-	caCertRaw, caKey, err := testutil.CreateTestCA()
+	caCertRaw, caKey, err := tpm2test.CreateTestCA()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot create test CA certificate: %v\n", err)
 		return 1
 	}
 
-	ekCert, err := testutil.CreateTestEKCert(tpm.TPMContext, caCertRaw, caKey)
+	ekCert, err := tpm2test.CreateTestEKCert(tpm.TPMContext, caCertRaw, caKey)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot create test EK certificate: %v\n", err)
 		return 1
 	}
 
-	if err := testutil.CertifyTPM(tpm.TPMContext, ekCert); err != nil {
+	if err := tpm2test.CertifyTPM(tpm.TPMContext, ekCert); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot certify TPM: %v\n", err)
 		return 1
 	}

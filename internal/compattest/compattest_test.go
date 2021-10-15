@@ -22,6 +22,7 @@ package compattest
 import (
 	"bufio"
 	"encoding/hex"
+	"flag"
 	"io"
 	"io/ioutil"
 	"os"
@@ -31,24 +32,28 @@ import (
 	"testing"
 
 	"github.com/canonical/go-tpm2"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	. "gopkg.in/check.v1"
 
-	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2test"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
+
+func init() {
+	tpm2_testutil.AddCommandLineFlags()
+}
 
 func Test(t *testing.T) { TestingT(t) }
 
 type compatTestSuiteBase struct {
-	testutil.TPMSimulatorTestBase
-	dataPath          string
-	tmpDir            string
-	simulatorShutdown func()
+	tpm2test.TPMSimulatorTest
+	dataPath string
+	tmpDir   string
 }
 
 func (s *compatTestSuiteBase) setUpSuiteBase(c *C, dataPath string) {
-	if !testutil.UseMssim {
+	if tpm2_testutil.TPMBackend != tpm2_testutil.TPMBackendMssim {
 		c.Skip("-use-mssim not supplied")
 	}
 	s.dataPath = dataPath
@@ -83,21 +88,13 @@ func (s *compatTestSuiteBase) SetUpTest(c *C) {
 		}()
 	}
 
-	simulatorShutdown, err := testutil.LaunchTPMSimulator(&testutil.TPMSimulatorOptions{SourceDir: s.dataPath})
+	simulatorShutdown, err := tpm2_testutil.LaunchTPMSimulator(&tpm2_testutil.TPMSimulatorOptions{SourceDir: s.dataPath})
 	c.Assert(err, IsNil)
-	// We can't use AddCleanup here because the simulator cleanup needs to execute after the test's TPM connection
-	// has been closed.
-	s.simulatorShutdown = simulatorShutdown
 
-	s.TPMSimulatorTestBase.SetUpTest(c)
-}
+	s.InitCleanup(c)
+	s.AddFixtureCleanup(func(_ *C) { simulatorShutdown() })
 
-func (s *compatTestSuiteBase) TearDownTest(c *C) {
-	s.TPMSimulatorTestBase.TearDownTest(c)
-	if s.simulatorShutdown == nil {
-		return
-	}
-	s.simulatorShutdown()
+	s.TPMSimulatorTest.SetUpTest(c)
 }
 
 func (s *compatTestSuiteBase) absPath(name string) string {
@@ -123,7 +120,7 @@ func (s *compatTestSuiteBase) replayPCRSequenceFromReader(c *C, r io.Reader) {
 		digest, err := hex.DecodeString(components[2])
 		c.Assert(err, IsNil)
 
-		c.Assert(s.TPM.PCRExtend(s.TPM.PCRHandleContext(pcr), tpm2.TaggedHashList{{HashAlg: tpm2.HashAlgorithmId(alg), Digest: digest}}, nil), IsNil)
+		c.Assert(s.TPM().PCRExtend(s.TPM().PCRHandleContext(pcr), tpm2.TaggedHashList{{HashAlg: tpm2.HashAlgorithmId(alg), Digest: digest}}, nil), IsNil)
 	}
 }
 
@@ -154,7 +151,7 @@ func (s *compatTestSuiteBase) testUnsealCommon(c *C) {
 	k, err := secboot_tpm2.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 
-	key, authPrivateKey, err := k.UnsealFromTPM(s.TPM)
+	key, authPrivateKey, err := k.UnsealFromTPM(s.TPM())
 	c.Check(err, IsNil)
 
 	expectedKey, err := ioutil.ReadFile(s.absPath("clearKey"))
@@ -179,6 +176,17 @@ func (s *compatTestSuiteBase) testUnsealErrorMatchesCommon(c *C, pattern string)
 	k, err := secboot_tpm2.ReadSealedKeyObjectFromFile(s.absPath("key"))
 	c.Assert(err, IsNil)
 
-	_, _, err = k.UnsealFromTPM(s.TPM)
+	_, _, err = k.UnsealFromTPM(s.TPM())
 	c.Check(err, ErrorMatches, pattern)
+}
+
+func TestMain(m *testing.M) {
+	// Provide a way for run-tests to configure this in a way that
+	// can be ignored by other suites
+	if _, ok := os.LookupEnv("USE_MSSIM"); ok {
+		tpm2_testutil.TPMBackend = tpm2_testutil.TPMBackendMssim
+	}
+
+	flag.Parse()
+	os.Exit(m.Run())
 }

@@ -30,6 +30,7 @@ import (
 
 	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2test"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -71,7 +72,7 @@ func (s *bootManagerPolicySuite) testAddBootManagerProfile(c *C, data *testAddBo
 	c.Check(digests, DeepEquals, expectedDigests)
 	if c.Failed() {
 		c.Logf("Profile:\n%s", profile)
-		c.Logf("Values:\n%s", testutil.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
+		c.Logf("Values:\n%s", tpm2test.FormatPCRValuesFromPCRProtectionProfile(profile, nil))
 	}
 }
 
@@ -183,8 +184,8 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithInitialProfile(c *
 	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
 		eventLogPath: "testdata/eventlog_sb.bin",
 		initial: secboot_tpm2.NewPCRProtectionProfile().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 4, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 4, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []*ImageLoadEvent{
@@ -207,7 +208,7 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithInitialProfile(c *
 			{
 				tpm2.HashAlgorithmSHA256: {
 					4: testutil.DecodeHexString(c, "2f64bfe7796724c68c54b14bc8690012f9e29c907dc900831dd12f912f20b2b3"),
-					7: testutil.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 				},
 			},
 		},
