@@ -96,25 +96,17 @@ func TestSealKeyToTPM(t *testing.T) {
 
 	t.Run("SealWithNewConnection", func(t *testing.T) {
 		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same Connection
-		tpm, tcti, _ := provision(t)
-		defer func() {
-			if err := tpm.Close(); err != nil {
-				t.Errorf("close failed: %v", err)
-			}
-		}()
+		tpm, tcti, closeTPM := provision(t)
+		defer func() { closeTPM() }()
 
-		tpm, _, _ = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
+		tpm, _, closeTPM = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
 		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("MissingSRK", func(t *testing.T) {
 		// Ensure that calling SealKeyToTPM recreates the SRK with the standard template
-		tpm, tcti, _ := provision(t)
-		defer func() {
-			if err := tpm.Close(); err != nil {
-				t.Errorf("close failed: %v", err)
-			}
-		}()
+		tpm, tcti, closeTPM := provision(t)
+		defer func() { closeTPM() }()
 
 		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 		if err != nil {
@@ -124,7 +116,7 @@ func TestSealKeyToTPM(t *testing.T) {
 			t.Errorf("EvictControl failed: %v", err)
 		}
 
-		tpm, _, _ = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
+		tpm, _, closeTPM = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
 		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 
 		validateSRK(t, tpm.TPMContext)
@@ -133,12 +125,8 @@ func TestSealKeyToTPM(t *testing.T) {
 	t.Run("MissingCustomSRK", func(t *testing.T) {
 		// Ensure that calling SealKeyToTPM recreates the SRK with the custom
 		// template originally supplied during provisioning
-		tpm, tcti, _ := provision(t)
-		defer func() {
-			if err := tpm.Close(); err != nil {
-				t.Errorf("close failed: %v", err)
-			}
-		}()
+		tpm, tcti, closeTPM := provision(t)
+		defer func() { closeTPM() }()
 
 		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 		if err != nil {
@@ -182,7 +170,7 @@ func TestSealKeyToTPM(t *testing.T) {
 			t.Errorf("NVWrite failed: %v", err)
 		}
 
-		tpm, _, _ = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
+		tpm, _, closeTPM = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
 		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 
 		validatePrimaryKeyAgainstTemplate(t, tpm.TPMContext, tpm2.HandleOwner, tcg.SRKHandle, &template)
@@ -192,12 +180,8 @@ func TestSealKeyToTPM(t *testing.T) {
 		// Ensure that calling SealKeyToTPM recreates the SRK with the standard
 		// template if the NV index we use to store custom templates has invalid
 		// contents - if the contents are invalid then we didn't create it.
-		tpm, tcti, _ := provision(t)
-		defer func() {
-			if err := tpm.Close(); err != nil {
-				t.Errorf("close failed: %v", err)
-			}
-		}()
+		tpm, tcti, closeTPM := provision(t)
+		defer func() { closeTPM() }()
 
 		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 		if err != nil {
@@ -243,7 +227,7 @@ func TestSealKeyToTPM(t *testing.T) {
 			t.Errorf("NVWrite failed: %v", err)
 		}
 
-		tpm, _, _ = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
+		tpm, _, closeTPM = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
 		run(t, tpm, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 
 		validateSRK(t, tpm.TPMContext)
@@ -338,24 +322,16 @@ func TestSealKeyToTPMMultiple(t *testing.T) {
 
 	t.Run("SealWithNewConnection", func(t *testing.T) {
 		// SealKeyToTPM behaves slightly different if called immediately after EnsureProvisioned with the same Connection
-		tpm, tcti, _ := provision(t)
-		defer func() {
-			if err := tpm.Close(); err != nil {
-				t.Errorf("close failed: %v", err)
-			}
-		}()
+		tpm, tcti, closeTPM := provision(t)
+		defer func() { closeTPM() }()
 
-		tpm, _, _ = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
+		tpm, _, closeTPM = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
 		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 	})
 
 	t.Run("NoSRK", func(t *testing.T) {
-		tpm, tcti, _ := provision(t)
-		defer func() {
-			if err := tpm.Close(); err != nil {
-				t.Errorf("close failed: %v", err)
-			}
-		}()
+		tpm, tcti, closeTPM := provision(t)
+		defer func() { closeTPM() }()
 
 		srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 		if err != nil {
@@ -365,7 +341,7 @@ func TestSealKeyToTPMMultiple(t *testing.T) {
 			t.Errorf("EvictControl failed: %v", err)
 		}
 
-		tpm, _, _ = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
+		tpm, _, closeTPM = tpm2test.NewTPMConnectionFromExistingT(t, tpm, tcti)
 		run(t, tpm, 2, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x01810000})
 	})
 
