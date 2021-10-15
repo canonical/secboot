@@ -61,7 +61,15 @@ func newKeyData(keyPrivate tpm2.Private, keyPublic *tpm2.Public, importSymSeed t
 		DynamicPolicyData: dynamicPolicyData}
 }
 
-func (d *keyData_v2) version() uint32 { return 2 }
+func (d *keyData_v2) version() uint32 {
+	if d.ImportSymSeed == nil {
+		// The only difference between v1 and v2 is support for
+		// importable objects. Pretend to be v1 if the object
+		// doesn't need importing.
+		return 1
+	}
+	return 2
+}
 
 func (d *keyData_v2) keyPrivate() tpm2.Private {
 	return d.KeyPrivate
@@ -132,6 +140,18 @@ func (d *keyData_v2) validateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 }
 
 func (d *keyData_v2) write(w io.Writer) error {
+	if d.ImportSymSeed == nil {
+		// The only difference between v1 and v2 is support for
+		// importable objects. Implicitly downgrade to v1 on write
+		// if the object doesn't need importing.
+		data := &keyData_v1{
+			KeyPrivate:        d.KeyPrivate,
+			KeyPublic:         d.KeyPublic,
+			StaticPolicyData:  d.StaticPolicyData,
+			DynamicPolicyData: d.DynamicPolicyData}
+		return data.write(w)
+	}
+
 	_, err := mu.MarshalToWriter(w, d)
 	return err
 }
