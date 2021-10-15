@@ -139,22 +139,14 @@ func newSealedKeyObject(data keyData) *SealedKeyObject {
 // required, as indicated by an import symmetric seed of non-zero length. The tpmKeyData
 // structure will be updated with the newly imported private area and the import
 // symmetric seed will be cleared.
-func (k *SealedKeyObject) ensureImported(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+func (k *SealedKeyObject) ensureImported(tpm *tpm2.TPMContext, parent tpm2.ResourceContext, session tpm2.SessionContext) error {
 	if len(k.data.ImportSymSeed()) == 0 {
 		return nil
 	}
 
-	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+	priv, err := tpm.Import(parent, nil, k.data.Public(), k.data.Private(), k.data.ImportSymSeed(), nil, session)
 	if err != nil {
-		return xerrors.Errorf("cannot create context for SRK: %w", err)
-	}
-
-	priv, err := tpm.Import(srkContext, nil, k.data.Public(), k.data.Private(), k.data.ImportSymSeed(), nil, session)
-	if err != nil {
-		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandImport, tpm2.AnyParameterIndex) {
-			return keyDataError{errors.New("cannot import sealed key object in to TPM: bad sealed key object, invalid symmetric seed, TPM owner changed or wrong TPM")}
-		}
-		return xerrors.Errorf("cannot import sealed key object in to TPM: %w", err)
+		return err
 	}
 
 	k.data.Imported(priv)
@@ -163,32 +155,12 @@ func (k *SealedKeyObject) ensureImported(tpm *tpm2.TPMContext, session tpm2.Sess
 
 // load loads the TPM sealed object associated with this keyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
-func (k *SealedKeyObject) load(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
-	if err := k.ensureImported(tpm, session); err != nil {
+func (k *SealedKeyObject) load(tpm *tpm2.TPMContext, parent tpm2.ResourceContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+	if err := k.ensureImported(tpm, parent, session); err != nil {
 		return nil, err
 	}
 
-	srkContext, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
-	}
-
-	keyContext, err := tpm.Load(srkContext, k.data.Private(), k.data.Public(), session)
-	if err != nil {
-		invalidObject := false
-		switch {
-		case tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoad, tpm2.AnyParameterIndex):
-			invalidObject = true
-		case tpm2.IsTPMError(err, tpm2.ErrorSensitive, tpm2.CommandLoad):
-			invalidObject = true
-		}
-		if invalidObject {
-			return nil, keyDataError{errors.New("cannot load sealed key object in to TPM: bad sealed key object or TPM owner changed")}
-		}
-		return nil, xerrors.Errorf("cannot load sealed key object in to TPM: %w", err)
-	}
-
-	return keyContext, nil
+	return tpm.Load(parent, k.data.Private(), k.data.Public(), session)
 }
 
 // validateData performs correctness checks on this object.
@@ -204,10 +176,18 @@ func (k *SealedKeyObject) validateData(tpm *tpm2.TPMContext, session tpm2.Sessio
 		return nil, keyDataError{errors.New("sealed key object has the wrong attributes")}
 	}
 
-	// Load the sealed data object in to the TPM for integrity checking.
-	keyContext, err := k.load(tpm, session)
+	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
+	}
+
+	// Load the sealed data object in to the TPM for integrity checking
+	keyContext, err := k.load(tpm, srk, session)
+	switch {
+	case isLoadInvalidParamError(err) || isImportInvalidParamError(err):
+		return nil, keyDataError{xerrors.Errorf("cannot load sealed key object into TPM (sealed key object is bad or TPM owner has changed): %w", err)}
+	case err != nil:
+		return nil, xerrors.Errorf("cannot load sealed key object into TPM: %w", err)
 	}
 	// It's loaded ok, so we know that the private and public parts are consistent.
 	tpm.FlushContext(keyContext)

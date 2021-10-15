@@ -91,6 +91,89 @@ func TestUnsealWithNo2FA(t *testing.T) {
 	})
 }
 
+func TestUnsealNoValidSRK(t *testing.T) {
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	run := func(t *testing.T, fn func(*Connection)) {
+		tpm, tcti := openTPMSimulatorForTesting(t)
+		defer func() {
+			tpm, _ = resetTPMSimulator(t, tpm, tcti)
+			closeTPM(t, tpm)
+		}()
+		if err := tpm.EnsureProvisioned(ProvisionModeFull, nil); err != nil {
+			t.Errorf("EnsureProvisioned failed: %v", err)
+		}
+
+		tmpDir, err := ioutil.TempDir("", "_TestUnsealNoValidSRK_")
+		if err != nil {
+			t.Fatalf("Creating temporary directory failed: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		keyFile := tmpDir + "/keydata"
+
+		authKey, err := SealKeyToTPM(tpm, key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: 0x0181fff0})
+		if err != nil {
+			t.Fatalf("SealKeyToTPM failed: %v", err)
+		}
+		defer undefineKeyNVSpace(t, tpm, keyFile)
+
+		fn(tpm)
+
+		k, err := ReadSealedKeyObjectFromFile(keyFile)
+		if err != nil {
+			t.Fatalf("ReadSealedKeyObject failed: %v", err)
+		}
+
+		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(tpm)
+		if err != nil {
+			t.Fatalf("UnsealFromTPM failed: %v", err)
+		}
+
+		if !bytes.Equal(key, keyUnsealed) {
+			t.Errorf("TPM returned the wrong key")
+		}
+		if !bytes.Equal(authKey, authKeyUnsealed) {
+			t.Errorf("TPM returned the wrong auth key")
+		}
+	}
+
+	t.Run("NoSRK", func(t *testing.T) {
+		run(t, func(tpm *Connection) {
+			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			if err != nil {
+				t.Fatalf("No SRK: %v", err)
+			}
+			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
+				t.Errorf("EvictControl failed: %v", err)
+			}
+		})
+	})
+
+	t.Run("InvalidSRK", func(t *testing.T) {
+		run(t, func(tpm *Connection) {
+			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			if err != nil {
+				t.Fatalf("No SRK: %v", err)
+			}
+			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
+				t.Errorf("EvictControl failed: %v", err)
+			}
+			srkTemplate := tcg.MakeDefaultSRKTemplate()
+			srkTemplate.Unique.RSA = nil
+			srkTransient, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, srkTemplate, nil, nil, nil)
+			if err != nil {
+				t.Fatalf("CreatePrimary failed: %v", err)
+			}
+			defer flushContext(t, tpm, srkTransient)
+			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srkTransient, tcg.SRKHandle, nil); err != nil {
+				t.Errorf("EvictControl failed: %v", err)
+			}
+		})
+	})
+}
+
 func TestUnsealImportable(t *testing.T) {
 	tpm := openTPMForTesting(t)
 	defer closeTPM(t, tpm)
@@ -256,47 +339,6 @@ func TestUnsealErrorHandling(t *testing.T) {
 		})
 		if err != ErrTPMLockout {
 			t.Errorf("Unexepcted error: %v", err)
-		}
-	})
-
-	t.Run("NoSRK", func(t *testing.T) {
-		err := run(t, func(tpm *Connection, _ string, _ []byte) {
-			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-			if err != nil {
-				t.Fatalf("No SRK: %v", err)
-			}
-			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
-				t.Errorf("EvictControl failed: %v", err)
-			}
-		})
-		if err != ErrTPMProvisioning {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	})
-
-	t.Run("InvalidSRK", func(t *testing.T) {
-		err := run(t, func(tpm *Connection, _ string, _ []byte) {
-			srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-			if err != nil {
-				t.Fatalf("No SRK: %v", err)
-			}
-			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil); err != nil {
-				t.Errorf("EvictControl failed: %v", err)
-			}
-			srkTemplate := tcg.MakeDefaultSRKTemplate()
-			srkTemplate.Unique.RSA[0] = 0xff
-			srkTransient, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, srkTemplate, nil, nil, nil)
-			if err != nil {
-				t.Fatalf("CreatePrimary failed: %v", err)
-			}
-			defer flushContext(t, tpm, srkTransient)
-			if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), srkTransient, tcg.SRKHandle, nil); err != nil {
-				t.Errorf("EvictControl failed: %v", err)
-			}
-		})
-		if _, ok := err.(InvalidKeyDataError); !ok || err.Error() != "invalid key data: cannot load sealed key object in to TPM: bad "+
-			"sealed key object or TPM owner changed" {
-			t.Errorf("Unexpected error: %v", err)
 		}
 	})
 

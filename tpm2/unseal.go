@@ -20,6 +20,8 @@
 package tpm2
 
 import (
+	"fmt"
+
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 
@@ -27,6 +29,76 @@ import (
 
 	"github.com/snapcore/secboot/internal/tcg"
 )
+
+const (
+	tryPersistentSRK = iota
+	tryTransientSRK
+	tryMax
+)
+
+// loadForUnseal loads the sealed key object into the TPM and returns a context
+// for it. It first tries by using the persistent shared SRK at the well known
+// handle as the parent object. If this object doesn't exist or loading fails with
+// an error indicating that the supplied sealed key object data is invalid, this
+// function will try to create a transient SRK and then retry loading of the sealed
+// key object by specifying the newly created transient object as the parent.
+//
+// If both attempts to load the sealed key object fail, or if the first attempt fails
+// and a transient SRK cannot be created, an error will be returned.
+//
+// If a transient SRK is created, it is flushed from the TPM before this function
+// returns.
+func (k *SealedKeyObject) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+	var lastError error
+	for try := tryPersistentSRK; try <= tryMax; try++ {
+		var srk tpm2.ResourceContext
+		if try == tryPersistentSRK {
+			var err error
+			srk, err = tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			if tpm2.IsResourceUnavailableError(err, tcg.SRKHandle) {
+				// No SRK - save the error and try creating a transient
+				lastError = ErrTPMProvisioning
+				continue
+			} else if err != nil {
+				// This is an unexpected error
+				return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
+			}
+		} else {
+			var err error
+			srk, _, _, _, _, err = tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, selectSrkTemplate(tpm, session), nil, nil, session)
+			if isAuthFailError(err, tpm2.CommandCreatePrimary, 1) {
+				// We don't know the authorization value for the storage hierarchy - ignore
+				// this so we end up returning the last error.
+				continue
+			} else if err != nil {
+				// This is an unexpected error
+				return nil, xerrors.Errorf("cannot create transient SRK: %w", err)
+			}
+			defer tpm.FlushContext(srk)
+		}
+
+		// Load the key data
+		keyObject, err := k.load(tpm, srk, session)
+		if isLoadInvalidParamError(err) || isImportInvalidParamError(err) {
+			// The supplied key data is invalid or is not protected by the supplied SRK.
+			lastError = InvalidKeyDataError{
+				fmt.Sprintf("cannot load sealed key object into TPM: %v. Either the sealed key object is bad or the TPM owner has changed", err)}
+			continue
+		} else if isLoadInvalidParentError(err) || isImportInvalidParentError(err) {
+			// The supplied SRK is not a valid storage parent.
+			lastError = ErrTPMProvisioning
+			continue
+		} else if err != nil {
+			// This is an unexpected error
+			return nil, xerrors.Errorf("cannot load sealed key object into TPM: %w", err)
+		}
+
+		return keyObject, nil
+	}
+
+	// No more attempts left - return the last error
+	return nil, lastError
+}
 
 // UnsealFromTPM will load the TPM sealed object in to the TPM and attempt to unseal it, returning the cleartext key on success.
 //
@@ -78,34 +150,8 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 	// Use the HMAC session created when the connection was opened for parameter encryption rather than creating a new one.
 	hmacSession := tpm.HmacSession()
 
-	// Load the key data
-	keyObject, err := k.load(tpm.TPMContext, hmacSession)
-	switch {
-	case isKeyDataError(err):
-		// A keyDataError can be as a result of an improperly provisioned TPM - detect if the object at tcg.SRKHandle is a valid primary key
-		// with the correct attributes. If it's not, then it's definitely a provisioning error. If it is, then it could still be a
-		// provisioning error because we don't know if the object was created with the same template that ProvisionTPM uses. In that case,
-		// we'll just assume an invalid key file
-		srk, err2 := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-		switch {
-		case tpm2.IsResourceUnavailableError(err2, tcg.SRKHandle):
-			return nil, nil, ErrTPMProvisioning
-		case err2 != nil:
-			return nil, nil, xerrors.Errorf("cannot create context for SRK: %w", err2)
-		}
-		ok, err2 := isObjectPrimaryKeyWithTemplate(tpm.TPMContext, tpm.OwnerHandleContext(), srk, tcg.SRKTemplate, tpm.HmacSession())
-		switch {
-		case err2 != nil:
-			return nil, nil, xerrors.Errorf("cannot determine if object at 0x%08x is a primary key in the storage hierarchy: %w", tcg.SRKHandle, err2)
-		case !ok:
-			return nil, nil, ErrTPMProvisioning
-		}
-		// This is probably a broken key file, but it could still be a provisioning error because we don't know if the SRK object was
-		// created with the same template that ProvisionTPM uses.
-		return nil, nil, InvalidKeyDataError{err.Error()}
-	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
-		return nil, nil, ErrTPMProvisioning
-	case err != nil:
+	keyObject, err := k.loadForUnseal(tpm.TPMContext, hmacSession)
+	if err != nil {
 		return nil, nil, err
 	}
 	defer tpm.FlushContext(keyObject)
