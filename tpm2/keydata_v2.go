@@ -34,7 +34,7 @@ type keyData_v2 struct {
 	KeyPrivate        tpm2.Private
 	KeyPublic         *tpm2.Public
 	Unused            uint8 // previously AuthModeHint
-	KeyImportSymSeed     tpm2.EncryptedSecret
+	KeyImportSymSeed  tpm2.EncryptedSecret
 	StaticPolicyData  *staticPolicyDataRaw_v1
 	DynamicPolicyData *dynamicPolicyDataRaw_v0
 }
@@ -52,12 +52,12 @@ func newKeyData(keyPrivate tpm2.Private, keyPublic *tpm2.Public, importSymSeed t
 	return &keyData_v2{
 		KeyPrivate:        keyPrivate,
 		KeyPublic:         keyPublic,
-		KeyImportSymSeed:     importSymSeed,
+		KeyImportSymSeed:  importSymSeed,
 		StaticPolicyData:  staticPolicyData,
 		DynamicPolicyData: dynamicPolicyData}
 }
 
-func (d *keyData_v2) asV1() keyData {
+func (d *keyData_v2) AsV1() keyData {
 	if d.KeyImportSymSeed != nil {
 		panic("importable object cannot be converted to v1")
 	}
@@ -91,6 +91,9 @@ func (d *keyData_v2) ImportSymSeed() tpm2.EncryptedSecret {
 }
 
 func (d *keyData_v2) Imported(priv tpm2.Private) {
+	if d.KeyImportSymSeed == nil {
+		panic("does not need to be imported")
+	}
 	d.KeyPrivate = priv
 	d.KeyImportSymSeed = nil
 }
@@ -99,7 +102,7 @@ func (d *keyData_v2) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 	if d.KeyImportSymSeed != nil {
 		return nil, errors.New("cannot validate importable key data")
 	}
-	return d.asV1().ValidateData(tpm, session)
+	return d.AsV1().ValidateData(tpm, session)
 }
 
 func (d *keyData_v2) Write(w io.Writer) error {
@@ -107,7 +110,7 @@ func (d *keyData_v2) Write(w io.Writer) error {
 		// The only difference between v1 and v2 is support for
 		// importable objects. Implicitly downgrade to v1 on write
 		// if the object doesn't need importing.
-		return d.asV1().Write(w)
+		return d.AsV1().Write(w)
 	}
 
 	_, err := mu.MarshalToWriter(w, d)

@@ -35,7 +35,7 @@ import (
 const (
 	// TPMFeatureOwnerHierarchy indicates that the test requires the use of the storage hierarchy. The
 	// authorization value should be empty at the start of the test.
-	TPMFeatureOwnerHierarchy       = tpm2_testutil.TPMFeatureOwnerHierarchy
+	TPMFeatureOwnerHierarchy = tpm2_testutil.TPMFeatureOwnerHierarchy
 
 	// TPMFeatureEndorsementHierarchy indicates that the test requires the use of the endorsement hierarchy.
 	// The authorization value should be empty at the start of the test.
@@ -43,21 +43,21 @@ const (
 
 	// TPMFeatureLockoutHierarchy indicates that the test requires the use of the lockout hierarchy. The
 	// authorization value should be empty at the start of the test.
-	TPMFeatureLockoutHierarchy     = tpm2_testutil.TPMFeatureLockoutHierarchy
+	TPMFeatureLockoutHierarchy = tpm2_testutil.TPMFeatureLockoutHierarchy
 
 	// TPMFeaturePlatformHierarchy indicates that the test requires the use of the platform hierarchy. The
 	// authorization value should be empty at the start of the test.
 	// In order to maximize the number of tests that can run on a real TPM, this should be used
 	// sparingly as the platform hierarchy should not normally be available - it may be needed in some
 	// cases just to make the test fixture happy, but these tests will generally only run on a simulator.
-	TPMFeaturePlatformHierarchy    = tpm2_testutil.TPMFeaturePlatformHierarchy
+	TPMFeaturePlatformHierarchy = tpm2_testutil.TPMFeaturePlatformHierarchy
 
 	// TPMFeaturePCR indicates that the test requires the use of a PCR. This is only required for
 	// commands that require authorization - ie, it is not required for TPM2_PCR_Read.
 	// Tests that use this should only use it for PCR16 or PCR23 - defined as debug /
 	// application-specific and resettable on PC-Client TPMs, and should avoid using it for any
 	// other PCR.
-	TPMFeaturePCR                  = tpm2_testutil.TPMFeaturePCR
+	TPMFeaturePCR = tpm2_testutil.TPMFeaturePCR
 
 	//TPMFeatureStClearChange = tpm2_testutil.TPMFeatureStClearChange
 	//TPMFeatureSetCommandCodeAuditStatus = tpm2_testutil.TPMFeatureSetCommandCodeAuditStatus
@@ -76,7 +76,7 @@ const (
 
 	// TPMFeatureNV indicates that the test makes use of a command that may write to NV. Physical
 	// TPMs may employ rate limiting on these commands.
-	TPMFeatureNV                    = tpm2_testutil.TPMFeatureNV
+	TPMFeatureNV = tpm2_testutil.TPMFeatureNV
 
 	//TPMFeaturePersistent		= tpm2_testutil.TPMFeaturePersistent
 )
