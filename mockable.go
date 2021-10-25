@@ -19,32 +19,15 @@
 
 package secboot
 
-func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*CostParams, error) {
-	return o.deriveCostParams(keyLen, kdf)
-}
+import (
+	"runtime"
 
-func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
-	origActivate := luks2Activate
-	luks2Activate = fn
-	return func() {
-		luks2Activate = origActivate
-	}
-}
+	"github.com/snapcore/secboot/internal/luks2"
+)
 
-func MockLUKS2Deactivate(fn func(string) error) (restore func()) {
-	origDeactivate := luks2Deactivate
-	luks2Deactivate = fn
-	return func() {
-		luks2Deactivate = origDeactivate
-	}
-}
+var (
+	luks2Activate   = luks2.Activate
+	luks2Deactivate = luks2.Deactivate
 
-func MockRuntimeNumCPU(n int) (restore func()) {
-	orig := runtimeNumCPU
-	runtimeNumCPU = func() int {
-		return n
-	}
-	return func() {
-		runtimeNumCPU = orig
-	}
-}
+	runtimeNumCPU = runtime.NumCPU
+)
