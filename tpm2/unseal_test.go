@@ -157,13 +157,13 @@ func (s *unsealSuite) testUnsealImportableFromTPM(c *C, params *KeyCreationParam
 }
 
 func (s *unsealSuite) TestUnsealImportableFromTPMSimplePCRProfile(c *C) {
-	s.testUnsealFromTPM(c, &KeyCreationParams{
+	s.testUnsealImportableFromTPM(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewResolvedPCRProfileFromCurrentValues(c, s.TPM().TPMContext, tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 }
 
 func (s *unsealSuite) TestUnsealImportableFromTPMNilPCRProfile(c *C) {
-	s.testUnsealFromTPM(c, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
+	s.testUnsealImportableFromTPM(c, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
 }
 
 func (s *unsealSuite) testUnsealFromTPMErrorHandling(c *C, prepare func(string, PolicyAuthKey)) error {
