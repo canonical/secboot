@@ -34,21 +34,25 @@ const (
 
 // Export variables and unexported functions for testing
 var (
-	ComputeDynamicPolicy                  = computeDynamicPolicy
-	CreatePcrPolicyCounter                = createPcrPolicyCounter
-	ComputePcrPolicyCounterAuthPolicies   = computePcrPolicyCounterAuthPolicies
-	ComputePcrPolicyRefFromCounterContext = computePcrPolicyRefFromCounterContext
-	ComputePcrPolicyRefFromCounterName    = computePcrPolicyRefFromCounterName
-	ComputePolicyORData                   = computePolicyORData
-	ComputeSnapModelDigest                = computeSnapModelDigest
-	ComputeStaticPolicy                   = computeStaticPolicy
-	CreateTPMPublicAreaForECDSAKey        = createTPMPublicAreaForECDSAKey
-	ExecutePolicySession                  = executePolicySession
-	IncrementPcrPolicyCounterTo           = incrementPcrPolicyCounterTo
-	IsDynamicPolicyDataError              = isDynamicPolicyDataError
-	IsStaticPolicyDataError               = isStaticPolicyDataError
-	LockNVIndex1Attrs                     = lockNVIndex1Attrs
-	NewPcrPolicyCounterHandleV1           = newPcrPolicyCounterHandleV1
+	ComputeDynamicPolicy                    = computeDynamicPolicy
+	ComputeV0PinNVIndexPostInitAuthPolicies = computeV0PinNVIndexPostInitAuthPolicies
+	CreatePcrPolicyCounter                  = createPcrPolicyCounter
+	ComputePcrPolicyCounterAuthPolicies     = computePcrPolicyCounterAuthPolicies
+	ComputePcrPolicyRefFromCounterContext   = computePcrPolicyRefFromCounterContext
+	ComputePcrPolicyRefFromCounterName      = computePcrPolicyRefFromCounterName
+	ComputePolicyORData                     = computePolicyORData
+	ComputeSnapModelDigest                  = computeSnapModelDigest
+	ComputeStaticPolicy                     = computeStaticPolicy
+	CreateTPMPublicAreaForECDSAKey          = createTPMPublicAreaForECDSAKey
+	ExecutePolicySession                    = executePolicySession
+	IncrementPcrPolicyCounterTo             = incrementPcrPolicyCounterTo
+	IsDynamicPolicyDataError                = isDynamicPolicyDataError
+	IsStaticPolicyDataError                 = isStaticPolicyDataError
+	LockNVIndex1Attrs                       = lockNVIndex1Attrs
+	NewPcrPolicyCounterHandleV1             = newPcrPolicyCounterHandleV1
+	ReadKeyDataV0                           = readKeyDataV0
+	ReadKeyDataV1                           = readKeyDataV1
+	ReadKeyDataV2                           = readKeyDataV2
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -79,8 +83,15 @@ func (d *DynamicPolicyData) AuthorizedPolicySignature() *tpm2.Signature {
 	return d.authorizedPolicySignature
 }
 
+type DynamicPolicyDataRaw_v0 = dynamicPolicyDataRaw_v0
 type GoSnapModelHasher = goSnapModelHasher
+type KeyData = keyData
+type KeyData_v0 = keyData_v0
+type KeyData_v1 = keyData_v1
+type KeyData_v2 = keyData_v2
+type KeyDataError = keyDataError
 type PcrPolicyCounterHandle = pcrPolicyCounterHandle
+type PolicyOrDataTree = policyOrDataTree
 type SnapModelHasher = snapModelHasher
 
 type StaticPolicyData = staticPolicyData
@@ -100,6 +111,9 @@ func (d *StaticPolicyData) SetPcrPolicyCounterHandle(h tpm2.Handle) {
 func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
 	return d.v0PinIndexAuthPolicies
 }
+
+type StaticPolicyDataRaw_v0 = staticPolicyDataRaw_v0
+type StaticPolicyDataRaw_v1 = staticPolicyDataRaw_v1
 
 // Export some helpers for testing.
 type MockPolicyPCRParam struct {
@@ -159,13 +173,16 @@ func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NV
 }
 
 func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
-	authKey, err := createECDSAPrivateKeyFromTPM(k.data.staticPolicyData.authPublicKey, tpm2.ECCParameter(authPrivateKey))
+	if _, err := k.validateData(tpm, session); err != nil {
+		return err
+	}
+
+	authKey, err := createECDSAPrivateKeyFromTPM(k.data.StaticPolicy().authPublicKey, tpm2.ECCParameter(authPrivateKey))
 	if err != nil {
 		return err
 	}
 
-	_, err = k.validate(tpm, authKey, session)
-	return err
+	return k.validateAuthKey(authKey)
 }
 
 func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {

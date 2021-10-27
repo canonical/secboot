@@ -76,7 +76,7 @@ func (s *sealSuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 	k, err := ReadSealedKeyObjectFromFile(path)
 	c.Assert(err, IsNil)
 
-	c.Check(k.Version(), Equals, CurrentMetadataVersion)
+	c.Check(k.Version(), Equals, uint32(1))
 	c.Check(k.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
 
 	if params.AuthKey != nil {
@@ -263,7 +263,7 @@ func (s *sealSuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMMultipl
 		k, err := ReadSealedKeyObjectFromFile(r.Path)
 		c.Assert(err, IsNil)
 
-		c.Check(k.Version(), Equals, CurrentMetadataVersion)
+		c.Check(k.Version(), Equals, uint32(1))
 		c.Check(k.PCRPolicyCounterHandle(), Equals, data.params.PCRPolicyCounterHandle)
 
 		keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(s.TPM())
@@ -496,7 +496,7 @@ func (s *sealSuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreation
 	k, err := ReadSealedKeyObjectFromFile(path)
 	c.Assert(err, IsNil)
 
-	c.Check(k.Version(), Equals, CurrentMetadataVersion)
+	c.Check(k.Version(), Equals, uint32(2))
 	c.Check(k.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
 
 	if params.AuthKey != nil {

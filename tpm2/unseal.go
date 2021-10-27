@@ -157,13 +157,13 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 	defer tpm.FlushContext(keyObject)
 
 	// Begin and execute policy session
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.keyPublic.NameAlg)
+	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.Public().NameAlg)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot start policy session: %w", err)
 	}
 	defer tpm.FlushContext(policySession)
 
-	if err := executePolicySession(tpm.TPMContext, policySession, k.data.version, k.data.staticPolicyData, k.data.dynamicPolicyData, hmacSession); err != nil {
+	if err := executePolicySession(tpm.TPMContext, policySession, k.data.Version(), k.data.StaticPolicy(), k.data.DynamicPolicy(), hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
 		case isDynamicPolicyDataError(err):
@@ -186,7 +186,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 		return nil, nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	if k.data.version == 0 {
+	if k.data.Version() == 0 {
 		return keyData, nil, nil
 	}
 
