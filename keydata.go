@@ -331,6 +331,28 @@ func (d *KeyData) AuthMode() (out AuthMode) {
 	return out
 }
 
+// UnmarshalPlatformHandle unmarshals the JSON platform handle payload to the
+// supplied handle.
+func (d *KeyData) UnmarshalPlatformHandle(handle interface{}) error {
+	if err := json.Unmarshal(d.data.PlatformHandle, handle); err != nil {
+		return &InvalidKeyDataError{err}
+	}
+	return nil
+}
+
+// UpdatePlatformHandle marshals the supplied platform handle to JSON and updates
+// this KeyData object. The changes will need to persisted afterwards using
+// WriteAtomic.
+func (d *KeyData) MarshalAndUpdatePlatformHandle(handle interface{}) error {
+	b, err := json.Marshal(handle)
+	if err != nil {
+		return err
+	}
+
+	d.data.PlatformHandle = b
+	return nil
+}
+
 // RecoverKeys recovers the disk unlock key and auxiliary key associated with this
 // key data from the platform's secure device, for key data that doesn't have any
 // additional authentication modes enabled (AuthMode returns AuthModeNone).

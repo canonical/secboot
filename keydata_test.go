@@ -43,6 +43,8 @@ import (
 
 const mockPlatformName = "mock"
 
+type mockPlatformKeyDataHandle []byte
+
 const (
 	mockPlatformDeviceStateOK = iota
 	mockPlatformDeviceStateUnavailable
@@ -61,14 +63,9 @@ func (h *mockPlatformKeyDataHandler) RecoverKeys(data *PlatformKeyData) (KeyPayl
 		return nil, &PlatformKeyRecoveryError{Type: PlatformKeyRecoveryErrorUninitialized, Err: errors.New("the platform device is uninitialized")}
 	}
 
-	var str string
-	if err := json.Unmarshal(data.Handle, &str); err != nil {
+	var handle mockPlatformKeyDataHandle
+	if err := json.Unmarshal(data.Handle, &handle); err != nil {
 		return nil, &PlatformKeyRecoveryError{Type: PlatformKeyRecoveryErrorInvalidData, Err: xerrors.Errorf("JSON decode error: %w", err)}
-	}
-
-	handle, err := base64.StdEncoding.DecodeString(str)
-	if err != nil {
-		return nil, &PlatformKeyRecoveryError{Type: PlatformKeyRecoveryErrorInvalidData, Err: xerrors.Errorf("base64 decode error: %w", err)}
 	}
 
 	if len(handle) != 48 {
@@ -179,11 +176,11 @@ func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, Aux
 func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey AuxiliaryKey, modelAuthHash crypto.Hash) (out *KeyCreationData) {
 	payload := MarshalKeys(key, auxKey)
 
-	k := make([]byte, 48)
+	k := make(mockPlatformKeyDataHandle, 48)
 	_, err := rand.Read(k)
 	c.Assert(err, IsNil)
 
-	handle, err := json.Marshal(base64.StdEncoding.EncodeToString(k))
+	handle, err := json.Marshal(k)
 	c.Check(err, IsNil)
 
 	b, err := aes.NewCipher(k[:32])
@@ -346,6 +343,42 @@ func (s *keyDataSuite) TestNewKeyData(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Check(keyData, NotNil)
 	c.Check(err, IsNil)
+}
+
+func (s *keyDataSuite) TestUnmarshalPlatformHandle(c *C) {
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	var handle mockPlatformKeyDataHandle
+	c.Check(keyData.UnmarshalPlatformHandle(&handle), IsNil)
+
+	var expected mockPlatformKeyDataHandle
+	c.Check(json.Unmarshal(protected.Handle, &expected), IsNil)
+	c.Check(handle, DeepEquals, expected)
+}
+
+func (s *keyDataSuite) TestMarshalAndUpdatePlatformHandle(c *C) {
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	handle := make(mockPlatformKeyDataHandle, 48)
+	rand.Read(handle)
+
+	c.Check(keyData.MarshalAndUpdatePlatformHandle(handle), IsNil)
+
+	expected, err := json.Marshal(handle)
+	c.Check(err, IsNil)
+
+	protected.Handle = expected
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	s.checkKeyDataJSONFromReader(c, w.Reader(), protected, 0)
 }
 
 func (s *keyDataSuite) TestRecoverKeys(c *C) {
