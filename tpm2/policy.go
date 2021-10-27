@@ -27,6 +27,8 @@ import (
 	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot"
 )
 
 const (
@@ -39,7 +41,7 @@ const (
 
 // pcrPolicyParams provides the parameters to keyDataPolicy.updatePcrPolicy.
 type pcrPolicyParams struct {
-	key PolicyAuthKey // Key used to authorize the generated dynamic authorization policy
+	key secboot.AuxiliaryKey // Key used to authorize the generated dynamic authorization policy
 
 	pcrs       tpm2.PCRSelectionList // PCR selection
 	pcrDigests tpm2.DigestList       // Approved PCR digests
@@ -87,8 +89,8 @@ type policyOrTree struct {
 
 // pcrPolicyCounterContext corresponds to a PCR policy counter.
 type pcrPolicyCounterContext interface {
-	Get() (uint64, error)              // Return the current counter value
-	Increment(key PolicyAuthKey) error // Increment the counter value using the supplied key for authorization
+	Get() (uint64, error)                     // Return the current counter value
+	Increment(key secboot.AuxiliaryKey) error // Increment the counter value using the supplied key for authorization
 }
 
 // keyDataPolicy corresponds to the authorization policy for keyData.
@@ -118,7 +120,7 @@ type keyDataPolicy interface {
 
 	// ValidateAuthKey verifies that the supplied key is associated with this
 	// keyDataPolicy.
-	ValidateAuthKey(key PolicyAuthKey) error
+	ValidateAuthKey(key secboot.AuxiliaryKey) error
 }
 
 // createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object

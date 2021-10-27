@@ -21,6 +21,8 @@ package tpm2
 
 import (
 	"github.com/canonical/go-tpm2"
+
+	"github.com/snapcore/secboot"
 )
 
 // Export constants for testing
@@ -57,6 +59,7 @@ type KeyDataPolicy = keyDataPolicy
 type KeyDataPolicy_v0 = keyDataPolicy_v0
 type KeyDataPolicy_v1 = keyDataPolicy_v1
 type KeyDataPolicy_v2 = keyDataPolicy_v2
+
 type PolicyDataError = policyDataError
 type PolicyOrData_v0 = policyOrData_v0
 
@@ -96,7 +99,7 @@ type PcrPolicyData_v2 = pcrPolicyData_v2
 
 type PcrPolicyParams = pcrPolicyParams
 
-func NewPcrPolicyParams(key PolicyAuthKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name) *PcrPolicyParams {
+func NewPcrPolicyParams(key secboot.AuxiliaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name) *PcrPolicyParams {
 	return &PcrPolicyParams{
 		key:               key,
 		pcrs:              pcrs,
@@ -150,7 +153,7 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
-func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey PolicyAuthKey, session tpm2.SessionContext) error {
+func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
 	if _, err := k.validateData(tpm, session); err != nil {
 		return err
 	}
@@ -158,7 +161,7 @@ func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey PolicyAuthKey, 
 	return k.data.Policy().ValidateAuthKey(authKey)
 }
 
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey PolicyAuthKey, session tpm2.SessionContext) error {
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
 	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	if err != nil {
 		return err

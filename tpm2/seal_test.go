@@ -33,6 +33,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
@@ -63,7 +64,7 @@ func (s *sealSuite) SetUpTest(c *C) {
 var _ = Suite(&sealSuite{})
 
 func (s *sealSuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()
@@ -80,7 +81,7 @@ func (s *sealSuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 	c.Check(k.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
 
 	if params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, PolicyAuthKey(params.AuthKey.D.Bytes()))
+		c.Check(authKey, DeepEquals, secboot.AuxiliaryKey(params.AuthKey.D.Bytes()))
 	}
 
 	keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(s.TPM())
@@ -245,7 +246,7 @@ type testSealKeyToTPMMultipleData struct {
 }
 
 func (s *sealSuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMMultipleData) {
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()
@@ -273,7 +274,7 @@ func (s *sealSuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMMultipl
 	}
 
 	if data.params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, PolicyAuthKey(data.params.AuthKey.D.Bytes()))
+		c.Check(authKey, DeepEquals, secboot.AuxiliaryKey(data.params.AuthKey.D.Bytes()))
 	}
 
 	if data.params.PCRProfile != nil {
@@ -384,7 +385,7 @@ func (s *sealSuite) testSealKeyToTPMErrorHandling(c *C, params *KeyCreationParam
 		c.Check(err, IsNil)
 	}
 
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()
@@ -482,7 +483,7 @@ func (s *sealSuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreation
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)
 	c.Assert(err, IsNil)
 
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()
@@ -499,7 +500,7 @@ func (s *sealSuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreation
 	c.Check(k.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
 
 	if params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, PolicyAuthKey(params.AuthKey.D.Bytes()))
+		c.Check(authKey, DeepEquals, secboot.AuxiliaryKey(params.AuthKey.D.Bytes()))
 	}
 
 	keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(s.TPM())
@@ -546,7 +547,7 @@ func (s *sealSuite) testSealKeyToExternalTPMStorageKeyErrorHandling(c *C, params
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)
 	c.Assert(err, IsNil)
 
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()
@@ -598,7 +599,7 @@ func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingWithPCRPolicy
 }
 
 func (s *sealSuite) testUpdatePCRProtectionPolicy(c *C, params *KeyCreationParams) {
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()
@@ -640,7 +641,7 @@ func (s *sealSuite) TestUpdatePCRProtectionPolicyWithProvidedAuthKey(c *C) {
 }
 
 func (s *sealSuite) testRevokeOldPCRProtectionPolicies(c *C, params *KeyCreationParams) error {
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()
@@ -692,7 +693,7 @@ func (s *sealSuite) TestRevokeOldPCRProtectionPoliciesWithoutPCRPolicyCounter(c 
 }
 
 func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultiple(c *C) {
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()
@@ -733,7 +734,7 @@ func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated1(c *C) {
 	// Test that UpdateKeyPCRProtectionPolicyMultiple rejects keys that have the
 	// same auth key, but different policies because they use independent PCR policy
 	// counters.
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
@@ -764,7 +765,7 @@ func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated1(c *C) {
 func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated2(c *C) {
 	// Test that UpdateKeyPCRProtectionPolicyMultiple rejects keys that use different
 	// auth keys.
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	dir := c.MkDir()

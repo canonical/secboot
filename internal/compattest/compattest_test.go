@@ -36,6 +36,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
@@ -156,9 +157,9 @@ func (s *compatTestSuiteBase) testUnsealCommon(c *C) {
 
 	expectedKey, err := ioutil.ReadFile(s.absPath("clearKey"))
 	c.Assert(err, IsNil)
-	c.Check(key, DeepEquals, expectedKey)
+	c.Check(key, DeepEquals, secboot.DiskUnlockKey(expectedKey))
 
-	var expectedAuthPrivateKey secboot_tpm2.PolicyAuthKey
+	var expectedAuthPrivateKey secboot.AuxiliaryKey
 	authKeyPath := s.absPath("authKey")
 	if _, err := os.Stat(authKeyPath); err == nil {
 		expectedAuthPrivateKey, err = ioutil.ReadFile(authKeyPath)
