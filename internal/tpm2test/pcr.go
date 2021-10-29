@@ -24,6 +24,9 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
+
+	. "gopkg.in/check.v1"
+
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -67,4 +70,23 @@ func FormatPCRValuesFromPCRProtectionProfile(profile *secboot_tpm2.PCRProtection
 		}
 	}
 	return s.String()
+}
+
+func NewPCRProfileFromCurrentValues(alg tpm2.HashAlgorithmId, pcrs []int) *secboot_tpm2.PCRProtectionProfile {
+	out := secboot_tpm2.NewPCRProtectionProfile()
+	for _, pcr := range pcrs {
+		out = out.AddPCRValueFromTPM(alg, pcr)
+	}
+	return out
+}
+
+func NewResolvedPCRProfileFromCurrentValues(c *C, tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId, pcrs []int) *secboot_tpm2.PCRProtectionProfile {
+	_, values, err := tpm.PCRRead(tpm2.PCRSelectionList{{Hash: alg, Select: pcrs}})
+	c.Assert(err, IsNil)
+
+	out := secboot_tpm2.NewPCRProtectionProfile()
+	for _, pcr := range pcrs {
+		out = out.AddPCRValue(alg, pcr, values[alg][pcr])
+	}
+	return out
 }
