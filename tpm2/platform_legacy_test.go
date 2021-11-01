@@ -60,7 +60,9 @@ func (s *platformLegacySuite) TestRecoverKeys(c *C) {
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
@@ -77,7 +79,9 @@ func (s *platformLegacySuite) TestRecoverKeysNoTPMConnection(c *C) {
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
@@ -97,7 +101,9 @@ func (s *platformLegacySuite) TestRecoverKeysInvalidPCRPolicy(c *C) {
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(7), tpm2.Event("foo"), nil)
@@ -116,7 +122,9 @@ func (s *platformLegacySuite) TestRecoverKeysTPMLockout(c *C) {
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	// Put the TPM in DA lockout mode
@@ -134,7 +142,9 @@ func (s *platformLegacySuite) TestRecoverKeysErrTPMProvisioning(c *C) {
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	_, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)

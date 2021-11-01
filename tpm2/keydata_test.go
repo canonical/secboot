@@ -82,7 +82,9 @@ func (s *keydataSuite) TestFileReadAndWrite(c *C) {
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	var st1 unix.Stat_t
@@ -109,7 +111,9 @@ func (s *keydataSuite) TestReadAndWrite(c *C) {
 	rand.Read(key)
 	keyFile := filepath.Join(c.MkDir(), "keydata")
 
-	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{PCRProfile: getTestPCRProfile(), PCRPolicyCounterHandle: tpm2.HandleNull})
+	authPrivateKey, err := SealKeyToTPM(s.TPM(), key, keyFile, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
 	k, err := ReadSealedKeyObjectFromFile(keyFile)

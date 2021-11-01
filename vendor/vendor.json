@@ -333,6 +333,18 @@
 			"revisionTime": "2020-01-28T12:03:23Z"
 		},
 		{
+			"checksumSHA1": "a8rHhZnENw9V3luFEXvKy6Zrtvo=",
+			"path": "golang.org/x/crypto/argon2",
+			"revision": "a769d52b0f97a420f3dcafc17f8b3384217859a2",
+			"revisionTime": "2021-07-10T19:57:36Z"
+		},
+		{
+			"checksumSHA1": "iR42veEPeqc/dq0kr9bxRMm/Ykg=",
+			"path": "golang.org/x/crypto/blake2b",
+			"revision": "089bfa5675191fd96a44247682f76ebca03d7916",
+			"revisionTime": "2020-12-12T03:52:14Z"
+		},
+		{
 			"checksumSHA1": "zJybXQZcPAht+soLp/ozc9q5teE=",
 			"path": "golang.org/x/crypto/cast5",
 			"revision": "0848c9571904fcbcb24543358ca8b5a7dbfde875",

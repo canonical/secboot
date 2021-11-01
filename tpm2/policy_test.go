@@ -20,14 +20,12 @@
 package tpm2_test
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
 	"io"
 	"strconv"
-	"testing"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/templates"
@@ -91,7 +89,7 @@ type policySuite struct {
 }
 
 func (s *policySuite) SetUpSuite(c *C) {
-	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy | tpm2test.TPMFeatureNV
+	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy | tpm2test.TPMFeaturePCR | tpm2test.TPMFeatureNV
 }
 
 var _ = Suite(&policySuiteNoTPM{})
@@ -380,66 +378,41 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 		expected:          testutil.DecodeHexString(c, "61f5396bcbd2bd3ed1392edaf88314da1230f6f252962c704119659295eca112")})
 }
 
-func TestBlockPCRProtectionPolicies(t *testing.T) {
-	// This test only test the fence style locking - the old style is tested with v0
-	// key files in internal/compattest/v0_test.go
-	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
-		tpm2test.TPMFeaturePCR|
-			tpm2test.TPMFeatureNV)
-	defer closeTPM()
+func (s *policySuite) testBlockPCRProtectionPolicies(c *C, n []int) {
+	pcrs := tpm2.PCRSelectionList{
+		{Hash: tpm2.HashAlgorithmSHA256, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
+		{Hash: tpm2.HashAlgorithmSHA1, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}}}
+	_, pcrValues, err := s.TPM().PCRRead(pcrs)
+	c.Assert(err, IsNil)
 
-	for _, data := range []struct {
-		desc string
-		pcrs []int
-	}{
-		{
-			desc: "12",
-			pcrs: []int{12},
-		},
-		{
-			desc: "12,13",
-			pcrs: []int{12, 13},
-		},
-	} {
-		t.Run(data.desc, func(t *testing.T) {
-			pcrs := tpm2.PCRSelectionList{
-				{Hash: tpm2.HashAlgorithmSHA256, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}},
-				{Hash: tpm2.HashAlgorithmSHA1, Select: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}}
-			_, pcrValues, err := tpm.PCRRead(pcrs)
-			if err != nil {
-				t.Fatalf("PCRRead failed: %v", err)
-			}
+	c.Check(BlockPCRProtectionPolicies(s.TPM(), n), IsNil)
 
-			if err := BlockPCRProtectionPolicies(tpm, data.pcrs); err != nil {
-				t.Errorf("BlockPCRProtectionPolicies failed: %v", err)
-			}
+	for _, p := range pcrs {
+		h := p.Hash.NewHash()
+		h.Write(make([]byte, 4))
+		fenceHash := h.Sum(nil)
 
-			for _, p := range pcrs {
-				h := p.Hash.NewHash()
-				h.Write(make([]byte, 4))
-				fenceHash := h.Sum(nil)
-
-				for _, s := range data.pcrs {
-					h = p.Hash.NewHash()
-					h.Write(pcrValues[p.Hash][s])
-					h.Write(fenceHash)
-					pcrValues[p.Hash][s] = h.Sum(nil)
-				}
-			}
-
-			_, pcrValues2, err := tpm.PCRRead(pcrs)
-			if err != nil {
-				t.Fatalf("PCRRead failed: %v", err)
-			}
-
-			for _, p := range pcrs {
-				for _, s := range p.Select {
-					if !bytes.Equal(pcrValues2[p.Hash][s], pcrValues[p.Hash][s]) {
-						t.Errorf("Unexpected PCR value")
-					}
-				}
-			}
-		})
+		for _, s := range n {
+			h = p.Hash.NewHash()
+			h.Write(pcrValues[p.Hash][s])
+			h.Write(fenceHash)
+			pcrValues[p.Hash][s] = h.Sum(nil)
+		}
 	}
 
+	_, pcrValues2, err := s.TPM().PCRRead(pcrs)
+	c.Assert(err, IsNil)
+	c.Check(pcrValues2, DeepEquals, pcrValues)
+}
+
+func (s *policySuite) TestBlockPCRProtectionPolicies1(c *C) {
+	s.testBlockPCRProtectionPolicies(c, []int{23})
+}
+
+func (s *policySuite) TestBlockPCRProtectionPolicies2(c *C) {
+	s.testBlockPCRProtectionPolicies(c, []int{16})
+}
+
+func (s *policySuite) TestBlockPCRProtectionPolicies3(c *C) {
+	s.testBlockPCRProtectionPolicies(c, []int{16, 23})
 }
