@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	keyDataHeader          uint32 = 0x55534b24
+	keyDataHeader uint32 = 0x55534b24
 )
 
 // PolicyAuthKey corresponds to the private part of the key used for signing updates to the authorization policy for a sealed key.

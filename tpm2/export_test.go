@@ -25,8 +25,8 @@ import (
 
 // Export constants for testing
 const (
-	LockNVHandle           = lockNVHandle
-	SrkTemplateHandle      = srkTemplateHandle
+	LockNVHandle      = lockNVHandle
+	SrkTemplateHandle = srkTemplateHandle
 )
 
 // Export variables and unexported functions for testing

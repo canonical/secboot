@@ -37,81 +37,17 @@ const (
 	policyOrMaxDigests = 4096 // equivalent to a depth of 4
 )
 
-type policyDataError struct {
-	err error
-}
-
-func (e policyDataError) Error() string {
-	return e.err.Error()
-}
-
-func (e policyDataError) Unwrap() error {
-	return e.err
-}
-
-func isPolicyDataError(err error) bool {
-	var e policyDataError
-	return xerrors.As(err, &e)
-}
-
 // pcrPolicyParams provides the parameters to keyDataPolicy.updatePcrPolicy.
 type pcrPolicyParams struct {
 	key PolicyAuthKey // Key used to authorize the generated dynamic authorization policy
 
-	pcrs       tpm2.PCRSelectionList // PCR selection
-	pcrDigests tpm2.DigestList       // Approved PCR digests
+	pcrs		  tpm2.PCRSelectionList // PCR selection
+	pcrDigests	  tpm2.DigestList       // Approved PCR digests
 
 	// policyCounterName is the name of the NV index used for revoking authorization
 	// policies. The name must be associated with the handle in the keyDataPolicy,
 	// else the policy will not work.
 	policyCounterName tpm2.Name
-}
-
-// pcrPolicyCounterContext corresponds to a PCR policy counter.
-type pcrPolicyCounterContext interface {
-	Get() (uint64, error)              // Return the current counter value
-	Increment(key PolicyAuthKey) error // Increment the counter value using the supplied key for authorization
-}
-
-// keyDataPolicy corresponds to the authorization policy for keyData.
-type keyDataPolicy interface {
-	PCRPolicyCounterHandle() tpm2.Handle // Handle of PCR policy counter, or HandleNull
-
-	PCRPolicySequence() uint64 // Current sequence of PCR policy for revocation
-
-	// UpdatePCRPolicy updates the PCR policy associated with this keyDataPolicy.
-	UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcrPolicyParams) error
-
-	// SetPCRPolicy updates the PCR policy to match that associated with the
-	// supplied keyDataPolicy. The caller is responsible for ensuring that
-	// the 2 keyDataPolicies are the same type and have the same underlying
-	// static policy.
-	SetPCRPolicyFrom(src keyDataPolicy)
-
-	// ExecutePCRPolicy executes the PCR policy using the supplied authorization policy
-	// session using the supplied metadata. On success, the supplied policy session can
-	// be used for authorization.
-	ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession, hmacSession tpm2.SessionContext) error
-
-	// PCRPolicyCounterContext returns a context for the PCR policy counter
-	// associated with this keyDataPolicy. The supplied public area must match
-	// the public area of the counter associated with this policy.
-	PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic, session tpm2.SessionContext) (pcrPolicyCounterContext, error)
-
-	// ValidateAuthKey verifies that the supplied key is associated with this
-	// keyDataPolicy.
-	ValidateAuthKey(key PolicyAuthKey) error
-}
-
-// ensureSufficientORDigests turns a single digest in to a pair of identical digests.
-// This is because TPM2_PolicyOR assertions require more than one digest. This avoids
-// having a separate policy sequence when there is only a single digest, without having
-// to store duplicate digests on disk.
-func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
-	if len(digests) == 1 {
-		return tpm2.DigestList{digests[0], digests[0]}
-	}
-	return digests
 }
 
 // policyOrNode represents a collection of up to 8 digests used in a single
@@ -149,44 +85,166 @@ type policyOrTree struct {
 	leafNodes []*policyOrNode // the leaf nodes
 }
 
+// pcrPolicyCounterContext corresponds to a PCR policy counter.
+type pcrPolicyCounterContext interface {
+	Get() (uint64, error)		   // Return the current counter value
+	Increment(key PolicyAuthKey) error // Increment the counter value using the supplied key for authorization
+}
+
+// keyDataPolicy corresponds to the authorization policy for keyData.
+type keyDataPolicy interface {
+	PCRPolicyCounterHandle() tpm2.Handle // Handle of PCR policy counter, or HandleNull
+
+	PCRPolicySequence() uint64 // Current sequence of PCR policy for revocation
+
+	// UpdatePCRPolicy updates the PCR policy associated with this keyDataPolicy.
+	UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcrPolicyParams) error
+
+	// SetPCRPolicy updates the PCR policy to match that associated with the
+	// supplied keyDataPolicy. The caller is responsible for ensuring that
+	// the 2 keyDataPolicies are the same type and have the same underlying
+	// static policy.
+	SetPCRPolicyFrom(src keyDataPolicy)
+
+	// ExecutePCRPolicy executes the PCR policy using the supplied authorization policy
+	// session using the supplied metadata. On success, the supplied policy session can
+	// be used for authorization.
+	ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession, hmacSession tpm2.SessionContext) error
+
+	// PCRPolicyCounterContext returns a context for the PCR policy counter
+	// associated with this keyDataPolicy. The supplied public area must match
+	// the public area of the counter associated with this policy.
+	PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic, session tpm2.SessionContext) (pcrPolicyCounterContext, error)
+
+	// ValidateAuthKey verifies that the supplied key is associated with this
+	// keyDataPolicy.
+	ValidateAuthKey(key PolicyAuthKey) error
+}
+
 var errSessionDigestNotFound = errors.New("current session digest not found in policy data")
 
-// executeAssertions executes one or more PolicyOR assertions in order to support
-// compound policies with more than 8 conditions. It starts by searching for the
-// current session digest in one of the leaf nodes. If found, it executes a PolicyOR
-// assertion with the digests associated with that node, and then walks up through
-// its ancestors all the way to the root node, executing a PolicyOR assertion at each
-// node.
-func (t *policyOrTree) executeAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
-	// First of all, obtain the current digest of the session.
-	currentDigest, err := tpm.PolicyGetDigest(session)
+// createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
+// and is used for implementing PCR policy revocation.
+//
+// The NV index will be created with attributes that allow anyone to read the index, and an authorization
+// policy that permits TPM2_NV_Increment with a signed authorization policy.
+func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
+	nameAlg := tpm2.HashAlgorithmSHA256
+
+	updateKeyName, err := updateKey.Name()
 	if err != nil {
-		return err
+		return nil, 0, xerrors.Errorf("cannot compute name of update key: %w", err)
 	}
 
-	// Find the leaf node that contains the current digest of the session.
-	var node *policyOrNode
-	for _, n := range t.leafNodes {
-		if n.contains(currentDigest) {
-			// We've got a match!
-			node = n
-			break
+	authPolicies := computeV2PcrPolicyCounterAuthPolicies(nameAlg, updateKeyName)
+
+	trial := util.ComputeAuthPolicy(nameAlg)
+	trial.PolicyOR(authPolicies)
+
+	// Define the NV index
+	public := &tpm2.NVPublic{
+		Index:      handle,
+		NameAlg:    nameAlg,
+		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
+		AuthPolicy: trial.GetDigest(),
+		Size:       8}
+
+	index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, public, hmacSession)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// NVDefineSpace was integrity protected, so we know that we have an index with the expected public area at the handle we specified
+	// at this point.
+
+	succeeded := false
+	defer func() {
+		if succeeded {
+			return
+		}
+		tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, hmacSession)
+	}()
+
+	// Begin a session to initialize the index.
+	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, nameAlg)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tpm.FlushContext(policySession)
+
+	// Execute the policy assertions
+	if err := tpm.PolicyNvWritten(policySession, false); err != nil {
+		return nil, 0, err
+	}
+	if err := tpm.PolicyOR(policySession, authPolicies); err != nil {
+		return nil, 0, err
+	}
+
+	// Initialize the index
+	if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
+		return nil, 0, err
+	}
+
+	// The index has a different name now that it has been written, so update the public area we return so that it can be used
+	// to construct an authorization policy.
+	public.Attrs |= tpm2.AttrNVWritten
+
+	value, err := tpm.NVReadCounter(index, index, hmacSession)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	succeeded = true
+	return public, value, nil
+}
+
+// ensureSufficientORDigests turns a single digest in to a pair of identical digests.
+// This is because TPM2_PolicyOR assertions require more than one digest. This avoids
+// having a separate policy sequence when there is only a single digest, without having
+// to store duplicate digests on disk.
+func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
+	if len(digests) == 1 {
+		return tpm2.DigestList{digests[0], digests[0]}
+	}
+	return digests
+}
+
+// newKeyDataPolicy creates a keyDataPolicy containing a static authorization policy that asserts:
+// - The PCR policy created by updatePcrPolicy and authorized by key is valid and has been satisfied (by way
+//   of a PolicyAuthorize assertion, which allows the PCR policy to be updated without creating a new sealed
+//   key object).
+// - Knowledge of the the authorization value for the entity on which the policy session is used has been
+//   demonstrated by the caller - this will be used in the future as part of the passphrase integration.
+//
+// PCR policies support revocation by way of a NV counter. The revocation check is part of the PCR policy,
+// but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
+// assertion, which can be used verify that a NV index is associated with this policy.
+func newKeyDataPolicy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
+	keyName, err := key.Name()
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
+	}
+
+	pcrPolicyCounterHandle := tpm2.HandleNull
+	var pcrPolicyCounterName tpm2.Name
+	if pcrPolicyCounterPub != nil {
+		pcrPolicyCounterHandle = pcrPolicyCounterPub.Index
+		pcrPolicyCounterName, err = pcrPolicyCounterPub.Name()
+		if err != nil {
+			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
 		}
 	}
 
-	if node == nil {
-		return errSessionDigestNotFound
-	}
+	trial := util.ComputeAuthPolicy(alg)
+	trial.PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
+	trial.PolicyAuthValue()
 
-	// Execute a TPM2_PolicyOR assertion on the digests in the leaf node and then traverse up the tree to the root node, executing
-	// TPM2_PolicyOR assertions along the way.
-	for node != nil {
-		if err := node.executeAssertion(tpm, session); err != nil {
-			return err
-		}
-		node = node.parent
-	}
-	return nil
+	return &keyDataPolicy_v2{
+		StaticData: &staticPolicyData_v2{
+			AuthPublicKey:          key,
+			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
+		PCRData: &pcrPolicyData_v2{
+			PolicySequence: pcrPolicySequence}}, trial.GetDigest(), nil
 }
 
 // newPolicyOrTree creates a new policyOrTree from the supplied digests
@@ -264,117 +322,59 @@ func newPolicyOrTree(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, dige
 	return out, nil
 }
 
-// createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
-// and is used for implementing PCR policy revocation.
-//
-// The NV index will be created with attributes that allow anyone to read the index, and an authorization
-// policy that permits TPM2_NV_Increment with a signed authorization policy.
-func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
-	nameAlg := tpm2.HashAlgorithmSHA256
-
-	updateKeyName, err := updateKey.Name()
-	if err != nil {
-		return nil, 0, xerrors.Errorf("cannot compute name of update key: %w", err)
-	}
-
-	authPolicies := computeV2PcrPolicyCounterAuthPolicies(nameAlg, updateKeyName)
-
-	trial := util.ComputeAuthPolicy(nameAlg)
-	trial.PolicyOR(authPolicies)
-
-	// Define the NV index
-	public := &tpm2.NVPublic{
-		Index:      handle,
-		NameAlg:    nameAlg,
-		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
-		AuthPolicy: trial.GetDigest(),
-		Size:       8}
-
-	index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, public, hmacSession)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// NVDefineSpace was integrity protected, so we know that we have an index with the expected public area at the handle we specified
-	// at this point.
-
-	succeeded := false
-	defer func() {
-		if succeeded {
-			return
-		}
-		tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, hmacSession)
-	}()
-
-	// Begin a session to initialize the index.
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, nameAlg)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer tpm.FlushContext(policySession)
-
-	// Execute the policy assertions
-	if err := tpm.PolicyNvWritten(policySession, false); err != nil {
-		return nil, 0, err
-	}
-	if err := tpm.PolicyOR(policySession, authPolicies); err != nil {
-		return nil, 0, err
-	}
-
-	// Initialize the index
-	if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
-		return nil, 0, err
-	}
-
-	// The index has a different name now that it has been written, so update the public area we return so that it can be used
-	// to construct an authorization policy.
-	public.Attrs |= tpm2.AttrNVWritten
-
-	value, err := tpm.NVReadCounter(index, index, hmacSession)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	succeeded = true
-	return public, value, nil
+type policyDataError struct {
+	err error
 }
 
-// newKeyDataPolicy creates a keyDataPolicy containing a static authorization policy that asserts:
-// - The PCR policy created by updatePcrPolicy and authorized by key is valid and has been satisfied (by way
-//   of a PolicyAuthorize assertion, which allows the PCR policy to be updated without creating a new sealed
-//   key object).
-// - Knowledge of the the authorization value for the entity on which the policy session is used has been
-//   demonstrated by the caller - this will be used in the future as part of the passphrase integration.
-//
-// PCR policies support revocation by way of a NV counter. The revocation check is part of the PCR policy,
-// but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
-// assertion, which can be used verify that a NV index is associated with this policy.
-func newKeyDataPolicy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
-	keyName, err := key.Name()
+func (e policyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e policyDataError) Unwrap() error {
+	return e.err
+}
+
+func isPolicyDataError(err error) bool {
+	var e policyDataError
+	return xerrors.As(err, &e)
+}
+
+// executeAssertions executes one or more PolicyOR assertions in order to support
+// compound policies with more than 8 conditions. It starts by searching for the
+// current session digest in one of the leaf nodes. If found, it executes a PolicyOR
+// assertion with the digests associated with that node, and then walks up through
+// its ancestors all the way to the root node, executing a PolicyOR assertion at each
+// node.
+func (t *policyOrTree) executeAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+	// First of all, obtain the current digest of the session.
+	currentDigest, err := tpm.PolicyGetDigest(session)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
+		return err
 	}
 
-	pcrPolicyCounterHandle := tpm2.HandleNull
-	var pcrPolicyCounterName tpm2.Name
-	if pcrPolicyCounterPub != nil {
-		pcrPolicyCounterHandle = pcrPolicyCounterPub.Index
-		pcrPolicyCounterName, err = pcrPolicyCounterPub.Name()
-		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
+	// Find the leaf node that contains the current digest of the session.
+	var node *policyOrNode
+	for _, n := range t.leafNodes {
+		if n.contains(currentDigest) {
+			// We've got a match!
+			node = n
+			break
 		}
 	}
 
-	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
-	trial.PolicyAuthValue()
+	if node == nil {
+		return errSessionDigestNotFound
+	}
 
-	return &keyDataPolicy_v2{
-		StaticData: &staticPolicyData_v2{
-			AuthPublicKey:          key,
-			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
-		PCRData: &pcrPolicyData_v2{
-			PolicySequence: pcrPolicySequence}}, trial.GetDigest(), nil
+	// Execute a TPM2_PolicyOR assertion on the digests in the leaf node and then traverse up the tree to the root node, executing
+	// TPM2_PolicyOR assertions along the way.
+	for node != nil {
+		if err := node.executeAssertion(tpm, session); err != nil {
+			return err
+		}
+		node = node.parent
+	}
+	return nil
 }
 
 // BlockPCRProtectionPolicies inserts a fence in to the specific PCRs for all active PCR banks, in order to
