@@ -22,6 +22,7 @@ package luks2
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -32,6 +33,8 @@ import (
 	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot/internal/luks2/internal"
 )
 
 const (
@@ -41,7 +44,34 @@ const (
 )
 
 var (
+	// ErrMissingCryptsetupFeature is returned from some functions that make
+	// use of the system's cryptsetup binary, if that binary is missing some
+	// required features.
+	ErrMissingCryptsetupFeature = errors.New("cannot perform the requested operation because a required feature is missing from cryptsetup")
+
+	features Features
+
 	keySize = 64
+)
+
+// Features indicates the set of features supported by this package,
+// determined by the features of the system's cryptsetup binary.
+type Features int
+
+const (
+	// FeatureHeaderSizeSetting indicates that the header size settings can be
+	// specified when using the Format API. This was introduced to cryptsetup by:
+	// https://gitlab.com/cryptsetup/cryptsetup/-/commit/ec07927b55fa83f8a3980ea7b0cc0dd8032927f0
+	FeatureHeaderSizeSetting Features = 1 << iota
+
+	// FeatureTokenImport indicates that ImportToken can be used. Token imports were
+	// introduced to cryptsetup by
+	// https://gitlab.com/cryptsetup/cryptsetup/-/commit/cc27088df92b669df7649217c4a64dc72f21987a
+	FeatureTokenImport
+
+	// FeatureTokenReplace indicates that tokens can be atomically replaced with
+	// ImportToken (yet to be implemented).
+	FeatureTokenReplace
 )
 
 // cryptsetupCmd is a helper for running the cryptsetup command. If stdin is supplied, data read
@@ -74,6 +104,34 @@ func cryptsetupCmd(stdin io.Reader, callback func(cmd *exec.Cmd) error, args ...
 	}
 
 	return nil
+}
+
+// DetectCryptsetupFeatures returns the features supported by the cryptsetup binary
+// on this system.
+func DetectCryptsetupFeatures() Features {
+	internal.FeaturesOnce.Do(func() {
+		features = 0
+
+		cmd := exec.Command("cryptsetup", "--version")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			var major, minor, patch int
+			n, _ := fmt.Sscanf(string(out), "cryptsetup %d.%d.%d", &major, &minor, &patch)
+			if n == 3 {
+				if major >= 3 || (major == 2 && minor >= 1) {
+					features |= FeatureHeaderSizeSetting
+				}
+				if major >= 3 || (major == 2 && minor >= 1) || (major == 2 && minor == 0 && patch >= 3) {
+					features |= FeatureTokenImport
+				}
+			}
+		}
+		if err := cryptsetupCmd(nil, nil, "--test-args", "token", "import", "--token-id", "0",
+			"--token-replace", "/dev/null"); err == nil {
+			features |= FeatureTokenReplace
+		}
+	})
+	return features
 }
 
 // KDFOptions specifies parameters for the Argon2 KDF.
@@ -158,6 +216,11 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 	if opts == nil {
 		var defaultOpts FormatOptions
 		opts = &defaultOpts
+	}
+
+	if (opts.MetadataKiBSize != 0 || opts.KeyslotsAreaKiBSize != 0) &&
+		DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
+		return ErrMissingCryptsetupFeature
 	}
 
 	args := []string{
@@ -278,7 +341,12 @@ func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) 
 }
 
 // ImportToken imports the supplied token in to the JSON metadata area of the specified LUKS2 container.
+// This requires FeatureTokenImport.
 func ImportToken(devicePath string, token Token) error {
+	if DetectCryptsetupFeatures()&FeatureTokenImport == 0 {
+		return ErrMissingCryptsetupFeature
+	}
+
 	tokenJSON, err := json.Marshal(token)
 	if err != nil {
 		return xerrors.Errorf("cannot serialize token: %w", err)

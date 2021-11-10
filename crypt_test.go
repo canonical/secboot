@@ -150,6 +150,13 @@ action=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
+	--version)
+	    echo cryptsetup 2.1.0
+	    exit 0
+	    ;;
+	--test-args)
+	    exit 0
+	    ;;
         --key-file)
             keyfile=$2
             shift 2
@@ -198,6 +205,11 @@ dump_key "$new_keyfile" "%[2]s.$invocation"
 
 	s.mockCryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, s.cryptsetupKey, s.cryptsetupNewkey, s.cryptsetupInvocationCountDir))
 	s.AddCleanup(s.mockCryptsetup.Restore)
+
+	luks2test.ResetCryptsetupFeatures()
+	s.AddCleanup(luks2test.ResetCryptsetupFeatures)
+	c.Check(luks2.DetectCryptsetupFeatures(), Equals, luks2.FeatureHeaderSizeSetting|luks2.FeatureTokenImport|luks2.FeatureTokenReplace)
+	s.mockCryptsetup.ForgetCalls()
 
 	sdAskPasswordBottom := `
 head -1 %[1]s
@@ -1709,6 +1721,10 @@ func (s *cryptSuiteExpensive) TestInitializeLUKS2Container(c *C) {
 }
 
 func (s *cryptSuiteExpensive) TestInitializeLUKS2ContainerWithOptions(c *C) {
+	if luks2.DetectCryptsetupFeatures()&luks2.FeatureHeaderSizeSetting == 0 {
+		c.Skip("cryptsetup doesn't support --luks2-metadata-size or --luks2-keyslots-size")
+	}
+
 	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
 		MetadataKiBSize:     2 * 1024, // 2MiB
 		KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
