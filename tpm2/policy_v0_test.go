@@ -1078,7 +1078,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree3(c *C) {
 		},
 	})
 	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
-	c.Check(err, ErrorMatches, "cannot execute PCR assertions: invalid data")
+	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: invalid data")
 }
 
 func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree4(c *C) {

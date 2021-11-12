@@ -319,7 +319,7 @@ func (d *pcrPolicyData_v0) executePcrAssertions(tpm *tpm2.TPMContext, session tp
 		switch {
 		case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1):
 			// A digest list in the tree is invalid.
-			return policyDataError{errors.New("invalid data")}
+			return policyDataError{errors.New("cannot execute PolicyOR assertions: invalid data")}
 		case xerrors.Is(err, errSessionDigestNotFound):
 			// Current session digest does not appear in any leaf node.
 			return policyDataError{err}

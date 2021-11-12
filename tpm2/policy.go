@@ -41,8 +41,8 @@ const (
 type pcrPolicyParams struct {
 	key PolicyAuthKey // Key used to authorize the generated dynamic authorization policy
 
-	pcrs		  tpm2.PCRSelectionList // PCR selection
-	pcrDigests	  tpm2.DigestList       // Approved PCR digests
+	pcrs       tpm2.PCRSelectionList // PCR selection
+	pcrDigests tpm2.DigestList       // Approved PCR digests
 
 	// policyCounterName is the name of the NV index used for revoking authorization
 	// policies. The name must be associated with the handle in the keyDataPolicy,
@@ -87,7 +87,7 @@ type policyOrTree struct {
 
 // pcrPolicyCounterContext corresponds to a PCR policy counter.
 type pcrPolicyCounterContext interface {
-	Get() (uint64, error)		   // Return the current counter value
+	Get() (uint64, error)              // Return the current counter value
 	Increment(key PolicyAuthKey) error // Increment the counter value using the supplied key for authorization
 }
 
@@ -120,8 +120,6 @@ type keyDataPolicy interface {
 	// keyDataPolicy.
 	ValidateAuthKey(key PolicyAuthKey) error
 }
-
-var errSessionDigestNotFound = errors.New("current session digest not found in policy data")
 
 // createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
 // and is used for implementing PCR policy revocation.
@@ -338,6 +336,8 @@ func isPolicyDataError(err error) bool {
 	var e policyDataError
 	return xerrors.As(err, &e)
 }
+
+var errSessionDigestNotFound = errors.New("current session digest not found in policy data")
 
 // executeAssertions executes one or more PolicyOR assertions in order to support
 // compound policies with more than 8 conditions. It starts by searching for the

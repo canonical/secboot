@@ -94,7 +94,7 @@ func (s *sealSuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 		_, _, err = k.UnsealFromTPM(s.TPM())
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: " +
+		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }
@@ -287,7 +287,7 @@ func (s *sealSuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMMultipl
 			c.Assert(err, IsNil)
 
 			_, _, err = k.UnsealFromTPM(s.TPM())
-			c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: " +
+			c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 				"cannot execute PolicyOR assertions: current session digest not found in policy data")
 		}
 	}
@@ -453,7 +453,7 @@ func (s *sealSuite) TestSealKeyToTPMErrorHandlingInvalidPCRProfile(c *C) {
 				NewPCRProtectionProfile(),
 				NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 8)),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
-	c.Check(err, ErrorMatches, "cannot create initial PCR policy: cannot compute PCR digests from protection profile: " +
+	c.Check(err, ErrorMatches, "cannot create initial PCR policy: cannot compute PCR digests from protection profile: "+
 		"not all branches contain values for the same sets of PCRs")
 }
 
@@ -513,7 +513,7 @@ func (s *sealSuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreation
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 		_, _, err = k.UnsealFromTPM(s.TPM())
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: " +
+		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }
@@ -568,7 +568,7 @@ func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingInvalidPCRPro
 	err := s.testSealKeyToExternalTPMStorageKeyErrorHandling(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
-	c.Check(err, ErrorMatches, "cannot create initial PCR policy: cannot compute PCR digests from protection profile: " +
+	c.Check(err, ErrorMatches, "cannot create initial PCR policy: cannot compute PCR digests from protection profile: "+
 		"cannot read current value of PCR 7 from bank TPM_ALG_SHA256: no TPM context")
 }
 
@@ -618,7 +618,7 @@ func (s *sealSuite) testUpdatePCRProtectionPolicy(c *C, params *KeyCreationParam
 	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 	c.Check(err, IsNil)
 	_, _, err = k.UnsealFromTPM(s.TPM())
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: " +
+	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -724,7 +724,7 @@ func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultiple(c *C) {
 
 	for _, k := range keys {
 		_, _, err = k.UnsealFromTPM(s.TPM())
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: " +
+		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }

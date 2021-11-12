@@ -57,20 +57,6 @@ type KeyDataPolicy = keyDataPolicy
 type KeyDataPolicy_v0 = keyDataPolicy_v0
 type KeyDataPolicy_v1 = keyDataPolicy_v1
 type KeyDataPolicy_v2 = keyDataPolicy_v2
-type PcrPolicyData_v0 = pcrPolicyData_v0
-type PcrPolicyData_v1 = pcrPolicyData_v1
-type PcrPolicyData_v2 = pcrPolicyData_v2
-
-type PcrPolicyParams = pcrPolicyParams
-
-func NewPcrPolicyParams(key PolicyAuthKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name) *PcrPolicyParams {
-	return &PcrPolicyParams{
-		key:               key,
-		pcrs:              pcrs,
-		pcrDigests:        pcrDigests,
-		policyCounterName: policyCounterName}
-}
-
 type PolicyDataError = policyDataError
 type PolicyOrData_v0 = policyOrData_v0
 
@@ -102,6 +88,20 @@ func (t *PolicyOrTree) LeafNodes() []*PolicyOrNode {
 
 func (t *PolicyOrTree) ExecuteAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
 	return t.executeAssertions(tpm, session)
+}
+
+type PcrPolicyData_v0 = pcrPolicyData_v0
+type PcrPolicyData_v1 = pcrPolicyData_v1
+type PcrPolicyData_v2 = pcrPolicyData_v2
+
+type PcrPolicyParams = pcrPolicyParams
+
+func NewPcrPolicyParams(key PolicyAuthKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name) *PcrPolicyParams {
+	return &PcrPolicyParams{
+		key:               key,
+		pcrs:              pcrs,
+		pcrDigests:        pcrDigests,
+		policyCounterName: policyCounterName}
 }
 
 type SnapModelHasher = snapModelHasher
