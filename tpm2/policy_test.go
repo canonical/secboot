@@ -128,7 +128,7 @@ AwEHoUQDQgAEkxoOhf6oe3ZE91Kl97qMH/WndK1B0gD7nuqXzPnwtxBBWhTF6pbw
 	publicKey := CreateTPMPublicAreaForECDSAKey(&key.PublicKey)
 	publicKeyName, _ := publicKey.Name()
 
-	pcrPolicyCounterAuthPolicies := ComputePcrPolicyCounterAuthPolicies(tpm2.HashAlgorithmSHA256, publicKeyName)
+	pcrPolicyCounterAuthPolicies := ComputeV1PcrPolicyCounterAuthPolicies(tpm2.HashAlgorithmSHA256, publicKeyName)
 	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
 	trial.PolicyOR(pcrPolicyCounterAuthPolicies)
 
@@ -739,7 +739,7 @@ func TestComputeDynamicPolicy(t *testing.T) {
 
 				h := data.signAlg.NewHash()
 				h.Write(dataout.AuthorizedPolicy())
-				h.Write(ComputePcrPolicyRefFromCounterName(data.policyCounterName))
+				h.Write(ComputeV1PcrPolicyRefFromCounterName(data.policyCounterName))
 
 				if ok := ecdsa.Verify(&key.PublicKey, h.Sum(nil),
 					(&big.Int{}).SetBytes(dataout.AuthorizedPolicySignature().Signature.ECDSA.SignatureR),
@@ -1573,7 +1573,7 @@ func TestExecutePolicy(t *testing.T) {
 			alg := d.AuthorizedPolicySignature().Signature.ECDSA.Hash
 			h := alg.NewHash()
 			h.Write(d.AuthorizedPolicy())
-			h.Write(ComputePcrPolicyRefFromCounterContext(policyCounter))
+			h.Write(ComputeV1PcrPolicyRefFromCounterContext(policyCounter))
 
 			sigR, sigS, err := ecdsa.Sign(testutil.RandReader, key, h.Sum(nil))
 			if err != nil {
@@ -1640,7 +1640,7 @@ func TestExecutePolicy(t *testing.T) {
 			alg := d.AuthorizedPolicySignature().Signature.ECDSA.Hash
 			h := alg.NewHash()
 			h.Write(d.AuthorizedPolicy())
-			h.Write(ComputePcrPolicyRefFromCounterContext(policyCounter))
+			h.Write(ComputeV1PcrPolicyRefFromCounterContext(policyCounter))
 
 			sigR, sigS, err := ecdsa.Sign(testutil.RandReader, key, h.Sum(nil))
 			if err != nil {
