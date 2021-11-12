@@ -100,7 +100,7 @@ func (s *keyDataV2Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
 		DynamicPolicyData: &DynamicPolicyDataRaw_v0{
 			PCRSelection:     tpm2.PCRSelectionList{},
-			PCROrData:        PolicyOrDataTree{},
+			PCROrData:        PolicyOrData_v0{},
 			PolicyCount:      count,
 			AuthorizedPolicy: make(tpm2.Digest, 32),
 			AuthorizedPolicySignature: &tpm2.Signature{
@@ -149,7 +149,7 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 			PCRPolicyCounterHandle: tpm2.HandleNull},
 		DynamicPolicyData: &DynamicPolicyDataRaw_v0{
 			PCRSelection:     tpm2.PCRSelectionList{},
-			PCROrData:        PolicyOrDataTree{},
+			PCROrData:        PolicyOrData_v0{},
 			AuthorizedPolicy: make(tpm2.Digest, 32),
 			AuthorizedPolicySignature: &tpm2.Signature{
 				SigAlg: tpm2.SigSchemeAlgECDSA,

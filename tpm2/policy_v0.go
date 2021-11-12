@@ -25,6 +25,7 @@ import (
 	"crypto/rsa"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/util"
@@ -68,10 +69,184 @@ func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKey
 	return out
 }
 
+type policyOrDataNode_v0 struct {
+	Next    uint32 // Index of the parent node in the containing slice, relative to this node. Zero indicates that this is the root node
+	Digests tpm2.DigestList
+}
+
+// policyOrData_v0 is the version 0 on-disk representation of policyOrTree.
+// It is a flattened tree which suitable for serializing - the tree is just
+// a slice of nodes, with each node specifying an offset to its parent node.
+type policyOrData_v0 []*policyOrDataNode_v0
+
+type policyOrDataResolver_v0 struct {
+	src         []*policyOrDataNode_v0
+	all         []*policyOrNode
+	numResolved int
+	depth       int
+}
+
+func (r *policyOrDataResolver_v0) resolveOne(n uint32) (*policyOrNode, error) {
+	// newPolicyOrTree limits the depth by limiting the
+	// number of digests. Limit the depth when constructing
+	// a tree from its serialized format too.
+	r.depth += 1
+	defer func() { r.depth -= 1 }()
+	if r.depth > policyOrMaxDepth {
+		return nil, errors.New("too deep")
+	}
+
+	if int(n) >= len(r.all) {
+		// A node is indexing its parent from outside of the tree.
+		return nil, fmt.Errorf("index %d out of range", n)
+	}
+
+	node := r.all[n]
+	if node == nil {
+		// This is a node we haven't resolved yet.
+		// Create the resolved node and copy the digests across.
+		node = new(policyOrNode)
+		node.digests = make(tpm2.DigestList, len(r.src[n].Digests))
+		copy(node.digests, r.src[n].Digests)
+
+		// Bounds check the offset to the parent node.
+		if r.src[n].Next > policyOrMaxDigests/8 {
+			return nil, fmt.Errorf("next value too large (%d)", r.src[n].Next)
+		}
+
+		if r.src[n].Next != 0 {
+			// This is not the root node. Resolve the parent node.
+			parent, err := r.resolveOne(n + r.src[n].Next)
+			if err != nil {
+				return nil, err
+			}
+			node.parent = parent
+		}
+
+		// Save the resolved node so we can return the same one for
+		// other children.
+		r.numResolved += 1
+		r.all[n] = node
+	}
+	return node, nil
+}
+
+// resolve converts the flattened tree in to an actual tree, suitable for
+// executing assertions on.
+func (t policyOrData_v0) resolve() (out *policyOrTree, err error) {
+	if len(t) == 0 {
+		return nil, errors.New("no nodes")
+	}
+
+	// The offset to the first non-leaf node tells us how many leaf
+	// nodes we have.
+	numLeafNodes := t[0].Next
+	if numLeafNodes == 0 {
+		// This is a tree containing a single node.
+		numLeafNodes = 1
+	}
+
+	if numLeafNodes > policyOrMaxDigests/8 {
+		return nil, fmt.Errorf("too many leaf nodes (%d)", numLeafNodes)
+	}
+
+	resolver := &policyOrDataResolver_v0{
+		src: t,
+		all: make([]*policyOrNode, len(t))}
+
+	out = new(policyOrTree)
+
+	// Resolve each leaf node.
+	for i := uint32(0); i < numLeafNodes; i++ {
+		leaf, err := resolver.resolveOne(i)
+		if err != nil {
+			return nil, err
+		}
+		out.leafNodes = append(out.leafNodes, leaf)
+	}
+
+	if resolver.numResolved < len(t) {
+		// The data contains nodes that aren't reachable, so consider it to
+		// be invalid.
+		return nil, errors.New("unreachable nodes")
+	}
+
+	return out, nil
+}
+
+// newPolicyOrDataV0 creates a new flattened tree from the supplied digests
+// for creating a policy that can be satisified by multiple conditions. It also
+// extends the supplied trial policy.
+//
+// It works by turning the supplied list of digests (each corresponding to some
+// condition) into a tree of nodes, with each node containing no more than 8 digests
+// that can be used in a single PolicyOR assertion. The leaf nodes contain the
+// supplied digests, and correspond to the first PolicyOR assertion. The root node
+// contains the digests for the final PolicyOR execution, and the policy is executed
+// by finding the leaf node with the current session digest and then walking up the
+// tree to the root node, executing a PolicyOR assertion at each step.
+//
+// It returns an error if no digests are supplied or if too many digests are
+// supplied. The returned tree won't have a depth of more than 4.
+func newPolicyOrDataV0(tree *policyOrTree) (out policyOrData_v0) {
+	// Track source nodes to index in the flattened tree.
+	srcNodesToIndex := make(map[*policyOrNode]int)
+
+	// Start with leaf nodes
+	current := tree.leafNodes
+
+	for current != nil {
+		// The outer loop runs on each level of the tree.
+
+		// Keep an ordered list of parent nodes collected from the
+		// current nodes.
+		var next []*policyOrNode
+		seen := make(map[*policyOrNode]struct{})
+
+		// Process the nodes in the current level.
+		for _, node := range current {
+			// Append the node to the flattened tree.
+			srcNodesToIndex[node] = len(out)
+			out = append(out, &policyOrDataNode_v0{Digests: node.digests})
+
+			if node.parent == nil {
+				// This is the root node
+				if len(current) != 1 {
+					panic("node without parent")
+				}
+				break
+			}
+
+			// Record the parent node for processing the next
+			// level of the tree.
+			if _, ok := seen[node.parent]; !ok {
+				seen[node.parent] = struct{}{}
+				next = append(next, node.parent)
+			}
+		}
+
+		// Move to the parent nodes.
+		current = next
+	}
+
+	// Link each node to its parent by setting the offset values.
+	for node, index := range srcNodesToIndex {
+		if node.parent == nil {
+			// This is the root
+			continue
+		}
+
+		parentIndex := srcNodesToIndex[node.parent]
+		out[index].Next = uint32(parentIndex - index)
+	}
+
+	return out
+}
+
 // dynamicPolicyDataRaw_v0 is version 0 of the on-disk format of dynamicPolicyData.
 type dynamicPolicyDataRaw_v0 struct {
 	PCRSelection              tpm2.PCRSelectionList
-	PCROrData                 policyOrDataTree
+	PCROrData                 policyOrData_v0
 	PolicyCount               uint64
 	AuthorizedPolicy          tpm2.Digest
 	AuthorizedPolicySignature *tpm2.Signature
@@ -141,7 +316,10 @@ func computeDynamicPolicyV0(alg tpm2.HashAlgorithmId, input *dynamicPolicyComput
 	}
 
 	trial := util.ComputeAuthPolicy(alg)
-	pcrOrData := computePolicyORData(alg, trial, pcrOrDigests)
+	pcrOrData, err := newPolicyOrTree(alg, trial, pcrOrDigests)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create tree for PolicyOR digests: %w", err)
+	}
 
 	if len(input.policyCounterName) > 0 {
 		operandB := make([]byte, 8)
@@ -171,7 +349,7 @@ func computeDynamicPolicyV0(alg tpm2.HashAlgorithmId, input *dynamicPolicyComput
 
 	return &dynamicPolicyData{
 		pcrSelection:              input.pcrs,
-		pcrOrData:                 pcrOrData,
+		pcrOrData:                 newPolicyOrDataV0(pcrOrData),
 		policyCount:               input.policyCount,
 		authorizedPolicy:          authorizedPolicy,
 		authorizedPolicySignature: &signature}, nil
@@ -183,15 +361,23 @@ func executePolicySessionV0(tpm *tpm2.TPMContext, policySession tpm2.SessionCont
 		return xerrors.Errorf("cannot execute PCR assertion: %w", err)
 	}
 
-	if err := executePolicyORAssertions(tpm, policySession, dynamicInput.pcrOrData); err != nil {
+	pcrOrTree, err := dynamicInput.pcrOrData.resolve()
+	if err != nil {
+		return dynamicPolicyDataError{xerrors.Errorf("cannot resolve PolicyOR tree: %w", err)}
+	}
+
+	if err := pcrOrTree.executeAssertions(tpm, policySession); err != nil {
 		switch {
-		case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.CommandPolicyGetDigest):
-			return xerrors.Errorf("cannot execute OR assertions: %w", err)
 		case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1):
-			// The dynamic authorization policy data is invalid.
-			return dynamicPolicyDataError{errors.New("cannot complete OR assertions: invalid data")}
+			// A digest list in the tree is invalid.
+			return dynamicPolicyDataError{fmt.Errorf("cannot execute PolicyOR assertions: invalid data")}
+		case xerrors.Is(err, errSessionDigestNotFound):
+			// Current session digest does not appear in any leaf node.
+			return dynamicPolicyDataError{xerrors.Errorf("cannot execute PolicyOR assertions: %w", err)}
+		default:
+			// Unexpected error
+			return err
 		}
-		return dynamicPolicyDataError{xerrors.Errorf("cannot complete OR assertions: %w", err)}
 	}
 
 	pcrPolicyCounterHandle := staticInput.pcrPolicyCounterHandle

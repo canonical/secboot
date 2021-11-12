@@ -25,6 +25,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/util"
@@ -119,7 +120,10 @@ func computeDynamicPolicyV1(alg tpm2.HashAlgorithmId, input *dynamicPolicyComput
 	}
 
 	trial := util.ComputeAuthPolicy(alg)
-	pcrOrData := computePolicyORData(alg, trial, pcrOrDigests)
+	pcrOrData, err := newPolicyOrTree(alg, trial, pcrOrDigests)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create tree for PolicyOR digests: %w", err)
+	}
 
 	if len(input.policyCounterName) > 0 {
 		operandB := make([]byte, 8)
@@ -150,7 +154,7 @@ func computeDynamicPolicyV1(alg tpm2.HashAlgorithmId, input *dynamicPolicyComput
 
 	return &dynamicPolicyData{
 		pcrSelection:              input.pcrs,
-		pcrOrData:                 pcrOrData,
+		pcrOrData:                 newPolicyOrDataV0(pcrOrData),
 		policyCount:               input.policyCount,
 		authorizedPolicy:          authorizedPolicy,
 		authorizedPolicySignature: &signature}, nil
@@ -162,15 +166,23 @@ func executePolicySessionV1(tpm *tpm2.TPMContext, policySession tpm2.SessionCont
 		return xerrors.Errorf("cannot execute PCR assertion: %w", err)
 	}
 
-	if err := executePolicyORAssertions(tpm, policySession, dynamicInput.pcrOrData); err != nil {
+	pcrOrTree, err := dynamicInput.pcrOrData.resolve()
+	if err != nil {
+		return dynamicPolicyDataError{xerrors.Errorf("cannot resolve PolicyOR tree: %w", err)}
+	}
+
+	if err := pcrOrTree.executeAssertions(tpm, policySession); err != nil {
 		switch {
-		case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.CommandPolicyGetDigest):
-			return xerrors.Errorf("cannot execute OR assertions: %w", err)
 		case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1):
-			// The dynamic authorization policy data is invalid.
-			return dynamicPolicyDataError{errors.New("cannot complete OR assertions: invalid data")}
+			// A digest list in the tree is invalid.
+			return dynamicPolicyDataError{fmt.Errorf("cannot execute PolicyOR assertions: invalid data")}
+		case xerrors.Is(err, errSessionDigestNotFound):
+			// Current session digest does not appear in any leaf node.
+			return dynamicPolicyDataError{xerrors.Errorf("cannot execute PolicyOR assertions: %w", err)}
+		default:
+			// Unexpected error
+			return err
 		}
-		return dynamicPolicyDataError{xerrors.Errorf("cannot complete OR assertions: %w", err)}
 	}
 
 	pcrPolicyCounterHandle := staticInput.pcrPolicyCounterHandle
