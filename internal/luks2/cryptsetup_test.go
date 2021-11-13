@@ -463,6 +463,7 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 
 type testImportTokenData struct {
 	token            Token
+	options          *ImportTokenOptions
 	expectedKeyslots []int
 	expectedParams   map[string]interface{}
 }
@@ -478,13 +479,18 @@ func (s *cryptsetupSuite) testImportToken(c *C, data *testImportTokenData) {
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
-	c.Check(ImportToken(devicePath, data.token), IsNil)
+	c.Check(ImportToken(devicePath, data.token, data.options), IsNil)
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 
+	id := 0
+	if data.options != nil && data.options.Id != AnyId {
+		id = data.options.Id
+	}
+
 	c.Assert(info.Metadata.Tokens, HasLen, 1)
-	token, ok := info.Metadata.Tokens[0].(*GenericToken)
+	token, ok := info.Metadata.Tokens[id].(*GenericToken)
 	c.Assert(ok, Equals, true)
 	c.Check(token.TokenType, Equals, data.token.Type())
 	c.Check(token.TokenKeyslots, DeepEquals, data.token.Keyslots())
@@ -544,6 +550,44 @@ func (s *cryptsetupSuite) TestImportToken3(c *C) {
 			"secboot-b": base64.StdEncoding.EncodeToString(data)}})
 }
 
+func (s *cryptsetupSuite) TestImportToken4(c *C) {
+	// Test with options
+	data := make([]byte, 128)
+	rand.Read(data)
+
+	s.testImportToken(c, &testImportTokenData{
+		token: &GenericToken{
+			TokenType:     "secboot-test",
+			TokenKeyslots: []int{0},
+			Params: map[string]interface{}{
+				"secboot-a": 50,
+				"secboot-b": data}},
+		options:          &ImportTokenOptions{Id: AnyId},
+		expectedKeyslots: []int{0},
+		expectedParams: map[string]interface{}{
+			"secboot-a": float64(50),
+			"secboot-b": base64.StdEncoding.EncodeToString(data)}})
+}
+
+func (s *cryptsetupSuite) TestImportToken5(c *C) {
+	// Test with specific ID
+	data := make([]byte, 128)
+	rand.Read(data)
+
+	s.testImportToken(c, &testImportTokenData{
+		token: &GenericToken{
+			TokenType:     "secboot-test",
+			TokenKeyslots: []int{0},
+			Params: map[string]interface{}{
+				"secboot-a": 50,
+				"secboot-b": data}},
+		options:          &ImportTokenOptions{Id: 8},
+		expectedKeyslots: []int{0},
+		expectedParams: map[string]interface{}{
+			"secboot-a": float64(50),
+			"secboot-b": base64.StdEncoding.EncodeToString(data)}})
+}
+
 func (s *cryptsetupSuite) TestImportTokenUnsupported(c *C) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
@@ -556,7 +600,54 @@ func (s *cryptsetupSuite) TestImportTokenUnsupported(c *C) {
 	token := &GenericToken{
 		TokenType:     "secboot-test",
 		TokenKeyslots: []int{0}}
-	c.Check(ImportToken(devicePath, token), Equals, ErrMissingCryptsetupFeature)
+	c.Check(ImportToken(devicePath, token, nil), Equals, ErrMissingCryptsetupFeature)
+}
+
+func (s *cryptsetupSuite) TestReplaceToken(c *C) {
+	if DetectCryptsetupFeatures()&(FeatureTokenImport|FeatureTokenReplace) != FeatureTokenImport|FeatureTokenReplace {
+		c.Skip("cryptsetup doesn't support token import and replace")
+	}
+
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
+	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
+
+	token1 := &GenericToken{
+		TokenType:     "secboot-test",
+		TokenKeyslots: []int{0},
+		Params:        map[string]interface{}{"secboot-a": float64(50)}}
+	c.Check(ImportToken(devicePath, token1, nil), IsNil)
+
+	token2 := &GenericToken{
+		TokenType:     "secboot-test",
+		TokenKeyslots: []int{0},
+		Params:        map[string]interface{}{"secboot-a": float64(60)}}
+	c.Check(ImportToken(devicePath, token2, &ImportTokenOptions{Id: 8}), IsNil)
+
+	token2 = &GenericToken{
+		TokenType:     "secboot-test",
+		TokenKeyslots: []int{0},
+		Params:        map[string]interface{}{"secboot-a": float64(70)}}
+	c.Check(ImportToken(devicePath, token2, &ImportTokenOptions{Id: 8, Replace: true}), IsNil)
+
+	info, err := ReadHeader(devicePath, LockModeBlocking)
+	c.Assert(err, IsNil)
+
+	c.Assert(info.Metadata.Tokens, HasLen, 2)
+
+	token, ok := info.Metadata.Tokens[0].(*GenericToken)
+	c.Assert(ok, Equals, true)
+	c.Check(token.TokenType, Equals, token1.TokenType)
+	c.Check(token.TokenKeyslots, DeepEquals, token1.TokenKeyslots)
+	c.Check(token.Params, DeepEquals, token1.Params)
+
+	token, ok = info.Metadata.Tokens[8].(*GenericToken)
+	c.Assert(ok, Equals, true)
+	c.Check(token.TokenType, Equals, token2.TokenType)
+	c.Check(token.TokenKeyslots, DeepEquals, token2.TokenKeyslots)
+	c.Check(token.Params, DeepEquals, token2.Params)
 }
 
 type mockToken struct {
@@ -600,8 +691,8 @@ func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
 	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
-	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}), IsNil)
-	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-bar", TokenKeyslots: []int{1}}), IsNil)
+	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}, nil), IsNil)
+	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-bar", TokenKeyslots: []int{1}}, nil), IsNil)
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -635,7 +726,7 @@ func (s *cryptsetupSuite) TestRemoveNonExistantToken(c *C) {
 
 	options := FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &options), IsNil)
-	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}), IsNil)
+	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}, nil), IsNil)
 
 	c.Check(RemoveToken(devicePath, 10), ErrorMatches, "cryptsetup failed with: Token 10 is not in use.")
 
