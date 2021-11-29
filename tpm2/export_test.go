@@ -37,9 +37,9 @@ var (
 	ComputeDynamicPolicy                    = computeDynamicPolicy
 	ComputeV0PinNVIndexPostInitAuthPolicies = computeV0PinNVIndexPostInitAuthPolicies
 	CreatePcrPolicyCounter                  = createPcrPolicyCounter
-	ComputePcrPolicyCounterAuthPolicies     = computePcrPolicyCounterAuthPolicies
-	ComputePcrPolicyRefFromCounterContext   = computePcrPolicyRefFromCounterContext
-	ComputePcrPolicyRefFromCounterName      = computePcrPolicyRefFromCounterName
+	ComputeV1PcrPolicyCounterAuthPolicies   = computeV1PcrPolicyCounterAuthPolicies
+	ComputeV1PcrPolicyRefFromCounterContext = computeV1PcrPolicyRefFromCounterContext
+	ComputeV1PcrPolicyRefFromCounterName    = computeV1PcrPolicyRefFromCounterName
 	ComputePolicyORData                     = computePolicyORData
 	ComputeSnapModelDigest                  = computeSnapModelDigest
 	ComputeStaticPolicy                     = computeStaticPolicy
@@ -48,7 +48,6 @@ var (
 	IncrementPcrPolicyCounterTo             = incrementPcrPolicyCounterTo
 	IsDynamicPolicyDataError                = isDynamicPolicyDataError
 	IsStaticPolicyDataError                 = isStaticPolicyDataError
-	LockNVIndex1Attrs                       = lockNVIndex1Attrs
 	NewPcrPolicyCounterHandleV1             = newPcrPolicyCounterHandleV1
 	ReadKeyDataV0                           = readKeyDataV0
 	ReadKeyDataV1                           = readKeyDataV1

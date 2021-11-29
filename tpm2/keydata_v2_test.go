@@ -81,7 +81,7 @@ func (s *keyDataV2Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	template := tpm2_testutil.NewSealedObjectTemplate()
 
 	trial := util.ComputeAuthPolicy(template.NameAlg)
-	trial.PolicyAuthorize(ComputePcrPolicyRefFromCounterName(policyCounterName), authKeyName)
+	trial.PolicyAuthorize(ComputeV1PcrPolicyRefFromCounterName(policyCounterName), authKeyName)
 	trial.PolicyAuthValue()
 
 	template.AuthPolicy = trial.GetDigest()
@@ -129,7 +129,7 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 	mu.MustCopyValue(&pub, pub)
 
 	trial := util.ComputeAuthPolicy(pub.NameAlg)
-	trial.PolicyAuthorize(ComputePcrPolicyRefFromCounterName(nil), authKeyName)
+	trial.PolicyAuthorize(ComputeV1PcrPolicyRefFromCounterName(nil), authKeyName)
 	trial.PolicyAuthValue()
 
 	pub.AuthPolicy = trial.GetDigest()
