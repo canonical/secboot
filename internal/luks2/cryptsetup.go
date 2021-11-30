@@ -70,7 +70,8 @@ const (
 	FeatureTokenImport
 
 	// FeatureTokenReplace indicates that tokens can be atomically replaced with
-	// ImportToken (yet to be implemented).
+	// ImportToken (yet to be implemented). This was introduced to cryptsetup by:
+	// https://gitlab.com/cryptsetup/cryptsetup/-/commit/98cd52c8d7bddf5b4c1ff775158a48bbb522acb2
 	FeatureTokenReplace
 )
 
