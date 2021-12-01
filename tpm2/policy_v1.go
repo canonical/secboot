@@ -120,7 +120,7 @@ func computeDynamicPolicyV1(alg tpm2.HashAlgorithmId, input *dynamicPolicyComput
 	}
 
 	trial := util.ComputeAuthPolicy(alg)
-	pcrOrData, err := newPolicyOrTree(alg, trial, pcrOrDigests)
+	pcrOrTree, err := newPolicyOrTree(alg, trial, pcrOrDigests)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create tree for PolicyOR digests: %w", err)
 	}
@@ -154,7 +154,7 @@ func computeDynamicPolicyV1(alg tpm2.HashAlgorithmId, input *dynamicPolicyComput
 
 	return &dynamicPolicyData{
 		pcrSelection:              input.pcrs,
-		pcrOrData:                 newPolicyOrDataV0(pcrOrData),
+		pcrOrData:                 newPolicyOrDataV0(pcrOrTree),
 		policyCount:               input.policyCount,
 		authorizedPolicy:          authorizedPolicy,
 		authorizedPolicySignature: &signature}, nil
