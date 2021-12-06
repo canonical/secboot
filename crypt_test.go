@@ -1882,11 +1882,10 @@ func (s *cryptSuite) TestDeactivateVolumeErr(c *C) {
 }
 
 type testInitializeLUKS2ContainerData struct {
-	devicePath      string
-	label           string
-	key             []byte
-	opts            *InitializeLUKS2ContainerOptions
-	extraFormatArgs []string
+	devicePath string
+	label      string
+	key        []byte
+	opts       *InitializeLUKS2ContainerOptions
 }
 
 func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS2ContainerData) {
@@ -1894,10 +1893,9 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	formatArgs := []string{"cryptsetup",
 		"-q", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", "aes-xts-plain64",
-		"--key-size", "512", "--label", data.label,
-		"--pbkdf", "argon2i", "--iter-time", "100",
-	}
-	formatArgs = append(formatArgs, data.extraFormatArgs...)
+		"--key-size", "512", "--label", data.label}
+
+	formatArgs = append(formatArgs, data.opts.CryptsetupArguments()...)
 	formatArgs = append(formatArgs, data.devicePath)
 
 	c.Check(s.mockCryptsetup.Calls(), DeepEquals, [][]string{
@@ -1908,7 +1906,7 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 	c.Check(key, DeepEquals, data.key)
 }
 
-func (s *cryptSuite) TestInitializeLUKS2Container1(c *C) {
+func (s *cryptSuite) TestInitializeLUKS2Container(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/sda1",
 		label:      "data",
@@ -1916,38 +1914,64 @@ func (s *cryptSuite) TestInitializeLUKS2Container1(c *C) {
 	})
 }
 
-func (s *cryptSuite) TestInitializeLUKS2Container2(c *C) {
-	// Test with different args.
+func (s *cryptSuite) TestInitializeLUKS2ContainerDifferentArgs(c *C) {
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
 		devicePath: "/dev/vdc2",
 		label:      "test",
 		key:        s.newPrimaryKey(),
-	})
-}
-
-func (s *cryptSuite) TestInitializeLUKS2Container3(c *C) {
-	// Test with a different key
-	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
-		devicePath: "/dev/vdc2",
-		label:      "test",
-		key:        make([]byte, 32),
 	})
 }
 
 func (s *cryptSuite) TestInitializeLUKS2ContainerWithOptions(c *C) {
-	// Test with a different key
 	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
-		devicePath: "/dev/vdc2",
-		label:      "test",
+		devicePath: "/dev/sda1",
+		label:      "data",
+		key:        s.newPrimaryKey(),
+		opts:       &InitializeLUKS2ContainerOptions{},
+	})
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerWithCustomMetadataSize(c *C) {
+	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
+		devicePath: "/dev/sda1",
+		label:      "data",
 		key:        s.newPrimaryKey(),
 		opts: &InitializeLUKS2ContainerOptions{
 			MetadataKiBSize:     2 * 1024, // 2MiB
 			KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
-
 		},
-		extraFormatArgs: []string{
-			"--luks2-metadata-size", "2048k",
-			"--luks2-keyslots-size", "3072k",
+	})
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerWithCustomKDFTime(c *C) {
+	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
+		devicePath: "/dev/sda1",
+		label:      "data",
+		key:        s.newPrimaryKey(),
+		opts: &InitializeLUKS2ContainerOptions{
+			KDFOptions: &KDFOptions{TargetDuration: 100 * time.Millisecond},
+		},
+	})
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerWithCustomKDFMemory(c *C) {
+	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
+		devicePath: "/dev/sda1",
+		label:      "data",
+		key:        s.newPrimaryKey(),
+		opts: &InitializeLUKS2ContainerOptions{
+			KDFOptions: &KDFOptions{MemoryKiB: 128},
+		},
+	})
+}
+
+func (s *cryptSuite) TestInitializeLUKS2ContainerWithCustomKDFIterations(c *C) {
+	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
+		devicePath: "/dev/sda1",
+		label:      "data",
+		key:        s.newPrimaryKey(),
+		opts: &InitializeLUKS2ContainerOptions{
+			KDFOptions: &KDFOptions{ForceIterations: 10},
 		},
 	})
 }
@@ -2027,10 +2051,10 @@ func (s *cryptSuite) testChangeLUKS2KeyUsingRecoveryKey(c *C, data *testChangeLU
 	c.Check(s.mockCryptsetup.Calls()[0], DeepEquals, []string{"cryptsetup", "luksKillSlot", "--type", "luks2", "--key-file", "-", data.devicePath, "0"})
 
 	call := s.mockCryptsetup.Calls()[1]
-	c.Assert(len(call), Equals, 14)
+	c.Assert(len(call), Equals, 16)
 	c.Check(call[0:5], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file"})
 	c.Check(call[5], Matches, filepath.Join(paths.RunDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(call[6:14], DeepEquals, []string{"--pbkdf", "argon2i", "--iter-time", "100", "--key-slot", "0", data.devicePath, "-"})
+	c.Check(call[6:16], DeepEquals, []string{"--pbkdf", "argon2i", "--pbkdf-force-iterations", "4", "--pbkdf-memory", "32", "--key-slot", "0", data.devicePath, "-"})
 
 	c.Check(s.mockCryptsetup.Calls()[2], DeepEquals, []string{"cryptsetup", "config", "--priority", "prefer", "--key-slot", "0", data.devicePath})
 
@@ -2112,6 +2136,13 @@ func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *Ini
 
 	c.Check(InitializeLUKS2Container(path, "data", key, options), IsNil)
 
+	switch {
+	case options == nil:
+		options = &InitializeLUKS2ContainerOptions{KDFOptions: &KDFOptions{MemoryKiB: 32, ForceIterations: 4}}
+	case options.KDFOptions == nil:
+		options.KDFOptions = &KDFOptions{MemoryKiB: 32, ForceIterations: 4}
+	}
+
 	info, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
 	c.Assert(err, IsNil)
 
@@ -2125,33 +2156,48 @@ func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *Ini
 	c.Check(info.Metadata.Tokens, HasLen, 0)
 
 	expectedMetadataSize := uint64(16 * 1024)
-	if options != nil && options.MetadataKiBSize > 0 {
+	if options.MetadataKiBSize > 0 {
 		expectedMetadataSize = uint64(options.MetadataKiBSize * 1024)
 	}
 	expectedKeyslotsSize := uint64(16*1024*1024) - (2 * expectedMetadataSize)
-	if options != nil && options.KeyslotsAreaKiBSize > 0 {
+	if options.KeyslotsAreaKiBSize > 0 {
 		expectedKeyslotsSize = uint64(options.KeyslotsAreaKiBSize * 1024)
 	}
 
 	c.Check(info.Metadata.Config.JSONSize, Equals, expectedMetadataSize-uint64(4*1024))
 	c.Check(info.Metadata.Config.KeyslotsSize, Equals, expectedKeyslotsSize)
 
-	expectedKDFTime := 100 * time.Millisecond
+	expectedMemoryKiB := 1 * 1024 * 1024
+	if options.KDFOptions.MemoryKiB > 0 {
+		expectedMemoryKiB = options.KDFOptions.MemoryKiB
+	}
 
-	start := time.Now()
-	luks2test.CheckLUKS2Passphrase(c, path, key)
-	elapsed := time.Now().Sub(start)
+	if options.KDFOptions.ForceIterations > 0 {
+		c.Check(keyslot.KDF.Time, Equals, options.KDFOptions.ForceIterations)
+		c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
+	} else {
+		expectedKDFTime := 2 * time.Second
+		if options.KDFOptions.TargetDuration > 0 {
+			expectedKDFTime = options.KDFOptions.TargetDuration
+		}
 
-	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
-	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
-	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
+		c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
+
+		start := time.Now()
+		luks2test.CheckLUKS2Passphrase(c, path, key)
+		elapsed := time.Now().Sub(start)
+
+		// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
+		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
+		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
+	}
 }
 
-func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2Container(c *C) {
+func (s *cryptSuiteUnmocked) TestInitializeLUKS2Container(c *C) {
 	s.testInitializeLUKS2Container(c, nil)
 }
 
-func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2ContainerWithOptions(c *C) {
+func (s *cryptSuiteUnmocked) TestInitializeLUKS2ContainerWithOptions(c *C) {
 	if luks2.DetectCryptsetupFeatures()&luks2.FeatureHeaderSizeSetting == 0 {
 		c.Skip("cryptsetup doesn't support --luks2-metadata-size or --luks2-keyslots-size")
 	}
@@ -2160,6 +2206,21 @@ func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2ContainerWithOptions(c 
 		MetadataKiBSize:     2 * 1024, // 2MiB
 		KeyslotsAreaKiBSize: 3 * 1024, // 3MiB
 	})
+}
+
+func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2ContainerWithCustomKDFTime(c *C) {
+	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
+		KDFOptions: &KDFOptions{TargetDuration: 100 * time.Millisecond}})
+}
+
+func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2ContainerWithCustomKDFMemory(c *C) {
+	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
+		KDFOptions: &KDFOptions{TargetDuration: 100 * time.Millisecond, MemoryKiB: 64}})
+}
+
+func (s *cryptSuiteUnmocked) TestInitializeLUKS2ContainerWithCustomKDFIterations(c *C) {
+	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
+		KDFOptions: &KDFOptions{ForceIterations: 8}})
 }
 
 func (s *cryptSuiteUnmockedExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
@@ -2203,7 +2264,7 @@ func (s *cryptSuiteUnmockedExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 }
 
-func (s *cryptSuiteUnmockedExpensive) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
+func (s *cryptSuiteUnmocked) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
 	key := s.newPrimaryKey()
 	recoveryKey := s.newRecoveryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
@@ -2214,13 +2275,7 @@ func (s *cryptSuiteUnmockedExpensive) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
 	newKey := s.newPrimaryKey()
 	c.Check(ChangeLUKS2KeyUsingRecoveryKey(path, recoveryKey, newKey), IsNil)
 
-	expectedKDFTime := 100 * time.Millisecond
-
-	start := time.Now()
 	luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
-	elapsed := time.Now().Sub(start)
-
-	// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
-	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
-	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
+	// XXX: There's no checking of the configured KDF values here. The function
+	//  being tested here is going away in another PR anyway.
 }
