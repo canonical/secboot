@@ -536,39 +536,6 @@ func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 		KDFOptions:          o.KDFOptions.luksOpts()}
 }
 
-func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
-	if options == nil {
-		return nil
-	}
-
-	if options.MetadataKiBSize != 0 {
-		// metadata size is one of the allowed values (in kB)
-		allowedSizesKB := []int{16, 32, 64, 128, 256, 512, 1024, 2048, 4096}
-		found := false
-		for _, sz := range allowedSizesKB {
-			if options.MetadataKiBSize == sz {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("cannot set metadata size to %v KiB",
-				options.MetadataKiBSize)
-		}
-	}
-	if options.KeyslotsAreaKiBSize != 0 {
-		// minimum size 4096 (4KiB), a multiple of 4096, max size 128MiB
-		sizeValid := options.KeyslotsAreaKiBSize >= 4 &&
-			options.KeyslotsAreaKiBSize <= 128*1024 &&
-			options.KeyslotsAreaKiBSize%4 == 0
-		if !sizeValid {
-			return fmt.Errorf("cannot set keyslots area size to %v KiB",
-				options.KeyslotsAreaKiBSize)
-		}
-	}
-	return nil
-}
-
 // InitializeLUKS2Container will initialize the partition at the specified devicePath as a new LUKS2 container. This can only
 // be called on a partition that isn't mapped. The label for the new LUKS2 container is provided via the label argument.
 //
@@ -601,12 +568,8 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		options.KDFOptions = defaultKdfOptions
 	}
 
-	if err := validateInitializeLUKS2Options(options); err != nil {
-		return err
-	}
-
 	if err := luks2.Format(devicePath, label, key, options.formatOpts()); err != nil {
-		return xerrors.Errorf("cannot format %s: %w", err)
+		return xerrors.Errorf("cannot format: %w", err)
 	}
 
 	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {

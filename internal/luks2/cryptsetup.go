@@ -208,6 +208,53 @@ type FormatOptions struct {
 	KDFOptions KDFOptions
 }
 
+func (options *FormatOptions) validate() error {
+	if (options.MetadataKiBSize != 0 || options.KeyslotsAreaKiBSize != 0) &&
+		DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
+		return ErrMissingCryptsetupFeature
+	}
+
+	if options.MetadataKiBSize != 0 {
+		// Verify that the size is a power of 2 between 16KiB and 4MiB.
+		found := false
+		for sz := uint(16); sz <= uint(4*1024); sz <<= 1 {
+			if uint(options.MetadataKiBSize) == sz {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("cannot set metadata size to %v KiB", options.MetadataKiBSize)
+		}
+	}
+
+	if options.KeyslotsAreaKiBSize != 0 {
+		// Verify that the size is sufficient for a single keyslot, not more than 128MiB
+		// and a multiple of 4KiB.
+		if options.KeyslotsAreaKiBSize < (keySize*4000)/1024 ||
+			options.KeyslotsAreaKiBSize > 128*1024 || options.KeyslotsAreaKiBSize%4 != 0 {
+			return fmt.Errorf("cannot set keyslots area size to %v KiB", options.KeyslotsAreaKiBSize)
+		}
+	}
+
+	return nil
+}
+
+func (options *FormatOptions) appendArguments(args []string) []string {
+	args = options.KDFOptions.appendArguments(args)
+
+	if options.MetadataKiBSize != 0 {
+		// override the default metadata area size if specified
+		args = append(args, "--luks2-metadata-size", fmt.Sprintf("%dk", options.MetadataKiBSize))
+	}
+	if options.KeyslotsAreaKiBSize != 0 {
+		// override the default keyslots area size if specified
+		args = append(args, "--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
+	}
+
+	return args
+}
+
 // Format will initialize a LUKS2 container with the specified options and set the primary key to the
 // supplied key. The label for the new container will be set to the supplied label. This can only be
 // called on a device that is not mapped.
@@ -223,9 +270,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		opts = &defaultOpts
 	}
 
-	if (opts.MetadataKiBSize != 0 || opts.KeyslotsAreaKiBSize != 0) &&
-		DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
-		return ErrMissingCryptsetupFeature
+	if err := opts.validate(); err != nil {
+		return err
 	}
 
 	args := []string{
@@ -242,17 +288,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		// set LUKS2 label
 		"--label", label}
 
-	// apply KDF options
-	args = opts.KDFOptions.appendArguments(args)
-
-	if opts.MetadataKiBSize != 0 {
-		// override the default metadata area size if specified
-		args = append(args, "--luks2-metadata-size", fmt.Sprintf("%dk", opts.MetadataKiBSize))
-	}
-	if opts.KeyslotsAreaKiBSize != 0 {
-		// override the default keyslots area size if specified
-		args = append(args, "--luks2-keyslots-size", fmt.Sprintf("%dk", opts.KeyslotsAreaKiBSize))
-	}
+	// apply options
+	args = opts.appendArguments(args)
 
 	args = append(args,
 		// device to format
