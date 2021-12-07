@@ -33,42 +33,6 @@ import (
 	"golang.org/x/xerrors"
 )
 
-// computeV0PinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
-// actions on a NV index created with the removed createPinNVIndex for version 0 key files. These are:
-// - A policy for updating the index to revoke old dynamic authorization policies, requiring an assertion signed by the key
-//   associated with updateKeyName.
-// - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
-// - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
-// - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
-func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
-	var out tpm2.DigestList
-	// Compute a policy for incrementing the index to revoke dynamic authorization policies, requiring an assertion signed by the
-	// key associated with updateKeyName.
-	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
-	trial.PolicyNvWritten(true)
-	trial.PolicySigned(updateKeyName, nil)
-	out = append(out, trial.GetDigest())
-
-	// Compute a policy for updating the authorization value of the index, requiring knowledge of the current authorization value.
-	trial = util.ComputeAuthPolicy(alg)
-	trial.PolicyCommandCode(tpm2.CommandNVChangeAuth)
-	trial.PolicyAuthValue()
-	out = append(out, trial.GetDigest())
-
-	// Compute a policy for reading the counter value without knowing the authorization value.
-	trial = util.ComputeAuthPolicy(alg)
-	trial.PolicyCommandCode(tpm2.CommandNVRead)
-	out = append(out, trial.GetDigest())
-
-	// Compute a policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
-	trial = util.ComputeAuthPolicy(alg)
-	trial.PolicyCommandCode(tpm2.CommandPolicyNV)
-	out = append(out, trial.GetDigest())
-
-	return out
-}
-
 type policyOrDataNode_v0 struct {
 	Next    uint32 // Index of the parent node in the containing slice, relative to this node. Zero indicates that this is the root node
 	Digests tpm2.DigestList
@@ -174,20 +138,9 @@ func (t policyOrData_v0) resolve() (out *policyOrTree, err error) {
 	return out, nil
 }
 
-// newPolicyOrDataV0 creates a new flattened tree from the supplied digests
-// for creating a policy that can be satisified by multiple conditions. It also
-// extends the supplied trial policy.
-//
-// It works by turning the supplied list of digests (each corresponding to some
-// condition) into a tree of nodes, with each node containing no more than 8 digests
-// that can be used in a single PolicyOR assertion. The leaf nodes contain the
-// supplied digests, and correspond to the first PolicyOR assertion. The root node
-// contains the digests for the final PolicyOR execution, and the policy is executed
-// by finding the leaf node with the current session digest and then walking up the
-// tree to the root node, executing a PolicyOR assertion at each step.
-//
-// It returns an error if no digests are supplied or if too many digests are
-// supplied. The returned tree won't have a depth of more than 4.
+// newPolicyOrDataV0 creates a new flattened tree suitable for serialization
+// from the supplied policyOrTree. The returned data is just a list of nodes,
+// with each node containing an offset in order to index its parent node.
 func newPolicyOrDataV0(tree *policyOrTree) (out policyOrData_v0) {
 	// Track source nodes to index in the flattened tree.
 	srcNodesToIndex := make(map[*policyOrNode]int)
@@ -243,12 +196,40 @@ func newPolicyOrDataV0(tree *policyOrTree) (out policyOrData_v0) {
 	return out
 }
 
-// staticPolicyData_v0 represents version 0 of the metadata for executing a
-// policy session that never changes for the life of a key.
-type staticPolicyData_v0 struct {
-	AuthPublicKey                *tpm2.Public
-	PCRPolicyCounterHandle       tpm2.Handle
-	PCRPolicyCounterAuthPolicies tpm2.DigestList
+// computeV0PinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
+// actions on a NV index created with the removed createPinNVIndex for version 0 key files. These are:
+// - A policy for updating the index to revoke old dynamic authorization policies, requiring an assertion signed by the key
+//   associated with updateKeyName.
+// - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
+// - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
+// - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
+func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
+	var out tpm2.DigestList
+	// Compute a policy for incrementing the index to revoke dynamic authorization policies, requiring an assertion signed by the
+	// key associated with updateKeyName.
+	trial := util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
+	trial.PolicyNvWritten(true)
+	trial.PolicySigned(updateKeyName, nil)
+	out = append(out, trial.GetDigest())
+
+	// Compute a policy for updating the authorization value of the index, requiring knowledge of the current authorization value.
+	trial = util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandNVChangeAuth)
+	trial.PolicyAuthValue()
+	out = append(out, trial.GetDigest())
+
+	// Compute a policy for reading the counter value without knowing the authorization value.
+	trial = util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandNVRead)
+	out = append(out, trial.GetDigest())
+
+	// Compute a policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
+	trial = util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandPolicyNV)
+	out = append(out, trial.GetDigest())
+
+	return out
 }
 
 // pcrPolicyData_v0 represents version 0 of the PCR policy metadata for
@@ -277,7 +258,7 @@ func (d *pcrPolicyData_v0) addPcrAssertions(alg tpm2.HashAlgorithmId, trial *uti
 		orDigests = append(orDigests, trial2.GetDigest())
 	}
 
-	orData, err := newPolicyOrTree(alg, trial, orDigests)
+	orTree, err := newPolicyOrTree(alg, trial, orDigests)
 	if err != nil {
 		return xerrors.Errorf("cannot create tree for PolicyOR digests: %w", err)
 	}
