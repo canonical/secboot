@@ -232,6 +232,14 @@ func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKey
 	return out
 }
 
+// staticPolicyData_v0 represents version 0 of the metadata for executing a
+// policy session that never changes for the life of a key.
+type staticPolicyData_v0 struct {
+	AuthPublicKey                *tpm2.Public
+	PCRPolicyCounterHandle       tpm2.Handle
+	PCRPolicyCounterAuthPolicies tpm2.DigestList
+}
+
 // pcrPolicyData_v0 represents version 0 of the PCR policy metadata for
 // executing a policy session, and can be updated.
 type pcrPolicyData_v0 struct {
@@ -262,7 +270,7 @@ func (d *pcrPolicyData_v0) addPcrAssertions(alg tpm2.HashAlgorithmId, trial *uti
 	if err != nil {
 		return xerrors.Errorf("cannot create tree for PolicyOR digests: %w", err)
 	}
-	d.OrData = newPolicyOrDataV0(orData)
+	d.OrData = newPolicyOrDataV0(orTree)
 	return nil
 }
 
