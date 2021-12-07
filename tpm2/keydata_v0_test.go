@@ -124,7 +124,7 @@ func (s *keyDataV0Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 			PinIndexAuthPolicies: counterPolicies},
 		DynamicPolicyData: &DynamicPolicyDataRaw_v0{
 			PCRSelection:     tpm2.PCRSelectionList{},
-			PCROrData:        PolicyOrDataTree{},
+			PCROrData:        PolicyOrData_v0{},
 			AuthorizedPolicy: make(tpm2.Digest, 32),
 			AuthorizedPolicySignature: &tpm2.Signature{
 				SigAlg: tpm2.SigSchemeAlgRSAPSS,

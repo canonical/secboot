@@ -95,7 +95,7 @@ func (s *sealSuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 		c.Check(err, IsNil)
 		_, _, err = k.UnsealFromTPM(s.TPM())
 		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
-			"cannot complete OR assertions: current session digest not found in policy data")
+			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }
 
@@ -288,7 +288,7 @@ func (s *sealSuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMMultipl
 
 			_, _, err = k.UnsealFromTPM(s.TPM())
 			c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
-				"cannot complete OR assertions: current session digest not found in policy data")
+				"cannot execute PolicyOR assertions: current session digest not found in policy data")
 		}
 	}
 }
@@ -515,7 +515,7 @@ func (s *sealSuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreation
 		c.Check(err, IsNil)
 		_, _, err = k.UnsealFromTPM(s.TPM())
 		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
-			"cannot complete OR assertions: current session digest not found in policy data")
+			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }
 
@@ -622,7 +622,7 @@ func (s *sealSuite) testUpdatePCRProtectionPolicy(c *C, params *KeyCreationParam
 	c.Check(err, IsNil)
 	_, _, err = k.UnsealFromTPM(s.TPM())
 	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
-		"cannot complete OR assertions: current session digest not found in policy data")
+		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
 func (s *sealSuite) TestUpdatePCRProtectionPolicyWithPCRPolicyCounter(c *C) {
@@ -728,7 +728,7 @@ func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultiple(c *C) {
 	for _, k := range keys {
 		_, _, err = k.UnsealFromTPM(s.TPM())
 		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
-			"cannot complete OR assertions: current session digest not found in policy data")
+			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }
 

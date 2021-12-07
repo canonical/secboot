@@ -20,6 +20,7 @@
 package tpm2
 
 import (
+	"bytes"
 	"crypto"
 	"errors"
 	"fmt"
@@ -28,6 +29,14 @@ import (
 	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
+)
+
+const (
+	policyOrMaxDepth = 4
+
+	// policyOrMaxDigests sets a reasonable limit on the maximum number of or
+	// digests.
+	policyOrMaxDigests = 4096 // equivalent to a depth of 4
 )
 
 // dynamicPolicyComputeParams provides the parameters to computeDynamicPolicy.
@@ -43,19 +52,48 @@ type dynamicPolicyComputeParams struct {
 	policyCount       uint64                // Count for this policy, used for revocation
 }
 
-// policyOrDataNode represents a collection of up to 8 digests used in a single TPM2_PolicyOR invocation, and forms part of a tree
-// of nodes in order to support authorization policies with more than 8 conditions.
-type policyOrDataNode struct {
-	Next    uint32 // Index of the parent node in the containing slice, relative to this node. Zero indicates that this is the root node
-	Digests tpm2.DigestList
+// policyOrNode represents a collection of up to 8 digests used in a single
+// TPM2_PolicyOR invocation, and forms part of a tree of nodes in order to support
+// authorization policies with more than 8 conditions.
+type policyOrNode struct {
+	parent  *policyOrNode
+	digests tpm2.DigestList
 }
 
-type policyOrDataTree []policyOrDataNode
+// contains determines if this node contains the supplied digest.
+func (n *policyOrNode) contains(digest tpm2.Digest) bool {
+	for _, d := range n.digests {
+		if bytes.Equal(d, digest) {
+			return true
+		}
+	}
+	return false
+}
+
+// executeAssertion executes a PolicyOR assertion for this node.
+func (n *policyOrNode) executeAssertion(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+	return tpm.PolicyOR(session, ensureSufficientORDigests(n.digests))
+}
+
+// policyOrTree represents a tree of nodes that facilitates nesting of
+// TPM2_PolicyOR assertions in order to support policies with more than 8
+// branches.
+//
+// During execution, the leaf node with the current session digest is found.
+// A PolicyOR assertion is then executed with the digests from this node,
+// and then a PolicyOR assertion is executed with the digests from each of
+// the ancestor nodes.
+type policyOrTree struct {
+	leafNodes []*policyOrNode // the leaf nodes
+}
 
 // dynamicPolicyData is an output of computeDynamicPolicy and provides metadata for executing a policy session.
 type dynamicPolicyData struct {
-	pcrSelection              tpm2.PCRSelectionList
-	pcrOrData                 policyOrDataTree
+	pcrSelection tpm2.PCRSelectionList
+
+	// XXX: The _v0 here is a bit of a hack, but this entire structure goes away in
+	// the next PR.
+	pcrOrData                 policyOrData_v0
 	policyCount               uint64
 	authorizedPolicy          tpm2.Digest
 	authorizedPolicySignature *tpm2.Signature
@@ -234,63 +272,79 @@ func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputePar
 		pcrPolicyCounterHandle: pcrPolicyCounterHandle}, trial.GetDigest(), nil
 }
 
-// computePolicyORData computes data required to perform a sequence of TPM2_PolicyOR assertions in order to support compound
-// authorization policies with more than 8 conditions (which is the limit of the TPM). Its main purpose is to support PCR policies
-// with more than 8 conditions. It works by turning a list of digests (or, conditions) in to a tree of nodes, with each node
-// containing no more than 8 digests that can be used in a single TPM2_PolicyOR assertion, the root of the tree containing digests
-// for the final TPM2_PolicyOR assertion, and leaf nodes containing digests for each OR condition. Whilst the returned data is
-// conceptually a tree, the layout in memory is just a slice of tables of up to 8 digests, each with an index that enables the code
-// executing the assertions to traverse upwards through the tree by just advancing to another entry in the slice. This format is
-// easily serialized. After the computations are completed, the provided *util.TrialAuthPolicy will be updated.
+// newPolicyOrTree creates a new policyOrTree from the supplied digests
+// for creating a policy that can be satisified by multiple conditions. It also
+// extends the supplied trial policy.
 //
-// The returned data is used by firstly finding the leaf node which contains the current session digest. Once this is found, a
-// TPM2_PolicyOR assertion is executed on the digests in that node, and then the tree is traversed upwards to the root node, executing
-// TPM2_PolicyOR assertions along the way - see executePolicyORAssertions.
-func computePolicyORData(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, digests tpm2.DigestList) policyOrDataTree {
-	var data policyOrDataTree
-	curNode := 0
-	var nextDigests tpm2.DigestList
+// It works by turning the supplied list of digests (each corresponding to some
+// condition) into a tree of nodes, with each node containing no more than 8 digests
+// that can be used in a single PolicyOR assertion. The leaf nodes contain the
+// supplied digests, and correspond to the first PolicyOR assertion. The root node
+// contains the digests for the final PolicyOR execution, and the policy is executed
+// by finding the leaf node with the current session digest and then walking up the
+// tree to the root node, executing a PolicyOR assertion at each step.
+//
+// It returns an error if no digests are supplied or if too many digests are
+// supplied. The returned tree won't have a depth of more than 4.
+func newPolicyOrTree(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, digests tpm2.DigestList) (out *policyOrTree, err error) {
+	if len(digests) == 0 {
+		return nil, errors.New("no digests supplied")
+	}
+	if len(digests) > policyOrMaxDigests {
+		return nil, errors.New("too many digests")
+	}
 
-	for {
-		n := len(digests)
-		if n > 8 {
-			// The TPM only supports 8 conditions in TPM2_PolicyOR.
-			n = 8
-		}
+	var prev []*policyOrNode
 
-		data = append(data, policyOrDataNode{Digests: digests[:n]})
-		if n == len(digests) && len(nextDigests) == 0 {
-			// All of the digests at this level fit in to a single TPM2_PolicyOR command, so this becomes the root node.
-			break
-		}
+	for len(prev) != 1 {
+		// The outer loop runs on each level of the tree. If
+		// len(prev) == 1, then we have produced the root node
+		// and the loop should not continue.
 
-		// Consume the next n digests to fit in to this node and produce a single digest that will go in to the parent node.
-		trial := util.ComputeAuthPolicy(alg)
-		trial.PolicyOR(ensureSufficientORDigests(digests[:n]))
-		nextDigests = append(nextDigests, trial.GetDigest())
+		var current []*policyOrNode
+		var nextDigests tpm2.DigestList
 
-		// We've consumed n digests, so adjust the slice to point to the next ones to consume to produce a sibling node.
-		digests = digests[n:]
+		for len(digests) > 0 {
+			// The inner loop runs on each sibling node within a level.
 
-		if len(digests) == 0 {
-			// There are no digests left to produce sibling nodes, and we have a collection of digests to produce parent nodes. Update the
-			// nodes produced at this level to point to the parent nodes we're going to produce on the subsequent iterations.
-			for i := range nextDigests {
-				// At this point, len(nextDigests) == (len(data) - curNode).
-				// 'len(nextDigests) - i' initializes Next to point to the end of data (ie, data[len(data)]), and the '+ (i / 8)' advances it to
-				// point to the parent node that will be created on subsequent iterations, taking in to account that each node will have up to
-				// 8 child nodes.
-				data[curNode+i].Next = uint32(len(nextDigests) - i + (i / 8))
+			n := len(digests)
+			if n > 8 {
+				// The TPM only supports 8 conditions in TPM2_PolicyOR.
+				n = 8
 			}
-			// Grab the digests produced for the nodes at this level to produce the parent nodes.
-			curNode += len(nextDigests)
-			digests = nextDigests
-			nextDigests = nil
+
+			// Create a new node with the next n digests and save it.
+			current = append(current, &policyOrNode{digests: digests[:n]})
+
+			// Consume the next n digests to fit in to this node and produce a single digest
+			// that will go in to the parent node.
+			trial := util.ComputeAuthPolicy(alg)
+			trial.PolicyOR(ensureSufficientORDigests(digests[:n]))
+			nextDigests = append(nextDigests, trial.GetDigest())
+
+			// We've consumed n digests, so adjust the slice to point to the next ones to consume to
+			// produce a sibling node.
+			digests = digests[n:]
+		}
+
+		// There are no digests left to produce sibling nodes.
+		// Link child nodes to parents.
+		for i, child := range prev {
+			child.parent = current[i/8]
+		}
+
+		// Grab the digests for the nodes we've just produced to create the parent nodes.
+		prev = current
+		digests = nextDigests
+
+		if out == nil {
+			// Save the leaf nodes to return.
+			out = &policyOrTree{leafNodes: current}
 		}
 	}
 
-	trial.PolicyOR(ensureSufficientORDigests(digests))
-	return data
+	trial.PolicyOR(ensureSufficientORDigests(prev[0].digests))
+	return out, nil
 }
 
 // computeDynamicPolicy computes the PCR policy associated with a sealed key object, and can be updated without having to create a
@@ -343,48 +397,42 @@ func isDynamicPolicyDataError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// executePolicyORAssertions takes the data produced by computePolicyORData and executes a sequence of TPM2_PolicyOR assertions, in
-// order to support compound policies with more than 8 conditions.
-func executePolicyORAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext, data policyOrDataTree) error {
+var errSessionDigestNotFound = errors.New("current session digest not found in policy data")
+
+// executeAssertions executes one or more PolicyOR assertions in order to support
+// compound policies with more than 8 conditions. It starts by searching for the
+// current session digest in one of the leaf nodes. If found, it executes a PolicyOR
+// assertion with the digests associated with that node, and then walks up through
+// its ancestors all the way to the root node, executing a PolicyOR assertion at each
+// node.
+func (t *policyOrTree) executeAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
 	// First of all, obtain the current digest of the session.
 	currentDigest, err := tpm.PolicyGetDigest(session)
 	if err != nil {
-		return xerrors.Errorf("cannot obtain current session digest: %w", err)
-	}
-
-	if len(data) == 0 {
-		return errors.New("no policy data")
+		return err
 	}
 
 	// Find the leaf node that contains the current digest of the session.
-	index := -1
-	end := data[0].Next
-	if end == 0 {
-		end = 1
-	}
-
-	for i := 0; i < len(data) && i < int(end); i++ {
-		if digestListContains(data[i].Digests, currentDigest) {
+	var node *policyOrNode
+	for _, n := range t.leafNodes {
+		if n.contains(currentDigest) {
 			// We've got a match!
-			index = i
+			node = n
 			break
 		}
 	}
-	if index == -1 {
-		return errors.New("current session digest not found in policy data")
+
+	if node == nil {
+		return errSessionDigestNotFound
 	}
 
 	// Execute a TPM2_PolicyOR assertion on the digests in the leaf node and then traverse up the tree to the root node, executing
 	// TPM2_PolicyOR assertions along the way.
-	for lastIndex := -1; index > lastIndex && index < len(data); index += int(data[index].Next) {
-		lastIndex = index
-		if err := tpm.PolicyOR(session, ensureSufficientORDigests(data[index].Digests)); err != nil {
+	for node != nil {
+		if err := node.executeAssertion(tpm, session); err != nil {
 			return err
 		}
-		if data[index].Next == 0 {
-			// This is the root node, so we're finished.
-			break
-		}
+		node = node.parent
 	}
 	return nil
 }
