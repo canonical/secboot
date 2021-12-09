@@ -136,6 +136,14 @@ func (s *authRequestorSystemdSuite) TestRequestPassphraseInvalidResponse(c *C) {
 	c.Check(err, ErrorMatches, "systemd-ask-password output is missing terminating newline")
 }
 
+func (s *authRequestorSystemdSuite) TestRequestPassphraseFailure(c *C) {
+	requestor, err := NewSystemdAuthRequestor("", "")
+	c.Assert(err, IsNil)
+
+	_, err = requestor.RequestPassphrase("data", "/dev/sda1")
+	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
+}
+
 type testRequestRecoveryKeyData struct {
 	passphrase string
 
@@ -261,4 +269,12 @@ func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyInvalidFormat(c *C) {
 
 	_, err = requestor.RequestRecoveryKey("data", "/dev/sda1")
 	c.Check(err, ErrorMatches, "cannot parse recovery key: incorrectly formatted: insufficient characters")
+}
+
+func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyFailure(c *C) {
+	requestor, err := NewSystemdAuthRequestor("", "")
+	c.Assert(err, IsNil)
+
+	_, err = requestor.RequestRecoveryKey("data", "/dev/sda1")
+	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
 }

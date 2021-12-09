@@ -53,7 +53,7 @@ func (r *systemdAuthRequestor) askPassword(sourceDevicePath, msg string) (string
 	cmd.Stdout = out
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		return "", err
+		return "", xerrors.Errorf("cannot execute systemd-ask-password: %v", err)
 	}
 	result, err := out.ReadString('\n')
 	if err != nil {
