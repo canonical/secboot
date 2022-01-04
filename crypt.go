@@ -33,6 +33,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/snapcore/snapd/asserts"
+
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot/internal/keyring"
@@ -140,33 +142,6 @@ func getPassword(sourceDevicePath, description string, reader io.Reader) (string
 	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
-type snapModelCheckerImpl struct {
-	volumeName string
-	keyData    *KeyData
-	auxKey     AuxiliaryKey
-}
-
-func (c *snapModelCheckerImpl) IsModelAuthorized(model SnapModel) (bool, error) {
-	return c.keyData.IsSnapModelAuthorized(c.auxKey, model)
-}
-
-func (c *snapModelCheckerImpl) VolumeName() string {
-	return c.volumeName
-}
-
-// SnapModelChecker is used for verifying whether a Snap device model is
-// authorized to access the data on a volume unlocked by this package.
-type SnapModelChecker interface {
-	// IsModelAuthorized indicates whether the supplied Snap device model is
-	// authorized to access the data on the decrypted volume with the device
-	// mapper name returned by VolumeName.
-	IsModelAuthorized(model SnapModel) (bool, error)
-
-	// VolumeName is the device mapper name of the volume associated with this
-	// SnapModelChecker.
-	VolumeName() string
-}
-
 type activateWithKeyDataError struct {
 	k   *KeyData
 	err error
@@ -188,12 +163,10 @@ type keyDataAndError struct {
 type activateWithKeyDataState struct {
 	volumeName       string
 	sourceDevicePath string
+	model            SnapModel
 	keyringPrefix    string
 
 	keys []*keyDataAndError
-
-	keyData *KeyData
-	auxKey  AuxiliaryKey
 }
 
 func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
@@ -206,17 +179,20 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 	return out
 }
 
-func (s *activateWithKeyDataState) snapModelChecker() *snapModelCheckerImpl {
-	return &snapModelCheckerImpl{s.volumeName, s.keyData, s.auxKey}
-}
-
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(keyData *KeyData, key DiskUnlockKey, auxKey AuxiliaryKey) error {
+	if s.model != SkipSnapModelCheck {
+		authorized, err := keyData.IsSnapModelAuthorized(auxKey, s.model)
+		switch {
+		case err != nil:
+			return xerrors.Errorf("cannot check if snap model is authorized: %w", err)
+		case !authorized:
+			return errors.New("snap model is not authorized")
+		}
+	}
+
 	if err := luks2Activate(s.volumeName, s.sourceDevicePath, key); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
-
-	s.keyData = keyData
-	s.auxKey = auxKey
 
 	if err := keyring.AddKeyToUserKeyring(key, s.sourceDevicePath, keyringPurposeDiskUnlock, s.keyringPrefix); err != nil {
 		fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
@@ -259,11 +235,12 @@ func (s *activateWithKeyDataState) run() (success bool) {
 	return false
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*KeyData) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*KeyData) *activateWithKeyDataState {
 	s := &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
-		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix)}
+		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix),
+		model:            model}
 	for _, k := range keys {
 		s.keys = append(s.keys, &keyDataAndError{KeyData: k})
 	}
@@ -309,6 +286,18 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 	return lastErr
 }
 
+type nullSnapModel struct{}
+
+func (_ nullSnapModel) Series() string            { return "" }
+func (_ nullSnapModel) BrandID() string           { return "" }
+func (_ nullSnapModel) Model() string             { return "" }
+func (_ nullSnapModel) Grade() asserts.ModelGrade { return "" }
+func (_ nullSnapModel) SignKeyID() string         { return "" }
+
+// SkipSnapModelCheck provides a mechanism to skip the snap device model
+// check when calling one of the ActivateVolumeWith* functions.
+var SkipSnapModelCheck SnapModel = nullSnapModel{}
+
 // ActivateVolumeOptions provides options to the ActivateVolumeWith*
 // family of functions.
 type ActivateVolumeOptions struct {
@@ -323,13 +312,13 @@ type ActivateVolumeOptions struct {
 	// With a TPM, attempts to unseal will stop if the TPM enters
 	// dictionary attack lockout mode before this limit is
 	// reached.
-	// It is ignored by ActivateWithRecoveryKey.
+	// It is ignored by ActivateVolumeWithRecoveryKey.
 	PassphraseTries int
 
 	// RecoveryKeyTries specifies the maximum number of times that
 	// activation with the fallback recovery key should be
 	// attempted.
-	// It is used directly by ActivateWithRecoveryKey and
+	// It is used directly by ActivateVolumeWithRecoveryKey and
 	// indirectly with other methods upon failure, for example
 	// failed TPM unsealing.  Setting this to zero will disable
 	// attempts to activate with the fallback recovery key.
@@ -338,6 +327,20 @@ type ActivateVolumeOptions struct {
 	// KeyringPrefix is the prefix used for the description of any
 	// kernel keys created during activation.
 	KeyringPrefix string
+
+	// SnapModel is the snap device model that will access the data
+	// on the encrypted container. The ActivateVolumeWith* functions
+	// will check that this model is authorized via the KeyData
+	// binding before unlocking the encrypted container.
+	//
+	// The caller of the ActivateVolumeWith* API is responsible for
+	// validating the associated model assertion and fundamental
+	// snaps.
+	//
+	// Set this to SkipSnapModelCheck to skip the check.
+	//
+	// It is ignored by ActivateVolumeWithRecoveryKey.
+	SnapModel SnapModel
 }
 
 type activateVolumeWithKeyDataError struct {
@@ -371,29 +374,33 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // failing. If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback
 // recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// Before activating the container with a recovered key, this function will check that the Snap device model specified
+// via the SnapModel field of options is authorized to access the data inside the container, via the KeyData binding.
 //
-// If activation with one of the supplied KeyData objects succeeds, a SnapModelChecker will be returned so that the
-// caller can check whether a particular Snap device model has previously been authorized to access the data on this
-// volume. If the fallback recovery key is used for successfully for activation, no SnapModelChecker will be
-// returned and a ErrRecoveryKeyUsed error will be returned.
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If the SnapModel field of options is nil, an error will be returned.
+//
+// If the fallback recovery key is used for successfully for activation, an ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
-func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) (SnapModelChecker, error) {
+func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) error {
 	if len(keys) == 0 {
-		return nil, errors.New("no keys provided")
+		return errors.New("no keys provided")
 	}
 	if options.PassphraseTries < 0 {
-		return nil, errors.New("invalid PassphraseTries")
+		return errors.New("invalid PassphraseTries")
 	}
 	if options.RecoveryKeyTries < 0 {
-		return nil, errors.New("invalid RecoveryKeyTries")
+		return errors.New("invalid RecoveryKeyTries")
+	}
+	if options.SnapModel == nil {
+		return errors.New("invalid SnapModel")
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, keys)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.SnapModel, keys)
 	switch s.run() {
 	case true: // success!
-		return s.snapModelChecker(), nil
+		return nil
 	default: // failed - try recovery key
 		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, options.KeyringPrefix); rErr != nil {
 			// failed with recovery key - return errors
@@ -401,10 +408,10 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 			for _, e := range s.errors() {
 				kdErrs = append(kdErrs, e)
 			}
-			return nil, &activateVolumeWithKeyDataError{kdErrs, rErr}
+			return &activateVolumeWithKeyDataError{kdErrs, rErr}
 		}
 		// succeeded with recovery key
-		return nil, ErrRecoveryKeyUsed
+		return ErrRecoveryKeyUsed
 	}
 }
 
@@ -417,15 +424,16 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 // options specifies how many attempts should be made to activate the volume with the recovery key before failing.
 // If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// Before activating the container with the recovered key, this function will check that the Snap device model specified
+// via the SnapModel field of options is authorized to access the data inside the container, via the KeyData binding.
 //
-// If activation with the supplied KeyData succeeds, a SnapModelChecker will be returned so that the caller can check
-// whether a particular Snap device model has previously been authorized to access the data on this volume. If the
-// fallback recovery key is used for successfully for activation, no SnapModelChecker will be returned and a
-// ErrRecoveryKeyUsed error will be returned.
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If the SnapModel field of options is nil, an error will be returned.
+//
+// If the fallback recovery key is used for successfully for activation, an ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
-func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) (SnapModelChecker, error) {
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) error {
 	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, options)
 }
 
