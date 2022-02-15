@@ -212,7 +212,7 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 
 	// Try keys that require a passphrase
 	tries := s.passphraseTries
-	var lastErr error
+	var passphraseErr error
 
 	for tries > 0 && numPassphraseKeys > 0 {
 		tries -= 1
@@ -227,7 +227,7 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 		// ubuntu-data).
 		passphrase, err := s.authRequestor.RequestPassphrase(s.volumeName, s.sourceDevicePath)
 		if err != nil {
-			lastErr = xerrors.Errorf("cannot obtain passphrase: %w", err)
+			passphraseErr = xerrors.Errorf("cannot obtain passphrase: %w", err)
 			continue
 		}
 
@@ -254,7 +254,7 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 	}
 
 	// We've failed at this point
-	return false, lastErr
+	return false, passphraseErr
 }
 
 func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*KeyData, authRequestor AuthRequestor, kdf KDF, passphraseTries int) *activateWithKeyDataState {
