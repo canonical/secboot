@@ -306,26 +306,37 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor 
 // family of functions.
 type ActivateVolumeOptions struct {
 	// PassphraseTries specifies the maximum number of times
-	// that unsealing with a user passphrase should be attempted
+	// that activation with a user passphrase should be attempted
 	// before failing with an error and falling back to activating
 	// with the recovery key (see RecoveryKeyTries).
-	// Setting this to zero disables unsealing with a user
-	// passphrase - in this case, an error will be returned if the
-	// sealed key object indicates that a user passphrase has been
-	// set.
-	// With a TPM, attempts to unseal will stop if the TPM enters
-	// dictionary attack lockout mode before this limit is
-	// reached.
+	//
+	// Setting this to zero disables activation with a user
+	// passphrase - in this case, any protected keys that require
+	// a passphrase are ignored and activation will fall back to
+	// requesting a recovery key.
+	//
+	// For each passphrase attempt, the supplied passphrase is
+	// tested against every protected key that requires a passphrase.
+	//
+	// The actual number of available passphrase attempts may be
+	// limited by the platform to a number that is lower than this
+	// value (eg, in the TPM case because of the current auth fail
+	// counter value which means the dictionary attack protection
+	// might be triggered first).
+	//
 	// It is ignored by ActivateWithRecoveryKey.
 	PassphraseTries int
 
 	// RecoveryKeyTries specifies the maximum number of times that
 	// activation with the fallback recovery key should be
 	// attempted.
+	//
 	// It is used directly by ActivateWithRecoveryKey and
 	// indirectly with other methods upon failure, for example
-	// failed TPM unsealing.  Setting this to zero will disable
-	// attempts to activate with the fallback recovery key.
+	// in the case where no other keys can be recovered.
+	//
+	// Setting this to zero will disable attempts to activate with
+	// the fallback recovery key.
 	RecoveryKeyTries int
 
 	// KeyringPrefix is the prefix used for the description of any
