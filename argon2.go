@@ -22,12 +22,17 @@ package secboot
 import (
 	"errors"
 	"math"
+	"runtime"
 	"time"
 
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot/internal/argon2"
 	"github.com/snapcore/secboot/internal/luks2"
+)
+
+var (
+	runtimeNumCPU = runtime.NumCPU
 )
 
 // KDFOptions specifies parameters for the Argon2 KDF used by cryptsetup

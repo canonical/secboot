@@ -34,6 +34,11 @@ import (
 	"github.com/snapcore/secboot/internal/luks2"
 )
 
+var (
+	luks2Activate   = luks2.Activate
+	luks2Deactivate = luks2.Deactivate
+)
+
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
 type RecoveryKey [16]byte
 
