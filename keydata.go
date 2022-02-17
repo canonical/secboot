@@ -324,6 +324,7 @@ func (d *KeyData) updatePassphrase(payload, oldKey []byte, passphrase string, kd
 		kdfOptions = &defaultOptions
 	}
 
+	// Derive both a key and an IV from the passphrase in a single pass.
 	keyLen := passphraseDerivedKeyLen + aes.BlockSize
 
 	params, err := kdfOptions.deriveCostParams(keyLen, kdf)
