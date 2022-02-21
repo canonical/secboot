@@ -37,19 +37,20 @@ var (
 	ComputeDynamicPolicy                    = computeDynamicPolicy
 	ComputeV0PinNVIndexPostInitAuthPolicies = computeV0PinNVIndexPostInitAuthPolicies
 	CreatePcrPolicyCounter                  = createPcrPolicyCounter
-	ComputePcrPolicyCounterAuthPolicies     = computePcrPolicyCounterAuthPolicies
-	ComputePcrPolicyRefFromCounterContext   = computePcrPolicyRefFromCounterContext
-	ComputePcrPolicyRefFromCounterName      = computePcrPolicyRefFromCounterName
-	ComputePolicyORData                     = computePolicyORData
+	ComputeV1PcrPolicyCounterAuthPolicies   = computeV1PcrPolicyCounterAuthPolicies
+	ComputeV1PcrPolicyRefFromCounterContext = computeV1PcrPolicyRefFromCounterContext
+	ComputeV1PcrPolicyRefFromCounterName    = computeV1PcrPolicyRefFromCounterName
 	ComputeSnapModelDigest                  = computeSnapModelDigest
 	ComputeStaticPolicy                     = computeStaticPolicy
 	CreateTPMPublicAreaForECDSAKey          = createTPMPublicAreaForECDSAKey
+	ErrSessionDigestNotFound                = errSessionDigestNotFound
 	ExecutePolicySession                    = executePolicySession
 	IncrementPcrPolicyCounterTo             = incrementPcrPolicyCounterTo
 	IsDynamicPolicyDataError                = isDynamicPolicyDataError
 	IsStaticPolicyDataError                 = isStaticPolicyDataError
-	LockNVIndex1Attrs                       = lockNVIndex1Attrs
 	NewPcrPolicyCounterHandleV1             = newPcrPolicyCounterHandleV1
+	NewPolicyOrDataV0                       = newPolicyOrDataV0
+	NewPolicyOrTree                         = newPolicyOrTree
 	ReadKeyDataV0                           = readKeyDataV0
 	ReadKeyDataV1                           = readKeyDataV1
 	ReadKeyDataV2                           = readKeyDataV2
@@ -63,7 +64,7 @@ func (d *DynamicPolicyData) PCRSelection() tpm2.PCRSelectionList {
 	return d.pcrSelection
 }
 
-func (d *DynamicPolicyData) PCROrData() policyOrDataTree {
+func (d *DynamicPolicyData) PCROrData() PolicyOrData_v0 {
 	return d.pcrOrData
 }
 
@@ -91,7 +92,39 @@ type KeyData_v1 = keyData_v1
 type KeyData_v2 = keyData_v2
 type KeyDataError = keyDataError
 type PcrPolicyCounterHandle = pcrPolicyCounterHandle
-type PolicyOrDataTree = policyOrDataTree
+
+type PolicyOrData_v0 = policyOrData_v0
+
+func (t PolicyOrData_v0) Resolve() (out *PolicyOrTree, err error) {
+	return t.resolve()
+}
+
+type PolicyOrDataNode_v0 = policyOrDataNode_v0
+
+type PolicyOrNode = policyOrNode
+
+func (n *PolicyOrNode) Parent() *PolicyOrNode {
+	return n.parent
+}
+
+func (n *PolicyOrNode) Digests() tpm2.DigestList {
+	return n.digests
+}
+
+func (n *PolicyOrNode) Contains(digest tpm2.Digest) bool {
+	return n.contains(digest)
+}
+
+type PolicyOrTree = policyOrTree
+
+func (t *PolicyOrTree) LeafNodes() []*PolicyOrNode {
+	return t.leafNodes
+}
+
+func (t *PolicyOrTree) ExecuteAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+	return t.executeAssertions(tpm, session)
+}
+
 type SnapModelHasher = snapModelHasher
 
 type StaticPolicyData = staticPolicyData
