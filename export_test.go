@@ -19,7 +19,7 @@
 
 package secboot
 
-func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*CostParams, error) {
+func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
 	return o.deriveCostParams(keyLen, kdf)
 }
 

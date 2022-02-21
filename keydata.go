@@ -393,7 +393,7 @@ func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte
 
 	keyLen := data.KeySize + aes.BlockSize
 
-	params := &CostParams{
+	params := &KDFCostParams{
 		Time:      uint32(data.KDF.Time),
 		MemoryKiB: uint32(data.KDF.Memory),
 		Threads:   uint8(data.KDF.CPUs)}

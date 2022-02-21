@@ -40,7 +40,7 @@ type mockKDF struct {
 	lastBenchmarkKeyLen uint32
 }
 
-func (_ *mockKDF) Derive(passphrase string, salt []byte, params *CostParams, keyLen uint32) ([]byte, error) {
+func (_ *mockKDF) Derive(passphrase string, salt []byte, params *KDFCostParams, keyLen uint32) ([]byte, error) {
 	context := make([]byte, len(salt)+9)
 	copy(context, salt)
 	binary.LittleEndian.PutUint32(context[len(salt):], params.Time)
@@ -50,7 +50,7 @@ func (_ *mockKDF) Derive(passphrase string, salt []byte, params *CostParams, key
 	return kdf.CounterModeKey(kdf.NewHMACPRF(crypto.SHA256), []byte(passphrase), nil, context, keyLen*8), nil
 }
 
-func (k *mockKDF) Time(params *CostParams, keyLen uint32) (time.Duration, error) {
+func (k *mockKDF) Time(params *KDFCostParams, keyLen uint32) (time.Duration, error) {
 	k.lastBenchmarkKeyLen = keyLen
 
 	const memBandwidthKiBPerMs = 2048
@@ -75,7 +75,7 @@ func (s *argon2Suite) SetUpSuite(c *C) {
 	s.cpus = runtime.NumCPU()
 }
 
-func (s *argon2Suite) checkParams(c *C, opts *KDFOptions, ncpus int, params *CostParams) {
+func (s *argon2Suite) checkParams(c *C, opts *KDFOptions, ncpus int, params *KDFCostParams) {
 	if opts.ForceIterations != 0 {
 		c.Check(params.Time, Equals, uint32(opts.ForceIterations))
 

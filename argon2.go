@@ -68,7 +68,7 @@ func (o *KDFOptions) luksOpts() luks2.KDFOptions {
 		Parallel:        o.Parallel}
 }
 
-func (o *KDFOptions) deriveCostParams(keyLen int, kdf KDF) (*CostParams, error) {
+func (o *KDFOptions) deriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
 	switch {
 	case int64(o.ForceIterations) > math.MaxUint32:
 		return nil, errors.New("ForceIterations too large")
@@ -85,7 +85,7 @@ func (o *KDFOptions) deriveCostParams(keyLen int, kdf KDF) (*CostParams, error) 
 		if threads > 4 {
 			threads = 4
 		}
-		params := &CostParams{
+		params := &KDFCostParams{
 			Time:      uint32(o.ForceIterations),
 			MemoryKiB: 1 * 1024 * 1024,
 			Threads:   uint8(threads)}
@@ -119,40 +119,65 @@ func (o *KDFOptions) deriveCostParams(keyLen int, kdf KDF) (*CostParams, error) 
 			}
 		}
 
-		params, err := argon2.Benchmark(benchmarkParams, func(params *CostParams) (time.Duration, error) {
-			return kdf.Time(params, uint32(keyLen))
+		params, err := argon2.Benchmark(benchmarkParams, func(params *argon2.CostParams) (time.Duration, error) {
+			return kdf.Time(&KDFCostParams{
+				Time:      params.Time,
+				MemoryKiB: params.MemoryKiB,
+				Threads:   params.Threads}, uint32(keyLen))
 		})
 		if err != nil {
 			return nil, xerrors.Errorf("cannot benchmark KDF: %w", err)
 		}
 
-		return params, nil
+		return &KDFCostParams{
+			Time:      params.Time,
+			MemoryKiB: params.MemoryKiB,
+			Threads:   params.Threads}, nil
 	}
 }
 
-// CostParams defines the cost parameters for key derivation using Argon2.
-type CostParams = argon2.CostParams
+// KDFCostParams defines the cost parameters for key derivation using Argon2.
+type KDFCostParams struct {
+	// Time corresponds to the number of iterations of the algorithm
+	// that the key derivation will use.
+	Time uint32
+
+	// MemoryKiB is the amount of memory in KiB that the key derivation
+	// will use.
+	MemoryKiB uint32
+
+	// Threads is the number of parallel threads that will be used
+	// for the key derivation.
+	Threads uint8
+}
+
+func (p *KDFCostParams) internalParams() *argon2.CostParams {
+	return &argon2.CostParams{
+		Time:      p.Time,
+		MemoryKiB: p.MemoryKiB,
+		Threads:   p.Threads}
+}
 
 // KDF is an interface to abstract use of the Argon2 KDF to make it possible
 // to delegate execution to a short-lived utility process where required.
 type KDF interface {
 	// Derive derives a key of the specified length in bytes, from the supplied
 	// passphrase and salt and using the supplied cost parameters.
-	Derive(passphrase string, salt []byte, params *CostParams, keyLen uint32) ([]byte, error)
+	Derive(passphrase string, salt []byte, params *KDFCostParams, keyLen uint32) ([]byte, error)
 
 	// Time measures the amount of time the KDF takes to execute with the
 	// specified cost parameters and key length in bytes.
-	Time(params *CostParams, keyLen uint32) (time.Duration, error)
+	Time(params *KDFCostParams, keyLen uint32) (time.Duration, error)
 }
 
 type argon2iKDFImpl struct{}
 
-func (_ argon2iKDFImpl) Derive(passphrase string, salt []byte, params *CostParams, keyLen uint32) ([]byte, error) {
-	return argon2.Key(passphrase, salt, params, keyLen), nil
+func (_ argon2iKDFImpl) Derive(passphrase string, salt []byte, params *KDFCostParams, keyLen uint32) ([]byte, error) {
+	return argon2.Key(passphrase, salt, params.internalParams(), keyLen), nil
 }
 
-func (_ argon2iKDFImpl) Time(params *CostParams, keyLen uint32) (time.Duration, error) {
-	return argon2.KeyDuration(params, keyLen), nil
+func (_ argon2iKDFImpl) Time(params *KDFCostParams, keyLen uint32) (time.Duration, error) {
+	return argon2.KeyDuration(params.internalParams(), keyLen), nil
 }
 
 var argon2iKDF = argon2iKDFImpl{}
