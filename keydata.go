@@ -39,6 +39,7 @@ import (
 const (
 	kdfType                 = "argon2i"
 	passphraseDerivedKeyLen = 32
+	passphraseEncryption    = "aes-cfb"
 )
 
 // ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
@@ -256,6 +257,8 @@ type kdfData struct {
 
 type passphraseData struct {
 	KDF              kdfData `json:"kdf"`
+	Encryption       string  `json:"encryption"`
+	KeySize          int     `json:"key_size"`
 	EncryptedPayload []byte  `json:"encrypted_payload"`
 }
 
@@ -363,6 +366,8 @@ func (d *KeyData) updatePassphrase(payload, oldKey []byte, passphrase string, kd
 			Time:   int(params.Time),
 			Memory: int(params.MemoryKiB),
 			CPUs:   int(params.Threads)},
+		Encryption:       passphraseEncryption,
+		KeySize:          passphraseDerivedKeyLen,
 		EncryptedPayload: make([]byte, len(payload))}
 
 	stream := cipher.NewCFBEncrypter(c, key[passphraseDerivedKeyLen:])
@@ -376,12 +381,17 @@ func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte
 		return nil, nil, errors.New("passphrase is not enabled")
 	}
 
-	keyLen := passphraseDerivedKeyLen + aes.BlockSize
-
 	data := d.data.PassphraseProtectedPayload
 	if data.KDF.Type != kdfType {
+		// Only Argon2i is supported
 		return nil, nil, fmt.Errorf("unexpected KDF type \"%s\"", data.KDF.Type)
 	}
+	if data.Encryption != passphraseEncryption {
+		// Only AES-256-CFB is supported
+		return nil, nil, fmt.Errorf("unexpected encryption algorithm \"%s\"", data.Encryption)
+	}
+
+	keyLen := data.KeySize + aes.BlockSize
 
 	params := &CostParams{
 		Time:      uint32(data.KDF.Time),

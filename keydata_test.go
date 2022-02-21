@@ -378,6 +378,14 @@ func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModePassphrase(c *C, r i
 	p, ok := j["passphrase_protected_payload"].(map[string]interface{})
 	c.Check(ok, testutil.IsTrue)
 
+	encryption, ok := p["encryption"].(string)
+	c.Check(ok, testutil.IsTrue)
+	c.Check(encryption, Equals, "aes-cfb")
+
+	keySize, ok := p["key_size"].(float64)
+	c.Check(ok, testutil.IsTrue)
+	c.Check(keySize, Equals, float64(32))
+
 	k, ok := p["kdf"].(map[string]interface{})
 	c.Check(ok, testutil.IsTrue)
 
