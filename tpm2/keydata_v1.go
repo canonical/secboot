@@ -107,7 +107,7 @@ func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 		return nil, keyDataError{errors.New("cannot determine if static authorization policy matches sealed key object: algorithm unavailable")}
 	}
 	trial := util.ComputeAuthPolicy(d.KeyPublic.NameAlg)
-	trial.PolicyAuthorize(computePcrPolicyRefFromCounterContext(pcrPolicyCounter), authKeyName)
+	trial.PolicyAuthorize(computeV1PcrPolicyRefFromCounterContext(pcrPolicyCounter), authKeyName)
 	trial.PolicyAuthValue()
 
 	if !bytes.Equal(trial.GetDigest(), d.KeyPublic.AuthPolicy) {
