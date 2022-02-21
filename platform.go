@@ -94,7 +94,10 @@ type PlatformKeyDataHandler interface {
 
 	// ChangeAuthKey is called to notify the platform implementation that the
 	// passphrase is being changed. The old and new parameters are passphrase derived
-	// keys. On success, it should return an updated handle.
+	// keys. Either value can be nil if passphrase authentication is being enabled (
+	// where old will be nil) or disabled (where new will be nil).
+	//
+	// On success, it should return an updated handle.
 	ChangeAuthKey(handle, old, new []byte) ([]byte, error)
 }
 
