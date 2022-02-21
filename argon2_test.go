@@ -23,6 +23,7 @@ import (
 	"crypto"
 	"encoding/binary"
 	"math"
+	"os"
 	"runtime"
 	"time"
 
@@ -34,6 +35,8 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/argon2"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 type mockKDF struct {
@@ -221,4 +224,133 @@ func (s *argon2Suite) TestDeriveCostParamsForceThreads(c *C) {
 	c.Check(kdf.lastBenchmarkKeyLen, Equals, uint32(0))
 
 	s.checkParams(c, &opts, 1, params)
+}
+
+type argon2SuiteExpensive struct{}
+
+func (s *argon2SuiteExpensive) SetUpSuite(c *C) {
+	if _, exists := os.LookupEnv("NO_ARGON2_TESTS"); exists {
+		c.Skip("skipping expensive argon2 tests")
+	}
+}
+
+var _ = Suite(&argon2SuiteExpensive{})
+
+type testArgon2iKDFDeriveData struct {
+	passphrase string
+	salt       []byte
+	params     *KDFCostParams
+	keyLen     uint32
+}
+
+func (s *argon2SuiteExpensive) testArgon2iKDFDerive(c *C, data *testArgon2iKDFDeriveData) {
+	kdf := Argon2iKDF()
+	c.Assert(kdf, NotNil)
+
+	params := &KDFCostParams{
+		Time:      data.params.Time,
+		MemoryKiB: data.params.MemoryKiB,
+		Threads:   data.params.Threads}
+
+	cpus := runtime.NumCPU()
+	if int(params.Threads) > cpus {
+		params.Threads = uint8(cpus)
+	}
+
+	key, err := kdf.Derive(data.passphrase, data.salt, params, data.keyLen)
+	c.Check(err, IsNil)
+	runtime.GC()
+
+	expected := argon2.Key(data.passphrase, data.salt, &argon2.CostParams{
+		Time:      params.Time,
+		MemoryKiB: params.MemoryKiB,
+		Threads:   params.Threads}, data.keyLen)
+	runtime.GC()
+
+	c.Check(key, DeepEquals, expected)
+}
+
+func (s *argon2SuiteExpensive) TestArgon2iKDFDerive(c *C) {
+	s.testArgon2iKDFDerive(c, &testArgon2iKDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		params: &KDFCostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen: 32})
+}
+
+func (s *argon2SuiteExpensive) TestArgon2iKDFDeriveDifferentPassphrase(c *C) {
+	s.testArgon2iKDFDerive(c, &testArgon2iKDFDeriveData{
+		passphrase: "bar",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		params: &KDFCostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen: 32})
+}
+
+func (s *argon2SuiteExpensive) TestArgon2iKDFiDeriveDifferentSalt(c *C) {
+	s.testArgon2iKDFDerive(c, &testArgon2iKDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("zyxwvutsrqponmlkjihgfedcba987654"),
+		params: &KDFCostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen: 32})
+}
+
+func (s *argon2SuiteExpensive) TestArgon2iKDFDeriveDifferentParams(c *C) {
+	s.testArgon2iKDFDerive(c, &testArgon2iKDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		params: &KDFCostParams{
+			Time:      48,
+			MemoryKiB: 32 * 1024,
+			Threads:   4},
+		keyLen: 32})
+}
+
+func (s *argon2SuiteExpensive) TestArgon2iKDFDeriveDifferentKeyLen(c *C) {
+	s.testArgon2iKDFDerive(c, &testArgon2iKDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		params: &KDFCostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen: 64})
+}
+
+func (s *argon2SuiteExpensive) TestArgon2iKDFTime(c *C) {
+	kdf := Argon2iKDF()
+	c.Assert(kdf, NotNil)
+
+	time1, err := kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4}, 32)
+	runtime.GC()
+	c.Check(err, IsNil)
+
+	time2, err := kdf.Time(&KDFCostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4}, 32)
+	runtime.GC()
+	c.Check(err, IsNil)
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	time2, err = kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4}, 32)
+	runtime.GC()
+	c.Check(err, IsNil)
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	time2, err = kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1}, 32)
+	runtime.GC()
+	c.Check(err, IsNil)
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
 }

@@ -1350,6 +1350,39 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData7(c *C) {
 		auxKey:           auxKeys[1]})
 }
 
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData8(c *C) {
+	// Test with 2 keys where one has a passphrase set. Activation fails with
+	// the key that doesn't have a passphrase set, so activation should happen
+	// with the key that has a passphrase set.
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
+
+	var kdf mockKDF
+	c.Check(keyData[1].SetPassphrase("5678", nil, &kdf), IsNil)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys[1:],
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		passphraseTries:  1,
+		authResponses:    []interface{}{"5678"},
+		model:            models[0],
+		authorized:       true,
+		activateTries:    2,
+		key:              keys[1],
+		auxKey:           auxKeys[1]})
+}
+
 type testActivateVolumeWithMultipleKeyDataErrorHandlingData struct {
 	keys        []DiskUnlockKey
 	recoveryKey RecoveryKey
