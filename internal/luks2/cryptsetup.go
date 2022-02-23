@@ -28,13 +28,12 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/xerrors"
-
-	"github.com/snapcore/secboot/internal/luks2/internal"
 )
 
 const (
@@ -53,7 +52,8 @@ var (
 	// required features.
 	ErrMissingCryptsetupFeature = errors.New("cannot perform the requested operation because a required feature is missing from cryptsetup")
 
-	features Features
+	features     Features
+	featuresOnce sync.Once
 
 	keySize = 64
 )
@@ -114,7 +114,7 @@ func cryptsetupCmd(stdin io.Reader, callback func(cmd *exec.Cmd) error, args ...
 // DetectCryptsetupFeatures returns the features supported by the cryptsetup binary
 // on this system.
 func DetectCryptsetupFeatures() Features {
-	internal.FeaturesOnce.Do(func() {
+	featuresOnce.Do(func() {
 		features = 0
 
 		cmd := exec.Command("cryptsetup", "--version")

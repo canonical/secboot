@@ -22,6 +22,7 @@ package luks2
 import (
 	"io"
 	"os"
+	"sync"
 
 	"golang.org/x/sys/unix"
 )
@@ -83,4 +84,8 @@ func MockStderr(w io.Writer) (restore func()) {
 	return func() {
 		stderr = origStderr
 	}
+}
+
+func ResetCryptsetupFeatures() {
+	featuresOnce = sync.Once{}
 }

@@ -41,8 +41,12 @@ var (
 	// required features.
 	ErrMissingCryptsetupFeature = luks2.ErrMissingCryptsetupFeature
 
-	luks2Activate   = luks2.Activate
-	luks2Deactivate = luks2.Deactivate
+	luks2Activate        = luks2.Activate
+	luks2AddKey          = luks2.AddKey
+	luks2Deactivate      = luks2.Deactivate
+	luks2Format          = luks2.Format
+	luks2KillSlot        = luks2.KillSlot
+	luks2SetSlotPriority = luks2.SetSlotPriority
 )
 
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
@@ -568,11 +572,11 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 		options.KDFOptions = defaultKdfOptions
 	}
 
-	if err := luks2.Format(devicePath, label, key, options.formatOpts()); err != nil {
+	if err := luks2Format(devicePath, label, key, options.formatOpts()); err != nil {
 		return xerrors.Errorf("cannot format: %w", err)
 	}
 
-	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
+	if err := luks2SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
 		return xerrors.Errorf("cannot change keyslot priority: %w", err)
 	}
 
@@ -590,7 +594,7 @@ func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey R
 	if options == nil {
 		options = &KDFOptions{}
 	}
-	return luks2.AddKey(devicePath, key, recoveryKey[:],
+	return luks2AddKey(devicePath, key, recoveryKey[:],
 		&luks2.AddKeyOptions{
 			KDFOptions: options.luksOpts(),
 			Slot:       luks2.AnySlot})
@@ -611,7 +615,7 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
 
-	if err := luks2.KillSlot(devicePath, 0, recoveryKey[:]); err != nil {
+	if err := luks2KillSlot(devicePath, 0, recoveryKey[:]); err != nil {
 		return xerrors.Errorf("cannot kill existing slot: %w", err)
 	}
 
@@ -625,11 +629,11 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 	options := luks2.AddKeyOptions{
 		KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4},
 		Slot:       0}
-	if err := luks2.AddKey(devicePath, recoveryKey[:], key, &options); err != nil {
+	if err := luks2AddKey(devicePath, recoveryKey[:], key, &options); err != nil {
 		return xerrors.Errorf("cannot add key: %w", err)
 	}
 
-	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
+	if err := luks2SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
 		return xerrors.Errorf("cannot change keyslot priority: %w", err)
 	}
 

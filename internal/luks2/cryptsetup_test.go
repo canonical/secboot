@@ -20,7 +20,6 @@
 package luks2_test
 
 import (
-	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
@@ -28,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,17 +37,28 @@ import (
 
 	. "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luks2/luks2test"
+	"github.com/snapcore/secboot/internal/paths"
 	"github.com/snapcore/secboot/internal/paths/pathstest"
 )
 
 type cryptsetupSuiteBase struct {
 	snapd_testutil.BaseTest
+
+	cryptsetup *snapd_testutil.MockCmd
 }
 
 func (s *cryptsetupSuiteBase) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 	s.AddCleanup(luks2test.WrapCryptsetup(c))
+
+	cryptsetupWrapperTpl := `exec %[1]s "$@" </dev/stdin`
+
+	cryptsetup, err := exec.LookPath("cryptsetup")
+	c.Assert(err, IsNil)
+
+	s.cryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupWrapperTpl, cryptsetup))
+	s.AddCleanup(s.cryptsetup.Restore)
 }
 
 type cryptsetupSuite struct {
@@ -64,14 +75,8 @@ func (s *cryptsetupSuiteExpensive) SetUpSuite(c *C) {
 	}
 }
 
-func (s *cryptsetupSuiteBase) checkLUKS2Passphrase(c *C, path string, key []byte) {
-	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", path)
-	cmd.Stdin = bytes.NewReader(key)
-	c.Check(cmd.Run(), IsNil)
-}
-
 func (s *cryptsetupSuiteBase) mockCryptsetupFeatures(c *C, features Features) (cmd *snapd_testutil.MockCmd, reset func()) {
-	luks2test.ResetCryptsetupFeatures()
+	ResetCryptsetupFeatures()
 
 	responsesFile := filepath.Join(c.MkDir(), "responses")
 
@@ -104,7 +109,7 @@ exit "$r"
 `
 	cmd = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, responsesFile, version))
 	return cmd, func() {
-		luks2test.ResetCryptsetupFeatures()
+		ResetCryptsetupFeatures()
 		cmd.Restore()
 	}
 }
@@ -189,12 +194,21 @@ type testFormatData struct {
 	label   string
 	key     []byte
 	options *FormatOptions
+
+	extraArgs []string
 }
 
 func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
 	c.Check(Format(devicePath, data.label, data.key, data.options), IsNil)
+
+	cmd := []string{"cryptsetup", "-q", "luksFormat", "--type", "luks2",
+		"--key-file", "-", "--cipher", "aes-xts-plain64", "--key-size", "512",
+		"--label", data.label, "--pbkdf", "argon2i"}
+	cmd = append(cmd, data.extraArgs...)
+	cmd = append(cmd, devicePath)
+	c.Check(s.cryptsetup.Calls(), DeepEquals, [][]string{cmd})
 
 	options := data.options
 	if options == nil {
@@ -279,42 +293,47 @@ func (s *cryptsetupSuiteExpensive) TestFormatWithCustomKDFTime(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
-		label:   "test",
-		key:     key,
-		options: &FormatOptions{KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond}}})
+		label:     "test",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond}},
+		extraArgs: []string{"--iter-time", "100"}})
 }
 
 func (s *cryptsetupSuiteExpensive) TestFormatWithCustomKDFMemory(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
-		label:   "data",
-		key:     key,
-		options: &FormatOptions{KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond, MemoryKiB: 32 * 1024}}})
+		label:     "data",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond, MemoryKiB: 32 * 1024}},
+		extraArgs: []string{"--iter-time", "100", "--pbkdf-memory", "32768"}})
 }
 
 func (s *cryptsetupSuite) TestFormatWithForceIterations(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
-		label:   "data",
-		key:     key,
-		options: &FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}})
+		label:     "data",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}},
+		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768"}})
 }
 
 func (s *cryptsetupSuite) TestFormatWithDifferentLabel(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
-		label:   "data",
-		key:     key,
-		options: &FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}})
+		label:     "data",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}},
+		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768"}})
 }
 
 func (s *cryptsetupSuite) TestFormatWithCustomMetadataSize(c *C) {
 	if DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
 		c.Skip("cryptsetup doesn't support --luks2-metadata-size")
 	}
+	s.cryptsetup.ForgetCalls()
 
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -323,13 +342,15 @@ func (s *cryptsetupSuite) TestFormatWithCustomMetadataSize(c *C) {
 		key:   key,
 		options: &FormatOptions{
 			KDFOptions:      KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
-			MetadataKiBSize: 2 * 1024}})
+			MetadataKiBSize: 2 * 1024},
+		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768", "--luks2-metadata-size", "2048k"}})
 }
 
 func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSize(c *C) {
 	if DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
 		c.Skip("cryptsetup doesn't support --luks2-keyslots-size")
 	}
+	s.cryptsetup.ForgetCalls()
 
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -338,7 +359,8 @@ func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSize(c *C) {
 		key:   key,
 		options: &FormatOptions{
 			KDFOptions:          KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
-			KeyslotsAreaKiBSize: 2 * 1024}})
+			KeyslotsAreaKiBSize: 2 * 1024},
+		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768", "--luks2-keyslots-size", "2048k"}})
 }
 
 func (s *cryptsetupSuite) TestFormatWithCustomMetadataSizeUnsupported(c *C) {
@@ -373,6 +395,8 @@ type testAddKeyData struct {
 	key     []byte
 	options *AddKeyOptions
 	time    time.Duration
+
+	extraArgs []string
 }
 
 func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
@@ -383,10 +407,22 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	fmtOpts := FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}
 	c.Assert(Format(devicePath, "", primaryKey, &fmtOpts), IsNil)
 
+	s.cryptsetup.ForgetCalls()
+
 	startInfo, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 
 	c.Check(AddKey(devicePath, primaryKey, data.key, data.options), IsNil)
+
+	c.Assert(s.cryptsetup.Calls(), HasLen, 1)
+	c.Assert(s.cryptsetup.Calls()[0], HasLen, 10+len(data.extraArgs))
+	c.Check(s.cryptsetup.Calls()[0][0:5], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file"})
+	c.Check(s.cryptsetup.Calls()[0][5], Matches, filepath.Join(paths.RunDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
+	c.Check(s.cryptsetup.Calls()[0][6:8], DeepEquals, []string{"--pbkdf", "argon2i"})
+	if len(data.extraArgs) > 0 {
+		c.Check(s.cryptsetup.Calls()[0][8:8+len(data.extraArgs)], DeepEquals, data.extraArgs)
+	}
+	c.Check(s.cryptsetup.Calls()[0][8+len(data.extraArgs):], DeepEquals, []string{devicePath, "-"})
 
 	endInfo, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -466,7 +502,8 @@ func (s *cryptsetupSuiteExpensive) TestAddKeyWithCustomKDFTime(c *C) {
 		key: key,
 		options: &AddKeyOptions{
 			KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond},
-			Slot:       AnySlot}})
+			Slot:       AnySlot},
+		extraArgs: []string{"--iter-time", "100"}})
 }
 
 func (s *cryptsetupSuiteExpensive) TestAddKeyWithCustomKDFMemory(c *C) {
@@ -477,7 +514,8 @@ func (s *cryptsetupSuiteExpensive) TestAddKeyWithCustomKDFMemory(c *C) {
 		key: key,
 		options: &AddKeyOptions{
 			KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond, MemoryKiB: 32 * 1024},
-			Slot:       AnySlot}})
+			Slot:       AnySlot},
+		extraArgs: []string{"--iter-time", "100", "--pbkdf-memory", "32768"}})
 }
 
 func (s *cryptsetupSuite) TestAddKeyWithForceIterations(c *C) {
@@ -488,7 +526,8 @@ func (s *cryptsetupSuite) TestAddKeyWithForceIterations(c *C) {
 		key: key,
 		options: &AddKeyOptions{
 			KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
-			Slot:       AnySlot}})
+			Slot:       AnySlot},
+		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768"}})
 }
 
 func (s *cryptsetupSuite) TestAddKeyWithSpecificKeyslot(c *C) {
@@ -499,7 +538,8 @@ func (s *cryptsetupSuite) TestAddKeyWithSpecificKeyslot(c *C) {
 		key: key,
 		options: &AddKeyOptions{
 			KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
-			Slot:       8}})
+			Slot:       8},
+		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768", "--key-slot", "8"}})
 }
 
 func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
@@ -523,8 +563,11 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 }
 
 type testImportTokenData struct {
-	token            Token
-	options          *ImportTokenOptions
+	token   Token
+	options *ImportTokenOptions
+
+	extraArgs []string
+
 	expectedKeyslots []int
 	expectedParams   map[string]interface{}
 }
@@ -540,7 +583,17 @@ func (s *cryptsetupSuite) testImportToken(c *C, data *testImportTokenData) {
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
+	s.cryptsetup.ForgetCalls()
+
 	c.Check(ImportToken(devicePath, data.token, data.options), IsNil)
+
+	c.Assert(s.cryptsetup.Calls(), HasLen, 1)
+	c.Assert(s.cryptsetup.Calls()[0], HasLen, 4+len(data.extraArgs))
+	c.Check(s.cryptsetup.Calls()[0][0:3], DeepEquals, []string{"cryptsetup", "token", "import"})
+	if data.extraArgs != nil {
+		c.Check(s.cryptsetup.Calls()[0][3:3+len(data.extraArgs)], DeepEquals, data.extraArgs)
+	}
+	c.Check(s.cryptsetup.Calls()[0][3+len(data.extraArgs)], Equals, devicePath)
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -643,6 +696,7 @@ func (s *cryptsetupSuite) TestImportToken5(c *C) {
 				"secboot-a": 50,
 				"secboot-b": data}},
 		options:          &ImportTokenOptions{Id: 8},
+		extraArgs:        []string{"--token-id", "8"},
 		expectedKeyslots: []int{0},
 		expectedParams: map[string]interface{}{
 			"secboot-a": float64(50),
@@ -687,11 +741,15 @@ func (s *cryptsetupSuite) TestReplaceToken(c *C) {
 		Params:        map[string]interface{}{"secboot-a": float64(60)}}
 	c.Check(ImportToken(devicePath, token2, &ImportTokenOptions{Id: 8}), IsNil)
 
+	s.cryptsetup.ForgetCalls()
+
 	token2 = &GenericToken{
 		TokenType:     "secboot-test",
 		TokenKeyslots: []int{0},
 		Params:        map[string]interface{}{"secboot-a": float64(70)}}
 	c.Check(ImportToken(devicePath, token2, &ImportTokenOptions{Id: 8, Replace: true}), IsNil)
+
+	c.Check(s.cryptsetup.Calls(), DeepEquals, [][]string{{"cryptsetup", "token", "import", "--token-id", "8", "--token-replace", devicePath}})
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -761,7 +819,13 @@ func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
 	_, ok := info.Metadata.Tokens[tokenId]
 	c.Check(ok, Equals, true)
 
+	s.cryptsetup.ForgetCalls()
+
 	c.Check(RemoveToken(devicePath, tokenId), IsNil)
+
+	c.Check(s.cryptsetup.Calls(), DeepEquals, [][]string{
+		{"cryptsetup", "token", "remove", "--token-id", strconv.Itoa(tokenId), devicePath},
+	})
 
 	info, err = ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -819,7 +883,13 @@ func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 	_, ok := info.Metadata.Keyslots[data.slotId]
 	c.Check(ok, Equals, true)
 
+	s.cryptsetup.ForgetCalls()
+
 	c.Check(KillSlot(devicePath, data.slotId, data.key), IsNil)
+
+	c.Check(s.cryptsetup.Calls(), DeepEquals, [][]string{
+		{"cryptsetup", "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(data.slotId)},
+	})
 
 	info, err = ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -907,7 +977,13 @@ func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityDat
 	c.Assert(ok, Equals, true)
 	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 
+	s.cryptsetup.ForgetCalls()
+
 	c.Check(SetSlotPriority(devicePath, data.slotId, data.priority), IsNil)
+
+	c.Check(s.cryptsetup.Calls(), DeepEquals, [][]string{
+		{"cryptsetup", "config", "--priority", data.priority.String(), "--key-slot", strconv.Itoa(data.slotId), devicePath},
+	})
 
 	info, err = ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
