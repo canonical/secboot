@@ -35,6 +35,11 @@ import (
 )
 
 var (
+	// ErrMissingCryptsetupFeature is returned from some functions that make
+	// use of the system's cryptsetup binary, if that binary is missing some
+	// required features.
+	ErrMissingCryptsetupFeature = luks2.ErrMissingCryptsetupFeature
+
 	luks2Activate   = luks2.Activate
 	luks2Deactivate = luks2.Deactivate
 )
