@@ -62,15 +62,9 @@ func (e *PlatformHandlerError) Unwrap() error {
 }
 
 // PlatformKeyData represents the data exchanged between this package and
-// platform implementations.
+// platform implementations via the PlatformKeyDataHandler.
 type PlatformKeyData struct {
-	// Handle contains metadata required by the platform in order to recover
-	// this key. It is opaque to this go package. It should be an encoded JSON
-	// value, which could be something as simple as a single string containing
-	// a base64 encoded binary payload or a more complex JSON object, depending
-	// on the requirements of the implementation.
-	Handle []byte
-
+	Handle           []byte // The JSON encoded platform handle
 	EncryptedPayload []byte // The encrypted payload
 }
 

@@ -271,14 +271,10 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Auxili
 	c.Assert(err, IsNil)
 	stream := cipher.NewCFBEncrypter(b, handle.IV)
 
-	handleBytes, err := json.Marshal(&handle)
-	c.Check(err, IsNil)
-
 	out = &KeyCreationData{
-		PlatformName: mockPlatformName,
-		PlatformKeyData: PlatformKeyData{
-			Handle:           handleBytes,
-			EncryptedPayload: make([]byte, len(payload))},
+		PlatformName:      mockPlatformName,
+		Handle:            &handle,
+		EncryptedPayload:  make([]byte, len(payload)),
 		AuxiliaryKey:      auxKey,
 		SnapModelAuthHash: modelAuthHash}
 	stream.XORKeyStream(out.EncryptedPayload, payload)
@@ -288,17 +284,17 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Auxili
 func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{}, creationData *KeyCreationData, nmodels int) {
 	c.Check(j["platform_name"], Equals, creationData.PlatformName)
 
-	var creationHandle map[string]interface{}
-	c.Check(json.Unmarshal(creationData.Handle, &creationHandle), IsNil)
+	expectedHandle, ok := creationData.Handle.(*mockPlatformKeyDataHandle)
+	c.Assert(ok, testutil.IsTrue)
 
-	handle, ok := j["platform_handle"].(map[string]interface{})
-	c.Check(ok, testutil.IsTrue)
-	str, ok := handle["key"].(string)
-	c.Check(ok, testutil.IsTrue)
-	c.Check(str, Equals, creationHandle["key"].(string))
-	str, ok = handle["iv"].(string)
-	c.Check(ok, testutil.IsTrue)
-	c.Check(str, Equals, creationHandle["iv"].(string))
+	handleBytes, err := json.Marshal(j["platform_handle"])
+	c.Check(err, IsNil)
+
+	var handle *mockPlatformKeyDataHandle
+	c.Check(json.Unmarshal(handleBytes, &handle), IsNil)
+
+	c.Check(handle.Key, DeepEquals, expectedHandle.Key)
+	c.Check(handle.IV, DeepEquals, expectedHandle.IV)
 
 	m, ok := j["authorized_snap_models"].(map[string]interface{})
 	c.Check(ok, testutil.IsTrue)
@@ -306,7 +302,7 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 	h := toHash(c, m["alg"])
 	c.Check(h, Equals, creationData.SnapModelAuthHash)
 
-	str, ok = m["key_digest"].(string)
+	str, ok := m["key_digest"].(string)
 	c.Check(ok, testutil.IsTrue)
 	keyDigest, err := base64.StdEncoding.DecodeString(str)
 	c.Check(err, IsNil)
@@ -337,15 +333,7 @@ func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModeNone(c *C, r io.Read
 
 	s.checkKeyDataJSONCommon(c, j, creationData, nmodels)
 
-	var creationHandle map[string]interface{}
-	c.Check(json.Unmarshal(creationData.Handle, &creationHandle), IsNil)
-
-	handle, ok := j["platform_handle"].(map[string]interface{})
-	c.Check(ok, testutil.IsTrue)
-	str, ok := handle["auth-key-hmac"].(string)
-	c.Check(ok, testutil.IsTrue)
-
-	str, ok = j["encrypted_payload"].(string)
+	str, ok := j["encrypted_payload"].(string)
 	c.Check(ok, testutil.IsTrue)
 	encryptedPayload, err := base64.StdEncoding.DecodeString(str)
 	c.Check(err, IsNil)
@@ -537,12 +525,10 @@ func (s *keyDataSuite) TestUnmarshalPlatformHandle(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var handle mockPlatformKeyDataHandle
+	var handle *mockPlatformKeyDataHandle
 	c.Check(keyData.UnmarshalPlatformHandle(&handle), IsNil)
 
-	var expected mockPlatformKeyDataHandle
-	c.Check(json.Unmarshal(protected.Handle, &expected), IsNil)
-	c.Check(handle, DeepEquals, expected)
+	c.Check(handle, DeepEquals, protected.Handle)
 }
 
 func (s *keyDataSuite) TestMarshalAndUpdatePlatformHandle(c *C) {
@@ -551,12 +537,12 @@ func (s *keyDataSuite) TestMarshalAndUpdatePlatformHandle(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var handle mockPlatformKeyDataHandle
-	c.Check(json.Unmarshal(protected.Handle, &handle), IsNil)
-
+	handle := protected.Handle.(*mockPlatformKeyDataHandle)
 	rand.Read(handle.AuthKeyHMAC)
 
 	c.Check(keyData.MarshalAndUpdatePlatformHandle(&handle), IsNil)
+
+	protected.Handle = handle
 
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)

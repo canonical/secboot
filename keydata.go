@@ -148,8 +148,16 @@ const (
 // KeyCreationData is the data required to create a new KeyData object.
 // It should be produced by a platform implementation.
 type KeyCreationData struct {
-	PlatformKeyData
-	PlatformName string // Name of the platform that produced this data
+	// Handle contains metadata required by the platform in order to recover
+	// this key. It is opaque to this go package. It should be a value that can
+	// be encoded to JSON using go's encoding/json package, which could be
+	// something as simple as binary data stored in a byte slice or a more complex
+	// JSON object, depending on the requirements of the implementation. A handle
+	// already encoded to JSON can be supplied using the json.RawMessage type.
+	Handle interface{}
+
+	EncryptedPayload []byte // The encrypted payload
+	PlatformName     string // Name of the platform that produced this data
 
 	// AuxiliaryKey is a key used to authorize changes to the key data.
 	// It must match the key protected inside PlatformKeyData.EncryptedPayload.
@@ -720,8 +728,9 @@ func ReadKeyData(r KeyDataReader) (*KeyData, error) {
 // the platform's secure device and the associated handle required for subsequent
 // recovery of the keys.
 func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
-	if !json.Valid(creationData.Handle) {
-		return nil, errors.New("handle is not valid JSON")
+	handle, err := json.Marshal(creationData.Handle)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot encode platform handle: %w", err)
 	}
 
 	rng, err := drbg.NewCTRWithExternalEntropy(32, creationData.AuxiliaryKey, nil, []byte("SNAP-MODEL-HMAC"), nil)
@@ -737,7 +746,7 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 	return &KeyData{
 		data: keyData{
 			PlatformName:     creationData.PlatformName,
-			PlatformHandle:   json.RawMessage(creationData.Handle),
+			PlatformHandle:   json.RawMessage(handle),
 			EncryptedPayload: creationData.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
 				Alg:       hashAlg{creationData.SnapModelAuthHash},
