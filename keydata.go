@@ -340,7 +340,7 @@ func (d *KeyData) UnmarshalPlatformHandle(handle interface{}) error {
 	return nil
 }
 
-// UpdatePlatformHandle marshals the supplied platform handle to JSON and updates
+// MarshalAndUpdatePlatformHandle marshals the supplied platform handle to JSON and updates
 // this KeyData object. The changes will need to persisted afterwards using
 // WriteAtomic.
 func (d *KeyData) MarshalAndUpdatePlatformHandle(handle interface{}) error {
