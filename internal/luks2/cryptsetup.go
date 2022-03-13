@@ -38,9 +38,13 @@ import (
 )
 
 const (
-	// AnySlot tells a command to automatically choose an appropriate slot
+	// AnySlot tells AddKey to automatically choose an appropriate slot
 	// as opposed to hard coding one.
 	AnySlot = -1
+
+	// AnyId tells ImportToken to automatically choose an appropriate token
+	// ID as opposed to hard coding one.
+	AnyId = -1
 )
 
 var (
@@ -341,11 +345,36 @@ func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) 
 	return cryptsetupCmd(bytes.NewReader(key), writeExistingKeyToFifo, args...)
 }
 
+// ImportTokenOptions provides the options for importing a JSON token into a LUKS2 header.
+type ImportTokenOptions struct {
+	// Id is the token ID to use. Note that the default value is slot 0. In
+	// order to automatically choose an ID, use AnyId.
+	Id int
+
+	// Replace will overwrite an existing token at the specified slot.
+	Replace bool
+}
+
 // ImportToken imports the supplied token in to the JSON metadata area of the specified LUKS2 container.
-// This requires FeatureTokenImport.
-func ImportToken(devicePath string, token Token) error {
+// This requires FeatureTokenImport. If the Replace field of options is set, then FeatureTokenReplace
+// is required.
+func ImportToken(devicePath string, token Token, options *ImportTokenOptions) error {
 	if DetectCryptsetupFeatures()&FeatureTokenImport == 0 {
 		return ErrMissingCryptsetupFeature
+	}
+
+	if options == nil {
+		options = &ImportTokenOptions{Id: AnyId}
+	}
+
+	if options.Replace {
+		if DetectCryptsetupFeatures()&FeatureTokenReplace == 0 {
+			return ErrMissingCryptsetupFeature
+		}
+		if options.Id == AnyId {
+			// Require replace to specify a slot
+			return errors.New("replace requires a token ID")
+		}
 	}
 
 	tokenJSON, err := json.Marshal(token)
@@ -353,7 +382,16 @@ func ImportToken(devicePath string, token Token) error {
 		return xerrors.Errorf("cannot serialize token: %w", err)
 	}
 
-	return cryptsetupCmd(bytes.NewReader(tokenJSON), nil, "token", "import", devicePath)
+	args := []string{"token", "import"}
+	if options.Id != AnyId {
+		args = append(args, "--token-id", strconv.Itoa(options.Id))
+	}
+	if options.Replace {
+		args = append(args, "--token-replace")
+	}
+	args = append(args, devicePath)
+
+	return cryptsetupCmd(bytes.NewReader(tokenJSON), nil, args...)
 }
 
 // RemoveToken removes the token with the supplied ID from the JSON metadata area of the specified
