@@ -334,10 +334,8 @@ type argon2SuiteExpensive struct{}
 var _ = Suite(&argon2SuiteExpensive{})
 
 func (s *argon2SuiteExpensive) SetUpSuite(c *C) {
-	for _, e := range os.Environ() {
-		if e == "NO_ARGON2_TESTS=1" {
-			c.Skip("skipping expensive argon2 tests")
-		}
+	if _, exists := os.LookupEnv("NO_ARGON2_TESTS"); exists {
+		c.Skip("skipping expensive argon2 tests")
 	}
 }
 

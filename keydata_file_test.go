@@ -59,7 +59,7 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	s.checkKeyDataJSONFromReader(c, f, protected, 0)
+	s.checkKeyDataJSONFromReaderAuthModeNone(c, f, protected, 0)
 }
 
 func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {

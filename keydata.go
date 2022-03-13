@@ -22,6 +22,9 @@ package secboot
 import (
 	"bytes"
 	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -33,14 +36,23 @@ import (
 	"golang.org/x/xerrors"
 )
 
-// ErrNoPlatformHandlerRegistered is returned from any of the KeyData.RecoverKeys*
-// functions if the keys cannot be successfully recovered because there is no
-// appropriate platform handler registered.
-var ErrNoPlatformHandlerRegistered = errors.New("cannot recover key because there isn't a platform handler registered for it")
+const (
+	kdfType                 = "argon2i"
+	passphraseDerivedKeyLen = 32
+	passphraseEncryption    = "aes-cfb"
+)
 
-// InvalidKeyDataError is returned from any of the KeyData.RecoverKeys* functions
-// if the keys cannot be successfully recovered because the key data is invalid in
-// some way.
+// ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
+// appropriate platform handler is registered using the
+// RegisterPlatformKeyDataHandler API.
+var ErrNoPlatformHandlerRegistered = errors.New("no appropriate platform handler is registered")
+
+// ErrInvalidPassphrase is returned from KeyData methods that require
+// knowledge of a passphrase is the supplied passphrase is incorrect.
+var ErrInvalidPassphrase = errors.New("the supplied passphrase is incorrect")
+
+// InvalidKeyDataError is returned from KeyData methods if the key data
+// is invalid in some way.
 type InvalidKeyDataError struct {
 	err error
 }
@@ -53,9 +65,8 @@ func (e *InvalidKeyDataError) Unwrap() error {
 	return e.err
 }
 
-// PlatformUninitializedError is returned from any of the KeyData.RecoverKeys* functions
-// if the keys cannot be successfully recovered because the platform's secure device has
-// not been initialized properly.
+// PlatformUninitializedError is returned from KeyData methods if the
+// platform's secure device has not been initialized properly.
 type PlatformUninitializedError struct {
 	err error
 }
@@ -68,9 +79,8 @@ func (e *PlatformUninitializedError) Unwrap() error {
 	return e.err
 }
 
-// PlatformDeviceUnavailableError is returned from any of the KeyData.RecoverKeys*
-// functions if the keys cannot be recovered because the platform's secure device is
-// currently unavailable.
+// PlatformDeviceUnavailableError is returned from KeyData methods if the
+// platform's secure device is currently unavailable.
 type PlatformDeviceUnavailableError struct {
 	err error
 }
@@ -247,6 +257,8 @@ type kdfData struct {
 
 type passphraseData struct {
 	KDF              kdfData `json:"kdf"`
+	Encryption       string  `json:"encryption"`
+	KeySize          int     `json:"key_size"`
 	EncryptedPayload []byte  `json:"encrypted_payload"`
 }
 
@@ -260,20 +272,22 @@ type keyData struct {
 	AuthorizedSnapModels authorizedSnapModels `json:"authorized_snap_models"`
 }
 
-func processPlatformKeyRecoveryError(err error) error {
-	var pe *PlatformKeyRecoveryError
+func processPlatformHandlerError(err error) error {
+	var pe *PlatformHandlerError
 	if xerrors.As(err, &pe) {
 		switch pe.Type {
-		case PlatformKeyRecoveryErrorInvalidData:
+		case PlatformHandlerErrorInvalidData:
 			return &InvalidKeyDataError{pe.Err}
-		case PlatformKeyRecoveryErrorUninitialized:
+		case PlatformHandlerErrorUninitialized:
 			return &PlatformUninitializedError{pe.Err}
-		case PlatformKeyRecoveryErrorUnavailable:
+		case PlatformHandlerErrorUnavailable:
 			return &PlatformDeviceUnavailableError{pe.Err}
+		case PlatformHandlerErrorInvalidAuthKey:
+			return ErrInvalidPassphrase
 		}
 	}
 
-	return xerrors.Errorf("cannot recover keys because of an unexpected error: %w", err)
+	return xerrors.Errorf("cannot perform action because of an unexpected error: %w", err)
 }
 
 // KeyData represents a disk unlock key and auxiliary key protected by a platform's
@@ -300,6 +314,107 @@ func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
 	}
 
 	return hmacKey, nil
+}
+
+func (d *KeyData) updatePassphrase(payload, oldKey []byte, passphrase string, kdfOptions *KDFOptions, kdf KDF) error {
+	handler := handlers[d.data.PlatformName]
+	if handler == nil {
+		return ErrNoPlatformHandlerRegistered
+	}
+
+	if kdfOptions == nil {
+		var defaultOptions KDFOptions
+		kdfOptions = &defaultOptions
+	}
+
+	// Derive both a key and an IV from the passphrase in a single pass.
+	keyLen := passphraseDerivedKeyLen + aes.BlockSize
+
+	params, err := kdfOptions.deriveCostParams(keyLen, kdf)
+	if err != nil {
+		return xerrors.Errorf("cannot derive KDF cost parameters: %w", err)
+	}
+
+	var salt [16]byte
+	if _, err := rand.Read(salt[:]); err != nil {
+		return xerrors.Errorf("cannot read salt for new passphrase: %w", err)
+	}
+
+	key, err := kdf.Derive(passphrase, salt[:], params, uint32(keyLen))
+	if err != nil {
+		return xerrors.Errorf("cannot derive key for new passphrase: %w", err)
+	}
+	if len(key) != keyLen {
+		return errors.New("KDF returned unexpected key length")
+	}
+
+	handle, err := handler.ChangeAuthKey(d.data.PlatformHandle, oldKey, key)
+	if err != nil {
+		return err
+	}
+
+	c, err := aes.NewCipher(key[:passphraseDerivedKeyLen])
+	if err != nil {
+		return xerrors.Errorf("cannot create cipher: %w", err)
+	}
+
+	d.data.PlatformHandle = handle
+	d.data.PassphraseProtectedPayload = &passphraseData{
+		KDF: kdfData{
+			Type:   kdfType,
+			Salt:   salt[:],
+			Time:   int(params.Time),
+			Memory: int(params.MemoryKiB),
+			CPUs:   int(params.Threads)},
+		Encryption:       passphraseEncryption,
+		KeySize:          passphraseDerivedKeyLen,
+		EncryptedPayload: make([]byte, len(payload))}
+
+	stream := cipher.NewCFBEncrypter(c, key[passphraseDerivedKeyLen:])
+	stream.XORKeyStream(d.data.PassphraseProtectedPayload.EncryptedPayload, payload)
+
+	return nil
+}
+
+func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte, key []byte, err error) {
+	if d.AuthMode()&AuthModePassphrase == 0 {
+		return nil, nil, errors.New("passphrase is not enabled")
+	}
+
+	data := d.data.PassphraseProtectedPayload
+	if data.KDF.Type != kdfType {
+		// Only Argon2i is supported
+		return nil, nil, fmt.Errorf("unexpected KDF type \"%s\"", data.KDF.Type)
+	}
+	if data.Encryption != passphraseEncryption {
+		// Only AES-256-CFB is supported
+		return nil, nil, fmt.Errorf("unexpected encryption algorithm \"%s\"", data.Encryption)
+	}
+
+	keyLen := data.KeySize + aes.BlockSize
+
+	params := &KDFCostParams{
+		Time:      uint32(data.KDF.Time),
+		MemoryKiB: uint32(data.KDF.Memory),
+		Threads:   uint8(data.KDF.CPUs)}
+	key, err = kdf.Derive(passphrase, data.KDF.Salt, params, uint32(keyLen))
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot derive key from passphrase: %w", err)
+	}
+	if len(key) != keyLen {
+		return nil, nil, errors.New("KDF returned unexpected key length")
+	}
+
+	payload = make([]byte, len(data.EncryptedPayload))
+
+	c, err := aes.NewCipher(key[:passphraseDerivedKeyLen])
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot create cipher: %w", err)
+	}
+	stream := cipher.NewCFBDecrypter(c, key[passphraseDerivedKeyLen:])
+	stream.XORKeyStream(payload, data.EncryptedPayload)
+
+	return payload, key, nil
 }
 
 // ReadableName returns a human-readable name for this key data, useful for
@@ -362,7 +477,7 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, AuxiliaryKey, error) {
 		Handle:           d.data.PlatformHandle,
 		EncryptedPayload: d.data.EncryptedPayload})
 	if err != nil {
-		return nil, nil, processPlatformKeyRecoveryError(err)
+		return nil, nil, processPlatformHandlerError(err)
 	}
 
 	key, auxKey, err := c.Unmarshal()
@@ -373,8 +488,36 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, AuxiliaryKey, error) {
 	return key, auxKey, nil
 }
 
-//func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, AuxiliaryKey, error) {
-//}
+func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnlockKey, AuxiliaryKey, error) {
+	if d.AuthMode()&AuthModePassphrase == 0 {
+		return nil, nil, errors.New("no passphrase is set")
+	}
+
+	handler := handlers[d.data.PlatformName]
+	if handler == nil {
+		return nil, nil, ErrNoPlatformHandlerRegistered
+	}
+
+	payload, key, err := d.openWithPassphrase(passphrase, kdf)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	data := &PlatformKeyData{
+		Handle:           d.data.PlatformHandle,
+		EncryptedPayload: payload}
+	c, err := handler.RecoverKeysWithAuthKey(data, key)
+	if err != nil {
+		return nil, nil, processPlatformHandlerError(err)
+	}
+
+	key, auxKey, err := c.Unmarshal()
+	if err != nil {
+		return nil, nil, &InvalidKeyDataError{xerrors.Errorf("cannot unmarshal cleartext key payload: %w", err)}
+	}
+
+	return key, auxKey, nil
+}
 
 // IsSnapModelAuthorized indicates whether the supplied Snap device model is trusted to
 // access the data on the encrypted volume protected by this key data.
@@ -440,8 +583,89 @@ func (d *KeyData) SetAuthorizedSnapModels(auxKey AuxiliaryKey, models ...SnapMod
 	return nil
 }
 
-//func (d *KeyData) ChangePasshprase(old, new string) error {
-//}
+// SetPassphrase sets a passphrase on this key data, which can be used to recover
+// the keys via the KeyData.RecoverKeysWithPassphrase API. This can only be called when
+// KeyData.AuthMode returns AuthModeNone. Once a passphrase has been set, the
+// KeyData.RecoverKeys API can no longer be used.
+//
+// The kdfOptions argument configures the Argon2 KDF settings. The kdf argument
+// provides the Argon2 KDF implementation that will be used - this should ultimately
+// execute the implementation returned by the Argon2iKDF function, but the caller
+// can choose to execute this in a short-lived utility process.
+func (d *KeyData) SetPassphrase(passphrase string, kdfOptions *KDFOptions, kdf KDF) error {
+	if d.AuthMode() != AuthModeNone {
+		return errors.New("cannot set passphrase without authorization")
+	}
+
+	if err := d.updatePassphrase(d.data.EncryptedPayload, nil, passphrase, kdfOptions, kdf); err != nil {
+		return err
+	}
+
+	d.data.EncryptedPayload = nil
+	return nil
+}
+
+// ChangePassphrase updates the passphrase used to recover the keys from this key data
+// via the KeyData.RecoverKeysWithPassphraseAPI. This can only be called if a passhphrase
+// has been set previously (KeyData.AuthMode returns AuthModePassphrase).
+//
+// The current passphrase must be supplied via the oldPassphrase argument.
+//
+// The kdfOptions argument configures the Argon2 KDF settings. The kdf argument
+// provides the Argon2 KDF implementation that will be used - this should ultimately
+// execute the implementation returned by the Argon2iKDF function, but the caller
+// can choose to execute this in a short-lived utility process.
+func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string, kdfOptions *KDFOptions, kdf KDF) error {
+	if d.AuthMode()&AuthModePassphrase == 0 {
+		return errors.New("cannot change passphrase without setting an initial passphrase")
+	}
+
+	payload, oldKey, err := d.openWithPassphrase(oldPassphrase, kdf)
+	if err != nil {
+		return err
+	}
+
+	if err := d.updatePassphrase(payload, oldKey, newPassphrase, kdfOptions, kdf); err != nil {
+		return processPlatformHandlerError(err)
+	}
+
+	return nil
+}
+
+// ClearPassphraseWithPassphrase clears the passphrase from this key data so that the
+// keys can be recovered via the KeyData.RecoverKeys API. This can only be called if a
+// passhphrase has been set previously (KeyData.AuthMode returns AuthModePassphrase).
+//
+// The current passphrase must be supplied.
+//
+// The kdf argument provides the Argon2 KDF implementation that will be used - this
+// should ultimately execute the implementation returned by the Argon2iKDF function,
+// but the caller can choose to execute this in a short-lived utility process.
+func (d *KeyData) ClearPassphraseWithPassphrase(passphrase string, kdf KDF) error {
+	if d.AuthMode()&AuthModePassphrase == 0 {
+		return errors.New("no passphrase is set")
+	}
+
+	handler := handlers[d.data.PlatformName]
+	if handler == nil {
+		return ErrNoPlatformHandlerRegistered
+	}
+
+	payload, key, err := d.openWithPassphrase(passphrase, kdf)
+	if err != nil {
+		return err
+	}
+
+	handle, err := handler.ChangeAuthKey(d.data.PlatformHandle, key, nil)
+	if err != nil {
+		return processPlatformHandlerError(err)
+	}
+
+	d.data.PlatformHandle = handle
+	d.data.EncryptedPayload = payload
+	d.data.PassphraseProtectedPayload = nil
+	return nil
+}
 
 // WriteAtomic saves this key data to the supplied KeyDataWriter.
 func (d *KeyData) WriteAtomic(w KeyDataWriter) error {

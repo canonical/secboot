@@ -24,6 +24,7 @@ import (
 	"crypto"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 
 	"golang.org/x/xerrors"
@@ -39,8 +40,8 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 	tpm, err := ConnectToTPM()
 	switch {
 	case err == ErrNoTPM2Device:
-		return nil, &secboot.PlatformKeyRecoveryError{
-			Type: secboot.PlatformKeyRecoveryErrorUnavailable,
+		return nil, &secboot.PlatformHandlerError{
+			Type: secboot.PlatformHandlerErrorUnavailable,
 			Err:  err}
 	case err != nil:
 		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
@@ -49,8 +50,8 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 
 	var handle []byte
 	if err := json.Unmarshal(data.Handle, &handle); err != nil {
-		return nil, &secboot.PlatformKeyRecoveryError{
-			Type: secboot.PlatformKeyRecoveryErrorInvalidData,
+		return nil, &secboot.PlatformHandlerError{
+			Type: secboot.PlatformHandlerErrorInvalidData,
 			Err:  err}
 	}
 
@@ -58,8 +59,8 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 	if err != nil {
 		var e InvalidKeyDataError
 		if xerrors.As(err, &e) {
-			return nil, &secboot.PlatformKeyRecoveryError{
-				Type: secboot.PlatformKeyRecoveryErrorInvalidData,
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  err}
 		}
 		return nil, xerrors.Errorf("cannot read key object: %w", err)
@@ -70,22 +71,30 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 		var e InvalidKeyDataError
 		switch {
 		case xerrors.As(err, &e):
-			return nil, &secboot.PlatformKeyRecoveryError{
-				Type: secboot.PlatformKeyRecoveryErrorInvalidData,
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  errors.New(e.msg)}
 		case err == ErrTPMProvisioning:
-			return nil, &secboot.PlatformKeyRecoveryError{
-				Type: secboot.PlatformKeyRecoveryErrorUninitialized,
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorUninitialized,
 				Err:  err}
 		case err == ErrTPMLockout:
-			return nil, &secboot.PlatformKeyRecoveryError{
-				Type: secboot.PlatformKeyRecoveryErrorUnavailable,
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorUnavailable,
 				Err:  err}
 		}
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
 	return secboot.MarshalKeys(key, secboot.AuxiliaryKey(authKey)), nil
+}
+
+func (h *legacyPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKeyData, key []byte) (secboot.KeyPayload, error) {
+	return nil, fmt.Errorf("passphrase authentication is not supported for the %s platform", legacyPlatformName)
+}
+
+func (h *legacyPlatformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte, error) {
+	return nil, fmt.Errorf("passphrase authentication is not supported for the %s platform", legacyPlatformName)
 }
 
 // NewKeyDataFromSealedKeyObjectFile creates a secboot.KeyData for the TPM

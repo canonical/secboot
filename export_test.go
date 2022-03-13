@@ -19,6 +19,10 @@
 
 package secboot
 
+func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
+	return o.deriveCostParams(keyLen, kdf)
+}
+
 func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
 	origActivate := luks2Activate
 	luks2Activate = fn
@@ -32,5 +36,15 @@ func MockLUKS2Deactivate(fn func(string) error) (restore func()) {
 	luks2Deactivate = fn
 	return func() {
 		luks2Deactivate = origDeactivate
+	}
+}
+
+func MockRuntimeNumCPU(n int) (restore func()) {
+	orig := runtimeNumCPU
+	runtimeNumCPU = func() int {
+		return n
+	}
+	return func() {
+		runtimeNumCPU = orig
 	}
 }

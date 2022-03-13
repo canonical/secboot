@@ -57,6 +57,12 @@ func (ctb *cryptTestBase) newRecoveryKey() RecoveryKey {
 }
 
 type mockAuthRequestor struct {
+	passphraseResponses []interface{}
+	passphraseRequests  []struct {
+		volumeName       string
+		sourceDevicePath string
+	}
+
 	recoveryKeyResponses []interface{}
 	recoveryKeyRequests  []struct {
 		volumeName       string
@@ -65,7 +71,28 @@ type mockAuthRequestor struct {
 }
 
 func (r *mockAuthRequestor) RequestPassphrase(volumeName, sourceDevicePath string) (string, error) {
-	return "", errors.New("not supported")
+	r.passphraseRequests = append(r.passphraseRequests, struct {
+		volumeName       string
+		sourceDevicePath string
+	}{
+		volumeName:       volumeName,
+		sourceDevicePath: sourceDevicePath,
+	})
+
+	if len(r.passphraseResponses) == 0 {
+		return "", errors.New("empty response")
+	}
+	response := r.passphraseResponses[0]
+	r.passphraseResponses = r.passphraseResponses[1:]
+
+	switch rsp := response.(type) {
+	case string:
+		return rsp, nil
+	case error:
+		return "", rsp
+	default:
+		panic("invalid type")
+	}
 }
 
 func (r *mockAuthRequestor) RequestRecoveryKey(volumeName, sourceDevicePath string) (RecoveryKey, error) {
@@ -124,6 +151,8 @@ func (s *cryptSuite) SetUpSuite(c *C) {
 func (s *cryptSuite) SetUpTest(c *C) {
 	s.keyDataTestBase.SetUpTest(c)
 	s.KeyringTestBase.SetUpTest(c)
+
+	s.handler.passphraseSupport = true
 
 	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 
@@ -613,9 +642,12 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 
 type testActivateVolumeWithKeyDataData struct {
 	authorizedModels []SnapModel
+	passphrase       string
 	volumeName       string
 	sourceDevicePath string
+	passphraseTries  int
 	keyringPrefix    string
+	authResponses    []interface{}
 	model            SnapModel
 	authorized       bool
 }
@@ -626,8 +658,15 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 
 	c.Check(keyData.SetAuthorizedSnapModels(auxKey, data.authorizedModels...), IsNil)
 
-	options := &ActivateVolumeOptions{KeyringPrefix: data.keyringPrefix}
-	modelChecker, err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, keyData, nil, options)
+	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
+
+	var kdf mockKDF
+	if data.passphrase != "" {
+		c.Check(keyData.SetPassphrase(data.passphrase, nil, &kdf), IsNil)
+	}
+
+	options := &ActivateVolumeOptions{PassphraseTries: data.passphraseTries, KeyringPrefix: data.keyringPrefix}
+	modelChecker, err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, keyData, authRequestor, &kdf, options)
 	c.Assert(err, IsNil)
 
 	authorized, err := modelChecker.IsModelAuthorized(data.model)
@@ -637,6 +676,12 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 	c.Assert(s.mockLUKS2ActivateCalls, HasLen, 1)
 	c.Check(s.mockLUKS2ActivateCalls[0].volumeName, Equals, data.volumeName)
 	c.Check(s.mockLUKS2ActivateCalls[0].sourceDevicePath, Equals, data.sourceDevicePath)
+
+	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
+	for _, rsp := range authRequestor.passphraseRequests {
+		c.Check(rsp.volumeName, Equals, data.volumeName)
+		c.Check(rsp.sourceDevicePath, Equals, data.sourceDevicePath)
+	}
 
 	// This should be done last because it may fail in some circumstances.
 	s.checkKeyDataKeysInKeyring(c, data.keyringPrefix, data.sourceDevicePath, key, auxKey)
@@ -730,14 +775,60 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData4(c *C) {
 		authorized: false})
 }
 
+func (s *cryptSuite) TestActivateVolumeWithKeyData5(c *C) {
+	// Test with passphrase
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		passphrase:       "1234",
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		passphraseTries:  1,
+		authResponses:    []interface{}{"1234"},
+		model:            models[0],
+		authorized:       true})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyData6(c *C) {
+	// Test with passphrase using multiple tries
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		passphrase:       "1234",
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		passphraseTries:  3,
+		authResponses:    []interface{}{"incorrect", "1234"},
+		model:            models[0],
+		authorized:       true})
+}
+
 type testActivateVolumeWithKeyDataErrorHandlingData struct {
 	primaryKey  DiskUnlockKey
 	recoveryKey RecoveryKey
 
 	authRequestor *mockAuthRequestor
 
+	passphraseTries  int
 	recoveryKeyTries int
 	keyringPrefix    string
+	kdf              KDF
 
 	keyData *KeyData
 
@@ -752,16 +843,19 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 	s.addMockKeyslot(c, data.recoveryKey[:])
 
 	var authRequestor AuthRequestor
-	var numResponses int
+	var numPassphraseResponses int
+	var numRecoveryResponses int
 	if data.authRequestor != nil {
 		authRequestor = data.authRequestor
-		numResponses = len(data.authRequestor.recoveryKeyResponses)
+		numPassphraseResponses = len(data.authRequestor.passphraseResponses)
+		numRecoveryResponses = len(data.authRequestor.recoveryKeyResponses)
 	}
 
 	options := &ActivateVolumeOptions{
+		PassphraseTries:  data.passphraseTries,
 		RecoveryKeyTries: data.recoveryKeyTries,
 		KeyringPrefix:    data.keyringPrefix}
-	modelChecker, err := ActivateVolumeWithKeyData("data", "/dev/sda1", data.keyData, authRequestor, options)
+	modelChecker, err := ActivateVolumeWithKeyData("data", "/dev/sda1", data.keyData, authRequestor, data.kdf, options)
 	c.Check(modelChecker, IsNil)
 	if data.errChecker != nil {
 		c.Check(err, data.errChecker, data.errCheckerArgs...)
@@ -770,7 +864,13 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 	}
 
 	if data.authRequestor != nil {
-		c.Check(data.authRequestor.recoveryKeyRequests, HasLen, numResponses)
+		c.Check(data.authRequestor.passphraseRequests, HasLen, numPassphraseResponses)
+		for _, rsp := range data.authRequestor.passphraseRequests {
+			c.Check(rsp.volumeName, Equals, "data")
+			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
+		}
+
+		c.Check(data.authRequestor.recoveryKeyRequests, HasLen, numRecoveryResponses)
 		for _, rsp := range data.authRequestor.recoveryKeyRequests {
 			c.Check(rsp.volumeName, Equals, "data")
 			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
@@ -922,7 +1022,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling9(c *C) {
-	// Test that we get an error if no AuthRequestor is supplied.
+	// Test that we get an error if no AuthRequestor is supplied but recovery key
+	// tries are permitted.
 	keyData, _, _ := s.newNamedKeyData(c, "")
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
@@ -932,13 +1033,88 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling9(c *C) {
 		errCheckerArgs:   []interface{}{"nil authRequestor"}})
 }
 
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling10(c *C) {
+	// Test that recovery key fallback works if the wrong passphrase is supplied.
+	keyData, key, _ := s.newNamedKeyData(c, "foo")
+	recoveryKey := s.newRecoveryKey()
+
+	var kdf mockKDF
+	c.Check(keyData.SetPassphrase("1234", nil, &kdf), IsNil)
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:  key,
+		recoveryKey: recoveryKey,
+		authRequestor: &mockAuthRequestor{
+			passphraseResponses:  []interface{}{"incorrect", "invalid"},
+			recoveryKeyResponses: []interface{}{recoveryKey}},
+		passphraseTries:  2,
+		recoveryKeyTries: 2,
+		kdf:              &kdf,
+		keyData:          keyData,
+		activateTries:    1})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling11(c *C) {
+	// Test that we get an error if no AuthRequestor is supplied but passphrase
+	// tries are permitted.
+	keyData, _, _ := s.newNamedKeyData(c, "")
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		passphraseTries: 1,
+		keyData:         keyData,
+		errChecker:      ErrorMatches,
+		errCheckerArgs:  []interface{}{"nil authRequestor"}})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling12(c *C) {
+	// Test that we get an error if no KDF is supplied but passphrase tries
+	// are permitted.
+	keyData, _, _ := s.newNamedKeyData(c, "")
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		passphraseTries: 1,
+		keyData:         keyData,
+		authRequestor:   &mockAuthRequestor{},
+		errChecker:      ErrorMatches,
+		errCheckerArgs:  []interface{}{"nil kdf"}})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling13(c *C) {
+	// Test that activation fails if the supplied passphrase and recovery key are incorrect
+	keyData, key, _ := s.newNamedKeyData(c, "bar")
+	recoveryKey := s.newRecoveryKey()
+
+	var kdf mockKDF
+	c.Check(keyData.SetPassphrase("1234", nil, &kdf), IsNil)
+
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:  key,
+		recoveryKey: recoveryKey,
+		authRequestor: &mockAuthRequestor{
+			passphraseResponses:  []interface{}{""},
+			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
+		passphraseTries:  1,
+		recoveryKeyTries: 1,
+		kdf:              &kdf,
+		keyData:          keyData,
+		errChecker:       ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n" +
+			"- bar: cannot recover key: the supplied passphrase is incorrect\n" +
+			"and activation with recovery key failed: cannot activate volume: " +
+			"systemd-cryptsetup failed with: exit status 1"},
+		activateTries: 1})
+}
+
 type testActivateVolumeWithMultipleKeyDataData struct {
 	keys    []DiskUnlockKey
 	keyData []*KeyData
 
 	volumeName       string
 	sourceDevicePath string
+	passphraseTries  int
 	keyringPrefix    string
+
+	authResponses []interface{}
 
 	model      SnapModel
 	authorized bool
@@ -954,13 +1130,22 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 		s.addMockKeyslot(c, k)
 	}
 
-	options := &ActivateVolumeOptions{KeyringPrefix: data.keyringPrefix}
-	modelChecker, err := ActivateVolumeWithMultipleKeyData(data.volumeName, data.sourceDevicePath, data.keyData, nil, options)
+	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
+
+	var kdf mockKDF
+	options := &ActivateVolumeOptions{PassphraseTries: data.passphraseTries, KeyringPrefix: data.keyringPrefix}
+	modelChecker, err := ActivateVolumeWithMultipleKeyData(data.volumeName, data.sourceDevicePath, data.keyData, authRequestor, &kdf, options)
 	c.Assert(err, IsNil)
 
 	authorized, err := modelChecker.IsModelAuthorized(data.model)
 	c.Check(err, IsNil)
 	c.Check(authorized, Equals, data.authorized)
+
+	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
+	for _, rsp := range authRequestor.passphraseRequests {
+		c.Check(rsp.volumeName, Equals, data.volumeName)
+		c.Check(rsp.sourceDevicePath, Equals, data.sourceDevicePath)
+	}
 
 	c.Assert(s.mockLUKS2ActivateCalls, HasLen, data.activateTries)
 	for _, call := range s.mockLUKS2ActivateCalls {
@@ -1049,13 +1234,176 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData3(c *C) {
 		auxKey:           auxKeys[1]})
 }
 
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData4(c *C) {
+	// Test with 2 keys that have a passphrase set, using the first key for activation.
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
+
+	var kdf mockKDF
+	c.Check(keyData[0].SetPassphrase("1234", nil, &kdf), IsNil)
+	c.Check(keyData[1].SetPassphrase("5678", nil, &kdf), IsNil)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys,
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		passphraseTries:  1,
+		authResponses:    []interface{}{"1234"},
+		model:            models[0],
+		authorized:       true,
+		activateTries:    1,
+		key:              keys[0],
+		auxKey:           auxKeys[0]})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData5(c *C) {
+	// Test with 2 keys that have a passphrase set, using the second key for activation.
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
+
+	var kdf mockKDF
+	c.Check(keyData[0].SetPassphrase("1234", nil, &kdf), IsNil)
+	c.Check(keyData[1].SetPassphrase("5678", nil, &kdf), IsNil)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys,
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		passphraseTries:  1,
+		authResponses:    []interface{}{"5678"},
+		model:            models[0],
+		authorized:       true,
+		activateTries:    1,
+		key:              keys[1],
+		auxKey:           auxKeys[1]})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData6(c *C) {
+	// Test with 2 keys where one has a passphrase set. The one without the passphrase
+	// should be used first.
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
+
+	var kdf mockKDF
+	c.Check(keyData[0].SetPassphrase("1234", nil, &kdf), IsNil)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys,
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		passphraseTries:  1,
+		model:            models[0],
+		authorized:       true,
+		activateTries:    1,
+		key:              keys[1],
+		auxKey:           auxKeys[1]})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData7(c *C) {
+	// Test with 2 keys that have a passphrase set, using the second key for activation
+	// after more than one attempt.
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
+
+	var kdf mockKDF
+	c.Check(keyData[0].SetPassphrase("1234", nil, &kdf), IsNil)
+	c.Check(keyData[1].SetPassphrase("5678", nil, &kdf), IsNil)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys,
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		passphraseTries:  3,
+		authResponses:    []interface{}{"incorrect", "5678"},
+		model:            models[0],
+		authorized:       true,
+		activateTries:    1,
+		key:              keys[1],
+		auxKey:           auxKeys[1]})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData8(c *C) {
+	// Test with 2 keys where one has a passphrase set. Activation fails with
+	// the key that doesn't have a passphrase set, so activation should happen
+	// with the key that has a passphrase set.
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
+
+	var kdf mockKDF
+	c.Check(keyData[1].SetPassphrase("5678", nil, &kdf), IsNil)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys[1:],
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		passphraseTries:  1,
+		authResponses:    []interface{}{"5678"},
+		model:            models[0],
+		authorized:       true,
+		activateTries:    2,
+		key:              keys[1],
+		auxKey:           auxKeys[1]})
+}
+
 type testActivateVolumeWithMultipleKeyDataErrorHandlingData struct {
 	keys        []DiskUnlockKey
 	recoveryKey RecoveryKey
 	keyData     []*KeyData
 
 	authRequestor *mockAuthRequestor
+	kdf           KDF
 
+	passphraseTries  int
 	recoveryKeyTries int
 	keyringPrefix    string
 
@@ -1072,16 +1420,19 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 	s.addMockKeyslot(c, data.recoveryKey[:])
 
 	var authRequestor AuthRequestor
-	var numResponses int
+	var numPassphraseResponses int
+	var numRecoveryResponses int
 	if data.authRequestor != nil {
 		authRequestor = data.authRequestor
-		numResponses = len(data.authRequestor.recoveryKeyResponses)
+		numPassphraseResponses = len(data.authRequestor.passphraseResponses)
+		numRecoveryResponses = len(data.authRequestor.recoveryKeyResponses)
 	}
 
 	options := &ActivateVolumeOptions{
+		PassphraseTries:  data.passphraseTries,
 		RecoveryKeyTries: data.recoveryKeyTries,
 		KeyringPrefix:    data.keyringPrefix}
-	modelChecker, err := ActivateVolumeWithMultipleKeyData("data", "/dev/sda1", data.keyData, authRequestor, options)
+	modelChecker, err := ActivateVolumeWithMultipleKeyData("data", "/dev/sda1", data.keyData, authRequestor, data.kdf, options)
 	c.Check(modelChecker, IsNil)
 	if data.errChecker != nil {
 		c.Check(err, data.errChecker, data.errCheckerArgs...)
@@ -1090,7 +1441,13 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 	}
 
 	if data.authRequestor != nil {
-		c.Check(data.authRequestor.recoveryKeyRequests, HasLen, numResponses)
+		c.Check(data.authRequestor.passphraseRequests, HasLen, numPassphraseResponses)
+		for _, rsp := range data.authRequestor.passphraseRequests {
+			c.Check(rsp.volumeName, Equals, "data")
+			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
+		}
+
+		c.Check(data.authRequestor.recoveryKeyRequests, HasLen, numRecoveryResponses)
 		for _, rsp := range data.authRequestor.recoveryKeyRequests {
 			c.Check(rsp.volumeName, Equals, "data")
 			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
@@ -1246,7 +1603,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling8(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling9(c *C) {
-	// Test that we get an error if no AuthRequestor is supplied.
+	// Test that we get an error if no AuthRequestor is supplied when
+	// RecoveryKeyTries is non-zero.
 	keyData, _, _ := s.newMultipleNamedKeyData(c, "", "")
 
 	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
@@ -1254,6 +1612,81 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling9(c *C) {
 		recoveryKeyTries: 1,
 		errChecker:       ErrorMatches,
 		errCheckerArgs:   []interface{}{"nil authRequestor"}})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling10(c *C) {
+	// Test that recovery key fallback works if the wrong passphrase is supplied.
+	keyData, keys, _ := s.newMultipleNamedKeyData(c, "foo", "bar")
+	recoveryKey := s.newRecoveryKey()
+
+	var kdf mockKDF
+	c.Check(keyData[0].SetPassphrase("1234", nil, &kdf), IsNil)
+	c.Check(keyData[1].SetPassphrase("1234", nil, &kdf), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
+		keys:        keys,
+		recoveryKey: recoveryKey,
+		keyData:     keyData,
+		authRequestor: &mockAuthRequestor{
+			passphraseResponses:  []interface{}{"incorrect", "invalid"},
+			recoveryKeyResponses: []interface{}{recoveryKey}},
+		kdf:              &kdf,
+		passphraseTries:  2,
+		recoveryKeyTries: 1,
+		activateTries:    1})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling11(c *C) {
+	// Test that we get an error if no AuthRequestor is supplied when
+	// PassphraseTries is non-zero.
+	keyData, _, _ := s.newMultipleNamedKeyData(c, "", "")
+
+	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
+		keyData:         keyData,
+		passphraseTries: 1,
+		errChecker:      ErrorMatches,
+		errCheckerArgs:  []interface{}{"nil authRequestor"}})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling12(c *C) {
+	// Test that we get an error if no KDF is supplied when
+	// PassphraseTries is non-zero.
+	keyData, _, _ := s.newMultipleNamedKeyData(c, "", "")
+
+	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
+		keyData:         keyData,
+		authRequestor:   &mockAuthRequestor{},
+		passphraseTries: 1,
+		errChecker:      ErrorMatches,
+		errCheckerArgs:  []interface{}{"nil kdf"}})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling13(c *C) {
+	// Test that activation fails if the supplied passphrase and recovery key are incorrect
+	keyData, keys, _ := s.newMultipleNamedKeyData(c, "foo", "bar")
+	recoveryKey := s.newRecoveryKey()
+
+	var kdf mockKDF
+	c.Check(keyData[0].SetPassphrase("1234", nil, &kdf), IsNil)
+	c.Check(keyData[1].SetPassphrase("1234", nil, &kdf), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
+		keys:        keys,
+		recoveryKey: recoveryKey,
+		keyData:     keyData,
+		authRequestor: &mockAuthRequestor{
+			passphraseResponses:  []interface{}{""},
+			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
+		kdf:              &kdf,
+		passphraseTries:  1,
+		recoveryKeyTries: 1,
+		errChecker:       ErrorMatches,
+		errCheckerArgs: []interface{}{"cannot activate with platform protected keys:\n" +
+			"- foo: cannot recover key: the supplied passphrase is incorrect\n" +
+			"- bar: cannot recover key: the supplied passphrase is incorrect\n" +
+			"and activation with recovery key failed: cannot activate volume: " +
+			"systemd-cryptsetup failed with: exit status 1"},
+		activateTries: 1})
 }
 
 type testActivateVolumeWithKeyData struct {
