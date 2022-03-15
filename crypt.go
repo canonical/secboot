@@ -37,6 +37,11 @@ import (
 )
 
 var (
+	// ErrMissingCryptsetupFeature is returned from some functions that make
+	// use of the system's cryptsetup binary, if that binary is missing some
+	// required features.
+	ErrMissingCryptsetupFeature = luks2.ErrMissingCryptsetupFeature
+
 	luks2Activate   = luks2.Activate
 	luks2Deactivate = luks2.Deactivate
 )
@@ -109,6 +114,10 @@ type activateWithKeyDataState struct {
 	model            SnapModel
 	keyringPrefix    string
 
+	authRequestor   AuthRequestor
+	kdf             KDF
+	passphraseTries int
+
 	keys []*keyDataAndError
 }
 
@@ -157,9 +166,24 @@ func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData) error {
 	return s.tryActivateWithRecoveredKey(k, key, auxKey)
 }
 
-func (s *activateWithKeyDataState) run() (success bool) {
+func (s *activateWithKeyDataState) tryKeyDataAuthModePassphrase(k *KeyData, passphrase string) error {
+	key, auxKey, err := k.RecoverKeysWithPassphrase(passphrase, s.kdf)
+	if err != nil {
+		return xerrors.Errorf("cannot recover key: %w", err)
+	}
+
+	return s.tryActivateWithRecoveredKey(k, key, auxKey)
+}
+
+func (s *activateWithKeyDataState) run() (success bool, err error) {
+	numPassphraseKeys := 0
+
 	// Try keys that don't require any additional authentication first
 	for _, k := range s.keys {
+		if k.AuthMode()&AuthModePassphrase > 0 {
+			numPassphraseKeys += 1
+		}
+
 		if k.AuthMode() != AuthModeNone {
 			continue
 		}
@@ -169,21 +193,65 @@ func (s *activateWithKeyDataState) run() (success bool) {
 			continue
 		}
 
-		return true
+		return true, nil
 	}
 
-	// TODO: Passphrase support
+	// Try keys that require a passphrase
+	tries := s.passphraseTries
+	var passphraseErr error
+
+	for tries > 0 && numPassphraseKeys > 0 {
+		tries -= 1
+
+		// Request a passphrase first and then try each key with it. One downside of
+		// this approach is that if there are multiple keys with different passphrases
+		// or the passphrase is wrong for all keys, this will accelerate the rate at
+		// which dictionary attack protections kick in for platforms that support that.
+		// This shouldn't be an issue for standard configurations where there would be
+		// a maximum of 2 keys with passphrases enabled (Ubuntu Core based desktop on
+		// a UEFI+TPM platform with run+recovery and recovery-only protectors for
+		// ubuntu-data).
+		passphrase, err := s.authRequestor.RequestPassphrase(s.volumeName, s.sourceDevicePath)
+		if err != nil {
+			passphraseErr = xerrors.Errorf("cannot obtain passphrase: %w", err)
+			continue
+		}
+
+		for _, k := range s.keys {
+			if k.AuthMode()&AuthModePassphrase == 0 {
+				continue
+			}
+
+			if k.err != nil && !xerrors.Is(k.err, ErrInvalidPassphrase) {
+				// Skip keys that failed for anything other than an invalid passphrase.
+				continue
+			}
+
+			if err := s.tryKeyDataAuthModePassphrase(k.KeyData, passphrase); err != nil {
+				if !xerrors.Is(err, ErrInvalidPassphrase) {
+					numPassphraseKeys -= 1
+				}
+				k.err = err
+				continue
+			}
+
+			return true, nil
+		}
+	}
 
 	// We've failed at this point
-	return false
+	return false, passphraseErr
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*KeyData) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*KeyData, authRequestor AuthRequestor, kdf KDF, passphraseTries int) *activateWithKeyDataState {
 	s := &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
 		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix),
-		model:            model}
+		model:            model,
+		authRequestor:    authRequestor,
+		kdf:              kdf,
+		passphraseTries:  passphraseTries}
 	for _, k := range keys {
 		s.keys = append(s.keys, &keyDataAndError{KeyData: k})
 	}
@@ -237,26 +305,37 @@ var SkipSnapModelCheck SnapModel = nullSnapModel{}
 // family of functions.
 type ActivateVolumeOptions struct {
 	// PassphraseTries specifies the maximum number of times
-	// that unsealing with a user passphrase should be attempted
+	// that activation with a user passphrase should be attempted
 	// before failing with an error and falling back to activating
 	// with the recovery key (see RecoveryKeyTries).
-	// Setting this to zero disables unsealing with a user
-	// passphrase - in this case, an error will be returned if the
-	// sealed key object indicates that a user passphrase has been
-	// set.
-	// With a TPM, attempts to unseal will stop if the TPM enters
-	// dictionary attack lockout mode before this limit is
-	// reached.
+	//
+	// Setting this to zero disables activation with a user
+	// passphrase - in this case, any protected keys that require
+	// a passphrase are ignored and activation will fall back to
+	// requesting a recovery key.
+	//
+	// For each passphrase attempt, the supplied passphrase is
+	// tested against every protected key that requires a passphrase.
+	//
+	// The actual number of available passphrase attempts may be
+	// limited by the platform to a number that is lower than this
+	// value (eg, in the TPM case because of the current auth fail
+	// counter value which means the dictionary attack protection
+	// might be triggered first).
+	//
 	// It is ignored by ActivateVolumeWithRecoveryKey.
 	PassphraseTries int
 
 	// RecoveryKeyTries specifies the maximum number of times that
 	// activation with the fallback recovery key should be
 	// attempted.
+	//
 	// It is used directly by ActivateVolumeWithRecoveryKey and
 	// indirectly with other methods upon failure, for example
-	// failed TPM unsealing.  Setting this to zero will disable
-	// attempts to activate with the fallback recovery key.
+	// in the case where no other keys can be recovered.
+	//
+	// Setting this to zero will disable attempts to activate with
+	// the fallback recovery key.
 	RecoveryKeyTries int
 
 	// KeyringPrefix is the prefix used for the description of any
@@ -323,7 +402,7 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // If activation with one of the supplied KeyData objects succeeds (ie, no error
 // is returned), then the supplied SnapModel is authorized to access the data on
 // this volume.
-func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, authRequestor AuthRequestor, options *ActivateVolumeOptions) error {
+func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, authRequestor AuthRequestor, kdf KDF, options *ActivateVolumeOptions) error {
 	if len(keys) == 0 {
 		return errors.New("no keys provided")
 	}
@@ -334,16 +413,20 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 		return errors.New("invalid RecoveryKeyTries")
 	}
 	if options.SnapModel == nil {
-		return errors.New("invalid SnapModel")
+		return errors.New("nil SnapModel")
 	}
 
-	if options.RecoveryKeyTries > 0 && authRequestor == nil {
+	if (options.PassphraseTries > 0 || options.RecoveryKeyTries > 0) && authRequestor == nil {
 		return errors.New("nil authRequestor")
 	}
+	if options.PassphraseTries > 0 && kdf == nil {
+		return errors.New("nil kdf")
+	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.SnapModel, keys)
-	switch s.run() {
-	case true: // success!
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.SnapModel, keys, authRequestor, kdf, options.PassphraseTries)
+	success, err := s.run()
+	switch {
+	case success:
 		return nil
 	default: // failed - try recovery key
 		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, authRequestor, options.RecoveryKeyTries, options.KeyringPrefix); rErr != nil {
@@ -351,6 +434,9 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 			var kdErrs []error
 			for _, e := range s.errors() {
 				kdErrs = append(kdErrs, e)
+			}
+			if err != nil {
+				kdErrs = append(kdErrs, err)
 			}
 			return &activateVolumeWithKeyDataError{kdErrs, rErr}
 		}
@@ -383,8 +469,8 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 //
 // If activation with the supplied KeyData object succeeds (ie, no error is returned),
 // then the supplied SnapModel is authorized to access the data on this volume.
-func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, authRequestor AuthRequestor, options *ActivateVolumeOptions) error {
-	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, authRequestor, options)
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, authRequestor AuthRequestor, kdf KDF, options *ActivateVolumeOptions) error {
+	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, authRequestor, kdf, options)
 }
 
 // ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at
@@ -422,38 +508,6 @@ func DeactivateVolume(volumeName string) error {
 	return luks2Deactivate(volumeName)
 }
 
-// KDFOptions specifies parameters for the Argon2 KDF used by cryptsetup.
-type KDFOptions struct {
-	// MemoryKiB specifies the maximum memory cost in KiB when ForceIterations
-	// is zero. If ForceIterations is not zero, then this is used as the
-	// memory cost.
-	MemoryKiB int
-
-	// TargetDuration specifies the target duration for the KDF which
-	// is used to benchmark the time and memory cost parameters. If it
-	// is zero then the cryptsetup default is used. If ForceIterations
-	// is not zero then this field is ignored.
-	TargetDuration time.Duration
-
-	// ForceIterations can be used to turn off KDF benchmarking by
-	// setting the time cost directly. If this is zero then the cost
-	// parameters are benchmarked based on the value of TargetDuration.
-	ForceIterations int
-
-	// Parallel sets the maximum number of parallel threads for the
-	// KDF (up to 4). Cryptsetup will adjust this downwards based on
-	// the actual number of CPUs.
-	Parallel int
-}
-
-func (o *KDFOptions) internalOpts() luks2.KDFOptions {
-	return luks2.KDFOptions{
-		TargetDuration:  o.TargetDuration,
-		MemoryKiB:       o.MemoryKiB,
-		ForceIterations: o.ForceIterations,
-		Parallel:        o.Parallel}
-}
-
 // InitializeLUKS2ContainerOptions carries options for initializing LUKS2
 // containers.
 type InitializeLUKS2ContainerOptions struct {
@@ -477,7 +531,7 @@ func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 	return &luks2.FormatOptions{
 		MetadataKiBSize:     o.MetadataKiBSize,
 		KeyslotsAreaKiBSize: o.KeyslotsAreaKiBSize,
-		KDFOptions:          o.KDFOptions.internalOpts()}
+		KDFOptions:          o.KDFOptions.luksOpts()}
 }
 
 func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
@@ -573,7 +627,7 @@ func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey R
 	}
 	return luks2.AddKey(devicePath, key, recoveryKey[:],
 		&luks2.AddKeyOptions{
-			KDFOptions: options.internalOpts(),
+			KDFOptions: options.luksOpts(),
 			Slot:       luks2.AnySlot})
 }
 
