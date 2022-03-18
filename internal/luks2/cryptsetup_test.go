@@ -22,9 +22,13 @@ package luks2_test
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	snapd_testutil "github.com/snapcore/snapd/testutil"
@@ -60,7 +64,75 @@ func (s *cryptsetupSuite) checkLUKS2Passphrase(c *C, path string, key []byte) {
 	c.Check(cmd.Run(), IsNil)
 }
 
+func (s *cryptsetupSuite) mockCryptsetupFeatures(c *C, features Features) (cmd *snapd_testutil.MockCmd, reset func()) {
+	luks2test.ResetCryptsetupFeatures()
+
+	responsesFile := filepath.Join(c.MkDir(), "responses")
+
+	responses := []string{"0"}
+	var version string
+	switch {
+	case features&(FeatureHeaderSizeSetting|FeatureTokenImport) == (FeatureHeaderSizeSetting | FeatureTokenImport):
+		version = "2.1.0"
+	case features&FeatureTokenImport > 0:
+		version = "2.0.3"
+	case features&FeatureHeaderSizeSetting > 0:
+		c.Fatal("invalid features")
+	default:
+		version = "2.0.2"
+	}
+
+	if features&FeatureTokenReplace > 0 {
+		responses = append(responses, "0")
+	} else {
+		responses = append(responses, "1")
+	}
+
+	c.Check(ioutil.WriteFile(responsesFile, []byte(strings.Join(responses, "\n")), 0644), IsNil)
+
+	cryptsetupBottom := `
+r=$(head -1 %[1]s)
+sed -i -e '1,1d' %[1]s
+echo "cryptsetup %[2]s"
+exit "$r"
+`
+	cmd = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, responsesFile, version))
+	return cmd, func() {
+		luks2test.ResetCryptsetupFeatures()
+		cmd.Restore()
+	}
+}
+
 var _ = Suite(&cryptsetupSuite{})
+
+func (s *cryptsetupSuite) testDetectCryptsetupFeatures(c *C, expected Features) {
+	mockCryptsetup, reset := s.mockCryptsetupFeatures(c, expected)
+	defer reset()
+
+	features := DetectCryptsetupFeatures()
+	c.Check(features, Equals, expected)
+
+	c.Check(mockCryptsetup.Calls(), DeepEquals, [][]string{
+		{"cryptsetup", "--version"},
+		{"cryptsetup", "--test-args", "token", "import", "--token-id", "0", "--token-replace", "/dev/null"}})
+	mockCryptsetup.ForgetCalls()
+
+	features = DetectCryptsetupFeatures()
+	c.Check(features, Equals, expected)
+	c.Check(mockCryptsetup.Calls(), HasLen, 0)
+}
+
+func (s *cryptsetupSuite) TestDetectCryptsetupFeaturesAll(c *C) {
+	s.testDetectCryptsetupFeatures(c, FeatureHeaderSizeSetting|FeatureTokenImport|FeatureTokenReplace)
+}
+
+func (s *cryptsetupSuite) TestDetectCryptsetupFeaturesNone(c *C) {
+	s.testDetectCryptsetupFeatures(c, 0)
+}
+
+func (s *cryptsetupSuite) TestDetectCryptsetupFeaturesNoTokenReplace(c *C) {
+	s.testDetectCryptsetupFeatures(c, FeatureHeaderSizeSetting|FeatureTokenImport)
+}
 
 type testFormatData struct {
 	label   string
@@ -189,6 +261,10 @@ func (s *cryptsetupSuite) TestFormatWithDifferentLabel(c *C) {
 }
 
 func (s *cryptsetupSuite) TestFormatWithCustomMetadataSize(c *C) {
+	if DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
+		c.Skip("cryptsetup doesn't support --luks2-metadata-size")
+	}
+
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
@@ -200,6 +276,10 @@ func (s *cryptsetupSuite) TestFormatWithCustomMetadataSize(c *C) {
 }
 
 func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSize(c *C) {
+	if DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
+		c.Skip("cryptsetup doesn't support --luks2-keyslots-size")
+	}
+
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
@@ -208,6 +288,24 @@ func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSize(c *C) {
 		options: &FormatOptions{
 			KDFOptions:          KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
 			KeyslotsAreaKiBSize: 2 * 1024}})
+}
+
+func (s *cryptsetupSuite) TestFormatWithCustomMetadataSizeUnsupported(c *C) {
+	_, reset := s.mockCryptsetupFeatures(c, 0)
+	defer reset()
+
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{MetadataKiBSize: 2 * 1024}), Equals, ErrMissingCryptsetupFeature)
+}
+
+func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSizeUnsupported(c *C) {
+	_, reset := s.mockCryptsetupFeatures(c, 0)
+	defer reset()
+
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KeyslotsAreaKiBSize: 2 * 1024}), Equals, ErrMissingCryptsetupFeature)
 }
 
 type testAddKeyData struct {
@@ -365,24 +463,34 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 
 type testImportTokenData struct {
 	token            Token
+	options          *ImportTokenOptions
 	expectedKeyslots []int
 	expectedParams   map[string]interface{}
 }
 
 func (s *cryptsetupSuite) testImportToken(c *C, data *testImportTokenData) {
+	if DetectCryptsetupFeatures()&FeatureTokenImport == 0 {
+		c.Skip("cryptsetup doesn't support token import")
+	}
+
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
 	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
-	c.Check(ImportToken(devicePath, data.token), IsNil)
+	c.Check(ImportToken(devicePath, data.token, data.options), IsNil)
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
 
+	id := 0
+	if data.options != nil && data.options.Id != AnyId {
+		id = data.options.Id
+	}
+
 	c.Assert(info.Metadata.Tokens, HasLen, 1)
-	token, ok := info.Metadata.Tokens[0].(*GenericToken)
+	token, ok := info.Metadata.Tokens[id].(*GenericToken)
 	c.Assert(ok, Equals, true)
 	c.Check(token.TokenType, Equals, data.token.Type())
 	c.Check(token.TokenKeyslots, DeepEquals, data.token.Keyslots())
@@ -442,6 +550,106 @@ func (s *cryptsetupSuite) TestImportToken3(c *C) {
 			"secboot-b": base64.StdEncoding.EncodeToString(data)}})
 }
 
+func (s *cryptsetupSuite) TestImportToken4(c *C) {
+	// Test with options
+	data := make([]byte, 128)
+	rand.Read(data)
+
+	s.testImportToken(c, &testImportTokenData{
+		token: &GenericToken{
+			TokenType:     "secboot-test",
+			TokenKeyslots: []int{0},
+			Params: map[string]interface{}{
+				"secboot-a": 50,
+				"secboot-b": data}},
+		options:          &ImportTokenOptions{Id: AnyId},
+		expectedKeyslots: []int{0},
+		expectedParams: map[string]interface{}{
+			"secboot-a": float64(50),
+			"secboot-b": base64.StdEncoding.EncodeToString(data)}})
+}
+
+func (s *cryptsetupSuite) TestImportToken5(c *C) {
+	// Test with specific ID
+	data := make([]byte, 128)
+	rand.Read(data)
+
+	s.testImportToken(c, &testImportTokenData{
+		token: &GenericToken{
+			TokenType:     "secboot-test",
+			TokenKeyslots: []int{0},
+			Params: map[string]interface{}{
+				"secboot-a": 50,
+				"secboot-b": data}},
+		options:          &ImportTokenOptions{Id: 8},
+		expectedKeyslots: []int{0},
+		expectedParams: map[string]interface{}{
+			"secboot-a": float64(50),
+			"secboot-b": base64.StdEncoding.EncodeToString(data)}})
+}
+
+func (s *cryptsetupSuite) TestImportTokenUnsupported(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
+
+	_, reset := s.mockCryptsetupFeatures(c, 0)
+	defer reset()
+
+	token := &GenericToken{
+		TokenType:     "secboot-test",
+		TokenKeyslots: []int{0}}
+	c.Check(ImportToken(devicePath, token, nil), Equals, ErrMissingCryptsetupFeature)
+}
+
+func (s *cryptsetupSuite) TestReplaceToken(c *C) {
+	if DetectCryptsetupFeatures()&(FeatureTokenImport|FeatureTokenReplace) != FeatureTokenImport|FeatureTokenReplace {
+		c.Skip("cryptsetup doesn't support token import and replace")
+	}
+
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
+	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
+
+	token1 := &GenericToken{
+		TokenType:     "secboot-test",
+		TokenKeyslots: []int{0},
+		Params:        map[string]interface{}{"secboot-a": float64(50)}}
+	c.Check(ImportToken(devicePath, token1, nil), IsNil)
+
+	token2 := &GenericToken{
+		TokenType:     "secboot-test",
+		TokenKeyslots: []int{0},
+		Params:        map[string]interface{}{"secboot-a": float64(60)}}
+	c.Check(ImportToken(devicePath, token2, &ImportTokenOptions{Id: 8}), IsNil)
+
+	token2 = &GenericToken{
+		TokenType:     "secboot-test",
+		TokenKeyslots: []int{0},
+		Params:        map[string]interface{}{"secboot-a": float64(70)}}
+	c.Check(ImportToken(devicePath, token2, &ImportTokenOptions{Id: 8, Replace: true}), IsNil)
+
+	info, err := ReadHeader(devicePath, LockModeBlocking)
+	c.Assert(err, IsNil)
+
+	c.Assert(info.Metadata.Tokens, HasLen, 2)
+
+	token, ok := info.Metadata.Tokens[0].(*GenericToken)
+	c.Assert(ok, Equals, true)
+	c.Check(token.TokenType, Equals, token1.TokenType)
+	c.Check(token.TokenKeyslots, DeepEquals, token1.TokenKeyslots)
+	c.Check(token.Params, DeepEquals, token1.Params)
+
+	token, ok = info.Metadata.Tokens[8].(*GenericToken)
+	c.Assert(ok, Equals, true)
+	c.Check(token.TokenType, Equals, token2.TokenType)
+	c.Check(token.TokenKeyslots, DeepEquals, token2.TokenKeyslots)
+	c.Check(token.Params, DeepEquals, token2.Params)
+}
+
 type mockToken struct {
 	TokenType     TokenType    `json:"type"`
 	TokenKeyslots []JsonNumber `json:"keyslots"`
@@ -474,13 +682,17 @@ func (s *cryptsetupSuite) TestImportExternalToken(c *C) {
 }
 
 func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
+	if DetectCryptsetupFeatures()&FeatureTokenImport == 0 {
+		c.Skip("cryptsetup doesn't support token import")
+	}
+
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
 	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
-	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}), IsNil)
-	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-bar", TokenKeyslots: []int{1}}), IsNil)
+	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}, nil), IsNil)
+	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-bar", TokenKeyslots: []int{1}}, nil), IsNil)
 
 	info, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -506,11 +718,15 @@ func (s *cryptsetupSuite) TestRemoveToken2(c *C) {
 }
 
 func (s *cryptsetupSuite) TestRemoveNonExistantToken(c *C) {
+	if DetectCryptsetupFeatures()&FeatureTokenImport == 0 {
+		c.Skip("cryptsetup doesn't support token import")
+	}
+
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
 	options := FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &options), IsNil)
-	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}), IsNil)
+	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}, nil), IsNil)
 
 	c.Check(RemoveToken(devicePath, 10), ErrorMatches, "cryptsetup failed with: Token 10 is not in use.")
 

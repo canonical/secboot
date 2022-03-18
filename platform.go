@@ -19,37 +19,45 @@
 
 package secboot
 
-// PlatformKeyRecoveryErrorType describes the type of error returned from one of
-// the PlatformKeyDataHandler.RecoverKeys* functions.
-type PlatformKeyRecoveryErrorType int
+// PlatformHandlerErrorType indicates the type of error that
+// PlatformHandlerError is associated with.
+type PlatformHandlerErrorType int
 
 const (
-	// PlatformKeyRecoveryErrorInvalidData indicates that keys could not be
-	// recovered successfully because the supplied data is invalid.
-	PlatformKeyRecoveryErrorInvalidData PlatformKeyRecoveryErrorType = iota + 1
+	// PlatformHandlerErrorInvalidData indicates that an action could not be
+	// performed by PlatformKeyDataHandler because the supplied key data is
+	// invalid.
+	PlatformHandlerErrorInvalidData PlatformHandlerErrorType = iota + 1
 
-	// PlatformKeyRecoveryErrorUninitialized indicates that keys could not be
-	// recovered successfully because the platform's secure device is not properly
-	// initialized.
-	PlatformKeyRecoveryErrorUninitialized
+	// PlatformHandlerErrorUninitialized indicates that an action could not
+	// be performed by PlatformKeyDataHandler because the platform's secure
+	// device is not properly initialized.
+	PlatformHandlerErrorUninitialized
 
-	// PlatformKeyRecoveryErrorUnavailable indicates that keys could not be
-	// recovered successfully because the platform's secure device is unavailable.
-	PlatformKeyRecoveryErrorUnavailable
+	// PlatformHandlerErrorUnavailable indicates that an action could not be
+	// be performed by PlatformKeyDataHandler because the platform's secure
+	// device is unavailable.
+	PlatformHandlerErrorUnavailable
+
+	// PlatformHandlerErrorInvalidAuthKey indicates that an action could not
+	// be performed by PlatformKeyDataHandler because the supplied
+	// authorization key was incorrect.
+	PlatformHandlerErrorInvalidAuthKey
 )
 
-// PlatformKeyRecoveryError is returned from any of the PlatformKeyDataHandler.RecoverKeys*
-// functions if the keys cannot be successfully recovered by the platform's secure device.
-type PlatformKeyRecoveryError struct {
-	Type PlatformKeyRecoveryErrorType // type of the error
-	Err  error                        // underlying error
+// PlatformHandlerError is returned from a PlatformKeyDataHandler implementation when
+// the type of error can be categorized as one of the types supported by
+// PlatformHandlerErrorType.
+type PlatformHandlerError struct {
+	Type PlatformHandlerErrorType // type of the error
+	Err  error                    // underlying error
 }
 
-func (e *PlatformKeyRecoveryError) Error() string {
+func (e *PlatformHandlerError) Error() string {
 	return e.Err.Error()
 }
 
-func (e *PlatformKeyRecoveryError) Unwrap() error {
+func (e *PlatformHandlerError) Unwrap() error {
 	return e.Err
 }
 
@@ -73,22 +81,24 @@ type PlatformKeyDataHandler interface {
 	// data using this platform's secure device.
 	RecoverKeys(data *PlatformKeyData) (KeyPayload, error)
 
-	// RecoverKeysWithAuthValue attempts to recover the cleartext keys from the
-	// supplied data using this platform's secure device. The authValue parameter
+	// RecoverKeysWithAuthKey attempts to recover the cleartext keys from the
+	// supplied data using this platform's secure device. The key parameter
 	// is a passphrase derived key to enable passphrase support to be integrated
 	// with the secure device. The platform implementation doesn't provide the primary
 	// mechanism of protecting keys with a passphrase - this is done in the platform
 	// agnostic API. Some devices (such as TPMs) support this integration natively. For
-	// other devices, the integration should provide a way of validating the authValue in
+	// other devices, the integration should provide a way of validating the key in
 	// a way that requires the use of the secure device (eg, such as computing a HMAC of
 	// it using a hardware backed key).
-	// RecoverKeysWithAuthValue(data *PlatformKeyData, authValue []byte) (KeyPayload, error)
+	RecoverKeysWithAuthKey(data *PlatformKeyData, key []byte) (KeyPayload, error)
 
-	// ChangeAuthValue is called to notify the platform implementation that the
-	// passphrase is being changed. The oldAuthValue and newAuthValue parameters
-	// are passphrase derived keys. On success, it should return an updated
-	// PlatformKeyData.
-	// ChangeAuthValue(data *PlatformKeyData, oldAuthValue, newAuthValue []byte) (*PlatformKeyData, error)
+	// ChangeAuthKey is called to notify the platform implementation that the
+	// passphrase is being changed. The old and new parameters are passphrase derived
+	// keys. Either value can be nil if passphrase authentication is being enabled (
+	// where old will be nil) or disabled (where new will be nil).
+	//
+	// On success, it should return an updated handle.
+	ChangeAuthKey(handle, old, new []byte) ([]byte, error)
 }
 
 var handlers = make(map[string]PlatformKeyDataHandler)

@@ -25,10 +25,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
+
+	"github.com/snapcore/secboot/internal/luks2/internal"
 )
 
 func WrapCryptsetup(c *C) (restore func()) {
@@ -60,4 +63,8 @@ func CheckLUKS2Passphrase(c *C, devicePath string, key []byte) {
 	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
 	cmd.Stdin = bytes.NewReader(key)
 	c.Check(cmd.Run(), IsNil)
+}
+
+func ResetCryptsetupFeatures() {
+	internal.FeaturesOnce = sync.Once{}
 }

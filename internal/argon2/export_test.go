@@ -17,27 +17,16 @@
  *
  */
 
-package secboot
+package argon2
 
-func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
-	return o.deriveCostParams(keyLen, kdf)
-}
+import (
+	"golang.org/x/sys/unix"
+)
 
-func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
-	origActivate := luks2Activate
-	luks2Activate = fn
-	return func() {
-		luks2Activate = origActivate
-	}
-}
-
-func MockLUKS2Deactivate(fn func(string) error) (restore func()) {
-	origDeactivate := luks2Deactivate
-	luks2Deactivate = fn
-	return func() {
-		luks2Deactivate = origDeactivate
-	}
-}
+const (
+	MinTimeCost      = minTimeCost
+	MinMemoryCostKiB = minMemoryCostKiB
+)
 
 func MockRuntimeNumCPU(n int) (restore func()) {
 	orig := runtimeNumCPU
@@ -46,5 +35,16 @@ func MockRuntimeNumCPU(n int) (restore func()) {
 	}
 	return func() {
 		runtimeNumCPU = orig
+	}
+}
+
+func MockUnixSysinfo(info *unix.Sysinfo_t) (restore func()) {
+	orig := unixSysinfo
+	unixSysinfo = func(out *unix.Sysinfo_t) error {
+		*out = *info
+		return nil
+	}
+	return func() {
+		unixSysinfo = orig
 	}
 }

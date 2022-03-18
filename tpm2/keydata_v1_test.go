@@ -81,7 +81,7 @@ func (s *keyDataV1Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	template := tpm2_testutil.NewSealedObjectTemplate()
 
 	trial := util.ComputeAuthPolicy(template.NameAlg)
-	trial.PolicyAuthorize(ComputePcrPolicyRefFromCounterName(policyCounterName), authKeyName)
+	trial.PolicyAuthorize(ComputeV1PcrPolicyRefFromCounterName(policyCounterName), authKeyName)
 	trial.PolicyAuthValue()
 
 	template.AuthPolicy = trial.GetDigest()
@@ -99,7 +99,7 @@ func (s *keyDataV1Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
 		DynamicPolicyData: &DynamicPolicyDataRaw_v0{
 			PCRSelection:     tpm2.PCRSelectionList{},
-			PCROrData:        PolicyOrDataTree{},
+			PCROrData:        PolicyOrData_v0{},
 			PolicyCount:      count,
 			AuthorizedPolicy: make(tpm2.Digest, 32),
 			AuthorizedPolicySignature: &tpm2.Signature{

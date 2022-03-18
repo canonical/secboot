@@ -19,32 +19,14 @@
 
 package secboot
 
-func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
-	return o.deriveCostParams(keyLen, kdf)
-}
+// AuthRequestor is an interface for requesting credentials.
+type AuthRequestor interface {
+	// RequestPassphrase is used to request the passphrase for a platform
+	// protected key that is being used to unlock the container at the
+	// specified sourceDevicePath.
+	RequestPassphrase(volumeName, sourceDevicePath string) (string, error)
 
-func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
-	origActivate := luks2Activate
-	luks2Activate = fn
-	return func() {
-		luks2Activate = origActivate
-	}
-}
-
-func MockLUKS2Deactivate(fn func(string) error) (restore func()) {
-	origDeactivate := luks2Deactivate
-	luks2Deactivate = fn
-	return func() {
-		luks2Deactivate = origDeactivate
-	}
-}
-
-func MockRuntimeNumCPU(n int) (restore func()) {
-	orig := runtimeNumCPU
-	runtimeNumCPU = func() int {
-		return n
-	}
-	return func() {
-		runtimeNumCPU = orig
-	}
+	// RequestRecoveryKey is used to request the recovery key to unlock the
+	// container at the specified sourceDevicePath.
+	RequestRecoveryKey(volumeName, sourceDevicePath string) (RecoveryKey, error)
 }

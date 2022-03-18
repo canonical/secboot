@@ -20,17 +20,12 @@
 package secboot
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"golang.org/x/xerrors"
@@ -40,6 +35,11 @@ import (
 )
 
 var (
+	// ErrMissingCryptsetupFeature is returned from some functions that make
+	// use of the system's cryptsetup binary, if that binary is missing some
+	// required features.
+	ErrMissingCryptsetupFeature = luks2.ErrMissingCryptsetupFeature
+
 	luks2Activate   = luks2.Activate
 	luks2Deactivate = luks2.Deactivate
 )
@@ -86,58 +86,6 @@ func ParseRecoveryKey(s string) (out RecoveryKey, err error) {
 	}
 
 	return
-}
-
-type execError struct {
-	path string
-	err  error
-}
-
-func (e *execError) Error() string {
-	return fmt.Sprintf("%s failed: %s", e.path, e.err)
-}
-
-func (e *execError) Unwrap() error {
-	return e.err
-}
-
-func wrapExecError(cmd *exec.Cmd, err error) error {
-	if err == nil {
-		return nil
-	}
-	return &execError{path: cmd.Path, err: err}
-}
-
-func askPassword(sourceDevicePath, msg string) (string, error) {
-	cmd := exec.Command(
-		"systemd-ask-password",
-		"--icon", "drive-harddisk",
-		"--id", filepath.Base(os.Args[0])+":"+sourceDevicePath,
-		msg)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stdin = os.Stdin
-	if err := cmd.Run(); err != nil {
-		return "", wrapExecError(cmd, err)
-	}
-	result, err := out.ReadString('\n')
-	if err != nil {
-		return "", xerrors.Errorf("cannot read result from systemd-ask-password: %w", err)
-	}
-	return strings.TrimRight(result, "\n"), nil
-}
-
-func getPassword(sourceDevicePath, description string, reader io.Reader) (string, error) {
-	if reader != nil {
-		scanner := bufio.NewScanner(reader)
-		switch {
-		case scanner.Scan():
-			return scanner.Text(), nil
-		case scanner.Err() != nil:
-			return "", xerrors.Errorf("cannot obtain %s from scanner: %w", description, scanner.Err())
-		}
-	}
-	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
 }
 
 type snapModelCheckerImpl struct {
@@ -190,6 +138,10 @@ type activateWithKeyDataState struct {
 	sourceDevicePath string
 	keyringPrefix    string
 
+	authRequestor   AuthRequestor
+	kdf             KDF
+	passphraseTries int
+
 	keys []*keyDataAndError
 
 	keyData *KeyData
@@ -238,9 +190,24 @@ func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData) error {
 	return s.tryActivateWithRecoveredKey(k, key, auxKey)
 }
 
-func (s *activateWithKeyDataState) run() (success bool) {
+func (s *activateWithKeyDataState) tryKeyDataAuthModePassphrase(k *KeyData, passphrase string) error {
+	key, auxKey, err := k.RecoverKeysWithPassphrase(passphrase, s.kdf)
+	if err != nil {
+		return xerrors.Errorf("cannot recover key: %w", err)
+	}
+
+	return s.tryActivateWithRecoveredKey(k, key, auxKey)
+}
+
+func (s *activateWithKeyDataState) run() (success bool, err error) {
+	numPassphraseKeys := 0
+
 	// Try keys that don't require any additional authentication first
 	for _, k := range s.keys {
+		if k.AuthMode()&AuthModePassphrase > 0 {
+			numPassphraseKeys += 1
+		}
+
 		if k.AuthMode() != AuthModeNone {
 			continue
 		}
@@ -250,27 +217,71 @@ func (s *activateWithKeyDataState) run() (success bool) {
 			continue
 		}
 
-		return true
+		return true, nil
 	}
 
-	// TODO: Passphrase support
+	// Try keys that require a passphrase
+	tries := s.passphraseTries
+	var passphraseErr error
+
+	for tries > 0 && numPassphraseKeys > 0 {
+		tries -= 1
+
+		// Request a passphrase first and then try each key with it. One downside of
+		// this approach is that if there are multiple keys with different passphrases
+		// or the passphrase is wrong for all keys, this will accelerate the rate at
+		// which dictionary attack protections kick in for platforms that support that.
+		// This shouldn't be an issue for standard configurations where there would be
+		// a maximum of 2 keys with passphrases enabled (Ubuntu Core based desktop on
+		// a UEFI+TPM platform with run+recovery and recovery-only protectors for
+		// ubuntu-data).
+		passphrase, err := s.authRequestor.RequestPassphrase(s.volumeName, s.sourceDevicePath)
+		if err != nil {
+			passphraseErr = xerrors.Errorf("cannot obtain passphrase: %w", err)
+			continue
+		}
+
+		for _, k := range s.keys {
+			if k.AuthMode()&AuthModePassphrase == 0 {
+				continue
+			}
+
+			if k.err != nil && !xerrors.Is(k.err, ErrInvalidPassphrase) {
+				// Skip keys that failed for anything other than an invalid passphrase.
+				continue
+			}
+
+			if err := s.tryKeyDataAuthModePassphrase(k.KeyData, passphrase); err != nil {
+				if !xerrors.Is(err, ErrInvalidPassphrase) {
+					numPassphraseKeys -= 1
+				}
+				k.err = err
+				continue
+			}
+
+			return true, nil
+		}
+	}
 
 	// We've failed at this point
-	return false
+	return false, passphraseErr
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*KeyData) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*KeyData, authRequestor AuthRequestor, kdf KDF, passphraseTries int) *activateWithKeyDataState {
 	s := &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
-		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix)}
+		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix),
+		authRequestor:    authRequestor,
+		kdf:              kdf,
+		passphraseTries:  passphraseTries}
 	for _, k := range keys {
 		s.keys = append(s.keys, &keyDataAndError{KeyData: k})
 	}
 	return s
 }
 
-func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, keyringPrefix string) error {
+func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor AuthRequestor, tries int, keyringPrefix string) error {
 	if tries == 0 {
 		return errors.New("no recovery key tries permitted")
 	}
@@ -280,17 +291,9 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 	for ; tries > 0; tries-- {
 		lastErr = nil
 
-		r := keyReader
-		keyReader = nil
-
-		passphrase, err := getPassword(sourceDevicePath, "recovery key", r)
+		key, err := authRequestor.RequestRecoveryKey(volumeName, sourceDevicePath)
 		if err != nil {
-			return xerrors.Errorf("cannot obtain recovery key: %w", err)
-		}
-
-		key, err := ParseRecoveryKey(passphrase)
-		if err != nil {
-			lastErr = xerrors.Errorf("cannot decode recovery key: %w", err)
+			lastErr = xerrors.Errorf("cannot obtain recovery key: %w", err)
 			continue
 		}
 
@@ -313,26 +316,37 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 // family of functions.
 type ActivateVolumeOptions struct {
 	// PassphraseTries specifies the maximum number of times
-	// that unsealing with a user passphrase should be attempted
+	// that activation with a user passphrase should be attempted
 	// before failing with an error and falling back to activating
 	// with the recovery key (see RecoveryKeyTries).
-	// Setting this to zero disables unsealing with a user
-	// passphrase - in this case, an error will be returned if the
-	// sealed key object indicates that a user passphrase has been
-	// set.
-	// With a TPM, attempts to unseal will stop if the TPM enters
-	// dictionary attack lockout mode before this limit is
-	// reached.
+	//
+	// Setting this to zero disables activation with a user
+	// passphrase - in this case, any protected keys that require
+	// a passphrase are ignored and activation will fall back to
+	// requesting a recovery key.
+	//
+	// For each passphrase attempt, the supplied passphrase is
+	// tested against every protected key that requires a passphrase.
+	//
+	// The actual number of available passphrase attempts may be
+	// limited by the platform to a number that is lower than this
+	// value (eg, in the TPM case because of the current auth fail
+	// counter value which means the dictionary attack protection
+	// might be triggered first).
+	//
 	// It is ignored by ActivateWithRecoveryKey.
 	PassphraseTries int
 
 	// RecoveryKeyTries specifies the maximum number of times that
 	// activation with the fallback recovery key should be
 	// attempted.
+	//
 	// It is used directly by ActivateWithRecoveryKey and
 	// indirectly with other methods upon failure, for example
-	// failed TPM unsealing.  Setting this to zero will disable
-	// attempts to activate with the fallback recovery key.
+	// in the case where no other keys can be recovered.
+	//
+	// Setting this to zero will disable attempts to activate with
+	// the fallback recovery key.
 	RecoveryKeyTries int
 
 	// KeyringPrefix is the prefix used for the description of any
@@ -361,25 +375,31 @@ func (e *activateVolumeWithKeyDataError) Error() string {
 // successful.
 var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected keys but activation with the recovery key was successful")
 
-// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at sourceDevicePath and create a
-// mapping with the name volumeName, using the supplied KeyData objects to recover the disk unlock key from the
-// platform's secure device. This makes use of systemd-cryptsetup.
+// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at
+// sourceDevicePath and create a mapping with the name volumeName, using the
+// supplied KeyData objects to recover the disk unlock key from the platform's
+// secure device. This makes use of systemd-cryptsetup.
 //
-// If activation with the supplied KeyData objects fails, this function will attempt to activate it with the fallback
-// recovery key instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries
-// field of options specifies how many attempts should be made to activate the volume with the recovery key before
-// failing. If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback
-// recovery key.
+// If activation with the supplied KeyData objects fails, this function will
+// attempt to activate it with the fallback recovery key instead. The fallback
+// recovery key is requested via the supplied authRequestor. If an AuthRequestor
+// is not supplied, an error will be returned if the fallback recovery key is
+// required. The RecoveryKeyTries field of options specifies how many attemps to
+// request and use the recovery key will be made before failing. If it is set to
+// 0, then no attempts will be made to request and use the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less
+// than zero, an error will be returned.
 //
-// If activation with one of the supplied KeyData objects succeeds, a SnapModelChecker will be returned so that the
-// caller can check whether a particular Snap device model has previously been authorized to access the data on this
-// volume. If the fallback recovery key is used for successfully for activation, no SnapModelChecker will be
-// returned and a ErrRecoveryKeyUsed error will be returned.
+// If activation with one of the supplied KeyData objects succeeds, a
+// SnapModelChecker will be returned so that the caller can check whether a
+// particular Snap device model has previously been authorized to access the data
+// on this volume. If the fallback recovery key is used for successfully for
+// activation, no SnapModelChecker will be returned and a ErrRecoveryKeyUsed error
+// will be returned.
 //
 // If activation fails, an error will be returned.
-func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) (SnapModelChecker, error) {
+func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, authRequestor AuthRequestor, kdf KDF, options *ActivateVolumeOptions) (SnapModelChecker, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("no keys provided")
 	}
@@ -390,16 +410,27 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 		return nil, errors.New("invalid RecoveryKeyTries")
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, keys)
-	switch s.run() {
-	case true: // success!
+	if (options.PassphraseTries > 0 || options.RecoveryKeyTries > 0) && authRequestor == nil {
+		return nil, errors.New("nil authRequestor")
+	}
+	if options.PassphraseTries > 0 && kdf == nil {
+		return nil, errors.New("nil kdf")
+	}
+
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, keys, authRequestor, kdf, options.PassphraseTries)
+	success, err := s.run()
+	switch {
+	case success:
 		return s.snapModelChecker(), nil
 	default: // failed - try recovery key
-		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, options.KeyringPrefix); rErr != nil {
+		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, authRequestor, options.RecoveryKeyTries, options.KeyringPrefix); rErr != nil {
 			// failed with recovery key - return errors
 			var kdErrs []error
 			for _, e := range s.errors() {
 				kdErrs = append(kdErrs, e)
+			}
+			if err != nil {
+				kdErrs = append(kdErrs, err)
 			}
 			return nil, &activateVolumeWithKeyDataError{kdErrs, rErr}
 		}
@@ -408,41 +439,53 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 	}
 }
 
-// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at sourceDevicePath and create a
-// mapping with the name volumeName, using the supplied KeyData to recover the disk unlock key from the platform's
-// secure device. This makes use of systemd-cryptsetup.
+// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at
+// sourceDevicePath and create a mapping with the name volumeName, using the
+// supplied KeyData to recover the disk unlock key from the platform's secure
+// device. This makes use of systemd-cryptsetup.
 //
-// If activation with the supplied KeyData fails, this function will attempt to activate it with the fallback recovery
-// key instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of
-// options specifies how many attempts should be made to activate the volume with the recovery key before failing.
-// If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback recovery key.
+// If activation with the supplied KeyData fails, this function will attempt to
+// activate it with the fallback recovery key instead. The fallback recovery key is
+// requested via the supplied authRequestor. If an AuthRequestor is not supplied,
+// an error will be returned if the fallback recovery key is required. The
+// RecoveryKeyTries field of options specifies how many attemps to request and use
+// the recovery key will be made before failing. If it is set to 0, then no attempts
+// will be made to request and use the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less than
+// zero, an error will be returned.
 //
-// If activation with the supplied KeyData succeeds, a SnapModelChecker will be returned so that the caller can check
-// whether a particular Snap device model has previously been authorized to access the data on this volume. If the
-// fallback recovery key is used for successfully for activation, no SnapModelChecker will be returned and a
-// ErrRecoveryKeyUsed error will be returned.
+// If activation with the supplied KeyData succeeds, a SnapModelChecker will be
+// returned so that the caller can check whether a particular Snap device model has
+// previously been authorized to access the data on this volume. If the fallback
+// recovery key is used for successfully for activation, no SnapModelChecker will be
+// returned and a ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
-func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) (SnapModelChecker, error) {
-	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, options)
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, authRequestor AuthRequestor, kdf KDF, options *ActivateVolumeOptions) (SnapModelChecker, error) {
+	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, authRequestor, kdf, options)
 }
 
-// ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
-// name volumeName, using the fallback recovery key. This makes use of systemd-cryptsetup.
+// ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at
+// sourceDevicePath and create a mapping with the name volumeName, using the fallback
+// recovery key. This makes use of systemd-cryptsetup.
 //
-// This function will use systemd-ask-password to request the recovery key. If keyReader is not nil, then an attempt to read the key
-// from this will be made instead by reading all characters until the first newline. The RecoveryKeyTries field of options defines how many
-// attempts should be made to activate the volume with the recovery key before failing.
+// The recovery key is requested via the supplied AuthRequestor. If an AuthRequestor
+// is not supplied, an error will be returned. The RecoveryKeyTries field of options
+// specifies how many attempts to request and use the recovery key will be made before
+// failing.
 //
-// If the RecoveryKeyTries field of options is less than zero, an error will be returned.
-func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, options *ActivateVolumeOptions) error {
+// If the RecoveryKeyTries field of options is less than zero, an error will be
+// returned.
+func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor AuthRequestor, options *ActivateVolumeOptions) error {
+	if authRequestor == nil {
+		return errors.New("nil authRequestor")
+	}
 	if options.RecoveryKeyTries < 0 {
 		return errors.New("invalid RecoveryKeyTries")
 	}
 
-	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.RecoveryKeyTries, options.KeyringPrefix)
+	return activateWithRecoveryKey(volumeName, sourceDevicePath, authRequestor, options.RecoveryKeyTries, options.KeyringPrefix)
 }
 
 // ActivateVolumeWithKey attempts to activate the LUKS encrypted volume at
@@ -456,38 +499,6 @@ func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, opti
 // This makes use of systemd-cryptsetup.
 func DeactivateVolume(volumeName string) error {
 	return luks2Deactivate(volumeName)
-}
-
-// KDFOptions specifies parameters for the Argon2 KDF used by cryptsetup.
-type KDFOptions struct {
-	// MemoryKiB specifies the maximum memory cost in KiB when ForceIterations
-	// is zero. If ForceIterations is not zero, then this is used as the
-	// memory cost.
-	MemoryKiB int
-
-	// TargetDuration specifies the target duration for the KDF which
-	// is used to benchmark the time and memory cost parameters. If it
-	// is zero then the cryptsetup default is used. If ForceIterations
-	// is not zero then this field is ignored.
-	TargetDuration time.Duration
-
-	// ForceIterations can be used to turn off KDF benchmarking by
-	// setting the time cost directly. If this is zero then the cost
-	// parameters are benchmarked based on the value of TargetDuration.
-	ForceIterations int
-
-	// Parallel sets the maximum number of parallel threads for the
-	// KDF (up to 4). Cryptsetup will adjust this downwards based on
-	// the actual number of CPUs.
-	Parallel int
-}
-
-func (o *KDFOptions) internalOpts() luks2.KDFOptions {
-	return luks2.KDFOptions{
-		TargetDuration:  o.TargetDuration,
-		MemoryKiB:       o.MemoryKiB,
-		ForceIterations: o.ForceIterations,
-		Parallel:        o.Parallel}
 }
 
 // InitializeLUKS2ContainerOptions carries options for initializing LUKS2
@@ -513,7 +524,7 @@ func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 	return &luks2.FormatOptions{
 		MetadataKiBSize:     o.MetadataKiBSize,
 		KeyslotsAreaKiBSize: o.KeyslotsAreaKiBSize,
-		KDFOptions:          o.KDFOptions.internalOpts()}
+		KDFOptions:          o.KDFOptions.luksOpts()}
 }
 
 func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
@@ -609,7 +620,7 @@ func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey R
 	}
 	return luks2.AddKey(devicePath, key, recoveryKey[:],
 		&luks2.AddKeyOptions{
-			KDFOptions: options.internalOpts(),
+			KDFOptions: options.luksOpts(),
 			Slot:       luks2.AnySlot})
 }
 
