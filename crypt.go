@@ -342,7 +342,7 @@ type ActivateVolumeOptions struct {
 	// kernel keys created during activation.
 	KeyringPrefix string
 
-	// SnapModel is the snap device model that will access the data
+	// Model is the snap device model that will access the data
 	// on the encrypted container. The ActivateVolumeWith* functions
 	// will check that this model is authorized via the KeyData
 	// binding before unlocking the encrypted container.
@@ -350,10 +350,12 @@ type ActivateVolumeOptions struct {
 	// The caller of the ActivateVolumeWith* API is responsible for
 	// validating the associated model assertion and snaps.
 	//
-	// Set this to SkipSnapModelCheck to skip the check.
+	// Set this to SkipSnapModelCheck to skip the check. It cannot
+	// be left set as nil.
 	//
-	// It is ignored by ActivateVolumeWithRecoveryKey.
-	SnapModel SnapModel
+	// It is ignored by ActivateVolumeWithRecoveryKey, and it is
+	// ok to leave it set as nil in this case.
+	Model SnapModel
 }
 
 type activateVolumeWithKeyDataError struct {
@@ -391,7 +393,7 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // 0, then no attempts will be made to request and use the fallback recovery key.
 //
 // If either the PassphraseTries or RecoveryKeyTries fields of options are less
-// than zero, an error will be returned. If the SnapModel field of options is nil,
+// than zero, an error will be returned. If the Model field of options is nil,
 // an error will be returned.
 //
 // If the fallback recovery key is used for successfully for activation, an
@@ -412,8 +414,8 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 	if options.RecoveryKeyTries < 0 {
 		return errors.New("invalid RecoveryKeyTries")
 	}
-	if options.SnapModel == nil {
-		return errors.New("nil SnapModel")
+	if options.Model == nil {
+		return errors.New("nil Model")
 	}
 
 	if (options.PassphraseTries > 0 || options.RecoveryKeyTries > 0) && authRequestor == nil {
@@ -423,7 +425,7 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 		return errors.New("nil kdf")
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.SnapModel, keys, authRequestor, kdf, options.PassphraseTries)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, keys, authRequestor, kdf, options.PassphraseTries)
 	success, err := s.run()
 	switch {
 	case success:
@@ -459,7 +461,7 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 // will be made to request and use the fallback recovery key.
 //
 // If either the PassphraseTries or RecoveryKeyTries fields of options are less
-// than zero, an error will be returned. If the SnapModel field of options is nil,
+// than zero, an error will be returned. If the Model field of options is nil,
 // an error will be returned.
 //
 // If the fallback recovery key is used for successfully for activation, an

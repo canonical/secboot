@@ -667,7 +667,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 	options := &ActivateVolumeOptions{
 		PassphraseTries: data.passphraseTries,
 		KeyringPrefix:   data.keyringPrefix,
-		SnapModel:       data.model}
+		Model:           data.model}
 	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, keyData, authRequestor, &kdf, options)
 	c.Assert(err, IsNil)
 
@@ -833,7 +833,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 		PassphraseTries:  data.passphraseTries,
 		RecoveryKeyTries: data.recoveryKeyTries,
 		KeyringPrefix:    data.keyringPrefix,
-		SnapModel:        data.model}
+		Model:            data.model}
 	err := ActivateVolumeWithKeyData("data", "/dev/sda1", data.keyData, authRequestor, data.kdf, options)
 	if data.errChecker != nil {
 		c.Check(err, data.errChecker, data.errCheckerArgs...)
@@ -1102,7 +1102,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling14(c *C) {
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		keyData:        keyData,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"nil SnapModel"}})
+		errCheckerArgs: []interface{}{"nil Model"}})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling15(c *C) {
@@ -1159,7 +1159,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 	options := &ActivateVolumeOptions{
 		PassphraseTries: data.passphraseTries,
 		KeyringPrefix:   data.keyringPrefix,
-		SnapModel:       data.model}
+		Model:           data.model}
 	err := ActivateVolumeWithMultipleKeyData(data.volumeName, data.sourceDevicePath, data.keyData, authRequestor, &kdf, options)
 	c.Assert(err, IsNil)
 
@@ -1516,7 +1516,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 		PassphraseTries:  data.passphraseTries,
 		RecoveryKeyTries: data.recoveryKeyTries,
 		KeyringPrefix:    data.keyringPrefix,
-		SnapModel:        data.model}
+		Model:            data.model}
 	err := ActivateVolumeWithMultipleKeyData("data", "/dev/sda1", data.keyData, authRequestor, data.kdf, options)
 	if data.errChecker != nil {
 		c.Check(err, data.errChecker, data.errCheckerArgs...)
@@ -1792,7 +1792,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling14(c *C) 
 	s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
 		keyData:        keyData,
 		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"nil SnapModel"}})
+		errCheckerArgs: []interface{}{"nil Model"}})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling15(c *C) {
