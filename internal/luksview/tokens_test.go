@@ -187,6 +187,7 @@ func (s *tokenSuite) TestDecodeInvalidRecoveryToken(c *C) {
 		},
 	})
 }
+
 func (s *tokenSuite) checkKeyDataTokenJSON(c *C, data []byte, token *KeyDataToken) {
 	var j map[string]interface{}
 	c.Assert(json.Unmarshal(data, &j), IsNil)
