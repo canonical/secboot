@@ -28,7 +28,7 @@ func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, erro
 	return o.deriveCostParams(keyLen, kdf)
 }
 
-func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
+func MockLUKS2Activate(fn func(string, string, []byte, int) error) (restore func()) {
 	origActivate := luks2Activate
 	luks2Activate = fn
 	return func() {

@@ -205,8 +205,8 @@ func (l *mockLUKS2) enableMocks() (restore func()) {
 	}
 }
 
-func (l *mockLUKS2) activate(volumeName, sourceDevicePath string, key []byte) error {
-	l.operations = append(l.operations, "Activate("+volumeName+","+sourceDevicePath+")")
+func (l *mockLUKS2) activate(volumeName, sourceDevicePath string, key []byte, slot int) error {
+	l.operations = append(l.operations, "Activate("+volumeName+","+sourceDevicePath+","+strconv.Itoa(slot)+")")
 
 	if _, exists := l.activated[volumeName]; exists {
 		return errors.New("systemd-cryptsetup failed with: exit status 1")
@@ -217,7 +217,18 @@ func (l *mockLUKS2) activate(volumeName, sourceDevicePath string, key []byte) er
 		return errors.New("systemd-cryptsetup failed with: exit status 1")
 	}
 
-	for _, k := range dev.keyslots {
+	if slot == luks2.AnySlot {
+		for _, k := range dev.keyslots {
+			if bytes.Equal(k, key) {
+				l.activated[volumeName] = sourceDevicePath
+				return nil
+			}
+		}
+	} else {
+		k, exists := dev.keyslots[slot]
+		if !exists {
+			return errors.New("systemd-cryptsetup failed with: exit status 1")
+		}
 		if bytes.Equal(k, key) {
 			l.activated[volumeName] = sourceDevicePath
 			return nil
@@ -512,7 +523,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateV
 
 	c.Assert(s.luks2.operations, HasLen, data.activateTries)
 	for _, op := range s.luks2.operations {
-		c.Check(op, Equals, "Activate("+data.volumeName+","+data.sourceDevicePath+")")
+		c.Check(op, Equals, "Activate("+data.volumeName+","+data.sourceDevicePath+",-1)")
 	}
 
 	// This should be done last because it may fail in some circumstances.
@@ -723,7 +734,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 
 	c.Assert(s.luks2.operations, HasLen, data.activateTries)
 	for _, op := range s.luks2.operations {
-		c.Check(op, Equals, "Activate(data,/dev/sda1)")
+		c.Check(op, Equals, "Activate(data,/dev/sda1,-1)")
 	}
 
 	return err
@@ -806,10 +817,13 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 		PassphraseTries: data.passphraseTries,
 		KeyringPrefix:   data.keyringPrefix,
 		Model:           data.model}
-	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, keyData, authRequestor, &kdf, options)
+	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, &kdf, options, keyData)
 	c.Assert(err, IsNil)
 
-	c.Check(s.luks2.operations, DeepEquals, []string{"Activate(" + data.volumeName + "," + data.sourceDevicePath + ")"})
+	c.Check(s.luks2.operations, DeepEquals, []string{
+		"newLUKSView(" + data.sourceDevicePath + ",0)",
+		"Activate(" + data.volumeName + "," + data.sourceDevicePath + ",-1)",
+	})
 
 	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
 	for _, rsp := range authRequestor.passphraseRequests {
@@ -967,7 +981,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 		RecoveryKeyTries: data.recoveryKeyTries,
 		KeyringPrefix:    data.keyringPrefix,
 		Model:            data.model}
-	err := ActivateVolumeWithKeyData("data", "/dev/sda1", data.keyData, authRequestor, data.kdf, options)
+	err := ActivateVolumeWithKeyData("data", "/dev/sda1", authRequestor, data.kdf, options, data.keyData)
 
 	if data.authRequestor != nil {
 		c.Check(data.authRequestor.passphraseRequests, HasLen, numPassphraseResponses)
@@ -983,9 +997,16 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 		}
 	}
 
-	c.Assert(s.luks2.operations, HasLen, data.activateTries)
-	for _, op := range s.luks2.operations {
-		c.Check(op, Equals, "Activate(data,/dev/sda1)")
+	if data.activateTries > 0 {
+		c.Assert(s.luks2.operations, HasLen, data.activateTries+1)
+		c.Check(s.luks2.operations[0], Equals, "newLUKSView(/dev/sda1,0)")
+		for _, op := range s.luks2.operations[1:] {
+			c.Check(op, Equals, "Activate(data,/dev/sda1,-1)")
+		}
+	} else if len(s.luks2.operations) == 1 {
+		c.Check(s.luks2.operations[0], Equals, "newLUKSView(/dev/sda1,0)")
+	} else {
+		c.Check(s.luks2.operations, HasLen, 0)
 	}
 
 	if err == ErrRecoveryKeyUsed {
@@ -1144,8 +1165,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling9(c *C) {
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		recoveryKeyTries: 1,
-		keyData:          keyData,
 		model:            SkipSnapModelCheck,
+		keyData:          keyData,
 	}), ErrorMatches, "nil authRequestor")
 }
 
@@ -1157,7 +1178,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling10(c *C) {
 	var kdf testutil.MockKDF
 	c.Check(keyData.SetPassphrase("1234", nil, &kdf), IsNil)
 
-	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		primaryKey:  key,
 		recoveryKey: recoveryKey,
 		authRequestor: &mockAuthRequestor{
@@ -1168,8 +1189,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling10(c *C) {
 		kdf:              &kdf,
 		keyData:          keyData,
 		model:            SkipSnapModelCheck,
-		activateTries:    1,
-	}), Equals, ErrRecoveryKeyUsed)
+		activateTries:    1})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling11(c *C) {
@@ -1286,7 +1306,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 		PassphraseTries: data.passphraseTries,
 		KeyringPrefix:   data.keyringPrefix,
 		Model:           data.model}
-	err := ActivateVolumeWithMultipleKeyData(data.volumeName, data.sourceDevicePath, data.keyData, authRequestor, &kdf, options)
+	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, &kdf, options, data.keyData...)
 	c.Assert(err, IsNil)
 
 	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
@@ -1295,9 +1315,10 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 		c.Check(rsp.sourceDevicePath, Equals, data.sourceDevicePath)
 	}
 
-	c.Assert(s.luks2.operations, HasLen, data.activateTries)
-	for _, op := range s.luks2.operations {
-		c.Check(op, Equals, "Activate("+data.volumeName+","+data.sourceDevicePath+")")
+	c.Assert(s.luks2.operations, HasLen, data.activateTries+1)
+	c.Check(s.luks2.operations[0], Equals, "newLUKSView("+data.sourceDevicePath+",0)")
+	for _, op := range s.luks2.operations[1:] {
+		c.Check(op, Equals, "Activate("+data.volumeName+","+data.sourceDevicePath+",-1)")
 	}
 
 	// This should be done last because it may fail in some circumstances.
@@ -1639,7 +1660,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 		RecoveryKeyTries: data.recoveryKeyTries,
 		KeyringPrefix:    data.keyringPrefix,
 		Model:            data.model}
-	err := ActivateVolumeWithMultipleKeyData("data", "/dev/sda1", data.keyData, authRequestor, data.kdf, options)
+	err := ActivateVolumeWithKeyData("data", "/dev/sda1", authRequestor, data.kdf, options, data.keyData...)
 
 	if data.authRequestor != nil {
 		c.Check(data.authRequestor.passphraseRequests, HasLen, numPassphraseResponses)
@@ -1655,9 +1676,16 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 		}
 	}
 
-	c.Assert(s.luks2.operations, HasLen, data.activateTries)
-	for _, op := range s.luks2.operations {
-		c.Check(op, Equals, "Activate(data,/dev/sda1)")
+	if data.activateTries > 0 {
+		c.Assert(s.luks2.operations, HasLen, data.activateTries+1)
+		c.Check(s.luks2.operations[0], Equals, "newLUKSView(/dev/sda1,0)")
+		for _, op := range s.luks2.operations[1:] {
+			c.Check(op, Equals, "Activate(data,/dev/sda1,-1)")
+		}
+	} else if len(s.luks2.operations) == 1 {
+		c.Check(s.luks2.operations[0], Equals, "newLUKSView(/dev/sda1,0)")
+	} else {
+		c.Check(s.luks2.operations, HasLen, 0)
 	}
 
 	if err == ErrRecoveryKeyUsed {
@@ -1917,10 +1945,9 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling15(c *C) 
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
-		keys:             keys,
-		recoveryKey:      recoveryKey,
-		keyData:          keyData,
-		recoveryKeyTries: 0,
+		keys:        keys,
+		recoveryKey: recoveryKey,
+		keyData:     keyData,
 		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
@@ -1928,7 +1955,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling15(c *C) 
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		activateTries: 0,
+		recoveryKeyTries: 0,
+		activateTries:    0,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
 		"- foo: snap model is not authorized\n"+
 		"- bar: snap model is not authorized\n"+
@@ -1960,7 +1988,7 @@ func (s *cryptSuite) testActivateVolumeWithKey(c *C, data *testActivateVolumeWit
 	}
 
 	if data.cmdCalled {
-		c.Check(s.luks2.operations, DeepEquals, []string{"Activate(luks-volume,/dev/sda1)"})
+		c.Check(s.luks2.operations, DeepEquals, []string{"Activate(luks-volume,/dev/sda1,-1)"})
 	} else {
 		c.Check(s.luks2.operations, HasLen, 0)
 	}

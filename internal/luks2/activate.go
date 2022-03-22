@@ -33,9 +33,16 @@ var (
 )
 
 // Activate unlocks the LUKS device at sourceDevicePath using systemd-cryptsetup and creates a device
-// mapping with the supplied volumeName. The device is unlocked using the supplied key.
-func Activate(volumeName, sourceDevicePath string, key []byte) error {
-	cmd := exec.Command(systemdCryptsetupPath, "attach", volumeName, sourceDevicePath, "/dev/stdin", "luks,tries=1")
+// mapping with the supplied volumeName. The device is unlocked using the supplied key. The slot
+// arguments specifies which keyslot ID to use - set this to AnySlot to activate with any keyslot.
+func Activate(volumeName, sourceDevicePath string, key []byte, slot int) error {
+	cmd := exec.Command(systemdCryptsetupPath,
+		// attach <sourceDevicePath> to /dev/mapper/<volumeName>
+		"attach", volumeName, sourceDevicePath,
+		// read key from stdin
+		"/dev/stdin",
+		// hardcode luks, one try and specify the keyslot
+		fmt.Sprintf("luks,keyslot=%d,tries=1", slot))
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
 	cmd.Stdin = bytes.NewReader(key)
