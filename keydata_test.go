@@ -300,8 +300,6 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 	c.Check(ok, testutil.IsTrue)
 	c.Check(str, Equals, creationHandle["iv"].(string))
 
-	c.Check(j["platform_handle"], DeepEquals, handle)
-
 	m, ok := j["authorized_snap_models"].(map[string]interface{})
 	c.Check(ok, testutil.IsTrue)
 
