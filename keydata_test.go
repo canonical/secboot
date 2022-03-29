@@ -300,8 +300,6 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 	c.Check(ok, testutil.IsTrue)
 	c.Check(str, Equals, creationHandle["iv"].(string))
 
-	c.Check(j["platform_handle"], DeepEquals, handle)
-
 	m, ok := j["authorized_snap_models"].(map[string]interface{})
 	c.Check(ok, testutil.IsTrue)
 
@@ -531,6 +529,39 @@ func (s *keyDataSuite) TestNewKeyData(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Check(keyData, NotNil)
 	c.Check(err, IsNil)
+}
+
+func (s *keyDataSuite) TestUnmarshalPlatformHandle(c *C) {
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	var handle mockPlatformKeyDataHandle
+	c.Check(keyData.UnmarshalPlatformHandle(&handle), IsNil)
+
+	var expected mockPlatformKeyDataHandle
+	c.Check(json.Unmarshal(protected.Handle, &expected), IsNil)
+	c.Check(handle, DeepEquals, expected)
+}
+
+func (s *keyDataSuite) TestMarshalAndUpdatePlatformHandle(c *C) {
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	var handle mockPlatformKeyDataHandle
+	c.Check(json.Unmarshal(protected.Handle, &handle), IsNil)
+
+	rand.Read(handle.AuthKeyHMAC)
+
+	c.Check(keyData.MarshalAndUpdatePlatformHandle(&handle), IsNil)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	s.checkKeyDataJSONFromReaderAuthModeNone(c, w.Reader(), protected, 0)
 }
 
 func (s *keyDataSuite) TestRecoverKeys(c *C) {
