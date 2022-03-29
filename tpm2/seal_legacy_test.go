@@ -40,12 +40,12 @@ import (
 	. "github.com/snapcore/secboot/tpm2"
 )
 
-type sealSuite struct {
+type sealLegacySuite struct {
 	tpm2test.TPMTest
 	primaryKeyMixin
 }
 
-func (s *sealSuite) SetUpSuite(c *C) {
+func (s *sealLegacySuite) SetUpSuite(c *C) {
 	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
 		tpm2test.TPMFeatureEndorsementHierarchy |
 		tpm2test.TPMFeatureLockoutHierarchy | // Allow the test fixture to reset the DA counter
@@ -53,7 +53,7 @@ func (s *sealSuite) SetUpSuite(c *C) {
 		tpm2test.TPMFeatureNV
 }
 
-func (s *sealSuite) SetUpTest(c *C) {
+func (s *sealLegacySuite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
 
 	s.primaryKeyMixin.tpmTest = &s.TPMTest.TPMTest
@@ -61,9 +61,9 @@ func (s *sealSuite) SetUpTest(c *C) {
 		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 }
 
-var _ = Suite(&sealSuite{})
+var _ = Suite(&sealLegacySuite{})
 
-func (s *sealSuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
+func (s *sealLegacySuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
@@ -100,19 +100,19 @@ func (s *sealSuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 	}
 }
 
-func (s *sealSuite) TestSealKeyToTPM(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPM(c *C) {
 	s.testSealKeyToTPM(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
 }
 
-func (s *sealSuite) TestSealKeyToTPMDifferentPCRPolicyCounterHandle(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMDifferentPCRPolicyCounterHandle(c *C) {
 	s.testSealKeyToTPM(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)})
 }
 
-func (s *sealSuite) TestSealKeyToTPMWithNewConnection(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMWithNewConnection(c *C) {
 	// SealKeyToTPM behaves slightly different if called immediately after
 	// EnsureProvisioned with the same Connection
 	s.ReinitTPMConnectionFromExisting(c)
@@ -122,7 +122,7 @@ func (s *sealSuite) TestSealKeyToTPMWithNewConnection(c *C) {
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
 }
 
-func (s *sealSuite) TestSealKeyToTPMMissingSRK(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMissingSRK(c *C) {
 	// Ensure that calling SealKeyToTPM recreates the SRK with the standard template
 	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
 	c.Assert(err, IsNil)
@@ -137,7 +137,7 @@ func (s *sealSuite) TestSealKeyToTPMMissingSRK(c *C) {
 	s.validateSRK(c)
 }
 
-func (s *sealSuite) TestSealKeyToTPMMissingCustomSRK(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMissingCustomSRK(c *C) {
 	// Ensure that calling SealKeyToTPM recreates the SRK with the custom
 	// template originally supplied during provisioning
 	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
@@ -177,7 +177,7 @@ func (s *sealSuite) TestSealKeyToTPMMissingCustomSRK(c *C) {
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, template)
 }
 
-func (s *sealSuite) TestSealKeyToTPMMissingSRKWithInvalidCustomTemplate(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMissingSRKWithInvalidCustomTemplate(c *C) {
 	// Ensure that calling SealKeyToTPM recreates the SRK with the standard
 	// template if the NV index we use to store custom templates has invalid
 	// contents - if the contents are invalid then we didn't create it.
@@ -220,17 +220,17 @@ func (s *sealSuite) TestSealKeyToTPMMissingSRKWithInvalidCustomTemplate(c *C) {
 	s.validateSRK(c)
 }
 
-func (s *sealSuite) TestSealKeyToTPMNilPCRProfile(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMNilPCRProfile(c *C) {
 	s.testSealKeyToTPM(c, &KeyCreationParams{PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
 }
 
-func (s *sealSuite) TestSealKeyToTPMNoPCRPolicyCounterHandle(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMNoPCRPolicyCounterHandle(c *C) {
 	s.testSealKeyToTPM(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 }
 
-func (s *sealSuite) TestSealKeyToTPMWithProvidedAuthKey(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMWithProvidedAuthKey(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Check(err, IsNil)
 
@@ -245,7 +245,7 @@ type testSealKeyToTPMMultipleData struct {
 	params *KeyCreationParams
 }
 
-func (s *sealSuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMMultipleData) {
+func (s *sealLegacySuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMMultipleData) {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
@@ -294,7 +294,7 @@ func (s *sealSuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMMultipl
 	}
 }
 
-func (s *sealSuite) TestSealKeyToTPMMultipleSingle(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMultipleSingle(c *C) {
 	s.testSealKeyToTPMMultiple(c, &testSealKeyToTPMMultipleData{
 		n: 1,
 		params: &KeyCreationParams{
@@ -302,7 +302,7 @@ func (s *sealSuite) TestSealKeyToTPMMultipleSingle(c *C) {
 			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)}})
 }
 
-func (s *sealSuite) TestSealKeyToTPMMultiple2Keys(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMultiple2Keys(c *C) {
 	s.testSealKeyToTPMMultiple(c, &testSealKeyToTPMMultipleData{
 		n: 2,
 		params: &KeyCreationParams{
@@ -310,7 +310,7 @@ func (s *sealSuite) TestSealKeyToTPMMultiple2Keys(c *C) {
 			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)}})
 }
 
-func (s *sealSuite) TestSealKeyToTPMMultipleDifferentPCRPolicyCounterHandle(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMultipleDifferentPCRPolicyCounterHandle(c *C) {
 	s.testSealKeyToTPMMultiple(c, &testSealKeyToTPMMultipleData{
 		n: 2,
 		params: &KeyCreationParams{
@@ -318,7 +318,7 @@ func (s *sealSuite) TestSealKeyToTPMMultipleDifferentPCRPolicyCounterHandle(c *C
 			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}})
 }
 
-func (s *sealSuite) TestSealKeyToTPMMultipleWithNewConnection(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMultipleWithNewConnection(c *C) {
 	// SealKeyToTPMMultiple behaves slightly different if called immediately
 	// after EnsureProvisioned with the same Connection
 	s.ReinitTPMConnectionFromExisting(c)
@@ -330,7 +330,7 @@ func (s *sealSuite) TestSealKeyToTPMMultipleWithNewConnection(c *C) {
 			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)}})
 }
 
-func (s *sealSuite) TestSealKeyToTPMMultipleMissingSRK(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMultipleMissingSRK(c *C) {
 	// Ensure that calling SealKeyToTPMMultiple recreates the SRK with the standard
 	// template
 	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
@@ -348,13 +348,13 @@ func (s *sealSuite) TestSealKeyToTPMMultipleMissingSRK(c *C) {
 	s.validateSRK(c)
 }
 
-func (s *sealSuite) TestSealKeyToTPMMultipleNilPCRProfile(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMultipleNilPCRProfile(c *C) {
 	s.testSealKeyToTPMMultiple(c, &testSealKeyToTPMMultipleData{
 		n:      1,
 		params: &KeyCreationParams{PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)}})
 }
 
-func (s *sealSuite) TestSealKeyToTPMMultipleNoPCRPolicyCounterHandle(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMultipleNoPCRPolicyCounterHandle(c *C) {
 	s.testSealKeyToTPMMultiple(c, &testSealKeyToTPMMultipleData{
 		n: 2,
 		params: &KeyCreationParams{
@@ -362,7 +362,7 @@ func (s *sealSuite) TestSealKeyToTPMMultipleNoPCRPolicyCounterHandle(c *C) {
 			PCRPolicyCounterHandle: tpm2.HandleNull}})
 }
 
-func (s *sealSuite) TestSealKeyToTPMMultipleWithProvidedAuthKey(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMMultipleWithProvidedAuthKey(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Check(err, IsNil)
 
@@ -374,7 +374,7 @@ func (s *sealSuite) TestSealKeyToTPMMultipleWithProvidedAuthKey(c *C) {
 			AuthKey:                authKey}})
 }
 
-func (s *sealSuite) testSealKeyToTPMErrorHandling(c *C, params *KeyCreationParams) error {
+func (s *sealLegacySuite) testSealKeyToTPMErrorHandling(c *C, params *KeyCreationParams) error {
 	var origCounter tpm2.ResourceContext
 	if params != nil && params.PCRPolicyCounterHandle != tpm2.HandleNull {
 		var err error
@@ -417,11 +417,11 @@ func (s *sealSuite) testSealKeyToTPMErrorHandling(c *C, params *KeyCreationParam
 	return sealErr
 }
 
-func (s *sealSuite) TestSealKeyToTPMErrorHandlingNilParams(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingNilParams(c *C) {
 	c.Check(s.testSealKeyToTPMErrorHandling(c, nil), ErrorMatches, "no KeyCreationParams provided")
 }
 
-func (s *sealSuite) TestSealKeyToTPMErrorHandlingOwnerAuthFail(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingOwnerAuthFail(c *C) {
 	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
 	s.TPM().OwnerHandleContext().SetAuthValue(nil)
 
@@ -432,7 +432,7 @@ func (s *sealSuite) TestSealKeyToTPMErrorHandlingOwnerAuthFail(c *C) {
 	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleOwner)
 }
 
-func (s *sealSuite) TestSealKeyToTPMErrorHandlingPCRPolicyCounterExists(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingPCRPolicyCounterExists(c *C) {
 	public := tpm2.NVPublic{
 		Index:   s.NextAvailableHandle(c, 0x0181ffff),
 		NameAlg: tpm2.HashAlgorithmSHA256,
@@ -447,7 +447,7 @@ func (s *sealSuite) TestSealKeyToTPMErrorHandlingPCRPolicyCounterExists(c *C) {
 	c.Check(err.(TPMResourceExistsError).Handle, Equals, public.Index)
 }
 
-func (s *sealSuite) TestSealKeyToTPMErrorHandlingInvalidPCRProfile(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingInvalidPCRProfile(c *C) {
 	err := s.testSealKeyToTPMErrorHandling(c, &KeyCreationParams{
 		PCRProfile: tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}).
 			AddProfileOR(
@@ -458,14 +458,14 @@ func (s *sealSuite) TestSealKeyToTPMErrorHandlingInvalidPCRProfile(c *C) {
 		"not all branches contain values for the same sets of PCRs")
 }
 
-func (s *sealSuite) TestSealKeyToTPMErrorHandlingInvalidPCRProfileSelection(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingInvalidPCRProfileSelection(c *C) {
 	err := s.testSealKeyToTPMErrorHandling(c, &KeyCreationParams{
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size())),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
 	c.Check(err, ErrorMatches, "cannot create initial PCR policy: PCR protection profile contains digests for unsupported PCRs")
 }
 
-func (s *sealSuite) TestSealKeyToTPMErrorHandlingWrongCurve(c *C) {
+func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingWrongCurve(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P384(), testutil.RandReader)
 	c.Check(err, IsNil)
 
@@ -476,7 +476,7 @@ func (s *sealSuite) TestSealKeyToTPMErrorHandlingWrongCurve(c *C) {
 	c.Check(err, ErrorMatches, "provided AuthKey must be from elliptic.P256, no other curve is supported")
 }
 
-func (s *sealSuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreationParams) {
+func (s *sealLegacySuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreationParams) {
 	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
@@ -519,18 +519,18 @@ func (s *sealSuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreation
 	}
 }
 
-func (s *sealSuite) TestSealKeyToExternalTPMStorageKey(c *C) {
+func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKey(c *C) {
 	s.testSealKeyToExternalTPMStorageKey(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewResolvedPCRProfileFromCurrentValues(c, s.TPM().TPMContext, tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 }
 
-func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyNilPCRProfile(c *C) {
+func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyNilPCRProfile(c *C) {
 	s.testSealKeyToExternalTPMStorageKey(c, &KeyCreationParams{
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 }
 
-func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyWithProvidedAuthKey(c *C) {
+func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyWithProvidedAuthKey(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Check(err, IsNil)
 
@@ -540,7 +540,7 @@ func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyWithProvidedAuthKey(c *C) 
 		AuthKey:                authKey})
 }
 
-func (s *sealSuite) testSealKeyToExternalTPMStorageKeyErrorHandling(c *C, params *KeyCreationParams) error {
+func (s *sealLegacySuite) testSealKeyToExternalTPMStorageKeyErrorHandling(c *C, params *KeyCreationParams) error {
 	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
@@ -561,11 +561,11 @@ func (s *sealSuite) testSealKeyToExternalTPMStorageKeyErrorHandling(c *C, params
 	return sealErr
 }
 
-func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingNilParams(c *C) {
+func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingNilParams(c *C) {
 	c.Check(s.testSealKeyToExternalTPMStorageKeyErrorHandling(c, nil), ErrorMatches, "no KeyCreationParams provided")
 }
 
-func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingInvalidPCRProfile(c *C) {
+func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingInvalidPCRProfile(c *C) {
 	err := s.testSealKeyToExternalTPMStorageKeyErrorHandling(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
@@ -573,14 +573,14 @@ func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingInvalidPCRPro
 		"cannot read current value of PCR 7 from bank TPM_ALG_SHA256: no TPM context")
 }
 
-func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingInvalidPCRProfileSelection(c *C) {
+func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingInvalidPCRProfileSelection(c *C) {
 	err := s.testSealKeyToExternalTPMStorageKeyErrorHandling(c, &KeyCreationParams{
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size())),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, ErrorMatches, "cannot create initial PCR policy: PCR protection profile contains digests for unsupported PCRs")
 }
 
-func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingWrongCurve(c *C) {
+func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingWrongCurve(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P384(), testutil.RandReader)
 	c.Check(err, IsNil)
 
@@ -591,210 +591,9 @@ func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingWrongCurve(c 
 	c.Check(err, ErrorMatches, "provided AuthKey must be from elliptic.P256, no other curve is supported")
 }
 
-func (s *sealSuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingWithPCRPolicyCounter(c *C) {
+func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingWithPCRPolicyCounter(c *C) {
 	err := s.testSealKeyToExternalTPMStorageKeyErrorHandling(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewResolvedPCRProfileFromCurrentValues(c, s.TPM().TPMContext, tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
 	c.Check(err, ErrorMatches, "PCRPolicyCounter must be tpm2.HandleNull when creating an importable sealed key")
-}
-
-func (s *sealSuite) testUpdatePCRProtectionPolicy(c *C, params *KeyCreationParams) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
-	dir := c.MkDir()
-	path := filepath.Join(dir, "key")
-
-	authKey, err := SealKeyToTPM(s.TPM(), key, path, params)
-	c.Check(err, IsNil)
-
-	k, err := ReadSealedKeyObjectFromFile(path)
-	c.Assert(err, IsNil)
-
-	c.Check(k.UpdatePCRProtectionPolicy(s.TPM(), authKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23})), IsNil)
-
-	_, _, err = k.UnsealFromTPM(s.TPM())
-	c.Check(err, IsNil)
-
-	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
-	c.Check(err, IsNil)
-	_, _, err = k.UnsealFromTPM(s.TPM())
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
-		"cannot execute PolicyOR assertions: current session digest not found in policy data")
-}
-
-func (s *sealSuite) TestUpdatePCRProtectionPolicyWithPCRPolicyCounter(c *C) {
-	s.testUpdatePCRProtectionPolicy(c, &KeyCreationParams{PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
-}
-
-func (s *sealSuite) TestUpdatePCRProtectionPolicyNoPCRPolicyCounter(c *C) {
-	s.testUpdatePCRProtectionPolicy(c, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
-}
-
-func (s *sealSuite) TestUpdatePCRProtectionPolicyWithProvidedAuthKey(c *C) {
-	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
-	c.Check(err, IsNil)
-
-	s.testUpdatePCRProtectionPolicy(c, &KeyCreationParams{
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		AuthKey:                authKey})
-}
-
-func (s *sealSuite) testRevokeOldPCRProtectionPolicies(c *C, params *KeyCreationParams) error {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
-	dir := c.MkDir()
-	path := filepath.Join(dir, "key")
-
-	authKey, err := SealKeyToTPM(s.TPM(), key, path, params)
-	c.Check(err, IsNil)
-
-	k2, err := ReadSealedKeyObjectFromFile(path)
-	c.Assert(err, IsNil)
-
-	c.Check(k2.UpdatePCRProtectionPolicy(s.TPM(), authKey, params.PCRProfile), IsNil)
-
-	k1, err := ReadSealedKeyObjectFromFile(path)
-	c.Assert(err, IsNil)
-
-	_, _, err = k1.UnsealFromTPM(s.TPM())
-	c.Check(err, IsNil)
-	_, _, err = k2.UnsealFromTPM(s.TPM())
-	c.Check(err, IsNil)
-
-	c.Check(k1.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
-
-	_, _, err = k1.UnsealFromTPM(s.TPM())
-	c.Check(err, IsNil)
-	_, _, err = k2.UnsealFromTPM(s.TPM())
-	c.Check(err, IsNil)
-
-	c.Check(k2.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
-
-	_, _, err = k2.UnsealFromTPM(s.TPM())
-	c.Check(err, IsNil)
-	_, _, err = k1.UnsealFromTPM(s.TPM())
-	return err
-}
-
-func (s *sealSuite) TestRevokeOldPCRProtectionPoliciesWithPCRPolicyCounter(c *C) {
-	err := s.testRevokeOldPCRProtectionPolicies(c, &KeyCreationParams{
-		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: the PCR policy has been revoked")
-}
-
-func (s *sealSuite) TestRevokeOldPCRProtectionPoliciesWithoutPCRPolicyCounter(c *C) {
-	err := s.testRevokeOldPCRProtectionPolicies(c, &KeyCreationParams{
-		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-		PCRPolicyCounterHandle: tpm2.HandleNull})
-	c.Check(err, IsNil)
-}
-
-func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultiple(c *C) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
-	dir := c.MkDir()
-
-	var requests []*SealKeyRequest
-	for i := 0; i < 2; i++ {
-		requests = append(requests, &SealKeyRequest{Key: key, Path: filepath.Join(dir, fmt.Sprintf("key%d", i))})
-	}
-
-	authKey, err := SealKeyToTPMMultiple(s.TPM(), requests, &KeyCreationParams{PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
-	c.Check(err, IsNil)
-
-	var keys []*SealedKeyObject
-	for _, r := range requests {
-		k, err := ReadSealedKeyObjectFromFile(r.Path)
-		c.Assert(err, IsNil)
-		keys = append(keys, k)
-	}
-
-	c.Check(UpdateKeyPCRProtectionPolicyMultiple(s.TPM(), keys, authKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23})), IsNil)
-
-	for _, k := range keys {
-		_, _, err := k.UnsealFromTPM(s.TPM())
-		c.Check(err, IsNil)
-	}
-
-	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
-	c.Check(err, IsNil)
-
-	for _, k := range keys {
-		_, _, err = k.UnsealFromTPM(s.TPM())
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
-			"cannot execute PolicyOR assertions: current session digest not found in policy data")
-	}
-}
-
-func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated1(c *C) {
-	// Test that UpdateKeyPCRProtectionPolicyMultiple rejects keys that have the
-	// same auth key, but different policies because they use independent PCR policy
-	// counters.
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
-	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
-	c.Assert(err, IsNil)
-
-	dir := c.MkDir()
-
-	var keys []*SealedKeyObject
-	for i := 0; i < 3; i++ {
-		path := filepath.Join(dir, fmt.Sprintf("key%d", i))
-		params := &KeyCreationParams{
-			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000+tpm2.Handle(i)),
-			AuthKey:                authKey}
-		_, err := SealKeyToTPM(s.TPM(), key, path, params)
-		c.Check(err, IsNil)
-
-		k, err := ReadSealedKeyObjectFromFile(path)
-		c.Assert(err, IsNil)
-
-		keys = append(keys, k)
-	}
-
-	err = UpdateKeyPCRProtectionPolicyMultiple(s.TPM(), keys, authKey.D.Bytes(), nil)
-	c.Check(err, ErrorMatches, "invalid key data: key data at index 0 is not related to the primary key data")
-}
-
-func (s *sealSuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated2(c *C) {
-	// Test that UpdateKeyPCRProtectionPolicyMultiple rejects keys that use different
-	// auth keys.
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
-	dir := c.MkDir()
-
-	var keys []*SealedKeyObject
-
-	path := filepath.Join(dir, "key")
-	params := &KeyCreationParams{
-		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: tpm2.HandleNull}
-	authKey, err := SealKeyToTPM(s.TPM(), key, path, params)
-	c.Check(err, IsNil)
-
-	k, err := ReadSealedKeyObjectFromFile(path)
-	c.Assert(err, IsNil)
-
-	keys = append(keys, k)
-
-	for i := 0; i < 2; i++ {
-		path := filepath.Join(dir, fmt.Sprintf("key%d", i))
-		_, err := SealKeyToTPM(s.TPM(), key, path, params)
-		c.Check(err, IsNil)
-
-		k, err := ReadSealedKeyObjectFromFile(path)
-		c.Assert(err, IsNil)
-
-		keys = append(keys, k)
-	}
-
-	err = UpdateKeyPCRProtectionPolicyMultiple(s.TPM(), keys, authKey, nil)
-	c.Check(err, ErrorMatches, "invalid key data: key data at index 0 is not related to the primary key data")
 }
