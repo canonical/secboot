@@ -20,8 +20,6 @@
 package tpm2
 
 import (
-	"crypto"
-	"crypto/ecdsa"
 	"errors"
 	"io"
 
@@ -31,12 +29,11 @@ import (
 
 // keyData_v2 represents version 2 of keyData.
 type keyData_v2 struct {
-	KeyPrivate        tpm2.Private
-	KeyPublic         *tpm2.Public
-	Unused            uint8 // previously AuthModeHint
-	KeyImportSymSeed  tpm2.EncryptedSecret
-	StaticPolicyData  *staticPolicyDataRaw_v1
-	DynamicPolicyData *dynamicPolicyDataRaw_v0
+	KeyPrivate       tpm2.Private
+	KeyPublic        *tpm2.Public
+	Unused           uint8 // previously AuthModeHint
+	KeyImportSymSeed tpm2.EncryptedSecret
+	PolicyData       *keyDataPolicy_v2
 }
 
 func readKeyDataV2(r io.Reader) (keyData, error) {
@@ -47,25 +44,14 @@ func readKeyDataV2(r io.Reader) (keyData, error) {
 	return d, nil
 }
 
-func newKeyData(keyPrivate tpm2.Private, keyPublic *tpm2.Public, importSymSeed tpm2.EncryptedSecret,
-	staticPolicyData *staticPolicyDataRaw_v1, dynamicPolicyData *dynamicPolicyDataRaw_v0) keyData {
-	return &keyData_v2{
-		KeyPrivate:        keyPrivate,
-		KeyPublic:         keyPublic,
-		KeyImportSymSeed:  importSymSeed,
-		StaticPolicyData:  staticPolicyData,
-		DynamicPolicyData: dynamicPolicyData}
-}
-
 func (d *keyData_v2) AsV1() keyData {
 	if d.KeyImportSymSeed != nil {
 		panic("importable object cannot be converted to v1")
 	}
 	return &keyData_v1{
-		KeyPrivate:        d.KeyPrivate,
-		KeyPublic:         d.KeyPublic,
-		StaticPolicyData:  d.StaticPolicyData,
-		DynamicPolicyData: d.DynamicPolicyData}
+		KeyPrivate: d.KeyPrivate,
+		KeyPublic:  d.KeyPublic,
+		PolicyData: d.PolicyData}
 }
 
 func (d *keyData_v2) Version() uint32 {
@@ -117,37 +103,6 @@ func (d *keyData_v2) Write(w io.Writer) error {
 	return err
 }
 
-func (d *keyData_v2) PcrPolicyCounterHandle() tpm2.Handle {
-	return d.StaticPolicyData.PCRPolicyCounterHandle
-}
-
-func (d *keyData_v2) ValidateAuthKey(key crypto.PrivateKey) error {
-	pub, ok := d.StaticPolicyData.AuthPublicKey.Public().(*ecdsa.PublicKey)
-	if !ok {
-		return keyDataError{errors.New("unexpected dynamic authorization policy public key type")}
-	}
-
-	priv, ok := key.(*ecdsa.PrivateKey)
-	if !ok {
-		return errors.New("unexpected dynamic authorization policy signing private key type")
-	}
-
-	expectedX, expectedY := priv.Curve.ScalarBaseMult(priv.D.Bytes())
-	if expectedX.Cmp(pub.X) != 0 || expectedY.Cmp(pub.Y) != 0 {
-		return keyDataError{errors.New("dynamic authorization policy signing private key doesn't match public key")}
-	}
-
-	return nil
-}
-
-func (d *keyData_v2) StaticPolicy() *staticPolicyData {
-	return d.StaticPolicyData.data()
-}
-
-func (d *keyData_v2) DynamicPolicy() *dynamicPolicyData {
-	return d.DynamicPolicyData.data()
-}
-
-func (d *keyData_v2) SetDynamicPolicy(data *dynamicPolicyData) {
-	d.DynamicPolicyData = makeDynamicPolicyDataRaw_v0(data)
+func (d *keyData_v2) Policy() keyDataPolicy {
+	return d.PolicyData
 }

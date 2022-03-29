@@ -21,9 +21,7 @@ package tpm2
 
 import (
 	"bytes"
-	"crypto"
 	"errors"
-	"fmt"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/util"
@@ -39,17 +37,17 @@ const (
 	policyOrMaxDigests = 4096 // equivalent to a depth of 4
 )
 
-// dynamicPolicyComputeParams provides the parameters to computeDynamicPolicy.
-type dynamicPolicyComputeParams struct {
-	key crypto.PrivateKey // Key used to authorize the generated dynamic authorization policy
+// pcrPolicyParams provides the parameters to keyDataPolicy.updatePcrPolicy.
+type pcrPolicyParams struct {
+	key PolicyAuthKey // Key used to authorize the generated dynamic authorization policy
 
-	// signAlg is the digest algorithm for the signature used to authorize the generated dynamic authorization policy. It must
-	// match the name algorithm of the public part of key that will be loaded in to the TPM for verification.
-	signAlg           tpm2.HashAlgorithmId
-	pcrs              tpm2.PCRSelectionList // PCR selection
-	pcrDigests        tpm2.DigestList       // Approved PCR digests
-	policyCounterName tpm2.Name             // Name of the NV index used for revoking authorization policies
-	policyCount       uint64                // Count for this policy, used for revocation
+	pcrs       tpm2.PCRSelectionList // PCR selection
+	pcrDigests tpm2.DigestList       // Approved PCR digests
+
+	// policyCounterName is the name of the NV index used for revoking authorization
+	// policies. The name must be associated with the handle in the keyDataPolicy,
+	// else the policy will not work.
+	policyCounterName tpm2.Name
 }
 
 // policyOrNode represents a collection of up to 8 digests used in a single
@@ -87,75 +85,47 @@ type policyOrTree struct {
 	leafNodes []*policyOrNode // the leaf nodes
 }
 
-// dynamicPolicyData is an output of computeDynamicPolicy and provides metadata for executing a policy session.
-type dynamicPolicyData struct {
-	pcrSelection tpm2.PCRSelectionList
-
-	// XXX: The _v0 here is a bit of a hack, but this entire structure goes away in
-	// the next PR.
-	pcrOrData                 policyOrData_v0
-	policyCount               uint64
-	authorizedPolicy          tpm2.Digest
-	authorizedPolicySignature *tpm2.Signature
+// pcrPolicyCounterContext corresponds to a PCR policy counter.
+type pcrPolicyCounterContext interface {
+	Get() (uint64, error)              // Return the current counter value
+	Increment(key PolicyAuthKey) error // Increment the counter value using the supplied key for authorization
 }
 
-// staticPolicyComputeParams provides the parameters to computeStaticPolicy.
-type staticPolicyComputeParams struct {
-	key                 *tpm2.Public   // Public part of key used to authorize a dynamic authorization policy
-	pcrPolicyCounterPub *tpm2.NVPublic // Public area of the NV counter used for revoking PCR policies
+// keyDataPolicy corresponds to the authorization policy for keyData.
+type keyDataPolicy interface {
+	PCRPolicyCounterHandle() tpm2.Handle // Handle of PCR policy counter, or HandleNull
+
+	PCRPolicySequence() uint64 // Current sequence of PCR policy for revocation
+
+	// UpdatePCRPolicy updates the PCR policy associated with this keyDataPolicy.
+	UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcrPolicyParams) error
+
+	// SetPCRPolicy updates the PCR policy to match that associated with the
+	// supplied keyDataPolicy. The caller is responsible for ensuring that
+	// the 2 keyDataPolicies are the same type and have the same underlying
+	// static policy.
+	SetPCRPolicyFrom(src keyDataPolicy)
+
+	// ExecutePCRPolicy executes the PCR policy using the supplied authorization policy
+	// session using the supplied metadata. On success, the supplied policy session can
+	// be used for authorization.
+	ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession, hmacSession tpm2.SessionContext) error
+
+	// PCRPolicyCounterContext returns a context for the PCR policy counter
+	// associated with this keyDataPolicy. The supplied public area must match
+	// the public area of the counter associated with this policy.
+	PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic, session tpm2.SessionContext) (pcrPolicyCounterContext, error)
+
+	// ValidateAuthKey verifies that the supplied key is associated with this
+	// keyDataPolicy.
+	ValidateAuthKey(key PolicyAuthKey) error
 }
 
-// staticPolicyData is an output of computeStaticPolicy and provides metadata for executing a policy session.
-type staticPolicyData struct {
-	authPublicKey          *tpm2.Public
-	pcrPolicyCounterHandle tpm2.Handle
-	v0PinIndexAuthPolicies tpm2.DigestList
-}
-
-// pcrPolicyCounterHandle abstracts access to the PCR policy counter in order to
-// support the current style of index created with createPcrPolicyCounter, and the
-// legacy PIN index originally created by (the now deleted) createPinNVINdex.
-type pcrPolicyCounterHandle interface {
-	// Get returns the current value of the associated NV counter index.
-	Get(tpm *tpm2.TPMContext, session tpm2.SessionContext) (uint64, error)
-
-	// Incremement will increment the associated NV counter index by one.
-	// This requires a signed authorization.
-	Increment(tpm *tpm2.TPMContext, key crypto.PrivateKey, session tpm2.SessionContext) error
-}
-
-func incrementPcrPolicyCounterTo(tpm *tpm2.TPMContext, handle pcrPolicyCounterHandle, value uint64,
-	key crypto.PrivateKey, session tpm2.SessionContext) error {
-	for {
-		current, err := handle.Get(tpm, session)
-		switch {
-		case err != nil:
-			return xerrors.Errorf("cannot read current value: %w", err)
-		case current > value:
-			return errors.New("cannot set counter to a lower value")
-		}
-
-		if current == value {
-			return nil
-		}
-
-		if err := handle.Increment(tpm, key, session); err != nil {
-			return xerrors.Errorf("cannot increment counter: %w", err)
-		}
-	}
-}
-
-type pcrPolicyCounterCommon struct {
-	pub          *tpm2.NVPublic
-	updateKey    *tpm2.Public
-	authPolicies tpm2.DigestList
-}
-
-// createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object and is used for
-// implementing dynamic authorization policy revocation.
+// createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
+// and is used for implementing PCR policy revocation.
 //
-// The NV index will be created with attributes that allow anyone to read the index, and an authorization policy that permits
-// TPM2_NV_Increment with a signed authorization policy.
+// The NV index will be created with attributes that allow anyone to read the index, and an authorization
+// policy that permits TPM2_NV_Increment with a signed authorization policy.
 func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
@@ -164,7 +134,7 @@ func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey 
 		return nil, 0, xerrors.Errorf("cannot compute name of update key: %w", err)
 	}
 
-	authPolicies := computeV1PcrPolicyCounterAuthPolicies(nameAlg, updateKeyName)
+	authPolicies := computeV2PcrPolicyCounterAuthPolicies(nameAlg, updateKeyName)
 
 	trial := util.ComputeAuthPolicy(nameAlg)
 	trial.PolicyOR(authPolicies)
@@ -179,7 +149,7 @@ func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey 
 
 	index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, public, hmacSession)
 	if err != nil {
-		return nil, 0, xerrors.Errorf("cannot define NV space: %w", err)
+		return nil, 0, err
 	}
 
 	// NVDefineSpace was integrity protected, so we know that we have an index with the expected public area at the handle we specified
@@ -196,43 +166,39 @@ func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey 
 	// Begin a session to initialize the index.
 	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, nameAlg)
 	if err != nil {
-		return nil, 0, xerrors.Errorf("cannot begin policy session to initialize NV index: %w", err)
+		return nil, 0, err
 	}
 	defer tpm.FlushContext(policySession)
 
 	// Execute the policy assertions
 	if err := tpm.PolicyNvWritten(policySession, false); err != nil {
-		return nil, 0, xerrors.Errorf("cannot execute assertion to initialize NV index: %w", err)
+		return nil, 0, err
 	}
 	if err := tpm.PolicyOR(policySession, authPolicies); err != nil {
-		return nil, 0, xerrors.Errorf("cannot execute assertion to initialize NV index: %w", err)
+		return nil, 0, err
 	}
 
 	// Initialize the index
 	if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
-		return nil, 0, xerrors.Errorf("cannot initialize NV index: %w", err)
+		return nil, 0, err
 	}
 
 	// The index has a different name now that it has been written, so update the public area we return so that it can be used
 	// to construct an authorization policy.
 	public.Attrs |= tpm2.AttrNVWritten
 
-	h, err := newPcrPolicyCounterHandleV1(public, updateKey)
+	value, err := tpm.NVReadCounter(index, index, hmacSession)
 	if err != nil {
-		panic(fmt.Sprintf("cannot create handle to read counter value: %v", err))
-	}
-
-	value, err := h.Get(tpm, hmacSession)
-	if err != nil {
-		return nil, 0, xerrors.Errorf("cannot read current counter value: %w", err)
+		return nil, 0, err
 	}
 
 	succeeded = true
 	return public, value, nil
 }
 
-// ensureSufficientORDigests turns a single digest in to a pair of identical digests. This is because TPM2_PolicyOR assertions
-// require more than one digest. This avoids having a separate policy sequence when there is only a single digest, without having
+// ensureSufficientORDigests turns a single digest in to a pair of identical digests.
+// This is because TPM2_PolicyOR assertions require more than one digest. This avoids
+// having a separate policy sequence when there is only a single digest, without having
 // to store duplicate digests on disk.
 func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 	if len(digests) == 1 {
@@ -241,35 +207,42 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 	return digests
 }
 
-// computeStaticPolicy computes the part of an authorization policy that is bound to a sealed key object and never changes. The
-// static policy asserts that the following are true:
-// - The signed PCR policy created by computeDynamicPolicy is valid and has been satisfied (by way of a PolicyAuthorize assertion,
-//   which allows the PCR policy to be updated without creating a new sealed key object).
-// - Knowledge of the the authorization value for the entity on which the policy session is used has been demonstrated by the
-//   caller - this will be used in the future as part of the passphrase integration.
-func computeStaticPolicy(alg tpm2.HashAlgorithmId, input *staticPolicyComputeParams) (*staticPolicyData, tpm2.Digest, error) {
-	keyName, err := input.key.Name()
+// newKeyDataPolicy creates a keyDataPolicy containing a static authorization policy that asserts:
+// - The PCR policy created by updatePcrPolicy and authorized by key is valid and has been satisfied (by way
+//   of a PolicyAuthorize assertion, which allows the PCR policy to be updated without creating a new sealed
+//   key object).
+// - Knowledge of the the authorization value for the entity on which the policy session is used has been
+//   demonstrated by the caller - this will be used in the future as part of the passphrase integration.
+//
+// PCR policies support revocation by way of a NV counter. The revocation check is part of the PCR policy,
+// but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
+// assertion, which can be used verify that a NV index is associated with this policy.
+func newKeyDataPolicy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
+	keyName, err := key.Name()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
 	}
 
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	var pcrPolicyCounterName tpm2.Name
-	if input.pcrPolicyCounterPub != nil {
-		pcrPolicyCounterHandle = input.pcrPolicyCounterPub.Index
-		pcrPolicyCounterName, err = input.pcrPolicyCounterPub.Name()
+	if pcrPolicyCounterPub != nil {
+		pcrPolicyCounterHandle = pcrPolicyCounterPub.Index
+		pcrPolicyCounterName, err = pcrPolicyCounterPub.Name()
 		if err != nil {
 			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
 		}
 	}
 
 	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(computeV1PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
+	trial.PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
 	trial.PolicyAuthValue()
 
-	return &staticPolicyData{
-		authPublicKey:          input.key,
-		pcrPolicyCounterHandle: pcrPolicyCounterHandle}, trial.GetDigest(), nil
+	return &keyDataPolicy_v2{
+		StaticData: &staticPolicyData_v2{
+			AuthPublicKey:          key,
+			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
+		PCRData: &pcrPolicyData_v2{
+			PolicySequence: pcrPolicySequence}}, trial.GetDigest(), nil
 }
 
 // newPolicyOrTree creates a new policyOrTree from the supplied digests
@@ -347,53 +320,20 @@ func newPolicyOrTree(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, dige
 	return out, nil
 }
 
-// computeDynamicPolicy computes the PCR policy associated with a sealed key object, and can be updated without having to create a
-// new sealed key object as it takes advantage of the PolicyAuthorize assertion. The PCR policy asserts that the following are true:
-// - The selected PCRs contain expected values - ie, one of the sets of permitted values specified by the caller to this function,
-//   indicating that the device is in an expected state. This is done by a single PolicyPCR assertion and then one or more PolicyOR
-//   assertions (depending on how many sets of permitted PCR values there are).
-// - The PCR policy hasn't been revoked. This is done using a PolicyNV assertion to assert that the value of an optional NV counter
-//   is not greater than the expected value.
-// The computed PCR policy digest is signed with the supplied asymmetric key, and the signature of this is validated before executing
-// the corresponding PolicyAuthorize assertion as part of the static policy.
-func computeDynamicPolicy(version uint32, alg tpm2.HashAlgorithmId, input *dynamicPolicyComputeParams) (*dynamicPolicyData, error) {
-	if version == 0 {
-		return computeDynamicPolicyV0(alg, input)
-	}
-	return computeDynamicPolicyV1(alg, input)
-}
-
-type staticPolicyDataError struct {
+type policyDataError struct {
 	err error
 }
 
-func (e staticPolicyDataError) Error() string {
+func (e policyDataError) Error() string {
 	return e.err.Error()
 }
 
-func (e staticPolicyDataError) Unwrap() error {
+func (e policyDataError) Unwrap() error {
 	return e.err
 }
 
-func isStaticPolicyDataError(err error) bool {
-	var e staticPolicyDataError
-	return xerrors.As(err, &e)
-}
-
-type dynamicPolicyDataError struct {
-	err error
-}
-
-func (e dynamicPolicyDataError) Error() string {
-	return e.err.Error()
-}
-
-func (e dynamicPolicyDataError) Unwrap() error {
-	return e.err
-}
-
-func isDynamicPolicyDataError(err error) bool {
-	var e dynamicPolicyDataError
+func isPolicyDataError(err error) bool {
+	var e policyDataError
 	return xerrors.As(err, &e)
 }
 
@@ -435,17 +375,6 @@ func (t *policyOrTree) executeAssertions(tpm *tpm2.TPMContext, session tpm2.Sess
 		node = node.parent
 	}
 	return nil
-}
-
-// executePolicySession executes an authorization policy session using the supplied metadata. On success, the supplied policy
-// session can be used for authorization.
-func executePolicySession(tpm *tpm2.TPMContext, policySession tpm2.SessionContext, version uint32, staticInput *staticPolicyData,
-	dynamicInput *dynamicPolicyData, hmacSession tpm2.SessionContext) error {
-	if version == 0 {
-		return executePolicySessionV0(tpm, policySession, staticInput, dynamicInput, hmacSession)
-	}
-
-	return executePolicySessionV1(tpm, policySession, staticInput, dynamicInput, hmacSession)
 }
 
 // BlockPCRProtectionPolicies inserts a fence in to the specific PCRs for all active PCR banks, in order to

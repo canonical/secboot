@@ -163,13 +163,10 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 	}
 	defer tpm.FlushContext(policySession)
 
-	if err := executePolicySession(tpm.TPMContext, policySession, k.data.Version(), k.data.StaticPolicy(), k.data.DynamicPolicy(), hmacSession); err != nil {
+	if err := k.data.Policy().ExecutePCRPolicy(tpm.TPMContext, policySession, hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
-		case isDynamicPolicyDataError(err):
-			// TODO: Add a separate error for this
-			return nil, nil, InvalidKeyDataError{err.Error()}
-		case isStaticPolicyDataError(err):
+		case isPolicyDataError(err):
 			return nil, nil, InvalidKeyDataError{err.Error()}
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
 			return nil, nil, InvalidKeyDataError{"required legacy lock NV index is not present"}

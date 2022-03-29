@@ -39,8 +39,8 @@ import (
 
 type keyDataV0Suite struct {
 	tpm2test.TPMTest
-	lockIndexName tpm2.Name
-	primary       tpm2.ResourceContext
+	policyV0Mixin
+	primary tpm2.ResourceContext
 }
 
 func (s *keyDataV0Suite) SetUpSuite(c *C) {
@@ -49,23 +49,16 @@ func (s *keyDataV0Suite) SetUpSuite(c *C) {
 
 func (s *keyDataV0Suite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
+	s.policyV0Mixin.tpmTest = &s.TPMTest.TPMTest
 
-	pub := tpm2.NVPublic{
-		Index:   LockNVHandle,
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVReadStClear),
-		Size:    0}
-
-	index := s.NVDefineSpace(c, tpm2.HandleOwner, nil, &pub)
-	c.Check(s.TPM().NVWrite(index, index, nil, 0, nil), IsNil)
-	s.lockIndexName = index.Name()
-	c.Check(s.TPM().NVReadLock(index, index, nil), IsNil)
+	s.createMockLockIndex(c)
+	s.enablePolicyLock(c)
 
 	primary := s.CreateStoragePrimaryKeyRSA(c)
 	s.primary = s.EvictControl(c, tpm2.HandleOwner, primary, tcg.SRKHandle)
 }
 
-func (s *keyDataV0Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle) (KeyData, tpm2.Name) {
+func (s *keyDataV0Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle) (KeyData, *tpm2.NVPublic) {
 	// Create the RSA auth key
 	authKey, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
@@ -76,39 +69,27 @@ func (s *keyDataV0Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	c.Assert(err, IsNil)
 
 	// Create a mock PCR policy counter
-	nvPub := tpm2.NVPublic{
-		Index:   pcrPolicyCounterHandle,
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA),
-		Size:    8}
-
-	trial := util.ComputeAuthPolicy(nvPub.NameAlg)
-	trial.PolicyNvWritten(false)
-
-	counterPolicies := tpm2.DigestList{trial.GetDigest()}
-	counterPolicies = append(counterPolicies, ComputeV0PinNVIndexPostInitAuthPolicies(nvPub.NameAlg, authKeyName)...)
-
-	trial = util.ComputeAuthPolicy(nvPub.NameAlg)
-	trial.PolicyOR(counterPolicies)
-	nvPub.AuthPolicy = trial.GetDigest()
-
-	policyCounter := s.NVDefineSpace(c, tpm2.HandleOwner, nil, &nvPub)
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
-	c.Check(s.TPM().PolicyNvWritten(session, false), IsNil)
-	c.Check(s.TPM().PolicyOR(session, counterPolicies), IsNil)
-	c.Check(s.TPM().NVIncrement(policyCounter, policyCounter, session), IsNil)
+	policyCounter, count, policyCounterPolicies := s.createMockPcrPolicyCounter(c, pcrPolicyCounterHandle, authKeyName)
 
 	// Create sealed object
 	secret := []byte("secret data")
 
 	template := tpm2_testutil.NewSealedObjectTemplate()
 
-	trial = util.ComputeAuthPolicy(template.NameAlg)
-	trial.PolicyAuthorize(nil, authKeyName)
-	trial.PolicySecret(policyCounter.Name(), nil)
-	trial.PolicyNV(s.lockIndexName, nil, 0, tpm2.OpEq)
+	policyData, policy := s.newMockKeyDataPolicy(c, template.NameAlg, authKeyPublic, policyCounter, count, policyCounterPolicies)
+	template.AuthPolicy = policy
 
-	template.AuthPolicy = trial.GetDigest()
+	policyData.(*KeyDataPolicy_v0).PCRData = &PcrPolicyData_v0{
+		Selection:        tpm2.PCRSelectionList{},
+		OrData:           PolicyOrData_v0{},
+		PolicySequence:   policyData.PCRPolicySequence(),
+		AuthorizedPolicy: make(tpm2.Digest, 32),
+		AuthorizedPolicySignature: &tpm2.Signature{
+			SigAlg: tpm2.SigSchemeAlgRSAPSS,
+			Signature: &tpm2.SignatureU{
+				RSAPSS: &tpm2.SignatureRSAPSS{
+					Hash: tpm2.HashAlgorithmSHA256,
+					Sig:  make(tpm2.PublicKeyRSA, 2048)}}}}
 
 	sensitive := tpm2.SensitiveCreate{Data: secret}
 
@@ -118,20 +99,7 @@ func (s *keyDataV0Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	return &KeyData_v0{
 		KeyPrivate: priv,
 		KeyPublic:  pub,
-		StaticPolicyData: &StaticPolicyDataRaw_v0{
-			AuthPublicKey:        authKeyPublic,
-			PinIndexHandle:       pcrPolicyCounterHandle,
-			PinIndexAuthPolicies: counterPolicies},
-		DynamicPolicyData: &DynamicPolicyDataRaw_v0{
-			PCRSelection:     tpm2.PCRSelectionList{},
-			PCROrData:        PolicyOrData_v0{},
-			AuthorizedPolicy: make(tpm2.Digest, 32),
-			AuthorizedPolicySignature: &tpm2.Signature{
-				SigAlg: tpm2.SigSchemeAlgRSAPSS,
-				Signature: &tpm2.SignatureU{
-					RSAPSS: &tpm2.SignatureRSAPSS{
-						Hash: tpm2.HashAlgorithmSHA256,
-						Sig:  make(tpm2.PublicKeyRSA, 2048)}}}}}, policyCounter.Name()
+		PolicyData: policyData.(*KeyDataPolicy_v0)}, policyCounter
 }
 
 var _ = Suite(&keyDataV0Suite{})
@@ -157,21 +125,25 @@ func (s *keyDataV0Suite) TestNoImport(c *C) {
 }
 
 func (s *keyDataV0Suite) TestValidateOK1(c *C) {
-	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+	data, expectedPcrPolicyCounter := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+	expectedName, err := expectedPcrPolicyCounter.Name()
+	c.Check(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, IsNil)
-	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
+	c.Check(pcrPolicyCounter.Name(), DeepEquals, expectedName)
 }
 
 func (s *keyDataV0Suite) TestValidateOK2(c *C) {
-	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x018ff000))
+	data, expectedPcrPolicyCounter := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x018ff000))
+	expectedName, err := expectedPcrPolicyCounter.Name()
+	c.Check(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, IsNil)
-	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
+	c.Check(pcrPolicyCounter.Name(), DeepEquals, expectedName)
 }
 
 func (s *keyDataV0Suite) TestValidateNoLockIndex(c *C) {
@@ -190,7 +162,7 @@ func (s *keyDataV0Suite) TestValidateNoLockIndex(c *C) {
 func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	data.(*KeyData_v0).StaticPolicyData.AuthPublicKey.NameAlg = tpm2.HashAlgorithmNull
+	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey.NameAlg = tpm2.HashAlgorithmNull
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
@@ -201,7 +173,7 @@ func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
 func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	data.(*KeyData_v0).StaticPolicyData.AuthPublicKey.Type = tpm2.ObjectTypeECC
+	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey.Type = tpm2.ObjectTypeECC
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
@@ -212,7 +184,7 @@ func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
 func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyScheme(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	data.(*KeyData_v0).StaticPolicyData.AuthPublicKey.Params.RSADetail.Scheme = tpm2.RSAScheme{
+	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey.Params.RSADetail.Scheme = tpm2.RSAScheme{
 		Scheme: tpm2.RSASchemeRSASSA,
 		Details: &tpm2.AsymSchemeU{
 			RSASSA: &tpm2.SigSchemeRSASSA{HashAlg: tpm2.HashAlgorithmSHA256}}}
@@ -226,25 +198,25 @@ func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyScheme(c *C) {
 func (s *keyDataV0Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	data.(*KeyData_v0).StaticPolicyData.PinIndexHandle = 0x81000000
+	data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterHandle = 0x81000000
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "PIN index handle is invalid")
+	c.Check(err, ErrorMatches, "PCR policy counter handle is invalid")
 }
 
 func (s *keyDataV0Suite) TestValidateNoPolicyCounter(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	index, err := s.TPM().CreateResourceContextFromTPM(data.PcrPolicyCounterHandle())
+	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err = data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "PIN index is unavailable")
+	c.Check(err, ErrorMatches, "PCR policy counter is unavailable")
 }
 
 func (s *keyDataV0Suite) TestValidateInvalidSealedObjectNameAlg(c *C) {
@@ -263,7 +235,7 @@ func (s *keyDataV0Suite) TestValidateWrongAuthKey(c *C) {
 
 	authKey, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
-	data.(*KeyData_v0).StaticPolicyData.AuthPublicKey = util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey = util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err = data.ValidateData(s.TPM().TPMContext, session)
@@ -274,7 +246,7 @@ func (s *keyDataV0Suite) TestValidateWrongAuthKey(c *C) {
 func (s *keyDataV0Suite) TestValidateWrongPolicyCounter(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	index, err := s.TPM().CreateResourceContextFromTPM(data.PcrPolicyCounterHandle())
+	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
 	handle := index.Handle()
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
@@ -315,34 +287,34 @@ func (s *keyDataV0Suite) TestValidateWrongLockIndex(c *C) {
 func (s *keyDataV0Suite) TestValidateWrongPolicyCounterAuthPolicies1(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	data.(*KeyData_v0).StaticPolicyData.PinIndexAuthPolicies = data.(*KeyData_v0).StaticPolicyData.PinIndexAuthPolicies[1:]
+	data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterAuthPolicies = data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterAuthPolicies[1:]
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "unexpected number of OR policy digests for PIN index")
+	c.Check(err, ErrorMatches, "unexpected number of OR policy digests for PCR policy counter")
 }
 
 func (s *keyDataV0Suite) TestValidateWrongPolicyCounterAuthPolicies2(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	copy(data.(*KeyData_v0).StaticPolicyData.PinIndexAuthPolicies[1], make([]byte, 32))
+	copy(data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterAuthPolicies[1], make([]byte, 32))
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "unexpected OR policy digest for PIN index")
+	c.Check(err, ErrorMatches, "unexpected OR policy digest for PCR policy counter")
 }
 
 func (s *keyDataV0Suite) TestValidateWrongPolicyCounterAuthPolicies3(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	copy(data.(*KeyData_v0).StaticPolicyData.PinIndexAuthPolicies[0], make([]byte, 32))
+	copy(data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterAuthPolicies[0], make([]byte, 32))
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "PIN index has unexpected authorization policy")
+	c.Check(err, ErrorMatches, "PCR policy counter has unexpected authorization policy")
 }
 
 func (s *keyDataV0Suite) TestSerialization(c *C) {

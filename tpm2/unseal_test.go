@@ -201,7 +201,7 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingInvalidPCRProfile(c *C) {
 		c.Check(err, IsNil)
 	})
 	c.Check(err, tpm2_testutil.ConvertibleTo, InvalidKeyDataError{})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
+	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -222,6 +222,6 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingSealedKeyAccessLocked(c *C) 
 		c.Check(BlockPCRProtectionPolicies(s.TPM(), []int{23}), IsNil)
 	})
 	c.Check(err, tpm2_testutil.ConvertibleTo, InvalidKeyDataError{})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
+	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
