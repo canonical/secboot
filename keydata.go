@@ -446,8 +446,8 @@ func (d *KeyData) AuthMode() (out AuthMode) {
 	return out
 }
 
-// UnmarshalPlatformHandle unmarshals the JSON platform handle payload to the
-// supplied handle.
+// UnmarshalPlatformHandle unmarshals the JSON platform handle payload into the
+// supplied handle, which must be a non-nil pointer.
 func (d *KeyData) UnmarshalPlatformHandle(handle interface{}) error {
 	if err := json.Unmarshal(d.data.PlatformHandle, handle); err != nil {
 		return &InvalidKeyDataError{err}
