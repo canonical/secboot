@@ -728,7 +728,7 @@ func ReadKeyData(r KeyDataReader) (*KeyData, error) {
 // the platform's secure device and the associated handle required for subsequent
 // recovery of the keys.
 func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
-	handle, err := json.Marshal(creationData.Handle)
+	encodedHandle, err := json.Marshal(creationData.Handle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot encode platform handle: %w", err)
 	}
@@ -746,7 +746,7 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 	return &KeyData{
 		data: keyData{
 			PlatformName:     creationData.PlatformName,
-			PlatformHandle:   json.RawMessage(handle),
+			PlatformHandle:   json.RawMessage(encodedHandle),
 			EncryptedPayload: creationData.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
 				Alg:       hashAlg{creationData.SnapModelAuthHash},
