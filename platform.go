@@ -64,7 +64,7 @@ func (e *PlatformHandlerError) Unwrap() error {
 // PlatformKeyData represents the data exchanged between this package and
 // platform implementations via the PlatformKeyDataHandler.
 type PlatformKeyData struct {
-	Handle           []byte // The JSON encoded platform handle
+	EncodedHandle    []byte // The JSON encoded platform handle
 	EncryptedPayload []byte // The encrypted payload
 }
 

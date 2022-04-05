@@ -504,7 +504,7 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, AuxiliaryKey, error) {
 	}
 
 	c, err := handler.RecoverKeys(&PlatformKeyData{
-		Handle:           d.data.PlatformHandle,
+		EncodedHandle:    d.data.PlatformHandle,
 		EncryptedPayload: d.data.EncryptedPayload})
 	if err != nil {
 		return nil, nil, processPlatformHandlerError(err)
@@ -534,7 +534,7 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnl
 	}
 
 	data := &PlatformKeyData{
-		Handle:           d.data.PlatformHandle,
+		EncodedHandle:    d.data.PlatformHandle,
 		EncryptedPayload: payload}
 	c, err := handler.RecoverKeysWithAuthKey(data, key)
 	if err != nil {

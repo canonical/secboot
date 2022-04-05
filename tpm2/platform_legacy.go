@@ -49,7 +49,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 	defer tpm.Close()
 
 	var handle []byte
-	if err := json.Unmarshal(data.Handle, &handle); err != nil {
+	if err := json.Unmarshal(data.EncodedHandle, &handle); err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
 			Err:  err}

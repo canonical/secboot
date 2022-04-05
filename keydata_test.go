@@ -108,7 +108,7 @@ func (h *mockPlatformKeyDataHandler) RecoverKeys(data *PlatformKeyData) (KeyPayl
 		return nil, err
 	}
 
-	handle, err := h.unmarshalHandle(data.Handle)
+	handle, err := h.unmarshalHandle(data.EncodedHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyDat
 		return nil, err
 	}
 
-	handle, err := h.unmarshalHandle(data.Handle)
+	handle, err := h.unmarshalHandle(data.EncodedHandle)
 	if err != nil {
 		return nil, err
 	}
