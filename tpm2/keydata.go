@@ -45,12 +45,9 @@ const (
 	keyDataHeader uint32 = 0x55534b24
 )
 
-// PolicyAuthKey corresponds to the private part of the key used for signing updates to the authorization policy for a sealed key.
-type PolicyAuthKey []byte
-
 type sealedData struct {
-	Key            []byte
-	AuthPrivateKey PolicyAuthKey
+	Key            secboot.DiskUnlockKey
+	AuthPrivateKey secboot.AuxiliaryKey
 }
 
 type keyDataError struct {

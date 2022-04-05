@@ -27,6 +27,7 @@ import (
 
 	"golang.org/x/xerrors"
 
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 )
 
@@ -136,7 +137,7 @@ func (k *SealedKeyObject) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Sessi
 //
 // On success, the unsealed cleartext key is returned as the first return value, and the private part of the key used for
 // authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is returned as the second return value.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey PolicyAuthKey, err error) {
+func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
@@ -184,7 +185,7 @@ func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key []byte, authKey Po
 	}
 
 	if k.data.Version() == 0 {
-		return keyData, nil, nil
+		return secboot.DiskUnlockKey(keyData), nil, nil
 	}
 
 	var sealedData sealedData

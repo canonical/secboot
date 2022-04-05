@@ -34,6 +34,8 @@ import (
 	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
+
+	"github.com/snapcore/secboot"
 )
 
 func makeSealedKeyTemplate() *tpm2.Public {
@@ -60,7 +62,7 @@ func makeImportableSealedKeyTemplate() *tpm2.Public {
 //
 // If k.data.policy().pcrPolicyCounterHandle() is not tpm2.HandleNull, then counterPub
 // must be supplied, and it must correspond to the public area associated with that handle.
-func (k *SealedKeyObject) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, key PolicyAuthKey,
+func (k *SealedKeyObject) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey,
 	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, session tpm2.SessionContext) error {
 	var counterName tpm2.Name
 	if counterPub != nil {
@@ -128,7 +130,7 @@ func (k *SealedKeyObject) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, ke
 	return k.data.Policy().UpdatePCRPolicy(alg, params)
 }
 
-func (k *SealedKeyObject) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContext, key PolicyAuthKey, session tpm2.SessionContext) error {
+func (k *SealedKeyObject) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey, session tpm2.SessionContext) error {
 	pcrPolicyCounterPub, err := k.validateData(tpm, session)
 	if err != nil {
 		if isKeyDataError(err) {
@@ -217,7 +219,7 @@ type KeyCreationParams struct {
 //
 // The authorization key can also be chosen and provided by setting
 // AuthKey in the params argument.
-func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath string, params *KeyCreationParams) (authKey PolicyAuthKey, err error) {
+func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
@@ -314,7 +316,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key []byte, keyPath str
 // SealKeyRequest corresponds to a key that should be sealed by SealKeyToTPMMultiple
 // to a file at the specified path.
 type SealKeyRequest struct {
-	Key  []byte
+	Key  secboot.DiskUnlockKey
 	Path string
 }
 
@@ -346,7 +348,7 @@ type SealKeyRequest struct {
 //
 // The authorization key can also be chosen and provided by setting
 // AuthKey in the params argument.
-func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCreationParams) (authKey PolicyAuthKey, err error) {
+func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
@@ -516,11 +518,11 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 //
 // The authorization key can also be chosen and provided by setting
 // AuthKey in the params argument.
-func SealKeyToTPM(tpm *Connection, key []byte, keyPath string, params *KeyCreationParams) (authKey PolicyAuthKey, err error) {
+func SealKeyToTPM(tpm *Connection, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
 	return SealKeyToTPMMultiple(tpm, []*SealKeyRequest{{Key: key, Path: keyPath}}, params)
 }
 
-func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyObject, authKey PolicyAuthKey, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
+func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyObject, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
 	primaryKey := keys[0]
 
 	// Validate the primary key object
@@ -646,7 +648,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 //
 // On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
 // from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
-func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey PolicyAuthKey, pcrProfile *PCRProtectionProfile) error {
+func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
 	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, authKey, pcrProfile, tpm.HmacSession())
 }
 
@@ -664,7 +666,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey Pol
 // after each call to UpdatePCRProtectionPolicy that removes some PCR policy branches.
 //
 // If validation of the key data fails, a InvalidKeyDataError error will be returned.
-func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey PolicyAuthKey) error {
+func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.AuxiliaryKey) error {
 	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey, tpm.HmacSession())
 }
 
@@ -677,7 +679,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKe
 // On success, each of the supplied SealedKeyObjects will have an updated authorization policy that includes a
 // PCR policy computed from the supplied PCRProtectionProfile. They must be persisted using
 // SealedKeyObject.WriteAtomic.
-func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObject, authKey PolicyAuthKey, pcrProfile *PCRProtectionProfile) error {
+func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObject, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
 	if len(keys) == 0 {
 		return errors.New("no sealed keys supplied")
 	}

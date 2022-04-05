@@ -86,7 +86,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	return secboot.MarshalKeys(key, secboot.AuxiliaryKey(authKey)), nil
+	return secboot.MarshalKeys(key, authKey), nil
 }
 
 func (h *legacyPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKeyData, key []byte) (secboot.KeyPayload, error) {
