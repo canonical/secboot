@@ -49,7 +49,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 	defer tpm.Close()
 
 	var handle []byte
-	if err := json.Unmarshal(data.Handle, &handle); err != nil {
+	if err := json.Unmarshal(data.EncodedHandle, &handle); err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
 			Err:  err}
@@ -125,9 +125,7 @@ func NewKeyDataFromSealedKeyObjectFile(path string) (*secboot.KeyData, error) {
 	}
 
 	creationData := secboot.KeyCreationData{
-		PlatformKeyData: secboot.PlatformKeyData{
-			Handle: handle,
-		},
+		Handle:            json.RawMessage(handle),
 		PlatformName:      legacyPlatformName,
 		AuxiliaryKey:      make([]byte, 32), // Not used, but must be the expected size
 		SnapModelAuthHash: crypto.SHA256,    // Not used, but just set it a valid alg
