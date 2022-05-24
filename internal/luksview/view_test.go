@@ -93,13 +93,13 @@ var testHeader = mockHeaderSource(luks2.HeaderInfo{
 				Priority: -1},
 			// Add a token without a corresponding keyslot
 			// to test OrphanedTokenIds, and to ensure that
-			// it is omitted from ListNames and TokenByName.
-			6: NewOrphanedTokenForTesting(KeyDataTokenType, "orphaned")}}})
+			// it is omitted from TokenNames and TokenByName.
+			6: MockOrphanedToken(KeyDataTokenType, "orphaned")}}})
 
-func (s *viewSuite) TestViewListNames(c *C) {
+func (s *viewSuite) TestViewTokenNames(c *C) {
 	view, err := NewViewFromCustomHeaderSource(testHeader)
 	c.Assert(err, IsNil)
-	c.Check(view.ListNames(), DeepEquals, []string{"abc", "bar", "foo", "recovery", "xyz"})
+	c.Check(view.TokenNames(), DeepEquals, []string{"abc", "bar", "foo", "recovery", "xyz"})
 }
 
 func (s *viewSuite) TestViewTokenByName1(c *C) {
@@ -189,7 +189,7 @@ func (s *viewSuite) TestNewView(c *C) {
 	view, err := NewView(path, luks2.LockModeNonBlocking)
 	c.Assert(err, IsNil)
 
-	c.Check(view.ListNames(), DeepEquals, []string{"default", "recovery"})
+	c.Check(view.TokenNames(), DeepEquals, []string{"default", "recovery"})
 
 	t, id, exists := view.TokenByName("default")
 	c.Check(t, DeepEquals, token)
@@ -204,7 +204,7 @@ func (s *viewSuite) TestNewView(c *C) {
 	c.Check(view.UsedKeyslots(), DeepEquals, []int{0})
 }
 
-func (s *viewSuite) TestViewRefresh(c *C) {
+func (s *viewSuite) TestViewReread(c *C) {
 	if luks2.DetectCryptsetupFeatures()&(luks2.FeatureTokenImport|luks2.FeatureTokenReplace) != (luks2.FeatureTokenImport | luks2.FeatureTokenReplace) {
 		c.Skip("cryptsetup doesn't support token import or replace")
 	}
@@ -224,7 +224,7 @@ func (s *viewSuite) TestViewRefresh(c *C) {
 	view, err := NewView(path, luks2.LockModeNonBlocking)
 	c.Assert(err, IsNil)
 
-	c.Check(view.ListNames(), DeepEquals, []string{"default"})
+	c.Check(view.TokenNames(), DeepEquals, []string{"default"})
 
 	token = &KeyDataToken{
 		TokenBase: TokenBase{
@@ -248,7 +248,7 @@ func (s *viewSuite) TestViewRefresh(c *C) {
 	c.Check(luks2.ImportToken(path, token2, nil), IsNil)
 	c.Check(luks2.KillSlot(path, 2, make([]byte, 32)), IsNil)
 
-	c.Check(view.Refresh(), IsNil)
+	c.Check(view.Reread(), IsNil)
 
 	t, id, exists := view.TokenByName("default")
 	c.Check(t, DeepEquals, token)

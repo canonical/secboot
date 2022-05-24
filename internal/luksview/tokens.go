@@ -266,9 +266,9 @@ func (t *orphanedToken) Name() string {
 	return t.raw.Name
 }
 
-// NewOrphanedTokenForTesting returns a new orphaned named token with the
+// MockOrphanedToken returns a new orphaned named token with the
 // supplied type and name, which is useful for testing.
-func NewOrphanedTokenForTesting(t luks2.TokenType, name string) NamedToken {
+func MockOrphanedToken(t luks2.TokenType, name string) NamedToken {
 	return &orphanedToken{
 		raw: tokenBaseRaw{
 			Type: t,

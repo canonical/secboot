@@ -31,7 +31,7 @@ type namedTokenData struct {
 	token NamedToken
 }
 
-// HeaderSource provides a mechanism to obtain a LUKS2 header.
+// HeaderSource provides a mechanism to read a LUKS2 header repeatedly.
 type HeaderSource interface {
 	ReadHeader() (*luks2.HeaderInfo, error)
 }
@@ -63,7 +63,7 @@ func NewView(devicePath string, lockMode luks2.LockMode) (*View, error) {
 		devicePath: devicePath,
 		lockMode:   lockMode}}
 
-	if err := view.Refresh(); err != nil {
+	if err := view.Reread(); err != nil {
 		return nil, err
 	}
 
@@ -76,15 +76,15 @@ func NewView(devicePath string, lockMode luks2.LockMode) (*View, error) {
 func NewViewFromCustomHeaderSource(source HeaderSource) (*View, error) {
 	view := &View{source: source}
 
-	if err := view.Refresh(); err != nil {
+	if err := view.Reread(); err != nil {
 		return nil, err
 	}
 
 	return view, nil
 }
 
-// Refresh updates this view from the source container.
-func (v *View) Refresh() error {
+// Reread updates this view from the source container.
+func (v *View) Reread() error {
 	hdr, err := v.source.ReadHeader()
 	if err != nil {
 		return err
@@ -109,8 +109,8 @@ func (v *View) Refresh() error {
 	return nil
 }
 
-// ListNames returns a sorted list of all of the keyslot names from this view.
-func (v *View) ListNames() (names []string) {
+// TokenNames returns a sorted list of all of the keyslot names from this view.
+func (v *View) TokenNames() (names []string) {
 	for name, data := range v.namedTokens {
 		if _, orphaned := data.token.(*orphanedToken); orphaned {
 			continue
@@ -135,11 +135,11 @@ func (v *View) TokenByName(name string) (token NamedToken, id int, exists bool) 
 
 // KeyDataTokensByPriority returns all of the key data tokens in order of priority,
 // from highest to lowest. Tokens with the same priority are returned in the order in
-// which their names are sorted. This omits any with a priority of 0.
+// which their names are sorted. This omits any with a priority of less than 0.
 func (v *View) KeyDataTokensByPriority() (tokens []*KeyDataToken) {
 	// Build a map of tokens by priority
 	tokensByPriority := make(map[int][]*KeyDataToken)
-	for _, name := range v.ListNames() {
+	for _, name := range v.TokenNames() {
 		t := v.namedTokens[name].token
 
 		if t.Type() != KeyDataTokenType {
