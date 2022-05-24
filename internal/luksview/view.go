@@ -93,9 +93,15 @@ func (v *View) Reread() error {
 	v.hdr = hdr
 	v.namedTokens = make(map[string]namedTokenData)
 
+	// Rebuild map of named tokens
 	for id, token := range hdr.Metadata.Tokens {
 		named, ok := token.(NamedToken)
 		if !ok {
+			continue
+		}
+
+		if _, isOrphaned := named.(*orphanedToken); isOrphaned {
+			// Ignore orphaned tokens so that its name can be reused.
 			continue
 		}
 
@@ -110,11 +116,10 @@ func (v *View) Reread() error {
 }
 
 // TokenNames returns a sorted list of all of the keyslot names from this view.
+// This doesn't return names associated with tokens that have been orphaned
+// because their associated keyslot has been deleted.
 func (v *View) TokenNames() (names []string) {
-	for name, data := range v.namedTokens {
-		if _, orphaned := data.token.(*orphanedToken); orphaned {
-			continue
-		}
+	for name := range v.namedTokens {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -122,12 +127,11 @@ func (v *View) TokenNames() (names []string) {
 }
 
 // TokenByName returns the token and its ID for the keyslot with the supplied name.
-func (v *View) TokenByName(name string) (token NamedToken, id int, exists bool) {
+// This doesn't return tokens that have been orphaned because their associated
+// keyslot has been deleted.
+func (v *View) TokenByName(name string) (token NamedToken, id int, inUse bool) {
 	data, exists := v.namedTokens[name]
 	if !exists {
-		return nil, 0, false
-	}
-	if _, orphaned := data.token.(*orphanedToken); orphaned {
 		return nil, 0, false
 	}
 	return data.token, data.id, true
@@ -135,7 +139,9 @@ func (v *View) TokenByName(name string) (token NamedToken, id int, exists bool) 
 
 // KeyDataTokensByPriority returns all of the key data tokens in order of priority,
 // from highest to lowest. Tokens with the same priority are returned in the order in
-// which their names are sorted. This omits any with a priority of less than 0.
+// which their names are sorted. This omits any with a priority of less than 0, and
+// any tokens that have been orphaned because their associated keyslot has been
+// deleted.
 func (v *View) KeyDataTokensByPriority() (tokens []*KeyDataToken) {
 	// Build a map of tokens by priority
 	tokensByPriority := make(map[int][]*KeyDataToken)
@@ -176,13 +182,12 @@ func (v *View) KeyDataTokensByPriority() (tokens []*KeyDataToken) {
 // doesn't has been deleted and can occur if the process of removing a keyslot
 // and its tokens is interrupted.
 func (v *View) OrphanedTokenIds() (ids []int) {
-	for _, data := range v.namedTokens {
-		if _, orphaned := data.token.(*orphanedToken); !orphaned {
+	for id, token := range v.hdr.Metadata.Tokens {
+		if _, isOrphaned := token.(*orphanedToken); !isOrphaned {
 			continue
 		}
-		ids = append(ids, data.id)
+		ids = append(ids, id)
 	}
-
 	sort.Ints(ids)
 	return ids
 }

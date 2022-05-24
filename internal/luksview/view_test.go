@@ -94,7 +94,10 @@ var testHeader = mockHeaderSource(luks2.HeaderInfo{
 			// Add a token without a corresponding keyslot
 			// to test OrphanedTokenIds, and to ensure that
 			// it is omitted from TokenNames and TokenByName.
-			6: MockOrphanedToken(KeyDataTokenType, "orphaned")}}})
+			6: MockOrphanedToken(KeyDataTokenType, "orphaned"),
+			// Test that an orphaned token can't own a name used
+			// by a valid token.
+			7: MockOrphanedToken(KeyDataTokenType, "foo")}}})
 
 func (s *viewSuite) TestViewTokenNames(c *C) {
 	view, err := NewViewFromCustomHeaderSource(testHeader)
@@ -154,7 +157,7 @@ func (s *viewSuite) TestViewKeyDataTokensByPriority(c *C) {
 func (s *viewSuite) TestViewOrphanedTokenIds(c *C) {
 	view, err := NewViewFromCustomHeaderSource(testHeader)
 	c.Assert(err, IsNil)
-	c.Check(view.OrphanedTokenIds(), DeepEquals, []int{6})
+	c.Check(view.OrphanedTokenIds(), DeepEquals, []int{6, 7})
 }
 
 func (s *viewSuite) TestViewUsedKeyslots(c *C) {
