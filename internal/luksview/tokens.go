@@ -124,16 +124,6 @@ type tokenBaseRaw struct {
 	Name     string          `json:"ubuntu_fde_name"`
 }
 
-type recoveryTokenRaw struct {
-	tokenBaseRaw
-}
-
-type keyDataTokenRaw struct {
-	tokenBaseRaw
-	Priority int             `json:"ubuntu_fde_priority"`
-	Data     json.RawMessage `json:"ubuntu_fde_data,omitempty"`
-}
-
 // TokenBase provides the fields that are common to all tokens created by secboot.
 type TokenBase struct {
 	TokenKeyslot int    // The ID of the keyslot associated with this token
@@ -146,6 +136,10 @@ func (t *TokenBase) Keyslots() []int {
 
 func (t *TokenBase) Name() string {
 	return t.TokenName
+}
+
+type recoveryTokenRaw struct {
+	tokenBaseRaw
 }
 
 // RecoveryToken represents a token with the type "ubuntu-fde-recovery",
@@ -188,6 +182,12 @@ func (t *RecoveryToken) UnmarshalJSON(data []byte) error {
 			TokenKeyslot: int(raw.Keyslots[0]),
 			TokenName:    raw.Name}}
 	return nil
+}
+
+type keyDataTokenRaw struct {
+	tokenBaseRaw
+	Priority int             `json:"ubuntu_fde_priority"`
+	Data     json.RawMessage `json:"ubuntu_fde_data,omitempty"`
 }
 
 // KeyDataToken represents a token with the "ubuntu-fde" type, associated
