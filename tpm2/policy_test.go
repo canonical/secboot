@@ -92,8 +92,13 @@ func (s *policySuite) SetUpSuite(c *C) {
 	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy | tpm2test.TPMFeaturePCR | tpm2test.TPMFeatureNV
 }
 
+type policySimulatorSuite struct {
+	tpm2test.TPMSimulatorTest
+}
+
 var _ = Suite(&policySuiteNoTPM{})
 var _ = Suite(&policySuite{})
+var _ = Suite(&policySimulatorSuite{})
 
 func hash(alg crypto.Hash, data string) []byte {
 	h := alg.New()
@@ -244,45 +249,6 @@ func (s *policySuite) TestPolicyOrTreeExecuteAssertionsDigestNotFound(c *C) {
 	c.Check(tree.ExecuteAssertions(s.TPM().TPMContext, session), Equals, ErrSessionDigestNotFound)
 }
 
-func (s *policySuite) TestCreatePcrPolicyCounter(c *C) {
-	testPublic := tpm2.NVPublic{
-		Index:   s.NextAvailableHandle(c, 0x0181fe00),
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
-		Size:    8}
-	testIndex := s.NVDefineSpace(c, tpm2.HandleOwner, nil, &testPublic)
-	c.Check(s.TPM().NVIncrement(testIndex, testIndex, nil), IsNil)
-
-	testCount, err := s.TPM().NVReadCounter(testIndex, testIndex, nil)
-	c.Check(err, IsNil)
-
-	block, _ := pem.Decode([]byte(`
------BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
-69lQKonf26mcR8EFYdFOUjUzRxsrjQ8B9oQQnm5yuYZxHLxZN+aCD3D/0w==
------END PUBLIC KEY-----`))
-	c.Assert(block, NotNil)
-	key, err := x509.ParsePKIXPublicKey(block.Bytes)
-	c.Assert(err, IsNil)
-	c.Assert(key, tpm2_testutil.ConvertibleTo, &ecdsa.PublicKey{})
-
-	handle := s.NextAvailableHandle(c, 0x0181ff00)
-	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle,
-		util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey)), s.TPM().HmacSession())
-	c.Assert(err, IsNil)
-	c.Check(pub.Index, Equals, handle)
-	c.Check(pub.Attrs.Type(), Equals, tpm2.NVTypeCounter)
-	c.Check(pub.AuthPolicy, DeepEquals, tpm2.Digest(testutil.DecodeHexString(c, "f47efcbc358c13854bfda01bfc38ce166b1abf0c8509e6b522cdc2edc69488a3")))
-	c.Check(count, Equals, testCount)
-
-	name, err := pub.Name()
-	c.Check(err, IsNil)
-
-	index, err := s.TPM().CreateResourceContextFromTPM(handle)
-	c.Assert(err, IsNil)
-	c.Check(name, DeepEquals, index.Name())
-}
-
 type testNewKeyDataPolicyData struct {
 	alg                 tpm2.HashAlgorithmId
 	key                 string
@@ -415,4 +381,43 @@ func (s *policySuite) TestBlockPCRProtectionPolicies2(c *C) {
 
 func (s *policySuite) TestBlockPCRProtectionPolicies3(c *C) {
 	s.testBlockPCRProtectionPolicies(c, []int{16, 23})
+}
+
+func (s *policySimulatorSuite) TestCreatePcrPolicyCounter(c *C) {
+	testPublic := tpm2.NVPublic{
+		Index:   0x0181fe00,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
+		Size:    8}
+	testIndex := s.NVDefineSpace(c, tpm2.HandleOwner, nil, &testPublic)
+	c.Check(s.TPM().NVIncrement(testIndex, testIndex, nil), IsNil)
+
+	testCount, err := s.TPM().NVReadCounter(testIndex, testIndex, nil)
+	c.Check(err, IsNil)
+
+	block, _ := pem.Decode([]byte(`
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
+69lQKonf26mcR8EFYdFOUjUzRxsrjQ8B9oQQnm5yuYZxHLxZN+aCD3D/0w==
+-----END PUBLIC KEY-----`))
+	c.Assert(block, NotNil)
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	c.Assert(err, IsNil)
+	c.Assert(key, tpm2_testutil.ConvertibleTo, &ecdsa.PublicKey{})
+
+	handle := tpm2.Handle(0x0181ff00)
+	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle,
+		util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey)), s.TPM().HmacSession())
+	c.Assert(err, IsNil)
+	c.Check(pub.Index, Equals, handle)
+	c.Check(pub.Attrs.Type(), Equals, tpm2.NVTypeCounter)
+	c.Check(pub.AuthPolicy, DeepEquals, tpm2.Digest(testutil.DecodeHexString(c, "f47efcbc358c13854bfda01bfc38ce166b1abf0c8509e6b522cdc2edc69488a3")))
+	c.Check(count, Equals, testCount)
+
+	name, err := pub.Name()
+	c.Check(err, IsNil)
+
+	index, err := s.TPM().CreateResourceContextFromTPM(handle)
+	c.Assert(err, IsNil)
+	c.Check(name, DeepEquals, index.Name())
 }
