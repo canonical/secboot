@@ -2126,29 +2126,35 @@ func (s *cryptSuite) TestChangeLUKS2KeyUsingRecoveryKey4(c *C) {
 	})
 }
 
-type cryptSuiteExpensive struct {
+type cryptSuiteUnmockedBase struct {
 	snapd_testutil.BaseTest
 	cryptTestBase
 }
 
-func (s *cryptSuiteExpensive) SetUpSuite(c *C) {
-	for _, e := range os.Environ() {
-		if e == "NO_EXPENSIVE_CRYPTSETUP_TESTS=1" {
-			c.Skip("skipping expensive cryptsetup tests")
-		}
-	}
-}
-
-func (s *cryptSuiteExpensive) SetUpTest(c *C) {
+func (s *cryptSuiteUnmockedBase) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
-
 	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 	s.AddCleanup(luks2test.WrapCryptsetup(c))
 }
 
-var _ = Suite(&cryptSuiteExpensive{})
+type cryptSuiteUnmocked struct {
+	cryptSuiteUnmockedBase
+}
 
-func (s *cryptSuiteExpensive) testInitializeLUKS2Container(c *C, options *InitializeLUKS2ContainerOptions) {
+type cryptSuiteUnmockedExpensive struct {
+	cryptSuiteUnmockedBase
+}
+
+func (s *cryptSuiteUnmockedExpensive) SetUpSuite(c *C) {
+	if _, exists := os.LookupEnv("NO_EXPENSIVE_CRYPTSETUP_TESTS"); exists {
+		c.Skip("skipping expensive cryptsetup tests")
+	}
+}
+
+var _ = Suite(&cryptSuiteUnmocked{})
+var _ = Suite(&cryptSuiteUnmockedExpensive{})
+
+func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *InitializeLUKS2ContainerOptions) {
 	key := s.newPrimaryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
@@ -2189,11 +2195,11 @@ func (s *cryptSuiteExpensive) testInitializeLUKS2Container(c *C, options *Initia
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 }
 
-func (s *cryptSuiteExpensive) TestInitializeLUKS2Container(c *C) {
+func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2Container(c *C) {
 	s.testInitializeLUKS2Container(c, nil)
 }
 
-func (s *cryptSuiteExpensive) TestInitializeLUKS2ContainerWithOptions(c *C) {
+func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2ContainerWithOptions(c *C) {
 	if luks2.DetectCryptsetupFeatures()&luks2.FeatureHeaderSizeSetting == 0 {
 		c.Skip("cryptsetup doesn't support --luks2-metadata-size or --luks2-keyslots-size")
 	}
@@ -2204,7 +2210,7 @@ func (s *cryptSuiteExpensive) TestInitializeLUKS2ContainerWithOptions(c *C) {
 	})
 }
 
-func (s *cryptSuiteExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
+func (s *cryptSuiteUnmockedExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
 	key := s.newPrimaryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
@@ -2245,7 +2251,7 @@ func (s *cryptSuiteExpensive) TestAddRecoveryKeyToLUKS2Container(c *C) {
 	c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 }
 
-func (s *cryptSuiteExpensive) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
+func (s *cryptSuiteUnmockedExpensive) ChangeLUKS2KeyUsingRecoveryKey(c *C) {
 	key := s.newPrimaryKey()
 	recoveryKey := s.newRecoveryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)

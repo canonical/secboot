@@ -40,31 +40,37 @@ import (
 	"github.com/snapcore/secboot/internal/paths/pathstest"
 )
 
-type cryptsetupSuite struct {
+type cryptsetupSuiteBase struct {
 	snapd_testutil.BaseTest
 }
 
-func (s *cryptsetupSuite) SetUpSuite(c *C) {
+func (s *cryptsetupSuiteBase) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
+	s.AddCleanup(luks2test.WrapCryptsetup(c))
+}
+
+type cryptsetupSuite struct {
+	cryptsetupSuiteBase
+}
+
+type cryptsetupSuiteExpensive struct {
+	cryptsetupSuiteBase
+}
+
+func (s *cryptsetupSuiteExpensive) SetUpSuite(c *C) {
 	if _, exists := os.LookupEnv("NO_EXPENSIVE_CRYPTSETUP_TESTS"); exists {
 		c.Skip("skipping expensive cryptsetup tests")
 	}
 }
 
-func (s *cryptsetupSuite) SetUpTest(c *C) {
-	s.BaseTest.SetUpTest(c)
-
-	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
-
-	s.AddCleanup(luks2test.WrapCryptsetup(c))
-}
-
-func (s *cryptsetupSuite) checkLUKS2Passphrase(c *C, path string, key []byte) {
+func (s *cryptsetupSuiteBase) checkLUKS2Passphrase(c *C, path string, key []byte) {
 	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", path)
 	cmd.Stdin = bytes.NewReader(key)
 	c.Check(cmd.Run(), IsNil)
 }
 
-func (s *cryptsetupSuite) mockCryptsetupFeatures(c *C, features Features) (cmd *snapd_testutil.MockCmd, reset func()) {
+func (s *cryptsetupSuiteBase) mockCryptsetupFeatures(c *C, features Features) (cmd *snapd_testutil.MockCmd, reset func()) {
 	luks2test.ResetCryptsetupFeatures()
 
 	responsesFile := filepath.Join(c.MkDir(), "responses")
@@ -104,6 +110,7 @@ exit "$r"
 }
 
 var _ = Suite(&cryptsetupSuite{})
+var _ = Suite(&cryptsetupSuiteExpensive{})
 
 func (s *cryptsetupSuite) testDetectCryptsetupFeatures(c *C, expected Features) {
 	mockCryptsetup, reset := s.mockCryptsetupFeatures(c, expected)
@@ -140,7 +147,7 @@ type testFormatData struct {
 	options *FormatOptions
 }
 
-func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
+func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
 	c.Check(Format(devicePath, data.label, data.key, data.options), IsNil)
@@ -207,7 +214,7 @@ func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
 	}
 }
 
-func (s *cryptsetupSuite) TestFormatDefaults(c *C) {
+func (s *cryptsetupSuiteExpensive) TestFormatDefaults(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
@@ -216,7 +223,7 @@ func (s *cryptsetupSuite) TestFormatDefaults(c *C) {
 		options: &FormatOptions{}})
 }
 
-func (s *cryptsetupSuite) TestFormatNilOptions(c *C) {
+func (s *cryptsetupSuiteExpensive) TestFormatNilOptions(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
@@ -224,7 +231,7 @@ func (s *cryptsetupSuite) TestFormatNilOptions(c *C) {
 		key:   key})
 }
 
-func (s *cryptsetupSuite) TestFormatWithCustomKDFTime(c *C) {
+func (s *cryptsetupSuiteExpensive) TestFormatWithCustomKDFTime(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
@@ -233,7 +240,7 @@ func (s *cryptsetupSuite) TestFormatWithCustomKDFTime(c *C) {
 		options: &FormatOptions{KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond}}})
 }
 
-func (s *cryptsetupSuite) TestFormatWithCustomKDFMemory(c *C) {
+func (s *cryptsetupSuiteExpensive) TestFormatWithCustomKDFMemory(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	s.testFormat(c, &testFormatData{
@@ -314,7 +321,7 @@ type testAddKeyData struct {
 	time    time.Duration
 }
 
-func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
+func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	primaryKey := make([]byte, 32)
 	rand.Read(primaryKey)
 
@@ -381,7 +388,7 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	}
 }
 
-func (s *cryptsetupSuite) TestAddKeyDefaults(c *C) {
+func (s *cryptsetupSuiteExpensive) TestAddKeyDefaults(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 
@@ -390,14 +397,14 @@ func (s *cryptsetupSuite) TestAddKeyDefaults(c *C) {
 		options: &AddKeyOptions{Slot: AnySlot}})
 }
 
-func (s *cryptsetupSuite) TestAddKeyNilOptions(c *C) {
+func (s *cryptsetupSuiteExpensive) TestAddKeyNilOptions(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 
 	s.testAddKey(c, &testAddKeyData{key: key})
 }
 
-func (s *cryptsetupSuite) TestAddKeyWithCustomKDFTime(c *C) {
+func (s *cryptsetupSuiteExpensive) TestAddKeyWithCustomKDFTime(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 
@@ -408,7 +415,7 @@ func (s *cryptsetupSuite) TestAddKeyWithCustomKDFTime(c *C) {
 			Slot:       AnySlot}})
 }
 
-func (s *cryptsetupSuite) TestAddKeyWithCustomKDFMemory(c *C) {
+func (s *cryptsetupSuiteExpensive) TestAddKeyWithCustomKDFMemory(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
 
