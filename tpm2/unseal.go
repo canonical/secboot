@@ -23,11 +23,9 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/mu"
 
 	"golang.org/x/xerrors"
 
-	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 )
 
@@ -101,97 +99,49 @@ func (k *SealedKeyObject) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Sessi
 	return nil, lastError
 }
 
-// UnsealFromTPM will load the TPM sealed object in to the TPM and attempt to unseal it, returning the cleartext key on success.
-//
-// If the TPM's dictionary attack logic has been triggered, a ErrTPMLockout error will be returned.
-//
-// If the TPM is not provisioned correctly, then a ErrTPMProvisioning error will be returned. In this case, ProvisionTPM should be
-// called to attempt to resolve this.
-//
-// If the TPM sealed object cannot be loaded in to the TPM for reasons other than the lack of a storage root key, then a
-// InvalidKeyDataError error will be returned. This could be caused because the sealed object data is invalid in some way, or because
-// the sealed object is associated with another TPM owner (the TPM has been cleared since the sealed key data file was created with
-// SealKeyToTPM), or because the TPM object at the persistent handle reserved for the storage root key has a public area that looks
-// like a valid storage root key but it was created with the wrong template. This latter case is really caused by an incorrectly
-// provisioned TPM, but it isn't possible to detect this. A subsequent call to SealKeyToTPM or ProvisionTPM will rectify this.
-//
-// If the TPM's current PCR values are not consistent with the PCR protection policy for this key file, a InvalidKeyDataError error
-// will be returned.
-//
-// If any of the metadata in this key file is invalid, a InvalidKeyDataError error will be returned.
-//
-// If the TPM is missing any persistent resources associated with this key file, then a InvalidKeyDataError error will be returned.
-//
-// If the key file has been superceded (eg, by a call to SealedKeyObject.UpdatePCRProtectionPolicy), then a InvalidKeyDataError error
-// will be returned.
-//
-// If the signature of the updatable part of the key file's authorization policy is invalid, then a InvalidKeyDataError error will
-// be returned.
-//
-// If the metadata for the updatable part of the key file's authorization policy is not consistent with the approved policy, then a
-// InvalidKeyDataError error will be returned.
-//
-// If the authorization policy check fails during unsealing, then a InvalidKeyDataError error will be returned. Note that this
-// condition can also occur as the result of an incorrectly provisioned TPM, which will be detected during a subsequent call to
-// SealKeyToTPM.
-//
-// On success, the unsealed cleartext key is returned as the first return value, and the private part of the key used for
-// authorizing PCR policy updates with UpdateKeyPCRProtectionPolicy is returned as the second return value.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, err error) {
+func (k *SealedKeyObject) unsealDataFromTPM(tpm *tpm2.TPMContext, hmacSession tpm2.SessionContext) (data []byte, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot fetch properties from TPM: %w", err)
+		return nil, xerrors.Errorf("cannot fetch properties from TPM: %w", err)
 	}
 
 	if tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrInLockout > 0 {
-		return nil, nil, ErrTPMLockout
+		return nil, ErrTPMLockout
 	}
 
-	// Use the HMAC session created when the connection was opened for parameter encryption rather than creating a new one.
-	hmacSession := tpm.HmacSession()
-
-	keyObject, err := k.loadForUnseal(tpm.TPMContext, hmacSession)
+	keyObject, err := k.loadForUnseal(tpm, hmacSession)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer tpm.FlushContext(keyObject)
 
 	// Begin and execute policy session
 	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.Public().NameAlg)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot start policy session: %w", err)
+		return nil, xerrors.Errorf("cannot start policy session: %w", err)
 	}
 	defer tpm.FlushContext(policySession)
 
-	if err := k.data.Policy().ExecutePCRPolicy(tpm.TPMContext, policySession, hmacSession); err != nil {
+	if err := k.data.Policy().ExecutePCRPolicy(tpm, policySession, hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
 		case isPolicyDataError(err):
-			return nil, nil, InvalidKeyDataError{err.Error()}
+			return nil, InvalidKeyDataError{err.Error()}
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
-			return nil, nil, InvalidKeyDataError{"required legacy lock NV index is not present"}
+			return nil, InvalidKeyDataError{"required legacy lock NV index is not present"}
 		}
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Unseal
-	keyData, err := tpm.Unseal(keyObject, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
+	data, err = tpm.Unseal(keyObject, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
 	switch {
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
-		return nil, nil, InvalidKeyDataError{"the authorization policy check failed during unsealing"}
+		return nil, InvalidKeyDataError{"the authorization policy check failed during unsealing"}
 	case err != nil:
-		return nil, nil, xerrors.Errorf("cannot unseal key: %w", err)
+		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	if k.data.Version() == 0 {
-		return secboot.DiskUnlockKey(keyData), nil, nil
-	}
-
-	var sealedData sealedData
-	if _, err := mu.UnmarshalFromBytes(keyData, &sealedData); err != nil {
-		return nil, nil, InvalidKeyDataError{err.Error()}
-	}
-
-	return sealedData.Key, sealedData.AuthPrivateKey, nil
+	return data, nil
 }
