@@ -141,6 +141,50 @@ func (s *cryptsetupSuite) TestDetectCryptsetupFeaturesNoTokenReplace(c *C) {
 	s.testDetectCryptsetupFeatures(c, FeatureHeaderSizeSetting|FeatureTokenImport)
 }
 
+func (s *cryptsetupSuite) TestFormatOptionsValidateGood(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []FormatOptions{
+		{MetadataKiBSize: 16},
+		{MetadataKiBSize: 32},
+		{MetadataKiBSize: 64},
+		{MetadataKiBSize: 128},
+		{MetadataKiBSize: 256},
+		{MetadataKiBSize: 512},
+		{MetadataKiBSize: 1024},
+		{MetadataKiBSize: 2048},
+		{MetadataKiBSize: 4096},
+		{KeyslotsAreaKiBSize: 2040},
+		{KeyslotsAreaKiBSize: 4096},
+		{KeyslotsAreaKiBSize: 128 * 1024},
+	} {
+		opts.KDFOptions = KDFOptions{ForceIterations: 4, MemoryKiB: 32}
+		c.Check(Format(devicePath, "", make([]byte, 32), &opts), IsNil, Commentf("opts: %#v", opts))
+	}
+}
+
+func (s *cryptsetupSuite) TestFormatOptionsValidateBadMetadataSize(c *C) {
+	for _, opts := range []FormatOptions{
+		{MetadataKiBSize: 1},
+		{MetadataKiBSize: 19},
+		{MetadataKiBSize: 8192},
+	} {
+		c.Check(Format("/dev/null", "", make([]byte, 32), &opts), ErrorMatches,
+			fmt.Sprintf("cannot set metadata size to %v KiB", opts.MetadataKiBSize))
+	}
+}
+
+func (s *cryptsetupSuite) TestFormatOptionsValidateBadKeyslotsAreaSize(c *C) {
+	for _, opts := range []FormatOptions{
+		{KeyslotsAreaKiBSize: 128},
+		{KeyslotsAreaKiBSize: (4 * 1024) + 1},
+		{KeyslotsAreaKiBSize: 256 * 1024},
+	} {
+		c.Check(Format("/dev/null", "", make([]byte, 32), &opts), ErrorMatches,
+			fmt.Sprintf("cannot set keyslots area size to %v KiB", opts.KeyslotsAreaKiBSize))
+	}
+}
+
 type testFormatData struct {
 	label   string
 	key     []byte
@@ -313,6 +357,16 @@ func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSizeUnsupported(c *C) 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
 	c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KeyslotsAreaKiBSize: 2 * 1024}), Equals, ErrMissingCryptsetupFeature)
+}
+
+func (s *cryptsetupSuite) TestFormatWithInvalidMetadataSize(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+	c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{MetadataKiBSize: 20}), ErrorMatches, "cannot set metadata size to 20 KiB")
+}
+
+func (s *cryptsetupSuite) TestFormatWithInvalidKeyslotsAreaSize(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+	c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KeyslotsAreaKiBSize: 41}), ErrorMatches, "cannot set keyslots area size to 41 KiB")
 }
 
 type testAddKeyData struct {

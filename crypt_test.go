@@ -1956,54 +1956,6 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
 	c.Check(InitializeLUKS2Container("/dev/sda1", "data", s.newPrimaryKey()[0:16], nil), ErrorMatches, "expected a key length of at least 256-bits \\(got 128\\)")
 }
 
-func (s *cryptSuite) TestInitializeLUKS2ContainerMetadataKiBSize(c *C) {
-	key := make([]byte, 32)
-	for _, validSz := range []int{0, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096} {
-		opts := InitializeLUKS2ContainerOptions{
-			MetadataKiBSize: validSz,
-		}
-		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
-	}
-
-	for _, invalidSz := range []int{1, 16 + 3, 8192, 500} {
-		opts := InitializeLUKS2ContainerOptions{
-			MetadataKiBSize: invalidSz,
-		}
-		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
-			fmt.Sprintf("cannot set metadata size to %v KiB", invalidSz))
-	}
-}
-
-func (s *cryptSuite) TestInitializeLUKS2ContainerKeyslotsSize(c *C) {
-	key := make([]byte, 32)
-	for _, validSz := range []int{0, 4,
-		128 * 1024,
-		8 * 1024,
-		16,
-		256,
-	} {
-		opts := InitializeLUKS2ContainerOptions{
-			KeyslotsAreaKiBSize: validSz,
-		}
-		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), IsNil)
-	}
-
-	for _, invalidSz := range []int{
-		// smaller than 4096 (4KiB)
-		1, 3,
-		// misaligned
-		40 + 1,
-		// larger than 128MB
-		128*1024 + 4,
-	} {
-		opts := InitializeLUKS2ContainerOptions{
-			KeyslotsAreaKiBSize: invalidSz,
-		}
-		c.Check(InitializeLUKS2Container("/dev/sda1", "data", key, &opts), ErrorMatches,
-			fmt.Sprintf("cannot set keyslots area size to %v KiB", invalidSz))
-	}
-}
-
 type testAddRecoveryKeyToLUKS2ContainerData struct {
 	devicePath  string
 	key         []byte

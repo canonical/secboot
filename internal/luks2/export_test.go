@@ -30,6 +30,10 @@ var (
 	AcquireSharedLock = acquireSharedLock
 )
 
+func (o *FormatOptions) Validate() error {
+	return o.validate()
+}
+
 func MockDataDeviceInfo(stMock *unix.Stat_t) (restore func()) {
 	origFstatFn := dataDeviceFstat
 	origIsBDFn := isBlockDevice
