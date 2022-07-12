@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/snapcore/snapd/asserts"
 
@@ -525,7 +524,8 @@ type InitializeLUKS2ContainerOptions struct {
 	KeyslotsAreaKiBSize int
 
 	// KDFOptions sets the KDF options for the initial keyslot. If this
-	// is nil then the defaults are used.
+	// is nil then the default settings defined by this package are used
+	// (4 iterations and a memory cost of 32KiB).
 	KDFOptions *KDFOptions
 }
 
@@ -561,7 +561,7 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	// protection of this key, some of which can be verified without running a KDF. For
 	// example, with a TPM sealed object, you can verify the parent storage key's seed by
 	// computing the key object's HMAC key and verifying the integrity value on the outer wrapper.
-	defaultKdfOptions := &KDFOptions{TargetDuration: 100 * time.Millisecond}
+	defaultKdfOptions := &KDFOptions{MemoryKiB: 32, ForceIterations: 4}
 	if options == nil {
 		options = &InitializeLUKS2ContainerOptions{KDFOptions: defaultKdfOptions}
 	} else if options.KDFOptions == nil {
@@ -623,7 +623,7 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 	// example, with a TPM sealed object, you can verify the parent storage key's seed by
 	// computing the key object's HMAC key and verifying the integrity value on the outer wrapper.
 	options := luks2.AddKeyOptions{
-		KDFOptions: luks2.KDFOptions{TargetDuration: 100 * time.Millisecond},
+		KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4},
 		Slot:       0}
 	if err := luks2.AddKey(devicePath, recoveryKey[:], key, &options); err != nil {
 		return xerrors.Errorf("cannot add key: %w", err)

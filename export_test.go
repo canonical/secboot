@@ -19,6 +19,48 @@
 
 package secboot
 
+import (
+	"fmt"
+	"strconv"
+	"time"
+)
+
+func (o *InitializeLUKS2ContainerOptions) CryptsetupArguments() []string {
+	if o == nil {
+		o = &InitializeLUKS2ContainerOptions{}
+	}
+	kdfOptions := o.KDFOptions
+	if kdfOptions == nil {
+		kdfOptions = &KDFOptions{ForceIterations: 4, MemoryKiB: 32}
+	}
+
+	args := []string{"--pbkdf", "argon2i"}
+
+	switch {
+	case kdfOptions.ForceIterations != 0:
+		args = append(args, "--pbkdf-force-iterations", strconv.Itoa(kdfOptions.ForceIterations))
+	case kdfOptions.TargetDuration != 0:
+		args = append(args, "--iter-time", strconv.FormatInt(int64(kdfOptions.TargetDuration/time.Millisecond), 10))
+	}
+
+	if kdfOptions.MemoryKiB != 0 {
+		args = append(args, "--pbkdf-memory", strconv.Itoa(kdfOptions.MemoryKiB))
+	}
+
+	if kdfOptions.Parallel != 0 {
+		args = append(args, "--pbkdf-parallel", strconv.Itoa(kdfOptions.Parallel))
+	}
+
+	if o.MetadataKiBSize != 0 {
+		args = append(args, "--luks2-metadata-size", fmt.Sprintf("%dk", o.MetadataKiBSize))
+	}
+	if o.KeyslotsAreaKiBSize != 0 {
+		args = append(args, "--luks2-keyslots-size", fmt.Sprintf("%dk", o.KeyslotsAreaKiBSize))
+	}
+
+	return args
+}
+
 func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
 	return o.deriveCostParams(keyLen, kdf)
 }
