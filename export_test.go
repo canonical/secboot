@@ -20,46 +20,8 @@
 package secboot
 
 import (
-	"fmt"
-	"strconv"
-	"time"
+	"github.com/snapcore/secboot/internal/luks2"
 )
-
-func (o *InitializeLUKS2ContainerOptions) CryptsetupArguments() []string {
-	if o == nil {
-		o = &InitializeLUKS2ContainerOptions{}
-	}
-	kdfOptions := o.KDFOptions
-	if kdfOptions == nil {
-		kdfOptions = &KDFOptions{ForceIterations: 4, MemoryKiB: 32}
-	}
-
-	args := []string{"--pbkdf", "argon2i"}
-
-	switch {
-	case kdfOptions.ForceIterations != 0:
-		args = append(args, "--pbkdf-force-iterations", strconv.Itoa(kdfOptions.ForceIterations))
-	case kdfOptions.TargetDuration != 0:
-		args = append(args, "--iter-time", strconv.FormatInt(int64(kdfOptions.TargetDuration/time.Millisecond), 10))
-	}
-
-	if kdfOptions.MemoryKiB != 0 {
-		args = append(args, "--pbkdf-memory", strconv.Itoa(kdfOptions.MemoryKiB))
-	}
-
-	if kdfOptions.Parallel != 0 {
-		args = append(args, "--pbkdf-parallel", strconv.Itoa(kdfOptions.Parallel))
-	}
-
-	if o.MetadataKiBSize != 0 {
-		args = append(args, "--luks2-metadata-size", fmt.Sprintf("%dk", o.MetadataKiBSize))
-	}
-	if o.KeyslotsAreaKiBSize != 0 {
-		args = append(args, "--luks2-keyslots-size", fmt.Sprintf("%dk", o.KeyslotsAreaKiBSize))
-	}
-
-	return args
-}
 
 func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
 	return o.deriveCostParams(keyLen, kdf)
@@ -73,11 +35,43 @@ func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
 	}
 }
 
+func MockLUKS2AddKey(fn func(string, []byte, []byte, *luks2.AddKeyOptions) error) (restore func()) {
+	origAddKey := luks2AddKey
+	luks2AddKey = fn
+	return func() {
+		luks2AddKey = origAddKey
+	}
+}
+
 func MockLUKS2Deactivate(fn func(string) error) (restore func()) {
 	origDeactivate := luks2Deactivate
 	luks2Deactivate = fn
 	return func() {
 		luks2Deactivate = origDeactivate
+	}
+}
+
+func MockLUKS2Format(fn func(string, string, []byte, *luks2.FormatOptions) error) (restore func()) {
+	origFormat := luks2Format
+	luks2Format = fn
+	return func() {
+		luks2Format = origFormat
+	}
+}
+
+func MockLUKS2KillSlot(fn func(string, int, []byte) error) (restore func()) {
+	origKillSlot := luks2KillSlot
+	luks2KillSlot = fn
+	return func() {
+		luks2KillSlot = origKillSlot
+	}
+}
+
+func MockLUKS2SetSlotPriority(fn func(string, int, luks2.SlotPriority) error) (restore func()) {
+	origSetSlotPriority := luks2SetSlotPriority
+	luks2SetSlotPriority = fn
+	return func() {
+		luks2SetSlotPriority = origSetSlotPriority
 	}
 }
 
