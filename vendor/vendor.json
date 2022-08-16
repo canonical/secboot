@@ -33,6 +33,12 @@
 			"revisionTime": "2022-08-15T14:33:33Z"
 		},
 		{
+			"checksumSHA1": "R9jsX60WDTcKp5XNn97mas6ThXw=",
+			"path": "github.com/canonical/go-efilib/mbr",
+			"revision": "7e5151412e932d3f7a6040f65fc7e8f7b3c69592",
+			"revisionTime": "2022-08-15T14:33:33Z"
+		},
+		{
 			"checksumSHA1": "5zGeHDBvsYpgEyZ91hgSF0zLxyU=",
 			"path": "github.com/canonical/go-sp800.108-kdf",
 			"revision": "ead800bbf9a0ff709ebd9f3067d6f28dc700d1b5",
