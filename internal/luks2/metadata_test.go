@@ -461,7 +461,7 @@ func (s *metadataSuite) TestReadHeaderWithExternalToken(c *C) {
 	hdr, err := ReadHeader(s.decompress(c, "testdata/luks2-valid-hdr.img"), LockModeBlocking)
 	c.Assert(err, IsNil)
 
-	c.Check(hdr.Metadata.Tokens, HasLen, 1)
+	c.Assert(hdr.Metadata.Tokens, HasLen, 1)
 
 	token, ok := hdr.Metadata.Tokens[0].(*mockToken)
 	c.Assert(ok, testutil.IsTrue)

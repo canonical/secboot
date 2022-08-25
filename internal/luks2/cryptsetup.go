@@ -438,8 +438,10 @@ func RemoveToken(devicePath string, id int) error {
 }
 
 // KillSlot erases the keyslot with the supplied slot number from the specified LUKS2 container.
-// Note that a valid key for a remaining keyslot must be supplied, in order to prevent the last
-// keyslot from being erased.
+// Note that a valid key for a remaining keyslot must be supplied.
+//
+// WARNING: This function will remove the last keyslot if the key associated with it
+// is supplied, which will make the encrypted data permanently inaccessible.
 func KillSlot(devicePath string, slot int, key []byte) error {
 	return cryptsetupCmd(bytes.NewReader(key), nil, "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(slot))
 }
