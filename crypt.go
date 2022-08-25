@@ -596,12 +596,22 @@ func InitializeLUKS2Container(devicePath, label string, key DiskUnlockKey, optio
 	if options == nil {
 		var defaultOptions InitializeLUKS2ContainerOptions
 		options = &defaultOptions
+	} else {
+		// copy options to avoid modification of the supplied struct
+		options = &InitializeLUKS2ContainerOptions{
+			MetadataKiBSize:     options.MetadataKiBSize,
+			KeyslotsAreaKiBSize: options.KeyslotsAreaKiBSize,
+			KDFOptions:          options.KDFOptions,
+			InitialKeyslotName:  options.InitialKeyslotName}
 	}
+
 	if options.KDFOptions == nil {
 		options.KDFOptions = &KDFOptions{MemoryKiB: 32, ForceIterations: 4}
 	}
-	if options.InitialKeyslotName == "" {
-		options.InitialKeyslotName = defaultKeyslotName
+
+	initialKeyslotName := options.InitialKeyslotName
+	if initialKeyslotName == "" {
+		initialKeyslotName = defaultKeyslotName
 	}
 
 	if err := luks2Format(devicePath, label, key, options.formatOpts()); err != nil {
@@ -611,7 +621,7 @@ func InitializeLUKS2Container(devicePath, label string, key DiskUnlockKey, optio
 	token := luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
 			TokenKeyslot: 0,
-			TokenName:    options.InitialKeyslotName}}
+			TokenName:    initialKeyslotName}}
 	if err := luks2ImportToken(devicePath, &token, nil); err != nil {
 		return xerrors.Errorf("cannot import token: %w", err)
 	}
