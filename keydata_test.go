@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021 Canonical Ltd
+ * Copyright (C) 2021-2022 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -945,6 +945,63 @@ func (s *keyDataSuite) TestSnapModelAuth4(c *C) {
 		authModels: models,
 		model:      models[0],
 		authorized: true})
+}
+func (s *keyDataSuite) TestSnapModelAuth5(c *C) {
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"classic":      "true",
+			"distribution": "ubuntu",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"classic":      "true",
+			"distribution": "ubuntu",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	s.testSnapModelAuth(c, &testSnapModelAuthData{
+		alg:        crypto.SHA256,
+		authModels: models,
+		model:      models[1],
+		authorized: true})
+}
+
+func (s *keyDataSuite) TestSnapModelAuth6(c *C) {
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	s.testSnapModelAuth(c, &testSnapModelAuthData{
+		alg:        crypto.SHA256,
+		authModels: models,
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"classic":      "true",
+			"distribution": "ubuntu",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		authorized: false})
 }
 
 func (s *keyDataSuite) TestSetAuthorizedSnapModelsWithWrongKey(c *C) {
