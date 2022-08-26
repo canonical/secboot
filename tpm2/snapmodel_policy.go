@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2019-2022 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -111,7 +111,11 @@ func computeSnapModelDigest(newHash func() (snapModelHasher, error), model secbo
 	h, err = newHash()
 	h.Write(digest)
 	h.Write([]byte(model.Series()))
-	binary.Write(h, binary.LittleEndian, model.Grade().Code())
+	gradeCode := model.Grade().Code()
+	if model.Classic() {
+		gradeCode |= secboot.ClassicModelGradeMask
+	}
+	binary.Write(h, binary.LittleEndian, gradeCode)
 	return h.Complete()
 }
 
