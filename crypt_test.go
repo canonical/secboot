@@ -2023,6 +2023,84 @@ func (s *cryptSuite) TestDeactivateVolumeErr(c *C) {
 	c.Check(s.luks2.operations, DeepEquals, []string{"Deactivate(bad-volume)"})
 }
 
+type testActivateVolumeWithLUKSKeyDataData struct {
+	model            SnapModel
+	sourceDevicePath string
+	volumeName       string
+
+	key    DiskUnlockKey
+	auxKey AuxiliaryKey
+
+	authorizedModels []SnapModel
+
+	activateTries int
+	slots         []int
+}
+
+func (s *cryptSuite) testActivateVolumeWithLUKSKeyData(c *C, data *testActivateVolumeWithLUKSKeyDataData) {
+	options := &ActivateVolumeOptions{
+		Model:         data.model}
+	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, nil, nil, options)
+	c.Assert(err, IsNil)
+
+	c.Assert(s.luks2.operations, HasLen, data.activateTries+1)
+	c.Check(s.luks2.operations[0], Equals, "newLUKSView("+data.sourceDevicePath+",0)")
+	for i, op := range s.luks2.operations[1:] {
+		c.Check(op, Equals, fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", data.slots[i]))
+	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkKeyDataKeysInKeyring(c, "", data.sourceDevicePath, data.key, data.auxKey)
+}
+
+func (s *cryptSuite) TestActivateVolumeWithLUKSKeyData1(c *C) {
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	s.luks2.devices["/dev/sda1"] = &mockLUKS2Container{
+		tokens: map[int]luks2.Token{
+			0: &luksview.KeyDataToken{
+				TokenBase: luksview.TokenBase{
+					TokenKeyslot: 0,
+					TokenName:    "default",
+				},
+				Data: w.final.Bytes(),
+			},
+		},
+		keyslots: map[int][]byte{
+			0: key,
+		},
+	}
+
+	s.testActivateVolumeWithLUKSKeyData(c, &testActivateVolumeWithLUKSKeyDataData{
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		activateTries:    1,
+		slots:            []int{0},
+		key:              key,
+		auxKey:           auxKey,
+	})
+}
+
 type testInitializeLUKS2ContainerData struct {
 	devicePath string
 	label      string
