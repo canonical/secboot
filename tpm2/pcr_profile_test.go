@@ -62,8 +62,50 @@ func (s *pcrProfileSuite) testPCRProtectionProfile(c *C, data *testPCRProtection
 	}
 }
 
-func (s *pcrProfileSuite) TestAddValues1(c *C) {
+func (s *pcrProfileSuite) TestAddPCRValues(c *C) {
 	// Verify that AddPCRValues works as expected
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			profile := NewPCRProtectionProfile()
+			profile.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+			return profile
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					8: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+				},
+			},
+		},
+	})
+}
+
+func (s *pcrProfileSuite) TestAddPCRValuesOverwritesPrevious(c *C) {
+	// Verify that AddPCRValues overwrites previous values
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			profile := NewPCRProtectionProfile()
+			profile.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+			return profile
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+				},
+			},
+		},
+	})
+}
+
+func (s *pcrProfileSuite) TestLegacyAddPCRValues(c *C) {
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
 		profile: NewPCRProtectionProfile().
@@ -80,24 +122,244 @@ func (s *pcrProfileSuite) TestAddValues1(c *C) {
 	})
 }
 
-func (s *pcrProfileSuite) TestAddValues2(c *C) {
-	// Verify that AddPCRValues overwrites previous values
+func (s *pcrProfileSuite) TestExtendPCR(c *C) {
+	// Verify that ExtendPCR without an initial value works as expected
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
-		profile: NewPCRProtectionProfile().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4"))
+			return p
+		}(),
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "event1", "event3"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "event2", "event4"),
 				},
 			},
 		},
 	})
 }
 
-func (s *pcrProfileSuite) TestOR1(c *C) {
+func (s *pcrProfileSuite) TestExtendPCRAfterAddPCRValue(c *C) {
+	// Verify that ExtendPCR after AddPCRValue works as expected
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2"))
+			return p
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2"),
+				},
+			},
+		},
+	})
+}
+
+func (s *pcrProfileSuite) TestLegacyExtendPCR(c *C) {
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: NewPCRProtectionProfile().
+			ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+			ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")).
+			ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
+			ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "event1", "event3"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "event2", "event4"),
+				},
+			},
+		},
+	})
+}
+
+func (s *pcrProfileSuite) TestCompoundProfile(c *C) {
+	// Verify that (A1 || A2) && (B1 || B2) produces 4 outcomes
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddBranchPoint(). // Begin (A1 || A2)
+				AddBranch().      // Begin A1
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				EndBranch(). // End A1
+				AddBranch(). // Begin A2
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).
+				EndBranch().      // End A2
+				EndBranchPoint(). // End (A1 || A2)
+				AddBranchPoint(). // Begin (B1 || B2)
+				AddBranch().      // Begin B1
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				EndBranch(). // End B1
+				AddBranch(). // Begin B2
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).
+				EndBranch().     // End B2
+				EndBranchPoint() // End (B1 || B2)
+			return p
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					8: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
+					8: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					8: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
+					8: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
+				},
+			},
+		},
+	})
+}
+
+func (s *pcrProfileSuite) TestCompoundProfile2(c *C) {
+	// Verify that (A1 && B1) || (A2 && B2) produces 2 outcomes
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddBranchPoint(). // Begin (A1 && B1) || (A2 && B2)
+				AddBranch().      // Begin (A1 && B1)
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				EndBranch(). // End (A1 && B1)
+				AddBranch(). // Begin (A2 && B2)
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2")).
+				EndBranch().     // End (A2 && B2)
+				EndBranchPoint() // End (A1 && B1) || (A2 && B2)
+			return p
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+					8: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo2"),
+					8: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar2"),
+				},
+			},
+		},
+	})
+}
+
+func (s *pcrProfileSuite) TestCompoundProfile3(c *C) {
+	// Verify that ExtendPCR inside subbranches with initial PCR values works as expected
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				AddBranchPoint().
+				AddBranch().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")).
+				EndBranch().
+				AddBranch().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")).
+				EndBranch().
+				EndBranchPoint().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event5")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event6")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 4, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"))
+			return p
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1", "event5"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2", "event6"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event3", "event5"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4", "event6"),
+				},
+			},
+		},
+	})
+}
+
+func (s *pcrProfileSuite) TestCompoundProfile4(c *C) {
+	// Verify that AddPCRValue inside ProfileOR with initial PCR values works as expected
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				AddBranchPoint().
+				AddBranch().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				EndBranch().
+				AddBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")).
+				EndBranch().
+				EndBranchPoint()
+			return p
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4"),
+				},
+			},
+		},
+	})
+}
+func (s *pcrProfileSuite) TestLegacyAddProfileOR1(c *C) {
 	// Verify that (A1 || A2) && (B1 || B2) produces 4 outcomes
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
@@ -137,7 +399,7 @@ func (s *pcrProfileSuite) TestOR1(c *C) {
 	})
 }
 
-func (s *pcrProfileSuite) TestOR2(c *C) {
+func (s *pcrProfileSuite) TestLegacyAddProfileOR2(c *C) {
 	// Verify that (A1 && B1) || (A2 && B2) produces 2 outcomes
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
@@ -165,47 +427,7 @@ func (s *pcrProfileSuite) TestOR2(c *C) {
 	})
 }
 
-func (s *pcrProfileSuite) TestExtend(c *C) {
-	// Verify that ExtendPCR without an initial value works as expected
-	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
-		alg: tpm2.HashAlgorithmSHA256,
-		profile: NewPCRProtectionProfile().
-			ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
-			ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")).
-			ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
-			ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")),
-		values: []tpm2.PCRValues{
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "event1", "event3"),
-					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "event2", "event4"),
-				},
-			},
-		},
-	})
-}
-
-func (s *pcrProfileSuite) TestAddAndExtend(c *C) {
-	// Verify that ExtendPCR after AddPCRValue works as expected
-	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
-		alg: tpm2.HashAlgorithmSHA256,
-		profile: NewPCRProtectionProfile().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
-			ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
-			ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")),
-		values: []tpm2.PCRValues{
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
-					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2"),
-				},
-			},
-		},
-	})
-}
-
-func (s *pcrProfileSuite) TestOR3(c *C) {
+func (s *pcrProfileSuite) TestLegacyAddProfileOR3(c *C) {
 	// Verify that ExtendPCR inside ProfileOR with initial PCR values works as expected
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
@@ -218,25 +440,30 @@ func (s *pcrProfileSuite) TestOR3(c *C) {
 					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")),
 				NewPCRProtectionProfile().
 					ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
-					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4"))),
+					ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4"))).
+			ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event5")).
+			ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event6")).
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 4, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz")),
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1"),
-					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2"),
+					4:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event1", "event5"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event2", "event6"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event3"),
-					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4"),
+					4:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event3", "event5"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4", "event6"),
 				},
 			},
 		},
 	})
 }
 
-func (s *pcrProfileSuite) TestOR4(c *C) {
+func (s *pcrProfileSuite) TestLegacyAddProfileOR4(c *C) {
 	// Verify that AddPCRValue inside ProfileOR with initial PCR values works as expected
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
@@ -267,13 +494,52 @@ func (s *pcrProfileSuite) TestOR4(c *C) {
 	})
 }
 
+func (s *pcrProfileSuite) TestAbortBranch(c *C) {
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				AddBranchPoint().
+				AddBranch().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2")).
+				AbortBranch().
+				AddBranch().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")).
+				EndBranch().
+				EndBranchPoint().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event5")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event6")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 4, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"))
+			return p
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event3", "event5"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4", "event6"),
+				},
+			},
+		},
+	})
+}
+
 func (s *pcrProfileSuite) TestSHA1PCRs(c *C) {
 	// Verify that other PCR algorithms work
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
-		profile: NewPCRProtectionProfile().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-			AddPCRValue(tpm2.HashAlgorithmSHA1, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA1, "bar")),
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA1, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA1, "bar"))
+			return p
+		}(),
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA1: {
@@ -291,9 +557,13 @@ func (s *pcrProfileSuite) TestSHA1(c *C) {
 	// Verify that other PCR digest algorithms work
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA1,
-		profile: NewPCRProtectionProfile().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+			return p
+		}(),
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
@@ -309,13 +579,21 @@ func (s *pcrProfileSuite) TestDeDuplicate(c *C) {
 	// Verify that (A1 && B1) || (A1 && B1) is de-duplicated
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
-		profile: NewPCRProtectionProfile().AddProfileOR(
-			NewPCRProtectionProfile().
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddBranchPoint().
+				AddBranch().
 				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
-			NewPCRProtectionProfile().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				EndBranch().
+				AddBranch().
 				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))),
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				EndBranch().
+				EndBranchPoint()
+			return p
+		}(),
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
@@ -330,10 +608,15 @@ func (s *pcrProfileSuite) TestDeDuplicate(c *C) {
 func (s *pcrProfileSuite) TestEmptyProfileOR(c *C) {
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
-		profile: NewPCRProtectionProfile().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-			AddProfileOR().
-			AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			p.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddBranchPoint().
+				EndBranchPoint().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
+			return p
+		}(),
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
@@ -346,21 +629,26 @@ func (s *pcrProfileSuite) TestEmptyProfileOR(c *C) {
 }
 
 func (s *pcrProfileSuite) TestProfileString(c *C) {
-	profile := NewPCRProtectionProfile().
+	profile := NewPCRProtectionProfile()
+	profile.RootBranch().
 		AddPCRValue(tpm2.HashAlgorithmSHA256, 7, make([]byte, tpm2.HashAlgorithmSHA256.Size())).
 		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, make([]byte, tpm2.HashAlgorithmSHA256.Size())).
-		AddProfileOR(
-			NewPCRProtectionProfile().
-				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1")).
-				ExtendPCR(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")),
-			NewPCRProtectionProfile().
-				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")).
-				ExtendPCR(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1"))).
+		AddBranchPoint().
+		AddBranch().
+		ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1")).
+		ExtendPCR(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")).
+		EndBranch().
+		AddBranch().
+		ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1")).
+		ExtendPCR(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "foo1")).
+		EndBranch().
+		EndBranchPoint().
 		ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "end"))
+
 	expectedTpl := `
  AddPCRValue(TPM_ALG_SHA256, 7, %[1]x)
  AddPCRValue(TPM_ALG_SHA256, 8, %[1]x)
- AddProfileOR(
+ BranchPoint(
    Branch 0 {
     ExtendPCR(TPM_ALG_SHA256, 7, %[2]x)
     ExtendPCR(TPM_ALG_SHA256, 8, %[3]x)
@@ -379,6 +667,292 @@ func (s *pcrProfileSuite) TestProfileString(c *C) {
 		tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "bar1"),
 		tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "end"))
 	c.Check(profile.String(), Equals, expected)
+}
+
+func (s *pcrProfileSuite) TestModifyCompletedBranchPointFails1(c *C) {
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AddBranchPoint()
+	c.Check(bp.AddBranch(), NotNil)
+	c.Check(bp.EndBranchPoint(), Equals, profile.RootBranch())
+	c.Check(bp.AddBranch(), NotNil)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot add a branch to a branch point that has already been terminated \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestModifyCompletedBranchPointFails2(c *C) {
+	// Test that EndBranch terminates an in-progress branch point as well
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AddBranchPoint()
+	b := bp.AddBranch()
+	bp2 := b.AddBranchPoint()
+	c.Check(b.EndBranch(), Equals, bp)
+	c.Check(bp2.AddBranch(), NotNil)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot add a branch to a branch point that has already been terminated \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestModifyCompletedBranchPointFailsRecursiveMany(c *C) {
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AddBranchPoint()
+	bp2 := bp.AddBranch().AddBranchPoint().AddBranch().AddBranchPoint().AddBranch().AddBranchPoint()
+	c.Check(bp.EndBranchPoint(), Equals, profile.RootBranch())
+	c.Check(bp2.AddBranch(), NotNil)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot add a branch to a branch point that has already been terminated \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+    BranchPoint(
+      Branch 0 {
+       BranchPoint(
+         Branch 0 {
+         }
+       )
+      }
+    )
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestEndCompletedBranchPointFails(c *C) {
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AddBranchPoint()
+	c.Check(bp.AddBranch(), NotNil)
+	c.Check(bp.EndBranchPoint(), Equals, profile.RootBranch())
+	c.Check(bp.EndBranchPoint(), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot terminate a branch point more than once \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestModifyCompletedBranchFails1(c *C) {
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AddBranchPoint()
+	b := bp.AddBranch()
+	c.Check(b.EndBranch(), Equals, bp)
+	c.Check(b.AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)), Equals, b)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot modify branch that has already been terminated \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestModifyCompletedBranchFails2(c *C) {
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AddBranchPoint()
+	b := bp.AddBranch()
+	c.Check(b.EndBranch(), Equals, bp)
+	c.Check(b.AddBranchPoint().AddBranch(), NotNil)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot modify branch that has already been terminated \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestModifyCompletedBranchFails3(c *C) {
+	// Test that EndBranchPoint terminates sub-branches
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AddBranchPoint()
+	b := bp.AddBranch()
+	c.Check(bp.EndBranchPoint(), Equals, profile.RootBranch())
+	c.Check(b.AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)), Equals, b)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot modify branch that has already been terminated \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestModifyCompletedBranchFailsRecursiveMany(c *C) {
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AddBranchPoint()
+	b := bp.AddBranch().AddBranchPoint().AddBranch().AddBranchPoint().AddBranch().AddBranchPoint().AddBranch()
+	c.Check(bp.EndBranchPoint(), Equals, profile.RootBranch())
+	c.Check(b.AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)), Equals, b)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot modify branch that has already been terminated \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+    BranchPoint(
+      Branch 0 {
+       BranchPoint(
+         Branch 0 {
+          BranchPoint(
+            Branch 0 {
+            }
+          )
+         }
+       )
+      }
+    )
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestInvalidAlg1(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().AddPCRValue(tpm2.HashAlgorithmNull, 0, nil), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid digest algorithm \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, "\n")
+}
+
+func (s *pcrProfileSuite) TestInvalidAlg2(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().ExtendPCR(tpm2.HashAlgorithmNull, 0, nil), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid digest algorithm \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, "\n")
+}
+
+func (s *pcrProfileSuite) TestInvalidPCR1(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().AddPCRValue(tpm2.HashAlgorithmSHA256, -1, make([]byte, 32)), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid PCR index \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, "\n")
+}
+
+func (s *pcrProfileSuite) TestInvalidPCR2(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().AddPCRValue(tpm2.HashAlgorithmSHA256, 2048, make([]byte, 32)), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid PCR index \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, "\n")
+}
+
+func (s *pcrProfileSuite) TestInvalidDigest1(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().AddPCRValue(tpm2.HashAlgorithmSHA256, 1, make([]byte, 20)), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: digest length is inconsistent with specified algorithm \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, "\n")
+}
+
+func (s *pcrProfileSuite) TestInvalidDigest2(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().ExtendPCR(tpm2.HashAlgorithmSHA256, 1, make([]byte, 20)), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: digest length is inconsistent with specified algorithm \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, "\n")
+}
+
+func (s *pcrProfileSuite) TestTerminateRootBranchFails(c *C) {
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().EndBranch()
+	c.Check(bp, NotNil)
+	c.Check(bp.EndBranchPoint(), NotNil)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot terminate the root branch \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+}
+
+func (s *pcrProfileSuite) TestAbortRootBranchFails(c *C) {
+	profile := NewPCRProtectionProfile()
+	bp := profile.RootBranch().AbortBranch()
+	c.Check(bp, NotNil)
+	c.Check(bp.EndBranchPoint(), NotNil)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot abort the root branch \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+}
+
+func (s *pcrProfileSuite) TestLegacyAddProfileORPropagatesErrors1(c *C) {
+	profile := NewPCRProtectionProfile()
+	subProfile := NewPCRProtectionProfile()
+	c.Check(subProfile.RootBranch().EndBranch(), NotNil)
+	c.Check(profile.AddProfileOR(subProfile), Equals, profile)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot terminate the root branch \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, "\n")
+}
+
+func (s *pcrProfileSuite) TestLegacyAddProfileORPropagatesErrors2(c *C) {
+	profile := NewPCRProtectionProfile()
+	subProfile := NewPCRProtectionProfile()
+	c.Check(profile.AddProfileOR(subProfile), Equals, profile)
+	c.Check(subProfile.AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)), Equals, subProfile)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: cannot modify branch that has already been terminated \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestMultipleFailures(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().AddPCRValue(tpm2.HashAlgorithmNull, 0, nil), Equals, profile.RootBranch())
+	c.Check(profile.RootBranch().EndBranch(), NotNil)
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid digest algorithm \(occured at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
+	c.Check(profile.String(), Equals, "\n")
+}
+
+func (s *pcrProfileSuite) TestUnbalancedBranchesFails(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().
+		AddBranchPoint().
+		AddBranch().
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)).
+		EndBranch().
+		AddBranch().
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 1, make([]byte, 32)).
+		EndBranch().
+		EndBranchPoint(), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `not all branches contain values for the same sets of PCRs`)
 }
 
 type pcrProfileTPMSuite struct {
