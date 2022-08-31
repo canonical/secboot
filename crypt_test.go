@@ -432,6 +432,21 @@ func (s *cryptSuite) SetUpTest(c *C) {
 	s.AddCleanup(s.luks2.enableMocks())
 }
 
+func (s *cryptSuite) addMockToken(path string, token luks2.Token) {
+	dev, ok := s.luks2.devices[path]
+
+	if !ok {
+		dev = &mockLUKS2Container{}
+	}
+
+	if len(dev.tokens) == 0 {
+		dev.tokens = make(map[int]luks2.Token)
+		s.luks2.devices[path] = dev
+	}
+
+	dev.tokens[dev.nextFreeTokenId()] = token
+}
+
 func (s *cryptSuite) addMockKeyslot(path string, key []byte) {
 	dev, ok := s.luks2.devices[path]
 	if !ok {
@@ -798,9 +813,13 @@ type testActivateVolumeWithKeyDataData struct {
 	keyringPrefix    string
 	authResponses    []interface{}
 	model            SnapModel
+
+	slots     []int
+	tokenName string
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolumeWithKeyDataData) {
+	var err error
 	keyData, key, auxKey := s.newNamedKeyData(c, "")
 	s.addMockKeyslot(data.sourceDevicePath, key)
 
@@ -817,12 +836,35 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 		PassphraseTries: data.passphraseTries,
 		KeyringPrefix:   data.keyringPrefix,
 		Model:           data.model}
-	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, &kdf, options, keyData)
+
+	if data.tokenName != "" {
+		w := makeMockKeyDataWriter()
+		c.Check(keyData.WriteAtomic(w), IsNil)
+
+		token := &luksview.KeyDataToken{
+			TokenBase: luksview.TokenBase{
+				TokenKeyslot: data.slots[0],
+				TokenName:    data.tokenName,
+			},
+			Data: w.final.Bytes(),
+		}
+
+		s.addMockToken(data.sourceDevicePath, token)
+		err = ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, &kdf, options)
+	} else {
+		err = ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, &kdf, options, keyData)
+	}
+
 	c.Assert(err, IsNil)
+
+	slot := luks2.AnySlot
+	if len(data.slots) > 0 {
+		slot = data.slots[0]
+	}
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
 		"newLUKSView(" + data.sourceDevicePath + ",0)",
-		"Activate(" + data.volumeName + "," + data.sourceDevicePath + ",-1)",
+		fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", slot),
 	})
 
 	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
@@ -943,6 +985,51 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData6(c *C) {
 		passphraseTries:  3,
 		authResponses:    []interface{}{"incorrect", "1234"},
 		model:            models[0]})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyData7(c *C) {
+	// Test with LUKS token
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		slots:            []int{0},
+		model:            models[0],
+		tokenName:        "default",
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyData8(c *C) {
+	// Test with LUKS token with passphrase
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		slots:            []int{0},
+		model:            models[0],
+		tokenName:        "default",
+		passphraseTries:  1,
+		passphrase:       "passphrase",
+		authResponses:    []interface{}{"passphrase"},
+	})
 }
 
 type testActivateVolumeWithKeyDataErrorHandlingData struct {
@@ -2021,147 +2108,6 @@ func (s *cryptSuite) TestDeactivateVolumeErr(c *C) {
 	err := DeactivateVolume("bad-volume")
 	c.Assert(err, ErrorMatches, `systemd-cryptsetup failed with: exit status 1`)
 	c.Check(s.luks2.operations, DeepEquals, []string{"Deactivate(bad-volume)"})
-}
-
-type testActivateVolumeWithLUKSKeyDataData struct {
-	model            SnapModel
-	sourceDevicePath string
-	volumeName       string
-	passphrase       string
-
-	key    DiskUnlockKey
-	auxKey AuxiliaryKey
-
-	authorizedModels []SnapModel
-
-	kdf mockKDF
-
-	activateTries   int
-	passphraseTries int
-	authResponses   []interface{}
-	slots           []int
-}
-
-func (s *cryptSuite) testActivateVolumeWithLUKSKeyData(c *C, data *testActivateVolumeWithLUKSKeyDataData) {
-	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
-
-	options := &ActivateVolumeOptions{
-		PassphraseTries: data.passphraseTries,
-		Model:           data.model}
-
-	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, &data.kdf, options)
-	c.Assert(err, IsNil)
-
-	c.Assert(s.luks2.operations, HasLen, data.activateTries+1)
-	c.Check(s.luks2.operations[0], Equals, "newLUKSView("+data.sourceDevicePath+",0)")
-	for i, op := range s.luks2.operations[1:] {
-		c.Check(op, Equals, fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", data.slots[i]))
-	}
-
-	// This should be done last because it may fail in some circumstances.
-	s.checkKeyDataKeysInKeyring(c, "", data.sourceDevicePath, data.key, data.auxKey)
-}
-
-func (s *cryptSuite) TestActivateVolumeWithLUKSKeyData1(c *C) {
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
-
-	keyData, err := NewKeyData(protected)
-	c.Assert(err, IsNil)
-
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-
-	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
-
-	w := makeMockKeyDataWriter()
-	c.Check(keyData.WriteAtomic(w), IsNil)
-
-	s.luks2.devices["/dev/sda1"] = &mockLUKS2Container{
-		tokens: map[int]luks2.Token{
-			0: &luksview.KeyDataToken{
-				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "default",
-				},
-				Data: w.final.Bytes(),
-			},
-		},
-		keyslots: map[int][]byte{
-			0: key,
-		},
-	}
-
-	s.testActivateVolumeWithLUKSKeyData(c, &testActivateVolumeWithLUKSKeyDataData{
-		authorizedModels: models,
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
-		activateTries:    1,
-		slots:            []int{0},
-		key:              key,
-		auxKey:           auxKey,
-	})
-}
-
-func (s *cryptSuite) TestActivateVolumeWithLUKSKeyData2(c *C) {
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
-
-	keyData, err := NewKeyData(protected)
-	c.Assert(err, IsNil)
-
-	var kdf mockKDF
-	c.Check(keyData.SetPassphrase("passphrase", nil, &kdf), IsNil)
-
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-
-	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
-
-	w := makeMockKeyDataWriter()
-	c.Check(keyData.WriteAtomic(w), IsNil)
-
-	s.luks2.devices["/dev/sda1"] = &mockLUKS2Container{
-		tokens: map[int]luks2.Token{
-			0: &luksview.KeyDataToken{
-				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "default",
-				},
-				Data: w.final.Bytes(),
-			},
-		},
-		keyslots: map[int][]byte{
-			0: key,
-		},
-	}
-
-	s.testActivateVolumeWithLUKSKeyData(c, &testActivateVolumeWithLUKSKeyDataData{
-		authorizedModels: models,
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
-		activateTries:    1,
-		passphraseTries:  1,
-		slots:            []int{0},
-		key:              key,
-		auxKey:           auxKey,
-		kdf:              kdf,
-		authResponses:    []interface{}{"passphrase"},
-	})
 }
 
 type testInitializeLUKS2ContainerData struct {
