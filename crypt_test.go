@@ -1032,6 +1032,82 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData8(c *C) {
 	})
 }
 
+func (s *cryptSuite) TestActivateVolumeWithKeyData9(c *C) {
+	// Test activation with empty LUKS token but valid external token
+	keyData, key, _ := s.newNamedKeyData(c, "")
+	s.addMockKeyslot("/dev/sda1", key)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	token := &luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslot: 0,
+			TokenName:    "default",
+		},
+	}
+
+	s.addMockToken("/dev/sda1", token)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		passphraseTries:  1,
+		passphrase:       "passphrase",
+		authResponses:    []interface{}{"passphrase"},
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyData10(c *C) {
+	// Test activation with orphaned LUKS token but valid external token
+	// prints "Cannot read keydata from token" to os.Stderr
+	keyData, key, _ := s.newNamedKeyData(c, "")
+	s.addMockKeyslot("/dev/sda1", key)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	token := &luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslot: 1,
+			TokenName:    "default",
+		},
+		Data: json.RawMessage("foo"),
+	}
+
+	s.addMockToken("/dev/sda1", token)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		authorizedModels: models,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		passphraseTries:  1,
+		passphrase:       "passphrase",
+		authResponses:    []interface{}{"passphrase"},
+	})
+}
+
 type testActivateVolumeWithKeyDataErrorHandlingData struct {
 	primaryKey  DiskUnlockKey
 	recoveryKey RecoveryKey
@@ -1360,6 +1436,32 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling15(c *C) {
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
 		"- foo: snap model is not authorized\n"+
 		"and activation with recovery key failed: no recovery key tries permitted")
+}
+
+func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling16(c *C) {
+	// Test that error in authRequestor error surfaces
+	keyData, key, _ := s.newNamedKeyData(c, "bar")
+	recoveryKey := s.newRecoveryKey()
+
+	var kdf testutil.MockKDF
+	c.Check(keyData.SetPassphrase("1234", nil, &kdf), IsNil)
+
+	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		primaryKey:  key,
+		recoveryKey: recoveryKey,
+		authRequestor: &mockAuthRequestor{
+			passphraseResponses:  []interface{}{errors.New("")},
+			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
+		passphraseTries:  1,
+		recoveryKeyTries: 1,
+		kdf:              &kdf,
+		keyData:          keyData,
+		model:            SkipSnapModelCheck,
+		activateTries:    1,
+	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
+		"- cannot obtain passphrase: \n"+
+		"and activation with recovery key failed: cannot activate volume: "+
+		"systemd-cryptsetup failed with: exit status 1")
 }
 
 type testActivateVolumeWithMultipleKeyDataData struct {
