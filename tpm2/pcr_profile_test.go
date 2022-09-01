@@ -1079,6 +1079,16 @@ func (s *pcrProfileSuite) TestUnmarshalUnexpctedEndBranch2(c *C) {
 		"tpm2.PCRProtectionProfile: unexpected EndBranch at instruction 2")
 }
 
+func (s *pcrProfileSuite) TestAddPCRValueFromTPMFailsWithoutTPM(c *C) {
+	profile := NewPCRProtectionProfile()
+	c.Check(profile.RootBranch().
+		AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).
+		AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 8), Equals, profile.RootBranch())
+
+	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot read current PCR values from TPM: no context`)
+}
+
 type pcrProfileTPMSuite struct {
 	tpm2test.TPMTest
 }
@@ -1104,4 +1114,41 @@ func (s *pcrProfileTPMSuite) TestAddValueFromTPM(c *C) {
 
 	expectedDigest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}}, values)
 	c.Check(digests[0], DeepEquals, expectedDigest)
+}
+
+func (s *pcrProfileTPMSuite) TestAddValueFromTPMAddProfileORPropagatesSelection(c *C) {
+	_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
+	c.Check(err, IsNil)
+
+	_, values, err := s.TPM().PCRRead(tpm2.PCRSelectionList{
+		{Hash: tpm2.HashAlgorithmSHA1, Select: []int{23}},
+		{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}},
+	})
+	c.Assert(err, IsNil)
+
+	p := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 23)
+	p2 := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA1, 23)
+	p.AddProfileOR(p2)
+
+	pcrs, digests, err := p.ComputePCRDigests(s.TPM().TPMContext, tpm2.HashAlgorithmSHA256)
+	c.Check(err, IsNil)
+	c.Check(pcrs.Equal(tpm2.PCRSelectionList{
+		{Hash: tpm2.HashAlgorithmSHA1, Select: []int{23}},
+		{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}},
+	}), testutil.IsTrue)
+	c.Check(digests, HasLen, 1)
+
+	expectedDigest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{
+		{Hash: tpm2.HashAlgorithmSHA1, Select: []int{23}},
+		{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}},
+	}, values)
+	c.Check(digests[0], DeepEquals, expectedDigest)
+}
+
+func (s *pcrProfileTPMSuite) TestAddValueFromTPMInvalidPCR(c *C) {
+	p := NewPCRProtectionProfile()
+	c.Check(p.RootBranch().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 100), Equals, p.RootBranch())
+
+	_, _, err := p.ComputePCRDigests(s.TPM().TPMContext, tpm2.HashAlgorithmSHA256)
+	c.Check(err, ErrorMatches, `cannot read current PCR values from TPM: TPM returned an error for parameter 1 whilst executing command TPM_CC_PCR_Read: TPM_RC_VALUE \(value is out of range or is not correct for the context\)`)
 }
