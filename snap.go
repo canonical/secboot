@@ -35,7 +35,9 @@ import (
 
 var sha3_384oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 9}
 
-const ClassicCode uint32 = 0x80000000
+// ClassicModelGradeMask is ORed with the model grade code when
+// measuring a classic snap model.
+const ClassicModelGradeMask uint32 = 0x80000000
 
 // SnapModel exposes the details of a snap device model that are bound
 // to an encrypted container.
@@ -79,7 +81,7 @@ func computeSnapModelHMAC(alg crypto.Hash, key []byte, model SnapModel) (snapMod
 	h.Write([]byte(model.Series()))
 	gradeCode := model.Grade().Code()
 	if model.Classic() {
-		gradeCode |= ClassicCode
+		gradeCode |= ClassicModelGradeMask
 	}
 	binary.Write(h, binary.LittleEndian, gradeCode)
 

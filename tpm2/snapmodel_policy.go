@@ -113,7 +113,7 @@ func computeSnapModelDigest(newHash func() (snapModelHasher, error), model secbo
 	h.Write([]byte(model.Series()))
 	gradeCode := model.Grade().Code()
 	if model.Classic() {
-		gradeCode |= secboot.ClassicCode
+		gradeCode |= secboot.ClassicModelGradeMask
 	}
 	binary.Write(h, binary.LittleEndian, gradeCode)
 	return h.Complete()
