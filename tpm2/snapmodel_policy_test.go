@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2019-2022 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -376,6 +376,34 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile11(c *C) {
 			{
 				tpm2.HashAlgorithmSHA256: {
 					12: testutil.DecodeHexString(c, "27db1fa15c2fd09361f6812bca72c3285e889dd20fcfbbe509e153b302046820"),
+				},
+			},
+		},
+	})
+}
+
+func (s *snapModelProfileSuite) TestAddSnapModelProfile12(c *C) {
+	// Test with a classic model.
+	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
+		params: &SnapModelProfileParams{
+			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+			PCRIndex:     12,
+			Models: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+					"authority-id": "fake-brand",
+					"series":       "16",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"classic":      "true",
+					"distribution": "ubuntu",
+					"grade":        "secured",
+				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+			},
+		},
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					12: testutil.DecodeHexString(c, "ab2a6cbcd2e4a29a0a18b6bfe751b73efc54d5b50f2d07b80d6e1da6c4401606"),
 				},
 			},
 		},

@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2019-2022 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -307,6 +307,7 @@ type nullSnapModel struct{}
 func (_ nullSnapModel) Series() string            { return "" }
 func (_ nullSnapModel) BrandID() string           { return "" }
 func (_ nullSnapModel) Model() string             { return "" }
+func (_ nullSnapModel) Classic() bool             { return false }
 func (_ nullSnapModel) Grade() asserts.ModelGrade { return "" }
 func (_ nullSnapModel) SignKeyID() string         { return "" }
 
