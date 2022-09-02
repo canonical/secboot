@@ -640,21 +640,43 @@ func (s *pcrProfileSuite) TestProfileString(c *C) {
 	c.Check(profile.String(), Equals, expected)
 }
 
+func (s *pcrProfileSuite) TestEmptyBranchPointIsElided(c *C) {
+	profile := NewPCRProtectionProfile()
+	profile.RootBranch().
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)).
+		AddBranchPoint().
+		EndBranchPoint().
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 1, make([]byte, 32))
+	c.Check(profile.String(), Equals, `
+ AddPCRValue(TPM_ALG_SHA256, 0, 0000000000000000000000000000000000000000000000000000000000000000)
+ AddPCRValue(TPM_ALG_SHA256, 1, 0000000000000000000000000000000000000000000000000000000000000000)
+`)
+}
+
+func (s *pcrProfileSuite) TestBranchPointWithSingleSubBranchIsElided(c *C) {
+	profile := NewPCRProtectionProfile()
+	profile.RootBranch().
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)).
+		AddBranchPoint().
+		AddBranch().
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 1, make([]byte, 32)).
+		EndBranch().
+		EndBranchPoint()
+	c.Check(profile.String(), Equals, `
+ AddPCRValue(TPM_ALG_SHA256, 0, 0000000000000000000000000000000000000000000000000000000000000000)
+ AddPCRValue(TPM_ALG_SHA256, 1, 0000000000000000000000000000000000000000000000000000000000000000)
+`)
+}
 func (s *pcrProfileSuite) TestModifyCompletedBranchPointFails1(c *C) {
 	profile := NewPCRProtectionProfile()
 	bp := profile.RootBranch().AddBranchPoint()
 	c.Check(bp.AddBranch(), NotNil)
 	c.Check(bp.EndBranchPoint(), Equals, profile.RootBranch())
-	c.Check(bp.AddBranch(), NotNil)
+	c.Check(bp.AddBranch().AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)), NotNil)
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because an error occurred when constructing the profile: cannot add a branch to a branch point that has already been terminated \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, `
- BranchPoint(
-   Branch 0 {
-   }
- )
-`)
+	c.Check(profile.String(), Equals, "\n")
 }
 
 func (s *pcrProfileSuite) TestModifyCompletedBranchPointFails2(c *C) {
@@ -664,15 +686,13 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchPointFails2(c *C) {
 	b := bp.AddBranch()
 	bp2 := b.AddBranchPoint()
 	c.Check(b.EndBranch(), Equals, bp)
-	c.Check(bp2.AddBranch(), NotNil)
+	c.Check(bp2.AddBranch().AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)), NotNil)
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because an error occurred when constructing the profile: cannot add a branch to a branch point that has already been terminated \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
 	c.Check(profile.String(), Equals, `
  BranchPoint(
    Branch 0 {
-    BranchPoint(
-    )
    }
  )
 `)
@@ -683,26 +703,11 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchPointFailsRecursiveMany(c *C)
 	bp := profile.RootBranch().AddBranchPoint()
 	bp2 := bp.AddBranch().AddBranchPoint().AddBranch().AddBranchPoint().AddBranch().AddBranchPoint()
 	c.Check(bp.EndBranchPoint(), Equals, profile.RootBranch())
-	c.Check(bp2.AddBranch(), NotNil)
+	c.Check(bp2.AddBranch().AddPCRValue(tpm2.HashAlgorithmSHA256, 0, make([]byte, 32)), NotNil)
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because an error occurred when constructing the profile: cannot add a branch to a branch point that has already been terminated \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, `
- BranchPoint(
-   Branch 0 {
-    BranchPoint(
-      Branch 0 {
-       BranchPoint(
-         Branch 0 {
-          BranchPoint(
-          )
-         }
-       )
-      }
-    )
-   }
- )
-`)
+	c.Check(profile.String(), Equals, "\n")
 }
 
 func (s *pcrProfileSuite) TestEndCompletedBranchPointFails(c *C) {
@@ -714,12 +719,7 @@ func (s *pcrProfileSuite) TestEndCompletedBranchPointFails(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because an error occurred when constructing the profile: cannot terminate a branch point more than once \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, `
- BranchPoint(
-   Branch 0 {
-   }
- )
-`)
+	c.Check(profile.String(), Equals, "\n")
 }
 
 func (s *pcrProfileSuite) TestModifyCompletedBranchFails1(c *C) {
@@ -766,12 +766,7 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchFails3(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because an error occurred when constructing the profile: cannot modify branch that has already been terminated \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, `
- BranchPoint(
-   Branch 0 {
-   }
- )
-`)
+	c.Check(profile.String(), Equals, "\n")
 }
 
 func (s *pcrProfileSuite) TestModifyCompletedBranchFailsRecursiveMany(c *C) {
@@ -783,24 +778,7 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchFailsRecursiveMany(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because an error occurred when constructing the profile: cannot modify branch that has already been terminated \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, `
- BranchPoint(
-   Branch 0 {
-    BranchPoint(
-      Branch 0 {
-       BranchPoint(
-         Branch 0 {
-          BranchPoint(
-            Branch 0 {
-            }
-          )
-         }
-       )
-      }
-    )
-   }
- )
-`)
+	c.Check(profile.String(), Equals, "\n")
 }
 
 func (s *pcrProfileSuite) TestInvalidAlg1(c *C) {
@@ -897,12 +875,7 @@ func (s *pcrProfileSuite) TestLegacyAddProfileORPropagatesErrors2(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because an error occurred when constructing the profile: cannot modify branch that has already been terminated \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, `
- BranchPoint(
-   Branch 0 {
-   }
- )
-`)
+	c.Check(profile.String(), Equals, "\n")
 }
 
 func (s *pcrProfileSuite) TestMultipleFailures(c *C) {

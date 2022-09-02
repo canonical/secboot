@@ -425,7 +425,27 @@ func (b *PCRProtectionProfileBranch) doneBranchPoint(p *PCRProtectionProfileBran
 	}
 
 	b.currentBranchPoint = nil
-	b.instrs = append(b.instrs, new(pcrProtectionProfileEndBranchPointInstr))
+
+	switch len(p.childBranches) {
+	case 0:
+		// Elide the empty branch point.
+		b.instrs = b.instrs[:len(b.instrs)-1]
+	case 1:
+		// Elide the branch point that contains only a single sub-branch
+		// and append the sub-branch to this branch.
+		b.instrs = b.instrs[:len(b.instrs)-1]
+
+		sb := p.childBranches[0]
+
+		// Remove the BeginBranch instruction
+		instrs := sb.instrs[1:]
+		// Remove the EndBranch instruction
+		instrs = instrs[:len(instrs)-1]
+		b.instrs = append(b.instrs, instrs...)
+
+	default:
+		b.instrs = append(b.instrs, new(pcrProtectionProfileEndBranchPointInstr))
+	}
 }
 
 // AddPCRValue adds the supplied value to this branch for the specified PCR.
