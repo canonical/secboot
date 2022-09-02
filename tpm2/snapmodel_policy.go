@@ -163,7 +163,7 @@ type SnapModelProfileParams struct {
 // The PCR index that snap-bootstrap measures the model to can be specified via the PCRIndex field of params.
 //
 // The set of models to add to the PCRProtectionProfile is specified via the Models field of params.
-func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfileParams) error {
+func AddSnapModelProfile(branch *PCRProtectionProfileBranch, params *SnapModelProfileParams) error {
 	if params.PCRIndex < 0 {
 		return errors.New("invalid PCR index")
 	}
@@ -171,9 +171,9 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 		return errors.New("no models provided")
 	}
 
-	profile.ExtendPCR(params.PCRAlgorithm, params.PCRIndex, computeSnapSystemEpochDigest(params.PCRAlgorithm, zeroSnapSystemEpoch))
+	branch.ExtendPCR(params.PCRAlgorithm, params.PCRIndex, computeSnapSystemEpochDigest(params.PCRAlgorithm, zeroSnapSystemEpoch))
 
-	var subProfiles []*PCRProtectionProfile
+	bp := branch.AddBranchPoint()
 	for _, model := range params.Models {
 		if model == nil {
 			return errors.New("nil model")
@@ -185,10 +185,11 @@ func AddSnapModelProfile(profile *PCRProtectionProfile, params *SnapModelProfile
 		if err != nil {
 			return err
 		}
-		subProfiles = append(subProfiles, NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, digest))
-	}
 
-	profile.AddProfileOR(subProfiles...)
+		bp.AddBranch().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, digest)
+	}
+	bp.EndBranchPoint()
+
 	return nil
 }
 

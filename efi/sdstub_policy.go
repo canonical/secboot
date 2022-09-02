@@ -49,7 +49,7 @@ type SystemdStubProfileParams struct {
 // The PCR index that the EFI stub measures the kernel commandline too can be specified via the PCRIndex field of params.
 //
 // The set of kernel commandlines to add to the PCRProtectionProfile is specified via the KernelCmdlines field of params.
-func AddSystemdStubProfile(profile *secboot_tpm2.PCRProtectionProfile, params *SystemdStubProfileParams) error {
+func AddSystemdStubProfile(branch *secboot_tpm2.PCRProtectionProfileBranch, params *SystemdStubProfileParams) error {
 	if params.PCRIndex < 0 {
 		return errors.New("invalid PCR index")
 	}
@@ -57,12 +57,12 @@ func AddSystemdStubProfile(profile *secboot_tpm2.PCRProtectionProfile, params *S
 		return errors.New("no kernel commandlines specified")
 	}
 
-	var subProfiles []*secboot_tpm2.PCRProtectionProfile
+	bp := branch.AddBranchPoint()
 	for _, cmdline := range params.KernelCmdlines {
 		digest := tcglog.ComputeSystemdEFIStubCommandlineDigest(params.PCRAlgorithm.GetHash(), cmdline)
-		subProfiles = append(subProfiles, secboot_tpm2.NewPCRProtectionProfile().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, digest))
+		bp.AddBranch().ExtendPCR(params.PCRAlgorithm, params.PCRIndex, digest)
 	}
 
-	profile.AddProfileOR(subProfiles...)
+	bp.EndBranchPoint()
 	return nil
 }

@@ -39,15 +39,23 @@ var _ = Suite(&snapModelProfileSuite{})
 
 type testAddSnapModelProfileData struct {
 	profile *PCRProtectionProfile
+	branch  *PCRProtectionProfileBranch
 	params  *SnapModelProfileParams
 	values  []tpm2.PCRValues
 }
 
 func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapModelProfileData) {
 	profile := data.profile
-	if profile == nil {
+	branch := data.branch
+	switch {
+	case profile == nil:
+		c.Assert(data.branch, IsNil)
 		profile = NewPCRProtectionProfile()
+		branch = profile.RootBranch()
+	case branch == nil:
+		branch = profile.RootBranch()
 	}
+
 	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
 	var expectedDigests tpm2.DigestList
@@ -56,7 +64,7 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 		expectedDigests = append(expectedDigests, d)
 	}
 
-	c.Check(AddSnapModelProfile(profile, data.params), IsNil)
+	c.Check(AddSnapModelProfile(branch, data.params), IsNil)
 	pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Assert(err, IsNil)
 	c.Check(pcrs.Equal(expectedPcrs), Equals, true)
@@ -288,8 +296,10 @@ func (s *snapModelProfileSuite) TestAddSnapModelProfile8(c *C) {
 
 func (s *snapModelProfileSuite) TestAddSnapModelProfile9(c *C) {
 	// Test extending in to an initial profile.
+	profile := NewPCRProtectionProfile()
 	s.testAddSnapModelProfile(c, &testAddSnapModelProfileData{
-		profile: NewPCRProtectionProfile().
+		profile: profile,
+		branch: profile.RootBranch().
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 		params: &SnapModelProfileParams{
