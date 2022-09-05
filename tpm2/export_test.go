@@ -20,35 +20,26 @@
 package tpm2
 
 import (
-	"crypto/ecdsa"
-
 	"github.com/canonical/go-tpm2"
+
+	"github.com/snapcore/secboot"
 )
 
 // Export constants for testing
 const (
-	CurrentMetadataVersion = currentMetadataVersion
-	LockNVHandle           = lockNVHandle
-	SrkTemplateHandle      = srkTemplateHandle
+	LockNVHandle      = lockNVHandle
+	SrkTemplateHandle = srkTemplateHandle
 )
 
 // Export variables and unexported functions for testing
 var (
-	ComputeDynamicPolicy                    = computeDynamicPolicy
 	ComputeV0PinNVIndexPostInitAuthPolicies = computeV0PinNVIndexPostInitAuthPolicies
 	CreatePcrPolicyCounter                  = createPcrPolicyCounter
-	ComputeV1PcrPolicyCounterAuthPolicies   = computeV1PcrPolicyCounterAuthPolicies
-	ComputeV1PcrPolicyRefFromCounterContext = computeV1PcrPolicyRefFromCounterContext
 	ComputeV1PcrPolicyRefFromCounterName    = computeV1PcrPolicyRefFromCounterName
 	ComputeSnapModelDigest                  = computeSnapModelDigest
-	ComputeStaticPolicy                     = computeStaticPolicy
-	CreateTPMPublicAreaForECDSAKey          = createTPMPublicAreaForECDSAKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
-	ExecutePolicySession                    = executePolicySession
-	IncrementPcrPolicyCounterTo             = incrementPcrPolicyCounterTo
-	IsDynamicPolicyDataError                = isDynamicPolicyDataError
-	IsStaticPolicyDataError                 = isStaticPolicyDataError
-	NewPcrPolicyCounterHandleV1             = newPcrPolicyCounterHandleV1
+	IsPolicyDataError                       = isPolicyDataError
+	NewKeyDataPolicy                        = newKeyDataPolicy
 	NewPolicyOrDataV0                       = newPolicyOrDataV0
 	NewPolicyOrTree                         = newPolicyOrTree
 	ReadKeyDataV0                           = readKeyDataV0
@@ -58,41 +49,18 @@ var (
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
-type DynamicPolicyData = dynamicPolicyData
-
-func (d *DynamicPolicyData) PCRSelection() tpm2.PCRSelectionList {
-	return d.pcrSelection
-}
-
-func (d *DynamicPolicyData) PCROrData() PolicyOrData_v0 {
-	return d.pcrOrData
-}
-
-func (d *DynamicPolicyData) PolicyCount() uint64 {
-	return d.policyCount
-}
-
-func (d *DynamicPolicyData) SetPolicyCount(c uint64) {
-	d.policyCount = c
-}
-
-func (d *DynamicPolicyData) AuthorizedPolicy() tpm2.Digest {
-	return d.authorizedPolicy
-}
-
-func (d *DynamicPolicyData) AuthorizedPolicySignature() *tpm2.Signature {
-	return d.authorizedPolicySignature
-}
-
-type DynamicPolicyDataRaw_v0 = dynamicPolicyDataRaw_v0
 type GoSnapModelHasher = goSnapModelHasher
 type KeyData = keyData
 type KeyData_v0 = keyData_v0
 type KeyData_v1 = keyData_v1
 type KeyData_v2 = keyData_v2
 type KeyDataError = keyDataError
-type PcrPolicyCounterHandle = pcrPolicyCounterHandle
+type KeyDataPolicy = keyDataPolicy
+type KeyDataPolicy_v0 = keyDataPolicy_v0
+type KeyDataPolicy_v1 = keyDataPolicy_v1
+type KeyDataPolicy_v2 = keyDataPolicy_v2
 
+type PolicyDataError = policyDataError
 type PolicyOrData_v0 = policyOrData_v0
 
 func (t PolicyOrData_v0) Resolve() (out *PolicyOrTree, err error) {
@@ -125,28 +93,23 @@ func (t *PolicyOrTree) ExecuteAssertions(tpm *tpm2.TPMContext, session tpm2.Sess
 	return t.executeAssertions(tpm, session)
 }
 
+type PcrPolicyData_v0 = pcrPolicyData_v0
+type PcrPolicyData_v1 = pcrPolicyData_v1
+type PcrPolicyData_v2 = pcrPolicyData_v2
+
+type PcrPolicyParams = pcrPolicyParams
+
+func NewPcrPolicyParams(key secboot.AuxiliaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name) *PcrPolicyParams {
+	return &PcrPolicyParams{
+		key:               key,
+		pcrs:              pcrs,
+		pcrDigests:        pcrDigests,
+		policyCounterName: policyCounterName}
+}
+
 type SnapModelHasher = snapModelHasher
-
-type StaticPolicyData = staticPolicyData
-
-func (d *StaticPolicyData) AuthPublicKey() *tpm2.Public {
-	return d.authPublicKey
-}
-
-func (d *StaticPolicyData) PcrPolicyCounterHandle() tpm2.Handle {
-	return d.pcrPolicyCounterHandle
-}
-
-func (d *StaticPolicyData) SetPcrPolicyCounterHandle(h tpm2.Handle) {
-	d.pcrPolicyCounterHandle = h
-}
-
-func (d *StaticPolicyData) V0PinIndexAuthPolicies() tpm2.DigestList {
-	return d.v0PinIndexAuthPolicies
-}
-
-type StaticPolicyDataRaw_v0 = staticPolicyDataRaw_v0
-type StaticPolicyDataRaw_v1 = staticPolicyDataRaw_v1
+type StaticPolicyData_v0 = staticPolicyData_v0
+type StaticPolicyData_v1 = staticPolicyData_v1
 
 // Export some helpers for testing.
 type MockPolicyPCRParam struct {
@@ -190,39 +153,19 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
-func NewDynamicPolicyComputeParams(key *ecdsa.PrivateKey, signAlg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList,
-	pcrDigests tpm2.DigestList, policyCounterName tpm2.Name, policyCount uint64) *dynamicPolicyComputeParams {
-	return &dynamicPolicyComputeParams{
-		key:               key,
-		signAlg:           signAlg,
-		pcrs:              pcrs,
-		pcrDigests:        pcrDigests,
-		policyCounterName: policyCounterName,
-		policyCount:       policyCount}
-}
-
-func NewStaticPolicyComputeParams(key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic) *staticPolicyComputeParams {
-	return &staticPolicyComputeParams{key: key, pcrPolicyCounterPub: pcrPolicyCounterPub}
-}
-
-func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
+func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
 	if _, err := k.validateData(tpm, session); err != nil {
 		return err
 	}
 
-	authKey, err := createECDSAPrivateKeyFromTPM(k.data.StaticPolicy().authPublicKey, tpm2.ECCParameter(authPrivateKey))
-	if err != nil {
-		return err
-	}
-
-	return k.validateAuthKey(authKey)
+	return k.data.Policy().ValidateAuthKey(authKey)
 }
 
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authPrivateKey PolicyAuthKey, session tpm2.SessionContext) error {
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
 	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	if err != nil {
 		return err
 	}
 
-	return k.Validate(tpm, authPrivateKey, session)
+	return k.Validate(tpm, authKey, session)
 }

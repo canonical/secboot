@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2019-2022 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -20,28 +20,43 @@
 package secboot
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
-	"strings"
-	"time"
+
+	"github.com/snapcore/snapd/asserts"
 
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/luksview"
 )
 
 var (
-	luks2Activate   = luks2.Activate
-	luks2Deactivate = luks2.Deactivate
+	// ErrMissingCryptsetupFeature is returned from some functions that make
+	// use of the system's cryptsetup binary, if that binary is missing some
+	// required features.
+	ErrMissingCryptsetupFeature = luks2.ErrMissingCryptsetupFeature
+
+	luks2Activate        = luks2.Activate
+	luks2AddKey          = luks2.AddKey
+	luks2Deactivate      = luks2.Deactivate
+	luks2Format          = luks2.Format
+	luks2ImportToken     = luks2.ImportToken
+	luks2KillSlot        = luks2.KillSlot
+	luks2RemoveToken     = luks2.RemoveToken
+	luks2SetSlotPriority = luks2.SetSlotPriority
+
+	newLUKSView = luksview.NewView
+)
+
+const (
+	defaultKeyslotName         = "default"
+	defaultRecoveryKeyslotName = "default-recovery"
 )
 
 // RecoveryKey corresponds to a 16-byte recovery key in its binary form.
@@ -88,85 +103,6 @@ func ParseRecoveryKey(s string) (out RecoveryKey, err error) {
 	return
 }
 
-type execError struct {
-	path string
-	err  error
-}
-
-func (e *execError) Error() string {
-	return fmt.Sprintf("%s failed: %s", e.path, e.err)
-}
-
-func (e *execError) Unwrap() error {
-	return e.err
-}
-
-func wrapExecError(cmd *exec.Cmd, err error) error {
-	if err == nil {
-		return nil
-	}
-	return &execError{path: cmd.Path, err: err}
-}
-
-func askPassword(sourceDevicePath, msg string) (string, error) {
-	cmd := exec.Command(
-		"systemd-ask-password",
-		"--icon", "drive-harddisk",
-		"--id", filepath.Base(os.Args[0])+":"+sourceDevicePath,
-		msg)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stdin = os.Stdin
-	if err := cmd.Run(); err != nil {
-		return "", wrapExecError(cmd, err)
-	}
-	result, err := out.ReadString('\n')
-	if err != nil {
-		return "", xerrors.Errorf("cannot read result from systemd-ask-password: %w", err)
-	}
-	return strings.TrimRight(result, "\n"), nil
-}
-
-func getPassword(sourceDevicePath, description string, reader io.Reader) (string, error) {
-	if reader != nil {
-		scanner := bufio.NewScanner(reader)
-		switch {
-		case scanner.Scan():
-			return scanner.Text(), nil
-		case scanner.Err() != nil:
-			return "", xerrors.Errorf("cannot obtain %s from scanner: %w", description, scanner.Err())
-		}
-	}
-	return askPassword(sourceDevicePath, "Please enter the "+description+" for disk "+sourceDevicePath+":")
-}
-
-type snapModelCheckerImpl struct {
-	volumeName string
-	keyData    *KeyData
-	auxKey     AuxiliaryKey
-}
-
-func (c *snapModelCheckerImpl) IsModelAuthorized(model SnapModel) (bool, error) {
-	return c.keyData.IsSnapModelAuthorized(c.auxKey, model)
-}
-
-func (c *snapModelCheckerImpl) VolumeName() string {
-	return c.volumeName
-}
-
-// SnapModelChecker is used for verifying whether a Snap device model is
-// authorized to access the data on a volume unlocked by this package.
-type SnapModelChecker interface {
-	// IsModelAuthorized indicates whether the supplied Snap device model is
-	// authorized to access the data on the decrypted volume with the device
-	// mapper name returned by VolumeName.
-	IsModelAuthorized(model SnapModel) (bool, error)
-
-	// VolumeName is the device mapper name of the volume associated with this
-	// SnapModelChecker.
-	VolumeName() string
-}
-
 type activateWithKeyDataError struct {
 	k   *KeyData
 	err error
@@ -188,12 +124,14 @@ type keyDataAndError struct {
 type activateWithKeyDataState struct {
 	volumeName       string
 	sourceDevicePath string
+	model            SnapModel
 	keyringPrefix    string
 
-	keys []*keyDataAndError
+	authRequestor   AuthRequestor
+	kdf             KDF
+	passphraseTries int
 
-	keyData *KeyData
-	auxKey  AuxiliaryKey
+	keys []*keyDataAndError
 }
 
 func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
@@ -206,17 +144,20 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 	return out
 }
 
-func (s *activateWithKeyDataState) snapModelChecker() *snapModelCheckerImpl {
-	return &snapModelCheckerImpl{s.volumeName, s.keyData, s.auxKey}
-}
-
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(keyData *KeyData, key DiskUnlockKey, auxKey AuxiliaryKey) error {
+	if s.model != SkipSnapModelCheck {
+		authorized, err := keyData.IsSnapModelAuthorized(auxKey, s.model)
+		switch {
+		case err != nil:
+			return xerrors.Errorf("cannot check if snap model is authorized: %w", err)
+		case !authorized:
+			return errors.New("snap model is not authorized")
+		}
+	}
+
 	if err := luks2Activate(s.volumeName, s.sourceDevicePath, key); err != nil {
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
-
-	s.keyData = keyData
-	s.auxKey = auxKey
 
 	if err := keyring.AddKeyToUserKeyring(key, s.sourceDevicePath, keyringPurposeDiskUnlock, s.keyringPrefix); err != nil {
 		fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
@@ -238,9 +179,24 @@ func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData) error {
 	return s.tryActivateWithRecoveredKey(k, key, auxKey)
 }
 
-func (s *activateWithKeyDataState) run() (success bool) {
+func (s *activateWithKeyDataState) tryKeyDataAuthModePassphrase(k *KeyData, passphrase string) error {
+	key, auxKey, err := k.RecoverKeysWithPassphrase(passphrase, s.kdf)
+	if err != nil {
+		return xerrors.Errorf("cannot recover key: %w", err)
+	}
+
+	return s.tryActivateWithRecoveredKey(k, key, auxKey)
+}
+
+func (s *activateWithKeyDataState) run() (success bool, err error) {
+	numPassphraseKeys := 0
+
 	// Try keys that don't require any additional authentication first
 	for _, k := range s.keys {
+		if k.AuthMode()&AuthModePassphrase > 0 {
+			numPassphraseKeys += 1
+		}
+
 		if k.AuthMode() != AuthModeNone {
 			continue
 		}
@@ -250,27 +206,72 @@ func (s *activateWithKeyDataState) run() (success bool) {
 			continue
 		}
 
-		return true
+		return true, nil
 	}
 
-	// TODO: Passphrase support
+	// Try keys that require a passphrase
+	tries := s.passphraseTries
+	var passphraseErr error
+
+	for tries > 0 && numPassphraseKeys > 0 {
+		tries -= 1
+
+		// Request a passphrase first and then try each key with it. One downside of
+		// this approach is that if there are multiple keys with different passphrases
+		// or the passphrase is wrong for all keys, this will accelerate the rate at
+		// which dictionary attack protections kick in for platforms that support that.
+		// This shouldn't be an issue for standard configurations where there would be
+		// a maximum of 2 keys with passphrases enabled (Ubuntu Core based desktop on
+		// a UEFI+TPM platform with run+recovery and recovery-only protectors for
+		// ubuntu-data).
+		passphrase, err := s.authRequestor.RequestPassphrase(s.volumeName, s.sourceDevicePath)
+		if err != nil {
+			passphraseErr = xerrors.Errorf("cannot obtain passphrase: %w", err)
+			continue
+		}
+
+		for _, k := range s.keys {
+			if k.AuthMode()&AuthModePassphrase == 0 {
+				continue
+			}
+
+			if k.err != nil && !xerrors.Is(k.err, ErrInvalidPassphrase) {
+				// Skip keys that failed for anything other than an invalid passphrase.
+				continue
+			}
+
+			if err := s.tryKeyDataAuthModePassphrase(k.KeyData, passphrase); err != nil {
+				if !xerrors.Is(err, ErrInvalidPassphrase) {
+					numPassphraseKeys -= 1
+				}
+				k.err = err
+				continue
+			}
+
+			return true, nil
+		}
+	}
 
 	// We've failed at this point
-	return false
+	return false, passphraseErr
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*KeyData) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*KeyData, authRequestor AuthRequestor, kdf KDF, passphraseTries int) *activateWithKeyDataState {
 	s := &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
-		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix)}
+		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix),
+		model:            model,
+		authRequestor:    authRequestor,
+		kdf:              kdf,
+		passphraseTries:  passphraseTries}
 	for _, k := range keys {
 		s.keys = append(s.keys, &keyDataAndError{KeyData: k})
 	}
 	return s
 }
 
-func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, tries int, keyringPrefix string) error {
+func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor AuthRequestor, tries int, keyringPrefix string) error {
 	if tries == 0 {
 		return errors.New("no recovery key tries permitted")
 	}
@@ -280,17 +281,9 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 	for ; tries > 0; tries-- {
 		lastErr = nil
 
-		r := keyReader
-		keyReader = nil
-
-		passphrase, err := getPassword(sourceDevicePath, "recovery key", r)
+		key, err := authRequestor.RequestRecoveryKey(volumeName, sourceDevicePath)
 		if err != nil {
-			return xerrors.Errorf("cannot obtain recovery key: %w", err)
-		}
-
-		key, err := ParseRecoveryKey(passphrase)
-		if err != nil {
-			lastErr = xerrors.Errorf("cannot decode recovery key: %w", err)
+			lastErr = xerrors.Errorf("cannot obtain recovery key: %w", err)
 			continue
 		}
 
@@ -309,35 +302,74 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.R
 	return lastErr
 }
 
+type nullSnapModel struct{}
+
+func (_ nullSnapModel) Series() string            { return "" }
+func (_ nullSnapModel) BrandID() string           { return "" }
+func (_ nullSnapModel) Model() string             { return "" }
+func (_ nullSnapModel) Classic() bool             { return false }
+func (_ nullSnapModel) Grade() asserts.ModelGrade { return "" }
+func (_ nullSnapModel) SignKeyID() string         { return "" }
+
+// SkipSnapModelCheck provides a mechanism to skip the snap device model
+// check when calling one of the ActivateVolumeWith* functions.
+var SkipSnapModelCheck SnapModel = nullSnapModel{}
+
 // ActivateVolumeOptions provides options to the ActivateVolumeWith*
 // family of functions.
 type ActivateVolumeOptions struct {
 	// PassphraseTries specifies the maximum number of times
-	// that unsealing with a user passphrase should be attempted
+	// that activation with a user passphrase should be attempted
 	// before failing with an error and falling back to activating
 	// with the recovery key (see RecoveryKeyTries).
-	// Setting this to zero disables unsealing with a user
-	// passphrase - in this case, an error will be returned if the
-	// sealed key object indicates that a user passphrase has been
-	// set.
-	// With a TPM, attempts to unseal will stop if the TPM enters
-	// dictionary attack lockout mode before this limit is
-	// reached.
-	// It is ignored by ActivateWithRecoveryKey.
+	//
+	// Setting this to zero disables activation with a user
+	// passphrase - in this case, any protected keys that require
+	// a passphrase are ignored and activation will fall back to
+	// requesting a recovery key.
+	//
+	// For each passphrase attempt, the supplied passphrase is
+	// tested against every protected key that requires a passphrase.
+	//
+	// The actual number of available passphrase attempts may be
+	// limited by the platform to a number that is lower than this
+	// value (eg, in the TPM case because of the current auth fail
+	// counter value which means the dictionary attack protection
+	// might be triggered first).
+	//
+	// It is ignored by ActivateVolumeWithRecoveryKey.
 	PassphraseTries int
 
 	// RecoveryKeyTries specifies the maximum number of times that
 	// activation with the fallback recovery key should be
 	// attempted.
-	// It is used directly by ActivateWithRecoveryKey and
+	//
+	// It is used directly by ActivateVolumeWithRecoveryKey and
 	// indirectly with other methods upon failure, for example
-	// failed TPM unsealing.  Setting this to zero will disable
-	// attempts to activate with the fallback recovery key.
+	// in the case where no other keys can be recovered.
+	//
+	// Setting this to zero will disable attempts to activate with
+	// the fallback recovery key.
 	RecoveryKeyTries int
 
 	// KeyringPrefix is the prefix used for the description of any
 	// kernel keys created during activation.
 	KeyringPrefix string
+
+	// Model is the snap device model that will access the data
+	// on the encrypted container. The ActivateVolumeWith* functions
+	// will check that this model is authorized via the KeyData
+	// binding before unlocking the encrypted container.
+	//
+	// The caller of the ActivateVolumeWith* API is responsible for
+	// validating the associated model assertion and snaps.
+	//
+	// Set this to SkipSnapModelCheck to skip the check. It cannot
+	// be left set as nil.
+	//
+	// It is ignored by ActivateVolumeWithRecoveryKey, and it is
+	// ok to leave it set as nil in this case.
+	Model SnapModel
 }
 
 type activateVolumeWithKeyDataError struct {
@@ -361,88 +393,122 @@ func (e *activateVolumeWithKeyDataError) Error() string {
 // successful.
 var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected keys but activation with the recovery key was successful")
 
-// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at sourceDevicePath and create a
-// mapping with the name volumeName, using the supplied KeyData objects to recover the disk unlock key from the
-// platform's secure device. This makes use of systemd-cryptsetup.
+// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at
+// sourceDevicePath and create a mapping with the name volumeName, using the
+// supplied KeyData objects to recover the disk unlock key from the platform's
+// secure device. This makes use of systemd-cryptsetup.
 //
-// If activation with the supplied KeyData objects fails, this function will attempt to activate it with the fallback
-// recovery key instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries
-// field of options specifies how many attempts should be made to activate the volume with the recovery key before
-// failing. If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback
-// recovery key.
+// If activation with the supplied KeyData objects fails, this function will
+// attempt to activate it with the fallback recovery key instead. The fallback
+// recovery key is requested via the supplied authRequestor. If an AuthRequestor
+// is not supplied, an error will be returned if the fallback recovery key is
+// required. The RecoveryKeyTries field of options specifies how many attemps to
+// request and use the recovery key will be made before failing. If it is set to
+// 0, then no attempts will be made to request and use the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less
+// than zero, an error will be returned. If the Model field of options is nil,
+// an error will be returned.
 //
-// If activation with one of the supplied KeyData objects succeeds, a SnapModelChecker will be returned so that the
-// caller can check whether a particular Snap device model has previously been authorized to access the data on this
-// volume. If the fallback recovery key is used for successfully for activation, no SnapModelChecker will be
-// returned and a ErrRecoveryKeyUsed error will be returned.
+// If the fallback recovery key is used for successfully for activation, an
+// ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
-func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, options *ActivateVolumeOptions) (SnapModelChecker, error) {
+//
+// If activation with one of the supplied KeyData objects succeeds (ie, no error
+// is returned), then the supplied SnapModel is authorized to access the data on
+// this volume.
+func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys []*KeyData, authRequestor AuthRequestor, kdf KDF, options *ActivateVolumeOptions) error {
 	if len(keys) == 0 {
-		return nil, errors.New("no keys provided")
+		return errors.New("no keys provided")
 	}
 	if options.PassphraseTries < 0 {
-		return nil, errors.New("invalid PassphraseTries")
+		return errors.New("invalid PassphraseTries")
 	}
 	if options.RecoveryKeyTries < 0 {
-		return nil, errors.New("invalid RecoveryKeyTries")
+		return errors.New("invalid RecoveryKeyTries")
+	}
+	if options.Model == nil {
+		return errors.New("nil Model")
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, keys)
-	switch s.run() {
-	case true: // success!
-		return s.snapModelChecker(), nil
+	if (options.PassphraseTries > 0 || options.RecoveryKeyTries > 0) && authRequestor == nil {
+		return errors.New("nil authRequestor")
+	}
+	if options.PassphraseTries > 0 && kdf == nil {
+		return errors.New("nil kdf")
+	}
+
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, keys, authRequestor, kdf, options.PassphraseTries)
+	success, err := s.run()
+	switch {
+	case success:
+		return nil
 	default: // failed - try recovery key
-		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, nil, options.RecoveryKeyTries, options.KeyringPrefix); rErr != nil {
+		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, authRequestor, options.RecoveryKeyTries, options.KeyringPrefix); rErr != nil {
 			// failed with recovery key - return errors
 			var kdErrs []error
 			for _, e := range s.errors() {
 				kdErrs = append(kdErrs, e)
 			}
-			return nil, &activateVolumeWithKeyDataError{kdErrs, rErr}
+			if err != nil {
+				kdErrs = append(kdErrs, err)
+			}
+			return &activateVolumeWithKeyDataError{kdErrs, rErr}
 		}
 		// succeeded with recovery key
-		return nil, ErrRecoveryKeyUsed
+		return ErrRecoveryKeyUsed
 	}
 }
 
-// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at sourceDevicePath and create a
-// mapping with the name volumeName, using the supplied KeyData to recover the disk unlock key from the platform's
-// secure device. This makes use of systemd-cryptsetup.
+// ActivateVolumeWithKeyData attempts to activate the LUKS encrypted container at
+// sourceDevicePath and create a mapping with the name volumeName, using the
+// supplied KeyData to recover the disk unlock key from the platform's secure
+// device. This makes use of systemd-cryptsetup.
 //
-// If activation with the supplied KeyData fails, this function will attempt to activate it with the fallback recovery
-// key instead. The fallback recovery key will be requested using systemd-ask-password. The RecoveryKeyTries field of
-// options specifies how many attempts should be made to activate the volume with the recovery key before failing.
-// If this is set to 0, then no attempts will be made to activate the encrypted volume with the fallback recovery key.
+// If activation with the supplied KeyData fails, this function will attempt to
+// activate it with the fallback recovery key instead. The fallback recovery key is
+// requested via the supplied authRequestor. If an AuthRequestor is not supplied,
+// an error will be returned if the fallback recovery key is required. The
+// RecoveryKeyTries field of options specifies how many attemps to request and use
+// the recovery key will be made before failing. If it is set to 0, then no attempts
+// will be made to request and use the fallback recovery key.
 //
-// If either the PassphraseTries or RecoveryKeyTries fields of options are less than zero, an error will be returned.
+// If either the PassphraseTries or RecoveryKeyTries fields of options are less
+// than zero, an error will be returned. If the Model field of options is nil,
+// an error will be returned.
 //
-// If activation with the supplied KeyData succeeds, a SnapModelChecker will be returned so that the caller can check
-// whether a particular Snap device model has previously been authorized to access the data on this volume. If the
-// fallback recovery key is used for successfully for activation, no SnapModelChecker will be returned and a
+// If the fallback recovery key is used for successfully for activation, an
 // ErrRecoveryKeyUsed error will be returned.
 //
 // If activation fails, an error will be returned.
-func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, options *ActivateVolumeOptions) (SnapModelChecker, error) {
-	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, options)
+//
+// If activation with the supplied KeyData object succeeds (ie, no error is returned),
+// then the supplied SnapModel is authorized to access the data on this volume.
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, key *KeyData, authRequestor AuthRequestor, kdf KDF, options *ActivateVolumeOptions) error {
+	return ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath, []*KeyData{key}, authRequestor, kdf, options)
 }
 
-// ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at sourceDevicePath and create a mapping with the
-// name volumeName, using the fallback recovery key. This makes use of systemd-cryptsetup.
+// ActivateVolumeWithRecoveryKey attempts to activate the LUKS encrypted volume at
+// sourceDevicePath and create a mapping with the name volumeName, using the fallback
+// recovery key. This makes use of systemd-cryptsetup.
 //
-// This function will use systemd-ask-password to request the recovery key. If keyReader is not nil, then an attempt to read the key
-// from this will be made instead by reading all characters until the first newline. The RecoveryKeyTries field of options defines how many
-// attempts should be made to activate the volume with the recovery key before failing.
+// The recovery key is requested via the supplied AuthRequestor. If an AuthRequestor
+// is not supplied, an error will be returned. The RecoveryKeyTries field of options
+// specifies how many attempts to request and use the recovery key will be made before
+// failing.
 //
-// If the RecoveryKeyTries field of options is less than zero, an error will be returned.
-func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, keyReader io.Reader, options *ActivateVolumeOptions) error {
+// If the RecoveryKeyTries field of options is less than zero, an error will be
+// returned.
+func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor AuthRequestor, options *ActivateVolumeOptions) error {
+	if authRequestor == nil {
+		return errors.New("nil authRequestor")
+	}
 	if options.RecoveryKeyTries < 0 {
 		return errors.New("invalid RecoveryKeyTries")
 	}
 
-	return activateWithRecoveryKey(volumeName, sourceDevicePath, keyReader, options.RecoveryKeyTries, options.KeyringPrefix)
+	return activateWithRecoveryKey(volumeName, sourceDevicePath, authRequestor, options.RecoveryKeyTries, options.KeyringPrefix)
 }
 
 // ActivateVolumeWithKey attempts to activate the LUKS encrypted volume at
@@ -458,115 +524,69 @@ func DeactivateVolume(volumeName string) error {
 	return luks2Deactivate(volumeName)
 }
 
-// KDFOptions specifies parameters for the Argon2 KDF used by cryptsetup.
-type KDFOptions struct {
-	// MemoryKiB specifies the maximum memory cost in KiB when ForceIterations
-	// is zero. If ForceIterations is not zero, then this is used as the
-	// memory cost.
-	MemoryKiB int
-
-	// TargetDuration specifies the target duration for the KDF which
-	// is used to benchmark the time and memory cost parameters. If it
-	// is zero then the cryptsetup default is used. If ForceIterations
-	// is not zero then this field is ignored.
-	TargetDuration time.Duration
-
-	// ForceIterations can be used to turn off KDF benchmarking by
-	// setting the time cost directly. If this is zero then the cost
-	// parameters are benchmarked based on the value of TargetDuration.
-	ForceIterations int
-
-	// Parallel sets the maximum number of parallel threads for the
-	// KDF (up to 4). Cryptsetup will adjust this downwards based on
-	// the actual number of CPUs.
-	Parallel int
-}
-
-func (o *KDFOptions) internalOpts() luks2.KDFOptions {
-	return luks2.KDFOptions{
-		TargetDuration:  o.TargetDuration,
-		MemoryKiB:       o.MemoryKiB,
-		ForceIterations: o.ForceIterations,
-		Parallel:        o.Parallel}
-}
-
 // InitializeLUKS2ContainerOptions carries options for initializing LUKS2
 // containers.
 type InitializeLUKS2ContainerOptions struct {
-	// MetadataKiBSize sets the size of the LUKS2 metadata (JSON) area,
-	// expressed in multiples of 1024 bytes. The value includes 4096 bytes
-	// for the binary metadata. According to LUKS2 specification and
-	// cryptsetup(8), only these values are valid: 16, 32, 64, 128, 256,
-	// 512, 1024, 2048 and 4096 KiB.
+	// MetadataKiBSize sets the size of the metadata area in KiB. This
+	//
+	// MetadataKiBSize sets the size of the metadata area in KiB. 4KiB of
+	// this is used for the fixed-size binary header, with the remaining
+	// space being used for the JSON area. Setting this to zero causes
+	// the container to be initialized with the default metadata area size.
+	// If set to a non zero value, it must be a power of 2 between 16KiB
+	// and 4MiB.
 	MetadataKiBSize int
-	// KeyslotsAreaSize sets the size of the LUKS2 binary keyslot area,
-	// expressed in multiples of 1024 bytes. The value must be aligned to
-	// 4096 bytes, with the maximum size of 128MB.
+
+	// KeyslotsAreaKiBSize sets the size of the binary keyslot area in KiB.
+	// Setting this to zero causes the container to be initialized with
+	// the default keyslots area size. If set to a non-zero value, the
+	// value must be a multiple of 4KiB up to a maximum of 128MiB.
 	KeyslotsAreaKiBSize int
 
 	// KDFOptions sets the KDF options for the initial keyslot. If this
-	// is nil then the defaults are used.
+	// is nil then the default settings defined by this package are used
+	// (4 iterations and a memory cost of 32KiB).
 	KDFOptions *KDFOptions
+
+	// InitialKeyslotName sets the name that will be used to identify
+	// the initial keyslot. If this is empty, then the name will be
+	// set to "default".
+	InitialKeyslotName string
 }
 
 func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 	return &luks2.FormatOptions{
 		MetadataKiBSize:     o.MetadataKiBSize,
 		KeyslotsAreaKiBSize: o.KeyslotsAreaKiBSize,
-		KDFOptions:          o.KDFOptions.internalOpts()}
+		KDFOptions:          o.KDFOptions.luksOpts()}
 }
 
-func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
-	if options == nil {
-		return nil
-	}
-
-	if options.MetadataKiBSize != 0 {
-		// metadata size is one of the allowed values (in kB)
-		allowedSizesKB := []int{16, 32, 64, 128, 256, 512, 1024, 2048, 4096}
-		found := false
-		for _, sz := range allowedSizesKB {
-			if options.MetadataKiBSize == sz {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("cannot set metadata size to %v KiB",
-				options.MetadataKiBSize)
-		}
-	}
-	if options.KeyslotsAreaKiBSize != 0 {
-		// minimum size 4096 (4KiB), a multiple of 4096, max size 128MiB
-		sizeValid := options.KeyslotsAreaKiBSize >= 4 &&
-			options.KeyslotsAreaKiBSize <= 128*1024 &&
-			options.KeyslotsAreaKiBSize%4 == 0
-		if !sizeValid {
-			return fmt.Errorf("cannot set keyslots area size to %v KiB",
-				options.KeyslotsAreaKiBSize)
-		}
-	}
-	return nil
-}
-
-// InitializeLUKS2Container will initialize the partition at the specified devicePath as a new LUKS2 container. This can only
-// be called on a partition that isn't mapped. The label for the new LUKS2 container is provided via the label argument.
+// InitializeLUKS2Container will initialize the partition at the specified devicePath
+// as a new LUKS2 container. This can only be called on a partition that isn't mapped.
+// The label for the new LUKS2 container is provided via the label argument.
 //
-// The initial key used for unlocking the container is provided via the key argument, and must be a cryptographically secure
-// random number of at least 32-bytes. The key should be encrypted by using SealKeyToTPM.
+// The container will be configured to encrypt data with AES-256 and XTS block cipher
+// mode.
 //
-// The container will be configured to encrypt data with AES-256 and XTS block cipher mode.
+// The initial key used for unlocking the container is provided via the key argument,
+// and must be a cryptographically secure random number of at least 32-bytes.
+//
+// The initial keyslot will be created with the name specified in the
+// InitialKeyslotName field of options. If this is empty, "default" will be used.
+//
+// The initial key should be protected by some platform-specific mechanism in order
+// to create a KeyData object. XXX(chrisccoulson): Add documentation about how to
+// write KeyData to the new slot once a PR lands with that API.
 //
 // On failure, this will return an error containing the output of the cryptsetup command.
 //
-// WARNING: This function is destructive. Calling this on an existing LUKS container will make the data contained inside of it
-// irretrievable.
-func InitializeLUKS2Container(devicePath, label string, key []byte, options *InitializeLUKS2ContainerOptions) error {
+// WARNING: This function is destructive. Calling this on an existing LUKS container
+// will make the data contained inside of it irretrievable.
+func InitializeLUKS2Container(devicePath, label string, key DiskUnlockKey, options *InitializeLUKS2ContainerOptions) error {
 	if len(key) < 32 {
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
 	}
 
-	// Simplify things a bit
 	// Use a reduced cost for the KDF. This is done because we have a high entropy key rather
 	// than a low entropy passphrase. Setting a higher cost provides no security benefit but
 	// does slow down unlocking. If an adversary is going to attempt to brute force this key,
@@ -574,62 +594,166 @@ func InitializeLUKS2Container(devicePath, label string, key []byte, options *Ini
 	// protection of this key, some of which can be verified without running a KDF. For
 	// example, with a TPM sealed object, you can verify the parent storage key's seed by
 	// computing the key object's HMAC key and verifying the integrity value on the outer wrapper.
-	defaultKdfOptions := &KDFOptions{TargetDuration: 100 * time.Millisecond}
 	if options == nil {
-		options = &InitializeLUKS2ContainerOptions{KDFOptions: defaultKdfOptions}
-	} else if options.KDFOptions == nil {
-		options.KDFOptions = defaultKdfOptions
+		var defaultOptions InitializeLUKS2ContainerOptions
+		options = &defaultOptions
+	} else {
+		// copy options to avoid modification of the supplied struct
+		options = &InitializeLUKS2ContainerOptions{
+			MetadataKiBSize:     options.MetadataKiBSize,
+			KeyslotsAreaKiBSize: options.KeyslotsAreaKiBSize,
+			KDFOptions:          options.KDFOptions,
+			InitialKeyslotName:  options.InitialKeyslotName}
 	}
 
-	if err := validateInitializeLUKS2Options(options); err != nil {
-		return err
+	if options.KDFOptions == nil {
+		options.KDFOptions = &KDFOptions{MemoryKiB: 32, ForceIterations: 4}
 	}
 
-	if err := luks2.Format(devicePath, label, key, options.formatOpts()); err != nil {
-		return xerrors.Errorf("cannot format %s: %w", err)
+	initialKeyslotName := options.InitialKeyslotName
+	if initialKeyslotName == "" {
+		initialKeyslotName = defaultKeyslotName
 	}
 
-	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
+	if err := luks2Format(devicePath, label, key, options.formatOpts()); err != nil {
+		return xerrors.Errorf("cannot format: %w", err)
+	}
+
+	token := luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslot: 0,
+			TokenName:    initialKeyslotName}}
+	if err := luks2ImportToken(devicePath, &token, nil); err != nil {
+		return xerrors.Errorf("cannot import token: %w", err)
+	}
+
+	if err := luks2SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
 		return xerrors.Errorf("cannot change keyslot priority: %w", err)
 	}
 
 	return nil
 }
 
-// AddRecoveryKeyToLUKS2Container adds a fallback recovery key to an existing LUKS2 container created with InitializeLUKS2Container.
-// The recovery key is intended to be used as a fallback mechanism that operates independently of the TPM in order to unlock the
-// container in the event that the key encrypted with SealKeyToTPM cannot be used to unlock it. The devicePath argument specifies
-// the device node for the partition that contains the LUKS2 container. The existing key for the container is provided via the
-// key argument.
-//
-// The recovery key is provided via the recoveryKey argument and must be a cryptographically secure 16-byte number.
-func AddRecoveryKeyToLUKS2Container(devicePath string, key []byte, recoveryKey RecoveryKey, options *KDFOptions) error {
-	if options == nil {
-		options = &KDFOptions{}
+func removeOrphanedTokens(devicePath string, view *luksview.View) {
+	for _, id := range view.OrphanedTokenIds() {
+		luks2RemoveToken(devicePath, id)
 	}
-	return luks2.AddKey(devicePath, key, recoveryKey[:],
-		&luks2.AddKeyOptions{
-			KDFOptions: options.internalOpts(),
-			Slot:       luks2.AnySlot})
 }
 
-// ChangeLUKS2KeyUsingRecoveryKey changes the key normally used for unlocking the LUKS2 container at devicePath. This function
-// is intended to be used after the container is unlocked with the recovery key, in the scenario that the TPM sealed key is
-// invalid and needs to be recreated.
-//
-// In order to perform this action, the recovery key needs to be supplied via the recoveryKey argument. The new key is provided via
-// the key argument. The new key should be stored encrypted with SealKeyToTPM.
-//
-// Note that this operation is not atomic. It will delete the existing key from the container before configuring the keyslot with
-// the new key. This is not a problem, because this function is intended to be called in the scenario that the default key cannot
-// be used to activate the LUKS2 container.
-func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, key []byte) error {
-	if len(key) < 32 {
-		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(key)*8)
+func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey DiskUnlockKey, options *KDFOptions,
+	newToken func(base *luksview.TokenBase) luks2.Token, priority luks2.SlotPriority) error {
+	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	if err != nil {
+		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
 	}
 
-	if err := luks2.KillSlot(devicePath, 0, recoveryKey[:]); err != nil {
-		return xerrors.Errorf("cannot kill existing slot: %w", err)
+	if _, _, exists := view.TokenByName(keyslotName); exists {
+		return errors.New("the specified name is already in use")
+	}
+
+	removeOrphanedTokens(devicePath, view)
+
+	freeSlot := 0
+	for _, slot := range view.UsedKeyslots() {
+		if slot != freeSlot {
+			break
+		}
+		freeSlot++
+	}
+
+	if err := luks2AddKey(devicePath, existingKey, newKey, &luks2.AddKeyOptions{KDFOptions: options.luksOpts(), Slot: freeSlot}); err != nil {
+		return xerrors.Errorf("cannot add key: %w", err)
+	}
+
+	// XXX: If we fail between AddKey and ImportToken, then we end up with a
+	//  used keyslot that cannot be identified and no way to roll back the
+	//  interrupted transaction safely. Ideally we'd be able to add a key and
+	//  token in a single atomic operation, but this isn't even something that
+	//  is possible with the libcryptsetup API.
+	//
+	//  I have an idea for how to make this more resilient and avoid ending up
+	//  in this state in the event of an interruption, but it adds a bit more
+	//  complexity and is for a future PR, as it's a bit of an edge case. But
+	//  it's something like this:
+	//  - Select an unused keyslot ID.
+	//  - Add a transient token associated with an existing keyslot (there will
+	//    always be at least one in this context. A token has to be associated
+	//    with an active slot at import time). The new token will reference the
+	//    selected unused keyslot ID in a new field.
+	//  - Create the keyslot at the new keyslot ID.
+	//  - Import the proper token associated with the new keyslot.
+	//  - Delete the transient token.
+	//
+	//  This should ensure we can always roll back an interrupted operation to
+	//  add a new key (or complete it if we've imported the proper token). It's
+	//  not fully atomic (no transaction consisting of multiple cryptsetup
+	//  operations is), but that's ok - on Ubuntu Core, all changes to the
+	//  LUKS container should go through secboot. If we have multiple processes
+	//  that could make changes (eg, snapd and a hypothetical fdectl or something),
+	//  then we can add some locking to serialize transactions.
+	//
+	// Or, we could propose an API to libcrypsetup and the corresponding changes
+	// to cryptsetup instead to support adding a keyslot with an initial token in
+	// a single atomic transaction ¯\_(ツ)_/¯
+
+	tokenBase := luksview.TokenBase{
+		TokenName:    keyslotName,
+		TokenKeyslot: freeSlot}
+	if err := luks2ImportToken(devicePath, newToken(&tokenBase), nil); err != nil {
+		return xerrors.Errorf("cannot import token: %w", err)
+	}
+
+	if err := luks2SetSlotPriority(devicePath, freeSlot, priority); err != nil {
+		return xerrors.Errorf("cannot change keyslot priority: %w", err)
+	}
+
+	return nil
+}
+
+func listLUKS2ContainerKeyNames(devicePath string, tokenType luks2.TokenType) ([]string, error) {
+	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+	}
+
+	var names []string
+	for _, name := range view.TokenNames() {
+		token, _, _ := view.TokenByName(name)
+		if token.Type() != tokenType {
+			continue
+		}
+		names = append(names, name)
+	}
+
+	return names, nil
+}
+
+// AddLUKS2ContainerUnlockKey creates a keyslot with the specified name on
+// the LUKS2 container at the specified path, and uses it to protect the master
+// key with the supplied key. The created keyslot is one that will normally be
+// used for unlocking the specified LUKS2 container.
+//
+// If the specified name is empty, the name "default" will be used.
+//
+// The new key should be a cryptographically strong random number of at least
+// 32-bytes.
+//
+// If a keyslot with the supplied name already exists, an error will be returned.
+// The keyslot must first be deleted with DeleteLUKS2ContainerKey or renamed
+// with RenameLUKS2ContainerKey.
+//
+// In order to perform this action, an existing key must be supplied.
+//
+// The new key should be protected by some platform-specific mechanism in
+// order to create a KeyData object. XXX(chrisccoulson): Add documentation about
+// how to write KeyData to the new slot once a PR lands with that API.
+func AddLUKS2ContainerUnlockKey(devicePath, keyslotName string, existingKey, newKey DiskUnlockKey, options *KDFOptions) error {
+	if len(newKey) < 32 {
+		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(newKey)*8)
+	}
+
+	if keyslotName == "" {
+		keyslotName = defaultKeyslotName
 	}
 
 	// Use a reduced cost for the KDF. This is done because we have a high entropy key rather
@@ -639,15 +763,139 @@ func ChangeLUKS2KeyUsingRecoveryKey(devicePath string, recoveryKey RecoveryKey, 
 	// protection of this key, some of which can be verified without running a KDF. For
 	// example, with a TPM sealed object, you can verify the parent storage key's seed by
 	// computing the key object's HMAC key and verifying the integrity value on the outer wrapper.
-	options := luks2.AddKeyOptions{
-		KDFOptions: luks2.KDFOptions{TargetDuration: 100 * time.Millisecond},
-		Slot:       0}
-	if err := luks2.AddKey(devicePath, recoveryKey[:], key, &options); err != nil {
-		return xerrors.Errorf("cannot add key: %w", err)
+	if options == nil {
+		options = &KDFOptions{MemoryKiB: 32, ForceIterations: 4}
 	}
 
-	if err := luks2.SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
-		return xerrors.Errorf("cannot change keyslot priority: %w", err)
+	return addLUKS2ContainerKey(devicePath, keyslotName, existingKey, newKey, options, func(base *luksview.TokenBase) luks2.Token {
+		return &luksview.KeyDataToken{TokenBase: *base}
+	}, luks2.SlotPriorityHigh)
+}
+
+// ListLUKS2ContainerUnlockKeyNames lists the names of keyslots on the specified
+// LUKS2 container configured as normal unlock slots (the keys associated with
+// these should be protected by the platform's secure device).
+func ListLUKS2ContainerUnlockKeyNames(devicePath string) ([]string, error) {
+	return listLUKS2ContainerKeyNames(devicePath, luksview.KeyDataTokenType)
+}
+
+// AddLUKS2ContainerRecoveryKey creates a fallback recovery keyslot with the
+// specified name on the LUKS2 container at the specified path and uses it to
+// protect the LUKS master key with the supplied recovery key. The keyslot can
+// be used to unlock the container in scenarios where it cannot be unlocked
+// using a platform protected key.
+//
+// If the specified name is empty, the name "default-recovery" will be used.
+//
+// The recovery key must be generated by a cryptographically strong random
+// number source.
+//
+// If a keyslot with the supplied name already exists, an error will be returned.
+// The keyslot must first be deleted with DeleteLUKS2ContainerKey or renamed
+// with RenameLUKS2ContainerKey.
+//
+// In order to perform this action, an existing key must be supplied.
+func AddLUKS2ContainerRecoveryKey(devicePath, keyslotName string, existingKey DiskUnlockKey, recoveryKey RecoveryKey, options *KDFOptions) error {
+	if keyslotName == "" {
+		keyslotName = defaultRecoveryKeyslotName
+	}
+
+	if options == nil {
+		options = &KDFOptions{}
+	}
+
+	return addLUKS2ContainerKey(devicePath, keyslotName, existingKey, recoveryKey[:], options, func(base *luksview.TokenBase) luks2.Token {
+		return &luksview.RecoveryToken{TokenBase: *base}
+	}, luks2.SlotPriorityNormal)
+}
+
+// ListLUKS2ContainerRecoveryKeyNames lists the names of keyslots on the specified
+// LUKS2 container configured as recovery slots.
+func ListLUKS2ContainerRecoveryKeyNames(devicePath string) ([]string, error) {
+	return listLUKS2ContainerKeyNames(devicePath, luksview.RecoveryTokenType)
+}
+
+// DeleteLUKS2ContainerKey deletes the keyslot with the specified name from the
+// LUKS2 container at the specified path. An existing key associated with a different
+// keyslot must be supplied. This will return an error if the container only has a
+// single keyslot remaining.
+func DeleteLUKS2ContainerKey(devicePath, keyslotName string, existingKey DiskUnlockKey) error {
+	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	if err != nil {
+		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+	}
+
+	token, id, exists := view.TokenByName(keyslotName)
+	if !exists {
+		return errors.New("no key with the specified name exists")
+	}
+
+	if len(view.TokenNames()) == 1 {
+		// This is stricter than not permitting the deletion of the last keyslot
+		// - it intentionally does not permit deleting the last secboot named
+		// keyslot, even if the container has other keyslots that might have
+		// been created outside of this package.
+		return errors.New("cannot kill last remaining slot")
+	}
+
+	removeOrphanedTokens(devicePath, view)
+
+	slot := token.Keyslots()[0]
+	if err := luks2KillSlot(devicePath, slot, existingKey); err != nil {
+		return xerrors.Errorf("cannot kill existing slot %d: %w", slot, err)
+	}
+
+	// KillSlot will clear the keyslot field from the associated token so
+	// that we can identify it as orphaned and complete the transaction in
+	// the future if we are interrupted between KillSlot and RemoveToken.
+
+	if err := luks2RemoveToken(devicePath, id); err != nil {
+		return xerrors.Errorf("cannot remove existing token %d: %w", id, err)
+	}
+
+	return nil
+}
+
+// RenameLUKS2Container key renames the keyslot with the specified oldName on
+// the LUKS2 container at the specified path.
+func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
+	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	if err != nil {
+		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+	}
+
+	removeOrphanedTokens(devicePath, view)
+
+	token, id, exists := view.TokenByName(oldName)
+	if !exists {
+		return errors.New("no key with the specified name exists")
+	}
+
+	if _, _, exists := view.TokenByName(newName); exists {
+		return errors.New("the new name is already in use")
+	}
+
+	var newToken luks2.Token
+
+	switch t := token.(type) {
+	case *luksview.KeyDataToken:
+		newToken = &luksview.KeyDataToken{
+			TokenBase: luksview.TokenBase{
+				TokenKeyslot: t.TokenKeyslot,
+				TokenName:    newName},
+			Priority: t.Priority,
+			Data:     t.Data}
+	case *luksview.RecoveryToken:
+		newToken = &luksview.RecoveryToken{
+			TokenBase: luksview.TokenBase{
+				TokenKeyslot: t.TokenKeyslot,
+				TokenName:    newName}}
+	default:
+		return errors.New("cannot rename key with unexpected token type")
+	}
+
+	if err := luks2ImportToken(devicePath, newToken, &luks2.ImportTokenOptions{Id: id, Replace: true}); err != nil {
+		return xerrors.Errorf("cannot import new token: %w", err)
 	}
 
 	return nil

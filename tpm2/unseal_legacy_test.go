@@ -28,6 +28,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
@@ -54,7 +55,7 @@ func (s *unsealSuite) SetUpTest(c *C) {
 var _ = Suite(&unsealSuite{})
 
 func (s *unsealSuite) testUnsealFromTPM(c *C, params *KeyCreationParams) {
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	path := filepath.Join(c.MkDir(), "key")
@@ -89,7 +90,7 @@ func (s *unsealSuite) TestUnsealFromTPMNoPCRPolicyCounter(c *C) {
 }
 
 func (s *unsealSuite) testUnsealFromTPMNoValidSRK(c *C, prepareSrk func()) {
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	path := filepath.Join(c.MkDir(), "key")
@@ -139,7 +140,7 @@ func (s *unsealSuite) testUnsealImportableFromTPM(c *C, params *KeyCreationParam
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)
 	c.Assert(err, IsNil)
 
-	key := make([]byte, 32)
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	path := filepath.Join(c.MkDir(), "key")
@@ -166,8 +167,8 @@ func (s *unsealSuite) TestUnsealImportableFromTPMNilPCRProfile(c *C) {
 	s.testUnsealImportableFromTPM(c, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
 }
 
-func (s *unsealSuite) testUnsealFromTPMErrorHandling(c *C, prepare func(string, PolicyAuthKey)) error {
-	key := make([]byte, 32)
+func (s *unsealSuite) testUnsealFromTPMErrorHandling(c *C, prepare func(string, secboot.AuxiliaryKey)) error {
+	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
 	path := filepath.Join(c.MkDir(), "key")
@@ -188,7 +189,7 @@ func (s *unsealSuite) testUnsealFromTPMErrorHandling(c *C, prepare func(string, 
 }
 
 func (s *unsealSuite) TestUnsealFromTPMErrorHandlingLockout(c *C) {
-	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ PolicyAuthKey) {
+	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.AuxiliaryKey) {
 		// Put the TPM in DA lockout mode
 		c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	})
@@ -196,17 +197,17 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingLockout(c *C) {
 }
 
 func (s *unsealSuite) TestUnsealFromTPMErrorHandlingInvalidPCRProfile(c *C) {
-	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ PolicyAuthKey) {
+	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.AuxiliaryKey) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 	})
 	c.Check(err, tpm2_testutil.ConvertibleTo, InvalidKeyDataError{})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
+	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
 func (s *unsealSuite) TestUnsealFromTPMErrorHandlingRevokedPolicy(c *C) {
-	err := s.testUnsealFromTPMErrorHandling(c, func(path string, authKey PolicyAuthKey) {
+	err := s.testUnsealFromTPMErrorHandling(c, func(path string, authKey secboot.AuxiliaryKey) {
 		k, err := ReadSealedKeyObjectFromFile(path)
 		c.Assert(err, IsNil)
 		c.Check(k.UpdatePCRProtectionPolicy(s.TPM(), authKey, nil), IsNil)
@@ -218,10 +219,10 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingRevokedPolicy(c *C) {
 }
 
 func (s *unsealSuite) TestUnsealFromTPMErrorHandlingSealedKeyAccessLocked(c *C) {
-	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ PolicyAuthKey) {
+	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.AuxiliaryKey) {
 		c.Check(BlockPCRProtectionPolicies(s.TPM(), []int{23}), IsNil)
 	})
 	c.Check(err, tpm2_testutil.ConvertibleTo, InvalidKeyDataError{})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
+	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }

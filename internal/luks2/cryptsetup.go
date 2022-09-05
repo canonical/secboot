@@ -22,11 +22,13 @@ package luks2
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/snapcore/snapd/osutil"
@@ -35,13 +37,46 @@ import (
 )
 
 const (
-	// AnySlot tells a command to automatically choose an appropriate slot
+	// AnySlot tells AddKey to automatically choose an appropriate slot
 	// as opposed to hard coding one.
 	AnySlot = -1
+
+	// AnyId tells ImportToken to automatically choose an appropriate token
+	// ID as opposed to hard coding one.
+	AnyId = -1
 )
 
 var (
+	// ErrMissingCryptsetupFeature is returned from some functions that make
+	// use of the system's cryptsetup binary, if that binary is missing some
+	// required features.
+	ErrMissingCryptsetupFeature = errors.New("cannot perform the requested operation because a required feature is missing from cryptsetup")
+
+	features     Features
+	featuresOnce sync.Once
+
 	keySize = 64
+)
+
+// Features indicates the set of features supported by this package,
+// determined by the features of the system's cryptsetup binary.
+type Features int
+
+const (
+	// FeatureHeaderSizeSetting indicates that the header size settings can be
+	// specified when using the Format API. This was introduced to cryptsetup by:
+	// https://gitlab.com/cryptsetup/cryptsetup/-/commit/ec07927b55fa83f8a3980ea7b0cc0dd8032927f0
+	FeatureHeaderSizeSetting Features = 1 << iota
+
+	// FeatureTokenImport indicates that ImportToken can be used. Token imports were
+	// introduced to cryptsetup by
+	// https://gitlab.com/cryptsetup/cryptsetup/-/commit/cc27088df92b669df7649217c4a64dc72f21987a
+	FeatureTokenImport
+
+	// FeatureTokenReplace indicates that tokens can be atomically replaced with
+	// ImportToken (yet to be implemented). This was introduced to cryptsetup by:
+	// https://gitlab.com/cryptsetup/cryptsetup/-/commit/98cd52c8d7bddf5b4c1ff775158a48bbb522acb2
+	FeatureTokenReplace
 )
 
 // cryptsetupCmd is a helper for running the cryptsetup command. If stdin is supplied, data read
@@ -74,6 +109,34 @@ func cryptsetupCmd(stdin io.Reader, callback func(cmd *exec.Cmd) error, args ...
 	}
 
 	return nil
+}
+
+// DetectCryptsetupFeatures returns the features supported by the cryptsetup binary
+// on this system.
+func DetectCryptsetupFeatures() Features {
+	featuresOnce.Do(func() {
+		features = 0
+
+		cmd := exec.Command("cryptsetup", "--version")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			var major, minor, patch int
+			n, _ := fmt.Sscanf(string(out), "cryptsetup %d.%d.%d", &major, &minor, &patch)
+			if n == 3 {
+				if major >= 3 || (major == 2 && minor >= 1) {
+					features |= FeatureHeaderSizeSetting
+				}
+				if major >= 3 || (major == 2 && minor >= 1) || (major == 2 && minor == 0 && patch >= 3) {
+					features |= FeatureTokenImport
+				}
+			}
+		}
+		if err := cryptsetupCmd(nil, nil, "--test-args", "token", "import", "--token-id", "0",
+			"--token-replace", "/dev/null"); err == nil {
+			features |= FeatureTokenReplace
+		}
+	})
+	return features
 }
 
 // KDFOptions specifies parameters for the Argon2 KDF.
@@ -145,6 +208,53 @@ type FormatOptions struct {
 	KDFOptions KDFOptions
 }
 
+func (options *FormatOptions) validate() error {
+	if (options.MetadataKiBSize != 0 || options.KeyslotsAreaKiBSize != 0) &&
+		DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
+		return ErrMissingCryptsetupFeature
+	}
+
+	if options.MetadataKiBSize != 0 {
+		// Verify that the size is a power of 2 between 16KiB and 4MiB.
+		found := false
+		for sz := uint(16); sz <= uint(4*1024); sz <<= 1 {
+			if uint(options.MetadataKiBSize) == sz {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("cannot set metadata size to %v KiB", options.MetadataKiBSize)
+		}
+	}
+
+	if options.KeyslotsAreaKiBSize != 0 {
+		// Verify that the size is sufficient for a single keyslot, not more than 128MiB
+		// and a multiple of 4KiB.
+		if options.KeyslotsAreaKiBSize < (keySize*4000)/1024 ||
+			options.KeyslotsAreaKiBSize > 128*1024 || options.KeyslotsAreaKiBSize%4 != 0 {
+			return fmt.Errorf("cannot set keyslots area size to %v KiB", options.KeyslotsAreaKiBSize)
+		}
+	}
+
+	return nil
+}
+
+func (options *FormatOptions) appendArguments(args []string) []string {
+	args = options.KDFOptions.appendArguments(args)
+
+	if options.MetadataKiBSize != 0 {
+		// override the default metadata area size if specified
+		args = append(args, "--luks2-metadata-size", fmt.Sprintf("%dk", options.MetadataKiBSize))
+	}
+	if options.KeyslotsAreaKiBSize != 0 {
+		// override the default keyslots area size if specified
+		args = append(args, "--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
+	}
+
+	return args
+}
+
 // Format will initialize a LUKS2 container with the specified options and set the primary key to the
 // supplied key. The label for the new container will be set to the supplied label. This can only be
 // called on a device that is not mapped.
@@ -158,6 +268,10 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 	if opts == nil {
 		var defaultOpts FormatOptions
 		opts = &defaultOpts
+	}
+
+	if err := opts.validate(); err != nil {
+		return err
 	}
 
 	args := []string{
@@ -174,17 +288,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		// set LUKS2 label
 		"--label", label}
 
-	// apply KDF options
-	args = opts.KDFOptions.appendArguments(args)
-
-	if opts.MetadataKiBSize != 0 {
-		// override the default metadata area size if specified
-		args = append(args, "--luks2-metadata-size", fmt.Sprintf("%dk", opts.MetadataKiBSize))
-	}
-	if opts.KeyslotsAreaKiBSize != 0 {
-		// override the default keyslots area size if specified
-		args = append(args, "--luks2-keyslots-size", fmt.Sprintf("%dk", opts.KeyslotsAreaKiBSize))
-	}
+	// apply options
+	args = opts.appendArguments(args)
 
 	args = append(args,
 		// device to format
@@ -277,14 +382,53 @@ func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) 
 	return cryptsetupCmd(bytes.NewReader(key), writeExistingKeyToFifo, args...)
 }
 
+// ImportTokenOptions provides the options for importing a JSON token into a LUKS2 header.
+type ImportTokenOptions struct {
+	// Id is the token ID to use. Note that the default value is slot 0. In
+	// order to automatically choose an ID, use AnyId.
+	Id int
+
+	// Replace will overwrite an existing token at the specified slot.
+	Replace bool
+}
+
 // ImportToken imports the supplied token in to the JSON metadata area of the specified LUKS2 container.
-func ImportToken(devicePath string, token Token) error {
+// This requires FeatureTokenImport. If the Replace field of options is set, then FeatureTokenReplace
+// is required.
+func ImportToken(devicePath string, token Token, options *ImportTokenOptions) error {
+	if DetectCryptsetupFeatures()&FeatureTokenImport == 0 {
+		return ErrMissingCryptsetupFeature
+	}
+
+	if options == nil {
+		options = &ImportTokenOptions{Id: AnyId}
+	}
+
+	if options.Replace {
+		if DetectCryptsetupFeatures()&FeatureTokenReplace == 0 {
+			return ErrMissingCryptsetupFeature
+		}
+		if options.Id == AnyId {
+			// Require replace to specify a slot
+			return errors.New("replace requires a token ID")
+		}
+	}
+
 	tokenJSON, err := json.Marshal(token)
 	if err != nil {
 		return xerrors.Errorf("cannot serialize token: %w", err)
 	}
 
-	return cryptsetupCmd(bytes.NewReader(tokenJSON), nil, "token", "import", devicePath)
+	args := []string{"token", "import"}
+	if options.Id != AnyId {
+		args = append(args, "--token-id", strconv.Itoa(options.Id))
+	}
+	if options.Replace {
+		args = append(args, "--token-replace")
+	}
+	args = append(args, devicePath)
+
+	return cryptsetupCmd(bytes.NewReader(tokenJSON), nil, args...)
 }
 
 // RemoveToken removes the token with the supplied ID from the JSON metadata area of the specified
@@ -294,8 +438,10 @@ func RemoveToken(devicePath string, id int) error {
 }
 
 // KillSlot erases the keyslot with the supplied slot number from the specified LUKS2 container.
-// Note that a valid key for a remaining keyslot must be supplied, in order to prevent the last
-// keyslot from being erased.
+// Note that a valid key for a remaining keyslot must be supplied.
+//
+// WARNING: This function will remove the last keyslot if the key associated with it
+// is supplied, which will make the encrypted data permanently inaccessible.
 func KillSlot(devicePath string, slot int, key []byte) error {
 	return cryptsetupCmd(bytes.NewReader(key), nil, "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(slot))
 }

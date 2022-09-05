@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021 Canonical Ltd
+ * Copyright (C) 2021-2022 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -35,12 +35,17 @@ import (
 
 var sha3_384oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 9}
 
+// ClassicModelGradeMask is ORed with the model grade code when
+// measuring a classic snap model.
+const ClassicModelGradeMask uint32 = 0x80000000
+
 // SnapModel exposes the details of a snap device model that are bound
 // to an encrypted container.
 type SnapModel interface {
 	Series() string
 	BrandID() string
 	Model() string
+	Classic() bool
 	Grade() asserts.ModelGrade
 	SignKeyID() string
 }
@@ -74,7 +79,11 @@ func computeSnapModelHMAC(alg crypto.Hash, key []byte, model SnapModel) (snapMod
 	h = hmac.New(func() hash.Hash { return alg.New() }, key)
 	h.Write(d)
 	h.Write([]byte(model.Series()))
-	binary.Write(h, binary.LittleEndian, model.Grade().Code())
+	gradeCode := model.Grade().Code()
+	if model.Classic() {
+		gradeCode |= ClassicModelGradeMask
+	}
+	binary.Write(h, binary.LittleEndian, gradeCode)
 
 	return h.Sum(nil), nil
 }

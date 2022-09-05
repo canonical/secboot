@@ -73,8 +73,8 @@
 		{
 			"checksumSHA1": "0wuA3btHc67a/DaiXem7zlpPRw4=",
 			"path": "github.com/canonical/go-tpm2/internal",
-			"revision": "3e2b334e4aa6bc83175ebe0d0cc9524140737632",
-			"revisionTime": "2021-08-24T13:09:21Z"
+			"revision": "1e41994e137391ff77b39c416e625575afb18872",
+			"revisionTime": "2021-09-30T14:01:45Z"
 		},
 		{
 			"checksumSHA1": "hcs0X8rKQni3LBBPquw7GZ7KF4A=",
@@ -173,14 +173,16 @@
 			"revisionTime": "2020-04-20T18:59:55Z"
 		},
 		{
-			"checksumSHA1": "jgludPPsAFSrXo5BMucAcj7A8gY=",
+			"checksumSHA1": "wEB8YkRMFzTAGCH0VxYcaaSFD3c=",
 			"path": "github.com/snapcore/snapd/asserts",
-			"revision": "cba748d1244e6861a5e407f7abe90fb2f76b6f80",
-			"revisionTime": "2020-04-20T18:59:55Z"
+			"revision": "4a1f4c93fc855b63d4f324b6c8fd02a5b56f53ff",
+			"revisionTime": "2022-07-12T14:41:13Z"
 		},
 		{
+			"checksumSHA1": "0YzOVu0qp5+Yv9cgkivWq+U0dtw=",
 			"path": "github.com/snapcore/snapd/asserts/internal",
-			"revision": ""
+			"revision": "4a1f4c93fc855b63d4f324b6c8fd02a5b56f53ff",
+			"revisionTime": "2022-07-12T14:41:13Z"
 		},
 		{
 			"checksumSHA1": "3Db7Lb2ueEX1hc6WoIM79lk6lbM=",
@@ -219,22 +221,22 @@
 			"revisionTime": "2020-04-20T18:59:55Z"
 		},
 		{
-			"checksumSHA1": "wtg8UKbHVL8qRZ8ggQb+cDQlVNo=",
+			"checksumSHA1": "s/Xqd0zMDeZa6gSNSaz01JPlCn0=",
 			"path": "github.com/snapcore/snapd/osutil",
-			"revision": "cba748d1244e6861a5e407f7abe90fb2f76b6f80",
-			"revisionTime": "2020-04-20T18:59:55Z"
+			"revision": "4a1f4c93fc855b63d4f324b6c8fd02a5b56f53ff",
+			"revisionTime": "2022-07-12T14:41:13Z"
 		},
 		{
 			"checksumSHA1": "uviyHf48hcnZN/cGKNUxmvqLISQ=",
 			"path": "github.com/snapcore/snapd/osutil/mount",
-			"revision": "cba748d1244e6861a5e407f7abe90fb2f76b6f80",
-			"revisionTime": "2020-04-20T18:59:55Z"
+			"revision": "4a1f4c93fc855b63d4f324b6c8fd02a5b56f53ff",
+			"revisionTime": "2022-07-12T14:41:13Z"
 		},
 		{
-			"checksumSHA1": "EYRtD9fNCHSSnWkkZSNTAB63IhQ=",
+			"checksumSHA1": "q20WkTcG9ibM58/gdP+73OQjIW0=",
 			"path": "github.com/snapcore/snapd/osutil/sys",
-			"revision": "cba748d1244e6861a5e407f7abe90fb2f76b6f80",
-			"revisionTime": "2020-04-20T18:59:55Z"
+			"revision": "4a1f4c93fc855b63d4f324b6c8fd02a5b56f53ff",
+			"revisionTime": "2022-07-12T14:41:13Z"
 		},
 		{
 			"checksumSHA1": "1LtMtOxaLmu0tGueD4kzOVgUpjs=",
@@ -273,10 +275,10 @@
 			"revisionTime": "2020-04-20T18:59:55Z"
 		},
 		{
-			"checksumSHA1": "bvtO/K0/j2AzLlIVIoTSMMKoWdg=",
+			"checksumSHA1": "+B0W5/en/RsscyEDhyMddlQIWio=",
 			"path": "github.com/snapcore/snapd/snap/naming",
-			"revision": "cba748d1244e6861a5e407f7abe90fb2f76b6f80",
-			"revisionTime": "2020-04-20T18:59:55Z"
+			"revision": "4a1f4c93fc855b63d4f324b6c8fd02a5b56f53ff",
+			"revisionTime": "2022-07-12T14:41:13Z"
 		},
 		{
 			"checksumSHA1": "vm3N9KUtggnspT4hGPd3Nw3yTHM=",

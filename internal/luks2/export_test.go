@@ -22,6 +22,7 @@ package luks2
 import (
 	"io"
 	"os"
+	"sync"
 
 	"golang.org/x/sys/unix"
 )
@@ -29,6 +30,10 @@ import (
 var (
 	AcquireSharedLock = acquireSharedLock
 )
+
+func (o *FormatOptions) Validate() error {
+	return o.validate()
+}
 
 func MockDataDeviceInfo(stMock *unix.Stat_t) (restore func()) {
 	origFstatFn := dataDeviceFstat
@@ -79,4 +84,8 @@ func MockStderr(w io.Writer) (restore func()) {
 	return func() {
 		stderr = origStderr
 	}
+}
+
+func ResetCryptsetupFeatures() {
+	featuresOnce = sync.Once{}
 }
