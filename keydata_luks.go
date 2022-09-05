@@ -37,23 +37,6 @@ type LUKS2KeyDataReader struct {
 	*bytes.Reader
 }
 
-func (r *LUKS2KeyDataReader) ReadableName() string {
-	return r.name
-}
-
-// KeyslotID indicates the keyslot ID associated with the token from which this
-// KeyData is read.
-func (r *LUKS2KeyDataReader) KeyslotID() int {
-	return r.slot
-}
-
-// Priority indicates the priority of the keyslot associated with the token from
-// which this KeyData is read. The default priority is 0 with higher numbers
-// indicating a higher priority.
-func (r *LUKS2KeyDataReader) Priority() int {
-	return r.priority
-}
-
 // NewLUKS2KeyDataReader is used to read a LUKS2 token containing key data with
 // the specified name on the specified LUKS2 container.
 func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error) {
@@ -83,6 +66,23 @@ func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error)
 		Reader:   bytes.NewReader(kdToken.Data)}, nil
 }
 
+func (r *LUKS2KeyDataReader) ReadableName() string {
+	return r.name
+}
+
+// KeyslotID indicates the keyslot ID associated with the token from which this
+// KeyData is read.
+func (r *LUKS2KeyDataReader) KeyslotID() int {
+	return r.slot
+}
+
+// Priority indicates the priority of the keyslot associated with the token from
+// which this KeyData is read. The default priority is 0 with higher numbers
+// indicating a higher priority.
+func (r *LUKS2KeyDataReader) Priority() int {
+	return r.priority
+}
+
 // LUKS2KeyDataWriter provides a mechanism to write a KeyData to a LUKS2 token.
 type LUKS2KeyDataWriter struct {
 	devicePath string
@@ -91,17 +91,6 @@ type LUKS2KeyDataWriter struct {
 	name       string
 	priority   int
 	*bytes.Buffer
-}
-
-func (w *LUKS2KeyDataWriter) Commit() error {
-	token := &luksview.KeyDataToken{
-		TokenBase: luksview.TokenBase{
-			TokenKeyslot: w.slot,
-			TokenName:    w.name},
-		Priority: w.priority,
-		Data:     w.Bytes()}
-
-	return luks2ImportToken(w.devicePath, token, &luks2.ImportTokenOptions{Id: w.id, Replace: true})
 }
 
 // NewLUKS2KeyDataWriter creates a new LUKS2KeyDataWriter for atomically writing a
@@ -133,4 +122,15 @@ func NewLUKS2KeyDataWriter(devicePath, name string, priority int) (*LUKS2KeyData
 		name:       name,
 		priority:   priority,
 		Buffer:     new(bytes.Buffer)}, nil
+}
+
+func (w *LUKS2KeyDataWriter) Commit() error {
+	token := &luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslot: w.slot,
+			TokenName:    w.name},
+		Priority: w.priority,
+		Data:     w.Bytes()}
+
+	return luks2ImportToken(w.devicePath, token, &luks2.ImportTokenOptions{Id: w.id, Replace: true})
 }
