@@ -100,7 +100,7 @@ type LUKS2KeyDataWriter struct {
 // The container must already contain a token of the correct type with the supplied
 // name. The initial token is bootstrapped by InitializeLUKS2Container or
 // SetLUKS2ContainerUnlockKey.
-func NewLUKS2KeyDataWriter(devicePath, name string, priority int) (*LUKS2KeyDataWriter, error) {
+func NewLUKS2KeyDataWriter(devicePath, name string) (*LUKS2KeyDataWriter, error) {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot obtain LUKS2 header view: %w", err)
@@ -111,7 +111,8 @@ func NewLUKS2KeyDataWriter(devicePath, name string, priority int) (*LUKS2KeyData
 		return nil, errors.New("a keyslot with the specified name does not exist")
 	}
 
-	if token.Type() != luksview.KeyDataTokenType {
+	kdToken, ok := token.(*luksview.KeyDataToken)
+	if !ok {
 		return nil, errors.New("named keyslot has the wrong type")
 	}
 
@@ -120,7 +121,7 @@ func NewLUKS2KeyDataWriter(devicePath, name string, priority int) (*LUKS2KeyData
 		id:         id,
 		slot:       token.Keyslots()[0],
 		name:       name,
-		priority:   priority,
+		priority:   kdToken.Priority,
 		Buffer:     new(bytes.Buffer)}, nil
 }
 
@@ -133,4 +134,14 @@ func (w *LUKS2KeyDataWriter) Commit() error {
 		Data:     w.Bytes()}
 
 	return luks2ImportToken(w.devicePath, token, &luks2.ImportTokenOptions{Id: w.id, Replace: true})
+}
+
+// SetPriority sets the priority for the updated KeyData that is written using
+// this writer. It must be called before Commit.
+//
+// Zero is the default priority, with higher numbers indicating a higher
+// priority. A negative priority indicates that the KeyData shouldn't be used
+// for activation unless referred to explicitly.
+func (w *LUKS2KeyDataWriter) SetPriority(priority int) {
+	w.priority = priority
 }

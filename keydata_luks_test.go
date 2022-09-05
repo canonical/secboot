@@ -82,11 +82,12 @@ func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id i
 }
 
 type testKeyDataLuksWriterData struct {
-	id       int
-	path     string
-	name     string
-	slot     int
-	priority int
+	id           int
+	path         string
+	name         string
+	slot         int
+	initPriority int
+	setPriority  int
 }
 
 func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
@@ -97,7 +98,8 @@ func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
 			data.id: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
 					TokenName:    data.name,
-					TokenKeyslot: data.slot}},
+					TokenKeyslot: data.slot},
+				Priority: data.initPriority},
 		},
 		keyslots: map[int][]byte{data.slot: key}}
 
@@ -105,8 +107,12 @@ func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	w, err := NewLUKS2KeyDataWriter(data.path, data.name, data.priority)
+	w, err := NewLUKS2KeyDataWriter(data.path, data.name)
 	c.Assert(err, IsNil)
+
+	if data.initPriority != data.setPriority {
+		w.SetPriority(data.setPriority)
+	}
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
@@ -114,66 +120,82 @@ func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
 		fmt.Sprint("ImportToken(", data.path, ",", &luks2.ImportTokenOptions{Id: data.id, Replace: true}, ")"),
 	})
 
-	s.checkKeyDataJSONFromLUKSToken(c, data.path, data.id, data.slot, data.name, data.priority, protected, 0)
+	s.checkKeyDataJSONFromLUKSToken(c, data.path, data.id, data.slot, data.name, data.setPriority, protected, 0)
 }
 
 func (s *keyDataLuksSuite) TestWriter(c *C) {
 	s.testWriter(c, &testKeyDataLuksWriterData{
-		id:       0,
-		path:     "/dev/sda1",
-		name:     "foo",
-		slot:     0,
-		priority: 1,
+		id:           0,
+		path:         "/dev/sda1",
+		name:         "foo",
+		slot:         0,
+		initPriority: 1,
+		setPriority:  1,
 	})
 }
 
 func (s *keyDataLuksSuite) TestWriterDifferentId(c *C) {
 	s.testWriter(c, &testKeyDataLuksWriterData{
-		id:       2,
-		path:     "/dev/sda1",
-		name:     "foo",
-		slot:     0,
-		priority: 1,
+		id:           2,
+		path:         "/dev/sda1",
+		name:         "foo",
+		slot:         0,
+		initPriority: 1,
+		setPriority:  1,
 	})
 }
 
 func (s *keyDataLuksSuite) TestWriterDifferentPath(c *C) {
 	s.testWriter(c, &testKeyDataLuksWriterData{
-		id:       0,
-		path:     "/dev/nvme0n1p1",
-		name:     "foo",
-		slot:     0,
-		priority: 1,
+		id:           0,
+		path:         "/dev/nvme0n1p1",
+		name:         "foo",
+		slot:         0,
+		initPriority: 1,
+		setPriority:  1,
 	})
 }
 
 func (s *keyDataLuksSuite) TestWriterDifferentName(c *C) {
 	s.testWriter(c, &testKeyDataLuksWriterData{
-		id:       0,
-		path:     "/dev/sda1",
-		name:     "bar",
-		slot:     0,
-		priority: 1,
+		id:           0,
+		path:         "/dev/sda1",
+		name:         "bar",
+		slot:         0,
+		initPriority: 1,
+		setPriority:  1,
 	})
 }
 
 func (s *keyDataLuksSuite) TestWriterDifferentSlot(c *C) {
 	s.testWriter(c, &testKeyDataLuksWriterData{
-		id:       0,
-		path:     "/dev/sda1",
-		name:     "foo",
-		slot:     6,
-		priority: 1,
+		id:           0,
+		path:         "/dev/sda1",
+		name:         "foo",
+		slot:         6,
+		initPriority: 1,
+		setPriority:  1,
 	})
 }
 
 func (s *keyDataLuksSuite) TestWriterDifferentPriority(c *C) {
 	s.testWriter(c, &testKeyDataLuksWriterData{
-		id:       0,
-		path:     "/dev/sda1",
-		name:     "foo",
-		slot:     0,
-		priority: 5,
+		id:           0,
+		path:         "/dev/sda1",
+		name:         "foo",
+		slot:         0,
+		initPriority: 5,
+		setPriority:  5,
+	})
+}
+
+func (s *keyDataLuksSuite) TestWriterSetPriority(c *C) {
+	s.testWriter(c, &testKeyDataLuksWriterData{
+		id:          0,
+		path:        "/dev/sda1",
+		name:        "foo",
+		slot:        0,
+		setPriority: 5,
 	})
 }
 
@@ -181,7 +203,7 @@ func (s *keyDataLuksSuite) TestWriterTokenNotExist(c *C) {
 	s.luks2.devices["/dev/sda1"] = &mockLUKS2Container{
 		tokens:   make(map[int]luks2.Token),
 		keyslots: map[int][]byte{0: nil}}
-	w, err := NewLUKS2KeyDataWriter("/dev/sda1", "foo", 0)
+	w, err := NewLUKS2KeyDataWriter("/dev/sda1", "foo")
 	c.Assert(w, IsNil)
 	c.Check(err, ErrorMatches, "a keyslot with the specified name does not exist")
 }
@@ -196,7 +218,7 @@ func (s *keyDataLuksSuite) TestWriterTokenWrongType(c *C) {
 		},
 		keyslots: map[int][]byte{0: nil}}
 
-	w, err := NewLUKS2KeyDataWriter("/dev/sda1", "foo", 0)
+	w, err := NewLUKS2KeyDataWriter("/dev/sda1", "foo")
 	c.Assert(w, IsNil)
 	c.Check(err, ErrorMatches, "named keyslot has the wrong type")
 }
@@ -217,7 +239,8 @@ func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 			data.id: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
 					TokenKeyslot: data.slot,
-					TokenName:    data.name}},
+					TokenName:    data.name},
+				Priority: data.priority},
 		},
 		keyslots: map[int][]byte{data.slot: key}}
 
@@ -246,7 +269,7 @@ func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 	expectedId, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 
-	w, err := NewLUKS2KeyDataWriter(data.path, data.name, data.priority)
+	w, err := NewLUKS2KeyDataWriter(data.path, data.name)
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	s.luks2.operations = nil
@@ -365,8 +388,9 @@ func (s *keyDataLuksUnmockedSuite) TestReaderAndWriter(c *C) {
 	expectedId, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 
-	w, err := NewLUKS2KeyDataWriter(path, "default", 1)
+	w, err := NewLUKS2KeyDataWriter(path, "default")
 	c.Assert(err, IsNil)
+	w.SetPriority(1)
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	r, err := NewLUKS2KeyDataReader(path, "default")
