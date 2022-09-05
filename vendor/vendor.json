@@ -351,6 +351,12 @@
 			"revisionTime": "2020-04-11T01:31:37Z"
 		},
 		{
+			"checksumSHA1": "ELSEW2KG0p3oua5lIxl1xW2oFBo=",
+			"path": "golang.org/x/crypto/hkdf",
+			"revision": "a3485e174077e5296d3d4a43ca31d2d21b40be2c",
+			"revisionTime": "2022-10-24T15:44:58Z"
+		},
+		{
 			"checksumSHA1": "juTyoXrV63uP4Quf10LtBfNdHO0=",
 			"path": "golang.org/x/crypto/openpgp/elgamal",
 			"revision": "0848c9571904fcbcb24543358ca8b5a7dbfde875",

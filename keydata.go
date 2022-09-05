@@ -29,10 +29,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 
 	"github.com/canonical/go-sp800.90a-drbg"
 
+	"golang.org/x/crypto/hkdf"
 	"golang.org/x/xerrors"
 )
 
@@ -40,6 +42,10 @@ const (
 	kdfType                 = "argon2i"
 	passphraseDerivedKeyLen = 32
 	passphraseEncryption    = "aes-cfb"
+)
+
+var (
+	snapModelHMACKDFLabel = []byte("SNAP-MODEL-HMAC")
 )
 
 // ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
@@ -255,14 +261,21 @@ type keyDigest struct {
 	Digest []byte  `json:"digest"`
 }
 
+type hkdfData struct {
+	Alg  hashAlg `json:"alg"`
+	Salt []byte  `json:"salt"`
+}
+
 type authorizedSnapModelsRaw struct {
 	Alg       hashAlg           `json:"alg"`
+	KDF       *hkdfData         `json:"kdf,omitempty"`
 	KeyDigest json.RawMessage   `json:"key_digest"`
 	Hmacs     snapModelHMACList `json:"hmacs"`
 }
 
 type authorizedSnapModels struct {
 	alg       hashAlg
+	kdf       *hkdfData
 	keyDigest keyDigest
 	hmacs     snapModelHMACList
 
@@ -285,6 +298,7 @@ func (m authorizedSnapModels) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(&authorizedSnapModelsRaw{
 		Alg:       m.alg,
+		KDF:       m.kdf,
 		KeyDigest: digest,
 		Hmacs:     m.hmacs})
 }
@@ -299,6 +313,7 @@ func (m *authorizedSnapModels) UnmarshalJSON(b []byte) error {
 
 	*m = authorizedSnapModels{
 		alg:   raw.Alg,
+		kdf:   raw.KDF,
 		hmacs: raw.Hmacs}
 
 	token, err := json.NewDecoder(bytes.NewReader(raw.KeyDigest)).Token()
@@ -385,8 +400,8 @@ type KeyData struct {
 	data         keyData
 }
 
-func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
-	rng, err := drbg.NewCTRWithExternalEntropy(32, auxKey, nil, []byte("SNAP-MODEL-HMAC"), nil)
+func (d *KeyData) snapModelAuthKeyLegacy(auxKey AuxiliaryKey) ([]byte, error) {
+	rng, err := drbg.NewCTRWithExternalEntropy(32, auxKey, nil, snapModelHMACKDFLabel, nil)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot instantiate DRBG: %w", err)
 	}
@@ -399,6 +414,30 @@ func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
 	hmacKey := make([]byte, alg.Size())
 	if _, err := rng.Read(hmacKey); err != nil {
 		return nil, xerrors.Errorf("cannot derive key: %w", err)
+	}
+
+	return hmacKey, nil
+}
+
+func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
+	kdf := d.data.AuthorizedSnapModels.kdf
+	if kdf == nil {
+		return d.snapModelAuthKeyLegacy(auxKey)
+	}
+	if !kdf.Alg.Available() {
+		return nil, errors.New("invalid KDF digest algorithm")
+	}
+
+	alg := d.data.AuthorizedSnapModels.alg
+	if alg.Hash == crypto.Hash(0) {
+		return nil, errors.New("invalid digest algorithm")
+	}
+
+	r := hkdf.New(func() hash.Hash { return kdf.Alg.New() }, auxKey, kdf.Salt, snapModelHMACKDFLabel)
+
+	hmacKey := make([]byte, alg.Size())
+	if _, err := io.ReadFull(r, hmacKey); err != nil {
+		return nil, err
 	}
 
 	return hmacKey, nil
@@ -819,33 +858,36 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 		return nil, xerrors.Errorf("cannot encode platform handle: %w", err)
 	}
 
-	rng, err := drbg.NewCTRWithExternalEntropy(32, creationData.AuxiliaryKey, nil, []byte("SNAP-MODEL-HMAC"), nil)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot instantiate DRBG: %w", err)
-	}
-
-	var salt [32]byte
+	var salt [64]byte
 	if _, err := rand.Read(salt[:]); err != nil {
 		return nil, xerrors.Errorf("cannot read salt: %w", err)
 	}
 
-	h := creationData.SnapModelAuthHash.New()
-	if _, err := io.CopyN(h, rng, int64(creationData.SnapModelAuthHash.Size())); err != nil {
-		return nil, xerrors.Errorf("cannot create hash of snap model auth key: %w", err)
-	}
-	h.Write(salt[:])
-
-	return &KeyData{
+	kd := &KeyData{
 		data: keyData{
 			PlatformName:     creationData.PlatformName,
 			PlatformHandle:   json.RawMessage(encodedHandle),
 			EncryptedPayload: creationData.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
 				alg: hashAlg{creationData.SnapModelAuthHash},
+				kdf: &hkdfData{
+					Alg:  hashAlg{creationData.SnapModelAuthHash},
+					Salt: salt[:32]},
 				keyDigest: keyDigest{
-					Alg:    hashAlg{creationData.SnapModelAuthHash},
-					Salt:   salt[:],
-					Digest: h.Sum(nil)}}}}, nil
+					Alg:  hashAlg{creationData.SnapModelAuthHash},
+					Salt: salt[32:]}}}}
+
+	authKey, err := kd.snapModelAuthKey(creationData.AuxiliaryKey)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot compute snap model auth key: %w", err)
+	}
+
+	h := kd.data.AuthorizedSnapModels.keyDigest.Alg.New()
+	h.Write(authKey)
+	h.Write(kd.data.AuthorizedSnapModels.keyDigest.Salt)
+	kd.data.AuthorizedSnapModels.keyDigest.Digest = h.Sum(nil)
+
+	return kd, nil
 }
 
 // MarshalKeys serializes the supplied disk unlock key and auxiliary key in
