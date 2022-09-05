@@ -52,7 +52,7 @@ func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error)
 
 	kdToken, ok := token.(*luksview.KeyDataToken)
 	if !ok {
-		return nil, errors.New("named keyslot is the wrong type")
+		return nil, errors.New("named keyslot has the wrong type")
 	}
 
 	if kdToken.Data == nil {
