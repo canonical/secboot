@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strings"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/util"
@@ -138,7 +139,7 @@ func (p *PCRProtectionProfileBranchPoint) AddBranch() *PCRProtectionProfileBranc
 	b := &PCRProtectionProfileBranch{profile: p.profile, parent: p}
 
 	if p.done {
-		p.profile.fail(1, "cannot add a branch to a branch point that has already been terminated")
+		p.profile.fail("cannot add a branch to a branch point that has already been terminated")
 	}
 	if p.profile.failed() {
 		return b
@@ -148,9 +149,14 @@ func (p *PCRProtectionProfileBranchPoint) AddBranch() *PCRProtectionProfileBranc
 	return b
 }
 
-func (p *PCRProtectionProfileBranchPoint) endBranchPointInternal(skip int) *PCRProtectionProfileBranch {
+// EndBranchPoint can be called when the caller is finished adding branches to
+// this branch point. Once this has been called, it is an error to try to create
+// additional sub-branches or modify existing ones at this point.
+//
+// This returns a pointer to the parent branch.
+func (p *PCRProtectionProfileBranchPoint) EndBranchPoint() *PCRProtectionProfileBranch {
 	if p.done {
-		p.profile.fail(skip+1, "cannot terminate a branch point more than once")
+		p.profile.fail("cannot terminate a branch point more than once")
 	}
 	if p.profile.failed() {
 		return p.parent
@@ -175,21 +181,12 @@ func (p *PCRProtectionProfileBranchPoint) endBranchPointInternal(skip int) *PCRP
 	}
 
 	for i := len(branchesToEnd) - 1; i >= 0; i-- {
-		branchesToEnd[i].endBranchInternal(skip + 1)
+		branchesToEnd[i].EndBranch()
 	}
 
 	p.parent.doneBranchPoint(p)
 	p.done = true
 	return p.parent
-}
-
-// EndBranchPoint can be called when the caller is finished adding branches to
-// this branch point. Once this has been called, it is an error to try to create
-// additional sub-branches or modify existing ones at this point.
-//
-// This returns a pointer to the parent branch.
-func (p *PCRProtectionProfileBranchPoint) EndBranchPoint() *PCRProtectionProfileBranch {
-	return p.endBranchPointInternal(1)
 }
 
 // PCRProtectionProfileBranch represents a branch in a PCR profile. It contains
@@ -203,24 +200,24 @@ type PCRProtectionProfileBranch struct {
 	done               bool
 }
 
-func (b *PCRProtectionProfileBranch) prepareToModifyBranch(skip int) {
+func (b *PCRProtectionProfileBranch) prepareToModifyBranch() {
 	if b.done {
-		b.profile.fail(skip+1, "cannot modify branch that has already been terminated")
+		b.profile.fail("cannot modify branch that has already been terminated")
 	}
 	if b.profile.failed() {
 		return
 	}
 	if b.currentBranchPoint != nil {
-		b.currentBranchPoint.endBranchPointInternal(skip + 1)
+		b.currentBranchPoint.EndBranchPoint()
 	}
 }
 
-func (b *PCRProtectionProfileBranch) checkArguments(skip int, alg tpm2.HashAlgorithmId, pcr int) {
+func (b *PCRProtectionProfileBranch) checkArguments(alg tpm2.HashAlgorithmId, pcr int) {
 	if !alg.IsValid() {
-		b.profile.fail(skip+1, "invalid digest algorithm")
+		b.profile.fail("invalid digest algorithm")
 	}
 	if pcr < 0 || pcr > maxPCR {
-		b.profile.fail(skip+1, "invalid PCR index")
+		b.profile.fail("invalid PCR index")
 	}
 }
 
@@ -232,39 +229,23 @@ func (b *PCRProtectionProfileBranch) doneBranchPoint(p *PCRProtectionProfileBran
 	b.currentBranchPoint = nil
 }
 
-func (b *PCRProtectionProfileBranch) addPCRValueInternal(skip int, alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) *PCRProtectionProfileBranch {
-	b.prepareToModifyBranch(skip + 1)
-	b.checkArguments(skip+1, alg, pcr)
-
-	if b.profile.failed() {
-		return b
-	}
-	if len(value) != alg.Size() {
-		b.profile.fail(skip+1, "digest length is inconsistent with specified algorithm")
-		return b
-	}
-
-	b.instrs = append(b.instrs, &pcrProtectionProfileAddPCRValueInstr{alg: alg, pcr: pcr, value: value})
-	return b
-}
-
 // AddPCRValue adds the supplied value to this branch for the specified PCR.
 // This action replaces any value set previously for this PCR in this branch.
 // The function returns the same PCRProtectionProfileBranch so that calls may
 // be chained.
 func (b *PCRProtectionProfileBranch) AddPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) *PCRProtectionProfileBranch {
-	return b.addPCRValueInternal(1, alg, pcr, value)
-}
-
-func (b *PCRProtectionProfileBranch) addPCRValueFromTPMInternal(skip int, alg tpm2.HashAlgorithmId, pcr int) *PCRProtectionProfileBranch {
-	b.prepareToModifyBranch(skip + 1)
-	b.checkArguments(skip+1, alg, pcr)
+	b.prepareToModifyBranch()
+	b.checkArguments(alg, pcr)
 
 	if b.profile.failed() {
 		return b
 	}
+	if len(value) != alg.Size() {
+		b.profile.fail("digest length is inconsistent with specified algorithm")
+		return b
+	}
 
-	b.instrs = append(b.instrs, &pcrProtectionProfileAddPCRValueFromTPMInstr{alg: alg, pcr: pcr})
+	b.instrs = append(b.instrs, &pcrProtectionProfileAddPCRValueInstr{alg: alg, pcr: pcr, value: value})
 	return b
 }
 
@@ -274,22 +255,14 @@ func (b *PCRProtectionProfileBranch) addPCRValueFromTPMInternal(skip int, alg tp
 // values generated by the associated profile are computed. The function
 // returns the same PCRProtectionProfileBranch so that calls may be chained.
 func (b *PCRProtectionProfileBranch) AddPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) *PCRProtectionProfileBranch {
-	return b.addPCRValueFromTPMInternal(1, alg, pcr)
-}
-
-func (b *PCRProtectionProfileBranch) extendPCRInternal(skip int, alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) *PCRProtectionProfileBranch {
-	b.prepareToModifyBranch(skip + 1)
-	b.checkArguments(skip+1, alg, pcr)
+	b.prepareToModifyBranch()
+	b.checkArguments(alg, pcr)
 
 	if b.profile.failed() {
 		return b
 	}
-	if len(value) != alg.Size() {
-		b.profile.fail(skip+1, "digest length is inconsistent with specified algorithm")
-		return b
-	}
 
-	b.instrs = append(b.instrs, &pcrProtectionProfileExtendPCRInstr{alg: alg, pcr: pcr, value: value})
+	b.instrs = append(b.instrs, &pcrProtectionProfileAddPCRValueFromTPMInstr{alg: alg, pcr: pcr})
 	return b
 }
 
@@ -298,23 +271,19 @@ func (b *PCRProtectionProfileBranch) extendPCRInternal(skip int, alg tpm2.HashAl
 // PCR, an initial value of all zeroes will be added first. The function
 // returns the same PCRProtectionProfileBranch so that calls may be chained.
 func (b *PCRProtectionProfileBranch) ExtendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) *PCRProtectionProfileBranch {
-	return b.extendPCRInternal(1, alg, pcr, value)
-}
+	b.prepareToModifyBranch()
+	b.checkArguments(alg, pcr)
 
-func (b *PCRProtectionProfileBranch) addBranchPointInternal(skip int) *PCRProtectionProfileBranchPoint {
-	b.prepareToModifyBranch(skip + 1)
-
-	p := &PCRProtectionProfileBranchPoint{
-		profile: b.profile,
-		parent:  b,
-		instr:   new(pcrProtectionProfileBranchPointInstr)}
 	if b.profile.failed() {
-		return p
+		return b
+	}
+	if len(value) != alg.Size() {
+		b.profile.fail("digest length is inconsistent with specified algorithm")
+		return b
 	}
 
-	b.instrs = append(b.instrs, p.instr)
-	b.currentBranchPoint = p
-	return p
+	b.instrs = append(b.instrs, &pcrProtectionProfileExtendPCRInstr{alg: alg, pcr: pcr, value: value})
+	return b
 }
 
 // AddBranchPoint adds a branch point to this branch from which multiple
@@ -332,14 +301,32 @@ func (b *PCRProtectionProfileBranch) addBranchPointInternal(skip int) *PCRProtec
 // the returned branch point by calling
 // PCRProtectionProfileBranchPoint.EndBranchPoint.
 func (b *PCRProtectionProfileBranch) AddBranchPoint() *PCRProtectionProfileBranchPoint {
-	return b.addBranchPointInternal(1)
+	b.prepareToModifyBranch()
+
+	p := &PCRProtectionProfileBranchPoint{
+		profile: b.profile,
+		parent:  b,
+		instr:   new(pcrProtectionProfileBranchPointInstr)}
+	if b.profile.failed() {
+		return p
+	}
+
+	b.instrs = append(b.instrs, p.instr)
+	b.currentBranchPoint = p
+	return p
 }
 
-func (b *PCRProtectionProfileBranch) endBranchInternal(skip int) *PCRProtectionProfileBranchPoint {
-	b.prepareToModifyBranch(skip + 1)
+// EndBranch can be called when the caller is finished with this branch. Once this
+// has been called, no further changes can be made to this branch.
+//
+// It retuns a pointer to the branch point to which this branch was added.
+//
+// Note that this cannot be called on the root branch associated with a profile.
+func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoint {
+	b.prepareToModifyBranch()
 
 	if b.parent == nil {
-		b.profile.fail(skip+1, "cannot terminate the root branch")
+		b.profile.fail("cannot terminate the root branch")
 		// Always return something to avoid having to check for nil
 		p := &PCRProtectionProfileBranchPoint{
 			profile: b.profile,
@@ -357,16 +344,6 @@ func (b *PCRProtectionProfileBranch) endBranchInternal(skip int) *PCRProtectionP
 	return b.parent
 }
 
-// EndBranch can be called when the caller is finished with this branch. Once this
-// has been called, no further changes can be made to this branch.
-//
-// It retuns a pointer to the branch point to which this branch was added.
-//
-// Note that this cannot be called on the root branch associated with a profile.
-func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoint {
-	return b.endBranchInternal(1)
-}
-
 // AbortBranch can be called to remove this branch from the profile.
 //
 // It retuns a pointer to the branch point to which this branch was originally
@@ -374,10 +351,10 @@ func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoin
 //
 // Note that this cannot be called on the root branch associated with a profile.
 func (b *PCRProtectionProfileBranch) AbortBranch() *PCRProtectionProfileBranchPoint {
-	b.prepareToModifyBranch(1)
+	b.prepareToModifyBranch()
 
 	if b.parent == nil {
-		b.profile.fail(1, "cannot abort the root branch")
+		b.profile.fail("cannot abort the root branch")
 		// Always return something to avoid having to check for nil
 		p := &PCRProtectionProfileBranchPoint{
 			profile: b.profile,
@@ -412,13 +389,26 @@ func NewPCRProtectionProfile() *PCRProtectionProfile {
 	return profile
 }
 
-func (p *PCRProtectionProfile) fail(skip int, msg string) {
+func (p *PCRProtectionProfile) fail(msg string) {
 	if p.err != nil {
 		return
 	}
 
-	_, file, line, _ := runtime.Caller(skip + 1)
-	p.err = fmt.Errorf("%s (occured at %s:%d)", msg, file, line)
+	var pc [10]uintptr
+	n := runtime.Callers(1, pc[:])
+	frames := runtime.CallersFrames(pc[:n])
+
+	for {
+		frame, more := frames.Next()
+		if !strings.HasPrefix(frame.Function, "github.com/snapcore/secboot/tpm2.(*PCRProtectionProfile") {
+			p.err = fmt.Errorf("%s (occurred at %s:%d)", msg, frame.File, frame.Line)
+			break
+		}
+		if !more {
+			p.err = fmt.Errorf("%s (cannot determine call site)", msg)
+			break
+		}
+	}
 }
 
 func (p *PCRProtectionProfile) failed() bool {
@@ -437,7 +427,7 @@ func (p *PCRProtectionProfile) RootBranch() *PCRProtectionProfileBranch {
 //
 // Deprecated: Use PCRProtectionProfileBranch.AddPCRValue instead.
 func (p *PCRProtectionProfile) AddPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) *PCRProtectionProfile {
-	p.root.addPCRValueInternal(1, alg, pcr, value)
+	p.root.AddPCRValue(alg, pcr, value)
 	return p
 }
 
@@ -449,7 +439,7 @@ func (p *PCRProtectionProfile) AddPCRValue(alg tpm2.HashAlgorithmId, pcr int, va
 //
 // Deprecated: Use PCRProtectionProfileBranch.AddPCRValueFromTPM instead.
 func (p *PCRProtectionProfile) AddPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) *PCRProtectionProfile {
-	p.root.addPCRValueFromTPMInternal(1, alg, pcr)
+	p.root.AddPCRValueFromTPM(alg, pcr)
 	return p
 }
 
@@ -461,7 +451,7 @@ func (p *PCRProtectionProfile) AddPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr 
 //
 // Deprecated: Use PCRProtectionProfileBranch.ExtendPCR instead.
 func (p *PCRProtectionProfile) ExtendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) *PCRProtectionProfile {
-	p.root.extendPCRInternal(1, alg, pcr, value)
+	p.root.ExtendPCR(alg, pcr, value)
 	return p
 }
 
@@ -471,7 +461,7 @@ func (p *PCRProtectionProfile) ExtendPCR(alg tpm2.HashAlgorithmId, pcr int, valu
 //
 // Deprecated: Use PCRProtectionProfileBranch.AddBranchPoint instead.
 func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *PCRProtectionProfile {
-	bp := p.root.addBranchPointInternal(1)
+	bp := p.root.AddBranchPoint()
 
 	for _, sub := range profiles {
 		branch := sub.root
@@ -486,13 +476,13 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 		}
 
 		if !branch.done {
-			branch.endBranchInternal(1)
+			branch.EndBranch()
 		}
 
 		bp.instr.branches = append(bp.instr.branches, branch)
 	}
 
-	bp.endBranchPointInternal(1)
+	bp.EndBranchPoint()
 	return p
 }
 
