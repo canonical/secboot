@@ -32,6 +32,7 @@ import (
 	"errors"
 	"hash"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"time"
 
@@ -297,16 +298,10 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 	c.Check(handle.IV, DeepEquals, expectedHandle.IV)
 
 	m, ok := j["authorized_snap_models"].(map[string]interface{})
-	c.Check(ok, testutil.IsTrue)
+	c.Assert(ok, testutil.IsTrue)
 
 	h := toHash(c, m["alg"])
 	c.Check(h, Equals, creationData.SnapModelAuthHash)
-
-	str, ok := m["key_digest"].(string)
-	c.Check(ok, testutil.IsTrue)
-	keyDigest, err := base64.StdEncoding.DecodeString(str)
-	c.Check(err, IsNil)
-	c.Check(keyDigest, HasLen, h.Size())
 
 	c.Check(m, testutil.HasKey, "hmacs")
 	if nmodels == 0 {
@@ -323,6 +318,24 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 			c.Check(digest, HasLen, h.Size())
 		}
 	}
+
+	m, ok = m["key_digest"].(map[string]interface{})
+	c.Assert(ok, testutil.IsTrue)
+
+	h = toHash(c, m["alg"])
+	c.Check(h, Equals, creationData.SnapModelAuthHash)
+
+	str, ok := m["salt"].(string)
+	c.Check(ok, testutil.IsTrue)
+	salt, err := base64.StdEncoding.DecodeString(str)
+	c.Check(err, IsNil)
+	c.Check(salt, HasLen, 32)
+
+	str, ok = m["digest"].(string)
+	c.Check(ok, testutil.IsTrue)
+	digest, err := base64.StdEncoding.DecodeString(str)
+	c.Check(err, IsNil)
+	c.Check(digest, HasLen, h.Size())
 }
 
 func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModeNone(c *C, r io.Reader, creationData *KeyCreationData, nmodels int) {
@@ -1288,4 +1301,59 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 		authorized: false})
+}
+
+func (s *keyDataSuite) TestReadAndWriteWithUnsaltedKeyDigest(c *C) {
+	// Verify that we can read an old key data with an unsalted HMAC key
+	// digest. Also verify that writing it preserves the old format to
+	// prevent writing a new format key data that can't be read by an old
+	// initrd.
+	auxKey := testutil.DecodeHexString(c, "8107f1c65c58934f0d59245d1d94d312ea803e69c8599a7bac8c67fe253232f2")
+	j := []byte(
+		`{` +
+			`"platform_name":"mock",` +
+			`"platform_handle":"iTnGw6iFTfDgGS+KMtDHx2yF0bpNaTWyzeLtsbaC9YaspcssRrHzcRsNrubyEVT9",` +
+			`"encrypted_payload":"fYM/SYjIRZj7JOJA710c9hSsxp5NpEchEVXgozd1KgxqZ/TOzIvWF9WYSrRcXiy1vsyjhkF0Svh3ihfApzvje7tTQRI=",` +
+			`"authorized_snap_models":{` +
+			`"alg":"sha256",` +
+			`"key_digest":"ECpFZzxG8XWUKGylGggA2HR+8pERsmA891SmDvs3NiE=",` +
+			`"hmacs":["pcYGJdlrxgn6M5Q4gq23cykD1D6X68XBZV+Ikzoyxo0="]}}
+`)
+
+	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	model1 := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	ok, err := keyData.IsSnapModelAuthorized(auxKey, model1)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsTrue)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	j2, err := ioutil.ReadAll(w.Reader())
+	c.Check(err, IsNil)
+	c.Check(j2, DeepEquals, j)
+
+	model2 := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "other-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+	c.Check(keyData.SetAuthorizedSnapModels(auxKey, model2), IsNil)
+	ok, err = keyData.IsSnapModelAuthorized(auxKey, model1)
+	c.Check(err, IsNil)
+	c.Check(ok, Not(testutil.IsTrue))
+	ok, err = keyData.IsSnapModelAuthorized(auxKey, model2)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsTrue)
 }

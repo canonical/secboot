@@ -249,10 +249,90 @@ func (l snapModelHMACList) contains(h snapModelHMAC) bool {
 	return false
 }
 
-type authorizedSnapModels struct {
+type keyDigest struct {
+	Alg    hashAlg `json:"alg"`
+	Salt   []byte  `json:"salt"`
+	Digest []byte  `json:"digest"`
+}
+
+type authorizedSnapModelsRaw struct {
 	Alg       hashAlg           `json:"alg"`
-	KeyDigest []byte            `json:"key_digest"`
+	KeyDigest json.RawMessage   `json:"key_digest"`
 	Hmacs     snapModelHMACList `json:"hmacs"`
+}
+
+type authorizedSnapModels struct {
+	alg       hashAlg
+	keyDigest keyDigest
+	hmacs     snapModelHMACList
+
+	legacyKeyDigest bool
+}
+
+// MarshalJSON implements custom marshalling to handle older key data
+// objects where the key_digest field was just a base64 encoded key.
+func (m authorizedSnapModels) MarshalJSON() ([]byte, error) {
+	var digest json.RawMessage
+	var err error
+	if m.legacyKeyDigest {
+		digest, err = json.Marshal(m.keyDigest.Digest)
+	} else {
+		digest, err = json.Marshal(&m.keyDigest)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(&authorizedSnapModelsRaw{
+		Alg:       m.alg,
+		KeyDigest: digest,
+		Hmacs:     m.hmacs})
+}
+
+// UnmarshalJSON implements custom unmarshalling to handle older key data
+// objects where the key_digest field was just a base64 encoded key.
+func (m *authorizedSnapModels) UnmarshalJSON(b []byte) error {
+	var raw authorizedSnapModelsRaw
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+
+	*m = authorizedSnapModels{
+		alg:   raw.Alg,
+		hmacs: raw.Hmacs}
+
+	token, err := json.NewDecoder(bytes.NewReader(raw.KeyDigest)).Token()
+	switch {
+	case err == io.EOF:
+		// Empty field, ignore
+		return nil
+	case err != nil:
+		return err
+	}
+
+	switch t := token.(type) {
+	case json.Delim:
+		// Newer data, where the KeyDigest field is an object.
+		if t != '{' {
+			return fmt.Errorf("invalid delim (%v) at start of key_digest field", t)
+		}
+		if err := json.Unmarshal(raw.KeyDigest, &m.keyDigest); err != nil {
+			return err
+		}
+	case string:
+		// Older data, where the KeyDigest field was a base64 encoded key.
+		// Convert it to an object.
+		_ = t
+		m.keyDigest.Alg = raw.Alg
+		m.legacyKeyDigest = true
+		if err := json.Unmarshal(raw.KeyDigest, &m.keyDigest.Digest); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("invalid token (%v) at start of key_digest field", token)
+	}
+
+	return nil
 }
 
 type kdfData struct {
@@ -311,7 +391,7 @@ func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
 		return nil, xerrors.Errorf("cannot instantiate DRBG: %w", err)
 	}
 
-	alg := d.data.AuthorizedSnapModels.Alg
+	alg := d.data.AuthorizedSnapModels.alg
 	if alg.Hash == crypto.Hash(0) {
 		return nil, errors.New("invalid digest algorithm")
 	}
@@ -559,8 +639,8 @@ func (d *KeyData) IsSnapModelAuthorized(auxKey AuxiliaryKey, model SnapModel) (b
 		return false, xerrors.Errorf("cannot obtain auth key: %w", err)
 	}
 
-	alg := d.data.AuthorizedSnapModels.Alg
-	if alg.Hash == crypto.Hash(0) {
+	alg := d.data.AuthorizedSnapModels.alg
+	if !alg.Available() {
 		return false, errors.New("invalid digest algorithm")
 	}
 
@@ -569,7 +649,7 @@ func (d *KeyData) IsSnapModelAuthorized(auxKey AuxiliaryKey, model SnapModel) (b
 		return false, xerrors.Errorf("cannot compute HMAC of model: %w", err)
 	}
 
-	return d.data.AuthorizedSnapModels.Hmacs.contains(h), nil
+	return d.data.AuthorizedSnapModels.hmacs.contains(h), nil
 }
 
 // SetAuthorizedSnapModels marks the supplied Snap device models as trusted to access
@@ -587,15 +667,21 @@ func (d *KeyData) SetAuthorizedSnapModels(auxKey AuxiliaryKey, models ...SnapMod
 		return xerrors.Errorf("cannot obtain auth key: %w", err)
 	}
 
-	alg := d.data.AuthorizedSnapModels.Alg
-	if alg.Hash == crypto.Hash(0) {
+	alg := d.data.AuthorizedSnapModels.keyDigest.Alg
+	if !alg.Available() {
 		return errors.New("invalid digest algorithm")
 	}
 
 	h := alg.New()
 	h.Write(hmacKey)
-	if !bytes.Equal(h.Sum(nil), d.data.AuthorizedSnapModels.KeyDigest) {
+	h.Write(d.data.AuthorizedSnapModels.keyDigest.Salt)
+	if !bytes.Equal(h.Sum(nil), d.data.AuthorizedSnapModels.keyDigest.Digest) {
 		return errors.New("incorrect key supplied")
+	}
+
+	alg = d.data.AuthorizedSnapModels.alg
+	if !alg.Available() {
+		return errors.New("invalid digest algorithm")
 	}
 
 	var modelHMACs snapModelHMACList
@@ -609,7 +695,7 @@ func (d *KeyData) SetAuthorizedSnapModels(auxKey AuxiliaryKey, models ...SnapMod
 		modelHMACs = append(modelHMACs, h)
 	}
 
-	d.data.AuthorizedSnapModels.Hmacs = modelHMACs
+	d.data.AuthorizedSnapModels.hmacs = modelHMACs
 	return nil
 }
 
@@ -738,10 +824,16 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 		return nil, xerrors.Errorf("cannot instantiate DRBG: %w", err)
 	}
 
+	var salt [32]byte
+	if _, err := rand.Read(salt[:]); err != nil {
+		return nil, xerrors.Errorf("cannot read salt: %w", err)
+	}
+
 	h := creationData.SnapModelAuthHash.New()
 	if _, err := io.CopyN(h, rng, int64(creationData.SnapModelAuthHash.Size())); err != nil {
 		return nil, xerrors.Errorf("cannot create hash of snap model auth key: %w", err)
 	}
+	h.Write(salt[:])
 
 	return &KeyData{
 		data: keyData{
@@ -749,8 +841,11 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 			PlatformHandle:   json.RawMessage(encodedHandle),
 			EncryptedPayload: creationData.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
-				Alg:       hashAlg{creationData.SnapModelAuthHash},
-				KeyDigest: h.Sum(nil)}}}, nil
+				alg: hashAlg{creationData.SnapModelAuthHash},
+				keyDigest: keyDigest{
+					Alg:    hashAlg{creationData.SnapModelAuthHash},
+					Salt:   salt[:],
+					Digest: h.Sum(nil)}}}}, nil
 }
 
 // MarshalKeys serializes the supplied disk unlock key and auxiliary key in
