@@ -3,10 +3,10 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "A9a2jd+tEQEir5ACIHWPmlfLZSU=",
+			"checksumSHA1": "jbQ30fL1KzoUh/OWMuDDV+UjsHM=",
 			"path": "github.com/canonical/go-efilib",
-			"revision": "41435fa545d411ef5f53251d6ea4c894676f7064",
-			"revisionTime": "2021-09-09T10:19:08Z",
+			"revision": "7e5151412e932d3f7a6040f65fc7e8f7b3c69592",
+			"revisionTime": "2022-08-15T14:33:33Z",
 			"version": "main",
 			"versionExact": "main"
 		},
