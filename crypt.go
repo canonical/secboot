@@ -575,8 +575,8 @@ func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 // InitialKeyslotName field of options. If this is empty, "default" will be used.
 //
 // The initial key should be protected by some platform-specific mechanism in order
-// to create a KeyData object. XXX(chrisccoulson): Add documentation about how to
-// write KeyData to the new slot once a PR lands with that API.
+// to create a KeyData object. The KeyData object can be saved to the
+// keyslot using LUKS2KeyDataWriter.
 //
 // On failure, this will return an error containing the output of the cryptsetup command.
 //
@@ -745,8 +745,8 @@ func listLUKS2ContainerKeyNames(devicePath string, tokenType luks2.TokenType) ([
 // In order to perform this action, an existing key must be supplied.
 //
 // The new key should be protected by some platform-specific mechanism in
-// order to create a KeyData object. XXX(chrisccoulson): Add documentation about
-// how to write KeyData to the new slot once a PR lands with that API.
+// order to create a KeyData object. The KeyData object can be saved to the
+// keyslot using LUKS2KeyDataWriter.
 func AddLUKS2ContainerUnlockKey(devicePath, keyslotName string, existingKey, newKey DiskUnlockKey, options *KDFOptions) error {
 	if len(newKey) < 32 {
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(newKey)*8)

@@ -185,6 +185,26 @@ type mockLUKS2 struct {
 	activated  map[string]string              // A map of volume names to device paths for activated containers.
 }
 
+func (l *mockLUKS2) enableMocks() (restore func()) {
+	var restores []func()
+
+	restores = append(restores, MockLUKS2Activate(l.activate))
+	restores = append(restores, MockLUKS2AddKey(l.addKey))
+	restores = append(restores, MockLUKS2Deactivate(l.deactivate))
+	restores = append(restores, MockLUKS2Format(l.format))
+	restores = append(restores, MockLUKS2ImportToken(l.importToken))
+	restores = append(restores, MockLUKS2KillSlot(l.killSlot))
+	restores = append(restores, MockLUKS2RemoveToken(l.removeToken))
+	restores = append(restores, MockLUKS2SetSlotPriority(l.setSlotPriority))
+	restores = append(restores, MockNewLUKSView(l.newLUKSView))
+
+	return func() {
+		for _, fn := range restores {
+			fn()
+		}
+	}
+}
+
 func (l *mockLUKS2) activate(volumeName, sourceDevicePath string, key []byte) error {
 	l.operations = append(l.operations, "Activate("+volumeName+","+sourceDevicePath+")")
 
@@ -398,24 +418,7 @@ func (s *cryptSuite) SetUpTest(c *C) {
 		devices:   make(map[string]*mockLUKS2Container),
 		activated: make(map[string]string)}
 
-	restore := MockLUKS2Activate(s.luks2.activate)
-	s.AddCleanup(restore)
-	restore = MockLUKS2AddKey(s.luks2.addKey)
-	s.AddCleanup(restore)
-	restore = MockLUKS2Deactivate(s.luks2.deactivate)
-	s.AddCleanup(restore)
-	restore = MockLUKS2Format(s.luks2.format)
-	s.AddCleanup(restore)
-	restore = MockLUKS2ImportToken(s.luks2.importToken)
-	s.AddCleanup(restore)
-	restore = MockLUKS2KillSlot(s.luks2.killSlot)
-	s.AddCleanup(restore)
-	restore = MockLUKS2RemoveToken(s.luks2.removeToken)
-	s.AddCleanup(restore)
-	restore = MockLUKS2SetSlotPriority(s.luks2.setSlotPriority)
-	s.AddCleanup(restore)
-	restore = MockNewLUKSView(s.luks2.newLUKSView)
-	s.AddCleanup(restore)
+	s.AddCleanup(s.luks2.enableMocks())
 }
 
 func (s *cryptSuite) addMockKeyslot(path string, key []byte) {
