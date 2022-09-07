@@ -682,6 +682,8 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchPointFails1(c *C) {
  BranchPoint(
    Branch 0 {
    }
+   Branch 1 {
+   }
  )
 `)
 }
@@ -700,6 +702,10 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchPointFails2(c *C) {
 	c.Check(profile.String(), Equals, `
  BranchPoint(
    Branch 0 {
+    BranchPoint(
+      Branch 0 {
+      }
+    )
    }
  )
 `)
@@ -721,6 +727,10 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchPointFailsRecursiveMany(c *C)
       Branch 0 {
        BranchPoint(
          Branch 0 {
+          BranchPoint(
+            Branch 0 {
+            }
+          )
          }
        )
       }
@@ -759,6 +769,7 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchFails1(c *C) {
 	c.Check(profile.String(), Equals, `
  BranchPoint(
    Branch 0 {
+    AddPCRValue(TPM_ALG_SHA256, 0, 0000000000000000000000000000000000000000000000000000000000000000)
    }
  )
 `)
@@ -776,6 +787,10 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchFails2(c *C) {
 	c.Check(profile.String(), Equals, `
  BranchPoint(
    Branch 0 {
+    BranchPoint(
+      Branch 0 {
+      }
+    )
    }
  )
 `)
@@ -794,6 +809,7 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchFails3(c *C) {
 	c.Check(profile.String(), Equals, `
  BranchPoint(
    Branch 0 {
+    AddPCRValue(TPM_ALG_SHA256, 0, 0000000000000000000000000000000000000000000000000000000000000000)
    }
  )
 `)
@@ -817,6 +833,7 @@ func (s *pcrProfileSuite) TestModifyCompletedBranchFailsRecursiveMany(c *C) {
          Branch 0 {
           BranchPoint(
             Branch 0 {
+             AddPCRValue(TPM_ALG_SHA256, 0, 0000000000000000000000000000000000000000000000000000000000000000)
             }
           )
          }
@@ -834,7 +851,9 @@ func (s *pcrProfileSuite) TestInvalidAlg1(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid digest algorithm \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, "\n")
+	c.Check(profile.String(), Equals, `
+ AddPCRValue(TPM_ALG_NULL, 0, )
+`)
 }
 
 func (s *pcrProfileSuite) TestInvalidAlg2(c *C) {
@@ -843,7 +862,9 @@ func (s *pcrProfileSuite) TestInvalidAlg2(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid digest algorithm \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, "\n")
+	c.Check(profile.String(), Equals, `
+ ExtendPCR(TPM_ALG_NULL, 0, )
+`)
 }
 
 func (s *pcrProfileSuite) TestInvalidPCR1(c *C) {
@@ -852,7 +873,9 @@ func (s *pcrProfileSuite) TestInvalidPCR1(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid PCR index \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, "\n")
+	c.Check(profile.String(), Equals, `
+ AddPCRValue(TPM_ALG_SHA256, -1, 0000000000000000000000000000000000000000000000000000000000000000)
+`)
 }
 
 func (s *pcrProfileSuite) TestInvalidPCR2(c *C) {
@@ -861,7 +884,9 @@ func (s *pcrProfileSuite) TestInvalidPCR2(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid PCR index \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, "\n")
+	c.Check(profile.String(), Equals, `
+ AddPCRValue(TPM_ALG_SHA256, 2048, 0000000000000000000000000000000000000000000000000000000000000000)
+`)
 }
 
 func (s *pcrProfileSuite) TestInvalidDigest1(c *C) {
@@ -924,6 +949,7 @@ func (s *pcrProfileSuite) TestLegacyAddProfileORPropagatesErrors2(c *C) {
 	c.Check(profile.String(), Equals, `
  BranchPoint(
    Branch 0 {
+    AddPCRValue(TPM_ALG_SHA256, 0, 0000000000000000000000000000000000000000000000000000000000000000)
    }
  )
 `)
@@ -936,7 +962,9 @@ func (s *pcrProfileSuite) TestMultipleFailures(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `cannot compute PCR values because of an error when constructing the profile: invalid digest algorithm \(occurred at \/.*\/pcr_profile_test\.go:[[:digit:]]+\)`)
-	c.Check(profile.String(), Equals, "\n")
+	c.Check(profile.String(), Equals, `
+ AddPCRValue(TPM_ALG_NULL, 0, )
+`)
 }
 
 func (s *pcrProfileSuite) TestUnbalancedBranchesFails(c *C) {

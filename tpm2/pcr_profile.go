@@ -141,9 +141,6 @@ func (p *PCRProtectionProfileBranchPoint) AddBranch() *PCRProtectionProfileBranc
 	if p.done {
 		p.profile.fail("cannot add a branch to a branch point that has already been terminated")
 	}
-	if p.profile.failed() {
-		return b
-	}
 
 	p.instr.branches = append(p.instr.branches, b)
 	return b
@@ -157,9 +154,6 @@ func (p *PCRProtectionProfileBranchPoint) AddBranch() *PCRProtectionProfileBranc
 func (p *PCRProtectionProfileBranchPoint) EndBranchPoint() *PCRProtectionProfileBranch {
 	if p.done {
 		p.profile.fail("cannot terminate a branch point more than once")
-	}
-	if p.profile.failed() {
-		return p.parent
 	}
 
 	var branchesToEnd []*PCRProtectionProfileBranch
@@ -204,9 +198,6 @@ func (b *PCRProtectionProfileBranch) prepareToModifyBranch() {
 	if b.done {
 		b.profile.fail("cannot modify branch that has already been terminated")
 	}
-	if b.profile.failed() {
-		return
-	}
 	if b.currentBranchPoint != nil {
 		b.currentBranchPoint.EndBranchPoint()
 	}
@@ -223,7 +214,10 @@ func (b *PCRProtectionProfileBranch) checkArguments(alg tpm2.HashAlgorithmId, pc
 
 func (b *PCRProtectionProfileBranch) doneBranchPoint(p *PCRProtectionProfileBranchPoint) {
 	if p != b.currentBranchPoint {
-		panic("completed branch point is not the current one")
+		// This shouldn't happen when the API is used correctly. Do nothing
+		// there though - the caller will have already marked this profile
+		// as failed.
+		return
 	}
 
 	b.currentBranchPoint = nil
@@ -237,10 +231,7 @@ func (b *PCRProtectionProfileBranch) AddPCRValue(alg tpm2.HashAlgorithmId, pcr i
 	b.prepareToModifyBranch()
 	b.checkArguments(alg, pcr)
 
-	if b.profile.failed() {
-		return b
-	}
-	if len(value) != alg.Size() {
+	if alg.IsValid() && len(value) != alg.Size() {
 		b.profile.fail("digest length is inconsistent with specified algorithm")
 		return b
 	}
@@ -258,10 +249,6 @@ func (b *PCRProtectionProfileBranch) AddPCRValueFromTPM(alg tpm2.HashAlgorithmId
 	b.prepareToModifyBranch()
 	b.checkArguments(alg, pcr)
 
-	if b.profile.failed() {
-		return b
-	}
-
 	b.instrs = append(b.instrs, &pcrProtectionProfileAddPCRValueFromTPMInstr{alg: alg, pcr: pcr})
 	return b
 }
@@ -274,10 +261,7 @@ func (b *PCRProtectionProfileBranch) ExtendPCR(alg tpm2.HashAlgorithmId, pcr int
 	b.prepareToModifyBranch()
 	b.checkArguments(alg, pcr)
 
-	if b.profile.failed() {
-		return b
-	}
-	if len(value) != alg.Size() {
+	if alg.IsValid() && len(value) != alg.Size() {
 		b.profile.fail("digest length is inconsistent with specified algorithm")
 		return b
 	}
@@ -307,9 +291,6 @@ func (b *PCRProtectionProfileBranch) AddBranchPoint() *PCRProtectionProfileBranc
 		profile: b.profile,
 		parent:  b,
 		instr:   new(pcrProtectionProfileBranchPointInstr)}
-	if b.profile.failed() {
-		return p
-	}
 
 	b.instrs = append(b.instrs, p.instr)
 	b.currentBranchPoint = p
@@ -336,10 +317,6 @@ func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoin
 		return p
 	}
 
-	if b.profile.failed() {
-		return b.parent
-	}
-
 	b.done = true
 	return b.parent
 }
@@ -362,10 +339,6 @@ func (b *PCRProtectionProfileBranch) AbortBranch() *PCRProtectionProfileBranchPo
 			instr:   new(pcrProtectionProfileBranchPointInstr)}
 		p.parent.currentBranchPoint = p
 		return p
-	}
-
-	if b.profile.failed() {
-		return b.parent
 	}
 
 	b.done = true
@@ -409,10 +382,6 @@ func (p *PCRProtectionProfile) fail(msg string) {
 			break
 		}
 	}
-}
-
-func (p *PCRProtectionProfile) failed() bool {
-	return p.err != nil
 }
 
 // RootBranch returns the root branch associated with this PCR profile.
