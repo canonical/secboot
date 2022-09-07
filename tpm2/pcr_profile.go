@@ -110,20 +110,20 @@ type pcrProtectionProfileInstrList []pcrProtectionProfileInstr
 // in which sub-branches can be inserted and populated, in order to create
 // compound policies that correspond to multiple conditions.
 type PCRProtectionProfileBranchPoint struct {
-	profile  *PCRProtectionProfile
-	parent   *PCRProtectionProfileBranch
-	branches []*PCRProtectionProfileBranch
+	profile       *PCRProtectionProfile         // the profile associated with this branch point
+	parentBranch  *PCRProtectionProfileBranch   // the branch that this branch point was added to
+	childBranches []*PCRProtectionProfileBranch // sub-branches added to this point
 
 	done bool
 }
 
 func (p *PCRProtectionProfileBranchPoint) removeBranch(b *PCRProtectionProfileBranch) {
-	for i, c := range p.branches {
+	for i, c := range p.childBranches {
 		if c == b {
-			if i < len(p.branches)-1 {
-				copy(p.branches[i:], p.branches[i+1:])
+			if i < len(p.childBranches)-1 {
+				copy(p.childBranches[i:], p.childBranches[i+1:])
 			}
-			p.branches = p.branches[:len(p.branches)-1]
+			p.childBranches = p.childBranches[:len(p.childBranches)-1]
 			break
 		}
 	}
@@ -140,13 +140,13 @@ func (p *PCRProtectionProfileBranchPoint) removeBranch(b *PCRProtectionProfileBr
 // either explicitly or by terminating the branch from which it originates will
 // mark the associated profile as failed.
 func (p *PCRProtectionProfileBranchPoint) AddBranch() *PCRProtectionProfileBranch {
-	b := &PCRProtectionProfileBranch{profile: p.profile, parent: p}
+	b := &PCRProtectionProfileBranch{profile: p.profile, parentBranchPoint: p}
 
 	if p.done {
 		p.profile.fail("cannot add a branch to a branch point that has already been terminated")
 	}
 
-	p.branches = append(p.branches, b)
+	p.childBranches = append(p.childBranches, b)
 	return b
 }
 
@@ -170,7 +170,7 @@ func (p *PCRProtectionProfileBranchPoint) EndBranchPoint() *PCRProtectionProfile
 		bp := branchPoints[0]
 		branchPoints = branchPoints[1:]
 
-		for _, b := range bp.branches {
+		for _, b := range bp.childBranches {
 			if b.done {
 				continue
 			}
@@ -185,20 +185,24 @@ func (p *PCRProtectionProfileBranchPoint) EndBranchPoint() *PCRProtectionProfile
 		branchesToEnd[i].EndBranch()
 	}
 
-	p.parent.doneBranchPoint(p)
+	p.parentBranch.doneBranchPoint(p)
 	p.done = true
-	return p.parent
+	return p.parentBranch
 }
 
 // PCRProtectionProfileBranch represents a branch in a PCR profile. It contains
 // a sequence of instructions that are used to compute PCR values.
 type PCRProtectionProfileBranch struct {
-	profile *PCRProtectionProfile
-	parent  *PCRProtectionProfileBranchPoint
-	instrs  pcrProtectionProfileInstrList
+	profile *PCRProtectionProfile // the profile associated with this branch
 
-	currentBranchPoint *PCRProtectionProfileBranchPoint
-	done               bool
+	// parentBranchPoint is the branch point that this branch was added to. This
+	// is nil for the root branch
+	parentBranchPoint *PCRProtectionProfileBranchPoint
+
+	instrs             pcrProtectionProfileInstrList
+	currentBranchPoint *PCRProtectionProfileBranchPoint // currently active branch point
+
+	done bool
 }
 
 func (b *PCRProtectionProfileBranch) prepareToModifyBranch() {
@@ -304,8 +308,8 @@ func (b *PCRProtectionProfileBranch) AddBranchPoint() *PCRProtectionProfileBranc
 	b.prepareToModifyBranch()
 
 	p := &PCRProtectionProfileBranchPoint{
-		profile: b.profile,
-		parent:  b}
+		profile:      b.profile,
+		parentBranch: b}
 
 	b.instrs = append(b.instrs, &pcrProtectionProfileBranchPointInstr{bp: p})
 	b.currentBranchPoint = p
@@ -328,18 +332,16 @@ func (b *PCRProtectionProfileBranch) AddBranchPoint() *PCRProtectionProfileBranc
 func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoint {
 	b.prepareToModifyBranch()
 
-	if b.parent == nil {
+	if b.parentBranchPoint == nil {
 		b.profile.fail("cannot terminate the root branch")
 		// Always return something to avoid having to check for nil
-		p := &PCRProtectionProfileBranchPoint{
-			profile: b.profile,
-			parent:  &PCRProtectionProfileBranch{profile: b.profile}}
-		p.parent.currentBranchPoint = p
-		return p
+		return &PCRProtectionProfileBranchPoint{
+			profile:      b.profile,
+			parentBranch: &PCRProtectionProfileBranch{profile: b.profile}}
 	}
 
 	b.done = true
-	return b.parent
+	return b.parentBranchPoint
 }
 
 // AbortBranch can be called to remove this branch and all of its sub-branches
@@ -356,19 +358,17 @@ func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoin
 func (b *PCRProtectionProfileBranch) AbortBranch() *PCRProtectionProfileBranchPoint {
 	b.prepareToModifyBranch()
 
-	if b.parent == nil {
+	if b.parentBranchPoint == nil {
 		b.profile.fail("cannot abort the root branch")
 		// Always return something to avoid having to check for nil
-		p := &PCRProtectionProfileBranchPoint{
-			profile: b.profile,
-			parent:  &PCRProtectionProfileBranch{profile: b.profile}}
-		p.parent.currentBranchPoint = p
-		return p
+		return &PCRProtectionProfileBranchPoint{
+			profile:      b.profile,
+			parentBranch: &PCRProtectionProfileBranch{profile: b.profile}}
 	}
 
 	b.done = true
-	b.parent.removeBranch(b)
-	return b.parent
+	b.parentBranchPoint.removeBranch(b)
+	return b.parentBranchPoint
 }
 
 // PCRProtectionProfile provides a way to define the PCR policy used to
@@ -464,7 +464,7 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 
 	for _, sub := range profiles {
 		branch := sub.root
-		branch.parent = bp
+		branch.parentBranchPoint = bp
 		branch.profile = p
 
 		if sub.err != nil {
@@ -478,7 +478,7 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 			branch.EndBranch()
 		}
 
-		bp.branches = append(bp.branches, branch)
+		bp.childBranches = append(bp.childBranches, branch)
 	}
 
 	bp.EndBranchPoint()
@@ -526,12 +526,12 @@ func (iter *pcrProtectionProfileIterator) next() pcrProtectionProfileInstr {
 
 		switch i := instr.(type) {
 		case *pcrProtectionProfileBranchPointInstr:
-			if len(i.bp.branches) == 0 {
+			if len(i.bp.childBranches) == 0 {
 				// If this is an empty branch point, don't return this instruction because there
 				// won't be a corresponding *EndBranchInstr
 				continue
 			}
-			iter.descendInToBranches(i.bp.branches...)
+			iter.descendInToBranches(i.bp.childBranches...)
 			return instr
 		default:
 			return instr
@@ -575,7 +575,7 @@ func (p *PCRProtectionProfile) String() string {
 		case *pcrProtectionProfileExtendPCRInstr:
 			fmt.Fprintf(&b, "%*s ExtendPCR(%v, %d, %x)", depth*3, "", i.alg, i.pcr, i.value)
 		case *pcrProtectionProfileBranchPointInstr:
-			contexts = append([]*pcrProtectionProfileStringifyBranchContext{{index: 0, total: len(i.bp.branches)}}, contexts...)
+			contexts = append([]*pcrProtectionProfileStringifyBranchContext{{index: 0, total: len(i.bp.childBranches)}}, contexts...)
 			fmt.Fprintf(&b, "%*s BranchPoint(", depth*3, "")
 			branchStart = true
 		case *pcrProtectionProfileEndBranchInstr:
@@ -689,7 +689,7 @@ func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PC
 		case *pcrProtectionProfileBranchPointInstr:
 			// As this is a depth-first traversal, processing of this branch is parked when a BranchPoint instruction is encountered.
 			// Subsequent instructions will be from each of the branches from this branch point in turn.
-			contexts = contexts.handleBranches(len(i.bp.branches))
+			contexts = contexts.handleBranches(len(i.bp.childBranches))
 		case *pcrProtectionProfileEndBranchInstr:
 			if contexts.top().isRoot() {
 				// This is the end of the profile
