@@ -494,7 +494,7 @@ func (s *pcrProfileSuite) TestCompoundProfile4(c *C) {
 		},
 	})
 }
-func (s *pcrProfileSuite) TestAbortBranch(c *C) {
+func (s *pcrProfileSuite) TestAbortBranch1(c *C) {
 	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
 		alg: tpm2.HashAlgorithmSHA256,
 		profile: func() *PCRProtectionProfile {
@@ -511,6 +511,41 @@ func (s *pcrProfileSuite) TestAbortBranch(c *C) {
 				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
 				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")).
 				EndBranch().
+				EndBranchPoint().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event5")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event6")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 4, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"))
+			return p
+		}(),
+		values: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "xyz"),
+					7:  tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo", "event3", "event5"),
+					12: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar", "event4", "event6"),
+				},
+			},
+		},
+	})
+}
+
+func (s *pcrProfileSuite) TestAbortBranch2(c *C) {
+	s.testPCRProtectionProfile(c, &testPCRProtectionProfileData{
+		alg: tpm2.HashAlgorithmSHA256,
+		profile: func() *PCRProtectionProfile {
+			p := NewPCRProtectionProfile()
+			bp := p.RootBranch().
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+				AddPCRValue(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+				AddBranchPoint()
+			b1 := bp.AddBranch().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event1")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event2"))
+			bp.AddBranch().
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event3")).
+				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event4")).
+				EndBranch()
+			b1.AbortBranch().
 				EndBranchPoint().
 				ExtendPCR(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event5")).
 				ExtendPCR(tpm2.HashAlgorithmSHA256, 12, tpm2test.MakePCREventDigest(tpm2.HashAlgorithmSHA256, "event6")).
