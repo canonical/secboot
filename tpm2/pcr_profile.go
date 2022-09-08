@@ -474,10 +474,6 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 			return p
 		}
 
-		if !branch.done {
-			branch.EndBranch()
-		}
-
 		bp.childBranches = append(bp.childBranches, branch)
 	}
 
