@@ -130,7 +130,7 @@ func (p *PCRProtectionProfileBranchPoint) removeBranch(b *PCRProtectionProfileBr
 }
 
 // AddBranch creates and returns a PCRProtectionProfileBranch corresponding to a
-// new sub-branch.
+// new sub-branch in the associated profile.
 //
 // Note that each branch created from this branch point must explicitly define
 // values for the same set of PCRs. It is not possible to generate policies where
@@ -190,8 +190,12 @@ func (p *PCRProtectionProfileBranchPoint) EndBranchPoint() *PCRProtectionProfile
 	return p.parentBranch
 }
 
-// PCRProtectionProfileBranch represents a branch in a PCR profile. It contains
-// a sequence of instructions that are used to compute PCR values.
+// PCRProtectionProfileBranch represents a branch in a PCR profile. It
+// contains a sequence of instructions that are used to compute PCR values.
+//
+// Note that there isn't a one-to-one association between a branch in a
+// profile and a branch in the computed policy - a branch in a profile
+// may correspond to multiple branches in the computed policy.
 type PCRProtectionProfileBranch struct {
 	profile *PCRProtectionProfile // the profile associated with this branch
 
@@ -371,15 +375,36 @@ func (b *PCRProtectionProfileBranch) AbortBranch() *PCRProtectionProfileBranchPo
 	return b.parentBranchPoint
 }
 
-// PCRProtectionProfile provides a way to define the PCR policy used to
-// protect a key sealed with SealKeyToTPM, and contains a root
-// PCRProtectionProfileBranch. It can generate compound PCR policies for
-// multiple conditions by making use of sub-branches.
+// PCRProtectionProfile provides a way to create the PCR policy used to
+// protect a key sealed with SealKeyToTPM. It can generate compound PCR
+// policies for multiple conditions by making use of sub-branches.
 //
 // The API can be used to assemble profiles without any error checking.
 // Errors that occur when assembling the profile or misuse of the API will
 // mark a profile as failed and the error will subsequently be returned
 // when calling ComputePCRDigests or ComputePCRValues.
+//
+// Every profile starts with a root PCRProtectionProfileBranch. If no
+// sub-branches are created then the computed policy (the PCR selection and
+// composite PCR digests returned from ComputePCRDigests) will have a single
+// branch.
+//
+// When computing policy from a profile, a profile branch corresponds to one or
+// more branches in the computed policy. Instructions in the profile branch are
+// applied to each of the associated policy branches. The profile's root branch
+// initially corresponds to one branch in the computed policy.
+//
+// When encountering a branch point and sub-branches whilst computing the PCR
+// policy for a profile, instructions from each sub-branch are executed in turn
+// before resuming execution of the parent branch. Each sub-branch inherits a
+// copy of the current state of the PCR policy branches associated with the
+// parent branch. Upon completion of a branch point, the state of the parent
+// branch is replaced by the modified state associated with all of the
+// sub-branches before instructions from the parent branch are resumed.
+// Effectively, if a profile branch is associated with n branches in the
+// computed PCR policy and a branch point with m sub-branches is encountered,
+// the profile branch will be associated with n x m branches in the computed
+// PCR policy upon completion of the sub-branches.
 type PCRProtectionProfile struct {
 	root *PCRProtectionProfileBranch
 	err  error
@@ -657,8 +682,14 @@ func (s pcrProtectionProfileComputeContextStack) top() *pcrProtectionProfileComp
 	return s[0]
 }
 
-// ComputePCRValues computes PCR values for this PCRProtectionProfile, returning one set of PCR values
-// for each complete branch. The returned list of PCR values is not de-duplicated.
+// ComputePCRValues computes PCR values for this PCRProtectionProfile, and is
+// an intermediate step in computing a PCR policy from this profile
+// (ComputePCRDigests performs this entire process). There is one set of PCR
+// values for each branch in the computed PCR policy. Note that there isn't a
+// one-to-one association between a branch in the computed policy and a branch
+// in the profile.
+//
+// The returned list of PCR values is not de-duplicated.
 func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PCRValues, error) {
 	if p.err != nil {
 		return nil, fmt.Errorf("cannot compute PCR values because of an error when constructing the profile: %v", p.err)
@@ -696,8 +727,12 @@ func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PC
 	}
 }
 
-// ComputePCRDigests computes a PCR selection and a list of composite PCR digests from this PCRProtectionProfile (one composite digest per
-// complete branch). The returned list of PCR digests is de-duplicated.
+// ComputePCRDigests computes a PCR policy consisting of a PCR selection and
+// a list of composite PCR digests from this PCRProtectionProfile (one
+// composite digest per branch). Note that there isn't a one-to-one association
+// between a branch in the computed policy and a branch in the profile.
+//
+// The returned list of composite PCR digests is de-duplicated.
 func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (tpm2.PCRSelectionList, tpm2.DigestList, error) {
 	// Compute the sets of PCR values for all branches
 	values, err := p.ComputePCRValues(tpm)
