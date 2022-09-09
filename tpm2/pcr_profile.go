@@ -117,18 +117,6 @@ type PCRProtectionProfileBranchPoint struct {
 	done bool
 }
 
-func (p *PCRProtectionProfileBranchPoint) removeBranch(b *PCRProtectionProfileBranch) {
-	for i, c := range p.childBranches {
-		if c == b {
-			if i < len(p.childBranches)-1 {
-				copy(p.childBranches[i:], p.childBranches[i+1:])
-			}
-			p.childBranches = p.childBranches[:len(p.childBranches)-1]
-			break
-		}
-	}
-}
-
 // AddBranch creates and returns a PCRProtectionProfileBranch corresponding to a
 // new sub-branch in the associated profile.
 //
@@ -345,33 +333,6 @@ func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoin
 	}
 
 	b.done = true
-	return b.parentBranchPoint
-}
-
-// AbortBranch can be called to remove this branch and all of its sub-branches
-// from the profile.
-//
-// Once this has been called, attempts to modify this branch or any sub-branch
-// will result in the associated profile being marked as failed.
-//
-// This should not be called on the root branch associated with a profile, and
-// doing so will mark the profile as failed.
-//
-// It returns a pointer to the branch point to which this branch was originally
-// added.
-func (b *PCRProtectionProfileBranch) AbortBranch() *PCRProtectionProfileBranchPoint {
-	b.prepareToModifyBranch()
-
-	if b.parentBranchPoint == nil {
-		b.profile.fail("cannot abort the root branch")
-		// Always return something to avoid having to check for nil
-		return &PCRProtectionProfileBranchPoint{
-			profile:      b.profile,
-			parentBranch: &PCRProtectionProfileBranch{profile: b.profile}}
-	}
-
-	b.done = true
-	b.parentBranchPoint.removeBranch(b)
 	return b.parentBranchPoint
 }
 
