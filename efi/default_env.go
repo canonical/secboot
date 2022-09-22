@@ -22,11 +22,11 @@ package efi
 import (
 	"os"
 
-	"github.com/canonical/go-efilib"
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
 )
 
-var readVar = efi.ReadVar
+var readVar = efi.ReadVariable
 
 type defaultEnvImpl struct{}
 
