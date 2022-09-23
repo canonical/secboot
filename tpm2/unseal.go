@@ -20,82 +20,63 @@
 package tpm2
 
 import (
-	"fmt"
-
 	"github.com/canonical/go-tpm2"
 
 	"golang.org/x/xerrors"
-
-	"github.com/snapcore/secboot/internal/tcg"
 )
 
 const (
 	tryPersistentSRK = iota
 	tryTransientSRK
-	tryMax
 )
 
 // loadForUnseal loads the sealed key object into the TPM and returns a context
-// for it. It first tries by using the persistent shared SRK at the well known
-// handle as the parent object. If this object doesn't exist or loading fails with
-// an error indicating that the supplied sealed key object data is invalid, this
-// function will try to create a transient SRK and then retry loading of the sealed
-// key object by specifying the newly created transient object as the parent.
+// for it. It first tries by going through all the peristent handles. If none can be
+// used, this function will try to create a transient SRK and then retry loading of
+// the sealed key object by specifying the newly created transient object as parent.
 //
-// If both attempts to load the sealed key object fail, or if the first attempt fails
-// and a transient SRK cannot be created, an error will be returned.
+// If all attempts to load the sealed key object fail and a transient SRK cannot be
+// created, an error will be returned.
 //
 // If a transient SRK is created, it is flushed from the TPM before this function
 // returns.
 func (k *SealedKeyObject) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	var lastError error
-	for try := tryPersistentSRK; try <= tryMax; try++ {
+
+	handles, err := tpm.GetCapabilityHandles(tpm2.HandleTypePersistent.BaseHandle(), tpm2.CapabilityMaxProperties)
+	if err != nil {
+		return nil, err
+	}
+
+	tries := map[int]int{
+		tryPersistentSRK: len(handles),
+		tryTransientSRK:  len(handles) + 1,
+	}
+
+	for try := 0; try < tries[tryTransientSRK]; try++ {
 		var srk tpm2.ResourceContext
-		if try == tryPersistentSRK {
-			var err error
-			srk, err = tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-			if tpm2.IsResourceUnavailableError(err, tcg.SRKHandle) {
-				// No SRK - save the error and try creating a transient
-				lastError = ErrTPMProvisioning
-				continue
-			} else if err != nil {
-				// This is an unexpected error
-				return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
-			}
+		var err error
+		if try < tries[tryPersistentSRK] {
+			srk, err = tpm.CreateResourceContextFromTPM(handles[try])
 		} else {
-			var err error
 			srk, _, _, _, _, err = tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, selectSrkTemplate(tpm, session), nil, nil, session)
-			if isAuthFailError(err, tpm2.CommandCreatePrimary, 1) {
-				// We don't know the authorization value for the storage hierarchy - ignore
-				// this so we end up returning the last error.
-				continue
-			} else if err != nil {
-				// This is an unexpected error
-				return nil, xerrors.Errorf("cannot create transient SRK: %w", err)
-			}
 			defer tpm.FlushContext(srk)
+		}
+		if err != nil {
+			lastError = ErrTPMProvisioning
+			continue
 		}
 
 		// Load the key data
 		keyObject, err := k.load(tpm, srk, session)
-		if isLoadInvalidParamError(err) || isImportInvalidParamError(err) {
-			// The supplied key data is invalid or is not protected by the supplied SRK.
-			lastError = InvalidKeyDataError{
-				fmt.Sprintf("cannot load sealed key object into TPM: %v. Either the sealed key object is bad or the TPM owner has changed", err)}
-			continue
-		} else if isLoadInvalidParentError(err) || isImportInvalidParentError(err) {
-			// The supplied SRK is not a valid storage parent.
+		if err != nil {
 			lastError = ErrTPMProvisioning
 			continue
-		} else if err != nil {
-			// This is an unexpected error
-			return nil, xerrors.Errorf("cannot load sealed key object into TPM: %w", err)
 		}
 
 		return keyObject, nil
 	}
 
-	// No more attempts left - return the last error
 	return nil, lastError
 }
 
