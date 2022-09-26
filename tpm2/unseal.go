@@ -21,6 +21,7 @@ package tpm2
 
 import (
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tcg"
 
 	"golang.org/x/xerrors"
 )
@@ -31,7 +32,7 @@ const (
 )
 
 // loadForUnseal loads the sealed key object into the TPM and returns a context
-// for it. It first tries by going through all the peristent handles. If none can be
+// for it. It first tries by going through all the peristent SRK handles. If none can be
 // used, this function will try to create a transient SRK and then retry loading of
 // the sealed key object by specifying the newly created transient object as parent.
 //
@@ -56,7 +57,12 @@ func (k *SealedKeyObject) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Sessi
 	for try := 0; try < tries[tryTransientSRK]; try++ {
 		var srk tpm2.ResourceContext
 		var err error
+
 		if try < tries[tryPersistentSRK] {
+			if handles[try] == tcg.EKHandle {
+				continue
+			}
+
 			srk, err = tpm.CreateResourceContextFromTPM(handles[try])
 		} else {
 			srk, _, _, _, _, err = tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, selectSrkTemplate(tpm, session), nil, nil, session)
