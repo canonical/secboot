@@ -507,13 +507,17 @@ type InitializeLUKS2ContainerOptions struct {
 	// KDFOptions sets the KDF options for the initial keyslot. If this
 	// is nil then the defaults are used.
 	KDFOptions *KDFOptions
+
+	// InlineCryptoEngine set flag if to use Inline Crypto Engine
+	InlineCryptoEngine bool
 }
 
 func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 	return &luks2.FormatOptions{
 		MetadataKiBSize:     o.MetadataKiBSize,
 		KeyslotsAreaKiBSize: o.KeyslotsAreaKiBSize,
-		KDFOptions:          o.KDFOptions.internalOpts()}
+		KDFOptions:          o.KDFOptions.internalOpts(),
+		InlineCryptoEngine:  o.InlineCryptoEngine}
 }
 
 func validateInitializeLUKS2Options(options *InitializeLUKS2ContainerOptions) error {
