@@ -552,13 +552,17 @@ type InitializeLUKS2ContainerOptions struct {
 	// the initial keyslot. If this is empty, then the name will be
 	// set to "default".
 	InitialKeyslotName string
+
+	// InlineCryptoEngine set flag if to use Inline Crypto Engine
+	InlineCryptoEngine bool
 }
 
 func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 	return &luks2.FormatOptions{
 		MetadataKiBSize:     o.MetadataKiBSize,
 		KeyslotsAreaKiBSize: o.KeyslotsAreaKiBSize,
-		KDFOptions:          o.KDFOptions.luksOpts()}
+		KDFOptions:          o.KDFOptions.luksOpts(),
+		InlineCryptoEngine:  o.InlineCryptoEngine}
 }
 
 // InitializeLUKS2Container will initialize the partition at the specified devicePath

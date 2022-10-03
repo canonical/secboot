@@ -206,6 +206,9 @@ type FormatOptions struct {
 	// KDFOptions describes the KDF options for the initial
 	// key slot.
 	KDFOptions KDFOptions
+
+	// InlineCryptoEngine set flag if to use Inline Crypto Engine
+	InlineCryptoEngine bool
 }
 
 func (options *FormatOptions) validate() error {
@@ -242,6 +245,11 @@ func (options *FormatOptions) validate() error {
 
 func (options *FormatOptions) appendArguments(args []string) []string {
 	args = options.KDFOptions.appendArguments(args)
+
+	if options.InlineCryptoEngine {
+		// use inline crypto engine
+		args = append(args, "--inline-crypto-engine")
+	}
 
 	if options.MetadataKiBSize != 0 {
 		// override the default metadata area size if specified
