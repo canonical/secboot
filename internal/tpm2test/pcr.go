@@ -74,8 +74,9 @@ func FormatPCRValuesFromPCRProtectionProfile(profile *secboot_tpm2.PCRProtection
 
 func NewPCRProfileFromCurrentValues(alg tpm2.HashAlgorithmId, pcrs []int) *secboot_tpm2.PCRProtectionProfile {
 	out := secboot_tpm2.NewPCRProtectionProfile()
+	root := out.RootBranch()
 	for _, pcr := range pcrs {
-		out = out.AddPCRValueFromTPM(alg, pcr)
+		root.AddPCRValueFromTPM(alg, pcr)
 	}
 	return out
 }
@@ -85,8 +86,9 @@ func NewResolvedPCRProfileFromCurrentValues(c *C, tpm *tpm2.TPMContext, alg tpm2
 	c.Assert(err, IsNil)
 
 	out := secboot_tpm2.NewPCRProtectionProfile()
+	root := out.RootBranch()
 	for _, pcr := range pcrs {
-		out = out.AddPCRValue(alg, pcr, values[alg][pcr])
+		root.AddPCRValue(alg, pcr, values[alg][pcr])
 	}
 	return out
 }

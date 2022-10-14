@@ -175,13 +175,16 @@ func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *B
 		}
 	}
 
-	// Iterate over all of the branch points starting from the root and creates a tree of
-	// sub-profiles with AddProfileOR. The ordering doesn't matter here, because each subprofile
-	// is already complete
-	for _, b := range allBranches {
+	// Iterate over all of the branch points starting from the leaves and creates a tree of
+	// sub-profiles with AddProfileOR.
+	for i := len(allBranches) - 1; i >= 0; i-- {
+		b := allBranches[i]
+
 		if len(b.branches) == 0 {
+			// This is a leaf branch
 			continue
 		}
+
 		b.profile.AddProfileOR(b.branches...)
 	}
 

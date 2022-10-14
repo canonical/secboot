@@ -177,7 +177,7 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 
 	// Update the PCR policy for the primary key.
 	if pcrProfile == nil {
-		pcrProfile = &PCRProtectionProfile{}
+		pcrProfile = NewPCRProtectionProfile()
 	}
 	if err := primaryKey.updatePCRProtectionPolicyImpl(tpm, authKey, pcrPolicyCounterPub, pcrProfile, session); err != nil {
 		return xerrors.Errorf("cannot update PCR authorization policy: %w", err)
