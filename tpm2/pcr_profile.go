@@ -21,14 +21,18 @@ package tpm2
 
 import (
 	"bytes"
+	"crypto"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"math/bits"
+	"reflect"
 	"runtime"
 	"strings"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
@@ -565,6 +569,9 @@ func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoin
 // computed PCR policy and a branch point with m sub-branches is encountered,
 // the profile branch will be associated with n x m branches in the computed
 // PCR policy upon completion of the sub-branches.
+//
+// A PCRProtectionProfile can be serialized to and unserialized from the TPM
+// wire format.
 type PCRProtectionProfile struct {
 	root *PCRProtectionProfileBranch
 	err  error
@@ -726,6 +733,279 @@ func (p *PCRProtectionProfile) String() string {
 	s := new(bytes.Buffer)
 	p.run(&pcrProtectionProfileStringifier{w: s, depth: -1})
 	return s.String() + "\n"
+}
+
+var (
+	savedPCRBits           = bits.Len16(uint16(maxPCR))
+	savedDigestMask uint32 = (1 << (32 - savedPCRBits)) - 1
+	savedPCRMask    uint16 = (1 << savedPCRBits) - 1
+	maxSavedDigests int    = int(savedDigestMask)
+)
+
+// savedPCRProtectionProfilePCRAndDigest provides a way of storing a PCR
+// index and digest index as a uint32 in a saved PCR profile, with the
+// lower 11 bits used to store the PCR index and the upper 22 bits used
+// to store a digest index, which references a digest in a list.
+type savedPCRProtectionProfilePCRAndDigest uint32
+
+func (i savedPCRProtectionProfilePCRAndDigest) PCR() uint16 {
+	return uint16(i) & savedPCRMask
+}
+
+func (i savedPCRProtectionProfilePCRAndDigest) Digest() uint32 {
+	return (uint32(i) >> savedPCRBits) & savedDigestMask
+}
+
+func newSavedPCRProtectionProfilePCRAndDigest(pcr uint16, digest uint32) savedPCRProtectionProfilePCRAndDigest {
+	return savedPCRProtectionProfilePCRAndDigest(uint32(pcr&savedPCRMask) | ((digest & savedDigestMask) << savedPCRBits))
+}
+
+type savedPCRProtectionProfilePCREventInstrData struct {
+	Alg          tpm2.HashAlgorithmId
+	PCRAndDigest savedPCRProtectionProfilePCRAndDigest
+}
+
+type savedPCRProtectionProfileAddPCRValueFromTPMInstrData struct {
+	Alg tpm2.HashAlgorithmId
+	PCR uint16
+}
+
+// savedPCRProtectionProfileInstrData represents the data associated with a
+// single instruction in a saved PCR profile.
+type savedPCRProtectionProfileInstrData struct {
+	AddPCRValue        *savedPCRProtectionProfilePCREventInstrData
+	AddPCRValueFromTPM *savedPCRProtectionProfileAddPCRValueFromTPMInstrData
+	ExtendPCR          *savedPCRProtectionProfilePCREventInstrData
+}
+
+func (d *savedPCRProtectionProfileInstrData) Select(selector reflect.Value) interface{} {
+	switch selector.Interface().(savedPCRProtectionProfileInstrType) {
+	case beginBranch, beginBranchPoint, endBranchPoint, endBranch:
+		return mu.NilUnionValue
+	case addPCRValue:
+		return &d.AddPCRValue
+	case addPCRValueFromTPM:
+		return &d.AddPCRValueFromTPM
+	case extendPCR:
+		return &d.ExtendPCR
+	default:
+		return nil
+	}
+}
+
+type savedPCRProtectionProfileInstrType uint8
+
+const (
+	beginBranch savedPCRProtectionProfileInstrType = iota + 1
+	addPCRValue
+	addPCRValueFromTPM
+	extendPCR
+	beginBranchPoint
+	endBranchPoint
+	endBranch
+)
+
+// savedPCRProtectionProfileInstr represents a single instruction in a
+// saved PCR profile.
+type savedPCRProtectionProfileInstr struct {
+	Type savedPCRProtectionProfileInstrType
+	Data *savedPCRProtectionProfileInstrData
+}
+
+// savedPCRProtectionProfile represents a PCR profile in a form that can
+// be serialized. It is constructed in a way that permits de-duplication of
+// digests that appear multiple times in the profile in order to save space.
+// It also has a fixed depth that is independent of the source profile depth.
+type savedPCRProtectionProfile struct {
+	Digests tpm2.DigestList                   // a de-duplicated list of all the digests in this profile
+	Instrs  []*savedPCRProtectionProfileInstr // a list of instructions used to reconstruct this profile
+}
+
+type pcrProtectionProfileSerializer struct {
+	digests   tpm2.DigestList
+	digestMap map[[32]byte]uint32
+	instrs    []*savedPCRProtectionProfileInstr
+}
+
+func newPcrProtectionProfileSerializer() *pcrProtectionProfileSerializer {
+	return &pcrProtectionProfileSerializer{digestMap: make(map[[32]byte]uint32)}
+}
+
+func (c *pcrProtectionProfileSerializer) digestIndex(digest tpm2.Digest) uint32 {
+	h := crypto.SHA256.New()
+	h.Write(digest)
+
+	var k [32]byte
+	copy(k[:], h.Sum(nil))
+
+	index, exists := c.digestMap[k]
+	if !exists {
+		// The length isn't guaranteed to fit into uint32, but this doesn't
+		// matter - go-tpm2 won't serialize a list where the number of
+		// elements exceeds math.MaxInt32 (so that the uint32 from the wire
+		// always fits in an int) and we'll return an error from the call to
+		// mu.MarshalToWriter. But if this profile has more than 2^^31 digests
+		// then the creator of it has bigger problems.
+		index = uint32(len(c.digests))
+		c.digestMap[k] = index
+		c.digests = append(c.digests, digest)
+	}
+
+	return index
+}
+
+func (c *pcrProtectionProfileSerializer) beginBranch(_ int) {
+	c.instrs = append(c.instrs, &savedPCRProtectionProfileInstr{Type: beginBranch})
+}
+
+func (c *pcrProtectionProfileSerializer) addPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
+	c.instrs = append(c.instrs, &savedPCRProtectionProfileInstr{
+		Type: addPCRValue,
+		Data: &savedPCRProtectionProfileInstrData{
+			AddPCRValue: &savedPCRProtectionProfilePCREventInstrData{
+				Alg:          alg,
+				PCRAndDigest: newSavedPCRProtectionProfilePCRAndDigest(uint16(pcr), c.digestIndex(value))}}})
+}
+
+func (c *pcrProtectionProfileSerializer) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error {
+	c.instrs = append(c.instrs, &savedPCRProtectionProfileInstr{
+		Type: addPCRValueFromTPM,
+		Data: &savedPCRProtectionProfileInstrData{
+			AddPCRValueFromTPM: &savedPCRProtectionProfileAddPCRValueFromTPMInstrData{
+				Alg: alg,
+				PCR: uint16(pcr), // checked against maxPCR
+			}}})
+	return nil
+}
+
+func (c *pcrProtectionProfileSerializer) extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
+	c.instrs = append(c.instrs, &savedPCRProtectionProfileInstr{
+		Type: extendPCR,
+		Data: &savedPCRProtectionProfileInstrData{
+			ExtendPCR: &savedPCRProtectionProfilePCREventInstrData{
+				Alg:          alg,
+				PCRAndDigest: newSavedPCRProtectionProfilePCRAndDigest(uint16(pcr), c.digestIndex(value))}}})
+}
+
+func (c *pcrProtectionProfileSerializer) beginBranchPoint() {
+	c.instrs = append(c.instrs, &savedPCRProtectionProfileInstr{Type: beginBranchPoint})
+}
+
+func (c *pcrProtectionProfileSerializer) endBranchPoint() {
+	c.instrs = append(c.instrs, &savedPCRProtectionProfileInstr{Type: endBranchPoint})
+}
+
+func (c *pcrProtectionProfileSerializer) endBranch() {
+	c.instrs = append(c.instrs, &savedPCRProtectionProfileInstr{Type: endBranch})
+}
+
+func (p PCRProtectionProfile) Marshal(w io.Writer) error {
+	c := newPcrProtectionProfileSerializer()
+	p.run(c)
+
+	if len(c.digests) > maxSavedDigests {
+		return errors.New("profile contains too many digests")
+	}
+
+	_, err := mu.MarshalToWriter(w, &savedPCRProtectionProfile{
+		Digests: c.digests,
+		Instrs:  c.instrs})
+	return err
+}
+
+func (p *PCRProtectionProfile) Unmarshal(r mu.Reader) error {
+	var s *savedPCRProtectionProfile
+	if _, err := mu.UnmarshalFromReader(r, &s); err != nil {
+		return err
+	}
+
+	p.root = newPCRProtectionProfileBranch(p, nil)
+
+	var b *PCRProtectionProfileBranch
+	var bp *PCRProtectionProfileBranchPoint
+
+	instrs := s.Instrs
+	for i := 0; len(instrs) > 0; i++ {
+		instr := instrs[0]
+		instrs = instrs[1:]
+
+		var digestIndex uint32
+		requireDigest := true
+		switch instr.Type {
+		case addPCRValue:
+			digestIndex = instr.Data.AddPCRValue.PCRAndDigest.Digest()
+		case extendPCR:
+			digestIndex = instr.Data.ExtendPCR.PCRAndDigest.Digest()
+		default:
+			requireDigest = false
+		}
+
+		var digest tpm2.Digest
+		if requireDigest {
+			if int(digestIndex) >= len(s.Digests) {
+				return fmt.Errorf("digest index (%d) out of range for instruction %d", digestIndex, i)
+			}
+			digest = s.Digests[int(digestIndex)]
+		}
+
+		switch instr.Type {
+		case beginBranch:
+			switch {
+			case bp == nil && b == nil:
+				b = p.root
+			case bp == nil:
+				return fmt.Errorf("unexpected BeginBranch at instruction %d", i)
+			default:
+				b = bp.AddBranch()
+				bp = nil
+			}
+		case addPCRValue:
+			if b == nil {
+				return fmt.Errorf("unexpected AddPCRValue at instruction %d", i)
+			}
+			b.AddPCRValue(instr.Data.AddPCRValue.Alg, int(instr.Data.AddPCRValue.PCRAndDigest.PCR()), digest)
+		case addPCRValueFromTPM:
+			if b == nil {
+				return fmt.Errorf("unexpected AddPCRValueFromTPM at instruction %d", i)
+			}
+			b.AddPCRValueFromTPM(instr.Data.AddPCRValueFromTPM.Alg, int(instr.Data.AddPCRValueFromTPM.PCR))
+		case extendPCR:
+			if b == nil {
+				return fmt.Errorf("unexpected ExtendPCR at instruction %d", i)
+			}
+			b.ExtendPCR(instr.Data.ExtendPCR.Alg, int(instr.Data.ExtendPCR.PCRAndDigest.PCR()), digest)
+		case beginBranchPoint:
+			if b == nil {
+				return fmt.Errorf("unexpected BeginBranchPoint at instruction %d", i)
+			}
+			bp = b.AddBranchPoint()
+			b = nil
+		case endBranchPoint:
+			if bp == nil {
+				return fmt.Errorf("unexpected EndBranchPoint at instruction %d", i)
+			}
+			b = bp.EndBranchPoint()
+			bp = nil
+		case endBranch:
+			switch {
+			case b == p.root && len(instrs) != 0:
+				return fmt.Errorf("unexpected EndBranch for root branch at instruction %d", i)
+			case b == p.root:
+				// done:
+				return nil
+			case b == nil:
+				return fmt.Errorf("unexpected EndBranch at instruction %d", i)
+			default:
+				bp = b.EndBranch()
+				b = nil
+			}
+		default:
+			// this will be caught by go-tpm2/mu as an invalid selector value
+			return fmt.Errorf("invalid instruction type %d at instruction %d", instr.Type, i)
+		}
+	}
+
+	return errors.New("missing EndBranch for root branch")
 }
 
 type pcrProtectionProfileComputerBranchContext struct {
