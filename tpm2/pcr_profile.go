@@ -86,6 +86,127 @@ type pcrProtectionProfileInstr interface {
 
 type pcrProtectionProfileInstrList []pcrProtectionProfileInstr
 
+// pcrProtectionProfileInstrHandler is an interface to receive instructions associated
+// with a profile.
+type pcrProtectionProfileInstrHandler interface {
+	// beginBranch is called to signal the start of a new branch.
+	beginBranch(index int)
+
+	// addPCRValue is called to add the supplied PCR value to the
+	// current branch.
+	addPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest)
+
+	// addPCRValueFromTPM is called to add the value of the specified
+	// PCR to the current branch,
+	addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error
+
+	// extendPCR is called to extend the specified PCR with the supplied
+	// value for the current branch.
+	extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest)
+
+	// beginBranchPoint signals the start of a branch point in the
+	// current branch.
+	beginBranchPoint()
+
+	// endBranchPoint signals the end of a branch point.
+	endBranchPoint()
+
+	// endBranch signals the end of the current branch. The next branch
+	// is selected, which will either be for a sibling branch (in which case,
+	// the next call will be beginBranch with the sub-branch index) or the
+	// parent branch (in which case, the next call will be endBranchPoint)
+	endBranch()
+}
+
+// pcrProtectionProfileExecContext contains the context associated with the
+// pcrProtectionProfileBranchExecContext maintains context associated with a single
+// branch when executing a profile.
+type pcrProtectionProfileBranchExecContext struct {
+	index              int
+	instrs             pcrProtectionProfileInstrList
+	pendingSubBranches []*PCRProtectionProfileBranch
+	nextSubBranchIndex int
+}
+
+func newPcrProtectionProfileBranchExecContext(index int, branch *PCRProtectionProfileBranch) *pcrProtectionProfileBranchExecContext {
+	instrs := append(pcrProtectionProfileInstrList{}, branch.instrs...)
+	if branch.currentBranchPoint != nil {
+		// Implicitly add an EndBranchPoint if needed and one doesn't exist
+		instrs = append(instrs, new(pcrProtectionProfileEndBranchPointInstr))
+	}
+	if !branch.done {
+		// Implicitly add an EndBranch if one doesn't exist
+		instrs = append(instrs, new(pcrProtectionProfileEndBranchInstr))
+	}
+	return &pcrProtectionProfileBranchExecContext{index: index, instrs: instrs}
+}
+
+// execution of PCRProtectionProfile.
+type pcrProtectionProfileExecContext struct {
+	handler     pcrProtectionProfileInstrHandler
+	branchStack []*pcrProtectionProfileBranchExecContext
+}
+
+func newPcrProtectionProfileExecContext(profile *PCRProtectionProfile, handler pcrProtectionProfileInstrHandler) *pcrProtectionProfileExecContext {
+	return &pcrProtectionProfileExecContext{
+		handler: handler,
+		branchStack: []*pcrProtectionProfileBranchExecContext{
+			newPcrProtectionProfileBranchExecContext(0, profile.root)}}
+}
+
+func (c *pcrProtectionProfileExecContext) currentBranchIndex() int {
+	return c.branchStack[0].index
+}
+
+func (c *pcrProtectionProfileExecContext) queueSubBranches(branches ...*PCRProtectionProfileBranch) {
+	branch := c.branchStack[0]
+	if len(branch.pendingSubBranches) != 0 {
+		panic("cannot begin a branch point whilst one is in progress")
+	}
+	branch.pendingSubBranches = branches
+	branch.nextSubBranchIndex = 0
+}
+
+func (c *pcrProtectionProfileExecContext) endCurrentBranch() {
+	c.branchStack = c.branchStack[1:]
+}
+
+func (c *pcrProtectionProfileExecContext) selectNextPendingSubBranch() {
+	if len(c.branchStack) == 0 {
+		// We're finished with the profile.
+		return
+	}
+
+	branch := c.branchStack[0]
+	if len(branch.pendingSubBranches) == 0 {
+		// We don't have any pending sub branches, so continue with
+		// this branch.
+		return
+	}
+
+	// We're entering or continuing a branch point, so select the next
+	// sub branch.
+	subBranch := branch.pendingSubBranches[0]
+	branch.pendingSubBranches = branch.pendingSubBranches[1:]
+
+	// Push the new sub branch to the top of the stack.
+	c.branchStack = append([]*pcrProtectionProfileBranchExecContext{
+		newPcrProtectionProfileBranchExecContext(branch.nextSubBranchIndex, subBranch),
+	}, c.branchStack...)
+	branch.nextSubBranchIndex++
+}
+
+func (c *pcrProtectionProfileExecContext) popNextInstr() pcrProtectionProfileInstr {
+	branch := c.branchStack[0]
+	instr := branch.instrs[0]
+	branch.instrs = branch.instrs[1:]
+	return instr
+}
+
+func (c *pcrProtectionProfileExecContext) done() bool {
+	return len(c.branchStack) == 0
+}
+
 // pcrProtectionProfileBeginBranchInstr is inserted at the start of every
 // branch and calls pcrProtectionProfileInstrHandler.beginBranch when
 // executed.
@@ -545,127 +666,6 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 	return p
 }
 
-// pcrProtectionProfileInstrHandler is an interface to receive instructions associated
-// with a profile.
-type pcrProtectionProfileInstrHandler interface {
-	// beginBranch is called to signal the start of a new branch.
-	beginBranch(index int)
-
-	// addPCRValue is called to add the supplied PCR value to the
-	// current branch.
-	addPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest)
-
-	// addPCRValueFromTPM is called to add the value of the specified
-	// PCR to the current branch,
-	addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error
-
-	// extendPCR is called to extend the specified PCR with the supplied
-	// value for the current branch.
-	extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest)
-
-	// beginBranchPoint signals the start of a branch point in the
-	// current branch.
-	beginBranchPoint()
-
-	// endBranchPoint signals the end of a branch point.
-	endBranchPoint()
-
-	// endBranch signals the end of the current branch. The next branch
-	// is selected, which will either be for a sibling branch (in which case,
-	// the next call will be beginBranch with the sub-branch index) or the
-	// parent branch (in which case, the next call will be endBranchPoint)
-	endBranch()
-}
-
-// pcrProtectionProfileBranchExecContext maintains context associated with a single
-// branch when executing a profile.
-type pcrProtectionProfileBranchExecContext struct {
-	index              int
-	instrs             pcrProtectionProfileInstrList
-	pendingSubBranches []*PCRProtectionProfileBranch
-	nextSubBranchIndex int
-}
-
-func newPcrProtectionProfileBranchExecContext(index int, branch *PCRProtectionProfileBranch) *pcrProtectionProfileBranchExecContext {
-	instrs := append(pcrProtectionProfileInstrList{}, branch.instrs...)
-	if branch.currentBranchPoint != nil {
-		// Implicitly add an EndBranchPoint if needed and one doesn't exist
-		instrs = append(instrs, new(pcrProtectionProfileEndBranchPointInstr))
-	}
-	if !branch.done {
-		// Implicitly add an EndBranch if one doesn't exist
-		instrs = append(instrs, new(pcrProtectionProfileEndBranchInstr))
-	}
-	return &pcrProtectionProfileBranchExecContext{index: index, instrs: instrs}
-}
-
-// pcrProtectionProfileExecContext contains the context associated with the
-// execution of PCRProtectionProfile.
-type pcrProtectionProfileExecContext struct {
-	handler     pcrProtectionProfileInstrHandler
-	branchStack []*pcrProtectionProfileBranchExecContext
-}
-
-func newPcrProtectionProfileExecContext(profile *PCRProtectionProfile, handler pcrProtectionProfileInstrHandler) *pcrProtectionProfileExecContext {
-	return &pcrProtectionProfileExecContext{
-		handler: handler,
-		branchStack: []*pcrProtectionProfileBranchExecContext{
-			newPcrProtectionProfileBranchExecContext(0, profile.root)}}
-}
-
-func (c *pcrProtectionProfileExecContext) currentBranchIndex() int {
-	return c.branchStack[0].index
-}
-
-func (c *pcrProtectionProfileExecContext) queueSubBranches(branches ...*PCRProtectionProfileBranch) {
-	branch := c.branchStack[0]
-	if len(branch.pendingSubBranches) != 0 {
-		panic("cannot begin a branch point whilst one is in progress")
-	}
-	branch.pendingSubBranches = branches
-	branch.nextSubBranchIndex = 0
-}
-
-func (c *pcrProtectionProfileExecContext) endCurrentBranch() {
-	c.branchStack = c.branchStack[1:]
-}
-
-func (c *pcrProtectionProfileExecContext) selectNextPendingSubBranch() {
-	if len(c.branchStack) == 0 {
-		// We're finished with the profile.
-		return
-	}
-
-	branch := c.branchStack[0]
-	if len(branch.pendingSubBranches) == 0 {
-		// We don't have any pending sub branches, so continue with
-		// this branch.
-		return
-	}
-
-	// We're entering or continuing a branch point, so select the next
-	// sub branch.
-	subBranch := branch.pendingSubBranches[0]
-	branch.pendingSubBranches = branch.pendingSubBranches[1:]
-
-	// Push the new sub branch to the top of the stack.
-	c.branchStack = append([]*pcrProtectionProfileBranchExecContext{
-		newPcrProtectionProfileBranchExecContext(branch.nextSubBranchIndex, subBranch),
-	}, c.branchStack...)
-	branch.nextSubBranchIndex++
-}
-
-func (c *pcrProtectionProfileExecContext) popNextInstr() pcrProtectionProfileInstr {
-	branch := c.branchStack[0]
-	instr := branch.instrs[0]
-	branch.instrs = branch.instrs[1:]
-	return instr
-}
-
-func (c *pcrProtectionProfileExecContext) done() bool {
-	return len(c.branchStack) == 0
-}
-
 // run executes this profile with the supplied handler.
 func (p *PCRProtectionProfile) run(handler pcrProtectionProfileInstrHandler) error {
 	context := newPcrProtectionProfileExecContext(p, handler)
@@ -679,12 +679,12 @@ func (p *PCRProtectionProfile) run(handler pcrProtectionProfileInstrHandler) err
 	return nil
 }
 
-type pcrProtectionProfileStringContext struct {
+type pcrProtectionProfileStringifier struct {
 	w     io.Writer
 	depth int
 }
 
-func (c *pcrProtectionProfileStringContext) beginBranch(index int) {
+func (c *pcrProtectionProfileStringifier) beginBranch(index int) {
 	c.depth++
 
 	if c.depth == 0 {
@@ -694,28 +694,28 @@ func (c *pcrProtectionProfileStringContext) beginBranch(index int) {
 	fmt.Fprintf(c.w, "\n%*sBranch %d {", c.depth*3, "", index)
 }
 
-func (c *pcrProtectionProfileStringContext) addPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
+func (c *pcrProtectionProfileStringifier) addPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
 	fmt.Fprintf(c.w, "\n%*s AddPCRValue(%v, %d, %x)", c.depth*3, "", alg, pcr, value)
 }
 
-func (c *pcrProtectionProfileStringContext) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error {
+func (c *pcrProtectionProfileStringifier) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error {
 	fmt.Fprintf(c.w, "\n%*s AddPCRValueFromTPM(%v, %d)", c.depth*3, "", alg, pcr)
 	return nil
 }
 
-func (c *pcrProtectionProfileStringContext) extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
+func (c *pcrProtectionProfileStringifier) extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
 	fmt.Fprintf(c.w, "\n%*s ExtendPCR(%v, %d, %x)", c.depth*3, "", alg, pcr, value)
 }
 
-func (c *pcrProtectionProfileStringContext) beginBranchPoint() {
+func (c *pcrProtectionProfileStringifier) beginBranchPoint() {
 	fmt.Fprintf(c.w, "\n%*s BranchPoint(", c.depth*3, "")
 }
 
-func (c *pcrProtectionProfileStringContext) endBranchPoint() {
+func (c *pcrProtectionProfileStringifier) endBranchPoint() {
 	fmt.Fprintf(c.w, "\n%*s )", c.depth*3, "")
 }
 
-func (c *pcrProtectionProfileStringContext) endBranch() {
+func (c *pcrProtectionProfileStringifier) endBranch() {
 	if c.depth > 0 {
 		fmt.Fprintf(c.w, "\n%*s}", c.depth*3, "")
 	}
@@ -724,36 +724,36 @@ func (c *pcrProtectionProfileStringContext) endBranch() {
 
 func (p *PCRProtectionProfile) String() string {
 	s := new(bytes.Buffer)
-	p.run(&pcrProtectionProfileStringContext{w: s, depth: -1})
+	p.run(&pcrProtectionProfileStringifier{w: s, depth: -1})
 	return s.String() + "\n"
 }
 
-type pcrProtectionProfileBranchComputeContext struct {
+type pcrProtectionProfileComputerBranchContext struct {
 	values          pcrValuesList
 	subBranchValues pcrValuesList
 }
 
-type pcrProtectionProfileComputeContext struct {
+type pcrProtectionProfileComputer struct {
 	tpm         *tpm2.TPMContext
-	branchStack []*pcrProtectionProfileBranchComputeContext
+	branchStack []*pcrProtectionProfileComputerBranchContext
 }
 
-func (c *pcrProtectionProfileComputeContext) currentBranch() *pcrProtectionProfileBranchComputeContext {
+func (c *pcrProtectionProfileComputer) currentBranch() *pcrProtectionProfileComputerBranchContext {
 	return c.branchStack[0]
 }
 
-func (c *pcrProtectionProfileComputeContext) beginBranch(_ int) {
+func (c *pcrProtectionProfileComputer) beginBranch(_ int) {
 	// A sub-branch inherits a copy of the PCR values from the parent branch
-	c.branchStack = append([]*pcrProtectionProfileBranchComputeContext{
-		&pcrProtectionProfileBranchComputeContext{values: c.currentBranch().values.copy()},
+	c.branchStack = append([]*pcrProtectionProfileComputerBranchContext{
+		&pcrProtectionProfileComputerBranchContext{values: c.currentBranch().values.copy()},
 	}, c.branchStack...)
 }
 
-func (c *pcrProtectionProfileComputeContext) addPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
+func (c *pcrProtectionProfileComputer) addPCRValue(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
 	c.currentBranch().values.setValue(alg, pcr, value)
 }
 
-func (c *pcrProtectionProfileComputeContext) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error {
+func (c *pcrProtectionProfileComputer) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error {
 	if c.tpm == nil {
 		return fmt.Errorf("cannot read current value of PCR %d from bank %v: no TPM context", pcr, alg)
 	}
@@ -765,13 +765,13 @@ func (c *pcrProtectionProfileComputeContext) addPCRValueFromTPM(alg tpm2.HashAlg
 	return nil
 }
 
-func (c *pcrProtectionProfileComputeContext) extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
+func (c *pcrProtectionProfileComputer) extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
 	c.currentBranch().values.extendValue(alg, pcr, value)
 }
 
-func (*pcrProtectionProfileComputeContext) beginBranchPoint() {}
+func (*pcrProtectionProfileComputer) beginBranchPoint() {}
 
-func (c *pcrProtectionProfileComputeContext) endBranchPoint() {
+func (c *pcrProtectionProfileComputer) endBranchPoint() {
 	// When a branch point is completed, the branch inherits the PCR values computed
 	// by the sub-branches.
 	if c.currentBranch().subBranchValues == nil {
@@ -783,7 +783,7 @@ func (c *pcrProtectionProfileComputeContext) endBranchPoint() {
 	c.currentBranch().subBranchValues = nil
 }
 
-func (c *pcrProtectionProfileComputeContext) endBranch() {
+func (c *pcrProtectionProfileComputer) endBranch() {
 	values := c.currentBranch().values
 	c.branchStack = c.branchStack[1:]
 	c.currentBranch().subBranchValues = append(c.currentBranch().subBranchValues, values...)
@@ -802,10 +802,10 @@ func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PC
 		return nil, fmt.Errorf("cannot compute PCR values because an error occurred when constructing the profile: %v", p.err)
 	}
 
-	context := &pcrProtectionProfileComputeContext{
+	context := &pcrProtectionProfileComputer{
 		tpm: tpm,
-		branchStack: []*pcrProtectionProfileBranchComputeContext{
-			&pcrProtectionProfileBranchComputeContext{values: pcrValuesList{make(tpm2.PCRValues)}}}}
+		branchStack: []*pcrProtectionProfileComputerBranchContext{
+			&pcrProtectionProfileComputerBranchContext{values: pcrValuesList{make(tpm2.PCRValues)}}}}
 	if err := p.run(context); err != nil {
 		return nil, err
 	}
