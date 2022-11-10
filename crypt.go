@@ -24,13 +24,17 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
+	"text/tabwriter"
 
 	"github.com/snapcore/snapd/asserts"
 
 	"golang.org/x/xerrors"
 
+	"github.com/canonical/go-tpm2"
+	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
@@ -387,6 +391,52 @@ func (e *activateVolumeWithKeyDataError) Error() string {
 	return s.String()
 }
 
+func printEvent(w io.Writer, event *tcglog.Event, hashAlg tpm2.HashAlgorithmId) {
+	pcrsOfInterest := []tcglog.PCRIndex{4, 7, 12}
+	print := false
+	for _, p := range pcrsOfInterest {
+		if event.PCRIndex == p {
+			print = true
+			break
+		}
+	}
+	if !print {
+		return
+	}
+	fmt.Fprintf(w, "%d\t%x\t%s\t%s\n", event.PCRIndex, event.Digests[hashAlg], event.EventType, tcglog.EventDetailsStringer(event, false))
+}
+
+func printTCGLog() {
+	const logPath = "/sys/kernel/security/tpm0/binary_bios_measurements"
+	f, err := os.Open(logPath)
+	if err != nil {
+		fmt.Printf("error opening TCG log: %v\n", err)
+		return
+	}
+	defer f.Close()
+
+	logOpts := tcglog.LogOptions{
+		EnableGrub:           true,
+		EnableSystemdEFIStub: true,
+		SystemdEFIStubPCR:    8,
+	}
+
+	log, err := tcglog.ReadLog(f, &logOpts)
+	if err != nil {
+		fmt.Printf("cannot read TCG log: %v\n", err)
+		return
+	}
+
+	fmt.Printf("TCG log events:\n")
+	tabWrt := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tabWrt, "PCR\tDIGEST\tTYPE\n")
+	for _, event := range log.Events {
+		printEvent(tabWrt, event, tpm2.HashAlgorithmSHA256)
+	}
+
+	tabWrt.Flush()
+}
+
 // ErrRecoveryKeyUsed is returned from ActivateVolumeWithKeyData and
 // ActivateVolumeWithMultipleKeyData if the volume could not be activated with
 // any platform protected keys but activation with the recovery key was
@@ -445,6 +495,8 @@ func ActivateVolumeWithMultipleKeyData(volumeName, sourceDevicePath string, keys
 	case success:
 		return nil
 	default: // failed - try recovery key
+		// TCG log might give us a hint on what failed
+		printTCGLog()
 		if rErr := activateWithRecoveryKey(volumeName, sourceDevicePath, authRequestor, options.RecoveryKeyTries, options.KeyringPrefix); rErr != nil {
 			// failed with recovery key - return errors
 			var kdErrs []error
