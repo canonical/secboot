@@ -22,6 +22,7 @@ package testutil
 import (
 	"reflect"
 
+	"golang.org/x/xerrors"
 	. "gopkg.in/check.v1"
 )
 
@@ -93,8 +94,7 @@ func (checker *inSliceChecker) Check(params []interface{}, names []string) (resu
 //
 // For example:
 //
-//  c.Check(value, InSlice(Equals), []int{1, 2, 3})
-//
+//	c.Check(value, InSlice(Equals), []int{1, 2, 3})
 func InSlice(checker Checker) Checker {
 	return &inSliceChecker{checker}
 }
@@ -112,4 +112,74 @@ func (checker *isTrueChecker) Check(params []interface{}, names []string) (resul
 		return false, names[0] + " is not a bool"
 	}
 	return value.Bool(), ""
+}
+
+type isFalseChecker struct {
+	*CheckerInfo
+}
+
+// IsFalse determines whether a boolean value is false.
+var IsFalse Checker = &isFalseChecker{
+	&CheckerInfo{Name: "IsFalse", Params: []string{"value"}}}
+
+func (checker *isFalseChecker) Check(params []interface{}, names []string) (result bool, error string) {
+	value, ok := params[0].(bool)
+	if !ok {
+		return false, names[0] + " is not a bool"
+	}
+	return !value, ""
+}
+
+type convertibleToChecker struct {
+	*CheckerInfo
+}
+
+// ConvertibleTo determines whether a value of one type can
+// be converted to another type.
+//
+// For example:
+//
+//	c.Check(err, ConvertibleTo, *os.PathError{})
+var ConvertibleTo Checker = &convertibleToChecker{
+	&CheckerInfo{Name: "ConvertibleTo", Params: []string{"value", "sample"}}}
+
+func (checker *convertibleToChecker) Check(params []interface{}, names []string) (result bool, error string) {
+	value := reflect.ValueOf(params[0])
+	sample := reflect.ValueOf(params[1])
+
+	if !value.IsValid() {
+		return false, ""
+	}
+	if !sample.IsValid() {
+		return false, "invalid sample value"
+	}
+
+	return value.Type().ConvertibleTo(sample.Type()), ""
+}
+
+type errorIsChecker struct {
+	*CheckerInfo
+}
+
+// ErrorIs determines whether any error in a chain has a specific
+// value, using xerrors.Is
+//
+// For example:
+//
+//	c.Check(err, ErrorIs, io.EOF)
+var ErrorIs Checker = &errorIsChecker{
+	&CheckerInfo{Name: "ErrorIs", Params: []string{"value", "expected"}}}
+
+func (checker *errorIsChecker) Check(params []interface{}, names []string) (result bool, errStr string) {
+	err, ok := params[0].(error)
+	if !ok {
+		return false, "value is not an error"
+	}
+
+	expected, ok := params[1].(error)
+	if !ok {
+		return false, "expected is not an error"
+	}
+
+	return xerrors.Is(err, expected), ""
 }

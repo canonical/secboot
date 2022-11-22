@@ -827,7 +827,10 @@ func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 	}
 
 	// Compute the PCR selection for this profile from the first branch.
-	pcrs := values[0].SelectionList()
+	pcrs, err := values[0].SelectionList()
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot compute selection list: %w", err)
+	}
 
 	// Compute the PCR digests for all branches, making sure that they all contain values for the same sets of PCRs.
 	var pcrDigests tpm2.DigestList

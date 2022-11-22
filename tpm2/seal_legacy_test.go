@@ -29,7 +29,6 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	. "gopkg.in/check.v1"
 
@@ -58,7 +57,7 @@ func (s *sealLegacySuite) SetUpTest(c *C) {
 
 	s.primaryKeyMixin.tpmTest = &s.TPMTest.TPMTest
 	c.Assert(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
-		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 }
 
 var _ = Suite(&sealLegacySuite{})
@@ -394,7 +393,7 @@ func (s *sealLegacySuite) testSealKeyToTPMErrorHandling(c *C, params *KeyCreatio
 	_, sealErr := SealKeyToTPM(s.TPM(), key, path, params)
 
 	_, err := os.Stat(path)
-	c.Check(err, tpm2_testutil.ErrorIs, os.ErrNotExist)
+	c.Check(err, testutil.ErrorIs, os.ErrNotExist)
 
 	var counter tpm2.ResourceContext
 	if params != nil && params.PCRPolicyCounterHandle != tpm2.HandleNull {
@@ -428,7 +427,7 @@ func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingOwnerAuthFail(c *C) {
 	err := s.testSealKeyToTPMErrorHandling(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
-	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
 	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleOwner)
 }
 
@@ -443,7 +442,7 @@ func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingPCRPolicyCounterExists(c 
 	err := s.testSealKeyToTPMErrorHandling(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: public.Index})
-	c.Assert(err, tpm2_testutil.ConvertibleTo, TPMResourceExistsError{})
+	c.Assert(err, testutil.ConvertibleTo, TPMResourceExistsError{})
 	c.Check(err.(TPMResourceExistsError).Handle, Equals, public.Index)
 }
 
@@ -556,7 +555,7 @@ func (s *sealLegacySuite) testSealKeyToExternalTPMStorageKeyErrorHandling(c *C, 
 	_, sealErr := SealKeyToExternalTPMStorageKey(srkPub, key, path, params)
 
 	_, err = os.Stat(path)
-	c.Check(err, tpm2_testutil.ErrorIs, os.ErrNotExist)
+	c.Check(err, testutil.ErrorIs, os.ErrNotExist)
 
 	return sealErr
 }

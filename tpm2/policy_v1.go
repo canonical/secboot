@@ -61,10 +61,10 @@ func computeV1PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 // computeV1PcrPolicyRefFromCounterName computes the reference used for authorization of signed
 // PCR policies from the supplied PCR policy counter name. If name is empty, then the name of
 // the null handle is assumed. The policy ref serves 2 purposes:
-// 1) It limits the scope of the signed policy to just PCR policies (the dynamic authorization
-//    policy key may be able to sign different types of policy in the future, for example, to
-//    permit recovery with a signed assertion.
-// 2) It binds the name of the PCR policy counter to the static authorization policy.
+//  1. It limits the scope of the signed policy to just PCR policies (the dynamic authorization
+//     policy key may be able to sign different types of policy in the future, for example, to
+//     permit recovery with a signed assertion.
+//  2. It binds the name of the PCR policy counter to the static authorization policy.
 func computeV1PcrPolicyRefFromCounterName(name tpm2.Name) tpm2.Nonce {
 	if len(name) == 0 {
 		name = make(tpm2.Name, binary.Size(tpm2.Handle(0)))
@@ -119,12 +119,13 @@ func (p *keyDataPolicy_v1) PCRPolicySequence() uint64 {
 
 // UpdatePCRPolicy updates the PCR policy associated with this keyDataPolicy. The PCR policy asserts
 // that the following are true:
-// - The selected PCRs contain expected values - ie, one of the sets of permitted values specified by
-//   the caller to this function, indicating that the device is in an expected state. This is done by a
-//   single PolicyPCR assertion and then one or more PolicyOR assertions (depending on how many sets of
-//   permitted PCR values there are).
-// - The PCR policy hasn't been revoked. This is done using a PolicyNV assertion to assert that the
-//   value of an optional NV counter is not greater than the PCR policy sequence.
+//   - The selected PCRs contain expected values - ie, one of the sets of permitted values specified by
+//     the caller to this function, indicating that the device is in an expected state. This is done by a
+//     single PolicyPCR assertion and then one or more PolicyOR assertions (depending on how many sets of
+//     permitted PCR values there are).
+//   - The PCR policy hasn't been revoked. This is done using a PolicyNV assertion to assert that the
+//     value of an optional NV counter is not greater than the PCR policy sequence.
+//
 // The computed PCR policy digest is authorized with the supplied key. The signature of this is
 // validated during execution before executing the corresponding PolicyAuthorize assertion as part of the
 // static policy.

@@ -29,7 +29,6 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/templates"
-	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
@@ -220,7 +219,7 @@ func (s *policySuiteNoTPM) testNewKeyDataPolicy(c *C, data *testNewKeyDataPolicy
 	c.Assert(block, NotNil)
 	key, err := x509.ParsePKIXPublicKey(block.Bytes)
 	c.Assert(err, IsNil)
-	c.Assert(key, tpm2_testutil.ConvertibleTo, &ecdsa.PublicKey{})
+	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
 	authKey := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey))
 
@@ -231,7 +230,7 @@ func (s *policySuiteNoTPM) testNewKeyDataPolicy(c *C, data *testNewKeyDataPolicy
 
 	policy, digest, err := NewKeyDataPolicy(data.alg, authKey, data.pcrPolicyCounterPub, data.pcrPolicySequence)
 	c.Assert(err, IsNil)
-	c.Assert(policy, tpm2_testutil.ConvertibleTo, &KeyDataPolicy_v2{})
+	c.Assert(policy, testutil.ConvertibleTo, &KeyDataPolicy_v2{})
 	c.Check(policy.(*KeyDataPolicy_v2).StaticData.AuthPublicKey, DeepEquals, authKey)
 	c.Check(policy.PCRPolicyCounterHandle(), Equals, pcrPolicyCounterHandle)
 	c.Check(policy.PCRPolicySequence(), Equals, data.pcrPolicySequence)
@@ -364,7 +363,7 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	c.Assert(block, NotNil)
 	key, err := x509.ParsePKIXPublicKey(block.Bytes)
 	c.Assert(err, IsNil)
-	c.Assert(key, tpm2_testutil.ConvertibleTo, &ecdsa.PublicKey{})
+	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
 	handle := s.NextAvailableHandle(c, 0x0181ff00)
 	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle,
@@ -442,7 +441,7 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	c.Assert(block, NotNil)
 	key, err := x509.ParsePKIXPublicKey(block.Bytes)
 	c.Assert(err, IsNil)
-	c.Assert(key, tpm2_testutil.ConvertibleTo, &ecdsa.PublicKey{})
+	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
 	handle := tpm2.Handle(0x0181ff00)
 	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle,

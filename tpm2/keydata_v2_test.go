@@ -80,13 +80,11 @@ func (s *keyDataV2Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	policyData, policy, err := NewKeyDataPolicy(template.NameAlg, authKeyPublic, policyCounterPub, policyCount)
 	c.Assert(err, IsNil)
-	c.Assert(policyData, tpm2_testutil.ConvertibleTo, &KeyDataPolicy_v2{})
+	c.Assert(policyData, testutil.ConvertibleTo, &KeyDataPolicy_v2{})
 
 	template.AuthPolicy = policy
 
 	policyData.(*KeyDataPolicy_v2).PCRData = &PcrPolicyData_v2{
-		Selection:        tpm2.PCRSelectionList{},
-		OrData:           PolicyOrData_v0{},
 		PolicySequence:   policyData.PCRPolicySequence(),
 		AuthorizedPolicy: make(tpm2.Digest, 32),
 		AuthorizedPolicySignature: &tpm2.Signature{
@@ -124,13 +122,11 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 
 	policyData, policy, err := NewKeyDataPolicy(pub.NameAlg, authKeyPublic, nil, 0)
 	c.Assert(err, IsNil)
-	c.Assert(policyData, tpm2_testutil.ConvertibleTo, &KeyDataPolicy_v2{})
+	c.Assert(policyData, testutil.ConvertibleTo, &KeyDataPolicy_v2{})
 
 	pub.AuthPolicy = policy
 
 	policyData.(*KeyDataPolicy_v2).PCRData = &PcrPolicyData_v2{
-		Selection:        tpm2.PCRSelectionList{},
-		OrData:           PolicyOrData_v0{},
 		PolicySequence:   policyData.PCRPolicySequence(),
 		AuthorizedPolicy: make(tpm2.Digest, 32),
 		AuthorizedPolicySignature: &tpm2.Signature{
@@ -279,8 +275,7 @@ func (s *keyDataV2Suite) TestReadNonImportableAsV2Fails(c *C) {
 	c.Check(data.Write(buf), IsNil)
 
 	_, err := ReadKeyDataV2(buf)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type tpm2.Digest: "+
-		"sized value has a size larger than the remaining bytes\n\n"+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type tpm2.Digest: unexpected EOF\n\n"+
 		"=== BEGIN STACK ===\n"+
 		"... tpm2.Public field AuthPolicy\n"+
 		"... tpm2.staticPolicyData_v1 field AuthPublicKey\n"+

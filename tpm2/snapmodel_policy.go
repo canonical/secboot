@@ -138,18 +138,22 @@ type SnapModelProfileParams struct {
 // of the model that it has measured.
 //
 // The profile consists of 2 measurements:
-//  digestEpoch
-//  digestModel
+//
+//	digestEpoch
+//	digestModel
 //
 // digestEpoch is currently hardcoded as (where H is the digest algorithm supplied via params.PCRAlgorithm):
-//  digestEpoch = H(uint32(0))
+//
+//	digestEpoch = H(uint32(0))
 //
 // A future version of this package may allow another epoch to be supplied.
 //
 // digestModel is computed as follows (where H is the digest algorithm supplied via params.PCRAlgorithm):
-//  digest1 = H(tpm2.HashAlgorithmSHA384 || sign-key-sha3-384 || brand-id)
-//  digest2 = H(digest1 || model)
-//  digestModel = H(digest2 || series || grade)
+//
+//	digest1 = H(tpm2.HashAlgorithmSHA384 || sign-key-sha3-384 || brand-id)
+//	digest2 = H(digest1 || model)
+//	digestModel = H(digest2 || series || grade)
+//
 // The signing key digest algorithm is encoded in little-endian format, and the sign-key-sha3-384 field is hashed in decoded (binary)
 // form. The brand-id, model and series fields are hashed without null terminators. The grade field is encoded as the 32 bits from
 // asserts.ModelGrade.Code in little-endian format.

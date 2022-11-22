@@ -158,7 +158,7 @@ func (s *policyV0SuiteNoTPM) testPolicyOrTreeSerialization(c *C, data *testPolic
 	c.Assert(err, IsNil)
 
 	serialized := NewPolicyOrDataV0(tree)
-	c.Check(serialized, tpm2_testutil.LenEquals, data.numNodes)
+	c.Check(serialized, HasLen, data.numNodes)
 
 	tree2, err := serialized.Resolve()
 	c.Assert(err, IsNil)
@@ -344,7 +344,7 @@ func (s *policyV0SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV0UpdatePCRPoli
 	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(key), data.pcrs, data.pcrDigests, policyCounterName)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
-	c.Check(policyData.(*KeyDataPolicy_v0).PCRData.Selection.Equal(data.pcrs), tpm2_testutil.IsTrue)
+	c.Check(policyData.(*KeyDataPolicy_v0).PCRData.Selection.Equal(data.pcrs), testutil.IsTrue)
 
 	orTree, err := policyData.(*KeyDataPolicy_v0).PCRData.OrData.Resolve()
 	c.Assert(err, IsNil)
@@ -367,7 +367,7 @@ func (s *policyV0SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV0UpdatePCRPoli
 	c.Check(err, IsNil)
 	ok, err := util.VerifySignature(&key.PublicKey, digest, policyData.(*KeyDataPolicy_v0).PCRData.AuthorizedPolicySignature)
 	c.Check(err, IsNil)
-	c.Check(ok, tpm2_testutil.IsTrue)
+	c.Check(ok, testutil.IsTrue)
 }
 
 func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicy(c *C) {
@@ -909,7 +909,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection1(c *C)
 			data.PCRData.Selection = tpm2.PCRSelectionList{}
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -950,7 +950,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection2(c *C)
 			data.PCRData.Selection = tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{50}}}
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: invalid PCR selection")
 }
 
@@ -991,7 +991,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree1(c *C) {
 			data.PCRData.OrData = PolicyOrData_v0{}
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot resolve PolicyOR tree: no nodes")
 }
 
@@ -1032,7 +1032,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree2(c *C) {
 			data.PCRData.OrData[0].Next = 10
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot resolve PolicyOR tree: index 10 out of range")
 }
 
@@ -1077,7 +1077,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree3(c *C) {
 			copy(data.PCRData.OrData[4].Digests[0], make(tpm2.Digest, 32))
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: invalid data")
 }
 
@@ -1132,7 +1132,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree4(c *C) {
 			data.PCRData.OrData = NewPolicyOrDataV0(orData)
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy is invalid")
 }
 
@@ -1173,7 +1173,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidPolicySequence(c
 			data.PCRData.PolicySequence += 10
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy is invalid")
 }
 
@@ -1214,7 +1214,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingPCRMismatch(c *C) {
 		},
 		fn: func(data *KeyDataPolicy_v0, _ *rsa.PrivateKey) {},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -1255,7 +1255,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounter
 			data.StaticData.PCRPolicyCounterHandle = 0x81000000
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "invalid handle 0x81000000 for PCR policy counter")
 }
 
@@ -1301,7 +1301,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounter
 			data.StaticData.PCRPolicyCounterHandle = handle
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "no PCR policy counter found")
 }
 
@@ -1341,7 +1341,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounter
 			copy(data.StaticData.PCRPolicyCounterAuthPolicies[0], make(tpm2.Digest, 32))
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "invalid PCR policy counter or associated authorization policy metadata")
 }
 
@@ -1400,7 +1400,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 			}
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy has been revoked")
 }
 
@@ -1441,7 +1441,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthPublicKey(c 
 			data.StaticData.AuthPublicKey.NameAlg = tpm2.HashAlgorithmId(tpm2.AlgorithmSM4)
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "public area of dynamic authorization policy signing key is invalid: TPM returned an error for parameter 2 whilst executing command TPM_CC_LoadExternal: "+
 		"TPM_RC_HASH \\(hash algorithm not supported or not appropriate\\)")
 }
@@ -1483,7 +1483,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 			copy(data.PCRData.AuthorizedPolicy, make(tpm2.Digest, 32))
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot verify PCR policy signature: TPM returned an error for parameter 2 whilst executing command TPM_CC_VerifySignature: TPM_RC_SIGNATURE \\(the signature is not valid\\)")
 }
 
@@ -1578,7 +1578,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingNoLockIndex(c *C) {
 			c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 		},
 	})
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "no lock NV index found")
 }
 
@@ -1653,6 +1653,6 @@ func (s *policyV0SuiteNoTPM) TestValidateAuthKeyWrongKey(c *C) {
 	authKey, err = rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
 	err = data.ValidateAuthKey(x509.MarshalPKCS1PrivateKey(authKey))
-	c.Check(IsPolicyDataError(err), tpm2_testutil.IsTrue)
+	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "dynamic authorization policy signing private key doesn't match public key")
 }

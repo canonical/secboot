@@ -33,6 +33,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
@@ -89,16 +90,16 @@ var _ = Suite(&tpmSuitePlatform{})
 var _ = Suite(&tpmSuiteSimulator{})
 
 func (s *tpmSuitePlatform) TestConnectionIsEnabled(c *C) {
-	c.Check(s.TPM().IsEnabled(), tpm2_testutil.IsTrue)
+	c.Check(s.TPM().IsEnabled(), testutil.IsTrue)
 
 	c.Check(s.TPM().HierarchyControl(s.TPM().OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
-	c.Check(s.TPM().IsEnabled(), tpm2_testutil.IsFalse)
+	c.Check(s.TPM().IsEnabled(), testutil.IsFalse)
 
 	c.Check(s.TPM().HierarchyControl(s.TPM().EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
-	c.Check(s.TPM().IsEnabled(), tpm2_testutil.IsFalse)
+	c.Check(s.TPM().IsEnabled(), testutil.IsFalse)
 
 	c.Check(s.TPM().HierarchyControl(s.TPM().PlatformHandleContext(), tpm2.HandleOwner, true, nil), IsNil)
-	c.Check(s.TPM().IsEnabled(), tpm2_testutil.IsFalse)
+	c.Check(s.TPM().IsEnabled(), testutil.IsFalse)
 }
 
 func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEk bool) {
@@ -108,7 +109,7 @@ func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEk bool) {
 		c.Check(tpm.Close(), IsNil)
 	}()
 
-	c.Check(tpm.VerifiedEKCertChain(), tpm2_testutil.LenEquals, 0)
+	c.Check(tpm.VerifiedEKCertChain(), HasLen, 0)
 	c.Check(tpm.VerifiedDeviceAttributes(), IsNil)
 
 	ek, err := tpm.EndorsementKey()
@@ -131,7 +132,7 @@ func (s *tpmSuiteSimulator) TestConnectToDefaultTPMUnprovisioned(c *C) {
 
 func (s *tpmSuite) TestConnectToDefaultTPMProvisioned(c *C) {
 	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
-		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 	s.testConnectToDefaultTPM(c, true)
 }
 
@@ -204,7 +205,7 @@ func (s *tpmSuiteSimulator) testSecureConnectToDefaultTPM(c *C, data *testSecure
 		c.Check(tpm.Close(), IsNil)
 	})
 
-	c.Check(tpm.VerifiedEKCertChain(), tpm2_testutil.LenEquals, 2)
+	c.Check(tpm.VerifiedEKCertChain(), HasLen, 2)
 	c.Check(tpm.VerifiedEKCertChain()[0].Raw, DeepEquals, testEkCert)
 
 	c.Check(tpm.VerifiedDeviceAttributes(), NotNil)
@@ -314,7 +315,7 @@ func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMInvalidEKCert(c *C) {
 	ekCertData := new(bytes.Buffer)
 	ekCertData.Write([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 	_, err := SecureConnectToDefaultTPM(ekCertData, nil)
-	c.Check(err, tpm2_testutil.ConvertibleTo, EKCertVerificationError{})
+	c.Check(err, testutil.ConvertibleTo, EKCertVerificationError{})
 	c.Check(err, ErrorMatches, "cannot verify the endorsement key certificate: certificate verification failed: x509: certificate signed by unknown authority")
 }
 
@@ -330,7 +331,7 @@ func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMEKCertUnknownIssuer(c *
 	ekCertData := new(bytes.Buffer)
 	c.Check(EncodeEKCertificateChain(cert, []*x509.Certificate{caCert}, ekCertData), IsNil)
 	_, err = SecureConnectToDefaultTPM(ekCertData, nil)
-	c.Check(err, tpm2_testutil.ConvertibleTo, EKCertVerificationError{})
+	c.Check(err, testutil.ConvertibleTo, EKCertVerificationError{})
 	c.Check(err, ErrorMatches, "cannot verify the endorsement key certificate: certificate verification failed: x509: certificate signed by unknown authority")
 }
 
@@ -349,7 +350,7 @@ func (s *tpmSuiteSimulator) TestSecureConnectToDefaultTPMIncorrectPersistentEKWi
 	ekCertData := new(bytes.Buffer)
 	c.Check(EncodeEKCertificateChain(nil, []*x509.Certificate{s.caCert(c)}, ekCertData), IsNil)
 	_, err = SecureConnectToDefaultTPM(ekCertData, nil)
-	c.Check(err, tpm2_testutil.ConvertibleTo, EKCertVerificationError{})
+	c.Check(err, testutil.ConvertibleTo, EKCertVerificationError{})
 	c.Check(err, ErrorMatches, "cannot verify that the TPM is the device for which the supplied EK certificate was issued: "+
 		"cannot verify public area of endorsement key read from the TPM: public area doesn't match certificate")
 }

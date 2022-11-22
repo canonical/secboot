@@ -20,6 +20,9 @@
 package testutil_test
 
 import (
+	"errors"
+	"io"
+	"os"
 	"reflect"
 
 	. "github.com/snapcore/secboot/internal/testutil"
@@ -81,4 +84,41 @@ func (s *checkersSuite) TestIsTrue(c *C) {
 	testCheck(c, IsTrue, true, "", true)
 	testCheck(c, IsTrue, false, "", false)
 	testCheck(c, IsTrue, false, "value is not a bool", 1)
+}
+
+func (s *checkersSuite) TestIsFalse(c *C) {
+	testInfo(c, IsFalse, "IsFalse", []string{"value"})
+	testCheck(c, IsFalse, true, "", false)
+	testCheck(c, IsFalse, false, "", true)
+	testCheck(c, IsFalse, false, "value is not a bool", 1)
+}
+
+type testError struct {
+	err error
+}
+
+func (e testError) Error() string { return "error: " + e.err.Error() }
+func (e testError) Unwrap() error { return e.err }
+
+func (s *checkersSuite) TestConvertibleTo(c *C) {
+	testInfo(c, ConvertibleTo, "ConvertibleTo", []string{"value", "sample"})
+	testCheck(c, ConvertibleTo, true, "", testError{}, testError{})
+	testCheck(c, ConvertibleTo, false, "", &testError{}, testError{})
+	testCheck(c, ConvertibleTo, false, "", testError{}, &testError{})
+
+	var e error = testError{}
+	testCheck(c, ConvertibleTo, true, "", e, testError{})
+	testCheck(c, ConvertibleTo, false, "", e, errors.New(""))
+
+	e = new(os.PathError)
+	testCheck(c, ConvertibleTo, true, "", e, &os.PathError{})
+	testCheck(c, ConvertibleTo, false, "", e, testError{})
+}
+
+func (s *checkersSuite) TestErrorIs(c *C) {
+	testInfo(c, ErrorIs, "ErrorIs", []string{"value", "expected"})
+	testCheck(c, ErrorIs, true, "", os.ErrNotExist, os.ErrNotExist)
+	testCheck(c, ErrorIs, false, "", os.ErrNotExist, io.EOF)
+	testCheck(c, ErrorIs, false, "value is not an error", "foo", io.EOF)
+	testCheck(c, ErrorIs, false, "expected is not an error", io.EOF, "foo")
 }
