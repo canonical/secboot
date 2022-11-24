@@ -32,7 +32,7 @@ import (
 	"hash"
 	"io"
 
-	"github.com/canonical/go-sp800.90a-drbg"
+	drbg "github.com/canonical/go-sp800.90a-drbg"
 
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/xerrors"
@@ -255,14 +255,16 @@ func (l snapModelHMACList) contains(h snapModelHMAC) bool {
 	return false
 }
 
+// keyDigest contains a salted digest to verify the correctness of a key.
 type keyDigest struct {
 	Alg    hashAlg `json:"alg"`
 	Salt   []byte  `json:"salt"`
 	Digest []byte  `json:"digest"`
 }
 
+// hkdfData contains the parameters used to derive a key using HKDF.
 type hkdfData struct {
-	Alg  hashAlg `json:"alg"`
+	Alg  hashAlg `json:"alg"` // Digest algorithm to use for HKDF
 	Salt []byte  `json:"salt"`
 }
 
@@ -273,12 +275,16 @@ type authorizedSnapModelsRaw struct {
 	Hmacs     snapModelHMACList `json:"hmacs"`
 }
 
+// authorizedSnapModels defines the Snap models that have been
+// authorized to access the data protected by a key.
 type authorizedSnapModels struct {
-	alg       hashAlg
-	kdf       *hkdfData
-	keyDigest keyDigest
-	hmacs     snapModelHMACList
+	alg       hashAlg           // Digest algorithm used for the authorized model HMACs
+	kdf       *hkdfData         // HKDF parameters used to derive the HMAC key. Nil for legacy (DRBG) derivation.
+	keyDigest keyDigest         // information used to validate the correctness of the HMAC key
+	hmacs     snapModelHMACList // the list of HMACs of authorized models
 
+	// legacyKeyDigest is true when keyDigest should be marshalled
+	// as a plain key rather than a keyDigest object.
 	legacyKeyDigest bool
 }
 
@@ -350,6 +356,8 @@ func (m *authorizedSnapModels) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// kdfData corresponds to the arguments to a KDF and matches the
+// corresponding object in the LUKS2 specification.
 type kdfData struct {
 	Type   string `json:"type"`
 	Salt   []byte `json:"salt"`
@@ -358,20 +366,39 @@ type kdfData struct {
 	CPUs   int    `json:"cpus"`
 }
 
+// passphraseData is the data associated with a passphrase protected
+// key.
 type passphraseData struct {
-	KDF              kdfData `json:"kdf"`
-	Encryption       string  `json:"encryption"`
-	KeySize          int     `json:"key_size"`
-	EncryptedPayload []byte  `json:"encrypted_payload"`
+	// KDF contains the key derivation parameters used to derive
+	// an encryption key from an input passphrase.
+	KDF kdfData `json:"kdf"`
+
+	Encryption string `json:"encryption"` // Encryption algorithm - currently only aes-cfb
+	KeySize    int    `json:"key_size"`   // Size of encryption key to derive from passphrase
+
+	// EncryptedPayload is the platform protected payload additionally
+	// protected by a passphrase derived key using the parameters
+	// of this structure.
+	EncryptedPayload []byte `json:"encrypted_payload"`
 }
 
 type keyData struct {
-	PlatformName   string          `json:"platform_name"`
+	PlatformName string `json:"platform_name"` // used to identify a PlatformKeyDataHandler
+
+	// PlatformHandle is an opaque blob of data used by the associated
+	// PlatformKeyDataHandler to recover the cleartext keys from one of
+	// the encrypted payloads.
 	PlatformHandle json.RawMessage `json:"platform_handle"`
 
-	EncryptedPayload           []byte          `json:"encrypted_payload,omitempty"`
+	// EncryptedPayload is the platform protected key payload.
+	EncryptedPayload []byte `json:"encrypted_payload,omitempty"`
+
+	// PassphraseProtectedPayload is the platform protected key
+	// payload additionally protected by a passphrase.
 	PassphraseProtectedPayload *passphraseData `json:"passphrase_protected_payload,omitempty"`
 
+	// AuthorizedSnapModels contains information about the Snap models
+	// that have been authorized to access the data protected by this key.
 	AuthorizedSnapModels authorizedSnapModels `json:"authorized_snap_models"`
 }
 
@@ -435,6 +462,8 @@ func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
 
 	r := hkdf.New(func() hash.Hash { return kdf.Alg.New() }, auxKey, kdf.Salt, snapModelHMACKDFLabel)
 
+	// Derive a key with a length matching the output size of the
+	// algorithm used for the HMAC.
 	hmacKey := make([]byte, alg.Size())
 	if _, err := io.ReadFull(r, hmacKey); err != nil {
 		return nil, err
