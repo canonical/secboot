@@ -24,12 +24,12 @@ import (
 	"path/filepath"
 
 	"github.com/canonical/go-tpm2"
-	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
@@ -49,7 +49,7 @@ func (s *unsealSuite) SetUpSuite(c *C) {
 func (s *unsealSuite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
 	c.Assert(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
-		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 }
 
 var _ = Suite(&unsealSuite{})
@@ -201,7 +201,7 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingInvalidPCRProfile(c *C) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 	})
-	c.Check(err, tpm2_testutil.ConvertibleTo, InvalidKeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, InvalidKeyDataError{})
 	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
@@ -213,7 +213,7 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingRevokedPolicy(c *C) {
 		c.Check(k.UpdatePCRProtectionPolicy(s.TPM(), authKey, nil), IsNil)
 		c.Check(k.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
 	})
-	c.Check(err, tpm2_testutil.ConvertibleTo, InvalidKeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, InvalidKeyDataError{})
 	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
 		"the PCR policy has been revoked")
 }
@@ -222,7 +222,7 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingSealedKeyAccessLocked(c *C) 
 	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.AuxiliaryKey) {
 		c.Check(BlockPCRProtectionPolicies(s.TPM(), []int{23}), IsNil)
 	})
-	c.Check(err, tpm2_testutil.ConvertibleTo, InvalidKeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, InvalidKeyDataError{})
 	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }

@@ -80,13 +80,11 @@ func (s *keyDataV1Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	policyData, policy, err := NewKeyDataPolicy(template.NameAlg, authKeyPublic, policyCounterPub, policyCount)
 	c.Assert(err, IsNil)
-	c.Assert(policyData, tpm2_testutil.ConvertibleTo, &KeyDataPolicy_v1{})
+	c.Assert(policyData, testutil.ConvertibleTo, &KeyDataPolicy_v1{})
 
 	template.AuthPolicy = policy
 
 	policyData.(*KeyDataPolicy_v1).PCRData = &PcrPolicyData_v1{
-		Selection:        tpm2.PCRSelectionList{},
-		OrData:           PolicyOrData_v0{},
 		PolicySequence:   policyData.PCRPolicySequence(),
 		AuthorizedPolicy: make(tpm2.Digest, 32),
 		AuthorizedPolicySignature: &tpm2.Signature{
@@ -164,7 +162,7 @@ func (s *keyDataV1Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "cannot compute name of dynamic authorization policy key: unsupported name algorithm or algorithm not linked into binary: TPM_ALG_NULL")
 }
 
@@ -175,7 +173,7 @@ func (s *keyDataV1Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "public area of dynamic authorization policy signing key has the wrong type")
 }
 
@@ -189,7 +187,7 @@ func (s *keyDataV1Suite) TestValidateInvalidAuthPublicKeyScheme(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "dynamic authorization policy signing key has unexpected scheme")
 }
 
@@ -200,7 +198,7 @@ func (s *keyDataV1Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "PCR policy counter handle is invalid")
 }
 
@@ -213,7 +211,7 @@ func (s *keyDataV1Suite) TestValidateNoPolicyCounter(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err = data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "PCR policy counter is unavailable")
 }
 
@@ -224,7 +222,7 @@ func (s *keyDataV1Suite) TestValidateInvalidSealedObjectNameAlg(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "cannot determine if static authorization policy matches sealed key object: algorithm unavailable")
 }
 
@@ -237,7 +235,7 @@ func (s *keyDataV1Suite) TestValidateWrongAuthKey(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err = data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
@@ -258,7 +256,7 @@ func (s *keyDataV1Suite) TestValidateWrongPolicyCounter1(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err = data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
@@ -269,7 +267,7 @@ func (s *keyDataV1Suite) TestValidateWrongPolicyCounter2(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
@@ -286,7 +284,7 @@ func (s *keyDataV1Suite) TestValidateWrongPolicyCounter3(c *C) {
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
-	c.Check(err, tpm2_testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 

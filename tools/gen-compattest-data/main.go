@@ -139,15 +139,17 @@ func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2
 }
 
 func run() int {
+	var outputPath string
 	if outputDir != "" {
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot create output directory: %v\n", err)
 			return 1
 		}
+		outputPath = filepath.Join(outputDir, "NVChip")
 	}
 
 	cleanupTpmSimulator, err := tpm2_testutil.LaunchTPMSimulator(
-		&tpm2_testutil.TPMSimulatorOptions{SourceDir: outputDir, Manufacture: true, SavePersistent: true})
+		&tpm2_testutil.TPMSimulatorOptions{SourcePath: outputPath, Manufacture: true, SavePersistent: true})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot launch TPM simulator: %v\n", err)
 		return 1

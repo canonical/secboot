@@ -89,7 +89,7 @@ func (s *compatTestSuiteBase) SetUpTest(c *C) {
 		}()
 	}
 
-	simulatorShutdown, err := tpm2_testutil.LaunchTPMSimulator(&tpm2_testutil.TPMSimulatorOptions{SourceDir: s.dataPath})
+	simulatorShutdown, err := tpm2_testutil.LaunchTPMSimulator(&tpm2_testutil.TPMSimulatorOptions{SourcePath: s.dataPath + "/NVChip"})
 	c.Assert(err, IsNil)
 
 	s.InitCleanup(c)

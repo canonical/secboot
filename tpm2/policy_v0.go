@@ -200,11 +200,11 @@ func newPolicyOrDataV0(tree *policyOrTree) (out policyOrData_v0) {
 
 // computeV0PinNVIndexPostInitAuthPolicies computes the authorization policy digests associated with the post-initialization
 // actions on a NV index created with the removed createPinNVIndex for version 0 key files. These are:
-// - A policy for updating the index to revoke old dynamic authorization policies, requiring an assertion signed by the key
-//   associated with updateKeyName.
-// - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
-// - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
-// - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
+//   - A policy for updating the index to revoke old dynamic authorization policies, requiring an assertion signed by the key
+//     associated with updateKeyName.
+//   - A policy for updating the authorization value (PIN / passphrase), requiring knowledge of the current authorization value.
+//   - A policy for reading the counter value without knowing the authorization value, as the value isn't secret.
+//   - A policy for using the counter value in a TPM2_PolicyNV assertion without knowing the authorization value.
 func computeV0PinNVIndexPostInitAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
 	var out tpm2.DigestList
 	// Compute a policy for incrementing the index to revoke dynamic authorization policies, requiring an assertion signed by the
@@ -358,12 +358,13 @@ func (p *keyDataPolicy_v0) PCRPolicySequence() uint64 {
 
 // UpdatePCRPolicy updates the PCR policy associated with this keyDataPolicy. The PCR policy asserts
 // that the following are true:
-// - The selected PCRs contain expected values - ie, one of the sets of permitted values specified by
-//   the caller to this function, indicating that the device is in an expected state. This is done by a
-//   single PolicyPCR assertion and then one or more PolicyOR assertions (depending on how many sets of
-//   permitted PCR values there are).
-// - The PCR policy hasn't been revoked. This is done using a PolicyNV assertion to assert that the
-//   value of an optional NV counter is not greater than the PCR policy sequence.
+//   - The selected PCRs contain expected values - ie, one of the sets of permitted values specified by
+//     the caller to this function, indicating that the device is in an expected state. This is done by a
+//     single PolicyPCR assertion and then one or more PolicyOR assertions (depending on how many sets of
+//     permitted PCR values there are).
+//   - The PCR policy hasn't been revoked. This is done using a PolicyNV assertion to assert that the
+//     value of an optional NV counter is not greater than the PCR policy sequence.
+//
 // The computed PCR policy digest is authorized with the supplied key. The signature of this is
 // validated during execution before executing the corresponding PolicyAuthorize assertion as part of the
 // static policy.
