@@ -29,10 +29,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 
-	"github.com/canonical/go-sp800.90a-drbg"
+	drbg "github.com/canonical/go-sp800.90a-drbg"
 
+	"golang.org/x/crypto/hkdf"
 	"golang.org/x/xerrors"
 )
 
@@ -40,6 +42,10 @@ const (
 	kdfType                 = "argon2i"
 	passphraseDerivedKeyLen = 32
 	passphraseEncryption    = "aes-cfb"
+)
+
+var (
+	snapModelHMACKDFLabel = []byte("SNAP-MODEL-HMAC")
 )
 
 // ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
@@ -249,23 +255,36 @@ func (l snapModelHMACList) contains(h snapModelHMAC) bool {
 	return false
 }
 
+// keyDigest contains a salted digest to verify the correctness of a key.
 type keyDigest struct {
 	Alg    hashAlg `json:"alg"`
 	Salt   []byte  `json:"salt"`
 	Digest []byte  `json:"digest"`
 }
 
+// hkdfData contains the parameters used to derive a key using HKDF.
+type hkdfData struct {
+	Alg  hashAlg `json:"alg"` // Digest algorithm to use for HKDF
+	Salt []byte  `json:"salt"`
+}
+
 type authorizedSnapModelsRaw struct {
 	Alg       hashAlg           `json:"alg"`
+	KDF       *hkdfData         `json:"kdf,omitempty"`
 	KeyDigest json.RawMessage   `json:"key_digest"`
 	Hmacs     snapModelHMACList `json:"hmacs"`
 }
 
+// authorizedSnapModels defines the Snap models that have been
+// authorized to access the data protected by a key.
 type authorizedSnapModels struct {
-	alg       hashAlg
-	keyDigest keyDigest
-	hmacs     snapModelHMACList
+	alg       hashAlg           // Digest algorithm used for the authorized model HMACs
+	kdf       *hkdfData         // HKDF parameters used to derive the HMAC key. Nil for legacy (DRBG) derivation.
+	keyDigest keyDigest         // information used to validate the correctness of the HMAC key
+	hmacs     snapModelHMACList // the list of HMACs of authorized models
 
+	// legacyKeyDigest is true when keyDigest should be marshalled
+	// as a plain key rather than a keyDigest object.
 	legacyKeyDigest bool
 }
 
@@ -285,6 +304,7 @@ func (m authorizedSnapModels) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(&authorizedSnapModelsRaw{
 		Alg:       m.alg,
+		KDF:       m.kdf,
 		KeyDigest: digest,
 		Hmacs:     m.hmacs})
 }
@@ -299,6 +319,7 @@ func (m *authorizedSnapModels) UnmarshalJSON(b []byte) error {
 
 	*m = authorizedSnapModels{
 		alg:   raw.Alg,
+		kdf:   raw.KDF,
 		hmacs: raw.Hmacs}
 
 	token, err := json.NewDecoder(bytes.NewReader(raw.KeyDigest)).Token()
@@ -335,6 +356,8 @@ func (m *authorizedSnapModels) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// kdfData corresponds to the arguments to a KDF and matches the
+// corresponding object in the LUKS2 specification.
 type kdfData struct {
 	Type   string `json:"type"`
 	Salt   []byte `json:"salt"`
@@ -343,20 +366,39 @@ type kdfData struct {
 	CPUs   int    `json:"cpus"`
 }
 
+// passphraseData is the data associated with a passphrase protected
+// key.
 type passphraseData struct {
-	KDF              kdfData `json:"kdf"`
-	Encryption       string  `json:"encryption"`
-	KeySize          int     `json:"key_size"`
-	EncryptedPayload []byte  `json:"encrypted_payload"`
+	// KDF contains the key derivation parameters used to derive
+	// an encryption key from an input passphrase.
+	KDF kdfData `json:"kdf"`
+
+	Encryption string `json:"encryption"` // Encryption algorithm - currently only aes-cfb
+	KeySize    int    `json:"key_size"`   // Size of encryption key to derive from passphrase
+
+	// EncryptedPayload is the platform protected payload additionally
+	// protected by a passphrase derived key using the parameters
+	// of this structure.
+	EncryptedPayload []byte `json:"encrypted_payload"`
 }
 
 type keyData struct {
-	PlatformName   string          `json:"platform_name"`
+	PlatformName string `json:"platform_name"` // used to identify a PlatformKeyDataHandler
+
+	// PlatformHandle is an opaque blob of data used by the associated
+	// PlatformKeyDataHandler to recover the cleartext keys from one of
+	// the encrypted payloads.
 	PlatformHandle json.RawMessage `json:"platform_handle"`
 
-	EncryptedPayload           []byte          `json:"encrypted_payload,omitempty"`
+	// EncryptedPayload is the platform protected key payload.
+	EncryptedPayload []byte `json:"encrypted_payload,omitempty"`
+
+	// PassphraseProtectedPayload is the platform protected key
+	// payload additionally protected by a passphrase.
 	PassphraseProtectedPayload *passphraseData `json:"passphrase_protected_payload,omitempty"`
 
+	// AuthorizedSnapModels contains information about the Snap models
+	// that have been authorized to access the data protected by this key.
 	AuthorizedSnapModels authorizedSnapModels `json:"authorized_snap_models"`
 }
 
@@ -385,8 +427,8 @@ type KeyData struct {
 	data         keyData
 }
 
-func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
-	rng, err := drbg.NewCTRWithExternalEntropy(32, auxKey, nil, []byte("SNAP-MODEL-HMAC"), nil)
+func (d *KeyData) snapModelAuthKeyLegacy(auxKey AuxiliaryKey) ([]byte, error) {
+	rng, err := drbg.NewCTRWithExternalEntropy(32, auxKey, nil, snapModelHMACKDFLabel, nil)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot instantiate DRBG: %w", err)
 	}
@@ -399,6 +441,32 @@ func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
 	hmacKey := make([]byte, alg.Size())
 	if _, err := rng.Read(hmacKey); err != nil {
 		return nil, xerrors.Errorf("cannot derive key: %w", err)
+	}
+
+	return hmacKey, nil
+}
+
+func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
+	kdf := d.data.AuthorizedSnapModels.kdf
+	if kdf == nil {
+		return d.snapModelAuthKeyLegacy(auxKey)
+	}
+	if !kdf.Alg.Available() {
+		return nil, errors.New("invalid KDF digest algorithm")
+	}
+
+	alg := d.data.AuthorizedSnapModels.alg
+	if alg.Hash == crypto.Hash(0) {
+		return nil, errors.New("invalid digest algorithm")
+	}
+
+	r := hkdf.New(func() hash.Hash { return kdf.Alg.New() }, auxKey, kdf.Salt, snapModelHMACKDFLabel)
+
+	// Derive a key with a length matching the output size of the
+	// algorithm used for the HMAC.
+	hmacKey := make([]byte, alg.Size())
+	if _, err := io.ReadFull(r, hmacKey); err != nil {
+		return nil, err
 	}
 
 	return hmacKey, nil
@@ -819,33 +887,36 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 		return nil, xerrors.Errorf("cannot encode platform handle: %w", err)
 	}
 
-	rng, err := drbg.NewCTRWithExternalEntropy(32, creationData.AuxiliaryKey, nil, []byte("SNAP-MODEL-HMAC"), nil)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot instantiate DRBG: %w", err)
-	}
-
-	var salt [32]byte
+	var salt [64]byte
 	if _, err := rand.Read(salt[:]); err != nil {
 		return nil, xerrors.Errorf("cannot read salt: %w", err)
 	}
 
-	h := creationData.SnapModelAuthHash.New()
-	if _, err := io.CopyN(h, rng, int64(creationData.SnapModelAuthHash.Size())); err != nil {
-		return nil, xerrors.Errorf("cannot create hash of snap model auth key: %w", err)
-	}
-	h.Write(salt[:])
-
-	return &KeyData{
+	kd := &KeyData{
 		data: keyData{
 			PlatformName:     creationData.PlatformName,
 			PlatformHandle:   json.RawMessage(encodedHandle),
 			EncryptedPayload: creationData.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
 				alg: hashAlg{creationData.SnapModelAuthHash},
+				kdf: &hkdfData{
+					Alg:  hashAlg{creationData.SnapModelAuthHash},
+					Salt: salt[:32]},
 				keyDigest: keyDigest{
-					Alg:    hashAlg{creationData.SnapModelAuthHash},
-					Salt:   salt[:],
-					Digest: h.Sum(nil)}}}}, nil
+					Alg:  hashAlg{creationData.SnapModelAuthHash},
+					Salt: salt[32:]}}}}
+
+	authKey, err := kd.snapModelAuthKey(creationData.AuxiliaryKey)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot compute snap model auth key: %w", err)
+	}
+
+	h := kd.data.AuthorizedSnapModels.keyDigest.Alg.New()
+	h.Write(authKey)
+	h.Write(kd.data.AuthorizedSnapModels.keyDigest.Salt)
+	kd.data.AuthorizedSnapModels.keyDigest.Digest = h.Sum(nil)
+
+	return kd, nil
 }
 
 // MarshalKeys serializes the supplied disk unlock key and auxiliary key in
