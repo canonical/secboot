@@ -383,11 +383,6 @@ type secureBootAuthority struct {
 	source    *secureBootDb
 }
 
-type authenticodeSignerAndIntermediates struct {
-	signer        *x509.Certificate
-	intermediates *x509.CertPool
-}
-
 // secureBootPolicyGen is the main structure involved with computing secure boot policy PCR digests. It is essentially just
 // a container for SecureBootPolicyProfileParams - per-branch context is maintained in secureBootPolicyGenBranch instead.
 type secureBootPolicyGen struct {
