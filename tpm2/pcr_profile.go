@@ -913,7 +913,7 @@ func (p PCRProtectionProfile) Marshal(w io.Writer) error {
 	return err
 }
 
-func (p *PCRProtectionProfile) Unmarshal(r mu.Reader) error {
+func (p *PCRProtectionProfile) Unmarshal(r io.Reader) error {
 	var s *savedPCRProtectionProfile
 	if _, err := mu.UnmarshalFromReader(r, &s); err != nil {
 		return err
@@ -1107,7 +1107,10 @@ func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 	}
 
 	// Compute the PCR selection for this profile from the first branch.
-	pcrs := values[0].SelectionList()
+	pcrs, err := values[0].SelectionList()
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot compute selection list: %w", err)
+	}
 
 	// Compute the PCR digests for all branches, making sure that they all contain values for the same sets of PCRs.
 	var pcrDigests tpm2.DigestList

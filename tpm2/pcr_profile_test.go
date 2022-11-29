@@ -24,7 +24,6 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
@@ -46,7 +45,9 @@ type testPCRProtectionProfileData struct {
 }
 
 func (s *pcrProfileSuite) testPCRProtectionProfile(c *C, data *testPCRProtectionProfileData) {
-	expectedPcrs := data.values[0].SelectionList()
+	expectedPcrs, err := data.values[0].SelectionList()
+	c.Assert(err, IsNil)
+
 	var expectedDigests tpm2.DigestList
 	for _, v := range data.values {
 		d, _ := util.ComputePCRDigest(data.alg, expectedPcrs, v)
@@ -55,7 +56,7 @@ func (s *pcrProfileSuite) testPCRProtectionProfile(c *C, data *testPCRProtection
 
 	pcrs, pcrDigests, err := data.profile.ComputePCRDigests(nil, data.alg)
 	c.Assert(err, IsNil)
-	c.Check(pcrs.Equal(expectedPcrs), tpm2_testutil.IsTrue)
+	c.Check(pcrs.Equal(expectedPcrs), testutil.IsTrue)
 	c.Check(pcrDigests, DeepEquals, expectedDigests)
 
 	if c.Failed() {
@@ -1002,7 +1003,7 @@ func (s *pcrProfileSuite) TestUnmarshalDigestIndexOutOfRange(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: digest index \\(2\\) out of range for instruction 1")
 }
 
@@ -1011,7 +1012,7 @@ func (s *pcrProfileSuite) TestUnmarshalMissingEndBranch(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: missing EndBranch for root branch")
 }
 
@@ -1020,7 +1021,7 @@ func (s *pcrProfileSuite) TestUnmarshalUnexpctedAddPCRValue(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: unexpected AddPCRValue at instruction 0")
 }
 
@@ -1029,7 +1030,7 @@ func (s *pcrProfileSuite) TestUnmarshalUnexpctedAddPCRValueFromTPM(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: unexpected AddPCRValueFromTPM at instruction 0")
 }
 
@@ -1038,7 +1039,7 @@ func (s *pcrProfileSuite) TestUnmarshalUnexpctedExtendPCR(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: unexpected ExtendPCR at instruction 0")
 }
 
@@ -1047,7 +1048,7 @@ func (s *pcrProfileSuite) TestUnmarshalUnexpctedBeginBranchPoint(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: unexpected BeginBranchPoint at instruction 0")
 }
 
@@ -1056,7 +1057,7 @@ func (s *pcrProfileSuite) TestUnmarshalUnexpctedEndBranchPoint(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: unexpected EndBranchPoint at instruction 1")
 }
 
@@ -1065,7 +1066,7 @@ func (s *pcrProfileSuite) TestUnmarshalUnexpctedEndBranch1(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: unexpected EndBranch for root branch at instruction 1")
 }
 
@@ -1074,7 +1075,7 @@ func (s *pcrProfileSuite) TestUnmarshalUnexpctedEndBranch2(c *C) {
 
 	var p *PCRProtectionProfile
 	_, err := mu.UnmarshalFromBytes(b, &p)
-	c.Check(err, ErrorMatches, "cannot unmarshal argument whilst processing element of type "+
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
 		"tpm2.PCRProtectionProfile: unexpected EndBranch at instruction 2")
 }
 
@@ -1098,8 +1099,8 @@ func (s *pcrProfileTPMSuite) TestAddValueFromTPM(c *C) {
 	p := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 23)
 	pcrs, digests, err := p.ComputePCRDigests(s.TPM().TPMContext, tpm2.HashAlgorithmSHA256)
 	c.Check(err, IsNil)
-	c.Check(pcrs.Equal(tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}}), tpm2_testutil.IsTrue)
-	c.Check(digests, tpm2_testutil.LenEquals, 1)
+	c.Check(pcrs.Equal(tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}}), testutil.IsTrue)
+	c.Check(digests, HasLen, 1)
 
 	expectedDigest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}}, values)
 	c.Check(digests[0], DeepEquals, expectedDigest)

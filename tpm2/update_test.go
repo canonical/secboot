@@ -26,7 +26,6 @@ import (
 	"path/filepath"
 
 	"github.com/canonical/go-tpm2"
-	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	. "gopkg.in/check.v1"
 
@@ -54,7 +53,7 @@ func (s *updateSuite) SetUpTest(c *C) {
 
 	s.primaryKeyMixin.tpmTest = &s.TPMTest.TPMTest
 	c.Assert(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
-		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 }
 
 var _ = Suite(&updateSuite{})

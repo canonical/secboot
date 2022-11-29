@@ -61,66 +61,76 @@
 			"revisionTime": "2021-03-12T20:55:53Z"
 		},
 		{
-			"checksumSHA1": "6UqrJSrfA2t8UiyyLDFg/L4PQBI=",
+			"checksumSHA1": "IP8bXJ/G+HxDqIPwr0X5iQO4kt4=",
 			"path": "github.com/canonical/go-tpm2",
-			"revision": "de82cde8ad087dc6bbe6825adffa64ab28c7dda1",
-			"revisionTime": "2021-10-12T20:59:38Z",
-			"version": "v0.1.0",
-			"versionExact": "v0.1.0"
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
 		},
 		{
-			"checksumSHA1": "0wuA3btHc67a/DaiXem7zlpPRw4=",
-			"path": "github.com/canonical/go-tpm2/internal",
-			"revision": "1e41994e137391ff77b39c416e625575afb18872",
-			"revisionTime": "2021-09-30T14:01:45Z"
+			"checksumSHA1": "NKgskH7rjr817CiFVKR0W4AJaWU=",
+			"path": "github.com/canonical/go-tpm2/crypto",
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
 		},
 		{
-			"checksumSHA1": "hcs0X8rKQni3LBBPquw7GZ7KF4A=",
+			"checksumSHA1": "/Ie85OrKOl1pAObNgy15Rc8g+7E=",
+			"path": "github.com/canonical/go-tpm2/internal/testutil",
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
+		},
+		{
+			"checksumSHA1": "n4mMf5g8YgTq9jjhcU4F3Vvc4GY=",
 			"path": "github.com/canonical/go-tpm2/linux",
-			"revision": "de82cde8ad087dc6bbe6825adffa64ab28c7dda1",
-			"revisionTime": "2021-10-12T20:59:38Z",
-			"version": "v0.1.0",
-			"versionExact": "v0.1.0"
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
 		},
 		{
-			"checksumSHA1": "CaogwrlaFaf5AHOunuxYZbMhE2o=",
+			"checksumSHA1": "E8dwXLGiOO9RIcXgIdcBN1XuBQY=",
 			"path": "github.com/canonical/go-tpm2/mssim",
-			"revision": "de82cde8ad087dc6bbe6825adffa64ab28c7dda1",
-			"revisionTime": "2021-10-12T20:59:38Z",
-			"version": "v0.1.0",
-			"versionExact": "v0.1.0"
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
 		},
 		{
-			"checksumSHA1": "XhX0jJCdJOvsn4pIOL0H8J9YV54=",
+			"checksumSHA1": "bDTi/HuoCoTiPaVxr6G99nRZoFw=",
 			"path": "github.com/canonical/go-tpm2/mu",
-			"revision": "de82cde8ad087dc6bbe6825adffa64ab28c7dda1",
-			"revisionTime": "2021-10-12T20:59:38Z",
-			"version": "v0.1.0",
-			"versionExact": "v0.1.0"
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
 		},
 		{
 			"checksumSHA1": "uZAV20wIyayJqOPyFAf3H5V4o3k=",
 			"path": "github.com/canonical/go-tpm2/templates",
-			"revision": "de82cde8ad087dc6bbe6825adffa64ab28c7dda1",
-			"revisionTime": "2021-10-12T20:59:38Z",
-			"version": "v0.1.0",
-			"versionExact": "v0.1.0"
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
 		},
 		{
-			"checksumSHA1": "QKI6DV2GmXTdx+8hu05RK+nUoZE=",
+			"checksumSHA1": "Srj1+5SbbLBYxZESOBXsoSIZxAA=",
 			"path": "github.com/canonical/go-tpm2/testutil",
-			"revision": "de82cde8ad087dc6bbe6825adffa64ab28c7dda1",
-			"revisionTime": "2021-10-12T20:59:38Z",
-			"version": "v0.1.0",
-			"versionExact": "v0.1.0"
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
 		},
 		{
-			"checksumSHA1": "LiIpt5bsF9g4NskPRzeCDGc8Mkg=",
+			"checksumSHA1": "V1VvSPKRamf99lPl561GB5i8AzA=",
 			"path": "github.com/canonical/go-tpm2/util",
-			"revision": "de82cde8ad087dc6bbe6825adffa64ab28c7dda1",
-			"revisionTime": "2021-10-12T20:59:38Z",
-			"version": "v0.1.0",
-			"versionExact": "v0.1.0"
+			"revision": "104d978386818d4023decd55c390a098fb5f2a86",
+			"revisionTime": "2022-11-24T01:51:30Z",
+			"version": "v0.3.1",
+			"versionExact": "v0.3.1"
 		},
 		{
 			"checksumSHA1": "pjpC3gtdvLblTbmFOnvc8MzbaLs=",

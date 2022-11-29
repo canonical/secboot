@@ -27,6 +27,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
@@ -146,11 +147,11 @@ func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisi
 	// Make sure ProvisionTPM didn't leak transient objects
 	handles, err := s.TPM().GetCapabilityHandles(tpm2.HandleTypeTransient.BaseHandle(), tpm2.CapabilityMaxProperties)
 	c.Check(err, IsNil)
-	c.Check(handles, tpm2_testutil.LenEquals, 0)
+	c.Check(handles, HasLen, 0)
 
 	handles, err = s.TPM().GetCapabilityHandles(tpm2.HandleTypeLoadedSession.BaseHandle(), tpm2.CapabilityMaxProperties)
 	c.Check(err, IsNil)
-	c.Check(handles, tpm2_testutil.LenEquals, 1)
+	c.Check(handles, HasLen, 1)
 }
 
 func (s *provisioningSimulatorSuite) TestProvisionNewTPMClear(c *C) {
@@ -203,7 +204,7 @@ func (s *provisioningSuite) TestProvisionErrorHandlingLockoutAuthFail1(c *C) {
 	s.TPM().LockoutHandleContext().SetAuthValue(nil)
 
 	err := s.testProvisionErrorHandling(c, ProvisionModeFull)
-	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
 	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleLockout)
 }
 
@@ -212,7 +213,7 @@ func (s *provisioningSuite) TestProvisionErrorHandlingLockoutAuthFail2(c *C) {
 	s.TPM().LockoutHandleContext().SetAuthValue(nil)
 
 	err := s.testProvisionErrorHandling(c, ProvisionModeClear)
-	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
 	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleLockout)
 }
 
@@ -222,7 +223,7 @@ func (s *provisioningSuite) TestProvisionErrorHandlingInLockout1(c *C) {
 
 	// Trip the DA lockout
 	s.TPM().LockoutHandleContext().SetAuthValue(nil)
-	c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), tpm2_testutil.ErrorIs,
+	c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), testutil.ErrorIs,
 		&tpm2.TPMSessionError{TPMError: &tpm2.TPMError{Command: tpm2.CommandHierarchyChangeAuth, Code: tpm2.ErrorAuthFail}, Index: 1})
 	s.TPM().LockoutHandleContext().SetAuthValue(authValue)
 
@@ -236,7 +237,7 @@ func (s *provisioningSuite) TestProvisionErrorHandlingInLockout2(c *C) {
 
 	// Trip the DA lockout
 	s.TPM().LockoutHandleContext().SetAuthValue(nil)
-	c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), tpm2_testutil.ErrorIs,
+	c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), testutil.ErrorIs,
 		&tpm2.TPMSessionError{TPMError: &tpm2.TPMError{Command: tpm2.CommandHierarchyChangeAuth, Code: tpm2.ErrorAuthFail}, Index: 1})
 	s.TPM().LockoutHandleContext().SetAuthValue(authValue)
 
@@ -249,7 +250,7 @@ func (s *provisioningSuite) TestProvisionErrorHandlingOwnerAuthFail(c *C) {
 	s.TPM().OwnerHandleContext().SetAuthValue(nil)
 
 	err := s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
-	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
 	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleOwner)
 }
 
@@ -258,7 +259,7 @@ func (s *provisioningSuite) TestProvisionErrorHandlingEndorsementAuthFail(c *C) 
 	s.TPM().EndorsementHandleContext().SetAuthValue(nil)
 
 	err := s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
-	c.Assert(err, tpm2_testutil.ConvertibleTo, AuthFailError{})
+	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
 	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleEndorsement)
 }
 
@@ -368,7 +369,7 @@ func (s *provisioningSuite) TestProvisionWithEndorsementAuth(c *C) {
 	s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
 
 	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
-		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 
 	s.validateEK(c)
 	s.validateSRK(c)
@@ -378,7 +379,7 @@ func (s *provisioningSuite) TestProvisionWithOwnerAuth(c *C) {
 	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
 
 	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
-		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 
 	s.validateEK(c)
 	s.validateSRK(c)
@@ -397,7 +398,7 @@ func (s *provisioningSimulatorSuite) TestProvisionWithInvalidEkCert(c *C) {
 	s.AddCleanup(restore)
 
 	err := s.TPM().EnsureProvisioned(ProvisionModeFull, nil)
-	c.Assert(err, tpm2_testutil.ConvertibleTo, TPMVerificationError{})
+	c.Assert(err, testutil.ConvertibleTo, TPMVerificationError{})
 	c.Check(err, ErrorMatches, "cannot verify that the TPM is the device for which "+
 		"the supplied EK certificate was issued: cannot reinitialize TPM connection "+
 		"after provisioning endorsement key: cannot verify public area of endorsement "+
@@ -520,7 +521,7 @@ func (s *provisioningSuite) TestProvisionDefaultClearRemovesCustomSRKTemplate(c 
 				KeyBits:  2048,
 				Exponent: 0}}}
 	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeWithoutLockout, nil, &template),
-		tpm2_testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
 	c.Check(s.TPM().EnsureProvisioned(ProvisionModeClear, nil), IsNil)
