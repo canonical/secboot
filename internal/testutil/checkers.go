@@ -93,8 +93,7 @@ func (checker *inSliceChecker) Check(params []interface{}, names []string) (resu
 //
 // For example:
 //
-//  c.Check(value, InSlice(Equals), []int{1, 2, 3})
-//
+//	c.Check(value, InSlice(Equals), []int{1, 2, 3})
 func InSlice(checker Checker) Checker {
 	return &inSliceChecker{checker}
 }

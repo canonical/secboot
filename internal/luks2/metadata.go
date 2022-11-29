@@ -860,9 +860,9 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 //
 // This function will verify the checksum of both the primary and secondary headers if found, and will
 // return the decoded form of one of the headers according to the following rules:
-//  - If both headers have valid checksums and the same sequence ID, return the primary header.
-//  - If both headers have valid checksums but different sequence IDs, return the newest header.
-//  - If only one header has a valid checksum, return that header.
+//   - If both headers have valid checksums and the same sequence ID, return the primary header.
+//   - If both headers have valid checksums but different sequence IDs, return the newest header.
+//   - If only one header has a valid checksum, return that header.
 //
 // libcryptsetup performs some additional validation of the JSON metadata from both the primary
 // and secondary headers, and rejects a header if the JSON metadata isn't correctly formed. We don't

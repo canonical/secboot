@@ -935,29 +935,37 @@ func (s *pcrProfileSuite) TestUnbalancedBranchesFails(c *C) {
 func (s *pcrProfileSuite) TestMarshalAndUnmarshal(c *C) {
 	p := NewPCRProtectionProfile()
 	p.RootBranch().
-		AddBranchPoint(). // Begin (A1 || A2)
+		AddBranchPoint(). // Begin (A1 || A2 || A3)
 		AddBranch().      // Begin A1
 		AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 		EndBranch(). // End A1
 		AddBranch(). // Begin A2
 		AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
-		EndBranch().      // End A2
-		EndBranchPoint(). // End (A1 || A2)
-		AddBranchPoint(). // Begin (B1 || B2)
+		EndBranch(). // End A2
+		AddBranch(). // Begin A3
+		AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).
+		EndBranch().      // End A3
+		EndBranchPoint(). // End (A1 || A2 || A3)
+		AddBranchPoint(). // Begin (B1 || B2 || B3)
 		AddBranch().      // Begin B1
 		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
 		EndBranch(). // End B1
 		AddBranch(). // Begin B2
 		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-		EndBranch().     // End B2
-		EndBranchPoint() // End (B1 || B2)
+		EndBranch(). // End B2
+		AddBranch(). // Begin B3
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, make([]byte, 32)).
+		ExtendPCR(tpm2.HashAlgorithmSHA256, 8, make([]byte, 32)).
+		EndBranch().     // End B3
+		EndBranchPoint() // End (B1 || B2 || B3)
 	b, err := mu.MarshalToBytes(p)
 	c.Assert(err, IsNil)
-	c.Check(b, DeepEquals, testutil.DecodeHexString(c, "00000002"+
+	c.Check(b, DeepEquals, testutil.DecodeHexString(c, "00000003"+
 		"0020424816d020cf3d793ac021da47379bdf608080a83eb9364a7fbe0bdfa87111d7"+
 		"0020a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"+
-		"00000012"+
-		"01050102000b00000007070102000b000008070706050102000b00000808070102000b00000008070607"))
+		"00200000000000000000000000000000000000000000000000000000000000000000"+
+		"00000019"+
+		"01050102000b00000007070102000b00000807070103000b00070706050102000b00000808070102000b00000008070102000b0000100804000b00001008070607"))
 
 	var p2 *PCRProtectionProfile
 	_, err = mu.UnmarshalFromBytes(b, &p2)
@@ -970,6 +978,9 @@ func (s *pcrProfileSuite) TestMarshalAndUnmarshal(c *C) {
    Branch 1 {
     AddPCRValue(TPM_ALG_SHA256, 7, a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c)
    }
+   Branch 2 {
+    AddPCRValueFromTPM(TPM_ALG_SHA256, 7)
+   }
  )
  BranchPoint(
    Branch 0 {
@@ -977,6 +988,10 @@ func (s *pcrProfileSuite) TestMarshalAndUnmarshal(c *C) {
    }
    Branch 1 {
     AddPCRValue(TPM_ALG_SHA256, 8, 424816d020cf3d793ac021da47379bdf608080a83eb9364a7fbe0bdfa87111d7)
+   }
+   Branch 2 {
+    AddPCRValue(TPM_ALG_SHA256, 8, 0000000000000000000000000000000000000000000000000000000000000000)
+    ExtendPCR(TPM_ALG_SHA256, 8, 0000000000000000000000000000000000000000000000000000000000000000)
    }
  )
 `)

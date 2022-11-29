@@ -210,11 +210,11 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 }
 
 // newKeyDataPolicy creates a keyDataPolicy containing a static authorization policy that asserts:
-// - The PCR policy created by updatePcrPolicy and authorized by key is valid and has been satisfied (by way
-//   of a PolicyAuthorize assertion, which allows the PCR policy to be updated without creating a new sealed
-//   key object).
-// - Knowledge of the the authorization value for the entity on which the policy session is used has been
-//   demonstrated by the caller - this will be used in the future as part of the passphrase integration.
+//   - The PCR policy created by updatePcrPolicy and authorized by key is valid and has been satisfied (by way
+//     of a PolicyAuthorize assertion, which allows the PCR policy to be updated without creating a new sealed
+//     key object).
+//   - Knowledge of the the authorization value for the entity on which the policy session is used has been
+//     demonstrated by the caller - this will be used in the future as part of the passphrase integration.
 //
 // PCR policies support revocation by way of a NV counter. The revocation check is part of the PCR policy,
 // but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
