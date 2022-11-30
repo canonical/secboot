@@ -22,8 +22,8 @@ package efi
 import (
 	"bufio"
 	"bytes"
+	"crypto"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -34,16 +34,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/canonical/go-efilib"
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/xerrors"
 
-	"go.mozilla.org/pkcs7"
-
-	"github.com/snapcore/secboot/internal/pe1.14"
+	pe "github.com/snapcore/secboot/internal/pe1.14"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -66,8 +64,6 @@ const (
 
 var (
 	shimGuid = efi.MakeGUID(0x605dab50, 0xe046, 0x4300, 0xabb6, [...]uint8{0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23}) // SHIM_LOCK_GUID
-
-	oidSha256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 
 	efiVarsPath = "/sys/firmware/efi/efivars" // Default mount point for efivarfs
 )
@@ -387,11 +383,6 @@ type secureBootAuthority struct {
 	source    *secureBootDb
 }
 
-type authenticodeSignerAndIntermediates struct {
-	signer        *x509.Certificate
-	intermediates *x509.CertPool
-}
-
 // secureBootPolicyGen is the main structure involved with computing secure boot policy PCR digests. It is essentially just
 // a container for SecureBootPolicyProfileParams - per-branch context is maintained in secureBootPolicyGenBranch instead.
 type secureBootPolicyGen struct {
@@ -522,12 +513,12 @@ func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(updates []*secureB
 //
 // Processing of the list of events stops after transitioning from pre-OS to OS-present. This transition is indicated when an
 // EV_SEPARATOR event has been measured to any of PCRs 0-6 AND PCR 7. This handles 2 different firmware behaviours:
-// - Some firmware implementations signal the transition by measuring EV_SEPARATOR events to PCRs 0-7 at the same time.
-// - Other firmware implementations measure a EV_SEPARATOR event to PCR 7 immediately after measuring the secure boot
-//   configuration, which is before the transition to OS-present. In this case, processing of pre-OS events in PCR 7
-//   must continue until an EV_SEPARATOR event is encountered in PCRs 0-6. On firmware implmentations that support
-//   secure boot verification of EFI drivers, these verification events will be recorded to PCR 7 after the
-//   EV_SEPARATOR event in PCR 7 but before the EV_SEPARATOR events in PCRs 0-6.
+//   - Some firmware implementations signal the transition by measuring EV_SEPARATOR events to PCRs 0-7 at the same time.
+//   - Other firmware implementations measure a EV_SEPARATOR event to PCR 7 immediately after measuring the secure boot
+//     configuration, which is before the transition to OS-present. In this case, processing of pre-OS events in PCR 7
+//     must continue until an EV_SEPARATOR event is encountered in PCRs 0-6. On firmware implmentations that support
+//     secure boot verification of EFI drivers, these verification events will be recorded to PCR 7 after the
+//     EV_SEPARATOR event in PCR 7 but before the EV_SEPARATOR events in PCRs 0-6.
 func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, sigDbUpdates []*secureBootDbUpdate, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
 	osPresent := false
 	seenSecureBootPCRSeparator := false
@@ -650,7 +641,7 @@ func (b *secureBootPolicyGenBranch) hasVerificationEventBeenMeasuredBy(digest tp
 // and the source of that certificate, needs to be determined. If the image is not signed with an authority that is trusted by a CA
 // certificate that exists in this branch, then this branch will be marked as unbootable and it will be omitted from the final PCR
 // profile.
-func (b *secureBootPolicyGenBranch) computeAndExtendVerificationMeasurement(sigs []*authenticodeSignerAndIntermediates, source ImageLoadEventSource) error {
+func (b *secureBootPolicyGenBranch) computeAndExtendVerificationMeasurement(sigs []*efi.WinCertificateAuthenticode, source ImageLoadEventSource) error {
 	if b.profile == nil {
 		// This branch is going to be excluded because it is unbootable.
 		return nil
@@ -694,17 +685,7 @@ Outer:
 					continue
 				}
 
-				// XXX: This only works if the CA certificate is also the code signing
-				// certificate, or it directly signs the code signing certificate. Ideally
-				// we would use x509.Certificate.Verify here, but there is no way to turn
-				// off time checking and UEFI doesn't consider expired certificates invalid.
-				if bytes.Equal(ca.Raw, sig.signer.Raw) {
-					// The signer certificate is the CA
-					authority = &secureBootAuthority{signature: l.Signatures[0], source: db}
-					break Outer
-				}
-				if err := sig.signer.CheckSignatureFrom(ca); err == nil {
-					// The signer certificate is signed by the CA
+				if sig.CanBeVerifiedBy(ca) {
 					authority = &secureBootAuthority{signature: l.Signatures[0], source: db}
 					break Outer
 				}
@@ -801,7 +782,7 @@ func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(branches [
 	// Binaries can have multiple signers - this is achieved using multiple single-signed Authenticode signatures - see section 32.5.3.3
 	// ("Secure Boot and Driver Signing - UEFI Image Validation - Signature Database Update - Authorization Process") of the UEFI
 	// Specification, version 2.8.
-	var sigs []*authenticodeSignerAndIntermediates
+	var sigs []*efi.WinCertificateAuthenticode
 
 Outer:
 	for {
@@ -819,35 +800,18 @@ Outer:
 			return xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry of PE binary: %w", err)
 		}
 
-		if _, ok := c.(efi.WinCertificateAuthenticode); !ok {
+		sig, ok := c.(*efi.WinCertificateAuthenticode)
+		if !ok {
 			return errors.New("unexpected WIN_CERTIFICATE type: not an Authenticode signature")
-		}
-
-		// Decode the signature
-		p7, err := pkcs7.Parse(c.(efi.WinCertificateAuthenticode))
-		if err != nil {
-			return xerrors.Errorf("cannot decode signature: %w", err)
-		}
-
-		// Grab the certificate of the signer
-		signer := p7.GetOnlySigner()
-		if signer == nil {
-			return errors.New("cannot obtain signer certificate from signature")
 		}
 
 		// Reject any signature with a digest algorithm other than SHA256, as that's the only algorithm used for binaries we're
 		// expected to support, and therefore required by the UEFI implementation.
-		if !p7.Signers[0].DigestAlgorithm.Algorithm.Equal(oidSha256) {
+		if sig.DigestAlgorithm() != crypto.SHA256 {
 			return errors.New("signature has unexpected digest algorithm")
 		}
 
-		// Grab all of the certificates in the signature and populate an intermediates pool
-		intermediates := x509.NewCertPool()
-		for _, c := range p7.Certificates {
-			intermediates.AddCert(c)
-		}
-
-		sigs = append(sigs, &authenticodeSignerAndIntermediates{signer: p7.GetOnlySigner(), intermediates: intermediates})
+		sigs = append(sigs, sig)
 	}
 
 	if len(sigs) == 0 {
