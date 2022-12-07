@@ -52,6 +52,7 @@ type tpmSuite struct {
 func (s *tpmSuite) SetUpSuite(c *C) {
 	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
 		tpm2test.TPMFeatureEndorsementHierarchy |
+		tpm2test.TPMFeatureLockoutHierarchy |
 		tpm2test.TPMFeatureNV
 }
 
@@ -100,6 +101,14 @@ func (s *tpmSuitePlatform) TestConnectionIsEnabled(c *C) {
 
 	c.Check(s.TPM().HierarchyControl(s.TPM().PlatformHandleContext(), tpm2.HandleOwner, true, nil), IsNil)
 	c.Check(s.TPM().IsEnabled(), testutil.IsFalse)
+}
+
+func (s *tpmSuitePlatform) TestConnectionLockoutAuthSet(c *C) {
+	c.Check(s.TPM().LockoutAuthSet(), testutil.IsFalse)
+
+	// Put the TPM in DA lockout mode
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+	c.Check(s.TPM().LockoutAuthSet(), testutil.IsTrue)
 }
 
 func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEk bool) {

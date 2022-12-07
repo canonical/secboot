@@ -78,6 +78,14 @@ func (t *Connection) IsEnabled() bool {
 	return tpm2.StartupClearAttributes(props[0].Value)&enabledMask == enabledMask
 }
 
+func (t *Connection) LockoutAuthSet() bool {
+	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
+	if err != nil || len(props) == 0 {
+		return false
+	}
+	return tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrLockoutAuthSet > 0
+}
+
 // VerifiedEKCertChain returns the verified certificate chain for the endorsement key certificate obtained from this TPM. It was
 // verified using one of the built-in TPM manufacturer root CA certificates.
 func (t *Connection) VerifiedEKCertChain() []*x509.Certificate {
