@@ -52,7 +52,6 @@ type tpmSuite struct {
 func (s *tpmSuite) SetUpSuite(c *C) {
 	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
 		tpm2test.TPMFeatureEndorsementHierarchy |
-		tpm2test.TPMFeatureLockoutHierarchy |
 		tpm2test.TPMFeatureNV
 }
 
@@ -65,7 +64,8 @@ func (s *tpmSuitePlatform) SetUpSuite(c *C) {
 	s.TPMFeatures = tpm2test.TPMFeatureOwnerHierarchy |
 		tpm2test.TPMFeatureEndorsementHierarchy |
 		tpm2test.TPMFeaturePlatformHierarchy |
-		tpm2test.TPMFeatureNV
+		tpm2test.TPMFeatureNV |
+		tpm2test.TPMFeatureLockoutHierarchy
 }
 
 type tpmSuiteSimulator struct {
