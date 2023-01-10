@@ -79,11 +79,11 @@ func (t *Connection) IsEnabled() bool {
 }
 
 func (t *Connection) LockoutAuthSet() bool {
-	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
-	if err != nil || len(props) == 0 {
+	value, err := t.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	if err != nil {
 		return false
 	}
-	return tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrLockoutAuthSet > 0
+	return tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet > 0
 }
 
 // VerifiedEKCertChain returns the verified certificate chain for the endorsement key certificate obtained from this TPM. It was
