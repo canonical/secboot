@@ -23,6 +23,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
@@ -930,6 +931,152 @@ func (s *pcrProfileSuite) TestUnbalancedBranchesFails(c *C) {
 
 	_, _, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, ErrorMatches, `not all branches contain values for the same sets of PCRs`)
+}
+
+func (s *pcrProfileSuite) TestMarshalAndUnmarshal(c *C) {
+	p := NewPCRProtectionProfile()
+	p.RootBranch().
+		AddBranchPoint(). // Begin (A1 || A2 || A3)
+		AddBranch().      // Begin A1
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+		EndBranch(). // End A1
+		AddBranch(). // Begin A2
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+		EndBranch(). // End A2
+		AddBranch(). // Begin A3
+		AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 7).
+		EndBranch().      // End A3
+		EndBranchPoint(). // End (A1 || A2 || A3)
+		AddBranchPoint(). // Begin (B1 || B2 || B3)
+		AddBranch().      // Begin B1
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")).
+		EndBranch(). // End B1
+		AddBranch(). // Begin B2
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+		EndBranch(). // End B2
+		AddBranch(). // Begin B3
+		AddPCRValue(tpm2.HashAlgorithmSHA256, 8, make([]byte, 32)).
+		ExtendPCR(tpm2.HashAlgorithmSHA256, 8, make([]byte, 32)).
+		EndBranch().     // End B3
+		EndBranchPoint() // End (B1 || B2 || B3)
+	b, err := mu.MarshalToBytes(p)
+	c.Assert(err, IsNil)
+	c.Check(b, DeepEquals, testutil.DecodeHexString(c, "00000003"+
+		"0020424816d020cf3d793ac021da47379bdf608080a83eb9364a7fbe0bdfa87111d7"+
+		"0020a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"+
+		"00200000000000000000000000000000000000000000000000000000000000000000"+
+		"00000019"+
+		"01050102000b00000007070102000b00000807070103000b00070706050102000b00000808070102000b00000008070102000b0000100804000b00001008070607"))
+
+	var p2 *PCRProtectionProfile
+	_, err = mu.UnmarshalFromBytes(b, &p2)
+	c.Assert(err, IsNil)
+	c.Check(p2.String(), Equals, `
+ BranchPoint(
+   Branch 0 {
+    AddPCRValue(TPM_ALG_SHA256, 7, 424816d020cf3d793ac021da47379bdf608080a83eb9364a7fbe0bdfa87111d7)
+   }
+   Branch 1 {
+    AddPCRValue(TPM_ALG_SHA256, 7, a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c)
+   }
+   Branch 2 {
+    AddPCRValueFromTPM(TPM_ALG_SHA256, 7)
+   }
+ )
+ BranchPoint(
+   Branch 0 {
+    AddPCRValue(TPM_ALG_SHA256, 8, a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c)
+   }
+   Branch 1 {
+    AddPCRValue(TPM_ALG_SHA256, 8, 424816d020cf3d793ac021da47379bdf608080a83eb9364a7fbe0bdfa87111d7)
+   }
+   Branch 2 {
+    AddPCRValue(TPM_ALG_SHA256, 8, 0000000000000000000000000000000000000000000000000000000000000000)
+    ExtendPCR(TPM_ALG_SHA256, 8, 0000000000000000000000000000000000000000000000000000000000000000)
+   }
+ )
+`)
+}
+
+func (s *pcrProfileSuite) TestUnmarshalDigestIndexOutOfRange(c *C) {
+	b := testutil.DecodeHexString(c, "00000000000000030102000b0000100707")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: digest index \\(2\\) out of range for instruction 1")
+}
+
+func (s *pcrProfileSuite) TestUnmarshalMissingEndBranch(c *C) {
+	b := testutil.DecodeHexString(c, "000000010014a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5000000020102000400000007")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: missing EndBranch for root branch")
+}
+
+func (s *pcrProfileSuite) TestUnmarshalUnexpctedAddPCRValue(c *C) {
+	b := testutil.DecodeHexString(c, "000000010014a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5000000020200040000000707")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: unexpected AddPCRValue at instruction 0")
+}
+
+func (s *pcrProfileSuite) TestUnmarshalUnexpctedAddPCRValueFromTPM(c *C) {
+	b := testutil.DecodeHexString(c, "0000000000000002030004000707")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: unexpected AddPCRValueFromTPM at instruction 0")
+}
+
+func (s *pcrProfileSuite) TestUnmarshalUnexpctedExtendPCR(c *C) {
+	b := testutil.DecodeHexString(c, "000000010014a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5000000020400040000000707")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: unexpected ExtendPCR at instruction 0")
+}
+
+func (s *pcrProfileSuite) TestUnmarshalUnexpctedBeginBranchPoint(c *C) {
+	b := testutil.DecodeHexString(c, "00000000000000020507")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: unexpected BeginBranchPoint at instruction 0")
+}
+
+func (s *pcrProfileSuite) TestUnmarshalUnexpctedEndBranchPoint(c *C) {
+	b := testutil.DecodeHexString(c, "0000000000000003010607")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: unexpected EndBranchPoint at instruction 1")
+}
+
+func (s *pcrProfileSuite) TestUnmarshalUnexpctedEndBranch1(c *C) {
+	b := testutil.DecodeHexString(c, "000000000000000401070506")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: unexpected EndBranch for root branch at instruction 1")
+}
+
+func (s *pcrProfileSuite) TestUnmarshalUnexpctedEndBranch2(c *C) {
+	b := testutil.DecodeHexString(c, "00000000000000050105070607")
+
+	var p *PCRProtectionProfile
+	_, err := mu.UnmarshalFromBytes(b, &p)
+	c.Check(err, ErrorMatches, "cannot unmarshal argument 0 whilst processing element of type "+
+		"tpm2.PCRProtectionProfile: unexpected EndBranch at instruction 2")
 }
 
 type pcrProfileTPMSuite struct {
