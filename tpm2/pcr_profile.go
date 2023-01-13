@@ -752,12 +752,12 @@ func (i savedPCRProtectionProfilePCRAndDigest) PCR() uint16 {
 	return uint16(i) & savedPCRMask
 }
 
-func (i savedPCRProtectionProfilePCRAndDigest) Digest() uint32 {
+func (i savedPCRProtectionProfilePCRAndDigest) DigestIndex() uint32 {
 	return (uint32(i) >> savedPCRBits) & savedDigestMask
 }
 
-func newSavedPCRProtectionProfilePCRAndDigest(pcr uint16, digest uint32) savedPCRProtectionProfilePCRAndDigest {
-	return savedPCRProtectionProfilePCRAndDigest(uint32(pcr&savedPCRMask) | ((digest & savedDigestMask) << savedPCRBits))
+func newSavedPCRProtectionProfilePCRAndDigest(pcr uint16, digestIndex uint32) savedPCRProtectionProfilePCRAndDigest {
+	return savedPCRProtectionProfilePCRAndDigest(uint32(pcr&savedPCRMask) | ((digestIndex & savedDigestMask) << savedPCRBits))
 }
 
 type savedPCRProtectionProfilePCREventInstrData struct {
@@ -778,6 +778,7 @@ type savedPCRProtectionProfileInstrData struct {
 	ExtendPCR          *savedPCRProtectionProfilePCREventInstrData
 }
 
+// Select implements the mu.Union interface.
 func (d *savedPCRProtectionProfileInstrData) Select(selector reflect.Value) interface{} {
 	switch selector.Interface().(savedPCRProtectionProfileInstrType) {
 	case beginBranch, beginBranchPoint, endBranchPoint, endBranch:
@@ -933,9 +934,9 @@ func (p *PCRProtectionProfile) Unmarshal(r io.Reader) error {
 		requireDigest := true
 		switch instr.Type {
 		case addPCRValue:
-			digestIndex = instr.Data.AddPCRValue.PCRAndDigest.Digest()
+			digestIndex = instr.Data.AddPCRValue.PCRAndDigest.DigestIndex()
 		case extendPCR:
-			digestIndex = instr.Data.ExtendPCR.PCRAndDigest.Digest()
+			digestIndex = instr.Data.ExtendPCR.PCRAndDigest.DigestIndex()
 		default:
 			requireDigest = false
 		}
