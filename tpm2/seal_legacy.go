@@ -167,8 +167,13 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 
 	w := NewFileSealedKeyObjectWriter(keyPath)
 
+	data, err := newKeyData(priv, pub, importSymSeed, policyData)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create key data: %w", err)
+	}
+
 	// Marshal the entire object (sealed key object and auxiliary data) to disk
-	sko := newSealedKeyObject(newKeyData(priv, pub, importSymSeed, policyData))
+	sko := newSealedKeyObject(data)
 
 	// Create a PCR authorization policy
 	pcrProfile := params.PCRProfile
@@ -339,8 +344,13 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 
 		w := NewFileSealedKeyObjectWriter(key.Path)
 
+		data, err := newKeyData(priv, pub, nil, policyData)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot create key data: %w", err)
+		}
+
 		// Marshal the entire object (sealed key object and auxiliary data) to disk
-		sko := newSealedKeyObject(newKeyData(priv, pub, nil, policyData))
+		sko := newSealedKeyObject(data)
 
 		// Create a PCR authorization policy, only for the first key though. Subsequent keys
 		// share the same keyDataPolicy structure.

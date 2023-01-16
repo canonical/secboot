@@ -32,9 +32,77 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
+
+type keydataSuiteNoTPM struct{}
+
+var _ = Suite(&keydataSuiteNoTPM{})
+
+func (s *keydataSuiteNoTPM) TestNewKeyDataV0(c *C) {
+	priv := tpm2.Private{1, 2, 3, 4}
+	pub := new(tpm2.Public)
+	policy := new(KeyDataPolicy_v0)
+
+	data, err := NewKeyData(priv, pub, nil, policy)
+	c.Assert(err, IsNil)
+
+	_, ok := data.(*KeyData_v0)
+	c.Check(ok, testutil.IsTrue)
+
+	c.Check(data.Private(), DeepEquals, priv)
+	c.Check(data.Public(), Equals, pub)
+	c.Check(data.ImportSymSeed(), IsNil)
+	c.Check(data.Policy(), Equals, policy)
+}
+
+func (s *keydataSuiteNoTPM) TestNewKeyDataV0RejectsImportSymSeed(c *C) {
+	priv := tpm2.Private{1, 2, 3, 4}
+	pub := new(tpm2.Public)
+	importSymSeed := tpm2.EncryptedSecret{5, 6, 7, 8}
+	policy := new(KeyDataPolicy_v0)
+
+	_, err := NewKeyData(priv, pub, importSymSeed, policy)
+	c.Assert(err, ErrorMatches, "no importable key data support for v0")
+}
+
+func (s *keydataSuiteNoTPM) TestNewKeyDataV2(c *C) {
+	priv := tpm2.Private{1, 2, 3, 4}
+	pub := new(tpm2.Public)
+	importSymSeed := tpm2.EncryptedSecret{5, 6, 7, 8}
+	policy := new(KeyDataPolicy_v2)
+
+	data, err := NewKeyData(priv, pub, importSymSeed, policy)
+	c.Assert(err, IsNil)
+
+	_, ok := data.(*KeyData_v2)
+	c.Check(ok, testutil.IsTrue)
+
+	c.Check(data.Private(), DeepEquals, priv)
+	c.Check(data.Public(), Equals, pub)
+	c.Check(data.ImportSymSeed(), DeepEquals, importSymSeed)
+	c.Check(data.Policy(), Equals, policy)
+}
+
+func (s *keydataSuiteNoTPM) TestNewKeyDataV3(c *C) {
+	priv := tpm2.Private{1, 2, 3, 4}
+	pub := new(tpm2.Public)
+	importSymSeed := tpm2.EncryptedSecret{5, 6, 7, 8}
+	policy := new(KeyDataPolicy_v3)
+
+	data, err := NewKeyData(priv, pub, importSymSeed, policy)
+	c.Assert(err, IsNil)
+
+	_, ok := data.(*KeyData_v3)
+	c.Check(ok, testutil.IsTrue)
+
+	c.Check(data.Private(), DeepEquals, priv)
+	c.Check(data.Public(), Equals, pub)
+	c.Check(data.ImportSymSeed(), DeepEquals, importSymSeed)
+	c.Check(data.Policy(), Equals, policy)
+}
 
 type keydataSuite struct {
 	tpm2test.TPMTest

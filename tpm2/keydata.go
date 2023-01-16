@@ -113,12 +113,34 @@ func readKeyData(r io.Reader, version uint32) (keyData, error) {
 	}
 }
 
-func newKeyData(keyPrivate tpm2.Private, keyPublic *tpm2.Public, importSymSeed tpm2.EncryptedSecret, policy keyDataPolicy) keyData {
-	return &keyData_v2{
-		KeyPrivate:       keyPrivate,
-		KeyPublic:        keyPublic,
-		KeyImportSymSeed: importSymSeed,
-		PolicyData:       policy.(*keyDataPolicy_v2)}
+func newKeyData(keyPrivate tpm2.Private, keyPublic *tpm2.Public, importSymSeed tpm2.EncryptedSecret, policy keyDataPolicy) (keyData, error) {
+	switch p := policy.(type) {
+	case *keyDataPolicy_v3:
+		return &keyData_v3{
+			KeyPrivate:       keyPrivate,
+			KeyPublic:        keyPublic,
+			KeyImportSymSeed: importSymSeed,
+			PolicyData:       p}, nil
+	case *keyDataPolicy_v2:
+		return &keyData_v2{
+			KeyPrivate:       keyPrivate,
+			KeyPublic:        keyPublic,
+			KeyImportSymSeed: importSymSeed,
+			PolicyData:       p}, nil
+	// v1 and v2 are the same. Always return v2 from here, as it's automatically
+	// downgraded to v1 when serialized if it is not importable
+	// case *keyDataPolicy_v1:
+	case *keyDataPolicy_v0:
+		if len(importSymSeed) != 0 {
+			return nil, errors.New("no importable key data support for v0")
+		}
+		return &keyData_v0{
+			KeyPrivate: keyPrivate,
+			KeyPublic:  keyPublic,
+			PolicyData: p}, nil
+	default:
+		panic("invalid policy")
+	}
 }
 
 // SealedKeyObject corresponds to a sealed key data file.
