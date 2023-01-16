@@ -36,15 +36,19 @@ var (
 	ComputeV0PinNVIndexPostInitAuthPolicies = computeV0PinNVIndexPostInitAuthPolicies
 	CreatePcrPolicyCounter                  = createPcrPolicyCounter
 	ComputeV1PcrPolicyRefFromCounterName    = computeV1PcrPolicyRefFromCounterName
+	ComputeV3PcrPolicyRefFromCounterName    = computeV3PcrPolicyRefFromCounterName
 	ComputeSnapModelDigest                  = computeSnapModelDigest
+	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
 	IsPolicyDataError                       = isPolicyDataError
 	NewKeyDataPolicy                        = newKeyDataPolicy
+	NewKeyDataPolicyLegacy                  = newKeyDataPolicyLegacy
 	NewPolicyOrDataV0                       = newPolicyOrDataV0
 	NewPolicyOrTree                         = newPolicyOrTree
 	ReadKeyDataV0                           = readKeyDataV0
 	ReadKeyDataV1                           = readKeyDataV1
 	ReadKeyDataV2                           = readKeyDataV2
+	ReadKeyDataV3                           = readKeyDataV3
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -54,11 +58,13 @@ type KeyData = keyData
 type KeyData_v0 = keyData_v0
 type KeyData_v1 = keyData_v1
 type KeyData_v2 = keyData_v2
+type KeyData_v3 = keyData_v3
 type KeyDataError = keyDataError
 type KeyDataPolicy = keyDataPolicy
 type KeyDataPolicy_v0 = keyDataPolicy_v0
 type KeyDataPolicy_v1 = keyDataPolicy_v1
 type KeyDataPolicy_v2 = keyDataPolicy_v2
+type KeyDataPolicy_v3 = keyDataPolicy_v3
 
 type PolicyDataError = policyDataError
 type PolicyOrData_v0 = policyOrData_v0
@@ -96,6 +102,7 @@ func (t *PolicyOrTree) ExecuteAssertions(tpm *tpm2.TPMContext, session tpm2.Sess
 type PcrPolicyData_v0 = pcrPolicyData_v0
 type PcrPolicyData_v1 = pcrPolicyData_v1
 type PcrPolicyData_v2 = pcrPolicyData_v2
+type PcrPolicyData_v3 = pcrPolicyData_v3
 
 type PcrPolicyParams = pcrPolicyParams
 
@@ -110,6 +117,7 @@ func NewPcrPolicyParams(key secboot.AuxiliaryKey, pcrs tpm2.PCRSelectionList, pc
 type SnapModelHasher = snapModelHasher
 type StaticPolicyData_v0 = staticPolicyData_v0
 type StaticPolicyData_v1 = staticPolicyData_v1
+type StaticPolicyData_v3 = staticPolicyData_v3
 
 // Export some helpers for testing.
 type MockPolicyPCRParam struct {

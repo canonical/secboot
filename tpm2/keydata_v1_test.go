@@ -78,7 +78,7 @@ func (s *keyDataV1Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	template := tpm2_testutil.NewSealedObjectTemplate()
 
-	policyData, policy, err := NewKeyDataPolicy(template.NameAlg, authKeyPublic, policyCounterPub, policyCount)
+	policyData, policy, err := NewKeyDataPolicyLegacy(template.NameAlg, authKeyPublic, policyCounterPub, policyCount)
 	c.Assert(err, IsNil)
 	c.Assert(policyData, testutil.ConvertibleTo, &KeyDataPolicy_v1{})
 

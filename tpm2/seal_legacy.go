@@ -128,7 +128,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 	pub := makeImportableSealedKeyTemplate()
 
 	// Create the initial policy data
-	policyData, authPolicy, err := newKeyDataPolicy(pub.NameAlg, authPublicKey, nil, 0)
+	policyData, authPolicy, err := newKeyDataPolicyLegacy(pub.NameAlg, authPublicKey, nil, 0)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create initial policy data: %w", err)
 	}
@@ -302,7 +302,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 	template := makeSealedKeyTemplate()
 
 	// Create the initial policy data
-	policyData, authPolicy, err := newKeyDataPolicy(template.NameAlg, authPublicKey, pcrPolicyCounterPub, pcrPolicyCount)
+	policyData, authPolicy, err := newKeyDataPolicyLegacy(template.NameAlg, authPublicKey, pcrPolicyCounterPub, pcrPolicyCount)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create initial policy data: %w", err)
 	}

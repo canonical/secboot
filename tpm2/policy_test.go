@@ -230,8 +230,8 @@ func (s *policySuiteNoTPM) testNewKeyDataPolicy(c *C, data *testNewKeyDataPolicy
 
 	policy, digest, err := NewKeyDataPolicy(data.alg, authKey, data.pcrPolicyCounterPub, data.pcrPolicySequence)
 	c.Assert(err, IsNil)
-	c.Assert(policy, testutil.ConvertibleTo, &KeyDataPolicy_v2{})
-	c.Check(policy.(*KeyDataPolicy_v2).StaticData.AuthPublicKey, DeepEquals, authKey)
+	c.Assert(policy, testutil.ConvertibleTo, &KeyDataPolicy_v3{})
+	c.Check(policy.(*KeyDataPolicy_v3).StaticData.AuthPublicKey, DeepEquals, authKey)
 	c.Check(policy.PCRPolicyCounterHandle(), Equals, pcrPolicyCounterHandle)
 	c.Check(policy.PCRPolicySequence(), Equals, data.pcrPolicySequence)
 
@@ -285,6 +285,101 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 
 func (s *policySuiteNoTPM) TestNewKeyDataPolicyDifferentInitialSequence(c *C) {
 	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
+		alg: tpm2.HashAlgorithmSHA256,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		pcrPolicyCounterPub: &tpm2.NVPublic{
+			Index:   0x0181fff0,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
+			Size:    8},
+		pcrPolicySequence: 3000,
+		expected:          testutil.DecodeHexString(c, "61f5396bcbd2bd3ed1392edaf88314da1230f6f252962c704119659295eca112")})
+}
+
+type testNewKeyDataPolicyLegacyData struct {
+	alg                 tpm2.HashAlgorithmId
+	key                 string
+	pcrPolicyCounterPub *tpm2.NVPublic
+	pcrPolicySequence   uint64
+
+	expected tpm2.Digest
+}
+
+func (s *policySuite) testNewKeyDataPolicyLegacy(c *C, data *testNewKeyDataPolicyLegacyData) {
+	block, _ := pem.Decode([]byte(data.key))
+	c.Assert(block, NotNil)
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	c.Assert(err, IsNil)
+	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
+
+	authKey := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey))
+
+	pcrPolicyCounterHandle := tpm2.HandleNull
+	if data.pcrPolicyCounterPub != nil {
+		pcrPolicyCounterHandle = data.pcrPolicyCounterPub.Index
+	}
+
+	policy, digest, err := NewKeyDataPolicyLegacy(data.alg, authKey, data.pcrPolicyCounterPub, data.pcrPolicySequence)
+	c.Assert(err, IsNil)
+	c.Assert(policy, testutil.ConvertibleTo, &KeyDataPolicy_v2{})
+	c.Check(policy.(*KeyDataPolicy_v2).StaticData.AuthPublicKey, DeepEquals, authKey)
+	c.Check(policy.PCRPolicyCounterHandle(), Equals, pcrPolicyCounterHandle)
+	c.Check(policy.PCRPolicySequence(), Equals, data.pcrPolicySequence)
+
+	c.Check(digest, DeepEquals, data.expected)
+}
+
+func (s *policySuite) TestNewKeyDataPolicyLegacy(c *C) {
+	s.testNewKeyDataPolicyLegacy(c, &testNewKeyDataPolicyLegacyData{
+		alg: tpm2.HashAlgorithmSHA256,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		pcrPolicyCounterPub: &tpm2.NVPublic{
+			Index:   0x0181fff0,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
+			Size:    8},
+		pcrPolicySequence: 10,
+		expected:          testutil.DecodeHexString(c, "61f5396bcbd2bd3ed1392edaf88314da1230f6f252962c704119659295eca112")})
+}
+
+func (s *policySuite) TestNewKeyDataPolicyLegacySHA1(c *C) {
+	s.testNewKeyDataPolicyLegacy(c, &testNewKeyDataPolicyLegacyData{
+		alg: tpm2.HashAlgorithmSHA1,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		pcrPolicyCounterPub: &tpm2.NVPublic{
+			Index:   0x0181fff0,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
+			Size:    8},
+		pcrPolicySequence: 10,
+		expected:          testutil.DecodeHexString(c, "1a1afefb96937bd752a24cc23dbc16ecde3c8268")})
+}
+
+func (s *policySuite) TestNewKeyDataPolicyLegacyNoPCRPolicyCounterHandle(c *C) {
+	s.testNewKeyDataPolicyLegacy(c, &testNewKeyDataPolicyLegacyData{
+		alg: tpm2.HashAlgorithmSHA256,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		expected: testutil.DecodeHexString(c, "2171bcd975facbf5bf0ac504e2e9812d3cf5583c0162f96c849dd9b8154f4dc0")})
+}
+
+func (s *policySuite) TestNewKeyDataPolicyLegacyDifferentInitialSequence(c *C) {
+	s.testNewKeyDataPolicyLegacy(c, &testNewKeyDataPolicyLegacyData{
 		alg: tpm2.HashAlgorithmSHA256,
 		key: `
 -----BEGIN PUBLIC KEY-----
