@@ -65,6 +65,37 @@ func TestConnectionIsEnabled(t *testing.T) {
 	}
 }
 
+func TestConnectionLockoutAuthSet(t *testing.T) {
+	tpm, _, closeTPM := tpm2test.OpenTPMConnectionT(t,
+		tpm2test.TPMFeatureOwnerHierarchy|
+			tpm2test.TPMFeatureEndorsementHierarchy|
+			tpm2test.TPMFeatureLockoutHierarchy|
+			tpm2test.TPMFeaturePlatformHierarchy|
+			tpm2test.TPMFeatureNV)
+	defer closeTPM()
+
+	if tpm.LockoutAuthSet() {
+		t.Errorf("LockoutAuthSet returned the wrong value")
+	}
+
+	// FullProvising of the TPM puts it in DA lockout mode
+	err := tpm.EnsureProvisioned(ProvisionModeFull, []byte("1234"))
+	if err != nil {
+		t.Errorf("EnsureProvisioned returned an error: %v", err)
+	}
+	defer func() {
+		err := tpm.HierarchyChangeAuth(tpm.LockoutHandleContext(), nil, nil)
+		if err != nil {
+			t.Errorf("Cleanup of TestConnectionLockoutAuthSet returned an error: %v", err)
+		}
+	}()
+
+	if !tpm.LockoutAuthSet() {
+		t.Errorf("LockoutAuthSet returned the wrong value")
+	}
+
+}
+
 func TestConnectToDefaultTPM(t *testing.T) {
 	run := func(t *testing.T, tcti tpm2.TCTI, hasEk bool) {
 		restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
