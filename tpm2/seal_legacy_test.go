@@ -569,7 +569,7 @@ func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingInvalid
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, ErrorMatches, "cannot create initial PCR policy: cannot compute PCR digests from protection profile: "+
-		"cannot read current value of PCR 7 from bank TPM_ALG_SHA256: no TPM context")
+		"cannot read current PCR values from TPM: no context")
 }
 
 func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyErrorHandlingInvalidPCRProfileSelection(c *C) {
