@@ -377,7 +377,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 		var def KDFOptions
 		kdfOpts = &def
 	}
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 
 	costParams, err := kdfOpts.DeriveCostParams(0, &kdf)
 	c.Assert(err, IsNil)
@@ -633,7 +633,7 @@ func (s *keyDataSuite) TestRecoverKeysAuthModePassphrase(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 	c.Check(keyData.SetPassphrase("passphrase", nil, &kdf), IsNil)
 
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
@@ -663,7 +663,7 @@ func (s *keyDataSuite) testRecoverKeysWithPassphrase(c *C, passphrase string) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 	c.Check(keyData.SetPassphrase(passphrase, nil, &kdf), IsNil)
 
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeysWithPassphrase(passphrase, &kdf)
@@ -686,7 +686,7 @@ func (s *keyDataSuite) TestSetPassphraseNotSupported(c *C) {
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
-	c.Check(keyData.SetPassphrase("passphrase", nil, &mockKDF{}), ErrorMatches, "not supported")
+	c.Check(keyData.SetPassphrase("passphrase", nil, new(testutil.MockKDF)), ErrorMatches, "not supported")
 
 	s.checkKeyDataJSONAuthModeNone(c, keyData, protected, 0)
 }
@@ -700,7 +700,7 @@ func (s *keyDataSuite) TestSetPassphraseAlreadySet(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 
 	c.Check(keyData.SetPassphrase("passphrase", nil, &kdf), IsNil)
 	c.Check(keyData.SetPassphrase("passphrase", nil, &kdf), ErrorMatches, "cannot set passphrase without authorization")
@@ -722,7 +722,7 @@ func (s *keyDataSuite) testSetPassphrase(c *C, data *testSetPassphraseData) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 	c.Check(keyData.SetPassphrase(data.passphrase, data.kdfOptions, &kdf), IsNil)
 
 	s.checkKeyDataJSONAuthModePassphrase(c, keyData, protected, 0, data.passphrase, data.kdfOptions)
@@ -763,7 +763,7 @@ func (s *keyDataSuite) TestChangePassphraseAuthModeNone(c *C) {
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
-	err = keyData.ChangePassphrase("passphrase1", "passphrase2", &KDFOptions{}, &mockKDF{})
+	err = keyData.ChangePassphrase("passphrase1", "passphrase2", &KDFOptions{}, new(testutil.MockKDF))
 	c.Check(err, ErrorMatches, "cannot change passphrase without setting an initial passphrase")
 
 	s.checkKeyDataJSONAuthModeNone(c, keyData, protected, 0)
@@ -784,7 +784,7 @@ func (s *keyDataSuite) testChangePassphrase(c *C, data *testChangePassphraseData
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 	c.Check(keyData.SetPassphrase(data.passphrase1, data.kdfOptions, &kdf), IsNil)
 	c.Check(keyData.ChangePassphrase(data.passphrase1, data.passphrase2, data.kdfOptions, &kdf), IsNil)
 
@@ -834,7 +834,7 @@ func (s *keyDataSuite) TestChangePassphraseWrongPassphrase(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 	c.Check(keyData.SetPassphrase("12345678", nil, &kdf), IsNil)
 	c.Check(keyData.ChangePassphrase("passphrase", "12345678", &KDFOptions{TargetDuration: 100 * time.Millisecond}, &kdf), Equals, ErrInvalidPassphrase)
 
@@ -847,7 +847,7 @@ func (s *keyDataSuite) TestClearPassphraseWithPassphraseAuthModeNone(c *C) {
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
-	err = keyData.ClearPassphraseWithPassphrase("passphrase", &mockKDF{})
+	err = keyData.ClearPassphraseWithPassphrase("passphrase", new(testutil.MockKDF))
 	c.Check(err, ErrorMatches, "no passphrase is set")
 
 	s.checkKeyDataJSONAuthModeNone(c, keyData, protected, 0)
@@ -862,7 +862,7 @@ func (s *keyDataSuite) TestClearPassphraseWithPassphrase(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 	c.Check(keyData.SetPassphrase("12345678", nil, &kdf), IsNil)
 	c.Check(keyData.ClearPassphraseWithPassphrase("12345678", &kdf), IsNil)
 
@@ -878,7 +878,7 @@ func (s *keyDataSuite) TestClearPassphraseWithPassphraseWrongPassphrase(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	var kdf mockKDF
+	var kdf testutil.MockKDF
 	c.Check(keyData.SetPassphrase("12345678", nil, &kdf), IsNil)
 	c.Check(keyData.ClearPassphraseWithPassphrase("passphrase", &kdf), Equals, ErrInvalidPassphrase)
 
