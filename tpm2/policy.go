@@ -258,7 +258,9 @@ func newKeyDataPolicy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCount
 			AuthPublicKey:          key,
 			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
 		PCRData: &pcrPolicyData_v3{
-			PolicySequence:            pcrPolicySequence,
+			PolicySequence: pcrPolicySequence,
+			// Set AuthorizedPolicySignature here because this object needs to be
+			// serializable before the initial signature is created.
 			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}, trial.GetDigest(), nil
 }
 

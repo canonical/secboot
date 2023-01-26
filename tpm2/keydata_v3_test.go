@@ -21,10 +21,13 @@ package tpm2_test
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"math/rand"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/canonical/go-tpm2/templates"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
 
@@ -234,6 +237,153 @@ func (s *keyDataV3Suite) TestValidateImportedOK(c *C) {
 	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter, IsNil)
+}
+
+func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+
+	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.NameAlg = tpm2.HashAlgorithmNull
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "cannot compute name of dynamic authorization policy key: unsupported name algorithm or algorithm not linked into binary: TPM_ALG_NULL")
+}
+
+func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+
+	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.Type = tpm2.ObjectTypeRSA
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "public area of dynamic authorization policy signing key has the wrong type")
+}
+
+func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyScheme1(c *C) {
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+
+	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.Params.ECCDetail.Scheme = tpm2.ECCScheme{
+		Scheme: tpm2.ECCSchemeECDAA,
+		Details: &tpm2.AsymSchemeU{
+			ECDAA: &tpm2.SigSchemeECDAA{HashAlg: tpm2.HashAlgorithmSHA256}}}
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "dynamic authorization policy signing key has unexpected scheme")
+}
+
+func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyScheme2(c *C) {
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+
+	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.Params.ECCDetail.Scheme = tpm2.ECCScheme{
+		Scheme: tpm2.ECCSchemeECDAA,
+		Details: &tpm2.AsymSchemeU{
+			ECDSA: &tpm2.SigSchemeECDSA{HashAlg: tpm2.HashAlgorithmSHA512}}}
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "dynamic authorization policy signing key has unexpected scheme")
+}
+
+func (s *keyDataV3Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+
+	data.(*KeyData_v3).PolicyData.StaticData.PCRPolicyCounterHandle = 0x81000000
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "PCR policy counter handle is invalid")
+}
+
+func (s *keyDataV3Suite) TestValidateNoPolicyCounter(c *C) {
+	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+
+	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
+	c.Assert(err, IsNil)
+	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err = data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "PCR policy counter is unavailable")
+}
+
+func (s *keyDataV3Suite) TestValidateInvalidSealedObjectNameAlg(c *C) {
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+
+	data.Public().NameAlg = tpm2.HashAlgorithmNull
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "cannot determine if static authorization policy matches sealed key object: algorithm unavailable")
+}
+
+func (s *keyDataV3Suite) TestValidateWrongAuthKey(c *C) {
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+
+	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
+	c.Assert(err, IsNil)
+	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey = util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err = data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
+}
+
+func (s *keyDataV3Suite) TestValidateWrongPolicyCounter1(c *C) {
+	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+
+	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
+	handle := index.Handle()
+	c.Assert(err, IsNil)
+	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
+
+	nvPub := tpm2.NVPublic{
+		Index:   handle,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
+		Size:    8}
+	s.NVDefineSpace(c, tpm2.HandleOwner, nil, &nvPub)
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err = data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
+}
+
+func (s *keyDataV3Suite) TestValidateWrongPolicyCounter2(c *C) {
+	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+
+	data.(*KeyData_v3).PolicyData.StaticData.PCRPolicyCounterHandle = tpm2.HandleNull
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
+}
+
+func (s *keyDataV3Suite) TestValidateWrongPolicyCounter3(c *C) {
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+
+	nvPub := tpm2.NVPublic{
+		Index:   s.NextAvailableHandle(c, 0x01800000),
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
+		Size:    8}
+	s.NVDefineSpace(c, tpm2.HandleOwner, nil, &nvPub)
+	data.(*KeyData_v3).PolicyData.StaticData.PCRPolicyCounterHandle = nvPub.Index
+
+	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
+	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
 func (s *keyDataV3Suite) TestSerialization(c *C) {
