@@ -44,6 +44,10 @@ func computeV3PcrPolicyRefFromCounterContext(context tpm2.ResourceContext) tpm2.
 	return computeV1PcrPolicyRefFromCounterContext(context)
 }
 
+// deriveV3PolicyAuthKey derives an elliptic curve key for signing authorization policies from the
+// supplied input key. Pre-v3 key objects stored the private part of the elliptic curve key inside
+// the sealed key, but v3 keys are wrapped by secboot.KeyData which protects an auxiliary key that
+// is used as an input key to derive various context-specific keys, such as this one.
 func deriveV3PolicyAuthKey(alg crypto.Hash, auxKey secboot.AuxiliaryKey) (*ecdsa.PrivateKey, error) {
 	r := hkdf.Expand(func() hash.Hash { return alg.New() }, auxKey, []byte("PCR-POLICY-AUTH-KEY"))
 	return ecdsa.GenerateKey(elliptic.P256(), r)
