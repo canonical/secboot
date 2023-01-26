@@ -279,14 +279,14 @@ func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyScheme2(c *C) {
 	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
 
 	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.Params.ECCDetail.Scheme = tpm2.ECCScheme{
-		Scheme: tpm2.ECCSchemeECDAA,
+		Scheme: tpm2.ECCSchemeECDSA,
 		Details: &tpm2.AsymSchemeU{
 			ECDSA: &tpm2.SigSchemeECDSA{HashAlg: tpm2.HashAlgorithmSHA512}}}
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	_, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "dynamic authorization policy signing key has unexpected scheme")
+	c.Check(err, ErrorMatches, "dynamic authorization policy signing key algorithm must match name algorithm")
 }
 
 func (s *keyDataV3Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
