@@ -70,8 +70,7 @@ func (s *policyV3SuiteNoTPM) TestDerivePolicyAuthKey(c *C) {
 	ecdsaKey, err := DeriveV3PolicyAuthKey(crypto.SHA256, key)
 	c.Assert(err, IsNil)
 
-	c.Logf("%x", ecdsaKey.D.Bytes())
-	c.Check(ecdsaKey.D.Bytes(), DeepEquals, testutil.DecodeHexString(c, "ae825e517a6fa81bd3420158b8727a537989de9c061289c9d40f251938d92e17"))
+	c.Check(ecdsaKey.D.Bytes(), DeepEquals, testutil.DecodeHexString(c, "e47351fb43a2e46fc71e08a735e7849e4769d895411e638cd530747b8876aecc"))
 	c.Check(ecdsaKey.Curve, DeepEquals, elliptic.P256())
 }
 
@@ -81,8 +80,7 @@ func (s *policyV3SuiteNoTPM) TestDerivePolicyAuthKeyDifferent(c *C) {
 	ecdsaKey, err := DeriveV3PolicyAuthKey(crypto.SHA256, key)
 	c.Assert(err, IsNil)
 
-	c.Logf("%x", ecdsaKey.D.Bytes())
-	c.Check(ecdsaKey.D.Bytes(), DeepEquals, testutil.DecodeHexString(c, "85b3fb6fcea16ad48abde20b8389f11ee1385d733d8bf473b3c83a7919445954"))
+	c.Check(ecdsaKey.D.Bytes(), DeepEquals, testutil.DecodeHexString(c, "5e805d33b4b34af8f3f4aff543321a0c2b570d8e617f7687504a4c1b47a14668"))
 	c.Check(ecdsaKey.Curve, DeepEquals, elliptic.P256())
 }
 

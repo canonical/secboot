@@ -49,7 +49,7 @@ func computeV3PcrPolicyRefFromCounterContext(context tpm2.ResourceContext) tpm2.
 // the sealed key, but v3 keys are wrapped by secboot.KeyData which protects an auxiliary key that
 // is used as an input key to derive various context-specific keys, such as this one.
 func deriveV3PolicyAuthKey(alg crypto.Hash, auxKey secboot.AuxiliaryKey) (*ecdsa.PrivateKey, error) {
-	r := hkdf.Expand(func() hash.Hash { return alg.New() }, auxKey, []byte("PCR-POLICY-AUTH-KEY"))
+	r := hkdf.Expand(func() hash.Hash { return alg.New() }, auxKey, []byte("TPM2-POLICY-AUTH"))
 	return ecdsa.GenerateKey(elliptic.P256(), r)
 }
 
