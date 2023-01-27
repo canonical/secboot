@@ -85,7 +85,7 @@ func (l pcrValuesList) copy() (out pcrValuesList) {
 
 // pcrProtectionProfileInstr is a building block of PCRProtectionProfile.
 type pcrProtectionProfileInstr interface {
-	run(context *pcrProtectionProfileExecContext) error
+	run(context *pcrProtectionProfileExecContext)
 }
 
 type pcrProtectionProfileInstrList []pcrProtectionProfileInstr
@@ -102,7 +102,7 @@ type pcrProtectionProfileInstrHandler interface {
 
 	// addPCRValueFromTPM is called to add the value of the specified
 	// PCR to the current branch,
-	addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error
+	addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int)
 
 	// extendPCR is called to extend the specified PCR with the supplied
 	// value for the current branch.
@@ -216,9 +216,8 @@ func (c *pcrProtectionProfileExecContext) done() bool {
 // executed.
 type pcrProtectionProfileBeginBranchInstr struct{}
 
-func (*pcrProtectionProfileBeginBranchInstr) run(context *pcrProtectionProfileExecContext) error {
+func (*pcrProtectionProfileBeginBranchInstr) run(context *pcrProtectionProfileExecContext) {
 	context.handler.beginBranch(context.currentBranchIndex())
-	return nil
 }
 
 // pcrProtectionProfileAddPCRValueInstr is inserted by
@@ -230,9 +229,8 @@ type pcrProtectionProfileAddPCRValueInstr struct {
 	value tpm2.Digest
 }
 
-func (i *pcrProtectionProfileAddPCRValueInstr) run(context *pcrProtectionProfileExecContext) error {
+func (i *pcrProtectionProfileAddPCRValueInstr) run(context *pcrProtectionProfileExecContext) {
 	context.handler.addPCRValue(i.alg, i.pcr, i.value)
-	return nil
 }
 
 // pcrProtectionProfileAddPCRValueFromTPMInstr is inserted by
@@ -243,8 +241,8 @@ type pcrProtectionProfileAddPCRValueFromTPMInstr struct {
 	pcr int
 }
 
-func (i *pcrProtectionProfileAddPCRValueFromTPMInstr) run(context *pcrProtectionProfileExecContext) error {
-	return context.handler.addPCRValueFromTPM(i.alg, i.pcr)
+func (i *pcrProtectionProfileAddPCRValueFromTPMInstr) run(context *pcrProtectionProfileExecContext) {
+	context.handler.addPCRValueFromTPM(i.alg, i.pcr)
 }
 
 // pcrProtectionProfileExtendPCRInstr is inserted by
@@ -256,9 +254,8 @@ type pcrProtectionProfileExtendPCRInstr struct {
 	value tpm2.Digest
 }
 
-func (i *pcrProtectionProfileExtendPCRInstr) run(context *pcrProtectionProfileExecContext) error {
+func (i *pcrProtectionProfileExtendPCRInstr) run(context *pcrProtectionProfileExecContext) {
 	context.handler.extendPCR(i.alg, i.pcr, i.value)
-	return nil
 }
 
 // pcrProtectionProfileBranchPointInstr is inserted by
@@ -269,11 +266,10 @@ type pcrProtectionProfileBranchPointInstr struct {
 	bp *PCRProtectionProfileBranchPoint
 }
 
-func (i *pcrProtectionProfileBranchPointInstr) run(context *pcrProtectionProfileExecContext) error {
+func (i *pcrProtectionProfileBranchPointInstr) run(context *pcrProtectionProfileExecContext) {
 	context.handler.beginBranchPoint()
 	context.queueSubBranches(i.bp.childBranches...)
 	context.selectNextPendingSubBranch()
-	return nil
 }
 
 // pcrProtectionProfileEndBranchPointInstr is inserted in to the parent branch by
@@ -281,9 +277,8 @@ func (i *pcrProtectionProfileBranchPointInstr) run(context *pcrProtectionProfile
 // pcrProtectionProfileInstrHandler.endBranchPoint when executed.
 type pcrProtectionProfileEndBranchPointInstr struct{}
 
-func (*pcrProtectionProfileEndBranchPointInstr) run(context *pcrProtectionProfileExecContext) error {
+func (*pcrProtectionProfileEndBranchPointInstr) run(context *pcrProtectionProfileExecContext) {
 	context.handler.endBranchPoint()
-	return nil
 }
 
 // pcrProtectionProfileEndBranchInstr is inserted implicitly to the end of a
@@ -292,11 +287,10 @@ func (*pcrProtectionProfileEndBranchPointInstr) run(context *pcrProtectionProfil
 // branch to execute.
 type pcrProtectionProfileEndBranchInstr struct{}
 
-func (*pcrProtectionProfileEndBranchInstr) run(context *pcrProtectionProfileExecContext) error {
+func (*pcrProtectionProfileEndBranchInstr) run(context *pcrProtectionProfileExecContext) {
 	context.handler.endBranch()
 	context.endCurrentBranch()
 	context.selectNextPendingSubBranch()
-	return nil
 }
 
 // PCRProtectionProfileBranchPoint represents a point in a parent branch
@@ -425,7 +419,27 @@ func (b *PCRProtectionProfileBranch) doneBranchPoint(p *PCRProtectionProfileBran
 	}
 
 	b.currentBranchPoint = nil
-	b.instrs = append(b.instrs, new(pcrProtectionProfileEndBranchPointInstr))
+
+	switch len(p.childBranches) {
+	case 0:
+		// Elide the empty branch point.
+		b.instrs = b.instrs[:len(b.instrs)-1]
+	case 1:
+		// Elide the branch point that contains only a single sub-branch
+		// and append the sub-branch to this branch.
+		b.instrs = b.instrs[:len(b.instrs)-1]
+
+		sb := p.childBranches[0]
+
+		// Remove the BeginBranch instruction
+		instrs := sb.instrs[1:]
+		// Remove the EndBranch instruction
+		instrs = instrs[:len(instrs)-1]
+		b.instrs = append(b.instrs, instrs...)
+
+	default:
+		b.instrs = append(b.instrs, new(pcrProtectionProfileEndBranchPointInstr))
+	}
 }
 
 // AddPCRValue adds the supplied value to this branch for the specified PCR.
@@ -461,6 +475,7 @@ func (b *PCRProtectionProfileBranch) AddPCRValueFromTPM(alg tpm2.HashAlgorithmId
 	b.checkArguments(alg, pcr)
 
 	b.instrs = append(b.instrs, &pcrProtectionProfileAddPCRValueFromTPMInstr{alg: alg, pcr: pcr})
+	b.profile.addPCRToReadFromTPM(alg, pcr)
 	return b
 }
 
@@ -573,8 +588,9 @@ func (b *PCRProtectionProfileBranch) EndBranch() *PCRProtectionProfileBranchPoin
 // A PCRProtectionProfile can be serialized to and unserialized from the TPM
 // wire format.
 type PCRProtectionProfile struct {
-	root *PCRProtectionProfileBranch
-	err  error
+	root              *PCRProtectionProfileBranch
+	pcrsToReadFromTPM tpm2.PCRSelectionList
+	err               error
 }
 
 // NewPCRProtectionProfile creates an empty PCR profile.
@@ -604,6 +620,11 @@ func (p *PCRProtectionProfile) fail(msg string) {
 			break
 		}
 	}
+}
+
+func (p *PCRProtectionProfile) addPCRToReadFromTPM(alg tpm2.HashAlgorithmId, pcr int) {
+	p.pcrsToReadFromTPM = p.pcrsToReadFromTPM.Merge(
+		tpm2.PCRSelectionList{{Hash: alg, Select: []int{pcr}}})
 }
 
 // RootBranch returns the root branch associated with this PCR profile.
@@ -666,6 +687,7 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 			return p
 		}
 
+		p.pcrsToReadFromTPM = p.pcrsToReadFromTPM.Merge(sub.pcrsToReadFromTPM)
 		bp.childBranches = append(bp.childBranches, branch)
 	}
 
@@ -674,16 +696,12 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 }
 
 // run executes this profile with the supplied handler.
-func (p *PCRProtectionProfile) run(handler pcrProtectionProfileInstrHandler) error {
+func (p *PCRProtectionProfile) run(handler pcrProtectionProfileInstrHandler) {
 	context := newPcrProtectionProfileExecContext(p, handler)
 
 	for !context.done() {
-		if err := context.popNextInstr().run(context); err != nil {
-			return err
-		}
+		context.popNextInstr().run(context)
 	}
-
-	return nil
 }
 
 type pcrProtectionProfileStringifier struct {
@@ -705,9 +723,8 @@ func (c *pcrProtectionProfileStringifier) addPCRValue(alg tpm2.HashAlgorithmId, 
 	fmt.Fprintf(c.w, "\n%*s AddPCRValue(%v, %d, %x)", c.depth*3, "", alg, pcr, value)
 }
 
-func (c *pcrProtectionProfileStringifier) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error {
+func (c *pcrProtectionProfileStringifier) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) {
 	fmt.Fprintf(c.w, "\n%*s AddPCRValueFromTPM(%v, %d)", c.depth*3, "", alg, pcr)
-	return nil
 }
 
 func (c *pcrProtectionProfileStringifier) extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
@@ -868,7 +885,7 @@ func (c *pcrProtectionProfileSerializer) addPCRValue(alg tpm2.HashAlgorithmId, p
 				PCRAndDigest: newSavedPCRProtectionProfilePCRAndDigest(uint16(pcr), c.digestIndex(value))}}})
 }
 
-func (c *pcrProtectionProfileSerializer) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error {
+func (c *pcrProtectionProfileSerializer) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) {
 	c.instrs = append(c.instrs, &savedPCRProtectionProfileInstr{
 		Type: addPCRValueFromTPM,
 		Data: &savedPCRProtectionProfileInstrData{
@@ -876,7 +893,6 @@ func (c *pcrProtectionProfileSerializer) addPCRValueFromTPM(alg tpm2.HashAlgorit
 				Alg: alg,
 				PCR: uint16(pcr), // checked against maxPCR
 			}}})
-	return nil
 }
 
 func (c *pcrProtectionProfileSerializer) extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
@@ -1015,7 +1031,7 @@ type pcrProtectionProfileComputerBranchContext struct {
 }
 
 type pcrProtectionProfileComputer struct {
-	tpm         *tpm2.TPMContext
+	tpmValues   tpm2.PCRValues
 	branchStack []*pcrProtectionProfileComputerBranchContext
 }
 
@@ -1034,16 +1050,8 @@ func (c *pcrProtectionProfileComputer) addPCRValue(alg tpm2.HashAlgorithmId, pcr
 	c.currentBranch().values.setValue(alg, pcr, value)
 }
 
-func (c *pcrProtectionProfileComputer) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) error {
-	if c.tpm == nil {
-		return fmt.Errorf("cannot read current value of PCR %d from bank %v: no TPM context", pcr, alg)
-	}
-	_, values, err := c.tpm.PCRRead(tpm2.PCRSelectionList{{Hash: alg, Select: []int{pcr}}})
-	if err != nil {
-		return xerrors.Errorf("cannot read current value of PCR %d from bank %v: %w", pcr, alg, err)
-	}
-	c.currentBranch().values.setValue(alg, pcr, values[alg][pcr])
-	return nil
+func (c *pcrProtectionProfileComputer) addPCRValueFromTPM(alg tpm2.HashAlgorithmId, pcr int) {
+	c.currentBranch().values.setValue(alg, pcr, c.tpmValues[alg][pcr])
 }
 
 func (c *pcrProtectionProfileComputer) extendPCR(alg tpm2.HashAlgorithmId, pcr int, value tpm2.Digest) {
@@ -1083,14 +1091,22 @@ func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PC
 		return nil, fmt.Errorf("cannot compute PCR values because an error occurred when constructing the profile: %v", p.err)
 	}
 
+	tpmValues := make(tpm2.PCRValues)
+	if !p.pcrsToReadFromTPM.IsEmpty() {
+		if tpm == nil {
+			return nil, errors.New("cannot read current PCR values from TPM: no context")
+		}
+		var err error
+		_, tpmValues, err = tpm.PCRRead(p.pcrsToReadFromTPM)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot read current PCR values from TPM: %w", err)
+		}
+	}
 	context := &pcrProtectionProfileComputer{
-		tpm: tpm,
+		tpmValues: tpmValues,
 		branchStack: []*pcrProtectionProfileComputerBranchContext{
 			&pcrProtectionProfileComputerBranchContext{values: pcrValuesList{make(tpm2.PCRValues)}}}}
-	if err := p.run(context); err != nil {
-		return nil, err
-	}
-
+	p.run(context)
 	return []tpm2.PCRValues(context.currentBranch().subBranchValues), nil
 }
 
