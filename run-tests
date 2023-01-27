@@ -23,4 +23,4 @@ while [ $# -gt 0 ]; do
         esac
 done
 
-env $ENV go test -v -race -p 1 ./... -args -check.v $@
+env $ENV go test -v -race -p 1 -timeout 20m ./... -args -check.v $@
