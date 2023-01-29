@@ -26,7 +26,6 @@ import (
 	"math/rand"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/templates"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
@@ -64,7 +63,6 @@ func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	rand.Read(authKey)
 
 	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
-	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
 
 	// Create a mock PCR policy counter
 	var policyCounterPub *tpm2.NVPublic
@@ -117,13 +115,11 @@ func (s *keyDataV3Suite) newMockImportableKeyData(c *C) KeyData {
 	rand.Read(authKey)
 
 	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
-	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
 
 	// Create sealed object
 	secret := []byte("secret data")
 
 	pub, sensitive := tpm2_testutil.NewExternalSealedObject(nil, secret)
-	mu.MustCopyValue(&pub, pub)
 
 	policyData, policy, err := NewKeyDataPolicy(pub.NameAlg, authKeyPublic, nil, 0)
 	c.Assert(err, IsNil)
@@ -394,5 +390,5 @@ func (s *keyDataV3Suite) TestSerialization(c *C) {
 
 	data2, err := ReadKeyDataV3(buf)
 	c.Assert(err, IsNil)
-	c.Check(data2, DeepEquals, data1)
+	c.Check(data2, tpm2_testutil.TPMValueDeepEquals, data1)
 }
