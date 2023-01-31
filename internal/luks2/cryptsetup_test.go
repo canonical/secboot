@@ -391,6 +391,18 @@ func (s *cryptsetupSuite) TestFormatWithInvalidKeyslotsAreaSize(c *C) {
 	c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KeyslotsAreaKiBSize: 41}), ErrorMatches, "cannot set keyslots area size to 41 KiB")
 }
 
+func (s *cryptsetupSuite) TestFormatWithInlineCryptoEngine(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	s.testFormat(c, &testFormatData{
+		label: "test",
+		key:   key,
+		options: &FormatOptions{
+			KDFOptions:          KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
+			KeyslotsAreaKiBSize: 2 * 1024,
+			InlineCryptoEngine:  true}})
+}
+
 type testAddKeyData struct {
 	key     []byte
 	options *AddKeyOptions
