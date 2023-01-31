@@ -210,6 +210,18 @@ func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSize(c *C) {
 			KeyslotsAreaKiBSize: 2 * 1024}})
 }
 
+func (s *cryptsetupSuite) TestFormatWithInlineCryptoEngine(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	s.testFormat(c, &testFormatData{
+		label: "test",
+		key:   key,
+		options: &FormatOptions{
+			KDFOptions:          KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
+			KeyslotsAreaKiBSize: 2 * 1024,
+			InlineCryptoEngine:  true}})
+}
+
 type testAddKeyData struct {
 	key     []byte
 	options *AddKeyOptions
