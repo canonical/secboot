@@ -21,14 +21,17 @@ package tpm2
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 
 	"golang.org/x/xerrors"
 
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 )
 
@@ -49,7 +52,7 @@ func isKeyDataError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
-// keyData represents the actual data for a SealedKeyObject.
+// keyData represents the actual data for a SealedKeyData or legacy SealedKeyObject.
 type keyData interface {
 	// Version is the metadata version. Note that the keyData
 	// implementation is not responsible for serializing this.
@@ -200,4 +203,67 @@ func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, session tpm2.Sess
 	}
 
 	return pcrPolicyCounterPub, nil
+}
+
+// SealedKeyData corresponds to a sealed key data object created by
+// [ProtectKeyWithTPM], [ProtectKeysWithTPM], or [ProtectKeyWithExternalStorageKey].
+type SealedKeyData struct {
+	sealedKeyDataBase
+	k *secboot.KeyData
+}
+
+// NewSealedKeyData returns a SealedKeyData from the supplied secboot.KeyData
+// object.
+func NewSealedKeyData(k *secboot.KeyData) (*SealedKeyData, error) {
+	var skd *SealedKeyData
+	if err := k.UnmarshalPlatformHandle(&skd); err != nil {
+		return nil, InvalidKeyDataError{err.Error()}
+	}
+	skd.k = k
+
+	return skd, nil
+}
+
+// Version returns the version number that this sealed key object was created with.
+func (k *SealedKeyData) Version() uint32 {
+	return k.data.Version()
+}
+
+// PCRPolicyCounterHandle indicates the handle of the NV counter used for PCR policy revocation for this sealed key object (and for
+// PIN integration for version 0 key files).
+func (k *SealedKeyData) PCRPolicyCounterHandle() tpm2.Handle {
+	return k.data.Policy().PCRPolicyCounterHandle()
+}
+
+func (k *SealedKeyData) MarshalJSON() ([]byte, error) {
+	w := new(bytes.Buffer)
+	if _, err := mu.MarshalToWriter(w, k.data.Version()); err != nil {
+		return nil, err
+	}
+	if err := k.data.Write(w); err != nil {
+		return nil, err
+	}
+	return json.Marshal(w.Bytes())
+}
+
+func (k *SealedKeyData) UnmarshalJSON(data []byte) error {
+	var b []byte
+	if err := json.Unmarshal(data, &b); err != nil {
+		return err
+	}
+
+	r := bytes.NewReader(b)
+
+	var version uint32
+	if _, err := mu.UnmarshalFromReader(r, &version); err != nil {
+		return err
+	}
+
+	kd, err := readKeyData(r, version)
+	if err != nil {
+		return err
+	}
+
+	k.data = kd
+	return nil
 }

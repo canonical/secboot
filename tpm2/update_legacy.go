@@ -137,6 +137,8 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKe
 // On success, each of the supplied SealedKeyObjects will have an updated authorization policy that includes a
 // PCR policy computed from the supplied PCRProtectionProfile. They must be persisted using
 // SealedKeyObject.WriteAtomic.
+//
+// Deprecated: Use UpdateKeyDataPCRProtectionPolicy.
 func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObject, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
 	if len(keys) == 0 {
 		return errors.New("no sealed keys supplied")

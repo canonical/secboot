@@ -52,6 +52,8 @@ func makeImportableSealedKeyTemplate() *tpm2.Public {
 }
 
 // KeyCreationParams provides arguments for SealKeyToTPM.
+//
+// Deprecated: Use ProtectKeys* APIs.
 type KeyCreationParams struct {
 	// PCRProfile defines the profile used to generate a PCR protection policy for the newly created sealed key file.
 	PCRProfile *PCRProtectionProfile
@@ -92,6 +94,8 @@ type KeyCreationParams struct {
 //
 // The authorization key can also be chosen and provided by setting
 // AuthKey in the params argument.
+//
+// Deprecated: Use ProtectKeyWithExternalStorageKey.
 func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
@@ -193,6 +197,8 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 
 // SealKeyRequest corresponds to a key that should be sealed by SealKeyToTPMMultiple
 // to a file at the specified path.
+//
+// Deprecated: Use ProtectKeys* APIs.
 type SealKeyRequest struct {
 	Key  secboot.DiskUnlockKey
 	Path string
@@ -226,6 +232,8 @@ type SealKeyRequest struct {
 //
 // The authorization key can also be chosen and provided by setting
 // AuthKey in the params argument.
+//
+// Deprecated: Use ProtectKeysWithTPM.
 func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
@@ -401,6 +409,8 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 //
 // The authorization key can also be chosen and provided by setting
 // AuthKey in the params argument.
+//
+// Deprecated: Use ProtectKeyWithTPM.
 func SealKeyToTPM(tpm *Connection, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
 	return SealKeyToTPMMultiple(tpm, []*SealKeyRequest{{Key: key, Path: keyPath}}, params)
 }
