@@ -99,7 +99,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 	return nil, lastError
 }
 
-func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, hmacSession tpm2.SessionContext) (data []byte, err error) {
+func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []byte, hmacSession tpm2.SessionContext) (data []byte, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
@@ -115,6 +115,8 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, hmacSession 
 		return nil, err
 	}
 	defer tpm.FlushContext(keyObject)
+
+	keyObject.SetAuthValue(authValue)
 
 	// Begin and execute policy session
 	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.Public().NameAlg)

@@ -86,6 +86,10 @@ func (d *keyData_v0) Private() tpm2.Private {
 	return d.KeyPrivate
 }
 
+func (d *keyData_v0) SetPrivate(priv tpm2.Private) {
+	panic("not supported")
+}
+
 func (d *keyData_v0) Public() *tpm2.Public {
 	return d.KeyPublic
 }
@@ -186,6 +190,10 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 	}
 
 	return pcrPolicyCounter, nil
+}
+
+func (d *keyData_v0) DeriveAuthValue(_ []byte) ([]byte, error) {
+	return nil, errors.New("not supported")
 }
 
 func (d *keyData_v0) Write(w io.Writer) error {

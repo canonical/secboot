@@ -55,6 +55,10 @@ func (d *keyData_v3) Private() tpm2.Private {
 	return d.KeyPrivate
 }
 
+func (d *keyData_v3) SetPrivate(priv tpm2.Private) {
+	d.KeyPrivate = priv
+}
+
 func (d *keyData_v3) Public() *tpm2.Public {
 	return d.KeyPublic
 }
