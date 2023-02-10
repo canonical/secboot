@@ -151,9 +151,9 @@ const (
 	AuthModePassphrase AuthMode = 1 << iota
 )
 
-// KeyCreationData is the data required to create a new KeyData object.
+// KeyCreationParams provides parameters required to create a new KeyData object.
 // It should be produced by a platform implementation.
-type KeyCreationData struct {
+type KeyCreationParams struct {
 	// Handle contains metadata required by the platform in order to recover
 	// this key. It is opaque to this go package. It should be a value that can
 	// be encoded to JSON using go's encoding/json package, which could be
@@ -877,12 +877,12 @@ func ReadKeyData(r KeyDataReader) (*KeyData, error) {
 	return d, nil
 }
 
-// NewKeyData creates a new KeyData object using the supplied KeyCreationData, which
+// NewKeyData creates a new KeyData object using the supplied KeyCreationParams, which
 // should be created by a platform-specific package, containing a payload encrypted by
 // the platform's secure device and the associated handle required for subsequent
 // recovery of the keys.
-func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
-	encodedHandle, err := json.Marshal(creationData.Handle)
+func NewKeyData(params *KeyCreationParams) (*KeyData, error) {
+	encodedHandle, err := json.Marshal(params.Handle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot encode platform handle: %w", err)
 	}
@@ -894,19 +894,19 @@ func NewKeyData(creationData *KeyCreationData) (*KeyData, error) {
 
 	kd := &KeyData{
 		data: keyData{
-			PlatformName:     creationData.PlatformName,
+			PlatformName:     params.PlatformName,
 			PlatformHandle:   json.RawMessage(encodedHandle),
-			EncryptedPayload: creationData.EncryptedPayload,
+			EncryptedPayload: params.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
-				alg: hashAlg{creationData.SnapModelAuthHash},
+				alg: hashAlg{params.SnapModelAuthHash},
 				kdf: &hkdfData{
-					Alg:  hashAlg{creationData.SnapModelAuthHash},
+					Alg:  hashAlg{params.SnapModelAuthHash},
 					Salt: salt[:32]},
 				keyDigest: keyDigest{
-					Alg:  hashAlg{creationData.SnapModelAuthHash},
+					Alg:  hashAlg{params.SnapModelAuthHash},
 					Salt: salt[32:]}}}}
 
-	authKey, err := kd.snapModelAuthKey(creationData.AuxiliaryKey)
+	authKey, err := kd.snapModelAuthKey(params.AuxiliaryKey)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute snap model auth key: %w", err)
 	}

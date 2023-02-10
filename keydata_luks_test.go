@@ -54,7 +54,7 @@ func (s *keyDataLuksSuite) SetUpTest(c *C) {
 
 var _ = Suite(&keyDataLuksSuite{})
 
-func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id int, keyslot int, name string, priority int, creationData *KeyCreationData, nmodels int) {
+func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id int, keyslot int, name string, priority int, creationData *KeyCreationParams, nmodels int) {
 	t, exists := s.luks2.devices[path].tokens[id]
 	c.Assert(exists, testutil.IsTrue)
 
