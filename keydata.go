@@ -39,9 +39,10 @@ import (
 )
 
 const (
-	kdfType                 = "argon2i"
-	passphraseDerivedKeyLen = 32
-	passphraseEncryption    = "aes-cfb"
+	kdfType                         = "argon2i"
+	nilHash                 hashAlg = 0
+	passphraseDerivedKeyLen         = 32
+	passphraseEncryption            = "aes-cfb"
 )
 
 var (
@@ -193,14 +194,24 @@ type KeyDataReader interface {
 	ReadableName() string
 }
 
-type hashAlg struct {
-	crypto.Hash
+type hashAlg crypto.Hash
+
+func (a hashAlg) Available() bool {
+	return crypto.Hash(a).Available()
+}
+
+func (a hashAlg) New() hash.Hash {
+	return crypto.Hash(a).New()
+}
+
+func (a hashAlg) Size() int {
+	return crypto.Hash(a).Size()
 }
 
 func (a hashAlg) MarshalJSON() ([]byte, error) {
 	var s string
 
-	switch a.Hash {
+	switch crypto.Hash(a) {
 	case crypto.SHA1:
 		s = "sha1"
 	case crypto.SHA224:
@@ -212,7 +223,7 @@ func (a hashAlg) MarshalJSON() ([]byte, error) {
 	case crypto.SHA512:
 		s = "sha512"
 	default:
-		return nil, fmt.Errorf("unknown has algorithm: %v", a.Hash)
+		return nil, fmt.Errorf("unknown has algorithm: %v", crypto.Hash(a))
 	}
 
 	return json.Marshal(s)
@@ -226,17 +237,17 @@ func (a *hashAlg) UnmarshalJSON(b []byte) error {
 
 	switch s {
 	case "sha1":
-		a.Hash = crypto.SHA1
+		*a = hashAlg(crypto.SHA1)
 	case "sha224":
-		a.Hash = crypto.SHA224
+		*a = hashAlg(crypto.SHA224)
 	case "sha256":
-		a.Hash = crypto.SHA256
+		*a = hashAlg(crypto.SHA256)
 	case "sha384":
-		a.Hash = crypto.SHA384
+		*a = hashAlg(crypto.SHA384)
 	case "sha512":
-		a.Hash = crypto.SHA512
+		*a = hashAlg(crypto.SHA512)
 	default:
-		a.Hash = crypto.Hash(0)
+		*a = nilHash
 	}
 
 	return nil
@@ -264,13 +275,12 @@ type keyDigest struct {
 
 // hkdfData contains the parameters used to derive a key using HKDF.
 type hkdfData struct {
-	Alg  hashAlg `json:"alg"` // Digest algorithm to use for HKDF
-	Salt []byte  `json:"salt"`
+	Alg hashAlg `json:"alg"` // Digest algorithm to use for HKDF
 }
 
 type authorizedSnapModelsRaw struct {
 	Alg       hashAlg           `json:"alg"`
-	KDF       *hkdfData         `json:"kdf,omitempty"`
+	KDFAlg    hashAlg           `json:"kdf_alg,omitempty"`
 	KeyDigest json.RawMessage   `json:"key_digest"`
 	Hmacs     snapModelHMACList `json:"hmacs"`
 }
@@ -279,7 +289,7 @@ type authorizedSnapModelsRaw struct {
 // authorized to access the data protected by a key.
 type authorizedSnapModels struct {
 	alg       hashAlg           // Digest algorithm used for the authorized model HMACs
-	kdf       *hkdfData         // HKDF parameters used to derive the HMAC key. Nil for legacy (DRBG) derivation.
+	kdfAlg    hashAlg           // Digest algorithm used to derive the HMAC key with HKDF. Zero for legacy (DRBG) derivation.
 	keyDigest keyDigest         // information used to validate the correctness of the HMAC key
 	hmacs     snapModelHMACList // the list of HMACs of authorized models
 
@@ -304,7 +314,7 @@ func (m authorizedSnapModels) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(&authorizedSnapModelsRaw{
 		Alg:       m.alg,
-		KDF:       m.kdf,
+		KDFAlg:    m.kdfAlg,
 		KeyDigest: digest,
 		Hmacs:     m.hmacs})
 }
@@ -318,9 +328,9 @@ func (m *authorizedSnapModels) UnmarshalJSON(b []byte) error {
 	}
 
 	*m = authorizedSnapModels{
-		alg:   raw.Alg,
-		kdf:   raw.KDF,
-		hmacs: raw.Hmacs}
+		alg:    raw.Alg,
+		kdfAlg: raw.KDFAlg,
+		hmacs:  raw.Hmacs}
 
 	token, err := json.NewDecoder(bytes.NewReader(raw.KeyDigest)).Token()
 	switch {
@@ -434,7 +444,7 @@ func (d *KeyData) snapModelAuthKeyLegacy(auxKey AuxiliaryKey) ([]byte, error) {
 	}
 
 	alg := d.data.AuthorizedSnapModels.alg
-	if alg.Hash == crypto.Hash(0) {
+	if alg == nilHash {
 		return nil, errors.New("invalid digest algorithm")
 	}
 
@@ -447,20 +457,20 @@ func (d *KeyData) snapModelAuthKeyLegacy(auxKey AuxiliaryKey) ([]byte, error) {
 }
 
 func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
-	kdf := d.data.AuthorizedSnapModels.kdf
-	if kdf == nil {
+	kdfAlg := d.data.AuthorizedSnapModels.kdfAlg
+	if kdfAlg == nilHash {
 		return d.snapModelAuthKeyLegacy(auxKey)
 	}
-	if !kdf.Alg.Available() {
+	if !kdfAlg.Available() {
 		return nil, errors.New("invalid KDF digest algorithm")
 	}
 
 	alg := d.data.AuthorizedSnapModels.alg
-	if alg.Hash == crypto.Hash(0) {
+	if alg == nilHash {
 		return nil, errors.New("invalid digest algorithm")
 	}
 
-	r := hkdf.New(func() hash.Hash { return kdf.Alg.New() }, auxKey, kdf.Salt, snapModelHMACKDFLabel)
+	r := hkdf.Expand(func() hash.Hash { return kdfAlg.New() }, auxKey, snapModelHMACKDFLabel)
 
 	// Derive a key with a length matching the output size of the
 	// algorithm used for the HMAC.
@@ -712,7 +722,7 @@ func (d *KeyData) IsSnapModelAuthorized(auxKey AuxiliaryKey, model SnapModel) (b
 		return false, errors.New("invalid digest algorithm")
 	}
 
-	h, err := computeSnapModelHMAC(alg.Hash, hmacKey, model)
+	h, err := computeSnapModelHMAC(crypto.Hash(alg), hmacKey, model)
 	if err != nil {
 		return false, xerrors.Errorf("cannot compute HMAC of model: %w", err)
 	}
@@ -755,7 +765,7 @@ func (d *KeyData) SetAuthorizedSnapModels(auxKey AuxiliaryKey, models ...SnapMod
 	var modelHMACs snapModelHMACList
 
 	for _, model := range models {
-		h, err := computeSnapModelHMAC(alg.Hash, hmacKey, model)
+		h, err := computeSnapModelHMAC(crypto.Hash(alg), hmacKey, model)
 		if err != nil {
 			return xerrors.Errorf("cannot compute HMAC of model: %w", err)
 		}
@@ -887,7 +897,7 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 		return nil, xerrors.Errorf("cannot encode platform handle: %w", err)
 	}
 
-	var salt [64]byte
+	var salt [32]byte
 	if _, err := rand.Read(salt[:]); err != nil {
 		return nil, xerrors.Errorf("cannot read salt: %w", err)
 	}
@@ -898,13 +908,11 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 			PlatformHandle:   json.RawMessage(encodedHandle),
 			EncryptedPayload: params.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
-				alg: hashAlg{params.SnapModelAuthHash},
-				kdf: &hkdfData{
-					Alg:  hashAlg{params.SnapModelAuthHash},
-					Salt: salt[:32]},
+				alg:    hashAlg(params.SnapModelAuthHash),
+				kdfAlg: hashAlg(params.SnapModelAuthHash),
 				keyDigest: keyDigest{
-					Alg:  hashAlg{params.SnapModelAuthHash},
-					Salt: salt[32:]}}}}
+					Alg:  hashAlg(params.SnapModelAuthHash),
+					Salt: salt[:]}}}}
 
 	authKey, err := kd.snapModelAuthKey(params.AuxiliaryKey)
 	if err != nil {

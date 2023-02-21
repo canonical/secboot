@@ -319,7 +319,10 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 		}
 	}
 
-	m1, ok := m["kdf"].(map[string]interface{})
+	h = toHash(c, m["kdf_alg"])
+	c.Check(h, Equals, creationParams.SnapModelAuthHash)
+
+	m1, ok := m["key_digest"].(map[string]interface{})
 	c.Assert(ok, testutil.IsTrue)
 
 	h = toHash(c, m1["alg"])
@@ -327,24 +330,11 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 
 	str, ok := m1["salt"].(string)
 	c.Check(ok, testutil.IsTrue)
-	salt1, err := base64.StdEncoding.DecodeString(str)
+	salt, err := base64.StdEncoding.DecodeString(str)
 	c.Check(err, IsNil)
-	c.Check(salt1, HasLen, 32)
+	c.Check(salt, HasLen, 32)
 
-	m2, ok := m["key_digest"].(map[string]interface{})
-	c.Assert(ok, testutil.IsTrue)
-
-	h = toHash(c, m2["alg"])
-	c.Check(h, Equals, creationParams.SnapModelAuthHash)
-
-	str, ok = m2["salt"].(string)
-	c.Check(ok, testutil.IsTrue)
-	salt2, err := base64.StdEncoding.DecodeString(str)
-	c.Check(err, IsNil)
-	c.Check(salt2, HasLen, 32)
-	c.Check(salt2, Not(DeepEquals), salt1)
-
-	str, ok = m2["digest"].(string)
+	str, ok = m1["digest"].(string)
 	c.Check(ok, testutil.IsTrue)
 	digest, err := base64.StdEncoding.DecodeString(str)
 	c.Check(err, IsNil)
