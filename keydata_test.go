@@ -254,7 +254,7 @@ func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, Aux
 	return key, auxKey
 }
 
-func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey AuxiliaryKey, modelAuthHash crypto.Hash) (out *KeyCreationParams) {
+func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey AuxiliaryKey, modelAuthHash crypto.Hash) (out *KeyParams) {
 	payload := MarshalKeys(key, auxKey)
 
 	k := make([]byte, 48)
@@ -272,7 +272,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Auxili
 	c.Assert(err, IsNil)
 	stream := cipher.NewCFBEncrypter(b, handle.IV)
 
-	out = &KeyCreationParams{
+	out = &KeyParams{
 		PlatformName:      mockPlatformName,
 		Handle:            &handle,
 		EncryptedPayload:  make([]byte, len(payload)),
@@ -282,7 +282,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Auxili
 	return
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{}, creationParams *KeyCreationParams, nmodels int) {
+func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{}, creationParams *KeyParams, nmodels int) {
 	c.Check(j["platform_name"], Equals, creationParams.PlatformName)
 
 	expectedHandle, ok := creationParams.Handle.(*mockPlatformKeyDataHandle)
@@ -351,7 +351,7 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 	c.Check(digest, HasLen, h.Size())
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModeNone(c *C, j map[string]interface{}, creationParams *KeyCreationParams, nmodels int) {
+func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModeNone(c *C, j map[string]interface{}, creationParams *KeyParams, nmodels int) {
 	s.checkKeyDataJSONCommon(c, j, creationParams, nmodels)
 
 	str, ok := j["encrypted_payload"].(string)
@@ -363,7 +363,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModeNone(c *C, j map[string
 	c.Check(j, Not(testutil.HasKey), "passphrase_protected_payload")
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModeNone(c *C, r io.Reader, creationParams *KeyCreationParams, nmodels int) {
+func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModeNone(c *C, r io.Reader, creationParams *KeyParams, nmodels int) {
 	var j map[string]interface{}
 
 	d := json.NewDecoder(r)
@@ -372,7 +372,7 @@ func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModeNone(c *C, r io.Read
 	s.checkKeyDataJSONDecodedAuthModeNone(c, j, creationParams, nmodels)
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[string]interface{}, creationParams *KeyCreationParams, nmodels int, passphrase string, kdfOpts *KDFOptions) {
+func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[string]interface{}, creationParams *KeyParams, nmodels int, passphrase string, kdfOpts *KDFOptions) {
 	if kdfOpts == nil {
 		var def KDFOptions
 		kdfOpts = &def
@@ -436,7 +436,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	c.Check(payload, DeepEquals, creationParams.EncryptedPayload)
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModePassphrase(c *C, r io.Reader, creationParams *KeyCreationParams, nmodels int, passphrase string, kdfOpts *KDFOptions) {
+func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModePassphrase(c *C, r io.Reader, creationParams *KeyParams, nmodels int, passphrase string, kdfOpts *KDFOptions) {
 	var j map[string]interface{}
 
 	d := json.NewDecoder(r)
@@ -451,14 +451,14 @@ type keyDataSuite struct {
 
 var _ = Suite(&keyDataSuite{})
 
-func (s *keyDataSuite) checkKeyDataJSONAuthModeNone(c *C, keyData *KeyData, creationParams *KeyCreationParams, nmodels int) {
+func (s *keyDataSuite) checkKeyDataJSONAuthModeNone(c *C, keyData *KeyData, creationParams *KeyParams, nmodels int) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	s.checkKeyDataJSONFromReaderAuthModeNone(c, w.Reader(), creationParams, nmodels)
 }
 
-func (s *keyDataSuite) checkKeyDataJSONAuthModePassphrase(c *C, keyData *KeyData, creationParams *KeyCreationParams, nmodels int, passphrase string, kdfOpts *KDFOptions) {
+func (s *keyDataSuite) checkKeyDataJSONAuthModePassphrase(c *C, keyData *KeyData, creationParams *KeyParams, nmodels int, passphrase string, kdfOpts *KDFOptions) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
@@ -1059,7 +1059,7 @@ func (s *keyDataSuite) TestSetAuthorizedSnapModelsWithWrongKey(c *C) {
 
 type testWriteAtomicData struct {
 	keyData *KeyData
-	params  *KeyCreationParams
+	params  *KeyParams
 	nmodels int
 }
 

@@ -151,9 +151,9 @@ const (
 	AuthModePassphrase AuthMode = 1 << iota
 )
 
-// KeyCreationParams provides parameters required to create a new KeyData object.
+// KeyParams provides parameters required to create a new KeyData object.
 // It should be produced by a platform implementation.
-type KeyCreationParams struct {
+type KeyParams struct {
 	// Handle contains metadata required by the platform in order to recover
 	// this key. It is opaque to this go package. It should be a value that can
 	// be encoded to JSON using go's encoding/json package, which could be
@@ -877,11 +877,11 @@ func ReadKeyData(r KeyDataReader) (*KeyData, error) {
 	return d, nil
 }
 
-// NewKeyData creates a new KeyData object using the supplied KeyCreationParams, which
+// NewKeyData creates a new KeyData object using the supplied KeyParams, which
 // should be created by a platform-specific package, containing a payload encrypted by
 // the platform's secure device and the associated handle required for subsequent
 // recovery of the keys.
-func NewKeyData(params *KeyCreationParams) (*KeyData, error) {
+func NewKeyData(params *KeyParams) (*KeyData, error) {
 	encodedHandle, err := json.Marshal(params.Handle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot encode platform handle: %w", err)

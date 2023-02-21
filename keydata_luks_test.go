@@ -54,7 +54,7 @@ func (s *keyDataLuksSuite) SetUpTest(c *C) {
 
 var _ = Suite(&keyDataLuksSuite{})
 
-func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id int, keyslot int, name string, priority int, creationData *KeyCreationParams, nmodels int) {
+func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id int, keyslot int, name string, priority int, creationParams *KeyParams, nmodels int) {
 	t, exists := s.luks2.devices[path].tokens[id]
 	c.Assert(exists, testutil.IsTrue)
 
@@ -78,7 +78,7 @@ func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id i
 	keyData, ok := token.Params["ubuntu_fde_data"].(map[string]interface{})
 	c.Assert(ok, testutil.IsTrue)
 
-	s.checkKeyDataJSONDecodedAuthModeNone(c, keyData, creationData, nmodels)
+	s.checkKeyDataJSONDecodedAuthModeNone(c, keyData, creationParams, nmodels)
 }
 
 type testKeyDataLuksWriterData struct {

@@ -124,7 +124,7 @@ func NewKeyDataFromSealedKeyObjectFile(path string) (*secboot.KeyData, error) {
 		return nil, err
 	}
 
-	params := secboot.KeyCreationParams{
+	params := secboot.KeyParams{
 		Handle:            json.RawMessage(handle),
 		PlatformName:      legacyPlatformName,
 		AuxiliaryKey:      make([]byte, 32), // Not used, but must be the expected size
