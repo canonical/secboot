@@ -211,15 +211,20 @@ func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSize(c *C) {
 }
 
 func (s *cryptsetupSuite) TestFormatWithInlineCryptoEngine(c *C) {
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", "")
+	defer mockCryptsetup.Restore()
+
 	key := make([]byte, 32)
 	rand.Read(key)
-	s.testFormat(c, &testFormatData{
-		label: "test",
-		key:   key,
-		options: &FormatOptions{
-			KDFOptions:          KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
-			KeyslotsAreaKiBSize: 2 * 1024,
-			InlineCryptoEngine:  true}})
+	options := &FormatOptions{
+		KDFOptions: KDFOptions{
+			MemoryKiB: 32 * 1024, ForceIterations: 4},
+		KeyslotsAreaKiBSize: 2 * 1024,
+		InlineCryptoEngine:  true}
+	err := Format("some-path", "test", key, options)
+	c.Check(err, IsNil)
+	c.Assert(mockCryptsetup.Calls(), HasLen, 1)
+	c.Check(mockCryptsetup.Calls()[0], snapd_testutil.Contains, "--inline-crypto-engine")
 }
 
 type testAddKeyData struct {
