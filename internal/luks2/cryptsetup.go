@@ -143,6 +143,9 @@ type FormatOptions struct {
 	// KDFOptions describes the KDF options for the initial
 	// key slot.
 	KDFOptions KDFOptions
+
+	// InlineCryptoEngine set flag if to use Inline Crypto Engine
+	InlineCryptoEngine bool
 }
 
 // Format will initialize a LUKS2 container with the specified options and set the primary key to the
@@ -177,6 +180,10 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 	// apply KDF options
 	args = opts.KDFOptions.appendArguments(args)
 
+	if opts.InlineCryptoEngine {
+		// use inline crypto engine
+		args = append(args, "--inline-crypto-engine")
+	}
 	if opts.MetadataKiBSize != 0 {
 		// override the default metadata area size if specified
 		args = append(args, "--luks2-metadata-size", fmt.Sprintf("%dk", opts.MetadataKiBSize))
