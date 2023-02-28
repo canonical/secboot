@@ -205,6 +205,9 @@ type FormatOptions struct {
 	// KDFOptions describes the KDF options for the initial
 	// key slot.
 	KDFOptions KDFOptions
+
+	// InlineCryptoEngine set flag if to use Inline Crypto Engine
+	InlineCryptoEngine bool
 }
 
 func (options *FormatOptions) validate(cipher string) error {
@@ -327,6 +330,10 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 
 	// apply options
 	args = opts.appendArguments(args)
+	if opts.InlineCryptoEngine {
+		// use inline crypto engine
+		args = append(args, "--inline-crypto-engine")
+	}
 
 	args = append(args,
 		// device to format
