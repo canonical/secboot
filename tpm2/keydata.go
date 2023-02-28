@@ -106,6 +106,8 @@ func readKeyData(r io.Reader, version uint32) (keyData, error) {
 		return readKeyDataV1(r)
 	case 2:
 		return readKeyDataV2(r)
+	case 3:
+		return readKeyDataV3(r)
 	default:
 		return nil, fmt.Errorf("unexpected version number (%d)", version)
 	}

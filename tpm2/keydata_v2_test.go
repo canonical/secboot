@@ -78,7 +78,7 @@ func (s *keyDataV2Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	template := tpm2_testutil.NewSealedObjectTemplate()
 
-	policyData, policy, err := NewKeyDataPolicy(template.NameAlg, authKeyPublic, policyCounterPub, policyCount)
+	policyData, policy, err := NewKeyDataPolicyLegacy(template.NameAlg, authKeyPublic, policyCounterPub, policyCount)
 	c.Assert(err, IsNil)
 	c.Assert(policyData, testutil.ConvertibleTo, &KeyDataPolicy_v2{})
 
@@ -120,7 +120,7 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 	pub, sensitive := tpm2_testutil.NewExternalSealedObject(nil, secret)
 	mu.MustCopyValue(&pub, pub)
 
-	policyData, policy, err := NewKeyDataPolicy(pub.NameAlg, authKeyPublic, nil, 0)
+	policyData, policy, err := NewKeyDataPolicyLegacy(pub.NameAlg, authKeyPublic, nil, 0)
 	c.Assert(err, IsNil)
 	c.Assert(policyData, testutil.ConvertibleTo, &KeyDataPolicy_v2{})
 

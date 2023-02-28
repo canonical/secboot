@@ -21,9 +21,12 @@ package tpm2
 
 import (
 	"bytes"
+	"crypto"
+	_ "crypto/sha256"
 	"errors"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/templates"
 	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
@@ -198,6 +201,15 @@ func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey 
 	return public, value, nil
 }
 
+func newPolicyAuthPublicKey(key secboot.AuxiliaryKey) (*tpm2.Public, error) {
+	ecdsaKey, err := deriveV3PolicyAuthKey(crypto.SHA256, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return util.NewExternalECCPublicKey(tpm2.HashAlgorithmSHA256, templates.KeyUsageSign, nil, &ecdsaKey.PublicKey), nil
+}
+
 // ensureSufficientORDigests turns a single digest in to a pair of identical digests.
 // This is because TPM2_PolicyOR assertions require more than one digest. This avoids
 // having a separate policy sequence when there is only a single digest, without having
@@ -219,7 +231,51 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 // PCR policies support revocation by way of a NV counter. The revocation check is part of the PCR policy,
 // but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
 // assertion, which can be used verify that a NV index is associated with this policy.
+//
+// The key argument must be created with newPolicyAuthPublicKey.
 func newKeyDataPolicy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
+	keyName, err := key.Name()
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
+	}
+
+	pcrPolicyCounterHandle := tpm2.HandleNull
+	var pcrPolicyCounterName tpm2.Name
+	if pcrPolicyCounterPub != nil {
+		pcrPolicyCounterHandle = pcrPolicyCounterPub.Index
+		pcrPolicyCounterName, err = pcrPolicyCounterPub.Name()
+		if err != nil {
+			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
+		}
+	}
+
+	trial := util.ComputeAuthPolicy(alg)
+	trial.PolicyAuthorize(computeV3PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
+	trial.PolicyAuthValue()
+
+	return &keyDataPolicy_v3{
+		StaticData: &staticPolicyData_v3{
+			AuthPublicKey:          key,
+			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
+		PCRData: &pcrPolicyData_v3{
+			PolicySequence: pcrPolicySequence,
+			// Set AuthorizedPolicySignature here because this object needs to be
+			// serializable before the initial signature is created.
+			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}, trial.GetDigest(), nil
+}
+
+// newKeyDataPolicyLegacy creates a keyDataPolicy for legacy sealed key files containing a static
+// authorization policy that asserts:
+//   - The PCR policy created by updatePcrPolicy and authorized by key is valid and has been satisfied (by way
+//     of a PolicyAuthorize assertion, which allows the PCR policy to be updated without creating a new sealed
+//     key object).
+//   - Knowledge of the the authorization value for the entity on which the policy session is used has been
+//     demonstrated by the caller - this will be used in the future as part of the passphrase integration.
+//
+// PCR policies support revocation by way of a NV counter. The revocation check is part of the PCR policy,
+// but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
+// assertion, which can be used verify that a NV index is associated with this policy.
+func newKeyDataPolicyLegacy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
 	keyName, err := key.Name()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
