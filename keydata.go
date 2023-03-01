@@ -39,10 +39,10 @@ import (
 )
 
 const (
-	kdfType                         = "argon2i"
-	nilHash                 hashAlg = 0
-	passphraseDerivedKeyLen         = 32
-	passphraseEncryption            = "aes-cfb"
+	kdfType                            = "argon2i"
+	nilHash                    hashAlg = 0
+	passphraseEncryptionKeyLen         = 32
+	passphraseEncryption               = "aes-cfb"
 )
 
 var (
@@ -494,7 +494,7 @@ func (d *KeyData) updatePassphrase(payload, oldKey []byte, passphrase string, kd
 	}
 
 	// Derive both a key and an IV from the passphrase in a single pass.
-	keyLen := passphraseDerivedKeyLen + aes.BlockSize
+	keyLen := passphraseEncryptionKeyLen + aes.BlockSize
 
 	params, err := kdfOptions.deriveCostParams(keyLen, kdf)
 	if err != nil {
@@ -519,7 +519,7 @@ func (d *KeyData) updatePassphrase(payload, oldKey []byte, passphrase string, kd
 		return err
 	}
 
-	c, err := aes.NewCipher(key[:passphraseDerivedKeyLen])
+	c, err := aes.NewCipher(key[:passphraseEncryptionKeyLen])
 	if err != nil {
 		return xerrors.Errorf("cannot create cipher: %w", err)
 	}
@@ -533,10 +533,10 @@ func (d *KeyData) updatePassphrase(payload, oldKey []byte, passphrase string, kd
 			Memory: int(params.MemoryKiB),
 			CPUs:   int(params.Threads)},
 		Encryption:       passphraseEncryption,
-		KeySize:          passphraseDerivedKeyLen,
+		KeySize:          passphraseEncryptionKeyLen,
 		EncryptedPayload: make([]byte, len(payload))}
 
-	stream := cipher.NewCFBEncrypter(c, key[passphraseDerivedKeyLen:])
+	stream := cipher.NewCFBEncrypter(c, key[passphraseEncryptionKeyLen:])
 	stream.XORKeyStream(d.data.PassphraseProtectedPayload.EncryptedPayload, payload)
 
 	return nil
@@ -553,10 +553,15 @@ func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte
 		return nil, nil, fmt.Errorf("unexpected KDF type \"%s\"", data.KDF.Type)
 	}
 	if data.Encryption != passphraseEncryption {
-		// Only AES-256-CFB is supported
+		// Only AES-CFB is supported
 		return nil, nil, fmt.Errorf("unexpected encryption algorithm \"%s\"", data.Encryption)
 	}
+	if data.KeySize > 32 {
+		// The key size can't be larger than 32 with the supported cipher
+		return nil, nil, fmt.Errorf("invalid key size (%d bytes)", data.KeySize)
+	}
 
+	// Derive both the key and IV from the passphrase in a single pass.
 	keyLen := data.KeySize + aes.BlockSize
 
 	params := &KDFCostParams{
@@ -573,11 +578,11 @@ func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte
 
 	payload = make([]byte, len(data.EncryptedPayload))
 
-	c, err := aes.NewCipher(key[:passphraseDerivedKeyLen])
+	c, err := aes.NewCipher(key[:data.KeySize])
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot create cipher: %w", err)
 	}
-	stream := cipher.NewCFBDecrypter(c, key[passphraseDerivedKeyLen:])
+	stream := cipher.NewCFBDecrypter(c, key[data.KeySize:])
 	stream.XORKeyStream(payload, data.EncryptedPayload)
 
 	return payload, key, nil
