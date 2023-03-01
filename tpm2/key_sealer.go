@@ -29,11 +29,15 @@ import (
 
 // keySealer is an abstraction for creating a sealed key object
 type keySealer interface {
+	// CreateSealedObject creates a new sealed object containing the supplied data
+	// and with the specified name algorithm and authorization policy. It returns
+	// the private and public parts of the object, and an optional secret value if
+	// the returned object has to be imported.
 	CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error)
 }
 
-// sealedObjectKeySealer is an implementation of keySealer that seals keys to
-// a TPM.
+// sealedObjectKeySealer is an implementation of keySealer that seals data to
+// to the storage primary key of the associated TPM.
 type sealedObjectKeySealer struct {
 	tpm *Connection
 }
@@ -77,8 +81,11 @@ func (s *sealedObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.Has
 	return priv, pub, nil, err
 }
 
-// importableObjectKeySealer is an implementation of keySealer that seals keys to
-// a storage key in the form of an importable object.
+// importableObjectKeySealer is an implementation of keySealer that seals data to
+// an object that can be imported to the hierarchy protected by the specified storage
+// key, which should correspond to the TPM's storage primary key. This is suitable in
+// environments that don't have access to the TPM but do have access to the public part
+// of its storage primary key.
 type importableObjectKeySealer struct {
 	tpmKey *tpm2.Public
 }
