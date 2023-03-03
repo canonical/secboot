@@ -20,6 +20,8 @@
 package secboot
 
 import (
+	"io"
+
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 )
@@ -107,5 +109,13 @@ func MockRuntimeNumCPU(n int) (restore func()) {
 	}
 	return func() {
 		runtimeNumCPU = orig
+	}
+}
+
+func MockStderr(w io.Writer) (restore func()) {
+	orig := osStderr
+	osStderr = w
+	return func() {
+		osStderr = orig
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 
@@ -52,6 +53,8 @@ var (
 	luks2SetSlotPriority = luks2.SetSlotPriority
 
 	newLUKSView = luksview.NewView
+
+	osStderr io.Writer = os.Stderr
 )
 
 const (
@@ -444,7 +447,7 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 
 	view, err := newLUKSView(sourceDevicePath, luks2.LockModeBlocking)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "secboot: Cannot obtain LUKS2 header view: %v\n", err)
+		fmt.Fprintf(osStderr, "secboot: Cannot obtain LUKS2 header view: %v\n", err)
 	} else {
 		tokens := view.KeyDataTokensByPriority()
 		for _, token := range tokens {
@@ -458,7 +461,7 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 				Reader: bytes.NewReader(token.Data)}
 			kd, err := ReadKeyData(r)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "secboot: Cannot read keydata from token %s: %v\n", token.Name(), err)
+				fmt.Fprintf(osStderr, "secboot: Cannot read keydata from token %s: %v\n", token.Name(), err)
 				continue
 			}
 
