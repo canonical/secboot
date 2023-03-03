@@ -99,22 +99,32 @@ func (s *activateSuite) testActivate(c *C, data *testActivateData) {
 	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath, "/dev/stdin", fmt.Sprintf("luks,keyslot=%d,tries=1", data.slot)})
 }
 
-func (s *activateSuite) TestActivate1(c *C) {
+func (s *activateSuite) TestActivate(c *C) {
 	s.testActivate(c, &testActivateData{
 		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1"})
+		sourceDevicePath: "/dev/sda1",
+		slot:             AnySlot})
 }
 
-func (s *activateSuite) TestActivate2(c *C) {
+func (s *activateSuite) TestActivateDifferentName(c *C) {
 	s.testActivate(c, &testActivateData{
 		volumeName:       "test",
-		sourceDevicePath: "/dev/sda1"})
+		sourceDevicePath: "/dev/sda1",
+		slot:             AnySlot})
 }
 
-func (s *activateSuite) TestActivate3(c *C) {
+func (s *activateSuite) TestActivateDifferentDevice(c *C) {
 	s.testActivate(c, &testActivateData{
 		volumeName:       "data",
-		sourceDevicePath: "/dev/vda2"})
+		sourceDevicePath: "/dev/vda2",
+		slot:             AnySlot})
+}
+
+func (s *activateSuite) TestActivateDifferentSlot(c *C) {
+	s.testActivate(c, &testActivateData{
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		slot:             2})
 }
 
 func (s *activateSuite) TestActivateWrongKey(c *C) {
