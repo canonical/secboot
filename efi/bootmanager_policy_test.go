@@ -58,7 +58,7 @@ func (s *bootManagerPolicySuite) testAddBootManagerProfile(c *C, data *testAddBo
 	branch := data.branch
 	switch {
 	case profile == nil:
-		c.Assert(data.branch, IsNil)
+		c.Assert(branch, IsNil)
 		profile = secboot_tpm2.NewPCRProtectionProfile()
 		branch = profile.RootBranch()
 	case branch == nil:

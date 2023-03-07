@@ -47,7 +47,7 @@ func (s *sdstubPolicySuite) testAddSystemdStubProfile(c *C, data *testAddSystemd
 	branch := data.branch
 	switch {
 	case profile == nil:
-		c.Assert(data.branch, IsNil)
+		c.Assert(branch, IsNil)
 		profile = secboot_tpm2.NewPCRProtectionProfile()
 		branch = profile.RootBranch()
 	case branch == nil:
