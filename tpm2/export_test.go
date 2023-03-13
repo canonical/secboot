@@ -66,6 +66,14 @@ type KeyDataPolicy_v1 = keyDataPolicy_v1
 type KeyDataPolicy_v2 = keyDataPolicy_v2
 type KeyDataPolicy_v3 = keyDataPolicy_v3
 
+func NewImportableObjectKeySealer(key *tpm2.Public) keySealer {
+	return &importableObjectKeySealer{key}
+}
+
+func NewSealedObjectKeySealer(tpm *Connection) keySealer {
+	return &sealedObjectKeySealer{tpm}
+}
+
 type PolicyDataError = policyDataError
 type PolicyOrData_v0 = policyOrData_v0
 
