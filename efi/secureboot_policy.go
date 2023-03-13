@@ -352,7 +352,7 @@ type SecureBootPolicyProfileParams struct {
 	PCRAlgorithm tpm2.HashAlgorithmId
 
 	// LoadSequences is a list of EFI image load sequences for which to compute PCR digests for.
-	LoadSequences []*ImageLoadEvent
+	LoadSequences []ImageLoadEvent
 
 	// SignatureDbUpdateKeystores is a list of directories containing EFI signature database updates for which to compute PCR digests
 	// for. These directories are passed to sbkeysync using the --keystore option.
@@ -388,7 +388,7 @@ type secureBootAuthority struct {
 type secureBootPolicyGen struct {
 	pcrAlgorithm  tpm2.HashAlgorithmId
 	env           HostEnvironment
-	loadSequences []*ImageLoadEvent
+	loadSequences []ImageLoadEvent
 
 	events       []*tcglog.Event
 	sigDbUpdates []*secureBootDbUpdate
@@ -732,11 +732,11 @@ Outer:
 
 // sbLoadEventAndBranches binds together a ImageLoadEvent and the branches that the event needs to be applied to.
 type sbLoadEventAndBranches struct {
-	event    *ImageLoadEvent
+	event    ImageLoadEvent
 	branches []*secureBootPolicyGenBranch
 }
 
-func (e *sbLoadEventAndBranches) branch(event *ImageLoadEvent) *sbLoadEventAndBranches {
+func (e *sbLoadEventAndBranches) branch(event ImageLoadEvent) *sbLoadEventAndBranches {
 	var branches []*secureBootPolicyGenBranch
 	for _, b := range e.branches {
 		if b.profile == nil {
@@ -867,8 +867,8 @@ func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBoot
 // processOSLoadEvent computes a measurement associated with the supplied image load event and extends this to the specified branches.
 // If the image load corresponds to shim, then some additional processing is performed to extract the included vendor certificate
 // (see secureBootPolicyGen.processShimExecutableLaunch).
-func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGenBranch, event *ImageLoadEvent) error {
-	r, err := event.Image.Open()
+func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGenBranch, event ImageLoadEvent) error {
+	r, err := event.source().Open()
 	if err != nil {
 		return xerrors.Errorf("cannot open image: %w", err)
 	}
@@ -879,7 +879,14 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 		return xerrors.Errorf("cannot determine image type: %w", err)
 	}
 
-	if err := g.computeAndExtendVerificationMeasurement(branches, r, event.Source); err != nil {
+	var source ImageLoadEventSource
+	params := event.params().Resolve(new(loadParams))
+	if len(params) > 1 {
+		return errors.New("invalid parameters")
+	}
+	source = params[0].Source
+
+	if err := g.computeAndExtendVerificationMeasurement(branches, r, source); err != nil {
 		return xerrors.Errorf("cannot compute load verification event: %w", err)
 	}
 
@@ -936,13 +943,13 @@ func (g *secureBootPolicyGen) run(profile *secboot_tpm2.PCRProtectionProfile, si
 		loadEvents = loadEvents[1:]
 
 		if err := g.processOSLoadEvent(e.branches, e.event); err != nil {
-			return xerrors.Errorf("cannot process OS load event for %s: %w", e.event.Image, err)
+			return xerrors.Errorf("cannot process OS load event for %s: %w", e.event.source(), err)
 		}
 
-		if len(e.event.Next) == 1 {
-			nextLoadEvents = append(nextLoadEvents, &sbLoadEventAndBranches{event: e.event.Next[0], branches: e.branches})
+		if len(e.event.next()) == 1 {
+			nextLoadEvents = append(nextLoadEvents, &sbLoadEventAndBranches{event: e.event.next()[0], branches: e.branches})
 		} else {
-			for _, n := range e.event.Next {
+			for _, n := range e.event.next() {
 				ne := e.branch(n)
 				allBranches = append(allBranches, ne.branches...)
 				nextLoadEvents = append(nextLoadEvents, ne)

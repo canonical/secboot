@@ -22,7 +22,7 @@ package efi
 import (
 	"errors"
 
-	"github.com/canonical/go-efilib"
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 
@@ -46,11 +46,11 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image Image) (tpm2.Digest, e
 
 // bmLoadEvent binds together a ImageLoadEvent and the branch that the event needs to be applied to.
 type bmLoadEvent struct {
-	event  *ImageLoadEvent
+	event  ImageLoadEvent
 	branch *secboot_tpm2.PCRProtectionProfileBranch
 }
 
-func newBmLoadEvents(branch *secboot_tpm2.PCRProtectionProfileBranch, events ...*ImageLoadEvent) (out []*bmLoadEvent) {
+func newBmLoadEvents(branch *secboot_tpm2.PCRProtectionProfileBranch, events ...ImageLoadEvent) (out []*bmLoadEvent) {
 	if len(events) == 0 {
 		return nil
 	}
@@ -63,7 +63,7 @@ func newBmLoadEvents(branch *secboot_tpm2.PCRProtectionProfileBranch, events ...
 }
 
 func (e *bmLoadEvent) fork() []*bmLoadEvent {
-	return newBmLoadEvents(e.branch, e.event.Next...)
+	return newBmLoadEvents(e.branch, e.event.next()...)
 }
 
 // BootManagerProfileParams provide the arguments to AddBootManagerProfile.
@@ -74,7 +74,7 @@ type BootManagerProfileParams struct {
 	PCRAlgorithm tpm2.HashAlgorithmId
 
 	// LoadSequences is a list of EFI image load sequences for which to compute PCR digests for.
-	LoadSequences []*ImageLoadEvent
+	LoadSequences []ImageLoadEvent
 
 	// Environment is an optional parameter that allows the caller to provide
 	// a custom EFI environment. If not set, the host's normal environment will
@@ -147,7 +147,7 @@ func AddBootManagerProfile(branch *secboot_tpm2.PCRProtectionProfileBranch, para
 		e := loadEvents[0]
 		loadEvents = loadEvents[1:]
 
-		digest, err := computePeImageDigest(params.PCRAlgorithm, e.event.Image)
+		digest, err := computePeImageDigest(params.PCRAlgorithm, e.event.source())
 		if err != nil {
 			return err
 		}

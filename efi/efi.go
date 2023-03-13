@@ -20,12 +20,7 @@
 package efi
 
 import (
-	"fmt"
-	"github.com/snapcore/snapd/snap"
-	"io"
-	"os"
-
-	"github.com/canonical/go-efilib"
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
 )
 
@@ -46,87 +41,4 @@ type HostEnvironment interface {
 	ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error)
 
 	ReadEventLog() (*tcglog.Log, error)
-}
-
-// Image corresponds to a binary that is loaded, verified and executed before ExitBootServices.
-type Image interface {
-	fmt.Stringer
-	Open() (interface {
-		io.ReaderAt
-		io.Closer
-		Size() int64
-	}, error) // Open a handle to the image for reading
-}
-
-// SnapFileImage corresponds to a binary contained within a snap file that is loaded, verified and executed before ExitBootServices.
-type SnapFileImage struct {
-	Container snap.Container
-	FileName  string // The filename within the snap squashfs
-}
-
-func (f SnapFileImage) String() string {
-	return fmt.Sprintf("%#v:%s", f.Container, f.FileName)
-}
-
-func (f SnapFileImage) Open() (interface {
-	io.ReaderAt
-	io.Closer
-	Size() int64
-}, error) {
-	return f.Container.RandomAccessFile(f.FileName)
-}
-
-type fileImageHandle struct {
-	*os.File
-	size int64
-}
-
-func (h *fileImageHandle) Size() int64 {
-	return h.size
-}
-
-// FileImage corresponds to a file on disk that is loaded, verified and executed before ExitBootServices.
-type FileImage string
-
-func (p FileImage) String() string {
-	return string(p)
-}
-
-func (p FileImage) Open() (interface {
-	io.ReaderAt
-	io.Closer
-	Size() int64
-}, error) {
-	f, err := os.Open(string(p))
-	if err != nil {
-		return nil, err
-	}
-	fi, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, err
-	}
-	return &fileImageHandle{File: f, size: fi.Size()}, nil
-}
-
-// ImageLoadEventSource corresponds to the source of a ImageLoadEvent.
-type ImageLoadEventSource int
-
-const (
-	// Firmware indicates that the source of a ImageLoadEvent was platform firmware, via the EFI_BOOT_SERVICES.LoadImage()
-	// and EFI_BOOT_SERVICES.StartImage() functions, with the subsequently executed image being verified against the signatures
-	// in the EFI authorized signature database.
-	Firmware ImageLoadEventSource = iota
-
-	// Shim indicates that the source of a ImageLoadEvent was shim, without relying on EFI boot services for loading, verifying
-	// and executing the subsequently executed image. The image is verified by shim against the signatures in the EFI authorized
-	// signature database, the MOK database or shim's built-in vendor certificate before being executed directly.
-	Shim
-)
-
-// ImageLoadEvent corresponds to the execution of a verified Image.
-type ImageLoadEvent struct {
-	Source ImageLoadEventSource // The source of the event
-	Image  Image                // The image
-	Next   []*ImageLoadEvent    // A list of possible subsequent ImageLoadEvents
 }
