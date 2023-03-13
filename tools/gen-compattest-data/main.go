@@ -28,7 +28,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/canonical/go-efilib"
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mssim"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
@@ -111,7 +111,7 @@ func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2
 		},
 	}
 
-	if err := secboot_efi.AddSystemdStubProfile(profile, &sdefisParams); err != nil {
+	if err := secboot_efi.AddSystemdStubProfile(profile.RootBranch(), &sdefisParams); err != nil {
 		return nil, xerrors.Errorf("cannot add systemd EFI stub profile: %w", err)
 	}
 
@@ -131,7 +131,7 @@ func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2
 		Models:       []secboot.SnapModel{model.(secboot.SnapModel)},
 	}
 
-	if err := secboot_tpm2.AddSnapModelProfile(profile, &smParams); err != nil {
+	if err := secboot_tpm2.AddSnapModelProfile(profile.RootBranch(), &smParams); err != nil {
 		return nil, xerrors.Errorf("cannot add snap model profile: %w", err)
 	}
 

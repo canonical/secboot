@@ -36,16 +36,24 @@ type sdstubPolicySuite struct{}
 var _ = Suite(&sdstubPolicySuite{})
 
 type testAddSystemdStubProfileData struct {
-	initial *secboot_tpm2.PCRProtectionProfile
+	profile *secboot_tpm2.PCRProtectionProfile
+	branch  *secboot_tpm2.PCRProtectionProfileBranch
 	params  SystemdStubProfileParams
 	values  []tpm2.PCRValues
 }
 
 func (s *sdstubPolicySuite) testAddSystemdStubProfile(c *C, data *testAddSystemdStubProfileData) {
-	profile := data.initial
-	if profile == nil {
+	profile := data.profile
+	branch := data.branch
+	switch {
+	case profile == nil:
+		c.Assert(branch, IsNil)
 		profile = secboot_tpm2.NewPCRProtectionProfile()
+		branch = profile.RootBranch()
+	case branch == nil:
+		branch = profile.RootBranch()
 	}
+
 	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
 	var expectedDigests tpm2.DigestList
@@ -54,7 +62,7 @@ func (s *sdstubPolicySuite) testAddSystemdStubProfile(c *C, data *testAddSystemd
 		expectedDigests = append(expectedDigests, d)
 	}
 
-	c.Check(AddSystemdStubProfile(profile, &data.params), IsNil)
+	c.Check(AddSystemdStubProfile(branch, &data.params), IsNil)
 
 	pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, IsNil)
@@ -134,12 +142,13 @@ func (s *sdstubPolicySuite) TestAddSystemdStubProfileClassic(c *C) {
 }
 
 func (s *sdstubPolicySuite) TestAddSystemdStubProfileWithInitialProfile(c *C) {
+	profile := secboot_tpm2.NewPCRProtectionProfile()
+
 	s.testAddSystemdStubProfile(c, &testAddSystemdStubProfileData{
-		initial: func() *secboot_tpm2.PCRProtectionProfile {
-			return secboot_tpm2.NewPCRProtectionProfile().
-				AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
-				AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"))
-		}(),
+		profile: profile,
+		branch: profile.RootBranch().
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
+			AddPCRValue(tpm2.HashAlgorithmSHA256, 8, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 		params: SystemdStubProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			PCRIndex:     8,

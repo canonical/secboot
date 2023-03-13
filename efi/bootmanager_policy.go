@@ -44,21 +44,26 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image Image) (tpm2.Digest, e
 	return efi.ComputePeImageDigest(alg.GetHash(), r, r.Size())
 }
 
-type bootManagerCodePolicyGenBranch struct {
-	profile  *secboot_tpm2.PCRProtectionProfile
-	branches []*secboot_tpm2.PCRProtectionProfile
-}
-
-func (n *bootManagerCodePolicyGenBranch) branch() *bootManagerCodePolicyGenBranch {
-	b := &bootManagerCodePolicyGenBranch{profile: secboot_tpm2.NewPCRProtectionProfile()}
-	n.branches = append(n.branches, b.profile)
-	return b
-}
-
-// bmLoadEventAndBranch binds together a ImageLoadEvent and the branch that the event needs to be applied to.
-type bmLoadEventAndBranch struct {
+// bmLoadEvent binds together a ImageLoadEvent and the branch that the event needs to be applied to.
+type bmLoadEvent struct {
 	event  *ImageLoadEvent
-	branch *bootManagerCodePolicyGenBranch
+	branch *secboot_tpm2.PCRProtectionProfileBranch
+}
+
+func newBmLoadEvents(branch *secboot_tpm2.PCRProtectionProfileBranch, events ...*ImageLoadEvent) (out []*bmLoadEvent) {
+	if len(events) == 0 {
+		return nil
+	}
+
+	bp := branch.AddBranchPoint()
+	for _, event := range events {
+		out = append(out, &bmLoadEvent{event: event, branch: bp.AddBranch()})
+	}
+	return out
+}
+
+func (e *bmLoadEvent) fork() []*bmLoadEvent {
+	return newBmLoadEvents(e.branch, e.event.Next...)
 }
 
 // BootManagerProfileParams provide the arguments to AddBootManagerProfile.
@@ -101,7 +106,7 @@ type BootManagerProfileParams struct {
 // If the EV_OMIT_BOOT_DEVICE_EVENTS is not recorded to PCR 4, the platform firmware will perform meaurements of all boot attempts,
 // even if they fail. The generated PCR policy will not be satisfied if the platform firmware performs boot attempts that fail,
 // even if the successful boot attempt is of a sequence of binaries included in this PCR profile.
-func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *BootManagerProfileParams) error {
+func AddBootManagerProfile(branch *secboot_tpm2.PCRProtectionProfileBranch, params *BootManagerProfileParams) error {
 	env := params.Environment
 	if env == nil {
 		env = defaultEnv
@@ -117,7 +122,7 @@ func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *B
 		return errors.New("cannot compute secure boot policy digests: the TCG event log does not have the requested algorithm")
 	}
 
-	profile.AddPCRValue(params.PCRAlgorithm, bootManagerCodePCR, make(tpm2.Digest, params.PCRAlgorithm.Size()))
+	branch.AddPCRValue(params.PCRAlgorithm, bootManagerCodePCR, make(tpm2.Digest, params.PCRAlgorithm.Size()))
 
 	// Replay the event log until we see the transition from "pre-OS" to "OS-present". The event log may contain measurements
 	// for system preparation applications, and spec-compliant firmware should measure a EV_EFI_ACTION “Calling EFI Application
@@ -127,27 +132,16 @@ func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *B
 			continue
 		}
 
-		profile.ExtendPCR(params.PCRAlgorithm, bootManagerCodePCR, tpm2.Digest(event.Digests[params.PCRAlgorithm]))
+		branch.ExtendPCR(params.PCRAlgorithm, bootManagerCodePCR, tpm2.Digest(event.Digests[params.PCRAlgorithm]))
 		if event.EventType == tcglog.EventTypeSeparator {
 			break
 		}
 	}
 
-	root := bootManagerCodePolicyGenBranch{profile: profile}
-	allBranches := []*bootManagerCodePolicyGenBranch{&root}
+	bp := branch.AddBranchPoint()
 
-	var loadEvents []*bmLoadEventAndBranch
-	var nextLoadEvents []*bmLoadEventAndBranch
-
-	if len(params.LoadSequences) == 1 {
-		loadEvents = append(loadEvents, &bmLoadEventAndBranch{event: params.LoadSequences[0], branch: &root})
-	} else {
-		for _, e := range params.LoadSequences {
-			branch := root.branch()
-			allBranches = append(allBranches, branch)
-			loadEvents = append(loadEvents, &bmLoadEventAndBranch{event: e, branch: branch})
-		}
-	}
+	loadEvents := newBmLoadEvents(bp.AddBranch(), params.LoadSequences...)
+	var nextLoadEvents []*bmLoadEvent
 
 	for len(loadEvents) > 0 {
 		e := loadEvents[0]
@@ -157,17 +151,9 @@ func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *B
 		if err != nil {
 			return err
 		}
-		e.branch.profile.ExtendPCR(params.PCRAlgorithm, bootManagerCodePCR, digest)
+		e.branch.ExtendPCR(params.PCRAlgorithm, bootManagerCodePCR, digest)
 
-		if len(e.event.Next) == 1 {
-			nextLoadEvents = append(nextLoadEvents, &bmLoadEventAndBranch{event: e.event.Next[0], branch: e.branch})
-		} else {
-			for _, n := range e.event.Next {
-				branch := e.branch.branch()
-				nextLoadEvents = append(nextLoadEvents, &bmLoadEventAndBranch{event: n, branch: branch})
-				allBranches = append(allBranches, branch)
-			}
-		}
+		nextLoadEvents = append(nextLoadEvents, e.fork()...)
 
 		if len(loadEvents) == 0 {
 			loadEvents = nextLoadEvents
@@ -175,18 +161,7 @@ func AddBootManagerProfile(profile *secboot_tpm2.PCRProtectionProfile, params *B
 		}
 	}
 
-	// Iterate over all of the branch points starting from the leaves and creates a tree of
-	// sub-profiles with AddProfileOR.
-	for i := len(allBranches) - 1; i >= 0; i-- {
-		b := allBranches[i]
-
-		if len(b.branches) == 0 {
-			// This is a leaf branch
-			continue
-		}
-
-		b.profile.AddProfileOR(b.branches...)
-	}
+	bp.EndBranchPoint()
 
 	return nil
 }

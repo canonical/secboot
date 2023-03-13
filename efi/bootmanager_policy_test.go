@@ -40,7 +40,8 @@ var _ = Suite(&bootManagerPolicySuite{})
 
 type testAddBootManagerProfileData struct {
 	eventLogPath string
-	initial      *secboot_tpm2.PCRProtectionProfile
+	profile      *secboot_tpm2.PCRProtectionProfile
+	branch       *secboot_tpm2.PCRProtectionProfileBranch
 	params       *BootManagerProfileParams
 	values       []tpm2.PCRValues
 }
@@ -53,10 +54,17 @@ func (s *bootManagerPolicySuite) testAddBootManagerProfile(c *C, data *testAddBo
 	restoreEventLogPath := MockEventLogPath(data.eventLogPath)
 	defer restoreEventLogPath()
 
-	profile := data.initial
-	if profile == nil {
+	profile := data.profile
+	branch := data.branch
+	switch {
+	case profile == nil:
+		c.Assert(branch, IsNil)
 		profile = secboot_tpm2.NewPCRProtectionProfile()
+		branch = profile.RootBranch()
+	case branch == nil:
+		branch = profile.RootBranch()
 	}
+
 	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{4}}})
 	var expectedDigests tpm2.DigestList
@@ -65,7 +73,7 @@ func (s *bootManagerPolicySuite) testAddBootManagerProfile(c *C, data *testAddBo
 		expectedDigests = append(expectedDigests, d)
 	}
 
-	c.Assert(AddBootManagerProfile(profile, data.params), IsNil)
+	c.Assert(AddBootManagerProfile(branch, data.params), IsNil)
 	pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Assert(err, IsNil)
 	c.Check(pcrs.Equal(expectedPcrs), Equals, true)
@@ -181,9 +189,12 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileUC20(c *C) {
 
 func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithInitialProfile(c *C) {
 	// Test with a PCRProtectionProfile that already has some values in it.
+	profile := secboot_tpm2.NewPCRProtectionProfile()
+
 	s.testAddBootManagerProfile(c, &testAddBootManagerProfileData{
 		eventLogPath: "testdata/eventlog_sb.bin",
-		initial: secboot_tpm2.NewPCRProtectionProfile().
+		profile:      profile,
+		branch: profile.RootBranch().
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 4, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo")).
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 		params: &BootManagerProfileParams{
