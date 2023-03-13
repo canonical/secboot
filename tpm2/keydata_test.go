@@ -46,26 +46,8 @@ func (s *keydataSuiteNoTPM) TestNewKeyDataV0(c *C) {
 	pub := new(tpm2.Public)
 	policy := new(KeyDataPolicy_v0)
 
-	data, err := NewKeyData(priv, pub, nil, policy)
-	c.Assert(err, IsNil)
-
-	_, ok := data.(*KeyData_v0)
-	c.Check(ok, testutil.IsTrue)
-
-	c.Check(data.Private(), DeepEquals, priv)
-	c.Check(data.Public(), Equals, pub)
-	c.Check(data.ImportSymSeed(), IsNil)
-	c.Check(data.Policy(), Equals, policy)
-}
-
-func (s *keydataSuiteNoTPM) TestNewKeyDataV0RejectsImportSymSeed(c *C) {
-	priv := tpm2.Private{1, 2, 3, 4}
-	pub := new(tpm2.Public)
-	importSymSeed := tpm2.EncryptedSecret{5, 6, 7, 8}
-	policy := new(KeyDataPolicy_v0)
-
-	_, err := NewKeyData(priv, pub, importSymSeed, policy)
-	c.Assert(err, ErrorMatches, "no importable key data support for v0")
+	_, err := NewKeyData(priv, pub, nil, policy)
+	c.Check(err, ErrorMatches, "no support for creating v0 keys")
 }
 
 func (s *keydataSuiteNoTPM) TestNewKeyDataV2(c *C) {

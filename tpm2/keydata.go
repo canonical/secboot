@@ -131,13 +131,7 @@ func newKeyData(keyPrivate tpm2.Private, keyPublic *tpm2.Public, importSymSeed t
 	// downgraded to v1 when serialized if it is not importable
 	// case *keyDataPolicy_v1:
 	case *keyDataPolicy_v0:
-		if len(importSymSeed) != 0 {
-			return nil, errors.New("no importable key data support for v0")
-		}
-		return &keyData_v0{
-			KeyPrivate: keyPrivate,
-			KeyPublic:  keyPublic,
-			PolicyData: p}, nil
+		return nil, errors.New("no support for creating v0 keys")
 	default:
 		panic("invalid policy")
 	}
