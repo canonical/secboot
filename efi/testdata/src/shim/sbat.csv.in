@@ -1,0 +1,3 @@
+sbat,1,SBAT Version,sbat,1,https://github.com/rhboot/shim/blob/main/SBAT.md
+shim,1,UEFI shim,shim,%SHIM_VERSION%,https://github.com/rhboot/shim
+shim.acme,1,Acme Corporation,shim,1,https://acme.invalid/shim

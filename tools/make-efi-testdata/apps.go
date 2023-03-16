@@ -31,106 +31,129 @@ type mockAppData struct {
 func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []mockAppData {
 	return []mockAppData{
 		{
-			path:          filepath.Join(srcDir, "shim"),
-			name:          "mockshim_sbat",
-			makeExtraArgs: []string{"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"), "WITH_SBAT=1"},
-			signKeys:      []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
-			signCerts:     [][]byte{certs["TestUefiSigning1.1.1"]},
-			filename:      "mockshim_sbat.efi.signed.1.1.1",
+			path: filepath.Join(srcDir, "shim"),
+			name: "mockshim",
+			makeExtraArgs: []string{
+				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
+				"SHIM_VERSION=15.3",
+				"WITH_SBAT=1"},
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
+			filename:  "mockshim.efi.signed.1.1.1",
 		},
 		{
-			path:          filepath.Join(srcDir, "shim"),
-			name:          "mockshim_sbat_no_vendor_cert",
+			path: filepath.Join(srcDir, "shim"),
+			name: "mockshim",
+			makeExtraArgs: []string{
+				"SHIM_VERSION=15.3",
+				"WITH_SBAT=1"},
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
+			filename:  "mockshim_no_vendor_cert.efi.signed.1.1.1",
+		},
+		{
+			path: filepath.Join(srcDir, "shim"),
+			name: "mockshim",
+			makeExtraArgs: []string{
+				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
+				"SHIM_VERSION=15.3",
+				"WITH_SBAT=1"},
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.2.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning1.2.1"]},
+			filename:  "mockshim.efi.signed.1.2.1",
+		},
+		{
+			path: filepath.Join(srcDir, "shim"),
+			name: "mockshim",
+			makeExtraArgs: []string{
+				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
+				"SHIM_VERSION=15.3",
+				"WITH_SBAT=1"},
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning2.1.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning2.1.1"]},
+			filename:  "mockshim.efi.signed.2.1.1",
+		},
+		{
+			path: filepath.Join(srcDir, "shim"),
+			name: "mockshim",
+			makeExtraArgs: []string{
+				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
+				"SHIM_VERSION=15.3",
+				"WITH_SBAT=1"},
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning2.1.1.key"), filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning2.1.1"], certs["TestUefiSigning1.1.1"]},
+			filename:  "mockshim.efi.signed.2.1.1+1.1.1",
+		},
+		{
+			path: filepath.Join(srcDir, "shim"),
+			name: "mockshim",
+			makeExtraArgs: []string{
+				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
+				"SHIM_VERSION=15.2"},
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
+			filename:  "mockshim_no_sbat.efi.signed.1.1.1",
+		},
+		{
+			path:          filepath.Join(srcDir, "grub"),
+			name:          "mockgrub1",
+			makeExtraArgs: []string{"WITH_SBAT=1"},
+			signKeys:      []string{filepath.Join(srcDir, "keys", "TestShimVendorSigning.1.key")},
+			signCerts:     [][]byte{certs["TestShimVendorSigning.1"]},
+			filename:      "mockgrub1.efi.signed.shim.1",
+		},
+		{
+			path:          filepath.Join(srcDir, "grub"),
+			name:          "mockgrub1",
 			makeExtraArgs: []string{"WITH_SBAT=1"},
 			signKeys:      []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
 			signCerts:     [][]byte{certs["TestUefiSigning1.1.1"]},
-			filename:      "mockshim_sbat_no_vendor_cert.efi.signed.1.1.1",
+			filename:      "mockgrub1.efi.signed.1.1.1",
 		},
 		{
-			path:          filepath.Join(srcDir, "shim"),
-			name:          "mockshim_sbat",
-			makeExtraArgs: []string{"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"), "WITH_SBAT=1"},
+			path:          filepath.Join(srcDir, "grub"),
+			name:          "mockgrub1",
+			makeExtraArgs: []string{"WITH_SBAT=1"},
 			signKeys:      []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.2.1.key")},
 			signCerts:     [][]byte{certs["TestUefiSigning1.2.1"]},
-			filename:      "mockshim_sbat.efi.signed.1.2.1",
+			filename:      "mockgrub1.efi.signed.1.2.1",
 		},
 		{
-			path:          filepath.Join(srcDir, "shim"),
-			name:          "mockshim_sbat",
-			makeExtraArgs: []string{"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"), "WITH_SBAT=1"},
-			signKeys:      []string{filepath.Join(srcDir, "keys", "TestUefiSigning2.1.1.key")},
-			signCerts:     [][]byte{certs["TestUefiSigning2.1.1"]},
-			filename:      "mockshim_sbat.efi.signed.2.1.1",
-		},
-		{
-			path:          filepath.Join(srcDir, "shim"),
-			name:          "mockshim_sbat",
-			makeExtraArgs: []string{"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"), "WITH_SBAT=1"},
-			signKeys:      []string{filepath.Join(srcDir, "keys", "TestUefiSigning2.1.1.key"), filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
-			signCerts:     [][]byte{certs["TestUefiSigning2.1.1"], certs["TestUefiSigning1.1.1"]},
-			filename:      "mockshim_sbat.efi.signed.2.1.1+1.1.1",
-		},
-		{
-			path:          filepath.Join(srcDir, "shim"),
-			name:          "mockshim_no_sbat",
-			makeExtraArgs: []string{"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer")},
-			signKeys:      []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
-			signCerts:     [][]byte{certs["TestUefiSigning1.1.1"]},
-			filename:      "mockshim_no_sbat.efi.signed.1.1.1",
-		},
-		{
-			path:      filepath.Join(srcDir, "app"),
-			name:      "mockgrub1",
-			signKeys:  []string{filepath.Join(srcDir, "keys", "TestShimVendorSigning.1.key")},
-			signCerts: [][]byte{certs["TestShimVendorSigning.1"]},
-			filename:  "mockgrub1.efi.signed.shim.1",
-		},
-		{
-			path:      filepath.Join(srcDir, "app"),
-			name:      "mockgrub1",
-			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
-			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
-			filename:  "mockgrub1.efi.signed.1.1.1",
-		},
-		{
-			path:      filepath.Join(srcDir, "app"),
-			name:      "mockgrub1",
-			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.2.1.key")},
-			signCerts: [][]byte{certs["TestUefiSigning1.2.1"]},
-			filename:  "mockgrub1.efi.signed.1.2.1",
-		},
-		{
-			path:     filepath.Join(srcDir, "app"),
+			path:     filepath.Join(srcDir, "kernel"),
 			name:     "mockkernel1",
 			filename: "mockkernel1.efi",
 		},
 		{
-			path:      filepath.Join(srcDir, "app"),
-			name:      "mockkernel1",
-			signKeys:  []string{filepath.Join(srcDir, "keys", "TestShimVendorSigning.1.key")},
-			signCerts: [][]byte{certs["TestShimVendorSigning.1"]},
-			filename:  "mockkernel1.efi.signed.shim.1",
+			path:          filepath.Join(srcDir, "kernel"),
+			name:          "mockkernel1",
+			makeExtraArgs: []string{"WITH_SBAT=1"},
+			signKeys:      []string{filepath.Join(srcDir, "keys", "TestShimVendorSigning.1.key")},
+			signCerts:     [][]byte{certs["TestShimVendorSigning.1"]},
+			filename:      "mockkernel1.efi.signed.shim.1",
 		},
 		{
-			path:      filepath.Join(srcDir, "app"),
-			name:      "mockkernel1",
-			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
-			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
-			filename:  "mockkernel1.efi.signed.1.1.1",
+			path:          filepath.Join(srcDir, "kernel"),
+			name:          "mockkernel1",
+			makeExtraArgs: []string{"WITH_SBAT=1"},
+			signKeys:      []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
+			signCerts:     [][]byte{certs["TestUefiSigning1.1.1"]},
+			filename:      "mockkernel1.efi.signed.1.1.1",
 		},
 		{
-			path:      filepath.Join(srcDir, "app"),
-			name:      "mockkernel1",
-			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.2.1.key")},
-			signCerts: [][]byte{certs["TestUefiSigning1.2.1"]},
-			filename:  "mockkernel1.efi.signed.1.2.1",
+			path:          filepath.Join(srcDir, "kernel"),
+			name:          "mockkernel1",
+			makeExtraArgs: []string{"WITH_SBAT=1"},
+			signKeys:      []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.2.1.key")},
+			signCerts:     [][]byte{certs["TestUefiSigning1.2.1"]},
+			filename:      "mockkernel1.efi.signed.1.2.1",
 		},
 		{
-			path:      filepath.Join(srcDir, "app"),
-			name:      "mockkernel2",
-			signKeys:  []string{filepath.Join(srcDir, "keys", "TestShimVendorSigning.1.key")},
-			signCerts: [][]byte{certs["TestShimVendorSigning.1"]},
-			filename:  "mockkernel2.efi.signed.shim.1",
+			path:          filepath.Join(srcDir, "kernel"),
+			name:          "mockkernel2",
+			makeExtraArgs: []string{"WITH_SBAT=1"},
+			signKeys:      []string{filepath.Join(srcDir, "keys", "TestShimVendorSigning.1.key")},
+			signCerts:     [][]byte{certs["TestShimVendorSigning.1"]},
+			filename:      "mockkernel2.efi.signed.shim.1",
 		},
 	}
 }
@@ -155,6 +178,8 @@ func makeOneMockApp(tmpDir, dstDir string, data *mockAppData, arch string) error
 
 	cmd := exec.Command("make", args...)
 	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
 		return xerrors.Errorf("make failed: %w", err)
@@ -175,6 +200,8 @@ func makeOneMockApp(tmpDir, dstDir string, data *mockAppData, arch string) error
 
 		cmd := exec.Command("sbsign", "--key", key, "--cert", cert.Name(), "--output", efiName, efiName)
 		cmd.Dir = dir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
 			return xerrors.Errorf("cannot sign app: %w", err)
