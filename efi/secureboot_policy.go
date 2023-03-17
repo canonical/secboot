@@ -22,13 +22,10 @@ package efi
 import (
 	"bufio"
 	"bytes"
-	"crypto"
 	"crypto/x509"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,7 +38,6 @@ import (
 
 	"golang.org/x/xerrors"
 
-	pe "github.com/snapcore/secboot/internal/pe1.14"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -54,8 +50,6 @@ const (
 
 	mokListName    = "MokList"    // Unicode variable name for the shim MOK database
 	mokSbStateName = "MokSBState" // Unicode variable name for the shim secure boot configuration (validation enabled/disabled)
-	sbatName       = "SbatLevel"  // Unicode variable name for the SBAT variable
-	shimName       = "Shim"       // Unicode variable name used for recording events when shim's vendor certificate is used for verification
 
 	secureBootPCR = 7 // Secure Boot Policy Measurements PCR
 
@@ -63,8 +57,6 @@ const (
 )
 
 var (
-	shimGuid = efi.MakeGUID(0x605dab50, 0xe046, 0x4300, 0xabb6, [...]uint8{0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23}) // SHIM_LOCK_GUID
-
 	efiVarsPath = "/sys/firmware/efi/efivars" // Default mount point for efivarfs
 )
 
@@ -84,67 +76,6 @@ const (
 	// https://github.com/rhboot/shim/commit/e3325f8100f5a14e0684ff80290e53975de1a5d9
 	shimVariableAuthorityEventsMatchSpec
 )
-
-type shimImageHandle struct {
-	pefile *pe.File
-}
-
-func newShimImageHandle(r io.ReaderAt) (*shimImageHandle, error) {
-	pefile, err := pe.NewFile(r)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot decode PE binary: %w", err)
-	}
-
-	return &shimImageHandle{pefile}, nil
-}
-
-func (s *shimImageHandle) openSection(name string) *pe.Section {
-	return s.pefile.Section(name)
-}
-
-// readVendorCert obtains the DER encoded built-in vendor certificate from this shim image.
-func (s *shimImageHandle) readVendorCert() ([]byte, error) {
-	// Shim's vendor certificate is in the .vendor_cert section.
-	section := s.openSection(".vendor_cert")
-	if section == nil {
-		return nil, errors.New("missing .vendor_cert section")
-	}
-
-	// Shim's .vendor_cert section starts with a cert_table struct (see shim.c in the shim source)
-	sr := io.NewSectionReader(section, 0, 16)
-
-	// Read vendor_cert_size field
-	var certSize uint32
-	if err := binary.Read(sr, binary.LittleEndian, &certSize); err != nil {
-		return nil, xerrors.Errorf("cannot read vendor cert size: %w", err)
-	}
-
-	// A size of zero is valid
-	if certSize == 0 {
-		return nil, nil
-	}
-
-	// Skip vendor_dbx_size
-	sr.Seek(4, io.SeekCurrent)
-
-	// Read vendor_cert_offset
-	var certOffset uint32
-	if err := binary.Read(sr, binary.LittleEndian, &certOffset); err != nil {
-		return nil, xerrors.Errorf("cannot read vendor cert offset: %w", err)
-	}
-
-	sr = io.NewSectionReader(section, int64(certOffset), int64(certSize))
-	certData, err := ioutil.ReadAll(sr)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot read vendor cert data: %w", err)
-	}
-
-	return certData, nil
-}
-
-func (s *shimImageHandle) hasSbatSection() bool {
-	return s.openSection(".sbat") != nil
-}
 
 type sigDbUpdateQuirkMode int
 
@@ -336,12 +267,8 @@ func isVerificationEvent(event *tcglog.Event) bool {
 }
 
 // isShimExecutable determines if the EFI executable read from r looks like a valid shim binary (ie, it has a ".vendor_cert" section.
-func isShimExecutable(r io.ReaderAt) (bool, error) {
-	pefile, err := pe.NewFile(r)
-	if err != nil {
-		return false, xerrors.Errorf("cannot decode PE binary: %w", err)
-	}
-	return pefile.Section(".vendor_cert") != nil, nil
+func isShimExecutable(image peImageHandle) bool {
+	return image.HasSection(".vendor_cert")
 }
 
 // SecureBootPolicyProfileParams provide the arguments to AddSecureBootPolicyProfile.
@@ -568,7 +495,7 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, s
 
 // processShimExecutableLaunch updates the context in this branch with the supplied shim vendor certificate so that it can be used
 // later on when computing verification events in secureBootPolicyGenBranch.computeAndExtendVerificationMeasurement.
-func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byte, flags shimFlags) {
+func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorDb efi.SignatureDatabase, flags shimFlags) {
 	if b.profile == nil {
 		// This branch is going to be excluded because it is unbootable.
 		return
@@ -604,13 +531,13 @@ func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byt
 		//   Because shim will overwrite the SBAT variable if its built-in
 		//   payload is newer, booting with one shim may affect the PCR values
 		//   associated with a branch that has a different shim.
-		b.computeAndExtendVariableMeasurement(shimGuid, sbatName, []byte("sbat,1,2021030218\n"))
+		b.computeAndExtendVariableMeasurement(shimGuid, shimSbatLevelName, []byte("sbat,1,2021030218\n"))
 	}
 
-	b.dbSet.shimDb = &secureBootDb{variableName: shimGuid, unicodeName: shimName}
-	if vendorCert != nil {
-		b.dbSet.shimDb.db = efi.SignatureDatabase{&efi.SignatureList{Type: efi.CertX509Guid, Signatures: []*efi.SignatureData{{Data: vendorCert}}}}
-	}
+	b.dbSet.shimDb = &secureBootDb{
+		unicodeName:  shimName,
+		variableName: shimGuid,
+		db:           vendorDb}
 	b.shimVerificationEvents = nil
 	b.shimFlags = flags
 }
@@ -755,63 +682,10 @@ func (e *sbLoadEventAndBranches) branch(activity ImageLoadActivity) *sbLoadEvent
 // source of that certificate needs to be determined. If the image is not signed with an authority that is trusted by a CA
 // certificate for a particular branch, then that branch will be marked as unbootable and it will be omitted from the final PCR
 // profile.
-func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(branches []*secureBootPolicyGenBranch, r io.ReaderAt, source ImageLoadEventSource) error {
-	pefile, err := pe.NewFile(r)
+func (g *secureBootPolicyGen) computeAndExtendVerificationMeasurement(branches []*secureBootPolicyGenBranch, image peImageHandle, source ImageLoadEventSource) error {
+	sigs, err := image.SecureBootSignatures()
 	if err != nil {
-		return xerrors.Errorf("cannot decode PE binary: %w", err)
-	}
-
-	// Obtain security directory entry from optional header
-	var dd []pe.DataDirectory
-	switch oh := pefile.OptionalHeader.(type) {
-	case *pe.OptionalHeader32:
-		dd = oh.DataDirectory[0:oh.NumberOfRvaAndSizes]
-	case *pe.OptionalHeader64:
-		dd = oh.DataDirectory[0:oh.NumberOfRvaAndSizes]
-	default:
-		return errors.New("cannot obtain security directory entry from PE binary: no optional header")
-	}
-
-	if len(dd) <= certTableIndex {
-		return errors.New("cannot obtain security directory entry from PE binary: invalid number of data directories")
-	}
-
-	// Create a reader for the security directory entry, which points to a WIN_CERTIFICATE struct
-	certReader := io.NewSectionReader(r, int64(dd[certTableIndex].VirtualAddress), int64(dd[certTableIndex].Size))
-
-	// Binaries can have multiple signers - this is achieved using multiple single-signed Authenticode signatures - see section 32.5.3.3
-	// ("Secure Boot and Driver Signing - UEFI Image Validation - Signature Database Update - Authorization Process") of the UEFI
-	// Specification, version 2.8.
-	var sigs []*efi.WinCertificateAuthenticode
-
-Outer:
-	for {
-		// Signatures in this section are 8-byte aligned - see the PE spec:
-		// https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-attribute-certificate-table-image-only
-		off, _ := certReader.Seek(0, io.SeekCurrent)
-		alignSize := (8 - (off & 7)) % 8
-		certReader.Seek(alignSize, io.SeekCurrent)
-
-		c, err := efi.ReadWinCertificate(certReader)
-		switch {
-		case xerrors.Is(err, io.EOF):
-			break Outer
-		case err != nil:
-			return xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry of PE binary: %w", err)
-		}
-
-		sig, ok := c.(*efi.WinCertificateAuthenticode)
-		if !ok {
-			return errors.New("unexpected WIN_CERTIFICATE type: not an Authenticode signature")
-		}
-
-		// Reject any signature with a digest algorithm other than SHA256, as that's the only algorithm used for binaries we're
-		// expected to support, and therefore required by the UEFI implementation.
-		if sig.DigestAlgorithm() != crypto.SHA256 {
-			return errors.New("signature has unexpected digest algorithm")
-		}
-
-		sigs = append(sigs, sig)
+		return xerrors.Errorf("cannot obtain secure boot signatures: %w", err)
 	}
 
 	if len(sigs) == 0 {
@@ -830,18 +704,21 @@ Outer:
 // processShimExecutableLaunch extracts the vendor certificate from the shim executable read from r, and then updates the specified
 // branches to contain a reference to the vendor certificate so that it can be used later on when computing verification events in
 // secureBootPolicyGen.computeAndExtendVerificationMeasurement for images that are authenticated by shim.
-func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBootPolicyGenBranch, shim *shimImageHandle) error {
+func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBootPolicyGenBranch, shim shimImageHandle) error {
 	// Extract this shim's vendor cert
-	vendorCert, err := shim.readVendorCert()
+	db, format, err := shim.ReadVendorDB()
 	if err != nil {
 		return xerrors.Errorf("cannot extract vendor certificate: %w", err)
+	}
+	if len(db) > 0 && format != shimVendorCertIsX509 {
+		return errors.New("unsupported .vendor_cert section format")
 	}
 
 	var flags shimFlags
 
 	// Check if this shim has a .sbat section. We use this to make some assumptions
 	// about shim's behaviour below.
-	hasSbatSection := shim.hasSbatSection()
+	hasSbatSection := shim.HasSbatSection()
 
 	if hasSbatSection {
 		// If this shim has a .sbat section, assume it also does SBAT verification.
@@ -858,7 +735,7 @@ func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBoot
 	}
 
 	for _, b := range branches {
-		b.processShimExecutableLaunch(vendorCert, flags)
+		b.processShimExecutableLaunch(db, flags)
 	}
 
 	return nil
@@ -868,16 +745,13 @@ func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBoot
 // If the image load corresponds to shim, then some additional processing is performed to extract the included vendor certificate
 // (see secureBootPolicyGen.processShimExecutableLaunch).
 func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGenBranch, activity ImageLoadActivity) error {
-	r, err := activity.source().Open()
+	image, err := openPeImage(activity.source())
 	if err != nil {
-		return xerrors.Errorf("cannot open image: %w", err)
+		return err
 	}
-	defer r.Close()
+	defer image.Close()
 
-	isShim, err := isShimExecutable(r)
-	if err != nil {
-		return xerrors.Errorf("cannot determine image type: %w", err)
-	}
+	isShim := isShimExecutable(image)
 
 	var source ImageLoadEventSource
 	params := activity.params().Resolve(new(loadParams))
@@ -886,7 +760,7 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 	}
 	source = params[0].Source
 
-	if err := g.computeAndExtendVerificationMeasurement(branches, r, source); err != nil {
+	if err := g.computeAndExtendVerificationMeasurement(branches, image, source); err != nil {
 		return xerrors.Errorf("cannot compute load verification event: %w", err)
 	}
 
@@ -894,10 +768,7 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 		return nil
 	}
 
-	shim, err := newShimImageHandle(r)
-	if err != nil {
-		return xerrors.Errorf("cannot create handle for shim image: %w", err)
-	}
+	shim := newShimImageHandle(image)
 
 	if err := g.processShimExecutableLaunch(branches, shim); err != nil {
 		return xerrors.Errorf("cannot process shim executable: %w", err)

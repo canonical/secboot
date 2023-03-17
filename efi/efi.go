@@ -21,6 +21,4 @@ package efi
 
 const (
 	bootManagerCodePCR = 4 // Boot Manager Code and Boot Attempts PCR
-
-	certTableIndex = 4 // Index of the Certificate Table entry in the Data Directory of a PE image optional header
 )

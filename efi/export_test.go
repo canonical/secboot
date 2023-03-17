@@ -26,30 +26,42 @@ import (
 
 // Export constants for testing
 const (
+	ShimSbatPolicyLatest                  = shimSbatPolicyLatest
+	ShimSbatPolicyPrevious                = shimSbatPolicyPrevious
+	ShimVendorCertIsX509                  = shimVendorCertIsX509
+	ShimVendorCertIsDb                    = shimVendorCertIsDb
 	SigDbUpdateQuirkModeNone              = sigDbUpdateQuirkModeNone
 	SigDbUpdateQuirkModeDedupIgnoresOwner = sigDbUpdateQuirkModeDedupIgnoresOwner
 )
 
 // Export variables and unexported functions for testing
 var (
-	ComputeDbUpdate      = computeDbUpdate
-	DefaultEnv           = defaultEnv
-	NewShimImageHandle   = newShimImageHandle
-	NewRootVarsCollector = newRootVarsCollector
+	ComputeDbUpdate           = computeDbUpdate
+	DefaultEnv                = defaultEnv
+	MustParseShimVersion      = mustParseShimVersion
+	NewestSbatLevel           = newestSbatLevel
+	NewShimImageHandle        = newShimImageHandle
+	NewRootVarsCollector      = newRootVarsCollector
+	OpenPeImage               = openPeImage
+	ParseShimVersion          = parseShimVersion
+	ParseShimVersionDataIdent = parseShimVersionDataIdent
+	ReadShimSbatPolicy        = readShimSbatPolicy
+	ShimGuid                  = shimGuid
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
 type ImageLoadParamsSet = imageLoadParamsSet
 type LoadParams = loadParams
+type PeImageHandle = peImageHandle
 type RootVarReaderKey = rootVarReaderKey
+type SbatComponent = sbatComponent
 
 type ShimImageHandle = shimImageHandle
-
-func (s *ShimImageHandle) ReadVendorCert() ([]byte, error) {
-	return s.readVendorCert()
-}
-
+type ShimSbatLevel = shimSbatLevel
+type ShimSbatPolicy = shimSbatPolicy
+type ShimVendorCertFormat = shimVendorCertFormat
+type ShimVersion = shimVersion
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
 type VarBranch = varBranch
 

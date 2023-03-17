@@ -22,7 +22,6 @@ package efi_test
 import (
 	"bytes"
 	"crypto"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -42,60 +41,6 @@ import (
 type securebootPolicySuite struct{}
 
 var _ = Suite(&securebootPolicySuite{})
-
-type testReadShimVendorCertData struct {
-	path     string
-	errMatch string
-	expected string
-}
-
-func (s *securebootPolicySuite) testReadShimVendorCert(c *C, data *testReadShimVendorCertData) {
-	if runtime.GOARCH != "amd64" {
-		c.Skip("unsupported architecture")
-	}
-
-	f, err := os.Open(data.path)
-	c.Assert(err, IsNil)
-	defer f.Close()
-
-	shim, err := NewShimImageHandle(f)
-	c.Assert(err, IsNil)
-
-	cert, err := shim.ReadVendorCert()
-	if data.errMatch != "" {
-		c.Check(err, ErrorMatches, data.errMatch)
-		c.Check(cert, IsNil)
-	} else {
-		c.Check(err, IsNil)
-		if data.expected != "" {
-			expected, err := ioutil.ReadFile(data.expected)
-			c.Check(err, IsNil)
-			c.Check(cert, DeepEquals, expected)
-		} else {
-			c.Check(cert, IsNil)
-		}
-	}
-}
-
-func (s *securebootPolicySuite) TestReadShimVendorCert(c *C) {
-	s.testReadShimVendorCert(c, &testReadShimVendorCertData{
-		path:     filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1"),
-		expected: "testdata/TestShimVendorCA.cer",
-	})
-}
-
-func (s *securebootPolicySuite) TestReadShimVendorCertEmpty(c *C) {
-	s.testReadShimVendorCert(c, &testReadShimVendorCertData{
-		path: filepath.Join("testdata", runtime.GOARCH, "mockshim_no_vendor_cert.efi.signed.1.1.1"),
-	})
-}
-
-func (s *securebootPolicySuite) TestReadShimVendorCertNotShim(c *C) {
-	s.testReadShimVendorCert(c, &testReadShimVendorCertData{
-		path:     filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"),
-		errMatch: "missing .vendor_cert section",
-	})
-}
 
 type testComputeDbUpdateData struct {
 	dir           string

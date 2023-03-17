@@ -23,6 +23,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	efi "github.com/canonical/go-efilib"
+
 	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
 )
