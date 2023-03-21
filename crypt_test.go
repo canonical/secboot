@@ -1933,7 +1933,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData16(c *C) {
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         key,
 		validAuxKey:      auxKey})
-	c.Check(stderr.String(), Equals, "secboot: Cannot read keydata from token default: cannot decode key data: invalid character 'o' in literal false (expecting 'a')\n")
+	c.Check(stderr.String(), Equals, "secboot: cannot read keydata from token default: cannot decode key data: invalid character 'o' in literal false (expecting 'a')\n")
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData17(c *C) {
@@ -1973,6 +1973,45 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData17(c *C) {
 		sourceDevicePath: "/dev/sda1",
 		model:            models[0],
 		activateSlots:    []int{0, 1},
+		validKey:         keys[1],
+		validAuxKey:      auxKeys[1]})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData18(c *C) {
+	// Test activation with invalid (containing an invalid key) externally provided key, and
+	// valid LUKS token.
+	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
+	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData[1].WriteAtomic(w), IsNil)
+
+	token := &luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenName:    "default",
+			TokenKeyslot: 0,
+		},
+		Data:     w.final.Bytes(),
+		Priority: 0}
+	s.addMockToken("/dev/sda1", token)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys[1:],
+		keyData:          []*KeyData{keyData[0]},
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		activateSlots:    []int{luks2.AnySlot, 0},
 		validKey:         keys[1],
 		validAuxKey:      auxKeys[1]})
 }

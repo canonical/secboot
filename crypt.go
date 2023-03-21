@@ -119,7 +119,7 @@ func (e *activateWithKeyDataError) Unwrap() error {
 	return e.err
 }
 
-type keyDataContext struct {
+type keyCandidate struct {
 	*KeyData
 	slot int
 	err  error
@@ -135,7 +135,7 @@ type activateWithKeyDataState struct {
 	kdf             KDF
 	passphraseTries int
 
-	keys []*keyDataContext
+	keys []*keyCandidate
 }
 
 func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
@@ -260,7 +260,7 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 	return false, passphraseErr
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*keyDataContext, authRequestor AuthRequestor, kdf KDF, passphraseTries int) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*keyCandidate, authRequestor AuthRequestor, kdf KDF, passphraseTries int) *activateWithKeyDataState {
 	return &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
@@ -440,14 +440,14 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 		return errors.New("nil kdf")
 	}
 
-	var keyContexts []*keyDataContext
+	var candidates []*keyCandidate
 	for _, key := range keys {
-		keyContexts = append(keyContexts, &keyDataContext{KeyData: key, slot: luks2.AnySlot})
+		candidates = append(candidates, &keyCandidate{KeyData: key, slot: luks2.AnySlot})
 	}
 
 	view, err := newLUKSView(sourceDevicePath, luks2.LockModeBlocking)
 	if err != nil {
-		fmt.Fprintf(osStderr, "secboot: Cannot obtain LUKS2 header view: %v\n", err)
+		fmt.Fprintf(osStderr, "secboot: cannot obtain LUKS2 header view: %v\n", err)
 	} else {
 		tokens := view.KeyDataTokensByPriority()
 		for _, token := range tokens {
@@ -461,15 +461,15 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 				Reader: bytes.NewReader(token.Data)}
 			kd, err := ReadKeyData(r)
 			if err != nil {
-				fmt.Fprintf(osStderr, "secboot: Cannot read keydata from token %s: %v\n", token.Name(), err)
+				fmt.Fprintf(osStderr, "secboot: cannot read keydata from token %s: %v\n", token.Name(), err)
 				continue
 			}
 
-			keyContexts = append(keyContexts, &keyDataContext{KeyData: kd, slot: token.Keyslots()[0]})
+			candidates = append(candidates, &keyCandidate{KeyData: kd, slot: token.Keyslots()[0]})
 		}
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, keyContexts, authRequestor, kdf, options.PassphraseTries)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, candidates, authRequestor, kdf, options.PassphraseTries)
 	success, err := s.run()
 	switch {
 	case success:

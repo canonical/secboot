@@ -41,7 +41,7 @@ func Activate(volumeName, sourceDevicePath string, key []byte, slot int) error {
 		"attach", volumeName, sourceDevicePath,
 		// read key from stdin
 		"/dev/stdin",
-		// hardcode luks, one try and specify the keyslot
+		// hardcode luks, one try and specify the keyslot to use
 		fmt.Sprintf("luks,keyslot=%d,tries=1", slot))
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
