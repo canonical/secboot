@@ -34,11 +34,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/canonical/go-efilib"
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/snapd/osutil"
-
 	"golang.org/x/xerrors"
 
 	"go.mozilla.org/pkcs7"
@@ -522,12 +521,12 @@ func (b *secureBootPolicyGenBranch) processDbMeasurementEvent(updates []*secureB
 //
 // Processing of the list of events stops after transitioning from pre-OS to OS-present. This transition is indicated when an
 // EV_SEPARATOR event has been measured to any of PCRs 0-6 AND PCR 7. This handles 2 different firmware behaviours:
-// - Some firmware implementations signal the transition by measuring EV_SEPARATOR events to PCRs 0-7 at the same time.
-// - Other firmware implementations measure a EV_SEPARATOR event to PCR 7 immediately after measuring the secure boot
-//   configuration, which is before the transition to OS-present. In this case, processing of pre-OS events in PCR 7
-//   must continue until an EV_SEPARATOR event is encountered in PCRs 0-6. On firmware implmentations that support
-//   secure boot verification of EFI drivers, these verification events will be recorded to PCR 7 after the
-//   EV_SEPARATOR event in PCR 7 but before the EV_SEPARATOR events in PCRs 0-6.
+//   - Some firmware implementations signal the transition by measuring EV_SEPARATOR events to PCRs 0-7 at the same time.
+//   - Other firmware implementations measure a EV_SEPARATOR event to PCR 7 immediately after measuring the secure boot
+//     configuration, which is before the transition to OS-present. In this case, processing of pre-OS events in PCR 7
+//     must continue until an EV_SEPARATOR event is encountered in PCRs 0-6. On firmware implmentations that support
+//     secure boot verification of EFI drivers, these verification events will be recorded to PCR 7 after the
+//     EV_SEPARATOR event in PCR 7 but before the EV_SEPARATOR events in PCRs 0-6.
 func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, sigDbUpdates []*secureBootDbUpdate, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
 	osPresent := false
 	seenSecureBootPCRSeparator := false
@@ -577,7 +576,7 @@ func (b *secureBootPolicyGenBranch) processPreOSEvents(events []*tcglog.Event, s
 
 // processShimExecutableLaunch updates the context in this branch with the supplied shim vendor certificate so that it can be used
 // later on when computing verification events in secureBootPolicyGenBranch.computeAndExtendVerificationMeasurement.
-func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byte, flags shimFlags) {
+func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byte, flags shimFlags, hostSbatLevel []byte) {
 	if b.profile == nil {
 		// This branch is going to be excluded because it is unbootable.
 		return
@@ -613,7 +612,7 @@ func (b *secureBootPolicyGenBranch) processShimExecutableLaunch(vendorCert []byt
 		//   Because shim will overwrite the SBAT variable if its built-in
 		//   payload is newer, booting with one shim may affect the PCR values
 		//   associated with a branch that has a different shim.
-		b.computeAndExtendVariableMeasurement(shimGuid, sbatName, []byte("sbat,1,2021030218\n"))
+		b.computeAndExtendVariableMeasurement(shimGuid, sbatName, hostSbatLevel)
 	}
 
 	b.dbSet.shimDb = &secureBootDb{variableName: shimGuid, unicodeName: shimName}
@@ -866,7 +865,7 @@ Outer:
 // processShimExecutableLaunch extracts the vendor certificate from the shim executable read from r, and then updates the specified
 // branches to contain a reference to the vendor certificate so that it can be used later on when computing verification events in
 // secureBootPolicyGen.computeAndExtendVerificationMeasurement for images that are authenticated by shim.
-func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBootPolicyGenBranch, shim *shimImageHandle) error {
+func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBootPolicyGenBranch, shim *shimImageHandle, hostSbatLevel []byte) error {
 	// Extract this shim's vendor cert
 	vendorCert, err := shim.readVendorCert()
 	if err != nil {
@@ -894,7 +893,7 @@ func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBoot
 	}
 
 	for _, b := range branches {
-		b.processShimExecutableLaunch(vendorCert, flags)
+		b.processShimExecutableLaunch(vendorCert, flags, hostSbatLevel)
 	}
 
 	return nil
@@ -903,7 +902,7 @@ func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBoot
 // processOSLoadEvent computes a measurement associated with the supplied image load event and extends this to the specified branches.
 // If the image load corresponds to shim, then some additional processing is performed to extract the included vendor certificate
 // (see secureBootPolicyGen.processShimExecutableLaunch).
-func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGenBranch, event *ImageLoadEvent) error {
+func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGenBranch, event *ImageLoadEvent, hostSbatLevel []byte) error {
 	r, err := event.Image.Open()
 	if err != nil {
 		return xerrors.Errorf("cannot open image: %w", err)
@@ -928,7 +927,7 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 		return xerrors.Errorf("cannot create handle for shim image: %w", err)
 	}
 
-	if err := g.processShimExecutableLaunch(branches, shim); err != nil {
+	if err := g.processShimExecutableLaunch(branches, shim, hostSbatLevel); err != nil {
 		return xerrors.Errorf("cannot process shim executable: %w", err)
 	}
 
@@ -936,7 +935,7 @@ func (g *secureBootPolicyGen) processOSLoadEvent(branches []*secureBootPolicyGen
 }
 
 // run takes a TCG event log and builds a PCR profile from the supplied configuration (see SecureBootPolicyProfileParams)
-func (g *secureBootPolicyGen) run(profile *secboot_tpm2.PCRProtectionProfile, sigDbUpdateQuirkMode sigDbUpdateQuirkMode) error {
+func (g *secureBootPolicyGen) run(profile *secboot_tpm2.PCRProtectionProfile, sigDbUpdateQuirkMode sigDbUpdateQuirkMode, hostSbatLevel []byte) error {
 	// Process the pre-OS events for the current signature DB and then with each pending update applied
 	// in turn.
 	var roots []*secureBootPolicyGenBranch
@@ -971,7 +970,7 @@ func (g *secureBootPolicyGen) run(profile *secboot_tpm2.PCRProtectionProfile, si
 		e := loadEvents[0]
 		loadEvents = loadEvents[1:]
 
-		if err := g.processOSLoadEvent(e.branches, e.event); err != nil {
+		if err := g.processOSLoadEvent(e.branches, e.event, hostSbatLevel); err != nil {
 			return xerrors.Errorf("cannot process OS load event for %s: %w", e.event.Image, err)
 		}
 
@@ -1178,16 +1177,24 @@ func AddSecureBootPolicyProfile(profile *secboot_tpm2.PCRProtectionProfile, para
 
 	gen := &secureBootPolicyGen{params.PCRAlgorithm, env, params.LoadSequences, log.Events, sigDbUpdates}
 
-	profile1 := secboot_tpm2.NewPCRProtectionProfile()
-	if err := gen.run(profile1, sigDbUpdateQuirkModeNone); err != nil {
-		return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
+	var profiles []*secboot_tpm2.PCRProtectionProfile
+	// XXX: Work around the lack of support for handling SBAT revocations by just generating
+	// a profile for the current values under the MS UEFI CA (minus the latest, which requires
+	// an explicit opt-in via SbatPolicy).
+	for _, level := range [][]byte{[]byte("sbat,1,2021030218\n"), []byte("sbat,1,2022052400\n,grub,2\n")} {
+		profile1 := secboot_tpm2.NewPCRProtectionProfile()
+		if err := gen.run(profile1, sigDbUpdateQuirkModeNone, level); err != nil {
+			return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
+		}
+
+		profile2 := secboot_tpm2.NewPCRProtectionProfile()
+		if err := gen.run(profile2, sigDbUpdateQuirkModeDedupIgnoresOwner, level); err != nil {
+			return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
+		}
+
+		profiles = append(profiles, profile1, profile2)
 	}
 
-	profile2 := secboot_tpm2.NewPCRProtectionProfile()
-	if err := gen.run(profile2, sigDbUpdateQuirkModeDedupIgnoresOwner); err != nil {
-		return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
-	}
-
-	profile.AddProfileOR(profile1, profile2)
+	profile.AddProfileOR(profiles...)
 	return nil
 }
