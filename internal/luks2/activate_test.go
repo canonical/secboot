@@ -84,6 +84,7 @@ var _ = Suite(&activateSuite{})
 type testActivateData struct {
 	volumeName       string
 	sourceDevicePath string
+	slot             int
 }
 
 func (s *activateSuite) testActivate(c *C, data *testActivateData) {
@@ -91,29 +92,39 @@ func (s *activateSuite) testActivate(c *C, data *testActivateData) {
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	c.Check(Activate(data.volumeName, data.sourceDevicePath, key), IsNil)
+	c.Check(Activate(data.volumeName, data.sourceDevicePath, key, data.slot), IsNil)
 
 	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
 	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
-	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath, "/dev/stdin", "luks,tries=1"})
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath, "/dev/stdin", fmt.Sprintf("luks,keyslot=%d,tries=1", data.slot)})
 }
 
-func (s *activateSuite) TestActivate1(c *C) {
+func (s *activateSuite) TestActivate(c *C) {
 	s.testActivate(c, &testActivateData{
 		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1"})
+		sourceDevicePath: "/dev/sda1",
+		slot:             AnySlot})
 }
 
-func (s *activateSuite) TestActivate2(c *C) {
+func (s *activateSuite) TestActivateDifferentName(c *C) {
 	s.testActivate(c, &testActivateData{
 		volumeName:       "test",
-		sourceDevicePath: "/dev/sda1"})
+		sourceDevicePath: "/dev/sda1",
+		slot:             AnySlot})
 }
 
-func (s *activateSuite) TestActivate3(c *C) {
+func (s *activateSuite) TestActivateDifferentDevice(c *C) {
 	s.testActivate(c, &testActivateData{
 		volumeName:       "data",
-		sourceDevicePath: "/dev/vda2"})
+		sourceDevicePath: "/dev/vda2",
+		slot:             AnySlot})
+}
+
+func (s *activateSuite) TestActivateDifferentSlot(c *C) {
+	s.testActivate(c, &testActivateData{
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		slot:             2})
 }
 
 func (s *activateSuite) TestActivateWrongKey(c *C) {
@@ -121,12 +132,11 @@ func (s *activateSuite) TestActivateWrongKey(c *C) {
 	rand.Read(key)
 	s.addMockKeyslot(c, key)
 
-	c.Check(Activate("data", "/dev/sda1", nil), ErrorMatches, `systemd-cryptsetup failed with: exit status 5`)
+	c.Check(Activate("data", "/dev/sda1", nil, AnySlot), ErrorMatches, `systemd-cryptsetup failed with: exit status 5`)
 
 	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
 	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
-	c.Check(s.mockSdCryptsetup.Calls()[0][0:4], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1"})
-	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1", "/dev/stdin", "luks,tries=1"})
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1", "/dev/stdin", "luks,keyslot=-1,tries=1"})
 }
 
 func (s *activateSuite) TestDeactivate(c *C) {

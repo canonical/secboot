@@ -20,6 +20,8 @@
 package secboot
 
 import (
+	"io"
+
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 )
@@ -28,7 +30,7 @@ func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, erro
 	return o.deriveCostParams(keyLen, kdf)
 }
 
-func MockLUKS2Activate(fn func(string, string, []byte) error) (restore func()) {
+func MockLUKS2Activate(fn func(string, string, []byte, int) error) (restore func()) {
 	origActivate := luks2Activate
 	luks2Activate = fn
 	return func() {
@@ -107,5 +109,13 @@ func MockRuntimeNumCPU(n int) (restore func()) {
 	}
 	return func() {
 		runtimeNumCPU = orig
+	}
+}
+
+func MockStderr(w io.Writer) (restore func()) {
+	orig := osStderr
+	osStderr = w
+	return func() {
+		osStderr = orig
 	}
 }
