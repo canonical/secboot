@@ -330,11 +330,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileClassic(c *C) {
 					7: testutil.DecodeHexString(c, "84c3cf3c3ca91234fda780141b06af2e32bb4c6fc809216f2c33d25b84155796"),
 				},
 			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "6ca93773f8891854a31d507d6e18b805ced5c8baf630b69712c7add1619f3ab1"),
-				},
-			},
 		},
 	})
 }
@@ -429,11 +424,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileUC20(c *C) {
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "84c3cf3c3ca91234fda780141b06af2e32bb4c6fc809216f2c33d25b84155796"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "6ca93773f8891854a31d507d6e18b805ced5c8baf630b69712c7add1619f3ab1"),
 				},
 			},
 		},
@@ -597,11 +587,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAllAuthenticatedWi
 					7: testutil.DecodeHexString(c, "1d34d3df18188302a2e514525dd0ca0e84641bc4dc2baee3f390b37b41898f8a"),
 				},
 			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "90ac2a3bd5d8b53f5dafc070c77f36854433dadb840cb45f949b5e109dbb1345"),
-				},
-			},
 		},
 	})
 }
@@ -643,11 +628,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticatedWithD
 					7: testutil.DecodeHexString(c, "2377917b728cb380570fab710a463401c1f721bfafdc23ac3e71abb4526912a3"),
 				},
 			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "16ad725e09da134de6c7a2619c37bf441729b4d56fc018a646340660051e7369"),
-				},
-			},
 		},
 	})
 }
@@ -681,11 +661,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticateWithDb
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "98f2452139898691c56bebe24aa8471990f7e849906e352ba95710f1f83710df"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "8382f098727db8d0ce989030a0831f721f604367433c0595f7cbe3c0ba4b8a7b"),
 				},
 			},
 		},
@@ -724,11 +699,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticateWithDb
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "98f2452139898691c56bebe24aa8471990f7e849906e352ba95710f1f83710df"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "8382f098727db8d0ce989030a0831f721f604367433c0595f7cbe3c0ba4b8a7b"),
 				},
 			},
 		},
@@ -810,11 +780,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithMultipleDbCert
 					7: testutil.DecodeHexString(c, "7172a37992a5623a59c4367d6df5626045d984b1403c419409cd68686acd7173"),
 				},
 			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "387125b860cb01c982bac65988c3ef6052190f827ff632b67e2620bec7130335"),
-				},
-			},
 		},
 	})
 }
@@ -856,16 +821,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithDbxUpdate(c *C
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "fb3338118ad848a711fca6409d6f374759393c4b1cb111b87f916265ba22b38b"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "387125b860cb01c982bac65988c3ef6052190f827ff632b67e2620bec7130335"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "d713ef9cb298bbd6710ed7e72b24d59f64bc044ccc78303e5e3304087801119e"),
 				},
 			},
 		},
@@ -917,21 +872,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithTwoDbxUpdates(
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "6c6582f485b94c52b146ed29c6d15059b8cc6e4923f348c20987dd9b68b70cf0"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "387125b860cb01c982bac65988c3ef6052190f827ff632b67e2620bec7130335"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "d713ef9cb298bbd6710ed7e72b24d59f64bc044ccc78303e5e3304087801119e"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "291d36bce91c18a0fc921d1fa2c82ca73fe4f1736ebd43bf57d200807f36dd3c"),
 				},
 			},
 		},
@@ -986,21 +926,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileTestDbxUpdateDedup
 					7: testutil.DecodeHexString(c, "d3e52bc6fda61d8e8b5b5c57bf4bdf96802d2a0e2d3507ff595102dfe6963f6b"),
 				},
 			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "d713ef9cb298bbd6710ed7e72b24d59f64bc044ccc78303e5e3304087801119e"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "6e32fd5f9c133d662da4ffc6b199f6d2531631de01f209e8bf224d7a339d422f"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "5df6ff60699e7007e2593f0a5fb32560a199d81667b526310fe7cca12bfeea47"),
-				},
-			},
 		},
 	})
 }
@@ -1037,11 +962,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileDellEmbeddedBoxPC3
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "84c3cf3c3ca91234fda780141b06af2e32bb4c6fc809216f2c33d25b84155796"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "6ca93773f8891854a31d507d6e18b805ced5c8baf630b69712c7add1619f3ab1"),
 				},
 			},
 		},
@@ -1084,11 +1004,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileToInitialProfile(c
 					7: testutil.DecodeHexString(c, "84c3cf3c3ca91234fda780141b06af2e32bb4c6fc809216f2c33d25b84155796"),
 					8: testutil.DecodeHexString(c, "a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"),
 				},
-			}, {
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "6ca93773f8891854a31d507d6e18b805ced5c8baf630b69712c7add1619f3ab1"),
-					8: testutil.DecodeHexString(c, "a98b1d896c9383603b7923fffe230c9e4df24218eb84c90c5c758e63ce62843c"),
-				},
 			},
 		},
 	})
@@ -1126,11 +1041,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithCustomEnv(c *C
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "84c3cf3c3ca91234fda780141b06af2e32bb4c6fc809216f2c33d25b84155796"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "6ca93773f8891854a31d507d6e18b805ced5c8baf630b69712c7add1619f3ab1"),
 				},
 			},
 		},
@@ -1191,11 +1101,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileUpgrageToSBATShim(
 					7: testutil.DecodeHexString(c, "84c3cf3c3ca91234fda780141b06af2e32bb4c6fc809216f2c33d25b84155796"),
 				},
 			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "6ca93773f8891854a31d507d6e18b805ced5c8baf630b69712c7add1619f3ab1"),
-				},
-			},
 		},
 	})
 }
@@ -1251,16 +1156,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileDbCARotation(c *C)
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "8ffc5c808206b903807f1a3da88251bd376119d7e4ea214042c262e315e75812"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "9b4ad82e91de23f6ecfbb590c17523e57fcd2cd655ee71847266a65a0c05db5c"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "99207170d836afceb8b1220797a66e76c92e77230aa73a7ec1cd023513e7e581"),
 				},
 			},
 		},
@@ -1326,21 +1221,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileDbCARotation2(c *C
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "8ffc5c808206b903807f1a3da88251bd376119d7e4ea214042c262e315e75812"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "6ca93773f8891854a31d507d6e18b805ced5c8baf630b69712c7add1619f3ab1"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "9b4ad82e91de23f6ecfbb590c17523e57fcd2cd655ee71847266a65a0c05db5c"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "99207170d836afceb8b1220797a66e76c92e77230aa73a7ec1cd023513e7e581"),
 				},
 			},
 		},
@@ -1415,26 +1295,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileDbCARotation3(c *C
 					7: testutil.DecodeHexString(c, "662d38c6a5938245d08de02b57fe2319fcdfd39dcb5c336bc5a6fe80287d763e"),
 				},
 			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "361f4a21fa9476e1bc26b033bc2b3b9f83085cbf1d16eb0c1ee7a1be269721df"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "a00ed24c827749072e6246857aea498e27c812deb8b72d0f5ab4f37d0bad80b2"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "a32d934d41166f28b4827e0a8a9ab8abe3d5b680701bf500ec240d348a972bb0"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "d139099544c76f5167b60eeea028811a63b6a36a12a0392281be8fd20fe6df27"),
-				},
-			},
 		},
 	})
 }
@@ -1468,11 +1328,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShimBaseline1(c
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "3f2a3ec3dc632b253644bac36ec831bc8828845ec7837f0caf5a81e182bf42ce"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "4a408a7ed6d183dbc7d0518124729c8011c1bd62ff2551559feeb3b0776a345f"),
 				},
 			},
 		},
@@ -1510,11 +1365,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShimBaseline2(c
 					7: testutil.DecodeHexString(c, "184f3b0914408091fd62d16f0dc6a97f420881ae1e70c5aca4fdfb5547cba856"),
 				},
 			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "4b29d897932d527079c567cf5cdf9279291330c5c31a269b490f479370dd34e2"),
-				},
-			},
 		},
 	})
 }
@@ -1548,11 +1398,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShimBaseline3(c
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "d8348aafadb44d32d77b78480c8f1f82a0bf39f80ce27e241aef73189294969f"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "dda0fe38c64be01f7200e71cacd4a2a5f812d113f3109ddc2d17c2a3d3e28311"),
 				},
 			},
 		},
@@ -1593,10 +1438,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShim1(c *C) {
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "3f2a3ec3dc632b253644bac36ec831bc8828845ec7837f0caf5a81e182bf42ce"),
 				},
-			}, {
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "4a408a7ed6d183dbc7d0518124729c8011c1bd62ff2551559feeb3b0776a345f"),
-				},
 			},
 		},
 	})
@@ -1634,11 +1475,6 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShim2(c *C) {
 			{
 				tpm2.HashAlgorithmSHA256: {
 					7: testutil.DecodeHexString(c, "d8348aafadb44d32d77b78480c8f1f82a0bf39f80ce27e241aef73189294969f"),
-				},
-			},
-			{
-				tpm2.HashAlgorithmSHA256: {
-					7: testutil.DecodeHexString(c, "dda0fe38c64be01f7200e71cacd4a2a5f812d113f3109ddc2d17c2a3d3e28311"),
 				},
 			},
 		},
