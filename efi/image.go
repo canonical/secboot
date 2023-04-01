@@ -103,10 +103,22 @@ func (p FileImage) Open() (ImageReader, error) {
 	return &fileImageReader{File: f, size: fi.Size()}, nil
 }
 
+// loadParams correspond to a set of parameters that apply to a single branch
+// in a PCR profile.
+type loadParams struct {
+	KernelCommandline string
+	SnapModel         secboot.SnapModel
+	Source            ImageLoadEventSource // XXX: This is temporary until efi/secureboot_policy.go has been ported to the new code
+}
+
 // ImageLoadParams provides one or more values for an external parameter that
 // is supplied to an image which is loaded during the boot process.
 type ImageLoadParams interface {
-	apply(params ...loadParams) []loadParams
+	// applyTo applies each of the parameters defined by this implementation to
+	// each of the supplied loadParams, returning a new list of loadParams. If
+	// there are n supplied initial loadParams and this implementation defines
+	// m new parameters, it will return n x m new loadParams.
+	applyTo(params ...loadParams) []loadParams
 }
 
 type kernelCommandlineParams []string
@@ -117,7 +129,7 @@ func KernelCommandlineParams(commandlines ...string) ImageLoadParams {
 	return kernelCommandlineParams(commandlines)
 }
 
-func (p kernelCommandlineParams) apply(params ...loadParams) []loadParams {
+func (p kernelCommandlineParams) applyTo(params ...loadParams) []loadParams {
 	var out []loadParams
 	for _, cmdline := range []string(p) {
 		p := make([]loadParams, len(params))
@@ -137,7 +149,7 @@ func SnapModelParams(models ...secboot.SnapModel) ImageLoadParams {
 	return snapModelParams(models)
 }
 
-func (p snapModelParams) apply(params ...loadParams) []loadParams {
+func (p snapModelParams) applyTo(params ...loadParams) []loadParams {
 	var out []loadParams
 	for _, model := range []secboot.SnapModel(p) {
 		p := make([]loadParams, len(params))
@@ -167,7 +179,7 @@ const (
 	Shim
 )
 
-func (s ImageLoadEventSource) apply(params ...loadParams) []loadParams {
+func (s ImageLoadEventSource) applyTo(params ...loadParams) []loadParams {
 	var out []loadParams
 	for _, param := range params {
 		param.Source = s
@@ -176,11 +188,21 @@ func (s ImageLoadEventSource) apply(params ...loadParams) []loadParams {
 	return out
 }
 
+type imageLoadParamsSet []ImageLoadParams
+
+func (s imageLoadParamsSet) Resolve(initial *loadParams) []loadParams {
+	params := []loadParams{*initial}
+	for _, p := range s {
+		params = p.applyTo(params...)
+	}
+	return params
+}
+
 // ImageLoadEvent corresponds to the execution of an image during the boot
 // process, before ExitBootServices.
 type ImageLoadEvent interface {
-	// Next specifies a set of images that are permitted to be executed by the
-	// image associated with this event.
+	// Next lets one specify a set of images that are permitted to be executed by the
+	// image associated with this event.`
 	Next(images ...ImageLoadEvent) ImageLoadEvent
 
 	source() Image
@@ -221,20 +243,4 @@ func (e *baseImageLoadEvent) next() []ImageLoadEvent {
 
 func (e *baseImageLoadEvent) params() imageLoadParamsSet {
 	return e.loadParams
-}
-
-type imageLoadParamsSet []ImageLoadParams
-
-func (s imageLoadParamsSet) Resolve(inherited *loadParams) []loadParams {
-	params := []loadParams{*inherited}
-	for _, p := range s {
-		params = p.apply(params...)
-	}
-	return params
-}
-
-type loadParams struct {
-	KernelCommandline string
-	SnapModel         secboot.SnapModel
-	Source            ImageLoadEventSource // XXX: This is temporary until efi/secureboot_policy.go has been ported to the new code
 }
