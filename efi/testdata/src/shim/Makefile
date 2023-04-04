@@ -19,6 +19,12 @@ CPPFLAGS += -DSHIM_VERSION=\"$(SHIM_VERSION)\" -DSHIM_COMMIT=\"$(SHIM_COMMIT)\"
 ifneq ($(origin VENDOR_CERT_FILE), undefined)
 	CPPFLAGS += -DVENDOR_CERT_FILE=\"$(VENDOR_CERT_FILE)\"
 endif
+ifneq ($(origin SBAT_VAR_PREVIOUS), undefined)
+	CPPFLAGS += -DSBAT_VAR_PREVIOUS=\"$(SBAT_VAR_PREVIOUS)\"
+endif
+ifneq ($(origin SBAT_VAR_LATEST), undefined)
+	CPPFLAGS += -DSBAT_VAR_LATEST=\"$(SBAT_VAR_LATEST)\"
+endif
 
 sbat.csv: $(TOPDIR)/sbat.csv.in
 	sed -e 's/%SHIM_VERSION%/$(SHIM_VERSION)/' $< > $@
@@ -33,6 +39,9 @@ OBJS    = main_$(ARCH).o cert.o data.o version.o
 ifneq ($(origin WITH_SBAT), undefined)
 	OBJS += sbat_data.o
 endif
+ifneq ($(origin WITH_SBATLEVEL), undefined)
+	OBJS += sbat_vars.o
+endif
 
 TARGET  = $(NAME).efi
 
@@ -42,4 +51,4 @@ $(NAME).so: $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
 %.efi: %.so
-	$(OBJCOPY) -j .text -j .data -j .reloc -j .vendor_cert -j .data.ident -j .sbat --target=efi-app-$(ARCH) $^ $@
+	$(OBJCOPY) -j .text -j .data -j .reloc -j .vendor_cert -j .data.ident -j .sbat -j .sbatlevel --target=efi-app-$(ARCH) $^ $@

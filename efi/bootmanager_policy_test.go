@@ -102,12 +102,12 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileClassic(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "5804639fea81fffdd24566225c22341e2fb2a0c1d89a4d3982eaf55ca23448ce"),
+					4: testutil.DecodeHexString(c, "7873bd0e3a396175ac9c2c7fbdce2ae5b5e1f356962d990f9918a14c985bc144"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "a6129cb7017c846a8f082560516a796d4134f3136f97ca450183e0747c3bb664"),
+					4: testutil.DecodeHexString(c, "aa6fcc43221e5a8a73af735c221e8a38762a35ba8c808fdc71ee8ec60cc7f44f"),
 				},
 			},
 		},
@@ -138,22 +138,22 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileUC20(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "5804639fea81fffdd24566225c22341e2fb2a0c1d89a4d3982eaf55ca23448ce"),
+					4: testutil.DecodeHexString(c, "7873bd0e3a396175ac9c2c7fbdce2ae5b5e1f356962d990f9918a14c985bc144"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "a6129cb7017c846a8f082560516a796d4134f3136f97ca450183e0747c3bb664"),
+					4: testutil.DecodeHexString(c, "aa6fcc43221e5a8a73af735c221e8a38762a35ba8c808fdc71ee8ec60cc7f44f"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "9a56db0abdb377efe1e7a5bb771b5e0c0a19fce524a5f3cd9614d3d6be2c120c"),
+					4: testutil.DecodeHexString(c, "3906452c5ed57e15ceb3a810df6cec915f0e8980797e1e2f804cca88c2570343"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "fe678585e9e00443912c2fe91558ad1a5b8180d130a357a58c5920fe42cafe7b"),
+					4: testutil.DecodeHexString(c, "5ada03ca4d9aaa47d04b2294bb5e001ef901525d7ec25fe71645dfae16907c69"),
 				},
 			},
 		},
@@ -183,7 +183,7 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithInitialProfile(c *
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "5804639fea81fffdd24566225c22341e2fb2a0c1d89a4d3982eaf55ca23448ce"),
+					4: testutil.DecodeHexString(c, "7873bd0e3a396175ac9c2c7fbdce2ae5b5e1f356962d990f9918a14c985bc144"),
 					7: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar"),
 				},
 			},
@@ -214,12 +214,12 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileClassic2(c *C) {
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "5804639fea81fffdd24566225c22341e2fb2a0c1d89a4d3982eaf55ca23448ce"),
+					4: testutil.DecodeHexString(c, "7873bd0e3a396175ac9c2c7fbdce2ae5b5e1f356962d990f9918a14c985bc144"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "a6129cb7017c846a8f082560516a796d4134f3136f97ca450183e0747c3bb664"),
+					4: testutil.DecodeHexString(c, "aa6fcc43221e5a8a73af735c221e8a38762a35ba8c808fdc71ee8ec60cc7f44f"),
 				},
 			},
 		},
@@ -246,12 +246,12 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithMissingEFIActionEv
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "7d10327e46b3595b66625cf34ab842efd9cd93a311ab8d5d9fbabe5fc3bf4ed7"),
+					4: testutil.DecodeHexString(c, "59b491160b7d28ef07e83b186b2c5226613a7e80aa7de3191eef5968faeec8ef"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "48ee65c0c9bdabc592f0207dd36d4367ed76c29a740c29210c81edf99b25a85d"),
+					4: testutil.DecodeHexString(c, "6f09b49bcf9e59915634c3c45a9dd65caccb4857b403265ac0e3f7a7a9daf3aa"),
 				},
 			},
 		},
@@ -281,12 +281,12 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithCustomEFIEnv(c *C)
 		values: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "7d10327e46b3595b66625cf34ab842efd9cd93a311ab8d5d9fbabe5fc3bf4ed7"),
+					4: testutil.DecodeHexString(c, "59b491160b7d28ef07e83b186b2c5226613a7e80aa7de3191eef5968faeec8ef"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "48ee65c0c9bdabc592f0207dd36d4367ed76c29a740c29210c81edf99b25a85d"),
+					4: testutil.DecodeHexString(c, "6f09b49bcf9e59915634c3c45a9dd65caccb4857b403265ac0e3f7a7a9daf3aa"),
 				},
 			},
 		},
