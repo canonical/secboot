@@ -51,12 +51,12 @@ func (s *ShimImageHandle) ReadVendorCert() ([]byte, error) {
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
 
 // Helper functions
-func ImageLoadEventNextImages(event ImageLoadEvent) []ImageLoadEvent {
-	return event.next()
+func ImageLoadActivityNext(activity ImageLoadActivity) []ImageLoadActivity {
+	return activity.next()
 }
 
-func ImageLoadEventParams(event ImageLoadEvent) imageLoadParamsSet {
-	return event.params()
+func ImageLoadActivityParams(activity ImageLoadActivity) imageLoadParamsSet {
+	return activity.params()
 }
 
 func MockEFIVarsPath(path string) (restore func()) {

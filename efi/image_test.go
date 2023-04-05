@@ -123,10 +123,10 @@ func (s *imageSuite) TestFileImageOpen(c *C) {
 }
 
 func (s *imageSuite) TestKernelCommandlineParams(c *C) {
-	event := NewImageLoadEvent(nil, KernelCommandlineParams(
+	activity := NewImageLoadActivity(nil, KernelCommandlineParams(
 		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
 		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover"))
-	params := ImageLoadEventParams(event).Resolve(new(LoadParams))
+	params := ImageLoadActivityParams(activity).Resolve(new(LoadParams))
 	c.Check(params, DeepEquals, []LoadParams{
 		{KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run"},
 		{KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover"}})
@@ -141,19 +141,19 @@ func (s *imageSuite) TestKernelCommandlineParamsInherited(c *C) {
 		"grade":        "secured",
 	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
 
-	event := NewImageLoadEvent(nil, KernelCommandlineParams(
+	activity := NewImageLoadActivity(nil, KernelCommandlineParams(
 		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover",
 		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run"))
-	params := ImageLoadEventParams(event).Resolve(&LoadParams{SnapModel: model})
+	params := ImageLoadActivityParams(activity).Resolve(&LoadParams{SnapModel: model})
 	c.Check(params, DeepEquals, []LoadParams{
 		{KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover", SnapModel: model},
 		{KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run", SnapModel: model}})
 }
 
 func (s *imageSuite) TestKernelCommandlineParamsOverride(c *C) {
-	event := NewImageLoadEvent(nil, KernelCommandlineParams(
+	activity := NewImageLoadActivity(nil, KernelCommandlineParams(
 		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run"))
-	params := ImageLoadEventParams(event).Resolve(&LoadParams{KernelCommandline: "foo"})
+	params := ImageLoadActivityParams(activity).Resolve(&LoadParams{KernelCommandline: "foo"})
 	c.Check(params, DeepEquals, []LoadParams{
 		{KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run"}})
 }
@@ -174,8 +174,8 @@ func (s *imageSuite) TestSnapModelParams(c *C) {
 			"model":        "other-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	event := NewImageLoadEvent(nil, SnapModelParams(models...))
-	params := ImageLoadEventParams(event).Resolve(new(LoadParams))
+	activity := NewImageLoadActivity(nil, SnapModelParams(models...))
+	params := ImageLoadActivityParams(activity).Resolve(new(LoadParams))
 	c.Check(params, DeepEquals, []LoadParams{{SnapModel: models[0]}, {SnapModel: models[1]}})
 }
 
@@ -195,8 +195,8 @@ func (s *imageSuite) TestSnapModelParamsInherited(c *C) {
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	event := NewImageLoadEvent(nil, SnapModelParams(models...))
-	params := ImageLoadEventParams(event).Resolve(&LoadParams{KernelCommandline: "foo"})
+	activity := NewImageLoadActivity(nil, SnapModelParams(models...))
+	params := ImageLoadActivityParams(activity).Resolve(&LoadParams{KernelCommandline: "foo"})
 	c.Check(params, DeepEquals, []LoadParams{
 		{KernelCommandline: "foo", SnapModel: models[0]},
 		{KernelCommandline: "foo", SnapModel: models[1]}})
@@ -210,8 +210,8 @@ func (s *imageSuite) TestSnapModelParamsOverride(c *C) {
 		"model":        "fake-model",
 		"grade":        "secured",
 	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
-	event := NewImageLoadEvent(nil, SnapModelParams(model))
-	params := ImageLoadEventParams(event).Resolve(&LoadParams{
+	activity := NewImageLoadActivity(nil, SnapModelParams(model))
+	params := ImageLoadActivityParams(activity).Resolve(&LoadParams{
 		SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
@@ -241,10 +241,10 @@ func (s *imageSuite) TestImageLoadParamSetResolveMultiple(c *C) {
 	cmdlines := []string{
 		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
 		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover"}
-	event := NewImageLoadEvent(nil,
+	activity := NewImageLoadActivity(nil,
 		KernelCommandlineParams(cmdlines...),
 		SnapModelParams(models...))
-	params := ImageLoadEventParams(event).Resolve(new(LoadParams))
+	params := ImageLoadActivityParams(activity).Resolve(new(LoadParams))
 	c.Check(params, DeepEquals, []LoadParams{
 		{KernelCommandline: cmdlines[0], SnapModel: models[0]},
 		{KernelCommandline: cmdlines[1], SnapModel: models[0]},
@@ -253,9 +253,9 @@ func (s *imageSuite) TestImageLoadParamSetResolveMultiple(c *C) {
 	})
 }
 
-func (s *imageSuite) TestImageLoadEventNext(c *C) {
-	events := []ImageLoadEvent{NewImageLoadEvent(nil), NewImageLoadEvent(nil)}
-	event := NewImageLoadEvent(nil)
-	c.Check(event.Next(events...), Equals, event)
-	c.Check(ImageLoadEventNextImages(event), DeepEquals, events)
+func (s *imageSuite) TestImageLoadActivityLoads(c *C) {
+	activities := []ImageLoadActivity{NewImageLoadActivity(nil), NewImageLoadActivity(nil)}
+	activity := NewImageLoadActivity(nil)
+	c.Check(activity.Loads(activities...), Equals, activity)
+	c.Check(ImageLoadActivityNext(activity), DeepEquals, activities)
 }

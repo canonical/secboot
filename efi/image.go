@@ -162,18 +162,18 @@ func (p snapModelParams) applyTo(params ...loadParams) []loadParams {
 	return out
 }
 
-// ImageLoadEventSource corresponds to the source of a ImageLoadEvent.
+// ImageLoadEventSource corresponds to the source of a ImageLoadActivity.
 // XXX: This exists temporarily until efi/secureboot_policy.go has been ported to the new
 // profile generation implementation.
 type ImageLoadEventSource int
 
 const (
-	// Firmware indicates that the source of a ImageLoadEvent was platform firmware, via the EFI_BOOT_SERVICES.LoadImage()
+	// Firmware indicates that the source of a ImageLoadActivity was platform firmware, via the EFI_BOOT_SERVICES.LoadImage()
 	// and EFI_BOOT_SERVICES.StartImage() functions, with the subsequently executed image being verified against the signatures
 	// in the EFI authorized signature database.
 	Firmware ImageLoadEventSource = iota
 
-	// Shim indicates that the source of a ImageLoadEvent was shim, without relying on EFI boot services for loading, verifying
+	// Shim indicates that the source of a ImageLoadActivity was shim, without relying on EFI boot services for loading, verifying
 	// and executing the subsequently executed image. The image is verified by shim against the signatures in the EFI authorized
 	// signature database, the MOK database or shim's built-in vendor certificate before being executed directly.
 	Shim
@@ -198,49 +198,52 @@ func (s imageLoadParamsSet) Resolve(initial *loadParams) []loadParams {
 	return params
 }
 
-// ImageLoadEvent corresponds to the execution of an image during the boot
-// process, before ExitBootServices.
-type ImageLoadEvent interface {
-	// Next lets one specify a set of images that are permitted to be executed by the
-	// image associated with this event.`
-	Next(images ...ImageLoadEvent) ImageLoadEvent
+// ImageLoadActivity corresponds to the execution of an image during the boot
+// process, before ExitBootServices. It is associated with an [Image] and an
+// optional number of [ImageLoadParams].
+type ImageLoadActivity interface {
+	// Loads lets one specify a set of images that are permitted to be executed by the
+	// image associated with this activity. The supplied images will inherit the
+	// parameters associated with this image unless they are overridden explicitly.
+	Loads(images ...ImageLoadActivity) ImageLoadActivity
 
 	source() Image
-	next() []ImageLoadEvent
+	next() []ImageLoadActivity
 	params() imageLoadParamsSet
 }
 
-// NewImageLoadEvent returns a new ImageLoadEvent for the specified image that will
+// NewImageLoadActivity returns a new ImageLoadActivity for the specified image that will
 // be executed during the boot process, before ExitBootServices. The caller can specify
 // optional parameters that will apply to the specified image and which will be inherited
-// by subsequent images (added by [ImageLoadEvent.Next]. The supplied parameters will
+// by subsequent images (added by [ImageLoadActivity.Loads]). The supplied parameters will
 // override any existing ones that would be inherited by this image. Parameters that
-// provide multiple values will automatically create branches in the profile.
-func NewImageLoadEvent(image Image, params ...ImageLoadParams) ImageLoadEvent {
-	return &baseImageLoadEvent{
+// provide multiple values will automatically create branches in the profile. If a parameter
+// type is supplied more than once, only the last supplied one will be used.
+func NewImageLoadActivity(image Image, params ...ImageLoadParams) ImageLoadActivity {
+	return &baseImageLoadActivity{
 		sourceImage: image,
 		loadParams:  params}
 }
 
-type baseImageLoadEvent struct {
+type baseImageLoadActivity struct {
 	sourceImage Image
-	nextImages  []ImageLoadEvent
+	nextImages  []ImageLoadActivity
 	loadParams  imageLoadParamsSet
 }
 
-func (e *baseImageLoadEvent) Next(images ...ImageLoadEvent) ImageLoadEvent {
+func (e *baseImageLoadActivity) Loads(images ...ImageLoadActivity) ImageLoadActivity {
 	e.nextImages = images
 	return e
 }
 
-func (e *baseImageLoadEvent) source() Image {
+func (e *baseImageLoadActivity) source() Image {
 	return e.sourceImage
 }
 
-func (e *baseImageLoadEvent) next() []ImageLoadEvent {
+func (e *baseImageLoadActivity) next() []ImageLoadActivity {
 	return e.nextImages
 }
 
-func (e *baseImageLoadEvent) params() imageLoadParamsSet {
+func (e *baseImageLoadActivity) params() imageLoadParamsSet {
 	return e.loadParams
 }
