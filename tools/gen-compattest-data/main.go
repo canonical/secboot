@@ -77,10 +77,10 @@ func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2
 
 	sbpParams := secboot_efi.SecureBootPolicyProfileParams{
 		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-		LoadSequences: []secboot_efi.ImageLoadEvent{
-			secboot_efi.NewImageLoadEvent(secboot_efi.FileImage("efi/testdata/mockshim1.efi.signed.1"), secboot_efi.Firmware).Next(
-				secboot_efi.NewImageLoadEvent(secboot_efi.FileImage("efi/testdata/mockgrub1.efi.signed.shim"), secboot_efi.Shim).Next(
-					secboot_efi.NewImageLoadEvent(secboot_efi.FileImage("efi/testdata/mockkernel1.efi.signed.shim"), secboot_efi.Shim),
+		LoadSequences: []secboot_efi.ImageLoadActivity{
+			secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockshim1.efi.signed.1"), secboot_efi.Firmware).Next(
+				secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockgrub1.efi.signed.shim"), secboot_efi.Shim).Next(
+					secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockkernel1.efi.signed.shim"), secboot_efi.Shim),
 				),
 			),
 		},
