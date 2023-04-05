@@ -9,11 +9,12 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       GOPATH: ${{ github.workspace }}
+      GO111MODULE: off
     steps:
-    - name: Set up Go 1.13
+    - name: Set up Go 1.18
       uses: actions/setup-go@v2
       with:
-        go-version: 1.13
+        go-version: 1.18
     - name: Checkout code
       uses: actions/checkout@v2
       with:
