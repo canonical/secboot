@@ -22,7 +22,7 @@ package efi
 import (
 	"errors"
 
-	"github.com/canonical/go-efilib"
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 
@@ -44,26 +44,26 @@ func computePeImageDigest(alg tpm2.HashAlgorithmId, image Image) (tpm2.Digest, e
 	return efi.ComputePeImageDigest(alg.GetHash(), r, r.Size())
 }
 
-// bmLoadEvent binds together a ImageLoadEvent and the branch that the event needs to be applied to.
+// bmLoadEvent binds together a ImageLoadActivity and the branch that the event needs to be applied to.
 type bmLoadEvent struct {
-	event  *ImageLoadEvent
-	branch *secboot_tpm2.PCRProtectionProfileBranch
+	activity ImageLoadActivity
+	branch   *secboot_tpm2.PCRProtectionProfileBranch
 }
 
-func newBmLoadEvents(branch *secboot_tpm2.PCRProtectionProfileBranch, events ...*ImageLoadEvent) (out []*bmLoadEvent) {
-	if len(events) == 0 {
+func newBmLoadEvents(branch *secboot_tpm2.PCRProtectionProfileBranch, activities ...ImageLoadActivity) (out []*bmLoadEvent) {
+	if len(activities) == 0 {
 		return nil
 	}
 
 	bp := branch.AddBranchPoint()
-	for _, event := range events {
-		out = append(out, &bmLoadEvent{event: event, branch: bp.AddBranch()})
+	for _, activity := range activities {
+		out = append(out, &bmLoadEvent{activity: activity, branch: bp.AddBranch()})
 	}
 	return out
 }
 
 func (e *bmLoadEvent) fork() []*bmLoadEvent {
-	return newBmLoadEvents(e.branch, e.event.Next...)
+	return newBmLoadEvents(e.branch, e.activity.next()...)
 }
 
 // BootManagerProfileParams provide the arguments to AddBootManagerProfile.
@@ -74,7 +74,7 @@ type BootManagerProfileParams struct {
 	PCRAlgorithm tpm2.HashAlgorithmId
 
 	// LoadSequences is a list of EFI image load sequences for which to compute PCR digests for.
-	LoadSequences []*ImageLoadEvent
+	LoadSequences []ImageLoadActivity
 
 	// Environment is an optional parameter that allows the caller to provide
 	// a custom EFI environment. If not set, the host's normal environment will
@@ -94,9 +94,9 @@ type BootManagerProfileParams struct {
 // possible to update these in a way that is atomic (if any of them are changed, a new PCR profile can only be generated after
 // performing a reboot).
 //
-// The sequences of binaries for which to generate a PCR profile for is supplied via the LoadSequences field of params. Note that
-// this function does not use the Source field of EFIImageLoadEvent. Each bootloader stage in each load sequence must perform a
-// measurement of any subsequent stage to PCR 4 in the same format as the events measured by the UEFI boot manager.
+// The sequences of binaries for which to generate a PCR profile for is supplied via the LoadSequences field of params. Each
+// bootloader stage in each load sequence must perform a measurement of any subsequent stage to PCR 4 in the same format as the
+// events measured by the UEFI boot manager.
 //
 // Section 2.3.4.5 of the "TCG PC Client Platform Firmware Profile Specification" specifies that EFI applications that load additional
 // pre-OS environment code must measure this to PCR 4 using the EV_COMPACT_HASH event type. This function does not support EFI
@@ -147,7 +147,7 @@ func AddBootManagerProfile(branch *secboot_tpm2.PCRProtectionProfileBranch, para
 		e := loadEvents[0]
 		loadEvents = loadEvents[1:]
 
-		digest, err := computePeImageDigest(params.PCRAlgorithm, e.event.Image)
+		digest, err := computePeImageDigest(params.PCRAlgorithm, e.activity.source())
 		if err != nil {
 			return err
 		}

@@ -90,23 +90,13 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileClassic(c *C) {
 		eventLogPath: "testdata/eventlog_sb.bin",
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*ImageLoadEvent{
-				{
-					Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
-					Next: []*ImageLoadEvent{
-						{
-							Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
-							Next: []*ImageLoadEvent{
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
-								},
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
-								},
-							},
-						},
-					},
-				},
+			LoadSequences: []ImageLoadActivity{
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1"))).Loads(
+					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1"))),
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1"))),
+					),
+				),
 			},
 		},
 		values: []tpm2.PCRValues{
@@ -132,34 +122,17 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileUC20(c *C) {
 		eventLogPath: "testdata/eventlog_sb.bin",
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*ImageLoadEvent{
-				{
-					Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
-					Next: []*ImageLoadEvent{
-						{
-							Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
-							Next: []*ImageLoadEvent{
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
-								},
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
-								},
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
-									Next: []*ImageLoadEvent{
-										{
-											Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
-										},
-										{
-											Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
-										},
-									},
-								},
-							},
-						},
-					},
-				},
+			LoadSequences: []ImageLoadActivity{
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1"))).Loads(
+					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1"))),
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1"))),
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
+							NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1"))),
+							NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1"))),
+						),
+					),
+				),
 			},
 		},
 		values: []tpm2.PCRValues{
@@ -199,20 +172,12 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithInitialProfile(c *
 			AddPCRValue(tpm2.HashAlgorithmSHA256, 7, tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar")),
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*ImageLoadEvent{
-				{
-					Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
-					Next: []*ImageLoadEvent{
-						{
-							Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
-							Next: []*ImageLoadEvent{
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
-								},
-							},
-						},
-					},
-				},
+			LoadSequences: []ImageLoadActivity{
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1"))).Loads(
+					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1"))),
+					),
+				),
 			},
 		},
 		values: []tpm2.PCRValues{
@@ -233,33 +198,17 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileClassic2(c *C) {
 		eventLogPath: "testdata/eventlog_sb.bin",
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*ImageLoadEvent{
-				{
-					Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
-					Next: []*ImageLoadEvent{
-						{
-							Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
-							Next: []*ImageLoadEvent{
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
-								},
-							},
-						},
-					},
-				},
-				{
-					Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
-					Next: []*ImageLoadEvent{
-						{
-							Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
-							Next: []*ImageLoadEvent{
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
-								},
-							},
-						},
-					},
-				},
+			LoadSequences: []ImageLoadActivity{
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1"))).Loads(
+					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1"))),
+					),
+				),
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1"))).Loads(
+					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1"))),
+					),
+				),
 			},
 		},
 		values: []tpm2.PCRValues{
@@ -285,23 +234,13 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithMissingEFIActionEv
 		eventLogPath: "testdata/eventlog_sb_no_efi_action.bin",
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*ImageLoadEvent{
-				{
-					Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
-					Next: []*ImageLoadEvent{
-						{
-							Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
-							Next: []*ImageLoadEvent{
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
-								},
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
-								},
-							},
-						},
-					},
-				},
+			LoadSequences: []ImageLoadActivity{
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1"))).Loads(
+					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1"))),
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1"))),
+					),
+				),
 			},
 		},
 		values: []tpm2.PCRValues{
@@ -329,23 +268,13 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithCustomEFIEnv(c *C)
 		eventLogPath: "testdata/eventlog_sb.bin",
 		params: &BootManagerProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-			LoadSequences: []*ImageLoadEvent{
-				{
-					Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")),
-					Next: []*ImageLoadEvent{
-						{
-							Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")),
-							Next: []*ImageLoadEvent{
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")),
-								},
-								{
-									Image: FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")),
-								},
-							},
-						},
-					},
-				},
+			LoadSequences: []ImageLoadActivity{
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1"))).Loads(
+					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1"))),
+						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1"))),
+					),
+				),
 			},
 			Environment: &mockEFIEnvironment{"", "testdata/eventlog_sb_no_efi_action.bin"},
 		},

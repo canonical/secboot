@@ -20,7 +20,7 @@
 package efi
 
 import (
-	"github.com/canonical/go-efilib"
+	efi "github.com/canonical/go-efilib"
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
@@ -39,6 +39,9 @@ var (
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
+type ImageLoadParamsSet = imageLoadParamsSet
+type LoadParams = loadParams
+
 type ShimImageHandle = shimImageHandle
 
 func (s *ShimImageHandle) ReadVendorCert() ([]byte, error) {
@@ -48,6 +51,14 @@ func (s *ShimImageHandle) ReadVendorCert() ([]byte, error) {
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
 
 // Helper functions
+func ImageLoadActivityNext(activity ImageLoadActivity) []ImageLoadActivity {
+	return activity.next()
+}
+
+func ImageLoadActivityParams(activity ImageLoadActivity) imageLoadParamsSet {
+	return activity.params()
+}
+
 func MockEFIVarsPath(path string) (restore func()) {
 	origPath := efiVarsPath
 	efiVarsPath = path
