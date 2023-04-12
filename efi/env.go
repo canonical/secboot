@@ -43,6 +43,21 @@ type HostEnvironment interface {
 	ReadEventLog() (*tcglog.Log, error)
 }
 
+type hostEnvironmentOption struct {
+	HostEnvironment
+}
+
+// WithHostEnvironment overrides the EFI host environment for a PCR profile with
+// the supplied environment. This is useful when generating a profile for a device
+// other than the current host.
+func WithHostEnvironment(env HostEnvironment) PCRProfileOption {
+	return &hostEnvironmentOption{HostEnvironment: env}
+}
+
+func (o *hostEnvironmentOption) applyOptionTo(gen *pcrProfileGenerator) {
+	gen.env = o.HostEnvironment
+}
+
 // varReader is a subset of HostEnvironment that is just for EFI variables
 type varReader interface {
 	// ReadVar reads the specified EFI variable
@@ -292,3 +307,5 @@ func (c *rootVarsCollector) PeekAll() []*varBranch {
 	}
 	return out
 }
+
+type rootVarsModifier func(*rootVarsCollector) error

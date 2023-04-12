@@ -20,8 +20,11 @@
 package efi_test
 
 import (
-	"bytes"
+	"crypto"
 	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -29,12 +32,230 @@ import (
 	"testing"
 
 	efi "github.com/canonical/go-efilib"
+	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-
 	. "gopkg.in/check.v1"
+
+	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 func Test(t *testing.T) { TestingT(t) }
+
+type mockPcrProfileContext struct {
+	alg      tpm2.HashAlgorithmId
+	handlers ImageLoadHandlerMap
+}
+
+func (c *mockPcrProfileContext) PCRAlg() tpm2.HashAlgorithmId {
+	return c.alg
+}
+
+func (*mockPcrProfileContext) Flags() PcrProfileFlags {
+	return 0
+}
+
+func (c *mockPcrProfileContext) ImageLoadHandlerMap() ImageLoadHandlerMap {
+	return c.handlers
+}
+
+type mockPeImageHandle struct {
+	*mockImage
+}
+
+func (*mockPeImageHandle) Close() error                                { return nil }
+func (h *mockPeImageHandle) Source() Image                             { return h.mockImage }
+func (*mockPeImageHandle) OpenSection(name string) *io.SectionReader   { return nil }
+func (*mockPeImageHandle) HasSection(name string) bool                 { return false }
+func (*mockPeImageHandle) HasSbatSection() bool                        { return false }
+func (*mockPeImageHandle) SbatComponents() ([]SbatComponent, error)    { return nil, nil }
+func (*mockPeImageHandle) ImageDigest(alg crypto.Hash) ([]byte, error) { return nil, nil }
+func (*mockPeImageHandle) SecureBootSignatures() ([]*efi.WinCertificateAuthenticode, error) {
+	return nil, nil
+}
+
+type mockImage struct {
+	a int
+}
+
+func (i *mockImage) String() string           { return fmt.Sprintf("%p", i) }
+func (*mockImage) Open() (ImageReader, error) { return nil, errors.New("not implemented") }
+
+func (i *mockImage) newPeImageHandle() *mockPeImageHandle {
+	return &mockPeImageHandle{mockImage: i}
+}
+
+type mockImageHandleMixin struct {
+	restore func()
+}
+
+func (m *mockImageHandleMixin) SetUpTest(c *C) {
+	orig := OpenPeImage
+	m.restore = MockOpenPeImage(func(image Image) (PeImageHandle, error) {
+		i, ok := image.(*mockImage)
+		if !ok {
+			return orig(image)
+		}
+		return i.newPeImageHandle(), nil
+	})
+}
+
+func (m *mockImageHandleMixin) TearDownTest(c *C) {
+	if m.restore != nil {
+		m.restore()
+	}
+}
+
+type mockImageLoadHandlerMap map[Image]ImageLoadHandler
+
+func (h mockImageLoadHandlerMap) LookupHandler(image PeImageHandle) (ImageLoadHandler, error) {
+	handler, exists := h[image.Source()]
+	if !exists {
+		return nil, errors.New("no handler")
+	}
+	return handler, nil
+}
+
+type mockLoadHandler struct {
+	startActions []func(PcrBranchContext) error
+	loadActions  []func(PcrBranchContext) error
+}
+
+type mockLoadHandlerAction func(*mockLoadHandler)
+
+func newMockLoadHandler(actions ...mockLoadHandlerAction) *mockLoadHandler {
+	out := new(mockLoadHandler)
+	for _, action := range actions {
+		action(out)
+	}
+	return out
+}
+
+func (h *mockLoadHandler) withExtendPCROnImageStart(pcr int, digest tpm2.Digest) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		ctx.ExtendPCR(pcr, digest)
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withMeasureVariableOnImageStart(pcr int, guid efi.GUID, name string) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		data, _, err := ctx.Vars().ReadVar(name, guid)
+		switch {
+		case err == efi.ErrVarNotExist:
+		case err != nil:
+			return err
+		}
+		ctx.MeasureVariable(pcr, guid, name, data)
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withCheckParamsOnImageStarts(c *C, params ...*LoadParams) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		c.Assert(params, Not(HasLen), 0)
+		c.Check(ctx.Params(), DeepEquals, params[0])
+		params = params[1:]
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withCheckVarOnImageStarts(c *C, name string, guid efi.GUID, data ...[]byte) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		c.Assert(data, Not(HasLen), 0)
+		d, _, err := ctx.Vars().ReadVar(name, guid)
+		c.Check(err, IsNil)
+		c.Check(d, DeepEquals, data[0])
+		data = data[1:]
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withSetVarOnImageStart(name string, guid efi.GUID, attrs efi.VariableAttributes, data []byte) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		return ctx.Vars().WriteVar(name, guid, attrs, data)
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withCheckFwHasVerificationEventOnImageStart(c *C, digest tpm2.Digest, exists bool) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		var checker Checker
+		if exists {
+			checker = testutil.IsTrue
+		} else {
+			checker = testutil.IsFalse
+		}
+		c.Check(ctx.FwContext().HasVerificationEvent(digest), checker)
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withAppendFwVerificationEventOnImageStart(c *C, digest tpm2.Digest) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		ctx.FwContext().AppendVerificationEvent(digest)
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withCheckShimHasVerificationEventOnImageStart(c *C, digest tpm2.Digest, exists bool) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		var checker Checker
+		if exists {
+			checker = testutil.IsTrue
+		} else {
+			checker = testutil.IsFalse
+		}
+		c.Check(ctx.ShimContext().HasVerificationEvent(digest), checker)
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withAppendShimVerificationEventOnImageStart(c *C, digest tpm2.Digest) *mockLoadHandler {
+	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
+		ctx.ShimContext().AppendVerificationEvent(digest)
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) withExtendPCROnImageLoads(pcr int, digests ...tpm2.Digest) *mockLoadHandler {
+	h.loadActions = append(h.loadActions, func(ctx PcrBranchContext) error {
+		if len(digests) == 0 {
+			return errors.New("no digests")
+		}
+		digest := digests[0]
+		digests = digests[1:]
+		ctx.ExtendPCR(pcr, digest)
+		return nil
+	})
+	return h
+}
+
+func (h *mockLoadHandler) MeasureImageStart(ctx PcrBranchContext) error {
+	for _, action := range h.startActions {
+		if err := action(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *mockLoadHandler) MeasureImageLoad(ctx PcrBranchContext, image PeImageHandle) (ImageLoadHandler, error) {
+	for _, action := range h.loadActions {
+		if err := action(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return LookupImageLoadHandler(ctx, image)
+}
 
 type mockEFIVar struct {
 	data  []byte
@@ -43,17 +264,15 @@ type mockEFIVar struct {
 
 type mockEFIEnvironment struct {
 	vars map[efi.VariableDescriptor]*mockEFIVar
-	log  []byte
+	log  *tcglog.Log
 }
 
-func newMockEFIEnvironment(vars map[efi.VariableDescriptor]*mockEFIVar, log []byte) *mockEFIEnvironment {
+func newMockEFIEnvironment(vars map[efi.VariableDescriptor]*mockEFIVar, log *tcglog.Log) *mockEFIEnvironment {
 	return &mockEFIEnvironment{vars: vars, log: log}
 }
 
 func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *mockEFIEnvironment {
 	vars := make(map[efi.VariableDescriptor]*mockEFIVar)
-	var logData []byte
-
 	if efivarsDir != "" {
 		dir, err := os.Open(efivarsDir)
 		c.Assert(err, IsNil)
@@ -86,12 +305,16 @@ func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *mockEFIEn
 		}
 	}
 
+	var log *tcglog.Log
 	if logFile != "" {
-		var err error
-		logData, err = ioutil.ReadFile(logFile)
+		f, err := os.Open(logFile)
+		c.Assert(err, IsNil)
+		defer f.Close()
+
+		log, err = tcglog.ReadLog(f, &tcglog.LogOptions{})
 		c.Assert(err, IsNil)
 	}
-	return newMockEFIEnvironment(vars, logData)
+	return newMockEFIEnvironment(vars, log)
 }
 
 func (e *mockEFIEnvironment) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
@@ -106,5 +329,5 @@ func (e *mockEFIEnvironment) ReadVar(name string, guid efi.GUID) ([]byte, efi.Va
 }
 
 func (e *mockEFIEnvironment) ReadEventLog() (*tcglog.Log, error) {
-	return tcglog.ReadLog(bytes.NewReader(e.log), &tcglog.LogOptions{})
+	return e.log, nil
 }

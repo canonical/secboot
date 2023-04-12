@@ -36,6 +36,16 @@ type peSuite struct{}
 
 var _ = Suite(&peSuite{})
 
+func (s *peSuite) testPeImageHandleSource(c *C) {
+	source := NewFileImage("testdata/amd64/mockshim.efi.signed.1.1.1")
+
+	image, err := OpenPeImage(source)
+	c.Assert(err, IsNil)
+	defer image.Close()
+
+	c.Check(image.Source(), Equals, source)
+}
+
 func (s *peSuite) TestPeImageHandleOpenSection(c *C) {
 	source := NewFileImage("testdata/amd64/mockshim.efi.signed.1.1.1")
 

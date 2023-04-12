@@ -247,3 +247,22 @@ func (e *baseImageLoadActivity) next() []ImageLoadActivity {
 func (e *baseImageLoadActivity) params() imageLoadParamsSet {
 	return e.loadParams
 }
+
+// ImageLoadSequences corresponds to all of the boot paths for images executed before
+// ExitBootServices.
+type ImageLoadSequences struct {
+	images []ImageLoadActivity
+	params imageLoadParamsSet
+}
+
+// NewImageLoadSequences returns a new ImageLoadSequences object with the specified
+// parameters, which will be inherited by all of the appended paths.
+func NewImageLoadSequences(params ...ImageLoadParams) *ImageLoadSequences {
+	return &ImageLoadSequences{params: params}
+}
+
+// Append appends the specified image load.
+func (a *ImageLoadSequences) Append(images ...ImageLoadActivity) *ImageLoadSequences {
+	a.images = append(a.images, images...)
+	return a
+}

@@ -48,6 +48,9 @@ type peImageHandle interface {
 	// Close closes this image handle
 	Close() error
 
+	// Source returns the image source
+	Source() Image
+
 	// OpenSection returns a new io.SectionReader for the section with
 	// the specified name, or nil if no section exists.
 	OpenSection(name string) *io.SectionReader
@@ -76,13 +79,14 @@ type peImageHandle interface {
 }
 
 type peImageHandleImpl struct {
+	source Image
 	pefile *pe.File
 	r      ImageReader
 }
 
 // openPeImage opens the supplied image and returns a new peImageHandle. The
 // caller must call peImageHandle.Close whend done.
-func openPeImage(image Image) (peImageHandle, error) {
+var openPeImage = func(image Image) (peImageHandle, error) {
 	r, err := image.Open()
 	if err != nil {
 		return nil, xerrors.Errorf("cannot open image: %w", err)
@@ -94,11 +98,15 @@ func openPeImage(image Image) (peImageHandle, error) {
 		return nil, xerrors.Errorf("cannot decode image: %w", err)
 	}
 
-	return &peImageHandleImpl{pefile: pefile, r: r}, nil
+	return &peImageHandleImpl{source: image, pefile: pefile, r: r}, nil
 }
 
 func (h *peImageHandleImpl) Close() error {
 	return h.r.Close()
+}
+
+func (h *peImageHandleImpl) Source() Image {
+	return h.source
 }
 
 func (h *peImageHandleImpl) OpenSection(name string) *io.SectionReader {
