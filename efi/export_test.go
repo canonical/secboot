@@ -32,15 +32,18 @@ const (
 
 // Export variables and unexported functions for testing
 var (
-	ComputeDbUpdate    = computeDbUpdate
-	DefaultEnv         = defaultEnv
-	NewShimImageHandle = newShimImageHandle
+	ComputeDbUpdate      = computeDbUpdate
+	DefaultEnv           = defaultEnv
+	NewShimImageHandle   = newShimImageHandle
+	NewRootVarsCollector = newRootVarsCollector
+	NewVarBranchState    = newVarBranchState
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
 type ImageLoadParamsSet = imageLoadParamsSet
 type LoadParams = loadParams
+type RootVarReaderKey = rootVarReaderKey
 
 type ShimImageHandle = shimImageHandle
 
@@ -49,6 +52,7 @@ func (s *ShimImageHandle) ReadVendorCert() ([]byte, error) {
 }
 
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
+type VarBranchState = varBranchState
 
 // Helper functions
 func ImageLoadActivityNext(activity ImageLoadActivity) []ImageLoadActivity {
@@ -84,4 +88,18 @@ func MockReadVar(dir string) (restore func()) {
 	return func() {
 		readVar = origReadVar
 	}
+}
+
+func NewRootVarReader(host HostEnvironment) *rootVarReader {
+	return &rootVarReader{
+		host:      host,
+		overrides: make(map[efi.VariableDescriptor]varContents)}
+}
+
+func NewVarUpdate(prev *varUpdate, name efi.VariableDescriptor, attrs efi.VariableAttributes, data []byte) *varUpdate {
+	return &varUpdate{
+		previous: prev,
+		name:     name,
+		attrs:    attrs,
+		data:     data}
 }

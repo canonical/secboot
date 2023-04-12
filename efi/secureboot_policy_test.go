@@ -810,7 +810,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithCustomEnv(c *C
 					),
 				),
 			},
-			Environment: &mockEFIEnvironment{"testdata/efivars_mock1", "testdata/eventlog_sb.bin"},
+			Environment: newMockEFIEnvironmentFromFiles(c, "testdata/efivars_mock1", "testdata/eventlog_sb.bin"),
 		},
 		values: []tpm2.PCRValues{
 			{
