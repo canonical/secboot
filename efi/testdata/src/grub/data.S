@@ -1,7 +1,7 @@
  	.data
-    .ascii NAME
+	.ascii NAME
 dummy:
-    .long	0
+	.long	0
 
  	// hand-craft a dummy .reloc section so EFI knows it's a relocatable executable:
 #define IMAGE_REL_ABSOLUTE	0

@@ -79,14 +79,14 @@ func (s *securebootPolicySuite) testReadShimVendorCert(c *C, data *testReadShimV
 
 func (s *securebootPolicySuite) TestReadShimVendorCert(c *C) {
 	s.testReadShimVendorCert(c, &testReadShimVendorCertData{
-		path:     filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1"),
+		path:     filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1"),
 		expected: "testdata/TestShimVendorCA.cer",
 	})
 }
 
 func (s *securebootPolicySuite) TestReadShimVendorCertEmpty(c *C) {
 	s.testReadShimVendorCert(c, &testReadShimVendorCertData{
-		path: filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat_no_vendor_cert.efi.signed.1.1.1"),
+		path: filepath.Join("testdata", runtime.GOARCH, "mockshim_no_vendor_cert.efi.signed.1.1.1"),
 	})
 }
 
@@ -302,7 +302,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileClassic(c *C) {
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")), Shim),
@@ -359,7 +359,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileUC20(c *C) {
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel2.efi.signed.shim.1")), Shim),
@@ -389,7 +389,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileInvalidGrubSignatu
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat_no_vendor_cert.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_no_vendor_cert.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1"))).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1"))),
 					),
@@ -408,7 +408,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileNoKernelSignature(
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi")), Shim),
 					),
@@ -430,7 +430,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileShimVerificationDi
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -451,7 +451,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileSecureBootDisabled
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -470,7 +470,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAllAuthenticatedWi
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.1.1.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.1.1.1")), Shim),
 					),
@@ -500,7 +500,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticatedWithD
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.1.1.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -524,7 +524,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticateWithDb
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat_no_vendor_cert.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_no_vendor_cert.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -551,7 +551,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileAuthenticateWithDb
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -608,7 +608,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithMultipleDbCert
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -634,7 +634,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithDbxUpdate(c *C
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -666,7 +666,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithTwoDbxUpdates(
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -710,7 +710,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileTestDbxUpdateDedup
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -748,7 +748,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileDellEmbeddedBoxPC3
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -777,7 +777,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileToInitialProfile(c
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -804,7 +804,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileWithCustomEnv(c *C
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -836,7 +836,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileUpgrageToSBATShim(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
 				),
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -866,12 +866,12 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileDbCARotation(c *C)
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
 				),
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.2.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.2.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -903,12 +903,12 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileDbCARotation2(c *C
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
 				),
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.2.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.2.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -947,7 +947,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyProfileDbCARotation3(c *C
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.1.1.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.1.1.1")), Shim),
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.1.2.1")), Shim),
@@ -991,7 +991,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShimBaseline1(c
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.2.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.2.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -1015,7 +1015,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShimBaseline2(c
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -1039,7 +1039,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShimBaseline3(c
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.2.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.2.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -1067,7 +1067,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShim1(c *C) {
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.2.1.1+1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.2.1.1+1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),
@@ -1094,7 +1094,7 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShim2(c *C) {
 		params: SecureBootPolicyProfileParams{
 			PCRAlgorithm: tpm2.HashAlgorithmSHA256,
 			LoadSequences: []ImageLoadActivity{
-				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim_sbat.efi.signed.2.1.1+1.1.1")), Firmware).Loads(
+				NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockshim.efi.signed.2.1.1+1.1.1")), Firmware).Loads(
 					NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockgrub1.efi.signed.shim.1")), Shim).Loads(
 						NewImageLoadActivity(FileImage(filepath.Join("testdata", runtime.GOARCH, "mockkernel1.efi.signed.shim.1")), Shim),
 					),

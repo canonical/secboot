@@ -1,4 +1,5 @@
-	.data
+ 	.data
+	.ascii NAME
 dummy:
 	.long	0
 

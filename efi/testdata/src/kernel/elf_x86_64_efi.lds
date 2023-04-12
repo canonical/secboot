@@ -6,10 +6,12 @@ SECTIONS
 {
   . = 0;
   ImageBase = .;
-  .hash : { *(.hash) }	/* this MUST come first! */
+  /* .hash and/or .gnu.hash MUST come first! */
+  .hash : { *(.hash) }
+  .gnu.hash : { *(.gnu.hash) }
   . = ALIGN(4096);
-  .eh_frame :
-  {
+  .eh_frame : 
+  { 
     *(.eh_frame)
   }
   . = ALIGN(4096);
@@ -19,27 +21,15 @@ SECTIONS
    *(.text)
    *(.text.*)
    *(.gnu.linkonce.t.*)
-   _etext = .;
+   . = ALIGN(16);
   }
+  _etext = .;
+  _text_size = . - _text;
   . = ALIGN(4096);
   .reloc :
   {
    *(.reloc)
   }
-  . = ALIGN(4096);
-  .note.gnu.build-id : {
-    *(.note.gnu.build-id)
-  }
-
-  . = ALIGN(4096);
-  .data.ident : {
-    *(.data.ident)
-  }
-  . = ALIGN(4096);
-  .sbatlevel : {
-    *(.sbatlevel)
-  }
-
   . = ALIGN(4096);
   .data :
   {
@@ -58,33 +48,19 @@ SECTIONS
    *(COMMON)
    *(.rel.local)
   }
+  .note.gnu.build-id : { *(.note.gnu.build-id) }
 
-  . = ALIGN(4096);
-  .vendor_cert :
-  {
-   *(.vendor_cert)
-  }
+  _edata = .;
+  _data_size = . - _etext;
   . = ALIGN(4096);
   .dynamic  : { *(.dynamic) }
   . = ALIGN(4096);
   .rela :
   {
     *(.rela.data*)
-    *(.rela.got*)
-    *(.rela.stab*)
+    *(.rela.got)
+    *(.rela.stab)
   }
-  _edata = .;
-  _data_size = . - _data;
-  . = ALIGN(4096);
-  .sbat :
-  {
-    _sbat = .;
-    *(.sbat)
-    *(.sbat.*)
-  }
-  _esbat = .;
-  _sbat_size = . - _sbat;
-
   . = ALIGN(4096);
   .dynsym   : { *(.dynsym) }
   . = ALIGN(4096);
@@ -97,5 +73,4 @@ SECTIONS
     *(.note.GNU-stack)
   }
   .comment 0 : { *(.comment) }
-  .note.gnu.build-id : { *(.note.gnu.build-id) }
 }

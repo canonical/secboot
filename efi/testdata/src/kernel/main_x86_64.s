@@ -8,6 +8,6 @@
 
 	.globl _start
 _start:
-	mov $0, %rax
+    mov $0, %rax
 .exit:	
   	ret
