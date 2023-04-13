@@ -522,3 +522,17 @@ func (s *envSuite) TestStartingVarStateCollectorWriteToSecondStateDedup(c *C) {
 		},
 	})
 }
+
+func (s *envSuite) TestVarBranchStateReadsUpdate(c *C) {
+	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)
+
+	collector := NewRootVarsCollector(env)
+	branch := NewVarBranchState(collector.Root(), collector)
+
+	c.Check(branch.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{1}), IsNil)
+
+	data, attrs, err := branch.ReadVar("foo", efi.GlobalVariable)
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, []byte{1})
+	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess)
+}
