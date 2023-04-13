@@ -123,7 +123,7 @@ func (r *rootVarReader) Copy() *rootVarReader {
 
 // ApplyUpdates applies the specified sequence of updates to this rootVarReader.
 func (r *rootVarReader) ApplyUpdates(updates *varUpdate) error {
-	// arrange in orider of application
+	// arrange in order of application from oldest to newest
 	var updateSlice []*varUpdate
 	for ; updates != nil; updates = updates.previous {
 		updateSlice = append([]*varUpdate{updates}, updateSlice...)
