@@ -195,9 +195,17 @@ func (s *envSuite) TestStartingVarStateCollectorRoot(c *C) {
 type testStartingVarStateCollectorData struct {
 	env HostEnvironment
 
-	states     int
-	expected   []map[efi.VariableDescriptor]*mockEFIVar
-	handlerFns []func(root *VarBranchState)
+	states int
+
+	// expected are the variable values to test for each starting state. These
+	// are tested before the state is then mutated by mutatorFns.
+	expected []map[efi.VariableDescriptor]*mockEFIVar
+
+	// mutatorFns is called for each starting state to apply updates to it, which
+	// may involve creating branches from it (by copying the supplied varBranchState).
+	// These updates may create new starting states which must be consumed by
+	// setting states to an appropriate value.
+	mutatorFns []func(root *VarBranchState)
 }
 
 func (s *envSuite) testStartingVarStateCollector(c *C, data *testStartingVarStateCollectorData) {
@@ -222,10 +230,10 @@ func (s *envSuite) testStartingVarStateCollector(c *C, data *testStartingVarStat
 			}
 		}
 
-		if i >= len(data.handlerFns) || data.handlerFns[i] == nil {
+		if i >= len(data.mutatorFns) || data.mutatorFns[i] == nil {
 			continue
 		}
-		data.handlerFns[i](state)
+		data.mutatorFns[i](state)
 	}
 
 	c.Check(collector.More(), testutil.IsFalse)
@@ -246,7 +254,7 @@ func (s *envSuite) TestStartingVarStateCollectorWriteOne(c *C) {
 				{Name: "foo", GUID: efi.GlobalVariable}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
 			},
@@ -266,7 +274,7 @@ func (s *envSuite) TestStartingVarStateCollectorWriteOneNew(c *C) {
 				{Name: "foo", GUID: efi.GlobalVariable}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
 			},
@@ -285,7 +293,7 @@ func (s *envSuite) TestStartingVarStateCollectorWriteOneNoChange(c *C) {
 				{Name: "foo", GUID: efi.GlobalVariable}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{1})
 			},
@@ -314,7 +322,7 @@ func (s *envSuite) TestStartingVarStateCollectorWriteTwo(c *C) {
 				{Name: "bar", GUID: efi.GlobalVariable}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
 				state.WriteVar("bar", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{5})
@@ -344,7 +352,7 @@ func (s *envSuite) TestStartingVarStateCollectorShouldDedup1(c *C) {
 				{Name: "bar", GUID: efi.GlobalVariable}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state1 := *state
 				state1.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
@@ -378,7 +386,7 @@ func (s *envSuite) TestStartingVarStateCollectorShouldDedup2(c *C) {
 				{Name: "bar", GUID: efi.GlobalVariable}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
 
@@ -417,7 +425,7 @@ func (s *envSuite) TestStartingVarStateCollectorShouldntDedup1(c *C) {
 				{Name: "bar", GUID: efi.GlobalVariable}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state1 := *state
 				state1.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
@@ -456,7 +464,7 @@ func (s *envSuite) TestStartingVarStateCollectorShouldntDedup2(c *C) {
 				{Name: "bar", GUID: efi.GlobalVariable}: {data: []byte{4}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
 
@@ -487,7 +495,7 @@ func (s *envSuite) TestStartingVarStateCollectorWriteToSecondState(c *C) {
 				{Name: "foo", GUID: efi.GlobalVariable}: {data: []byte{3}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
 			},
@@ -512,7 +520,7 @@ func (s *envSuite) TestStartingVarStateCollectorWriteToSecondStateDedup(c *C) {
 				{Name: "foo", GUID: efi.GlobalVariable}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
-		handlerFns: []func(*VarBranchState){
+		mutatorFns: []func(*VarBranchState){
 			func(state *VarBranchState) {
 				state.WriteVar("foo", efi.GlobalVariable, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
 			},
