@@ -168,7 +168,8 @@ type varReadWriter interface {
 // without any updates. Branches in a profile inherit a copy of this from the parent branch
 // and may make modifications to EFI variables (eg, applying a SBAT update) which may affect
 // other branches - in this case, the profile generation may be re-executed multiple times
-// with different starting states as a result of these updates.
+// with different starting states as a result of these updates. These starting states are
+// computed by the assocated rootVarsCollector.
 type varBranchState struct {
 	initial   *rootVarReader // the initial starting environment
 	updates   *varUpdate     // the updates applied by the associated branch
