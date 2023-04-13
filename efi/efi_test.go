@@ -50,12 +50,12 @@ func newMockEFIEnvironment(vars map[efi.VariableDescriptor]*mockEFIVar, log []by
 	return &mockEFIEnvironment{vars: vars, log: log}
 }
 
-func newMockEFIEnvironmentFromFiles(c *C, efivars, log string) *mockEFIEnvironment {
+func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *mockEFIEnvironment {
 	vars := make(map[efi.VariableDescriptor]*mockEFIVar)
 	var logData []byte
 
-	if efivars != "" {
-		dir, err := os.Open(efivars)
+	if efivarsDir != "" {
+		dir, err := os.Open(efivarsDir)
 		c.Assert(err, IsNil)
 		defer dir.Close()
 
@@ -74,7 +74,7 @@ func newMockEFIEnvironmentFromFiles(c *C, efivars, log string) *mockEFIEnvironme
 			guid, err := efi.DecodeGUIDString(m[2])
 			c.Assert(err, IsNil)
 
-			data, err := ioutil.ReadFile(filepath.Join(efivars, entry.Name()))
+			data, err := ioutil.ReadFile(filepath.Join(efivarsDir, entry.Name()))
 			c.Assert(err, IsNil)
 			if len(data) < 4 {
 				c.Fatal(entry.Name(), "contents too short")
@@ -86,9 +86,9 @@ func newMockEFIEnvironmentFromFiles(c *C, efivars, log string) *mockEFIEnvironme
 		}
 	}
 
-	if log != "" {
+	if logFile != "" {
 		var err error
-		logData, err = ioutil.ReadFile(log)
+		logData, err = ioutil.ReadFile(logFile)
 		c.Assert(err, IsNil)
 	}
 	return newMockEFIEnvironment(vars, logData)
