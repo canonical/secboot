@@ -32,6 +32,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	efi "github.com/canonical/go-efilib"
@@ -42,7 +44,7 @@ import (
 
 	"go.mozilla.org/pkcs7"
 
-	"github.com/snapcore/secboot/internal/pe1.14"
+	pe "github.com/snapcore/secboot/internal/pe1.14"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -86,6 +88,14 @@ const (
 	// EFI_SIGNATURE_DATA structure, ie, it has this commit:
 	// https://github.com/rhboot/shim/commit/e3325f8100f5a14e0684ff80290e53975de1a5d9
 	shimVariableAuthorityEventsMatchSpec
+
+	// shimBugVendorCertAuthenticatesFromMokListRT indicates that
+	// shim performs EV_EFI_VARIABLE_AUTHORITY events that incorrectly
+	// identify the source as MokListRT when authenticating with
+	// the built in vendor cert, and the .vendor_cert section contains
+	// a single X.509 certificate, ie, it has this commit:
+	// https://github.com/rhboot/shim/commit/092c2b2bbed950727e41cf450b61c794881c33e7
+	shimBugVendorCertAuthenticatesFromMokListRT
 )
 
 type shimImageHandle struct {
@@ -147,6 +157,63 @@ func (s *shimImageHandle) readVendorCert() ([]byte, error) {
 
 func (s *shimImageHandle) hasSbatSection() bool {
 	return s.openSection(".sbat") != nil
+}
+
+var shimIdentVersionRE = regexp.MustCompile(`^\$Version:[[:blank:]]*([[:digit:]]+)\.([[:digit:]]+)[[:blank:]]*\$$`)
+
+type shimVersion struct {
+	Major uint
+	Minor uint
+}
+
+// Compare compares 2 shim versions. It returns 0 if a == b, -1 if a < b and 1 if a > b
+func (a shimVersion) Compare(b shimVersion) int {
+	switch {
+	case a.Major > b.Major:
+		return 1
+	case a.Major < b.Major:
+		return -1
+	case a.Minor < b.Minor:
+		return -1
+	case a.Minor > b.Minor:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func (s *shimImageHandle) version() (shimVersion, error) {
+	section := s.pefile.Section(".data.ident")
+	if section == nil {
+		return shimVersion{}, errors.New("no .data.ident section")
+	}
+
+	scanner := bufio.NewScanner(section.Open())
+
+	if !scanner.Scan() {
+		return shimVersion{}, errors.New("empty .data.ident section")
+	}
+	if scanner.Text() != "UEFI SHIM" {
+		return shimVersion{}, errors.New("unexpected .data.ident section contents (not shim?)")
+	}
+	for scanner.Scan() {
+		m := shimIdentVersionRE.FindStringSubmatch(scanner.Text())
+		if len(m) == 3 {
+			major, err := strconv.ParseUint(m[1], 10, 0)
+			if err != nil {
+				return shimVersion{}, fmt.Errorf("invalid major version \"%s\"", m[1])
+			}
+			minor, err := strconv.ParseUint(m[2], 10, 0)
+			if err != nil {
+				return shimVersion{}, fmt.Errorf("invalid minor version \"%s\"", m[2])
+			}
+			return shimVersion{Major: uint(major), Minor: uint(minor)}, nil
+		}
+	}
+	if scanner.Err() != nil {
+		return shimVersion{}, xerrors.Errorf("cannot decode .data.ident section contents: %w", scanner.Err())
+	}
+	return shimVersion{}, errors.New("cannot determine version - missing from .data.ident section")
 }
 
 type sigDbUpdateQuirkMode int
@@ -719,7 +786,17 @@ Outer:
 
 	// Serialize authority certificate for measurement
 	var varData *bytes.Buffer
+	sourceName := authority.source.unicodeName
 	switch {
+	case source == Shim && authority.source == b.dbSet.shimDb && b.shimFlags&shimBugVendorCertAuthenticatesFromMokListRT != 0:
+		signature := &efi.SignatureData{
+			Owner: shimGuid,
+			Data:  authority.signature.Data}
+		varData = new(bytes.Buffer)
+		if err := signature.Write(varData); err != nil {
+			return xerrors.Errorf("cannot encode EFI_SIGNATURE_DATA for authority: %w", err)
+		}
+		sourceName = "MokListRT"
 	case source == Shim && (b.shimFlags&shimVariableAuthorityEventsMatchSpec == 0 || authority.source == b.dbSet.shimDb):
 		// Shim measures the certificate data rather than the entire EFI_SIGNATURE_DATA
 		// in some circumstances.
@@ -736,7 +813,7 @@ Outer:
 	// Create event data, compute digest and perform extension for verification of this executable
 	digest := tcglog.ComputeEFIVariableDataDigest(
 		b.gen.pcrAlgorithm.GetHash(),
-		authority.source.unicodeName,
+		sourceName,
 		authority.source.variableName,
 		varData.Bytes())
 
@@ -892,6 +969,14 @@ func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBoot
 		flags |= shimVariableAuthorityEventsMatchSpec
 	}
 
+	version, err := shim.version()
+	if err != nil {
+		return xerrors.Errorf("cannot determine shim version: %w", err)
+	}
+	if version.Compare(shimVersion{15, 7}) >= 0 {
+		// 15.7 introduced this bug
+		flags |= shimBugVendorCertAuthenticatesFromMokListRT
+	}
 	for _, b := range branches {
 		b.processShimExecutableLaunch(vendorCert, flags, hostSbatLevel)
 	}
@@ -1181,7 +1266,7 @@ func AddSecureBootPolicyProfile(profile *secboot_tpm2.PCRProtectionProfile, para
 	// XXX: Work around the lack of support for handling SBAT revocations by just generating
 	// a profile for the current values under the MS UEFI CA (minus the latest, which requires
 	// an explicit opt-in via SbatPolicy).
-	for _, level := range [][]byte{[]byte("sbat,1,2021030218\n"), []byte("sbat,1,2022052400\n,grub,2\n")} {
+	for _, level := range [][]byte{[]byte("sbat,1,2021030218\n"), []byte("sbat,1,2022052400\ngrub,2\n")} {
 		profile1 := secboot_tpm2.NewPCRProtectionProfile()
 		if err := gen.run(profile1, sigDbUpdateQuirkModeNone, level); err != nil {
 			return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
