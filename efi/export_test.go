@@ -36,7 +36,6 @@ var (
 	DefaultEnv           = defaultEnv
 	NewShimImageHandle   = newShimImageHandle
 	NewRootVarsCollector = newRootVarsCollector
-	NewVarBranchState    = newVarBranchState
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -52,7 +51,7 @@ func (s *ShimImageHandle) ReadVendorCert() ([]byte, error) {
 }
 
 type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
-type VarBranchState = varBranchState
+type VarBranch = varBranch
 
 // Helper functions
 func ImageLoadActivityNext(activity ImageLoadActivity) []ImageLoadActivity {
