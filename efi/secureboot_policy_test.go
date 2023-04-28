@@ -1644,3 +1644,28 @@ func (s *securebootPolicySuite) TestAddSecureBootPolicyDualSignedShim2(c *C) {
 		},
 	})
 }
+
+func (s *securebootPolicySuite) TestGetShimVersion(c *C) {
+	for _, tc := range []struct {
+		inp               string
+		expectedErr       string
+		expectedShimMajor uint
+		expectedShimMinor uint
+	}{
+		{"", "empty .data.ident section", 0, 0},
+		{"UEFI SHIM", "cannot determine version - missing from .data.ident section", 0, 0},
+		{"UEFI SHIM\n$Version: 15.4 $", "", 15, 4},
+		{"UEFI SHIM\n$Version: 15 $", "", 15, 0},
+	} {
+		r := bytes.NewReader([]byte(tc.inp))
+
+		shimVer, err := GetShimVersion(r)
+		if tc.expectedErr != "" {
+			c.Check(err, ErrorMatches, tc.expectedErr)
+		} else {
+			c.Assert(err, IsNil)
+			c.Check(shimVer.Major, Equals, tc.expectedShimMajor)
+			c.Check(shimVer.Minor, Equals, tc.expectedShimMinor)
+		}
+	}
+}

@@ -35,6 +35,7 @@ var (
 	ComputeDbUpdate    = computeDbUpdate
 	DefaultEnv         = defaultEnv
 	NewShimImageHandle = newShimImageHandle
+	GetShimVersion     = getShimVersion
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
