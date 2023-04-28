@@ -182,14 +182,8 @@ func (a shimVersion) Compare(b shimVersion) int {
 	}
 }
 
-func (s *shimImageHandle) version() (shimVersion, error) {
-	section := s.pefile.Section(".data.ident")
-	if section == nil {
-		return shimVersion{}, errors.New("no .data.ident section")
-	}
-
-	scanner := bufio.NewScanner(section.Open())
-
+func getShimVersion(r io.ReadSeeker) (shimVersion, error) {
+	scanner := bufio.NewScanner(r)
 	if !scanner.Scan() {
 		return shimVersion{}, errors.New("empty .data.ident section")
 	}
@@ -217,6 +211,14 @@ func (s *shimImageHandle) version() (shimVersion, error) {
 		return shimVersion{}, xerrors.Errorf("cannot decode .data.ident section contents: %w", scanner.Err())
 	}
 	return shimVersion{}, errors.New("cannot determine version - missing from .data.ident section")
+}
+
+func (s *shimImageHandle) version() (shimVersion, error) {
+	section := s.pefile.Section(".data.ident")
+	if section == nil {
+		return shimVersion{}, errors.New("no .data.ident section")
+	}
+	return getShimVersion(section.Open())
 }
 
 type sigDbUpdateQuirkMode int
