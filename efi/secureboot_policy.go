@@ -159,7 +159,7 @@ func (s *shimImageHandle) hasSbatSection() bool {
 	return s.openSection(".sbat") != nil
 }
 
-var shimIdentVersionRE = regexp.MustCompile(`^\$Version:[[:blank:]]*([[:digit:]]+)\.([[:digit:]]+)[[:blank:]]*\$$`)
+var shimIdentVersionRE = regexp.MustCompile(`^\$Version:[[:blank:]]*([[:digit:]]+)\.?([[:digit:]]+)?[[:blank:]]*\$$`)
 
 type shimVersion struct {
 	Major uint
@@ -198,14 +198,17 @@ func (s *shimImageHandle) version() (shimVersion, error) {
 	}
 	for scanner.Scan() {
 		m := shimIdentVersionRE.FindStringSubmatch(scanner.Text())
-		if len(m) == 3 {
+		if len(m) > 1 {
 			major, err := strconv.ParseUint(m[1], 10, 0)
 			if err != nil {
 				return shimVersion{}, fmt.Errorf("invalid major version \"%s\"", m[1])
 			}
-			minor, err := strconv.ParseUint(m[2], 10, 0)
-			if err != nil {
-				return shimVersion{}, fmt.Errorf("invalid minor version \"%s\"", m[2])
+			var minor uint64
+			if len(m) > 2 && len(m[2]) > 0 {
+				minor, err = strconv.ParseUint(m[2], 10, 0)
+				if err != nil {
+					return shimVersion{}, fmt.Errorf("invalid minor version \"%s\"", m[2])
+				}
 			}
 			return shimVersion{Major: uint(major), Minor: uint(minor)}, nil
 		}
