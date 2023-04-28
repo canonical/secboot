@@ -1654,8 +1654,11 @@ func (s *securebootPolicySuite) TestGetShimVersion(c *C) {
 	}{
 		{"", "empty .data.ident section", 0, 0},
 		{"UEFI SHIM", "cannot determine version - missing from .data.ident section", 0, 0},
+		{"UEFI SHIM\n$Version: $", "cannot determine version - missing from .data.ident section", 0, 0},
 		{"UEFI SHIM\n$Version: 15.4 $", "", 15, 4},
 		{"UEFI SHIM\n$Version: 15 $", "", 15, 0},
+		// should never happen on real systems but we allow it
+		{"UEFI SHIM\n$Version: 15. $", "", 15, 0},
 	} {
 		r := bytes.NewReader([]byte(tc.inp))
 
