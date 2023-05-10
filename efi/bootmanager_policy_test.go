@@ -276,7 +276,7 @@ func (s *bootManagerPolicySuite) TestAddBootManagerProfileWithCustomEFIEnv(c *C)
 					),
 				),
 			},
-			Environment: &mockEFIEnvironment{"", "testdata/eventlog_sb_no_efi_action.bin"},
+			Environment: newMockEFIEnvironmentFromFiles(c, "", "testdata/eventlog_sb_no_efi_action.bin"),
 		},
 		values: []tpm2.PCRValues{
 			{

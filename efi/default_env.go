@@ -26,7 +26,10 @@ import (
 	"github.com/canonical/tcglog-parser"
 )
 
-var readVar = efi.ReadVariable
+var (
+	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
+	readVar      = efi.ReadVariable
+)
 
 type defaultEnvImpl struct{}
 
