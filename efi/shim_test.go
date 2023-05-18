@@ -294,7 +294,7 @@ func (s *shimSuite) testShimImageHandleReadVendorDB(c *C, data *testShimImageHan
 	return nil
 }
 
-func (s *shimSuite) TestShimImageHandleReadVendorDB(c *C) {
+func (s *shimSuite) TestShimImageHandleReadVendorDBCert(c *C) {
 	data, err := ioutil.ReadFile("testdata/TestShimVendorCA.cer")
 	c.Check(err, IsNil)
 
@@ -317,10 +317,27 @@ func (s *shimSuite) TestShimImageHandleReadVendorDBEmpty(c *C) {
 	c.Check(err, IsNil)
 }
 
-func (s *shimSuite) TestShimImageHandleReadVendorNoVendorCert(c *C) {
+func (s *shimSuite) TestShimImageHandleReadVendorDBNoVendorCert(c *C) {
 	err := s.testShimImageHandleReadVendorDB(c, &testShimImageHandleReadVendorDBData{
 		path: "testdata/amd64/mockgrub1.efi.signed.shim.1"})
 	c.Check(err, ErrorMatches, "no .vendor_cert section")
+}
+
+func (s *shimSuite) TestShimImageHandleReadVendorDB(c *C) {
+	data, err := ioutil.ReadFile("testdata/TestShimVendorCA.cer")
+	c.Check(err, IsNil)
+
+	err = s.testShimImageHandleReadVendorDB(c, &testShimImageHandleReadVendorDBData{
+		path: "testdata/amd64/mockshim_vendor_db.efi.signed.1.1.1",
+		expectedDb: efi.SignatureDatabase{
+			{
+				Type:       efi.CertX509Guid,
+				Header:     []byte{},
+				Signatures: []*efi.SignatureData{{Owner: efi.MakeGUID(0x84862e0b, 0x24ee, 0x412e, 0x97b0, [...]uint8{0x4f, 0x3a, 0x33, 0x7d, 0xd2, 0xbd}), Data: data}},
+			},
+		},
+		expectedFormat: ShimVendorCertIsDb})
+	c.Check(err, IsNil)
 }
 
 type testShimImageHandleReadSbatLevelData struct {

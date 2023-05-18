@@ -43,7 +43,7 @@ type sbatComponent struct {
 	VendorUrl         string
 }
 
-// peImageHandle provides utilities for working with a PE image.
+// peImageHandle provides utilities for working with a PE image's sections and signatures.
 type peImageHandle interface {
 	// Close closes this image handle
 	Close() error
@@ -136,12 +136,12 @@ func (h *peImageHandleImpl) SbatComponents() ([]sbatComponent, error) {
 			break
 		}
 		if err != nil {
-			return nil, xerrors.Errorf("invalid record: %w", err)
+			return nil, xerrors.Errorf("invalid SBAT record: %w", err)
 		}
 
 		gen, err := strconv.Atoi(record[1])
 		if err != nil {
-			return nil, xerrors.Errorf("invalid component generation: %w", err)
+			return nil, xerrors.Errorf("invalid SBAT component generation: %w", err)
 		}
 		component := sbatComponent{
 			Name:              record[0],
@@ -200,7 +200,7 @@ func (h *peImageHandleImpl) SecureBootSignatures() ([]*efi.WinCertificateAuthent
 	// Signature Database Update - Authorization Process") of the UEFI Specification, version 2.8.
 	var sigs []*efi.WinCertificateAuthenticode
 
-	noMoreCerts := false
+SignatureLoop:
 	for i := 0; ; i++ {
 		// Signatures in this section are 8-byte aligned - see the PE spec:
 		// https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-attribute-certificate-table-image-only
@@ -211,13 +211,9 @@ func (h *peImageHandleImpl) SecureBootSignatures() ([]*efi.WinCertificateAuthent
 		c, err := efi.ReadWinCertificate(certReader)
 		switch {
 		case xerrors.Is(err, io.EOF):
-			noMoreCerts = true
+			break SignatureLoop
 		case err != nil:
 			return nil, xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry %d: %w", i, err)
-		}
-
-		if noMoreCerts {
-			break
 		}
 
 		sig, ok := c.(*efi.WinCertificateAuthenticode)

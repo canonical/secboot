@@ -19,6 +19,9 @@ CPPFLAGS += -DSHIM_VERSION=\"$(SHIM_VERSION)\" -DSHIM_COMMIT=\"$(SHIM_COMMIT)\"
 ifneq ($(origin VENDOR_CERT_FILE), undefined)
 	CPPFLAGS += -DVENDOR_CERT_FILE=\"$(VENDOR_CERT_FILE)\"
 endif
+ifneq ($(origin VENDOR_DB_FILE), undefined)
+	CPPFLAGS += -DVENDOR_DB_FILE=\"$(VENDOR_DB_FILE)\"
+endif
 ifneq ($(origin SBAT_VAR_PREVIOUS), undefined)
 	CPPFLAGS += -DSBAT_VAR_PREVIOUS=\"$(SBAT_VAR_PREVIOUS)\"
 endif

@@ -222,6 +222,9 @@ type shimSbatLevel [2][]byte
 
 // ForPolicy returns the SBAT revocation level for the specified policy.
 func (l shimSbatLevel) ForPolicy(policy shimSbatPolicy) []byte {
+	if policy != shimSbatPolicyPrevious && policy != shimSbatPolicyLatest {
+		panic("invalid shimSbatPolicy value")
+	}
 	return l[policy-1]
 }
 
