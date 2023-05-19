@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
@@ -11,6 +12,7 @@ import (
 
 	"golang.org/x/xerrors"
 
+	efi "github.com/canonical/go-efilib"
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
@@ -35,8 +37,11 @@ func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []moc
 			name: "mockshim",
 			makeExtraArgs: []string{
 				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
-				"SHIM_VERSION=15.3",
-				"WITH_SBAT=1"},
+				"SHIM_VERSION=15.7",
+				"SBAT_VAR_PREVIOUS=sbat,1,2022052400\\\\ngrub,2\\\\n",
+				"SBAT_VAR_LATEST=sbat,1,2022111500\\\\nshim,2\\\\ngrub,3\\\\n",
+				"WITH_SBAT=1",
+				"WITH_SBATLEVEL=1"},
 			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
 			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
 			filename:  "mockshim.efi.signed.1.1.1",
@@ -45,8 +50,22 @@ func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []moc
 			path: filepath.Join(srcDir, "shim"),
 			name: "mockshim",
 			makeExtraArgs: []string{
+				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
 				"SHIM_VERSION=15.3",
 				"WITH_SBAT=1"},
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
+			filename:  "mockshim_initial_sbat.efi.signed.1.1.1",
+		},
+		{
+			path: filepath.Join(srcDir, "shim"),
+			name: "mockshim",
+			makeExtraArgs: []string{
+				"SHIM_VERSION=15.7",
+				"SBAT_VAR_PREVIOUS=sbat,1,2022052400\\\\ngrub,2\\\\n",
+				"SBAT_VAR_LATEST=sbat,1,2022111500\\\\nshim,2\\\\ngrub,3\\\\n",
+				"WITH_SBAT=1",
+				"WITH_SBATLEVEL=1"},
 			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
 			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
 			filename:  "mockshim_no_vendor_cert.efi.signed.1.1.1",
@@ -55,9 +74,26 @@ func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []moc
 			path: filepath.Join(srcDir, "shim"),
 			name: "mockshim",
 			makeExtraArgs: []string{
+				"VENDOR_DB_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.esl"),
+				"SHIM_VERSION=15.7",
+				"SBAT_VAR_PREVIOUS=sbat,1,2022052400\\\\ngrub,2\\\\n",
+				"SBAT_VAR_LATEST=sbat,1,2022111500\\\\nshim,2\\\\ngrub,3\\\\n",
+				"WITH_SBAT=1",
+				"WITH_SBATLEVEL=1"},
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning1.1.1"]},
+			filename:  "mockshim_vendor_db.efi.signed.1.1.1",
+		},
+		{
+			path: filepath.Join(srcDir, "shim"),
+			name: "mockshim",
+			makeExtraArgs: []string{
 				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
-				"SHIM_VERSION=15.3",
-				"WITH_SBAT=1"},
+				"SHIM_VERSION=15.7",
+				"SBAT_VAR_PREVIOUS=sbat,1,2022052400\\\\ngrub,2\\\\n",
+				"SBAT_VAR_LATEST=sbat,1,2022111500\\\\nshim,2\\\\ngrub,3\\\\n",
+				"WITH_SBAT=1",
+				"WITH_SBATLEVEL=1"},
 			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.2.1.key")},
 			signCerts: [][]byte{certs["TestUefiSigning1.2.1"]},
 			filename:  "mockshim.efi.signed.1.2.1",
@@ -67,8 +103,11 @@ func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []moc
 			name: "mockshim",
 			makeExtraArgs: []string{
 				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
-				"SHIM_VERSION=15.3",
-				"WITH_SBAT=1"},
+				"SHIM_VERSION=15.7",
+				"SBAT_VAR_PREVIOUS=sbat,1,2022052400\\\\ngrub,2\\\\n",
+				"SBAT_VAR_LATEST=sbat,1,2022111500\\\\nshim,2\\\\ngrub,3\\\\n",
+				"WITH_SBAT=1",
+				"WITH_SBATLEVEL=1"},
 			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning2.1.1.key")},
 			signCerts: [][]byte{certs["TestUefiSigning2.1.1"]},
 			filename:  "mockshim.efi.signed.2.1.1",
@@ -78,8 +117,11 @@ func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []moc
 			name: "mockshim",
 			makeExtraArgs: []string{
 				"VENDOR_CERT_FILE=" + filepath.Join(vendorCertDir, "TestShimVendorCA.cer"),
-				"SHIM_VERSION=15.3",
-				"WITH_SBAT=1"},
+				"SHIM_VERSION=15.7",
+				"SBAT_VAR_PREVIOUS=sbat,1,2022052400\\\\ngrub,2\\\\n",
+				"SBAT_VAR_LATEST=sbat,1,2022111500\\\\nshim,2\\\\ngrub,3\\\\n",
+				"WITH_SBAT=1",
+				"WITH_SBATLEVEL=1"},
 			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning2.1.1.key"), filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
 			signCerts: [][]byte{certs["TestUefiSigning2.1.1"], certs["TestUefiSigning1.1.1"]},
 			filename:  "mockshim.efi.signed.2.1.1+1.1.1",
@@ -221,6 +263,26 @@ func writeShimVendorCertificates(certs map[string][]byte, dir string) error {
 			return xerrors.Errorf("cannot write %s: %w", c, err)
 		}
 	}
+
+	db := efi.SignatureDatabase{
+		{
+			Type: efi.CertX509Guid,
+			Signatures: []*efi.SignatureData{
+				{
+					Owner: efi.MakeGUID(0x84862e0b, 0x24ee, 0x412e, 0x97b0, [...]uint8{0x4f, 0x3a, 0x33, 0x7d, 0xd2, 0xbd}),
+					Data:  certs["TestShimVendorCA"],
+				},
+			},
+		},
+	}
+
+	buf := new(bytes.Buffer)
+	db.Write(buf)
+
+	if err := ioutil.WriteFile(filepath.Join(dir, "TestShimVendorCA.esl"), buf.Bytes(), 0644); err != nil {
+		return xerrors.Errorf("cannot write TestShimVendorCA.esl: %w", err)
+	}
+
 	return nil
 }
 
