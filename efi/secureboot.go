@@ -181,6 +181,7 @@ func appendSignatureDBUpdate(vars varReadWriter, update *SignatureDBUpdate, quir
 			// already exists in the base DB
 			isNewSig := true
 
+		BaseLoop:
 			for _, l := range baseDb {
 				if l.Type != ul.Type {
 					// Different signature type
@@ -200,12 +201,8 @@ func appendSignatureDBUpdate(vars varReadWriter, update *SignatureDBUpdate, quir
 					}
 					if !isNewSig {
 						// The signature already exists in this base ESL
-						break
+						break BaseLoop
 					}
-				}
-				if !isNewSig {
-					// The signature already exists in this base DB
-					break
 				}
 			}
 
