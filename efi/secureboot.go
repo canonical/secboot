@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+	"io/ioutil"
 
 	efi "github.com/canonical/go-efilib"
 	"golang.org/x/xerrors"
@@ -139,90 +140,101 @@ const (
 	signatureDBUpdateFirmwareDedupIgnoresOwner
 )
 
-// appendSignatureDBUpdate computes the new signature database contents associated with
+// applySignatureDBUpdate computes the new signature database contents associated with
 // the supplied udpate and base environment, and updates the supplied variable set.
-func appendSignatureDBUpdate(vars varReadWriter, update *SignatureDBUpdate, quirk signatureDBUpdateFirmwareQuirk) error {
-	data, attrs, err := vars.ReadVar(update.Name.Name, update.Name.GUID)
-	switch {
-	case err == efi.ErrVarNotExist:
-		attrs = efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess | efi.AttributeTimeBasedAuthenticatedWriteAccess
-	case err != nil:
-		return xerrors.Errorf("cannot read original signature database: %w", err)
-	}
+func applySignatureDBUpdate(vars varReadWriter, update *SignatureDBUpdate, quirk signatureDBUpdateFirmwareQuirk) error {
+	var updateData []byte
+	attrs := efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess | efi.AttributeTimeBasedAuthenticatedWriteAccess
 
-	base := bytes.NewReader(data)
-	updateData := bytes.NewReader(update.Data)
+	updateReader := bytes.NewReader(update.Data)
 
 	// Skip over authentication header
-	_, err = efi.ReadTimeBasedVariableAuthentication(updateData)
+	_, err := efi.ReadTimeBasedVariableAuthentication(updateReader)
 	if err != nil {
 		return xerrors.Errorf("cannot decode EFI_VARIABLE_AUTHENTICATION_2 structure of update: %w", err)
 	}
 
-	baseDb, err := efi.ReadSignatureDatabase(base)
-	if err != nil {
-		return xerrors.Errorf("cannot decode base signature database: %w", err)
-	}
+	if update.Name != PK {
+		attrs |= efi.AttributeAppendWrite
 
-	updateDb, err := efi.ReadSignatureDatabase(updateData)
-	if err != nil {
-		return xerrors.Errorf("cannot decode signature database update: %w", err)
-	}
+		data, _, err := vars.ReadVar(update.Name.Name, update.Name.GUID)
+		switch {
+		case err == efi.ErrVarNotExist:
+			// nothing to do
+		case err != nil:
+			return xerrors.Errorf("cannot read original signature database: %w", err)
+		}
 
-	var filtered efi.SignatureDatabase
+		base := bytes.NewReader(data)
 
-	// Filter out signatures in the update that already exist in the base DB.
-	for _, ul := range updateDb {
-		// For each ESL in this update...
-		var newSigs []*efi.SignatureData
+		baseDb, err := efi.ReadSignatureDatabase(base)
+		if err != nil {
+			return xerrors.Errorf("cannot decode base signature database: %w", err)
+		}
 
-		for _, us := range ul.Signatures {
-			// For each signature in this ESL, determine if the signature
-			// already exists in the base DB
-			isNewSig := true
+		updateDb, err := efi.ReadSignatureDatabase(updateReader)
+		if err != nil {
+			return xerrors.Errorf("cannot decode signature database update: %w", err)
+		}
 
-		BaseLoop:
-			for _, l := range baseDb {
-				if l.Type != ul.Type {
-					// Different signature type
-					continue
+		var filtered efi.SignatureDatabase
+
+		// Filter out signatures in the update that already exist in the base DB.
+		for _, ul := range updateDb {
+			// For each ESL in this update...
+			var newSigs []*efi.SignatureData
+
+			for _, us := range ul.Signatures {
+				// For each signature in this ESL, determine if the signature
+				// already exists in the base DB
+				isNewSig := true
+
+			BaseLoop:
+				for _, l := range baseDb {
+					if l.Type != ul.Type {
+						// Different signature type
+						continue
+					}
+
+					for _, s := range l.Signatures {
+						switch quirk {
+						case signatureDBUpdateNoFirmwareQuirk:
+							if us.Equal(s) {
+								isNewSig = false
+							}
+						case signatureDBUpdateFirmwareDedupIgnoresOwner:
+							if bytes.Equal(us.Data, s.Data) {
+								isNewSig = false
+							}
+						}
+						if !isNewSig {
+							// The signature already exists in this base ESL
+							break BaseLoop
+						}
+					}
 				}
 
-				for _, s := range l.Signatures {
-					switch quirk {
-					case signatureDBUpdateNoFirmwareQuirk:
-						if us.Equal(s) {
-							isNewSig = false
-						}
-					case signatureDBUpdateFirmwareDedupIgnoresOwner:
-						if bytes.Equal(us.Data, s.Data) {
-							isNewSig = false
-						}
-					}
-					if !isNewSig {
-						// The signature already exists in this base ESL
-						break BaseLoop
-					}
+				if isNewSig {
+					// Only retain signatures that do not exist in the base DB.
+					newSigs = append(newSigs, us)
 				}
 			}
 
-			if isNewSig {
-				// Only retain signatures that do not exist in the base DB.
-				newSigs = append(newSigs, us)
+			if len(newSigs) > 0 {
+				// One or more signatures from this update ESL are new, so append the filtered ESL
+				filtered = append(filtered, &efi.SignatureList{Type: ul.Type, Header: ul.Header, Signatures: newSigs})
 			}
 		}
 
-		if len(newSigs) > 0 {
-			// One or more signatures from this update ESL are new, so append the filtered ESL
-			filtered = append(filtered, &efi.SignatureList{Type: ul.Type, Header: ul.Header, Signatures: newSigs})
+		// Serialize the filtered list of ESLs
+		var buf bytes.Buffer
+		if err := filtered.Write(&buf); err != nil {
+			return xerrors.Errorf("cannot encode filtered signature database update: %w", err)
 		}
+		updateData = buf.Bytes()
+	} else {
+		updateData, _ = ioutil.ReadAll(updateReader)
 	}
 
-	// Serialize the filtered list of ESLs
-	var buf bytes.Buffer
-	if err := filtered.Write(&buf); err != nil {
-		return xerrors.Errorf("cannot encode filtered signature database update: %w", err)
-	}
-
-	return vars.WriteVar(update.Name.Name, update.Name.GUID, attrs|efi.AttributeAppendWrite, buf.Bytes())
+	return vars.WriteVar(update.Name.Name, update.Name.GUID, attrs, updateData)
 }

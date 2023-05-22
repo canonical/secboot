@@ -37,7 +37,7 @@ const (
 
 // Export variables and unexported functions for testing
 var (
-	AppendSignatureDBUpdate   = appendSignatureDBUpdate
+	ApplySignatureDBUpdate    = applySignatureDBUpdate
 	DefaultEnv                = defaultEnv
 	MustParseShimVersion      = mustParseShimVersion
 	NewestSbatLevel           = newestSbatLevel

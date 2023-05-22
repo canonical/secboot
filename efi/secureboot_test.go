@@ -184,7 +184,7 @@ func (s *securebootSuite) TestSecureBootPolicyMixinDetermineAuthorityNoSignature
 	c.Check(err, ErrorMatches, "no secure boot signatures")
 }
 
-type testAppendSignatureDBUpdateData struct {
+type testApplySignatureDBUpdateData struct {
 	vars          string
 	update        string
 	db            efi.VariableDescriptor
@@ -194,7 +194,7 @@ type testAppendSignatureDBUpdateData struct {
 	sha1hash      []byte
 }
 
-func (s *securebootSuite) testAppendSignatureDBUpdate(c *C, data *testAppendSignatureDBUpdateData) {
+func (s *securebootSuite) testApplySignatureDBUpdate(c *C, data *testApplySignatureDBUpdateData) {
 	contents, err := ioutil.ReadFile(data.update)
 	c.Check(err, IsNil)
 
@@ -206,7 +206,7 @@ func (s *securebootSuite) testAppendSignatureDBUpdate(c *C, data *testAppendSign
 	orig, origAttrs, err := vars.ReadVar(data.db.Name, data.db.GUID)
 	c.Check(err, IsNil)
 
-	c.Assert(AppendSignatureDBUpdate(vars, update, data.mode), IsNil)
+	c.Assert(ApplySignatureDBUpdate(vars, update, data.mode), IsNil)
 
 	if data.newESLs == 0 {
 		c.Check(collector.More(), testutil.IsFalse)
@@ -241,9 +241,9 @@ func (s *securebootSuite) testAppendSignatureDBUpdate(c *C, data *testAppendSign
 	}
 }
 
-func (s *securebootSuite) TestAppendSignatureDBUpdateAppendOneCert(c *C) {
+func (s *securebootSuite) TestApplySignatureDBUpdateAppendOneCert(c *C) {
 	// Test applying a single cert to db.
-	s.testAppendSignatureDBUpdate(c, &testAppendSignatureDBUpdateData{
+	s.testApplySignatureDBUpdate(c, &testApplySignatureDBUpdateData{
 		vars:          "testdata/efivars_mock1",
 		update:        "testdata/update_mock1/db/dbupdate.bin",
 		db:            Db,
@@ -253,9 +253,9 @@ func (s *securebootSuite) TestAppendSignatureDBUpdateAppendOneCert(c *C) {
 		sha1hash:      testutil.DecodeHexString(c, "6f940f3c622885caa5a334fc9da3e74ea4f55400")})
 }
 
-func (s *securebootSuite) TestAppendSignatureDBUpdateAppendExistingCert(c *C) {
+func (s *securebootSuite) TestApplySignatureDBUpdateAppendExistingCert(c *C) {
 	// Test applying a single duplicate cert to db works as expected.
-	s.testAppendSignatureDBUpdate(c, &testAppendSignatureDBUpdateData{
+	s.testApplySignatureDBUpdate(c, &testApplySignatureDBUpdateData{
 		vars:     "testdata/efivars_mock1_plus_extra_db_ca",
 		update:   "testdata/update_mock1/db/dbupdate.bin",
 		db:       Db,
@@ -264,9 +264,9 @@ func (s *securebootSuite) TestAppendSignatureDBUpdateAppendExistingCert(c *C) {
 		sha1hash: testutil.DecodeHexString(c, "6f940f3c622885caa5a334fc9da3e74ea4f55400")})
 }
 
-func (s *securebootSuite) TestAppendSignatureDBUpdateAppendMS2016DbxUpdate1(c *C) {
+func (s *securebootSuite) TestApplySignatureDBUpdateAppendMS2016DbxUpdate1(c *C) {
 	// Test applying the 2016 dbx update from uefi.org.
-	s.testAppendSignatureDBUpdate(c, &testAppendSignatureDBUpdateData{
+	s.testApplySignatureDBUpdate(c, &testApplySignatureDBUpdateData{
 		vars:          "testdata/efivars_ms",
 		update:        "testdata/update_uefi.org_2016-08-08/dbx/dbxupdate.bin",
 		db:            Dbx,
@@ -276,11 +276,11 @@ func (s *securebootSuite) TestAppendSignatureDBUpdateAppendMS2016DbxUpdate1(c *C
 		sha1hash:      testutil.DecodeHexString(c, "45cd62f8fc2a45e835ce76db192c6db382c83286")})
 }
 
-func (s *securebootSuite) TestAppendSignatureDBUpdateAppendMS2016DbxUpdate2(c *C) {
+func (s *securebootSuite) TestApplySignatureDBUpdateAppendMS2016DbxUpdate2(c *C) {
 	// Test applying the 2016 dbx update from uefi.org with a different
 	// quirk mode has no effect - the update doesn't duplicate any existing
 	// signatures.
-	s.testAppendSignatureDBUpdate(c, &testAppendSignatureDBUpdateData{
+	s.testApplySignatureDBUpdate(c, &testApplySignatureDBUpdateData{
 		vars:          "testdata/efivars_ms",
 		update:        "testdata/update_uefi.org_2016-08-08/dbx/dbxupdate.bin",
 		db:            Dbx,
@@ -290,9 +290,9 @@ func (s *securebootSuite) TestAppendSignatureDBUpdateAppendMS2016DbxUpdate2(c *C
 		sha1hash:      testutil.DecodeHexString(c, "45cd62f8fc2a45e835ce76db192c6db382c83286")})
 }
 
-func (s *securebootSuite) TestAppendSignatureDBUpdateAppendMS2020DbxUpdate(c *C) {
+func (s *securebootSuite) TestApplySignatureDBUpdateAppendMS2020DbxUpdate(c *C) {
 	// Test applying the 2020 dbx update from uefi.org.
-	s.testAppendSignatureDBUpdate(c, &testAppendSignatureDBUpdateData{
+	s.testApplySignatureDBUpdate(c, &testApplySignatureDBUpdateData{
 		vars:          "testdata/efivars_ms",
 		update:        "testdata/update_uefi.org_2020-10-12/dbx/dbxupdate_x64_1.bin",
 		db:            Dbx,
@@ -302,9 +302,9 @@ func (s *securebootSuite) TestAppendSignatureDBUpdateAppendMS2020DbxUpdate(c *C)
 		sha1hash:      testutil.DecodeHexString(c, "ba6baeecaa4cad2c2820fdc7fda08269c48afd98")})
 }
 
-func (s *securebootSuite) TestAppendSignatureDBUpdateAppendMS2020DbxUpdateOver2016Update(c *C) {
+func (s *securebootSuite) TestApplySignatureDBUpdateAppendMS2020DbxUpdateOver2016Update(c *C) {
 	// Test applying the 2020 dbx update from uefi.org over the 2016 update.
-	s.testAppendSignatureDBUpdate(c, &testAppendSignatureDBUpdateData{
+	s.testApplySignatureDBUpdate(c, &testApplySignatureDBUpdateData{
 		vars:          "testdata/efivars_ms_plus_2016_dbx_update",
 		update:        "testdata/update_uefi.org_2020-10-12/dbx/dbxupdate_x64_1.bin",
 		db:            Dbx,
@@ -314,9 +314,9 @@ func (s *securebootSuite) TestAppendSignatureDBUpdateAppendMS2020DbxUpdateOver20
 		sha1hash:      testutil.DecodeHexString(c, "7be4a669cf84c785457bede35b859e4b39f6889e")})
 }
 
-func (s *securebootSuite) TestAppendSignatureDBUpdateWithDuplicateSomeDuplicateSignatures1(c *C) {
+func (s *securebootSuite) TestApplySignatureDBUpdateWithDuplicateSomeDuplicateSignatures1(c *C) {
 	// Test applying the 2020 dbx update from uefi.org over the 2016 update.
-	s.testAppendSignatureDBUpdate(c, &testAppendSignatureDBUpdateData{
+	s.testApplySignatureDBUpdate(c, &testApplySignatureDBUpdateData{
 		vars:          "testdata/efivars_ms_plus_2016_dbx_update",
 		update:        "testdata/update_modified_uefi.org_2016-08-08/dbx/dbxupdate.bin",
 		db:            Dbx,
@@ -326,9 +326,9 @@ func (s *securebootSuite) TestAppendSignatureDBUpdateWithDuplicateSomeDuplicateS
 		sha1hash:      testutil.DecodeHexString(c, "2fcb5e8c7e36a8fe3f61fac791f8bfa883170840")})
 }
 
-func (s *securebootSuite) TestAppendSignatureDBUpdateWithDuplicateSomeDuplicateSignatures2(c *C) {
+func (s *securebootSuite) TestApplySignatureDBUpdateWithDuplicateSomeDuplicateSignatures2(c *C) {
 	// Test applying the 2020 dbx update from uefi.org over the 2016 update.
-	s.testAppendSignatureDBUpdate(c, &testAppendSignatureDBUpdateData{
+	s.testApplySignatureDBUpdate(c, &testApplySignatureDBUpdateData{
 		vars:          "testdata/efivars_ms_plus_2016_dbx_update",
 		update:        "testdata/update_modified_uefi.org_2016-08-08/dbx/dbxupdate.bin",
 		db:            Dbx,
@@ -336,4 +336,30 @@ func (s *securebootSuite) TestAppendSignatureDBUpdateWithDuplicateSomeDuplicateS
 		newESLs:       1,
 		newSignatures: []int{1},
 		sha1hash:      testutil.DecodeHexString(c, "7ccb56bc3e88fed4a18b91fb37836a73ce893bb3")})
+}
+
+func (s *securebootSuite) TestApplySignatureDBUpdatePK(c *C) {
+	// Test that applying an update to PK does not append
+	contents, err := ioutil.ReadFile("testdata/update_mock1/db/dbupdate.bin")
+	c.Check(err, IsNil)
+
+	update := &SignatureDBUpdate{Name: PK, Data: contents}
+
+	collector := NewRootVarsCollector(newMockEFIEnvironmentFromFiles(c, "testdata/efivars_mock1", ""))
+	vars := collector.Next()
+
+	c.Assert(ApplySignatureDBUpdate(vars, update, SignatureDBUpdateNoFirmwareQuirk), IsNil)
+
+	c.Assert(collector.More(), testutil.IsTrue)
+	vars = collector.Next()
+
+	data, attrs, err := vars.ReadVar(PK.Name, PK.GUID)
+	c.Check(err, IsNil)
+	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess)
+
+	buf := bytes.NewBuffer(contents)
+	_, err = efi.ReadTimeBasedVariableAuthentication(buf)
+	c.Check(err, IsNil)
+
+	c.Check(data, DeepEquals, buf.Bytes())
 }

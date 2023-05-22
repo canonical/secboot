@@ -316,7 +316,7 @@ func (b *secureBootPolicyGenBranch) processSignatureDbMeasurementEvent(guid efi.
 		if err != nil {
 			return nil, xerrors.Errorf("cannot read signature DB update: %w", err)
 		}
-		if err := appendSignatureDBUpdate(vars, &SignatureDBUpdate{Name: update.db, Data: data}, updateQuirkMode); err != nil {
+		if err := applySignatureDBUpdate(vars, &SignatureDBUpdate{Name: update.db, Data: data}, updateQuirkMode); err != nil {
 			return nil, xerrors.Errorf("cannot compute signature DB update: %w", err)
 		}
 	}
