@@ -26,22 +26,23 @@ import (
 
 // Export constants for testing
 const (
-	ShimSbatPolicyLatest                  = shimSbatPolicyLatest
-	ShimSbatPolicyPrevious                = shimSbatPolicyPrevious
-	ShimVendorCertIsX509                  = shimVendorCertIsX509
-	ShimVendorCertIsDb                    = shimVendorCertIsDb
-	SigDbUpdateQuirkModeNone              = sigDbUpdateQuirkModeNone
-	SigDbUpdateQuirkModeDedupIgnoresOwner = sigDbUpdateQuirkModeDedupIgnoresOwner
+	ShimName                                   = shimName
+	ShimSbatPolicyLatest                       = shimSbatPolicyLatest
+	ShimSbatPolicyPrevious                     = shimSbatPolicyPrevious
+	ShimVendorCertIsX509                       = shimVendorCertIsX509
+	ShimVendorCertIsDb                         = shimVendorCertIsDb
+	SignatureDBUpdateNoFirmwareQuirk           = signatureDBUpdateNoFirmwareQuirk
+	SignatureDBUpdateFirmwareDedupIgnoresOwner = signatureDBUpdateFirmwareDedupIgnoresOwner
 )
 
 // Export variables and unexported functions for testing
 var (
-	ComputeDbUpdate           = computeDbUpdate
+	ApplySignatureDBUpdate    = applySignatureDBUpdate
 	DefaultEnv                = defaultEnv
 	MustParseShimVersion      = mustParseShimVersion
 	NewestSbatLevel           = newestSbatLevel
-	NewShimImageHandle        = newShimImageHandle
 	NewRootVarsCollector      = newRootVarsCollector
+	NewShimImageHandle        = newShimImageHandle
 	OpenPeImage               = openPeImage
 	ParseShimVersion          = parseShimVersion
 	ParseShimVersionDataIdent = parseShimVersionDataIdent
@@ -56,13 +57,15 @@ type LoadParams = loadParams
 type PeImageHandle = peImageHandle
 type RootVarReaderKey = rootVarReaderKey
 type SbatComponent = sbatComponent
-
+type SecureBootAuthority = secureBootAuthority
+type SecureBootDB = secureBootDB
+type SecureBootPolicyMixin = secureBootPolicyMixin
 type ShimImageHandle = shimImageHandle
 type ShimSbatLevel = shimSbatLevel
 type ShimSbatPolicy = shimSbatPolicy
 type ShimVendorCertFormat = shimVendorCertFormat
 type ShimVersion = shimVersion
-type SigDbUpdateQuirkMode = sigDbUpdateQuirkMode
+type SignatureDBUpdateFirmwareQuirk = signatureDBUpdateFirmwareQuirk
 type VarBranch = varBranch
 
 // Helper functions
