@@ -44,6 +44,10 @@ func computeV3PcrPolicyRefFromCounterContext(context tpm2.ResourceContext) tpm2.
 	return computeV1PcrPolicyRefFromCounterContext(context)
 }
 
+func computeV3PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
+	return computeV1PcrPolicyCounterAuthPolicies(alg, updateKeyName)
+}
+
 // deriveV3PolicyAuthKey derives an elliptic curve key for signing authorization policies from the
 // supplied input key. Pre-v3 key objects stored the private part of the elliptic curve key inside
 // the sealed key, but v3 keys are wrapped by secboot.KeyData which protects an auxiliary key that

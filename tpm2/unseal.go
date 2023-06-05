@@ -47,7 +47,7 @@ const (
 //
 // If a transient SRK is created, it is flushed from the TPM before this function
 // returns.
-func (k *SealedKeyObject) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	var lastError error
 	for try := tryPersistentSRK; try <= tryMax; try++ {
 		var srk tpm2.ResourceContext
@@ -99,7 +99,7 @@ func (k *SealedKeyObject) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Sessi
 	return nil, lastError
 }
 
-func (k *SealedKeyObject) unsealDataFromTPM(tpm *tpm2.TPMContext, hmacSession tpm2.SessionContext) (data []byte, err error) {
+func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, hmacSession tpm2.SessionContext) (data []byte, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {

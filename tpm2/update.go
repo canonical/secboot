@@ -41,7 +41,7 @@ import (
 //
 // If k.data.policy().pcrPolicyCounterHandle() is not tpm2.HandleNull, then counterPub
 // must be supplied, and it must correspond to the public area associated with that handle.
-func (k *SealedKeyObject) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey,
+func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey,
 	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, session tpm2.SessionContext) error {
 	var counterName tpm2.Name
 	if counterPub != nil {
@@ -109,7 +109,7 @@ func (k *SealedKeyObject) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, ke
 	return k.data.Policy().UpdatePCRPolicy(alg, params)
 }
 
-func (k *SealedKeyObject) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey, session tpm2.SessionContext) error {
+func (k *sealedKeyDataBase) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey, session tpm2.SessionContext) error {
 	pcrPolicyCounterPub, err := k.validateData(tpm, session)
 	if err != nil {
 		if isKeyDataError(err) {
@@ -157,7 +157,7 @@ func (k *SealedKeyObject) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContex
 	return nil
 }
 
-func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyObject, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
+func updateKeyPCRProtectionPoliciesCommon(tpm *tpm2.TPMContext, keys []*sealedKeyDataBase, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
 	primaryKey := keys[0]
 
 	// Validate the primary key object
@@ -186,12 +186,12 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 	// Validate secondary key objects and make sure they are related
 	for i, k := range keys[1:] {
 		if k.data.Version() != primaryKey.data.Version() {
-			return fmt.Errorf("key data at index %d has a different metadata version compared to the primary key data", i)
+			return fmt.Errorf("key data at index %d has a different metadata version compared to the primary key data", i+1)
 		}
 
 		if _, err := k.validateData(tpm, session); err != nil {
 			if isKeyDataError(err) {
-				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i)}
+				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i+1)}
 			}
 			return xerrors.Errorf("cannot validate related key data: %w", err)
 		}
@@ -201,43 +201,11 @@ func updateKeyPCRProtectionPolicyCommon(tpm *tpm2.TPMContext, keys []*SealedKeyO
 		// and dynamic authorization policy signing key, so this is the only check required to determine
 		// if 2 keys are related.
 		if !bytes.Equal(k.data.Public().AuthPolicy, primaryKey.data.Public().AuthPolicy) {
-			return InvalidKeyDataError{fmt.Sprintf("key data at index %d is not related to the primary key data", i)}
+			return InvalidKeyDataError{fmt.Sprintf("key data at index %d is not related to the primary key data", i+1)}
 		}
 
 		k.data.Policy().SetPCRPolicyFrom(primaryKey.data.Policy())
 	}
 
 	return nil
-}
-
-// UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
-// pcrProfile argument. In order to do this, the caller must also specify the private part of the authorization key
-// that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
-//
-// If the sealed key was created with a PCR policy counter, then the sequence number of the new PCR policy will be
-// incremented by 1 compared with the value associated with the current PCR policy. This does not increment the NV
-// counter on the TPM - this can be done with a subsequent call to RevokeOldPCRProtectionPolicies.
-//
-// On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
-// from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
-func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
-	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, authKey, pcrProfile, tpm.HmacSession())
-}
-
-// RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. It does
-// this by incrementing the PCR policy counter associated with this sealed key on the TPM so that it contains the
-// value of the current PCR policy sequence number. PCR policies with a lower sequence number cannot be satisfied
-// and become invalid. The PCR policy sequence number is incremented on each call to UpdatePCRProtectionPolicy.
-// If the key data was not created with a PCR policy counter, then this function does nothing.
-//
-// The caller must also specify the private part of the authorization key that was either returned by SealKeyToTPM
-// or SealedKeyObject.UnsealFromTPM.
-//
-// Note that this will perform a NV write for each call to UpdatePCRProtectionPolicy since the last call
-// to RevokeOldPCRProtectionPolicies. As TPMs may apply rate-limiting to NV writes, this should be called
-// after each call to UpdatePCRProtectionPolicy that removes some PCR policy branches.
-//
-// If validation of the key data fails, a InvalidKeyDataError error will be returned.
-func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.AuxiliaryKey) error {
-	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey, tpm.HmacSession())
 }
