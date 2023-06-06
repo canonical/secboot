@@ -3,60 +3,60 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "HmqA0tGyjjTP4eNshHgLzvZE5nQ=",
+			"checksumSHA1": "69XKT5+ehKVM6yXXAeNEKNKWeCs=",
 			"path": "github.com/canonical/go-efilib",
-			"revision": "f378010c82c2c3bc0fbbf64063f40131e325ad0e",
-			"revisionTime": "2022-11-28T21:23:35Z",
-			"version": "v0.9.0",
-			"versionExact": "v0.9.0"
+			"revision": "cc90cbed9430e4d9690c713d8860bfe8c914f98f",
+			"revisionTime": "2023-05-22T10:38:12Z",
+			"version": "v0.9.4",
+			"versionExact": "v0.9.4"
 		},
 		{
 			"checksumSHA1": "w0EI7UJmvC1OS1fFXdr0CAGIFgY=",
 			"path": "github.com/canonical/go-efilib/internal/ioerr",
-			"revision": "f378010c82c2c3bc0fbbf64063f40131e325ad0e",
-			"revisionTime": "2022-11-28T21:23:35Z",
-			"version": "v0.9.0",
-			"versionExact": "v0.9.0"
+			"revision": "cc90cbed9430e4d9690c713d8860bfe8c914f98f",
+			"revisionTime": "2023-05-22T10:38:12Z",
+			"version": "v0.9.4",
+			"versionExact": "v0.9.4"
 		},
 		{
 			"checksumSHA1": "ZZ+AMnkeZSvNfi7M5LnY0xhVWFk=",
 			"path": "github.com/canonical/go-efilib/internal/pe1.14",
-			"revision": "f378010c82c2c3bc0fbbf64063f40131e325ad0e",
-			"revisionTime": "2022-11-28T21:23:35Z",
-			"version": "v0.9.0",
-			"versionExact": "v0.9.0"
+			"revision": "cc90cbed9430e4d9690c713d8860bfe8c914f98f",
+			"revisionTime": "2023-05-22T10:38:12Z",
+			"version": "v0.9.4",
+			"versionExact": "v0.9.4"
 		},
 		{
-			"checksumSHA1": "jXh4p8309Xvi1Hkxe6MUaTaVdZI=",
+			"checksumSHA1": "yJdTMVIZY1q5yqhloWLG/dgfFoA=",
 			"path": "github.com/canonical/go-efilib/internal/pkcs7",
-			"revision": "f378010c82c2c3bc0fbbf64063f40131e325ad0e",
-			"revisionTime": "2022-11-28T21:23:35Z",
-			"version": "v0.9.0",
-			"versionExact": "v0.9.0"
+			"revision": "cc90cbed9430e4d9690c713d8860bfe8c914f98f",
+			"revisionTime": "2023-05-22T10:38:12Z",
+			"version": "v0.9.4",
+			"versionExact": "v0.9.4"
 		},
 		{
 			"checksumSHA1": "+lQG86tmJPldFp6+p4uHG2cJuXo=",
 			"path": "github.com/canonical/go-efilib/internal/uefi",
-			"revision": "f378010c82c2c3bc0fbbf64063f40131e325ad0e",
-			"revisionTime": "2022-11-28T21:23:35Z",
-			"version": "v0.9.0",
-			"versionExact": "v0.9.0"
+			"revision": "cc90cbed9430e4d9690c713d8860bfe8c914f98f",
+			"revisionTime": "2023-05-22T10:38:12Z",
+			"version": "v0.9.4",
+			"versionExact": "v0.9.4"
 		},
 		{
 			"checksumSHA1": "5SMPpBSP3f+zupAYgPMdZJPCQdc=",
 			"path": "github.com/canonical/go-efilib/internal/unix",
-			"revision": "f378010c82c2c3bc0fbbf64063f40131e325ad0e",
-			"revisionTime": "2022-11-28T21:23:35Z",
-			"version": "v0.9.0",
-			"versionExact": "v0.9.0"
+			"revision": "cc90cbed9430e4d9690c713d8860bfe8c914f98f",
+			"revisionTime": "2023-05-22T10:38:12Z",
+			"version": "v0.9.4",
+			"versionExact": "v0.9.4"
 		},
 		{
 			"checksumSHA1": "R9jsX60WDTcKp5XNn97mas6ThXw=",
 			"path": "github.com/canonical/go-efilib/mbr",
-			"revision": "f378010c82c2c3bc0fbbf64063f40131e325ad0e",
-			"revisionTime": "2022-11-28T21:23:35Z",
-			"version": "v0.9.0",
-			"versionExact": "v0.9.0"
+			"revision": "cc90cbed9430e4d9690c713d8860bfe8c914f98f",
+			"revisionTime": "2023-05-22T10:38:12Z",
+			"version": "v0.9.4",
+			"versionExact": "v0.9.4"
 		},
 		{
 			"checksumSHA1": "5zGeHDBvsYpgEyZ91hgSF0zLxyU=",

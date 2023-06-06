@@ -112,7 +112,7 @@ SignatureLoop:
 					continue
 				}
 
-				if sig.CanBeVerifiedBy(ca) {
+				if sig.CertLikelyTrustAnchor(ca) {
 					authority = &secureBootAuthority{
 						Source:    db.Name,
 						Signature: l.Signatures[0]}
