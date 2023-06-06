@@ -153,16 +153,16 @@
 			"versionExact": "v0.3.1"
 		},
 		{
-			"checksumSHA1": "pjpC3gtdvLblTbmFOnvc8MzbaLs=",
+			"checksumSHA1": "9e/x08fJFNZ6ixgxLzOQvlg7HU4=",
 			"path": "github.com/canonical/tcglog-parser",
-			"revision": "69fa1e9f0ad25c043447972330d66337cb1e9a57",
-			"revisionTime": "2021-08-24T13:18:05Z"
+			"revision": "0d6d239de69d112af219133f6591aad75a4ac1d4",
+			"revisionTime": "2023-04-29T16:01:08Z"
 		},
 		{
 			"checksumSHA1": "r6hlCzWoD5bpQ9a4CY2QORjFjHY=",
 			"path": "github.com/canonical/tcglog-parser/internal/ioerr",
-			"revision": "143e5990fece56ae5ccf77271d6e2ebe49878e7a",
-			"revisionTime": "2021-07-11T17:09:48Z"
+			"revision": "0d6d239de69d112af219133f6591aad75a4ac1d4",
+			"revisionTime": "2023-04-29T16:01:08Z"
 		},
 		{
 			"checksumSHA1": "kmcZh6191ZYy/+G/tIWFZoVEkGs=",

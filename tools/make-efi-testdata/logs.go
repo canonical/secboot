@@ -80,7 +80,7 @@ type logOptions struct {
 	noSBAT              bool
 }
 
-func constructLog(vars map[string]map[string][]byte, certs map[string][]byte, opts *logOptions) []*tcglog.Event {
+func constructLog(vars map[string]map[string][]byte, certs map[string][]byte, opts *logOptions) *tcglog.Log {
 	w := newCryptoAgileLogWriter()
 
 	// Mock S-CRTM measurements
@@ -393,7 +393,7 @@ func constructLog(vars map[string]map[string][]byte, certs map[string][]byte, op
 		}
 	}
 
-	return w.events
+	return tcglog.NewLogForTesting(w.events)
 }
 
 type logData struct {
@@ -440,7 +440,7 @@ func makeTCGLogs(srcDir, dstDir string) error {
 		if err != nil {
 			return err
 		}
-		if err := tcglog.WriteLog(f, constructLog(vars, certs, &data.opts)); err != nil {
+		if err := constructLog(vars, certs, &data.opts).Write(f); err != nil {
 			f.Close()
 			return err
 		}
