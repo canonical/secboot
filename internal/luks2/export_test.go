@@ -27,7 +27,8 @@ import (
 )
 
 var (
-	AcquireSharedLock = acquireSharedLock
+	AcquireSharedLock      = acquireSharedLock
+	SelectCipherAndKeysize = selectCipherAndKeysize
 )
 
 func MockDataDeviceInfo(stMock *unix.Stat_t) (restore func()) {
@@ -78,5 +79,13 @@ func MockStderr(w io.Writer) (restore func()) {
 	stderr = w
 	return func() {
 		stderr = origStderr
+	}
+}
+
+func MockRuntimeGOARCH(arch string) (restore func()) {
+	oldRuntimeGOARCH := runtimeGOARCH
+	runtimeGOARCH = arch
+	return func() {
+		runtimeGOARCH = oldRuntimeGOARCH
 	}
 }
