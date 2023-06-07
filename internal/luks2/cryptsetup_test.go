@@ -59,6 +59,9 @@ func (s *cryptsetupSuiteBase) SetUpTest(c *C) {
 
 	s.cryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupWrapperTpl, cryptsetup))
 	s.AddCleanup(s.cryptsetup.Restore)
+
+	// cryptsetup parameters are arch specific
+	s.AddCleanup(MockRuntimeGOARCH("amd64"))
 }
 
 type cryptsetupSuite struct {
@@ -1008,4 +1011,19 @@ func (s *cryptsetupSuite) TestSetSlotPriority3(c *C) {
 	s.testSetSlotPriority(c, &testSetSlotPriorityData{
 		slotId:   1,
 		priority: SlotPriorityIgnore})
+}
+
+func (s *cryptsetupSuite) TestSelectCipherAndKeysizeDefault(c *C) {
+	cipher, keysize := SelectCipherAndKeysize()
+	c.Check(cipher, Equals, "aes-xts-plain64")
+	c.Check(keysize, Equals, 512)
+}
+
+func (s *cryptsetupSuite) TestSelectCipherAndKeysizeArm(c *C) {
+	restore := MockRuntimeGOARCH("arm")
+	defer restore()
+
+	cipher, keysize := SelectCipherAndKeysize()
+	c.Check(cipher, Equals, "aes-cbc-essiv:sha256")
+	c.Check(keysize, Equals, 256)
 }

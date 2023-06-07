@@ -28,7 +28,8 @@ import (
 )
 
 var (
-	AcquireSharedLock = acquireSharedLock
+	AcquireSharedLock      = acquireSharedLock
+	SelectCipherAndKeysize = selectCipherAndKeysize
 )
 
 func (o *FormatOptions) Validate() error {
@@ -88,4 +89,12 @@ func MockStderr(w io.Writer) (restore func()) {
 
 func ResetCryptsetupFeatures() {
 	featuresOnce = sync.Once{}
+}
+
+func MockRuntimeGOARCH(arch string) (restore func()) {
+	oldRuntimeGOARCH := runtimeGOARCH
+	runtimeGOARCH = arch
+	return func() {
+		runtimeGOARCH = oldRuntimeGOARCH
+	}
 }

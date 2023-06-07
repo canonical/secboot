@@ -27,6 +27,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -255,6 +256,27 @@ func (options *FormatOptions) appendArguments(args []string) []string {
 	return args
 }
 
+var runtimeGOARCH = runtime.GOARCH
+
+// selectCipher will return the cipher to use. This is aes-xts-plain64
+// everywhere except on armhf (32bit arm) hardware where the XTS mode
+// cannot be accelerated by the hardware.
+//
+// Note that this is a simple approach, we could run "cryptsetup
+// benchmark" but that seems over engineered (and easy enough to
+// switch if we need in the future).
+func selectCipherAndKeysize() (string, int) {
+	switch runtimeGOARCH {
+	case "arm":
+		// on 32bit arm CPUs xts cannot be accerlated in HW so
+		// cbc is used
+		return "aes-cbc-essiv:sha256", keySize * 4
+	default:
+		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
+		return "aes-xts-plain64", keySize * 8
+	}
+}
+
 // Format will initialize a LUKS2 container with the specified options and set the primary key to the
 // supplied key. The label for the new container will be set to the supplied label. This can only be
 // called on a device that is not mapped.
@@ -274,6 +296,7 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		return err
 	}
 
+	cipher, ksize := selectCipherAndKeysize()
 	args := []string{
 		// batch processing, no password verification for formatting an existing LUKS container
 		"-q",
@@ -283,8 +306,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		"--type", "luks2",
 		// read the key from stdin
 		"--key-file", "-",
-		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
-		"--cipher", "aes-xts-plain64", "--key-size", strconv.Itoa(keySize * 8),
+
+		"--cipher", cipher, "--key-size", strconv.Itoa(ksize),
 		// set LUKS2 label
 		"--label", label}
 
