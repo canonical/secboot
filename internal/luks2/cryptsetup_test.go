@@ -52,6 +52,9 @@ func (s *cryptsetupSuite) SetUpTest(c *C) {
 	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 
 	s.AddCleanup(luks2test.WrapCryptsetup(c))
+
+	// cryptsetup parameters are arch specific
+	s.AddCleanup(MockRuntimeGOARCH("amd64"))
 }
 
 func (s *cryptsetupSuite) checkLUKS2Passphrase(c *C, path string, key []byte) {
@@ -672,4 +675,19 @@ func (s *cryptsetupSuite) TestSetSlotPriority3(c *C) {
 	s.testSetSlotPriority(c, &testSetSlotPriorityData{
 		slotId:   1,
 		priority: SlotPriorityIgnore})
+}
+
+func (s *cryptsetupSuite) TestSelectCipherAndKeysizeDefault(c *C) {
+	cipher, keysize := SelectCipherAndKeysize()
+	c.Check(cipher, Equals, "aes-xts-plain64")
+	c.Check(keysize, Equals, 512)
+}
+
+func (s *cryptsetupSuite) TestSelectCipherAndKeysizeArm(c *C) {
+	restore := MockRuntimeGOARCH("arm")
+	defer restore()
+
+	cipher, keysize := SelectCipherAndKeysize()
+	c.Check(cipher, Equals, "aes-cbc-essiv:sha256")
+	c.Check(keysize, Equals, 256)
 }
