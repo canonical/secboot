@@ -94,12 +94,33 @@ func (m *imageLoadHandlerLazyMap) LookupHandler(image peImageHandle) (imageLoadH
 	return nil, errors.New("no handler for image")
 }
 
+// makeImageLoadHandlerMap makes the default imageLoadHandlerMap, which maps
+// images to imageLoadHandlers using 2 sets of rules:
+//   - a set of rules specific to anything that exists inside of the Microsoft UEFI CA
+//     secure boot namespace.
+//   - a set of fallback rules for anything else.
 var makeImageLoadHandlerMap = func() imageLoadHandlerMap {
-	// TODO: implement
-	panic("not implemented")
+	return newImageLoadHandlerLazyMap(
+		makeMicrosoftUEFICASecureBootNamespaceRules(),
+		makeFallbackImageRules(),
+	)
 }
 
 // lookupImageLoadHandler returns an imageLoadHandler for the supplied image.
 func lookupImageLoadHandler(pc pcrProfileContext, image peImageHandle) (imageLoadHandler, error) {
 	return pc.ImageLoadHandlerMap().LookupHandler(image)
+}
+
+type nullLoadHandler struct{}
+
+func newNullLoadHandler(_ peImageHandle) (imageLoadHandler, error) {
+	return new(nullLoadHandler), nil
+}
+
+func (*nullLoadHandler) MeasureImageStart(_ pcrBranchContext) error {
+	return nil
+}
+
+func (*nullLoadHandler) MeasureImageLoad(_ pcrBranchContext, _ peImageHandle) (imageLoadHandler, error) {
+	return nil, errors.New("unrecognized image")
 }

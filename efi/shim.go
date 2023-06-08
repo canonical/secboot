@@ -93,6 +93,29 @@ func readShimSbatPolicy(vars varReader) (shimSbatPolicy, error) {
 	}
 }
 
+type shimSbatPolicyLatestOption struct{}
+
+// WithShimSbatPolicyLatest can be supplied to AddPCRProfile to compute the profile
+// with the value of the SbatLevel EFI variable set to "latest" (uint(1)), in
+// addition to the current value of the variable.
+func WithShimSbatPolicyLatest() PCRProfileOption {
+	return shimSbatPolicyLatestOption{}
+}
+
+func (shimSbatPolicyLatestOption) applyOptionTo(gen *pcrProfileGenerator) {
+	gen.varModifiers = append(gen.varModifiers, func(rootVars *rootVarsCollector) error {
+		for _, root := range rootVars.PeekAll() {
+			if err := root.WriteVar(
+				shimSbatPolicyName, shimGuid,
+				efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess,
+				[]byte{uint8(shimSbatPolicyLatest)}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // newestSbatLevel returns the newest SBAT revocation level from one or
 // more supplied revocations.
 func newestSbatLevel(levels ...[]byte) ([]byte, error) {
@@ -201,6 +224,10 @@ func (a shimVersion) Compare(b shimVersion) int {
 	default:
 		return 0
 	}
+}
+
+func (a shimVersion) String() string {
+	return strconv.FormatUint(uint64(a.Major), 10) + "." + strconv.FormatUint(uint64(a.Minor), 10)
 }
 
 // shimVendorCertFormat describes the format of the content of shim's .vendor_cert
