@@ -25,6 +25,7 @@ import (
 	efi "github.com/canonical/go-efilib"
 
 	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
@@ -33,8 +34,8 @@ type envSuite struct{}
 var _ = Suite(&envSuite{})
 
 func (s *envSuite) TestRootVarReaderReadVar(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "SecureBoot", GUID: efi.GlobalVariable}: {data: []byte{1}, attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "SecureBoot", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -46,8 +47,8 @@ func (s *envSuite) TestRootVarReaderReadVar(c *C) {
 }
 
 func (s *envSuite) TestRootVarReaderApplyOneUpdate(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -60,8 +61,8 @@ func (s *envSuite) TestRootVarReaderApplyOneUpdate(c *C) {
 }
 
 func (s *envSuite) TestRootVarReaderApplyMultipleUpdates(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -82,8 +83,8 @@ func (s *envSuite) TestRootVarReaderApplyMultipleUpdates(c *C) {
 }
 
 func (s *envSuite) TestRootVarReaderApplyUpdatesOrdering(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -99,8 +100,8 @@ func (s *envSuite) TestRootVarReaderApplyUpdatesOrdering(c *C) {
 }
 
 func (s *envSuite) TestRootVarReaderKey(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -108,8 +109,8 @@ func (s *envSuite) TestRootVarReaderKey(c *C) {
 }
 
 func (s *envSuite) TestRootVarReaderKeyWithOneUpdate(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -121,8 +122,8 @@ func (s *envSuite) TestRootVarReaderKeyWithOneUpdate(c *C) {
 }
 
 func (s *envSuite) TestRootVarReaderKeyWithMultipleUpdates(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -137,8 +138,8 @@ func (s *envSuite) TestRootVarReaderKeyWithMultipleUpdates(c *C) {
 }
 
 func (s *envSuite) TestRootVarReaderKeyOmitsUnchanged(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -148,8 +149,8 @@ func (s *envSuite) TestRootVarReaderKeyOmitsUnchanged(c *C) {
 }
 
 func (s *envSuite) TestRootVarReaderCopy(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
 	reader := NewRootVarReader(env)
@@ -180,7 +181,7 @@ type testRootVarsCollectorData struct {
 
 	// expected are the variable values to test for each starting state. These
 	// are tested before the state is then mutated by mutatorFns.
-	expected []map[efi.VariableDescriptor]*mockEFIVar
+	expected []efitest.MockVars
 
 	// peekTotal is the expected number of starting states returned from
 	// PeekAll.
@@ -210,8 +211,8 @@ func (s *envSuite) testRootVarsCollector(c *C, data *testRootVarsCollectorData) 
 			if v == nil {
 				c.Check(err, Equals, efi.ErrVarNotExist)
 			} else {
-				c.Check(b, DeepEquals, v.data)
-				c.Check(attrs, Equals, v.attrs)
+				c.Check(b, DeepEquals, v.Payload)
+				c.Check(attrs, Equals, v.Attrs)
 			}
 		}
 
@@ -227,15 +228,15 @@ func (s *envSuite) testRootVarsCollector(c *C, data *testRootVarsCollectorData) 
 func (s *envSuite) TestRootVarsCollectorWriteOne(c *C) {
 	// Test that one write in the initial state works and creates one new starting state
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 1},
@@ -250,13 +251,13 @@ func (s *envSuite) TestRootVarsCollectorWriteOne(c *C) {
 func (s *envSuite) TestRootVarsCollectorWriteOneNew(c *C) {
 	// Test that one write in the initial state works and creates one new starting state
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{}, nil),
+		expected: []efitest.MockVars{
 			{
 				{Name: "foo", GUID: testGuid1}: nil,
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 1},
@@ -271,12 +272,12 @@ func (s *envSuite) TestRootVarsCollectorWriteOneNew(c *C) {
 func (s *envSuite) TestRootVarsCollectorWriteOneNoChange(c *C) {
 	// Test that one write in the initial state that makes no change is ignored
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1},
@@ -291,22 +292,22 @@ func (s *envSuite) TestRootVarsCollectorWriteOneNoChange(c *C) {
 func (s *envSuite) TestRootVarsCollectorWriteTwo(c *C) {
 	// Test that two writes in the initial state works and creates two new starting states
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-			{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+			{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{5}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 2, 1},
@@ -322,22 +323,22 @@ func (s *envSuite) TestRootVarsCollectorWriteTwo(c *C) {
 func (s *envSuite) TestRootVarsCollectorShouldDedup1(c *C) {
 	// Test that duplicate branches in the initial state are de-duplicated
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-			{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+			{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{5}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 2, 1},
@@ -357,22 +358,22 @@ func (s *envSuite) TestRootVarsCollectorShouldDedup1(c *C) {
 func (s *envSuite) TestRootVarsCollectorShouldDedup2(c *C) {
 	// Test that duplicate branches in the initial state are de-duplicated
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-			{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+			{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{5}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 2, 1},
@@ -393,26 +394,26 @@ func (s *envSuite) TestRootVarsCollectorShouldDedup2(c *C) {
 func (s *envSuite) TestRootVarsCollectorShouldntDedup1(c *C) {
 	// Test that non-duplicate branches in the initial state are not de-duplicated
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-			{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+			{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{5}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{5}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 3, 2, 1},
@@ -433,26 +434,26 @@ func (s *envSuite) TestRootVarsCollectorShouldntDedup1(c *C) {
 func (s *envSuite) TestRootVarsCollectorShouldntDedup2(c *C) {
 	// Test that non-duplicate branches in the initial state are not de-duplicated
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-			{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+			{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{5}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{5}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
-				{Name: "bar", GUID: testGuid1}: {data: []byte{4}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "bar", GUID: testGuid1}: {Payload: []byte{4}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 3, 2, 1},
@@ -473,18 +474,18 @@ func (s *envSuite) TestRootVarsCollectorShouldntDedup2(c *C) {
 func (s *envSuite) TestRootVarsCollectorWriteToSecondState(c *C) {
 	// Test that one write in the second state works and creates one new starting state
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{3}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{3}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 1, 1},
@@ -502,15 +503,15 @@ func (s *envSuite) TestRootVarsCollectorWriteToSecondState(c *C) {
 func (s *envSuite) TestRootVarsCollectorWriteToSecondStateDedup(c *C) {
 	// Test that one write in the second state that reverts to the initial state works and is de-duplicated
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, nil),
-		expected: []map[efi.VariableDescriptor]*mockEFIVar{
+		expected: []efitest.MockVars{
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 			{
-				{Name: "foo", GUID: testGuid1}: {data: []byte{2}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+				{Name: "foo", GUID: testGuid1}: {Payload: []byte{2}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 			},
 		},
 		peekTotal: []int{1, 1},
@@ -526,8 +527,8 @@ func (s *envSuite) TestRootVarsCollectorWriteToSecondStateDedup(c *C) {
 }
 
 func (s *envSuite) TestRootVarsCollectorPeekAll(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "SecureBoot", GUID: efi.GlobalVariable}: {data: []byte{1}, attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "SecureBoot", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
 	}, nil)
 
 	collector := NewRootVarsCollector(env)
@@ -556,7 +557,7 @@ func (s *envSuite) TestRootVarsCollectorPeekAll(c *C) {
 }
 
 func (s *envSuite) TestVarBranchReadsUpdate(c *C) {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)
 
 	collector := NewRootVarsCollector(env)
 	root := collector.Next()
