@@ -123,6 +123,12 @@ func withTestSecureBootConfig() mockVarsConfig {
 	return withSecureBootConfig(true, testPK, testSecureBootConfig)
 }
 
+func withSecureBootDisabled() mockVarsConfig {
+	return func(c *C, vars efitest.MockVars) {
+		vars.SetSecureBoot(false)
+	}
+}
+
 type mockVarsConfig func(*C, efitest.MockVars)
 
 func makeMockVars(c *C, confs ...mockVarsConfig) efitest.MockVars {

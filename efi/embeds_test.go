@@ -63,6 +63,9 @@ var (
 )
 
 var (
+	//go:embed testdata/src/sigs/shim-signed_1.51+15.4-0ubuntu9_amd64.pk7
+	shimUbuntuSig3PEM []byte
+
 	//go:embed testdata/src/sigs/shim-signed_1.54+15.7-0ubuntu1_amd64_latest.pk7
 	shimUbuntuSig4PEM []byte
 
@@ -79,12 +82,14 @@ var (
 )
 
 var (
+	shimUbuntuSig3 []byte
 	shimUbuntuSig4 []byte
 
 	grubUbuntuSig3 []byte
 )
 
 func init() {
+	shimUbuntuSig3 = testutil.MustDecodePEMType("PKCS7", shimUbuntuSig3PEM)
 	shimUbuntuSig4 = testutil.MustDecodePEMType("PKCS7", shimUbuntuSig4PEM)
 
 	grubUbuntuSig3 = testutil.MustDecodePEMType("PKCS7", grubUbuntuSig3PEM)

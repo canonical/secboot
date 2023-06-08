@@ -622,7 +622,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
 		images[1]: newMockLoadHandler().
@@ -673,7 +673,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest1),
 		images[1]: newMockLoadHandler().

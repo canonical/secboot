@@ -34,12 +34,8 @@ import (
 )
 
 const (
-	sbStateName = "SecureBoot" // Unicode variable name for the EFI secure boot configuration (enabled/disabled)
-
 	mokListName    = "MokList"    // Unicode variable name for the shim MOK database
 	mokSbStateName = "MokSBState" // Unicode variable name for the shim secure boot configuration (validation enabled/disabled)
-
-	secureBootPCR = 7 // Secure Boot Policy Measurements PCR
 
 	sbKeySyncExe = "sbkeysync"
 )

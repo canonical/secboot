@@ -46,6 +46,7 @@ func Test(t *testing.T) { TestingT(t) }
 
 type mockPcrProfileContext struct {
 	alg      tpm2.HashAlgorithmId
+	flags    PcrProfileFlags
 	handlers ImageLoadHandlerMap
 }
 
@@ -53,12 +54,85 @@ func (c *mockPcrProfileContext) PCRAlg() tpm2.HashAlgorithmId {
 	return c.alg
 }
 
-func (*mockPcrProfileContext) Flags() PcrProfileFlags {
-	return 0
+func (c *mockPcrProfileContext) Flags() PcrProfileFlags {
+	return c.flags
 }
 
 func (c *mockPcrProfileContext) ImageLoadHandlerMap() ImageLoadHandlerMap {
 	return c.handlers
+}
+
+type mockPcrBranchEventType int
+
+const (
+	mockPcrBranchResetEvent mockPcrBranchEventType = iota
+	mockPcrBranchExtendEvent
+	mockPcrBranchMeasureVariableEvent
+)
+
+type mockPcrBranchEvent struct {
+	pcr       int
+	eventType mockPcrBranchEventType
+
+	digest tpm2.Digest
+
+	varName efi.VariableDescriptor
+	varData []byte
+}
+
+type mockPcrBranchContext struct {
+	PcrProfileContext
+	vars   VarReadWriter
+	fc     *FwContext
+	sc     *ShimContext
+	events []*mockPcrBranchEvent
+}
+
+func newMockPcrBranchContext(pc PcrProfileContext, vars VarReadWriter) *mockPcrBranchContext {
+	return &mockPcrBranchContext{
+		PcrProfileContext: pc,
+		vars:              vars,
+		fc:                new(FwContext),
+		sc:                new(ShimContext),
+	}
+}
+
+func (*mockPcrBranchContext) Params() *LoadParams { return nil }
+
+func (c *mockPcrBranchContext) Vars() VarReadWriter {
+	return c.vars
+}
+
+func (c *mockPcrBranchContext) FwContext() *FwContext {
+	return c.fc
+}
+
+func (c *mockPcrBranchContext) ShimContext() *ShimContext {
+	return c.sc
+}
+
+func (c *mockPcrBranchContext) ResetPCR(pcr int) {
+	c.events = append(c.events, &mockPcrBranchEvent{
+		pcr:       pcr,
+		eventType: mockPcrBranchResetEvent,
+	})
+}
+
+func (c *mockPcrBranchContext) ExtendPCR(pcr int, digest tpm2.Digest) {
+	c.events = append(c.events, &mockPcrBranchEvent{
+		pcr:       pcr,
+		eventType: mockPcrBranchExtendEvent,
+		digest:    digest,
+	})
+}
+
+func (c *mockPcrBranchContext) MeasureVariable(pcr int, guid efi.GUID, name string, data []byte) {
+	c.events = append(c.events, &mockPcrBranchEvent{
+		pcr:       pcr,
+		eventType: mockPcrBranchMeasureVariableEvent,
+		varName:   efi.VariableDescriptor{Name: name, GUID: guid},
+		varData:   data,
+	})
 }
 
 type mockPeImageHandle struct {
