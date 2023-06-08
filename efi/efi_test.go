@@ -20,6 +20,7 @@
 package efi_test
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/x509"
 	"encoding/binary"
@@ -139,12 +140,32 @@ type mockPeImageHandle struct {
 	*mockImage
 }
 
-func (*mockPeImageHandle) Close() error                              { return nil }
-func (h *mockPeImageHandle) Source() Image                           { return h.mockImage }
-func (*mockPeImageHandle) OpenSection(name string) *io.SectionReader { return nil }
-func (*mockPeImageHandle) HasSection(name string) bool               { return false }
-func (*mockPeImageHandle) HasSbatSection() bool                      { return false }
-func (*mockPeImageHandle) SbatComponents() ([]SbatComponent, error)  { return nil, nil }
+func (*mockPeImageHandle) Close() error    { return nil }
+func (h *mockPeImageHandle) Source() Image { return h.mockImage }
+
+func (h *mockPeImageHandle) OpenSection(name string) *io.SectionReader {
+	data, exists := h.sections[name]
+	if !exists {
+		return nil
+	}
+	return io.NewSectionReader(bytes.NewReader(data), 0, int64(len(data)))
+}
+
+func (h *mockPeImageHandle) HasSection(name string) bool {
+	_, exists := h.sections[name]
+	return exists
+}
+
+func (h *mockPeImageHandle) HasSbatSection() bool {
+	return len(h.sbat) > 0
+}
+
+func (h *mockPeImageHandle) SbatComponents() ([]SbatComponent, error) {
+	if len(h.sbat) == 0 {
+		return nil, errors.New("no sbat")
+	}
+	return h.sbat, nil
+}
 
 func (h *mockPeImageHandle) ImageDigest(alg crypto.Hash) ([]byte, error) {
 	if alg != h.digestAlg {
@@ -157,14 +178,56 @@ func (h *mockPeImageHandle) SecureBootSignatures() ([]*efi.WinCertificateAuthent
 	return h.sigs, nil
 }
 
+func (h *mockPeImageHandle) newShimImageHandle() *mockShimImageHandle {
+	return &mockShimImageHandle{mockPeImageHandle: h}
+}
+
+type mockShimImageHandle struct {
+	*mockPeImageHandle
+}
+
+func (h *mockShimImageHandle) Version() (ShimVersion, error) {
+	if h.shimVersion == nil {
+		return ShimVersion{}, errors.New("no version")
+	}
+	return *h.shimVersion, nil
+}
+
+func (h *mockShimImageHandle) ReadVendorDB() (efi.SignatureDatabase, ShimVendorCertFormat, error) {
+	if h.shimVendorDbFormat == 0 {
+		return nil, 0, errors.New("no vendor db")
+	}
+	return h.shimVendorDb, h.shimVendorDbFormat, nil
+}
+
+func (h *mockShimImageHandle) HasSbatLevelSection() bool {
+	return h.shimSbatLevel != nil
+}
+
+func (h *mockShimImageHandle) ReadSbatLevel() (ShimSbatLevel, error) {
+	if h.shimSbatLevel == nil {
+		return ShimSbatLevel{}, errors.New("no sbatlevel")
+	}
+	return *h.shimSbatLevel, nil
+}
+
 type mockImage struct {
+	sections  map[string][]byte
+	sbat      []SbatComponent
 	digestAlg crypto.Hash
 	digest    []byte
 	sigs      []*efi.WinCertificateAuthenticode
+
+	shimVersion        *ShimVersion
+	shimVendorDb       efi.SignatureDatabase
+	shimVendorDbFormat ShimVendorCertFormat
+	shimSbatLevel      *ShimSbatLevel
 }
 
 func newMockImage() *mockImage {
-	return new(mockImage)
+	return &mockImage{
+		sections: make(map[string][]byte),
+	}
 }
 
 func (i *mockImage) withDigest(alg crypto.Hash, digest []byte) *mockImage {
@@ -185,6 +248,49 @@ func (i *mockImage) appendSignatures(sigs ...*efi.WinCertificateAuthenticode) *m
 func (i *mockImage) sign(c *C, key crypto.Signer, signer *x509.Certificate, certs ...*x509.Certificate) *mockImage {
 	i.sigs = append(i.sigs, efitest.ReadWinCertificateAuthenticodeDetached(c, efitest.GenerateWinCertificateAuthenticodeDetached(c, key, signer, i.digest, i.digestAlg, certs...)))
 	return i
+}
+
+func (i *mockImage) withSbat(sbat []SbatComponent) *mockImage {
+	i.sbat = sbat
+	i.sections[".sbat"] = nil
+	return i
+}
+
+func (i *mockImage) withShimVersion(version ShimVersion) *mockImage {
+	i.shimVersion = &version
+	return i
+}
+
+func (i *mockImage) withShimVendorDb(db efi.SignatureDatabase, format ShimVendorCertFormat) *mockImage {
+	i.shimVendorDb = db
+	i.shimVendorDbFormat = format
+	i.sections[".vendor_cert"] = nil
+	return i
+}
+
+func (i *mockImage) withShimSbatLevel(sbatLevel ShimSbatLevel) *mockImage {
+	i.shimSbatLevel = &sbatLevel
+	i.sections[".sbatlevel"] = nil
+	return i
+}
+
+func newMockUbuntuShimImage15a(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig1)).
+		withShimVersion(MustParseShimVersion("15")).
+		withShimVendorDb(efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})}, ShimVendorCertIsX509)
+}
+
+func newMockUbuntuShimImage15_7(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4)).
+		withSbat([]SbatComponent{
+			{Name: "shim"},
+			{Name: "shim.ubuntu"},
+		}).
+		withShimVersion(MustParseShimVersion("15.7")).
+		withShimVendorDb(efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})}, ShimVendorCertIsX509).
+		withShimSbatLevel(ShimSbatLevel{[]byte("sbat,1,2022111500\nshim,2\ngrub,3\n"), []byte("sbat,1,2022052400\ngrub,2\n")})
 }
 
 func (i *mockImage) String() string           { return fmt.Sprintf("%p", i) }
@@ -210,6 +316,27 @@ func (m *mockImageHandleMixin) SetUpTest(c *C) {
 }
 
 func (m *mockImageHandleMixin) TearDownTest(c *C) {
+	if m.restore != nil {
+		m.restore()
+	}
+}
+
+type mockShimImageHandleMixin struct {
+	restore func()
+}
+
+func (m *mockShimImageHandleMixin) SetUpTest(c *C) {
+	orig := NewShimImageHandle
+	m.restore = MockNewShimImageHandle(func(image PeImageHandle) ShimImageHandle {
+		h, ok := image.(*mockPeImageHandle)
+		if !ok {
+			return orig(image)
+		}
+		return h.newShimImageHandle()
+	})
+}
+
+func (m *mockShimImageHandleMixin) TearDownTest(c *C) {
 	if m.restore != nil {
 		m.restore()
 	}
@@ -410,4 +537,18 @@ func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *efitest.M
 		c.Assert(err, IsNil)
 	}
 	return efitest.NewMockHostEnvironment(vars, log)
+}
+
+type mockSecureBootNamespaceRules []*x509.Certificate
+
+func (mockSecureBootNamespaceRules) String() string {
+	return "mock secure boot namespace image rules"
+}
+
+func (s *mockSecureBootNamespaceRules) AddAuthorities(certs ...*x509.Certificate) {
+	*s = append(*s, certs...)
+}
+
+func (mockSecureBootNamespaceRules) NewImageLoadHandler(image PeImageHandle) (ImageLoadHandler, error) {
+	return nil, errors.New("not implemented")
 }

@@ -38,10 +38,12 @@ import (
 )
 
 const (
+	shimMokListRTName   = "MokListRT"
 	shimName            = "Shim"
 	shimSbatLevelName   = "SbatLevel"
 	shimSbatLevelRTName = "SbatLevelRT"
 	shimSbatPolicyName  = "SbatPolicy"
+	shimVendorDbName    = "vendor_db"
 )
 
 var (
@@ -254,7 +256,7 @@ type shimImageHandleImpl struct {
 }
 
 // newShimImageHandle returns a new shimImageHandle for the supplied peImageHandle.
-func newShimImageHandle(image peImageHandle) shimImageHandle {
+var newShimImageHandle = func(image peImageHandle) shimImageHandle {
 	return &shimImageHandleImpl{peImageHandle: image}
 }
 
