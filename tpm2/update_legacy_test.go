@@ -101,6 +101,57 @@ func (s *updateLegacySuite) TestUpdatePCRProtectionPolicyWithProvidedAuthKey(c *
 		AuthKey:                authKey})
 }
 
+func (s *updateLegacySuite) testRevokeOldPCRProtectionPolicies(c *C, params *KeyCreationParams) error {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	dir := c.MkDir()
+	path := filepath.Join(dir, "key")
+
+	authKey, err := SealKeyToTPM(s.TPM(), key, path, params)
+	c.Check(err, IsNil)
+
+	k2, err := ReadSealedKeyObjectFromFile(path)
+	c.Assert(err, IsNil)
+
+	c.Check(k2.UpdatePCRProtectionPolicy(s.TPM(), authKey, params.PCRProfile), IsNil)
+
+	k1, err := ReadSealedKeyObjectFromFile(path)
+	c.Assert(err, IsNil)
+
+	_, _, err = k1.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+	_, _, err = k2.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+
+	c.Check(k1.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
+
+	_, _, err = k1.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+	_, _, err = k2.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+
+	c.Check(k2.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
+
+	_, _, err = k2.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+	_, _, err = k1.UnsealFromTPM(s.TPM())
+	return err
+}
+
+func (s *updateLegacySuite) TestRevokeOldPCRProtectionPoliciesWithPCRPolicyCounter(c *C) {
+	err := s.testRevokeOldPCRProtectionPolicies(c, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
+	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: the PCR policy has been revoked")
+}
+
+func (s *updateLegacySuite) TestRevokeOldPCRProtectionPoliciesWithoutPCRPolicyCounter(c *C) {
+	err := s.testRevokeOldPCRProtectionPolicies(c, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Check(err, IsNil)
+}
 func (s *updateLegacySuite) TestUpdateKeyPCRProtectionPolicyMultiple(c *C) {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
