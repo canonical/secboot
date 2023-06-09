@@ -26,7 +26,7 @@ type imageLoadHandler interface {
 	// of the image associated with this handler to the supplied branch.
 	MeasureImageStart(ctx pcrBranchContext) error
 
-	// MeasureLoadEvent measures events related to the verification
+	// MeasureImageLoad measures events related to the verification
 	// and loading of the supplied image by the image associated with
 	// this handler, to the supplied branch.
 	MeasureImageLoad(ctx pcrBranchContext, image peImageHandle) (imageLoadHandler, error)
