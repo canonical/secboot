@@ -250,6 +250,11 @@ func (i *mockImage) sign(c *C, key crypto.Signer, signer *x509.Certificate, cert
 	return i
 }
 
+func (i *mockImage) addSection(name string, data []byte) *mockImage {
+	i.sections[name] = data
+	return i
+}
+
 func (i *mockImage) withSbat(sbat []SbatComponent) *mockImage {
 	i.sbat = sbat
 	i.sections[".sbat"] = nil

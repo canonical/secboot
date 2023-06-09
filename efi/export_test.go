@@ -47,14 +47,23 @@ const (
 var (
 	ApplySignatureDBUpdate        = applySignatureDBUpdate
 	DefaultEnv                    = defaultEnv
+	ErrNoHandler                  = errNoHandler
+	ImageAlwaysMatches            = imageAlwaysMatches
+	ImageDigestMatches            = imageDigestMatches
+	ImageMatchesAll               = imageMatchesAll
+	ImageMatchesAny               = imageMatchesAny
 	LookupImageLoadHandler        = lookupImageLoadHandler
 	MustParseShimVersion          = mustParseShimVersion
 	NewestSbatLevel               = newestSbatLevel
 	NewFwLoadHandler              = newFwLoadHandler
+	NewImageLoadHandlerLazyMap    = newImageLoadHandlerLazyMap
+	NewImageRule                  = newImageRule
+	NewImageRules                 = newImageRules
 	NewPcrImagesMeasurer          = newPcrImagesMeasurer
 	NewPcrProfileGenerator        = newPcrProfileGenerator
 	NewRootPcrBranchCtx           = newRootPcrBranchCtx
 	NewRootVarsCollector          = newRootVarsCollector
+	NewSecureBootNamespaceRules   = newSecureBootNamespaceRules
 	NewShimImageHandle            = newShimImageHandle
 	NewShimLoadHandler            = newShimLoadHandler
 	NewShimLoadHandlerConstructor = newShimLoadHandlerConstructor
@@ -62,7 +71,11 @@ var (
 	ParseShimVersion              = parseShimVersion
 	ParseShimVersionDataIdent     = parseShimVersionDataIdent
 	ReadShimSbatPolicy            = readShimSbatPolicy
+	SbatSectionExists             = sbatSectionExists
 	ShimGuid                      = shimGuid
+	ShimVersionIs                 = shimVersionIs
+	WithAuthority                 = withAuthority
+	WithImageRule                 = withImageRule
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -73,6 +86,9 @@ type GrubLoadHandler = grubLoadHandler
 type ImageLoadHandler = imageLoadHandler
 type ImageLoadHandlerMap = imageLoadHandlerMap
 type ImageLoadParamsSet = imageLoadParamsSet
+type ImageRules = imageRules
+type ImageSectionExists = imageSectionExists
+type ImageSignedByOrganization = imageSignedByOrganization
 type LoadParams = loadParams
 type PcrBranchContext = pcrBranchContext
 type PcrImagesMeasurer = pcrImagesMeasurer
@@ -82,8 +98,10 @@ type PeImageHandle = peImageHandle
 type RootVarReaderKey = rootVarReaderKey
 type RootVarsCollector = rootVarsCollector
 type SbatComponent = sbatComponent
+type SbatComponentExists = sbatComponentExists
 type SecureBootAuthority = secureBootAuthority
 type SecureBootDB = secureBootDB
+type SecureBootNamespaceRules = secureBootNamespaceRules
 type SecureBootPolicyMixin = secureBootPolicyMixin
 type ShimContext = shimContext
 type ShimFlags = shimFlags
