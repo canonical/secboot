@@ -163,14 +163,33 @@ const (
 )
 
 type pcrProfileGenerator struct {
-	pcrAlg        tpm2.HashAlgorithmId
-	loadSequences *ImageLoadSequences
-	env           HostEnvironment
-	handlers      imageLoadHandlerMap
+	// pcrAlg is the PCR digest algorithm to add to the profile.
+	pcrAlg tpm2.HashAlgorithmId
 
-	flags        pcrProfileFlags
+	// loadSequences describes the sequences of image loads from which
+	// to construct the profile.
+	loadSequences *ImageLoadSequences
+
+	// env is the host EFI environment, providing access to the host's EFI variables
+	// and TCG log. This can be overridden with the WithHostEnvironment option.
+	env HostEnvironment
+
+	// handlers is used to map an image in the supplied loadSequences to the
+	// corresponding imageLoadHandler, which determines how an image affects a
+	// profile.
+	handlers imageLoadHandlerMap
+
+	// flags is used to specify additional options for profile generation.
+	flags pcrProfileFlags
+
+	// varModifiers is a set of callbacks that can apply customizations to
+	// EFI variables supplied from the HostEnvironment. This creates a sequence
+	// of every possible EFI variable starting state, and is used for generating
+	// profiles that incorporate signature database updates and changest to
+	// SbatPolicy.
 	varModifiers []rootVarsModifier
 
+	// log is the host TCG log, which is read from the associated env.
 	log *tcglog.Log
 }
 
