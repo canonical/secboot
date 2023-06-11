@@ -74,6 +74,7 @@ type testFormatData struct {
 func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
+	cipher, keysize := SelectCipherAndKeysize()
 	c.Check(Format(devicePath, data.label, data.key, data.options), IsNil)
 
 	options := data.options
