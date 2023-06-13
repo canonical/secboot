@@ -43,6 +43,8 @@ import (
 //
 // On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
 // from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
+//
+// Deprecated: Only useful for V0 key data files.
 func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpdatePath string, pcrProfile *PCRProtectionProfile) error {
 	policyUpdateFile, err := os.Open(policyUpdatePath)
 	if err != nil {
@@ -58,7 +60,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 		return InvalidKeyDataError{"invalid metadata versions"}
 	}
 
-	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, []*SealedKeyObject{k}, policyUpdateData.AuthKey, pcrProfile, tpm.HmacSession())
+	return updateKeyPCRProtectionPoliciesCommon(tpm.TPMContext, []*sealedKeyDataBase{&k.sealedKeyDataBase}, policyUpdateData.AuthKey, pcrProfile, tpm.HmacSession())
 }
 
 // RevokeOldPCRProtectionPoliciesV0 revokes old PCR protection policies associated with this sealed key. It does
@@ -74,6 +76,8 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 // after each call to UpdatePCRProtectionPolicyV0 that removes some PCR policy branches.
 //
 // If validation of the key data fails, a InvalidKeyDataError error will be returned.
+//
+// Deprecated: Only useful for V0 key data files.
 func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, policyUpdatePath string) error {
 	policyUpdateFile, err := os.Open(policyUpdatePath)
 	if err != nil {
@@ -92,6 +96,38 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, policyUpdateData.AuthKey, tpm.HmacSession())
 }
 
+// UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
+// pcrProfile argument. In order to do this, the caller must also specify the private part of the authorization key
+// that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
+//
+// If the sealed key was created with a PCR policy counter, then the sequence number of the new PCR policy will be
+// incremented by 1 compared with the value associated with the current PCR policy. This does not increment the NV
+// counter on the TPM - this can be done with a subsequent call to RevokeOldPCRProtectionPolicies.
+//
+// On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
+// from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
+func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
+	return updateKeyPCRProtectionPoliciesCommon(tpm.TPMContext, []*sealedKeyDataBase{&k.sealedKeyDataBase}, authKey, pcrProfile, tpm.HmacSession())
+}
+
+// RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. It does
+// this by incrementing the PCR policy counter associated with this sealed key on the TPM so that it contains the
+// value of the current PCR policy sequence number. PCR policies with a lower sequence number cannot be satisfied
+// and become invalid. The PCR policy sequence number is incremented on each call to UpdatePCRProtectionPolicy.
+// If the key data was not created with a PCR policy counter, then this function does nothing.
+//
+// The caller must also specify the private part of the authorization key that was either returned by SealKeyToTPM
+// or SealedKeyObject.UnsealFromTPM.
+//
+// Note that this will perform a NV write for each call to UpdatePCRProtectionPolicy since the last call
+// to RevokeOldPCRProtectionPolicies. As TPMs may apply rate-limiting to NV writes, this should be called
+// after each call to UpdatePCRProtectionPolicy that removes some PCR policy branches.
+//
+// If validation of the key data fails, a InvalidKeyDataError error will be returned.
+func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.AuxiliaryKey) error {
+	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey, tpm.HmacSession())
+}
+
 // UpdateKeyPCRProtectionPolicyMultiple updates the PCR protection policy for the supplied sealed key objects to the
 // profile defined by the pcrProfile argument. The keys must all be related (ie, they were created using
 // SealKeyToTPMMultiple). If any key in the supplied set is not related, an error will be returned.
@@ -106,5 +142,10 @@ func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObje
 		return errors.New("no sealed keys supplied")
 	}
 
-	return updateKeyPCRProtectionPolicyCommon(tpm.TPMContext, keys, authKey, pcrProfile, tpm.HmacSession())
+	var keysCommon []*sealedKeyDataBase
+	for _, key := range keys {
+		keysCommon = append(keysCommon, &key.sealedKeyDataBase)
+	}
+
+	return updateKeyPCRProtectionPoliciesCommon(tpm.TPMContext, keysCommon, authKey, pcrProfile, tpm.HmacSession())
 }

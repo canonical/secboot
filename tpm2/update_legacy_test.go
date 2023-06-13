@@ -59,6 +59,99 @@ func (s *updateLegacySuite) SetUpTest(c *C) {
 
 var _ = Suite(&updateLegacySuite{})
 
+func (s *updateLegacySuite) testUpdatePCRProtectionPolicy(c *C, params *KeyCreationParams) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	dir := c.MkDir()
+	path := filepath.Join(dir, "key")
+
+	authKey, err := SealKeyToTPM(s.TPM(), key, path, params)
+	c.Check(err, IsNil)
+
+	k, err := ReadSealedKeyObjectFromFile(path)
+	c.Assert(err, IsNil)
+
+	c.Check(k.UpdatePCRProtectionPolicy(s.TPM(), authKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23})), IsNil)
+
+	_, _, err = k.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+
+	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
+	c.Check(err, IsNil)
+	_, _, err = k.UnsealFromTPM(s.TPM())
+	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+		"cannot execute PolicyOR assertions: current session digest not found in policy data")
+}
+
+func (s *updateLegacySuite) TestUpdatePCRProtectionPolicyWithPCRPolicyCounter(c *C) {
+	s.testUpdatePCRProtectionPolicy(c, &KeyCreationParams{PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
+}
+
+func (s *updateLegacySuite) TestUpdatePCRProtectionPolicyNoPCRPolicyCounter(c *C) {
+	s.testUpdatePCRProtectionPolicy(c, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
+}
+
+func (s *updateLegacySuite) TestUpdatePCRProtectionPolicyWithProvidedAuthKey(c *C) {
+	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
+	c.Check(err, IsNil)
+
+	s.testUpdatePCRProtectionPolicy(c, &KeyCreationParams{
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		AuthKey:                authKey})
+}
+
+func (s *updateLegacySuite) testRevokeOldPCRProtectionPolicies(c *C, params *KeyCreationParams) error {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	dir := c.MkDir()
+	path := filepath.Join(dir, "key")
+
+	authKey, err := SealKeyToTPM(s.TPM(), key, path, params)
+	c.Check(err, IsNil)
+
+	k2, err := ReadSealedKeyObjectFromFile(path)
+	c.Assert(err, IsNil)
+
+	c.Check(k2.UpdatePCRProtectionPolicy(s.TPM(), authKey, params.PCRProfile), IsNil)
+
+	k1, err := ReadSealedKeyObjectFromFile(path)
+	c.Assert(err, IsNil)
+
+	_, _, err = k1.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+	_, _, err = k2.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+
+	c.Check(k1.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
+
+	_, _, err = k1.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+	_, _, err = k2.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+
+	c.Check(k2.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
+
+	_, _, err = k2.UnsealFromTPM(s.TPM())
+	c.Check(err, IsNil)
+	_, _, err = k1.UnsealFromTPM(s.TPM())
+	return err
+}
+
+func (s *updateLegacySuite) TestRevokeOldPCRProtectionPoliciesWithPCRPolicyCounter(c *C) {
+	err := s.testRevokeOldPCRProtectionPolicies(c, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
+	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: the PCR policy has been revoked")
+}
+
+func (s *updateLegacySuite) TestRevokeOldPCRProtectionPoliciesWithoutPCRPolicyCounter(c *C) {
+	err := s.testRevokeOldPCRProtectionPolicies(c, &KeyCreationParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+		PCRPolicyCounterHandle: tpm2.HandleNull})
+	c.Check(err, IsNil)
+}
 func (s *updateLegacySuite) TestUpdateKeyPCRProtectionPolicyMultiple(c *C) {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
@@ -126,7 +219,7 @@ func (s *updateLegacySuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated1(c
 	}
 
 	err = UpdateKeyPCRProtectionPolicyMultiple(s.TPM(), keys, authKey.D.Bytes(), nil)
-	c.Check(err, ErrorMatches, "invalid key data: key data at index 0 is not related to the primary key data")
+	c.Check(err, ErrorMatches, "invalid key data: key data at index 1 is not related to the primary key data")
 }
 
 func (s *updateLegacySuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated2(c *C) {
@@ -163,5 +256,5 @@ func (s *updateLegacySuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated2(c
 	}
 
 	err = UpdateKeyPCRProtectionPolicyMultiple(s.TPM(), keys, authKey, nil)
-	c.Check(err, ErrorMatches, "invalid key data: key data at index 0 is not related to the primary key data")
+	c.Check(err, ErrorMatches, "invalid key data: key data at index 1 is not related to the primary key data")
 }
