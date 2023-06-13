@@ -210,10 +210,10 @@ type keyDataParams struct {
 	PCRProfile             *PCRProtectionProfile
 }
 
-// makeNewKeyData protects the supplied keys using the supplied keySealer and
+// makeKeyData protects the supplied keys using the supplied keySealer and
 // parameters. If required, a PCR policy counter is created. The returned key
 // will have an initial PCR policy as specified via the supplied parameters.
-func makeNewKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, params *keyDataParams,
+func makeKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, params *keyDataParams,
 	sealer keySealer, session tpm2.SessionContext) (protectedKey *secboot.KeyData, authKeyOut secboot.AuxiliaryKey,
 	pcrPolicyCounter *createdPcrPolicyCounter, err error) {
 	policy, pcrPolicyCounter, authKey, err := makeKeyDataPolicy(tpm, params.PCRPolicyCounterHandle, authKey, session)
@@ -288,7 +288,7 @@ func ProtectKeyWithExternalStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnloc
 
 	sealer := &importableObjectKeySealer{tpmKey: tpmKey}
 
-	protectedKey, authKey, _, err = makeNewKeyData(nil, key, params.AuthKey, &keyDataParams{
+	protectedKey, authKey, _, err = makeKeyData(nil, key, params.AuthKey, &keyDataParams{
 		PCRPolicyCounterHandle: params.PCRPolicyCounterHandle,
 		PCRProfile:             params.PCRProfile}, sealer, nil)
 	if err != nil {
@@ -354,7 +354,7 @@ func ProtectKeysWithTPM(tpm *Connection, keys []secboot.DiskUnlockKey, params *P
 	var protectedKey *secboot.KeyData
 	var pcrPolicyCounter *createdPcrPolicyCounter
 
-	protectedKey, authKey, pcrPolicyCounter, err = makeNewKeyData(tpm.TPMContext, keys[0], params.AuthKey,
+	protectedKey, authKey, pcrPolicyCounter, err = makeKeyData(tpm.TPMContext, keys[0], params.AuthKey,
 		&keyDataParams{
 			PCRPolicyCounterHandle: params.PCRPolicyCounterHandle,
 			PCRProfile:             params.PCRProfile},

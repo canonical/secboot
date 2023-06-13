@@ -42,9 +42,9 @@ var (
 	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
 	IsPolicyDataError                       = isPolicyDataError
+	MakeKeyData                             = makeKeyData
 	MakeKeyDataPolicy                       = makeKeyDataPolicy
 	MakeKeyDataWithPolicy                   = makeKeyDataWithPolicy
-	MakeNewKeyData                          = makeNewKeyData
 	NewKeyData                              = newKeyData
 	NewKeyDataPolicy                        = newKeyDataPolicy
 	NewKeyDataPolicyLegacy                  = newKeyDataPolicyLegacy

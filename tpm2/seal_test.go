@@ -1049,13 +1049,13 @@ func (s *sealSuiteNoTPM) TestMakeKeyDataPolicyWithProvidedAuthKey(c *C) {
 		authKey: testutil.DecodeHexString(c, "fb8978601d0c2dd4129e3b9c1bb3f3116f4c5dd217c29b1017ab7cd31a882d3c")})
 }
 
-type testMakeNewKeyDataData struct {
+type testMakeKeyDataData struct {
 	authKey                      secboot.AuxiliaryKey
 	params                       *KeyDataParams
 	initialPcrPolicyCounterValue uint64
 }
 
-func (s *sealSuiteNoTPM) testMakeNewKeyData(c *C, data *testMakeNewKeyDataData) {
+func (s *sealSuiteNoTPM) testMakeKeyData(c *C, data *testMakeKeyDataData) {
 	var mockTpm *tpm2.TPMContext
 	var mockSession tpm2.SessionContext
 	if data.params.PCRPolicyCounterHandle != tpm2.HandleNull {
@@ -1131,7 +1131,7 @@ func (s *sealSuiteNoTPM) testMakeNewKeyData(c *C, data *testMakeNewKeyDataData) 
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
-	kd, authKeyOut, pcrPolicyCounter, err := MakeNewKeyData(mockTpm, key, data.authKey, data.params, &sealer, mockSession)
+	kd, authKeyOut, pcrPolicyCounter, err := MakeKeyData(mockTpm, key, data.authKey, data.params, &sealer, mockSession)
 	c.Assert(err, IsNil)
 
 	c.Assert(s.lastAuthKey, NotNil)
@@ -1179,31 +1179,31 @@ func (s *sealSuiteNoTPM) testMakeNewKeyData(c *C, data *testMakeNewKeyDataData) 
 	}
 }
 
-func (s *sealSuiteNoTPM) TestMakeNewKeyData(c *C) {
-	s.testMakeNewKeyData(c, &testMakeNewKeyDataData{
+func (s *sealSuiteNoTPM) TestMakeKeyData(c *C) {
+	s.testMakeKeyData(c, &testMakeKeyDataData{
 		params: &KeyDataParams{
 			PCRPolicyCounterHandle: tpm2.HandleNull,
 			PCRProfile:             NewPCRProtectionProfile()}})
 }
 
-func (s *sealSuiteNoTPM) TestMakeNewKeyDataWithPolicyCounter(c *C) {
-	s.testMakeNewKeyData(c, &testMakeNewKeyDataData{
+func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyCounter(c *C) {
+	s.testMakeKeyData(c, &testMakeKeyDataData{
 		params: &KeyDataParams{
 			PCRPolicyCounterHandle: 0x01810000,
 			PCRProfile:             NewPCRProtectionProfile()},
 		initialPcrPolicyCounterValue: 30})
 }
 
-func (s *sealSuiteNoTPM) TestMakeNewKeyDataWithPolicyCounterDifferentInitialValue(c *C) {
-	s.testMakeNewKeyData(c, &testMakeNewKeyDataData{
+func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyCounterDifferentInitialValue(c *C) {
+	s.testMakeKeyData(c, &testMakeKeyDataData{
 		params: &KeyDataParams{
 			PCRPolicyCounterHandle: 0x01810000,
 			PCRProfile:             NewPCRProtectionProfile()},
 		initialPcrPolicyCounterValue: 500})
 }
 
-func (s *sealSuiteNoTPM) TestMakeNewKeyDataNilPCRProfile(c *C) {
-	s.testMakeNewKeyData(c, &testMakeNewKeyDataData{
+func (s *sealSuiteNoTPM) TestMakeKeyDataNilPCRProfile(c *C) {
+	s.testMakeKeyData(c, &testMakeKeyDataData{
 		params: &KeyDataParams{
 			PCRPolicyCounterHandle: tpm2.HandleNull}})
 }
