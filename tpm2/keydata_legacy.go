@@ -47,6 +47,8 @@ type sealedData struct {
 
 // SealedKeyObject corresponds to a sealed key data file created by
 // [SealKeyToTPM], [SealKeyToExternalTPMStorageKey] or [SealKeyToTPMMultiple].
+//
+// Deprecated: Use [SealedKeyData].
 type SealedKeyObject struct {
 	sealedKeyDataBase
 }
