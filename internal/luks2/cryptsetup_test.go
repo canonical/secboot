@@ -74,7 +74,9 @@ type testFormatData struct {
 func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	cipher, keysize := SelectCipherAndKeysize()
+	cipher := SelectCipher()
+	keysize := KeySize(cipher)
+
 	c.Check(Format(devicePath, data.label, data.key, data.options), IsNil)
 
 	options := data.options
@@ -90,7 +92,7 @@ func (s *cryptsetupSuite) testFormat(c *C, data *testFormatData) {
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
 	keyslot, ok := info.Metadata.Keyslots[0]
 	c.Assert(ok, Equals, true)
-	c.Check(keyslot.KeySize, Equals, keysize/8)
+	c.Check(keyslot.KeySize, Equals, keysize)
 	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
@@ -274,8 +276,8 @@ func (s *cryptsetupSuite) testAddKey(c *C, data *testAddKeyData) {
 	c.Check(endInfo.Metadata.Keyslots, HasLen, 2)
 	keyslot, ok := endInfo.Metadata.Keyslots[newSlotId]
 	c.Assert(ok, Equals, true)
-	_, keysize := SelectCipherAndKeysize()
-	c.Check(keyslot.KeySize, Equals, keysize/8)
+	cipher := SelectCipher()
+	c.Check(keyslot.KeySize, Equals, KeySize(cipher))
 	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
@@ -686,20 +688,21 @@ func (s *cryptsetupSuite) TestSelectCipherAndKeysize(c *C) {
 		expectedCipher  string
 		expectedKeysize int
 	}{
-		{"386", "aes-xts-plain64", 512},
-		{"amd64", "aes-xts-plain64", 512},
-		{"arm64", "aes-xts-plain64", 512},
-		{"ppc", "aes-xts-plain64", 512},
-		{"ppc64", "aes-xts-plain64", 512},
-		{"ppc64le", "aes-xts-plain64", 512},
-		{"riscv64", "aes-xts-plain64", 512},
-		{"s390x", "aes-xts-plain64", 512},
-		{"", "aes-xts-plain64", 512},
+		{"386", "aes-xts-plain64", 64},
+		{"amd64", "aes-xts-plain64", 64},
+		{"arm64", "aes-xts-plain64", 64},
+		{"ppc", "aes-xts-plain64", 64},
+		{"ppc64", "aes-xts-plain64", 64},
+		{"ppc64le", "aes-xts-plain64", 64},
+		{"riscv64", "aes-xts-plain64", 64},
+		{"s390x", "aes-xts-plain64", 64},
+		{"", "aes-xts-plain64", 64},
 		// only arm is using a different cipher
-		{"arm", "aes-cbc-essiv:sha256", 256},
+		{"arm", "aes-cbc-essiv:sha256", 32},
 	} {
 		s.AddCleanup(MockRuntimeGOARCH(tc.arch))
-		cipher, keysize := SelectCipherAndKeysize()
+		cipher := SelectCipher()
+		keysize := KeySize(cipher)
 		c.Check(cipher, Equals, tc.expectedCipher)
 		c.Check(keysize, Equals, tc.expectedKeysize)
 	}

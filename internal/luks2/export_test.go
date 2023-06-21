@@ -27,8 +27,9 @@ import (
 )
 
 var (
-	AcquireSharedLock      = acquireSharedLock
-	SelectCipherAndKeysize = selectCipherAndKeysize
+	AcquireSharedLock = acquireSharedLock
+	SelectCipher      = selectCipher
+	KeySize           = keySize
 )
 
 func MockDataDeviceInfo(stMock *unix.Stat_t) (restore func()) {
