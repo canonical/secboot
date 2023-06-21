@@ -41,10 +41,6 @@ const (
 	AnySlot = -1
 )
 
-var (
-	keySize = 64
-)
-
 // cryptsetupCmd is a helper for running the cryptsetup command. If stdin is supplied, data read
 // from it is supplied to cryptsetup via its stdin. If callback is supplied, it will be invoked
 // after cryptsetup has started.
@@ -158,17 +154,30 @@ var runtimeGOARCH = runtime.GOARCH
 // Note that this is a simple approach, we could run "cryptsetup
 // benchmark" but that seems over engineered (and easy enough to
 // switch if we need in the future).
-func selectCipherAndKeysize() (string, int) {
+func selectCipher() string {
 	switch runtimeGOARCH {
 	case "arm":
 		// On many 32bit ARM SoCs there is a CAAM module that
 		// can accelerate cryptographic operations which
 		// ~doubles the speed. It does not support XTS though
 		// so we use CBC mode here.
-		return "aes-cbc-essiv:sha256", keySize * 4
+		return "aes-cbc-essiv:sha256"
 	default:
 		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
-		return "aes-xts-plain64", keySize * 8
+		return "aes-xts-plain64"
+	}
+}
+
+// keySize returns the size of the key in bytes for the given encryption
+// algorithm. It will panic if an unsupported cipher is passed in.
+func keySize(cipher string) int {
+	switch cipher {
+	case "aes-xts-plain64":
+		return 64
+	case "aes-cbc-essiv:sha256":
+		return 32
+	default:
+		panic(fmt.Sprintf("internal error: unknown keysize for cipher %v", cipher))
 	}
 }
 
@@ -187,7 +196,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		opts = &defaultOpts
 	}
 
-	cipher, ksize := selectCipherAndKeysize()
+	cipher := selectCipher()
+	ksize := keySize(cipher)
 	args := []string{
 		// batch processing, no password verification for formatting an existing LUKS container
 		"-q",
@@ -198,7 +208,7 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		// read the key from stdin
 		"--key-file", "-",
 
-		"--cipher", cipher, "--key-size", strconv.Itoa(ksize),
+		"--cipher", cipher, "--key-size", strconv.Itoa(ksize * 8),
 		// set LUKS2 label
 		"--label", label}
 
