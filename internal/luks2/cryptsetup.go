@@ -161,8 +161,10 @@ var runtimeGOARCH = runtime.GOARCH
 func selectCipherAndKeysize() (string, int) {
 	switch runtimeGOARCH {
 	case "arm":
-		// on 32bit arm CPUs xts cannot be accerlated in HW so
-		// cbc is used
+		// On many 32bit ARM SoCs there is a CAAM module that
+		// can accelerate cryptographic operations which
+		// ~doubles the speed. It does not support XTS though
+		// so we use CBC mode here.
 		return "aes-cbc-essiv:sha256", keySize * 4
 	default:
 		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
