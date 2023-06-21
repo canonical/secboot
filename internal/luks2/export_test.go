@@ -28,12 +28,13 @@ import (
 )
 
 var (
-	AcquireSharedLock      = acquireSharedLock
-	SelectCipherAndKeysize = selectCipherAndKeysize
+	AcquireSharedLock = acquireSharedLock
+	SelectCipher      = selectCipher
+	KeySize           = keySize
 )
 
-func (o *FormatOptions) Validate() error {
-	return o.validate()
+func (o *FormatOptions) Validate(cipher string) error {
+	return o.validate(cipher)
 }
 
 func MockDataDeviceInfo(stMock *unix.Stat_t) (restore func()) {
