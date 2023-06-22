@@ -681,7 +681,24 @@ func (s *cryptsetupSuite) TestSetSlotPriority3(c *C) {
 		priority: SlotPriorityIgnore})
 }
 
-func (s *cryptsetupSuite) TestSelectCipherAndKeysize(c *C) {
+var _ = Suite(&cryptsetupSuiteARM{})
+
+type cryptsetupSuiteARM struct {
+	cryptsetupSuite
+}
+
+func (s *cryptsetupSuiteARM) SetUpTest(c *C) {
+	s.cryptsetupSuite.SetUpTest(c)
+	s.AddCleanup(MockRuntimeGOARCH("arm"))
+}
+
+var _ = Suite(&cipherSuite{})
+
+type cipherSuite struct {
+	snapd_testutil.BaseTest
+}
+
+func (s *cipherSuite) TestSelectCipherAndKeysize(c *C) {
 	for _, tc := range []struct {
 		arch string
 
@@ -706,15 +723,4 @@ func (s *cryptsetupSuite) TestSelectCipherAndKeysize(c *C) {
 		c.Check(cipher, Equals, tc.expectedCipher)
 		c.Check(keysize, Equals, tc.expectedKeysize)
 	}
-}
-
-var _ = Suite(&cryptsetupSuiteARM{})
-
-type cryptsetupSuiteARM struct {
-	cryptsetupSuite
-}
-
-func (s *cryptsetupSuiteARM) SetUpTest(c *C) {
-	s.cryptsetupSuite.SetUpTest(c)
-	s.AddCleanup(MockRuntimeGOARCH("arm"))
 }
