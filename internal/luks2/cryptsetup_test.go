@@ -183,15 +183,23 @@ func (s *cryptsetupSuite) TestFormatOptionsValidateBadMetadataSize(c *C) {
 }
 
 func (s *cryptsetupSuite) TestFormatOptionsValidateBadKeyslotsAreaSize(c *C) {
-	// minimum size of a keyslot is keysize*4000 in KiB
-	// (250 KiB for 64bit keys, 125 for 32bit keys)
-	minSize := (KeySize(SelectCipher()) * 4000) / 1024
+	var minSize int
+	switch KeySize(SelectCipher()) {
+	case 32:
+		minSize = 124
+	case 64:
+		minSize = 248
+	default:
+		c.Fatalf("unknown keysize")
+	}
+
 	for _, opts := range []FormatOptions{
-		// smaller than the minimum
+		// minimum size
 		{KeyslotsAreaKiBSize: minSize},
-		// must be multiply of 1024
+		// must be multiply of 4KiB
 		{KeyslotsAreaKiBSize: (4 * 1024) + 1},
-		// can't be more than 128KiB
+		// can't be more than 128MiB
+		{KeyslotsAreaKiBSize: 128*1024 + 1},
 		{KeyslotsAreaKiBSize: 256 * 1024},
 	} {
 		c.Check(Format("/dev/null", "", make([]byte, 32), &opts), ErrorMatches,
