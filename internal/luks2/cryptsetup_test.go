@@ -59,6 +59,9 @@ func (s *cryptsetupSuiteBase) SetUpTest(c *C) {
 
 	s.cryptsetup = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupWrapperTpl, cryptsetup))
 	s.AddCleanup(s.cryptsetup.Restore)
+
+	// cryptsetup parameters are arch specific
+	s.AddCleanup(MockRuntimeGOARCH("amd64"))
 }
 
 type cryptsetupSuite struct {
@@ -180,13 +183,27 @@ func (s *cryptsetupSuite) TestFormatOptionsValidateBadMetadataSize(c *C) {
 }
 
 func (s *cryptsetupSuite) TestFormatOptionsValidateBadKeyslotsAreaSize(c *C) {
+	var minSize int
+	switch KeySize(SelectCipher()) {
+	case 32:
+		minSize = 124
+	case 64:
+		minSize = 248
+	default:
+		c.Fatalf("unknown keysize")
+	}
+
 	for _, opts := range []FormatOptions{
-		{KeyslotsAreaKiBSize: 128},
+		// minimum size
+		{KeyslotsAreaKiBSize: minSize},
+		// must be multiply of 4KiB
 		{KeyslotsAreaKiBSize: (4 * 1024) + 1},
+		// can't be more than 128MiB
+		{KeyslotsAreaKiBSize: 128*1024 + 1},
 		{KeyslotsAreaKiBSize: 256 * 1024},
 	} {
 		c.Check(Format("/dev/null", "", make([]byte, 32), &opts), ErrorMatches,
-			fmt.Sprintf("cannot set keyslots area size to %v KiB", opts.KeyslotsAreaKiBSize))
+			fmt.Sprintf("cannot set keyslots area size to %v KiB", opts.KeyslotsAreaKiBSize), Commentf("%v", opts))
 	}
 }
 
@@ -203,8 +220,10 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 
 	c.Check(Format(devicePath, data.label, data.key, data.options), IsNil)
 
+	cipher := SelectCipher()
+	keysize := KeySize(cipher)
 	cmd := []string{"cryptsetup", "-q", "luksFormat", "--type", "luks2",
-		"--key-file", "-", "--cipher", "aes-xts-plain64", "--key-size", "512",
+		"--key-file", "-", "--cipher", cipher, "--key-size", strconv.Itoa(keysize * 8),
 		"--label", data.label, "--pbkdf", "argon2i"}
 	cmd = append(cmd, data.extraArgs...)
 	cmd = append(cmd, devicePath)
@@ -223,7 +242,7 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
 	keyslot, ok := info.Metadata.Keyslots[0]
 	c.Assert(ok, Equals, true)
-	c.Check(keyslot.KeySize, Equals, 64)
+	c.Check(keyslot.KeySize, Equals, keysize)
 	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
@@ -231,7 +250,7 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 	c.Check(info.Metadata.Segments, HasLen, 1)
 	segment, ok := info.Metadata.Segments[0]
 	c.Assert(ok, Equals, true)
-	c.Check(segment.Encryption, Equals, "aes-xts-plain64")
+	c.Check(segment.Encryption, Equals, cipher)
 
 	c.Check(info.Metadata.Tokens, HasLen, 0)
 
@@ -448,7 +467,8 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	c.Check(endInfo.Metadata.Keyslots, HasLen, 2)
 	keyslot, ok := endInfo.Metadata.Keyslots[newSlotId]
 	c.Assert(ok, Equals, true)
-	c.Check(keyslot.KeySize, Equals, 64)
+	cipher := SelectCipher()
+	c.Check(keyslot.KeySize, Equals, KeySize(cipher))
 	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 	c.Assert(keyslot.KDF, NotNil)
 	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
@@ -1008,4 +1028,48 @@ func (s *cryptsetupSuite) TestSetSlotPriority3(c *C) {
 	s.testSetSlotPriority(c, &testSetSlotPriorityData{
 		slotId:   1,
 		priority: SlotPriorityIgnore})
+}
+
+var _ = Suite(&cryptsetupSuiteARM{})
+
+type cryptsetupSuiteARM struct {
+	cryptsetupSuite
+}
+
+func (s *cryptsetupSuiteARM) SetUpTest(c *C) {
+	s.cryptsetupSuite.SetUpTest(c)
+	s.AddCleanup(MockRuntimeGOARCH("arm"))
+}
+
+var _ = Suite(&cipherSuite{})
+
+type cipherSuite struct {
+	snapd_testutil.BaseTest
+}
+
+func (s *cipherSuite) TestSelectCipherAndKeysize(c *C) {
+	for _, tc := range []struct {
+		arch string
+
+		expectedCipher  string
+		expectedKeysize int
+	}{
+		{"386", "aes-xts-plain64", 64},
+		{"amd64", "aes-xts-plain64", 64},
+		{"arm64", "aes-xts-plain64", 64},
+		{"ppc", "aes-xts-plain64", 64},
+		{"ppc64", "aes-xts-plain64", 64},
+		{"ppc64le", "aes-xts-plain64", 64},
+		{"riscv64", "aes-xts-plain64", 64},
+		{"s390x", "aes-xts-plain64", 64},
+		{"", "aes-xts-plain64", 64},
+		// only arm is using a different cipher
+		{"arm", "aes-cbc-essiv:sha256", 32},
+	} {
+		s.AddCleanup(MockRuntimeGOARCH(tc.arch))
+		cipher := SelectCipher()
+		keysize := KeySize(cipher)
+		c.Check(cipher, Equals, tc.expectedCipher)
+		c.Check(keysize, Equals, tc.expectedKeysize)
+	}
 }

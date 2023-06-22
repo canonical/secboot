@@ -27,6 +27,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -54,8 +55,6 @@ var (
 
 	features     Features
 	featuresOnce sync.Once
-
-	keySize = 64
 )
 
 // Features indicates the set of features supported by this package,
@@ -208,7 +207,7 @@ type FormatOptions struct {
 	KDFOptions KDFOptions
 }
 
-func (options *FormatOptions) validate() error {
+func (options *FormatOptions) validate(cipher string) error {
 	if (options.MetadataKiBSize != 0 || options.KeyslotsAreaKiBSize != 0) &&
 		DetectCryptsetupFeatures()&FeatureHeaderSizeSetting == 0 {
 		return ErrMissingCryptsetupFeature
@@ -231,7 +230,7 @@ func (options *FormatOptions) validate() error {
 	if options.KeyslotsAreaKiBSize != 0 {
 		// Verify that the size is sufficient for a single keyslot, not more than 128MiB
 		// and a multiple of 4KiB.
-		if options.KeyslotsAreaKiBSize < (keySize*4000)/1024 ||
+		if options.KeyslotsAreaKiBSize < (keySize(cipher)*4000)/1024 ||
 			options.KeyslotsAreaKiBSize > 128*1024 || options.KeyslotsAreaKiBSize%4 != 0 {
 			return fmt.Errorf("cannot set keyslots area size to %v KiB", options.KeyslotsAreaKiBSize)
 		}
@@ -255,6 +254,42 @@ func (options *FormatOptions) appendArguments(args []string) []string {
 	return args
 }
 
+var runtimeGOARCH = runtime.GOARCH
+
+// selectCipher will return the cipher to use. This is aes-xts-plain64
+// everywhere except on armhf (32bit arm) hardware where the XTS mode
+// cannot be accelerated by the hardware.
+//
+// Note that this is a simple approach, we could run "cryptsetup
+// benchmark" but that seems over engineered (and easy enough to
+// switch if we need in the future).
+func selectCipher() string {
+	switch runtimeGOARCH {
+	case "arm":
+		// On many 32bit ARM SoCs there is a CAAM module that
+		// can accelerate cryptographic operations which
+		// ~doubles the speed. It does not support XTS though
+		// so we use CBC mode here.
+		return "aes-cbc-essiv:sha256"
+	default:
+		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
+		return "aes-xts-plain64"
+	}
+}
+
+// keySize returns the size of the key in bytes for the given encryption
+// algorithm. It will panic if an unsupported cipher is passed in.
+func keySize(cipher string) int {
+	switch cipher {
+	case "aes-xts-plain64":
+		return 64
+	case "aes-cbc-essiv:sha256":
+		return 32
+	default:
+		panic(fmt.Sprintf("internal error: unknown keysize for cipher %v", cipher))
+	}
+}
+
 // Format will initialize a LUKS2 container with the specified options and set the primary key to the
 // supplied key. The label for the new container will be set to the supplied label. This can only be
 // called on a device that is not mapped.
@@ -270,10 +305,12 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		opts = &defaultOpts
 	}
 
-	if err := opts.validate(); err != nil {
+	cipher := selectCipher()
+	if err := opts.validate(cipher); err != nil {
 		return err
 	}
 
+	ksize := keySize(cipher)
 	args := []string{
 		// batch processing, no password verification for formatting an existing LUKS container
 		"-q",
@@ -283,8 +320,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		"--type", "luks2",
 		// read the key from stdin
 		"--key-file", "-",
-		// use AES-256 with XTS block cipher mode (XTS requires 2 keys)
-		"--cipher", "aes-xts-plain64", "--key-size", strconv.Itoa(keySize * 8),
+
+		"--cipher", cipher, "--key-size", strconv.Itoa(ksize * 8),
 		// set LUKS2 label
 		"--label", label}
 

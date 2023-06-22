@@ -29,10 +29,12 @@ import (
 
 var (
 	AcquireSharedLock = acquireSharedLock
+	SelectCipher      = selectCipher
+	KeySize           = keySize
 )
 
-func (o *FormatOptions) Validate() error {
-	return o.validate()
+func (o *FormatOptions) Validate(cipher string) error {
+	return o.validate(cipher)
 }
 
 func MockDataDeviceInfo(stMock *unix.Stat_t) (restore func()) {
@@ -88,4 +90,12 @@ func MockStderr(w io.Writer) (restore func()) {
 
 func ResetCryptsetupFeatures() {
 	featuresOnce = sync.Once{}
+}
+
+func MockRuntimeGOARCH(arch string) (restore func()) {
+	oldRuntimeGOARCH := runtimeGOARCH
+	runtimeGOARCH = arch
+	return func() {
+		runtimeGOARCH = oldRuntimeGOARCH
+	}
 }
