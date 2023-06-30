@@ -67,15 +67,6 @@ type ProtectKeyParams struct {
 	AuthorizedSnapModels []secboot.SnapModel
 }
 
-// keyDataPolicyParams corresponds to the parameters of a key's computed authorization
-// policy, consisting of the digest algorithm, the policy digest and the associated policy
-// data.
-type keyDataPolicyParams struct {
-	Alg        tpm2.HashAlgorithmId
-	PolicyData keyDataPolicy
-	AuthPolicy tpm2.Digest
-}
-
 // makeKeyDataWithPolicy protects the supplied keys using the supplied keySealer and
 // policy data. This can be called multiple times to protect an arbitary number of
 // keys with an identical policy.
@@ -149,6 +140,15 @@ func (c *createdPcrPolicyCounter) undefineOnError(err error) {
 		return
 	}
 	c.tpm.NVUndefineSpace(c.tpm.OwnerHandleContext(), index, c.session)
+}
+
+// keyDataPolicyParams corresponds to the parameters of a key's computed authorization
+// policy, consisting of the digest algorithm, the policy digest and the associated policy
+// data.
+type keyDataPolicyParams struct {
+	Alg        tpm2.HashAlgorithmId
+	PolicyData keyDataPolicy
+	AuthPolicy tpm2.Digest
 }
 
 // makeKeyDataPolicy creates the policy data required to seal a key with makeKeyDataWithPolicy
