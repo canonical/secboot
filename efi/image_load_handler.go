@@ -22,7 +22,7 @@ package efi
 // imageLoadHandler is an abstraction for measuring boot events
 // associated with a single image.
 type imageLoadHandler interface {
-	// MeasureImageStart measures events related to the execution
+	// MeasureImageStart measures events related to the start of execution
 	// of the image associated with this handler to the supplied branch.
 	MeasureImageStart(ctx pcrBranchContext) error
 
