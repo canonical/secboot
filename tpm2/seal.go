@@ -154,7 +154,7 @@ type keyDataPolicyParams struct {
 // makeKeyDataPolicy creates the policy data required to seal a key with makeKeyDataWithPolicy
 // and creates a PCR policy counter if required.
 func makeKeyDataPolicy(tpm *tpm2.TPMContext, pcrPolicyCounterHandle tpm2.Handle, authKey secboot.AuxiliaryKey,
-	session tpm2.SessionContext) (data *keyDataPolicyParams, pcrPolicyCounter *createdPcrPolicyCounter,
+	session tpm2.SessionContext) (data *keyDataPolicyParams, pcrPolicyCounterOut *createdPcrPolicyCounter,
 	authKeyOut secboot.AuxiliaryKey, err error) {
 	// Create an auth key.
 	if authKey == nil {
@@ -170,6 +170,7 @@ func makeKeyDataPolicy(tpm *tpm2.TPMContext, pcrPolicyCounterHandle tpm2.Handle,
 
 	// Create PCR policy counter, if requested.
 	var pcrPolicyCount uint64
+	var pcrPolicyCounter *createdPcrPolicyCounter
 	if pcrPolicyCounterHandle != tpm2.HandleNull {
 		if tpm == nil {
 			return nil, nil, nil, errors.New("cannot create a PCR policy counter without a TPM connection")
@@ -219,7 +220,7 @@ type keyDataParams struct {
 // will have an initial PCR policy as specified via the supplied parameters.
 func makeKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, params *keyDataParams,
 	sealer keySealer, session tpm2.SessionContext) (protectedKey *secboot.KeyData, authKeyOut secboot.AuxiliaryKey,
-	pcrPolicyCounter *createdPcrPolicyCounter, err error) {
+	pcrPolicyCounterOut *createdPcrPolicyCounter, err error) {
 	policy, pcrPolicyCounter, authKey, err := makeKeyDataPolicy(tpm, params.PCRPolicyCounterHandle, authKey, session)
 	if err != nil {
 		return nil, nil, nil, err
