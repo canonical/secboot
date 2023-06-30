@@ -627,7 +627,8 @@ func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidPCRProfile(c *C) {
 			AddProfileOR(
 				NewPCRProtectionProfile(),
 				NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 8)),
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181ffff), // verify that this gets undefined on error
+	})
 	c.Check(err, ErrorMatches, "cannot set initial PCR policy: cannot compute PCR digests from protection profile: "+
 		"not all branches contain values for the same sets of PCRs")
 }
