@@ -846,9 +846,9 @@ func (s *sealSuiteNoTPM) testMakeKeyDataWithPolicy(c *C, data *testMakeKeyDataWi
 	skd, err := NewSealedKeyData(kd)
 	c.Assert(err, IsNil)
 
-	c.Check(skd.Data().Policy(), tpm2_testutil.TPMValueDeepEquals, data.policy.Data)
+	c.Check(skd.Data().Policy(), tpm2_testutil.TPMValueDeepEquals, data.policy.PolicyData)
 	c.Check(skd.Data().Public().NameAlg, Equals, data.policy.Alg)
-	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, data.policy.Digest)
+	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, data.policy.AuthPolicy)
 
 	payload := make(secboot.KeyPayload, len(s.lastKeyParams.EncryptedPayload))
 
@@ -877,9 +877,9 @@ func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicy(c *C) {
 
 	s.testMakeKeyDataWithPolicy(c, &testMakeKeyDataWithPolicyData{
 		policy: &KeyDataPolicyParams{
-			Alg:    tpm2.HashAlgorithmSHA256,
-			Data:   policyData,
-			Digest: []byte{1, 2, 3, 4}}})
+			Alg:        tpm2.HashAlgorithmSHA256,
+			PolicyData: policyData,
+			AuthPolicy: []byte{1, 2, 3, 4}}})
 }
 
 func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentNameAlg(c *C) {
@@ -895,9 +895,9 @@ func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentNameAlg(c *C) {
 
 	s.testMakeKeyDataWithPolicy(c, &testMakeKeyDataWithPolicyData{
 		policy: &KeyDataPolicyParams{
-			Alg:    tpm2.HashAlgorithmSHA1,
-			Data:   policyData,
-			Digest: []byte{1, 2, 3, 4}}})
+			Alg:        tpm2.HashAlgorithmSHA1,
+			PolicyData: policyData,
+			AuthPolicy: []byte{1, 2, 3, 4}}})
 }
 
 func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentPolicyDigest(c *C) {
@@ -913,9 +913,9 @@ func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentPolicyDigest(c *C) {
 
 	s.testMakeKeyDataWithPolicy(c, &testMakeKeyDataWithPolicyData{
 		policy: &KeyDataPolicyParams{
-			Alg:    tpm2.HashAlgorithmSHA256,
-			Data:   policyData,
-			Digest: []byte{5, 6, 7, 8, 9}}})
+			Alg:        tpm2.HashAlgorithmSHA256,
+			PolicyData: policyData,
+			AuthPolicy: []byte{5, 6, 7, 8, 9}}})
 }
 
 func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentPolicyVersion(c *C) {
@@ -931,9 +931,9 @@ func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentPolicyVersion(c *C) {
 
 	s.testMakeKeyDataWithPolicy(c, &testMakeKeyDataWithPolicyData{
 		policy: &KeyDataPolicyParams{
-			Alg:    tpm2.HashAlgorithmSHA256,
-			Data:   policyData,
-			Digest: []byte{1, 2, 3, 4}}})
+			Alg:        tpm2.HashAlgorithmSHA256,
+			PolicyData: policyData,
+			AuthPolicy: []byte{1, 2, 3, 4}}})
 }
 
 type testMakeKeyDataPolicyData struct {
@@ -998,17 +998,17 @@ func (s *sealSuiteNoTPM) testMakeKeyDataPolicy(c *C, data *testMakeKeyDataPolicy
 	})
 	defer restore()
 
-	policyData, pcrPolicyCounter, authKeyOut, err := MakeKeyDataPolicy(mockTpm, data.pcrPolicyCounterHandle, data.authKey, mockSession)
+	policy, pcrPolicyCounter, authKeyOut, err := MakeKeyDataPolicy(mockTpm, data.pcrPolicyCounterHandle, data.authKey, mockSession)
 	c.Assert(err, IsNil)
 
 	c.Assert(s.lastAuthKey, NotNil)
 	c.Assert(mockPolicyData, NotNil)
 
-	c.Assert(policyData, NotNil)
-	c.Check(policyData.Alg, Equals, tpm2.HashAlgorithmSHA256)
-	c.Assert(policyData.Data, testutil.ConvertibleTo, new(KeyDataPolicy_v3))
-	c.Check(policyData.Data.(*KeyDataPolicy_v3), Equals, mockPolicyData)
-	c.Check(policyData.Digest, DeepEquals, mockPolicyDigest)
+	c.Assert(policy, NotNil)
+	c.Check(policy.Alg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Assert(policy.PolicyData, testutil.ConvertibleTo, new(KeyDataPolicy_v3))
+	c.Check(policy.PolicyData.(*KeyDataPolicy_v3), Equals, mockPolicyData)
+	c.Check(policy.AuthPolicy, DeepEquals, mockPolicyDigest)
 
 	if data.pcrPolicyCounterHandle == tpm2.HandleNull {
 		c.Check(pcrPolicyCounter, IsNil)
@@ -1020,7 +1020,7 @@ func (s *sealSuiteNoTPM) testMakeKeyDataPolicy(c *C, data *testMakeKeyDataPolicy
 	}
 
 	c.Check(authKeyOut, DeepEquals, s.lastAuthKey)
-	c.Check(policyData.Data.ValidateAuthKey(authKeyOut), IsNil)
+	c.Check(policy.PolicyData.ValidateAuthKey(authKeyOut), IsNil)
 	if data.authKey != nil {
 		c.Check(authKeyOut, DeepEquals, data.authKey)
 	}

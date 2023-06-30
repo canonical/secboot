@@ -67,10 +67,13 @@ type ProtectKeyParams struct {
 	AuthorizedSnapModels []secboot.SnapModel
 }
 
+// keyDataPolicyParams corresponds to the parameters of a key's computed authorization
+// policy, consisting of the digest algorithm, the policy digest and the associated policy
+// data.
 type keyDataPolicyParams struct {
-	Alg    tpm2.HashAlgorithmId
-	Data   keyDataPolicy
-	Digest tpm2.Digest
+	Alg        tpm2.HashAlgorithmId
+	PolicyData keyDataPolicy
+	AuthPolicy tpm2.Digest
 }
 
 // makeKeyDataWithPolicy protects the supplied keys using the supplied keySealer and
@@ -82,13 +85,13 @@ func makeKeyDataWithPolicy(key secboot.DiskUnlockKey, authKey secboot.AuxiliaryK
 		return nil, xerrors.Errorf("cannot create symmetric key: %w", err)
 	}
 
-	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], policy.Alg, policy.Digest)
+	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], policy.Alg, policy.AuthPolicy)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a new SealedKeyObject.
-	data, err := newKeyData(priv, pub, importSymSeed, policy.Data)
+	data, err := newKeyData(priv, pub, importSymSeed, policy.PolicyData)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create key data: %w", err)
 	}
@@ -191,20 +194,21 @@ func makeKeyDataPolicy(tpm *tpm2.TPMContext, pcrPolicyCounterHandle tpm2.Handle,
 		defer func() { pcrPolicyCounter.undefineOnError(err) }()
 	}
 
-	nameAlg := tpm2.HashAlgorithmSHA256
+	alg := tpm2.HashAlgorithmSHA256
 
 	// Create the initial policy data
-	policyData, authPolicy, err := newKeyDataPolicy(nameAlg, authPublicKey, pcrPolicyCounter.Pub(), pcrPolicyCount)
+	policyData, authPolicy, err := newKeyDataPolicy(alg, authPublicKey, pcrPolicyCounter.Pub(), pcrPolicyCount)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create initial policy data: %w", err)
 	}
 
 	return &keyDataPolicyParams{
-		Alg:    nameAlg,
-		Data:   policyData,
-		Digest: authPolicy}, pcrPolicyCounter, authKey, nil
+		Alg:        alg,
+		PolicyData: policyData,
+		AuthPolicy: authPolicy}, pcrPolicyCounter, authKey, nil
 }
 
+// keyDataParams contains the parameters required to seal a new key with makeKeyData.
 type keyDataParams struct {
 	PCRPolicyCounterHandle tpm2.Handle
 	PCRProfile             *PCRProtectionProfile
@@ -371,9 +375,9 @@ func ProtectKeysWithTPM(tpm *Connection, keys []secboot.DiskUnlockKey, params *P
 	}
 
 	policy := &keyDataPolicyParams{
-		Alg:    skd.data.Public().NameAlg,
-		Digest: skd.data.Public().AuthPolicy,
-		Data:   skd.data.Policy()}
+		Alg:        skd.data.Public().NameAlg,
+		AuthPolicy: skd.data.Public().AuthPolicy,
+		PolicyData: skd.data.Policy()}
 	for _, key := range keys[1:] {
 		protectedKey, err := makeKeyDataWithPolicy(key, authKey, policy, sealer)
 		if err != nil {
