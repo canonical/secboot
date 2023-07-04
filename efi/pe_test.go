@@ -36,7 +36,7 @@ type peSuite struct{}
 
 var _ = Suite(&peSuite{})
 
-func (s *peSuite) testPeImageHandleSource(c *C) {
+func (s *peSuite) TestPeImageHandleSource(c *C) {
 	source := NewFileImage("testdata/amd64/mockshim.efi.signed.1.1.1")
 
 	image, err := OpenPeImage(source)
