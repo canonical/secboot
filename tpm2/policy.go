@@ -246,6 +246,9 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 // assertion, which can be used verify that a NV index is associated with this policy.
 //
 // The key argument must be created with newPolicyAuthPublicKey.
+//
+// This returns some policy metadata and a policy digest which is used as the auth policy field of the
+// protected object.
 var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
 	keyName, err := key.Name()
 	if err != nil {
