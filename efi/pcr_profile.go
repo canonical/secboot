@@ -146,12 +146,6 @@ func AddPCRProfile(pcrAlg tpm2.HashAlgorithmId, branch *secboot_tpm2.PCRProtecti
 		return errors.New("must specify a profile to add")
 	}
 
-	log, err := gen.env.ReadEventLog()
-	if err != nil {
-		return xerrors.Errorf("cannot read TCG event log: %w", err)
-	}
-	gen.log = log
-
 	return gen.addPCRProfile(branch)
 }
 
@@ -209,6 +203,12 @@ func newPcrProfileGenerator(pcrAlg tpm2.HashAlgorithmId, loadSequences *ImageLoa
 func (g *pcrProfileGenerator) addPCRProfile(branch *secboot_tpm2.PCRProtectionProfileBranch) error {
 	bp := branch.AddBranchPoint()
 	defer bp.EndBranchPoint()
+
+	log, err := g.env.ReadEventLog()
+	if err != nil {
+		return xerrors.Errorf("cannot read TCG event log: %w", err)
+	}
+	g.log = log
 
 	// Collect all of the starting EFI variable states that we need to
 	// generate branches for.
