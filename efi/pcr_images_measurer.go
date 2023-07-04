@@ -27,7 +27,7 @@ import (
 // pcrImagesMeasurer binds a branch context, load handler and a set of images
 // that can be loaded.
 type pcrImagesMeasurer struct {
-	context *pcrBranchContextImpl // the current branch context
+	context *pcrBranchCtx // the current branch context
 
 	// loadHandler is associated with the image that has been measured into
 	// the current branch context.
@@ -41,7 +41,7 @@ type pcrImagesMeasurer struct {
 	nextToMeasure []*pcrImagesMeasurer
 }
 
-func newPcrImagesMeasurer(branchContext *pcrBranchContextImpl, handler imageLoadHandler, images ...ImageLoadActivity) *pcrImagesMeasurer {
+func newPcrImagesMeasurer(branchContext *pcrBranchCtx, handler imageLoadHandler, images ...ImageLoadActivity) *pcrImagesMeasurer {
 	return &pcrImagesMeasurer{
 		context:     branchContext,
 		loadHandler: handler,
@@ -62,7 +62,7 @@ func (m *pcrImagesMeasurer) measureOneImage(bp *secboot_tpm2.PCRProtectionProfil
 
 	// Create a new descendent branch for each parameter combination.
 	for _, p := range params {
-		context := newPcrBranchContextImpl(
+		context := newPcrBranchCtx(
 			m.context.pcrProfileContext,
 			bp.AddBranch(),
 			&p,

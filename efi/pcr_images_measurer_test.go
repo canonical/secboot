@@ -65,7 +65,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureOneLeaf(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -117,7 +117,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoLeaf(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]), NewImageLoadActivity(images[2]))
 	next, err := m.Measure()
@@ -171,7 +171,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerNonLeaf(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]).Loads(NewImageLoadActivity(images[2])))
 	next, err := m.Measure()
@@ -235,7 +235,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoNonLeaf(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]],
 		NewImageLoadActivity(images[1]).Loads(NewImageLoadActivity(images[3])),
@@ -310,7 +310,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1], KernelCommandlineParams("foo", "bar")))
 	next, err := m.Measure()
@@ -374,7 +374,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithInheritedParams
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1], KernelCommandlineParams("foo", "bar")))
 	next, err := m.Measure()
@@ -431,7 +431,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithVars(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -486,7 +486,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureVarsAreCopied
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]), NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -544,7 +544,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -600,7 +600,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]), NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -658,7 +658,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -714,7 +714,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchContextImpl(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]), NewImageLoadActivity(images[1]))
 	next, err := m.Measure()

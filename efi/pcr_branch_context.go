@@ -41,7 +41,7 @@ type pcrBranchContext interface {
 	MeasureVariable(pcr int, guid efi.GUID, name string, data []byte) // measure the specified variable for this branch
 }
 
-type pcrBranchContextImpl struct {
+type pcrBranchCtx struct {
 	pcrProfileContext
 	branch *secboot_tpm2.PCRProtectionProfileBranch
 	params loadParams
@@ -50,12 +50,12 @@ type pcrBranchContextImpl struct {
 	sc     shimContext
 }
 
-// newPcrBranchContextImpl creates a new pcrBranchContextImpl from the supplied arguments.
+// newPcrBranchCtx creates a new pcrBranchCtx from the supplied arguments.
 // Note that this performs a copy of the varBranch, fwContext and shimContext
 // arguments which is important so that they can be mutated without affecting the
 // state of ancestor branch contexts.
-func newPcrBranchContextImpl(pc pcrProfileContext, branch *secboot_tpm2.PCRProtectionProfileBranch, params *loadParams, vars *varBranch, fc *fwContext, sc *shimContext) *pcrBranchContextImpl {
-	return &pcrBranchContextImpl{
+func newPcrBranchCtx(pc pcrProfileContext, branch *secboot_tpm2.PCRProtectionProfileBranch, params *loadParams, vars *varBranch, fc *fwContext, sc *shimContext) *pcrBranchCtx {
+	return &pcrBranchCtx{
 		pcrProfileContext: pc,
 		branch:            branch,
 		params:            *params,
@@ -64,31 +64,31 @@ func newPcrBranchContextImpl(pc pcrProfileContext, branch *secboot_tpm2.PCRProte
 		sc:                *sc}
 }
 
-func (c *pcrBranchContextImpl) Params() *loadParams {
+func (c *pcrBranchCtx) Params() *loadParams {
 	return &c.params
 }
 
-func (c *pcrBranchContextImpl) Vars() varReadWriter {
+func (c *pcrBranchCtx) Vars() varReadWriter {
 	return &c.vars
 }
 
-func (c *pcrBranchContextImpl) FwContext() *fwContext {
+func (c *pcrBranchCtx) FwContext() *fwContext {
 	return &c.fc
 }
 
-func (c *pcrBranchContextImpl) ShimContext() *shimContext {
+func (c *pcrBranchCtx) ShimContext() *shimContext {
 	return &c.sc
 }
 
-func (c *pcrBranchContextImpl) ResetPCR(pcr int) {
+func (c *pcrBranchCtx) ResetPCR(pcr int) {
 	c.branch.AddPCRValue(c.PCRAlg(), pcr, make(tpm2.Digest, c.PCRAlg().Size()))
 }
 
-func (c *pcrBranchContextImpl) ExtendPCR(pcr int, digest tpm2.Digest) {
+func (c *pcrBranchCtx) ExtendPCR(pcr int, digest tpm2.Digest) {
 	c.branch.ExtendPCR(c.PCRAlg(), pcr, digest)
 }
 
-func (c *pcrBranchContextImpl) MeasureVariable(pcr int, guid efi.GUID, name string, data []byte) {
+func (c *pcrBranchCtx) MeasureVariable(pcr int, guid efi.GUID, name string, data []byte) {
 	c.branch.ExtendPCR(
 		c.PCRAlg(),
 		pcr,

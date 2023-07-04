@@ -44,27 +44,27 @@ type pcrBranchContextSuite struct{}
 
 var _ = Suite(&pcrBranchContextSuite{})
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplProfileContext(c *C) {
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+func (s *pcrBranchContextSuite) TestPcrBranchCtxProfileContext(c *C) {
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	c.Check(bc.PCRAlg(), Equals, tpm2.HashAlgorithmSHA256)
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplParams(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxParams(c *C) {
 	params := &LoadParams{KernelCommandline: "foo"}
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, params, new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, params, new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	c.Check(bc.Params(), Not(Equals), params)
 	c.Check(bc.Params(), DeepEquals, params)
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplVars(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxVars(c *C) {
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
 		{Name: "foo", GUID: efi.GlobalVariable}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), vars, new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), vars, new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	c.Assert(bc.Vars(), NotNil)
@@ -79,37 +79,37 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplVars(c *C) {
 	c.Check(data, DeepEquals, []byte{1})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplFwContext(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxFwContext(c *C) {
 	fc := new(FwContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
 	fc.AppendVerificationEvent(h.Sum(nil))
 
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), new(VarBranch), fc, new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), new(VarBranch), fc, new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	c.Check(bc.FwContext(), Not(Equals), fc)
 	c.Check(bc.FwContext(), DeepEquals, fc)
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplShimContext(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxShimContext(c *C) {
 	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
 	sc.AppendVerificationEvent(h.Sum(nil))
 
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), new(VarBranch), new(FwContext), sc)
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), new(VarBranch), new(FwContext), sc)
 	c.Assert(bc, NotNil)
 
 	c.Check(bc.ShimContext(), Not(Equals), sc)
 	c.Check(bc.ShimContext(), DeepEquals, sc)
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplResetPCR(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxResetPCR(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	bc.ResetPCR(0)
@@ -121,9 +121,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplResetPCR(c *C) {
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplResetPCRSHA1(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxResetPCRSHA1(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	bc.ResetPCR(0)
@@ -135,9 +135,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplResetPCRSHA1(c *C) {
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "de47c9b27eb8d300dbb5f2c353e632c393262cf06340c4fa7f1b40c4cbd36f90")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplExtendPCR(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCR(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	h := crypto.SHA256.New()
@@ -151,9 +151,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplExtendPCR(c *C) {
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "84f372030a8bcfeee7138224f74187f3e5e1ede554cd18133b65deafa65af648")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplExtendPCRDifferentDigest(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRDifferentDigest(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	h := crypto.SHA256.New()
@@ -167,9 +167,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplExtendPCRDifferentDigest
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "44fc701f6e0fd4a746406306870ac08987e4b064df14f38c09881f5274b090e1")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplExtendPCRDifferentPCR(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRDifferentPCR(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	h := crypto.SHA256.New()
@@ -183,9 +183,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplExtendPCRDifferentPCR(c 
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "84f372030a8bcfeee7138224f74187f3e5e1ede554cd18133b65deafa65af648")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplExtendPCRSHA1(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRSHA1(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	h := crypto.SHA1.New()
@@ -199,9 +199,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplExtendPCRSHA1(c *C) {
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "bee9da853047671ca8c21839cf18533461aac5e0cfad217dc644790ac3fe4541")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariable(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariable(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid1, "foo", []byte{0})
@@ -213,9 +213,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariable(c *C) {
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "ff9fb2ff447a2d010ec88975ef3ff6afd264b396e47b1e55fd4169ab6b83fa40")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableDifferentGUID(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentGUID(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid2, "foo", []byte{0})
@@ -227,9 +227,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableDifferent
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "353f4ac30571d87c68ad0ddc735ed49f39e01e3f9305f8eab14ee3b026e4282d")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableDifferentName(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentName(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid1, "bar", []byte{0})
@@ -241,9 +241,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableDifferent
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "b43859ac69bdede3ada42eb3da0faad92c7e7440df2b10b780ca7fdcced8e337")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableDifferentData(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentData(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid1, "foo", []byte{1})
@@ -255,9 +255,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableDifferent
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "31dbaed8f91224061ff1014ca6d398e946d4382ae15152a8913cf5d06eea76df")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableDifferentPCR(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentPCR(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(1, testGuid1, "foo", []byte{0})
@@ -269,9 +269,9 @@ func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableDifferent
 	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{testutil.DecodeHexString(c, "ff9fb2ff447a2d010ec88975ef3ff6afd264b396e47b1e55fd4169ab6b83fa40")})
 }
 
-func (s *pcrBranchContextSuite) TestPcrBranchContextImplMeasureVariableSHA1(c *C) {
+func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableSHA1(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewPcrBranchContextImpl(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
+	bc := NewPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch), new(FwContext), new(ShimContext))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid1, "foo", []byte{0})

@@ -45,7 +45,7 @@ var (
 	LookupImageLoadHandler    = lookupImageLoadHandler
 	MustParseShimVersion      = mustParseShimVersion
 	NewestSbatLevel           = newestSbatLevel
-	NewPcrBranchContextImpl   = newPcrBranchContextImpl
+	NewPcrBranchCtx           = newPcrBranchCtx
 	NewPcrImagesMeasurer      = newPcrImagesMeasurer
 	NewPcrProfileGenerator    = newPcrProfileGenerator
 	NewRootVarsCollector      = newRootVarsCollector
