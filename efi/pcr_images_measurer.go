@@ -20,7 +20,6 @@
 package efi
 
 import (
-	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 	"golang.org/x/xerrors"
 )
 
@@ -48,7 +47,7 @@ func newPcrImagesMeasurer(branchContext *pcrBranchCtx, handler imageLoadHandler,
 		images:      images}
 }
 
-func (m *pcrImagesMeasurer) measureOneImage(bp *secboot_tpm2.PCRProtectionProfileBranchPoint, image ImageLoadActivity) error {
+func (m *pcrImagesMeasurer) measureOneImage(bp *pcrBranchPointCtx, image ImageLoadActivity) error {
 	// Build a list of parameters based on the parameters attached
 	// to the supplied image and inheriting from the parameters
 	// associated with the current branch context.
@@ -62,14 +61,7 @@ func (m *pcrImagesMeasurer) measureOneImage(bp *secboot_tpm2.PCRProtectionProfil
 
 	// Create a new descendent branch for each parameter combination.
 	for _, p := range params {
-		context := newPcrBranchCtx(
-			m.context.pcrProfileContext,
-			bp.AddBranch(),
-			&p,
-			&m.context.vars,
-			&m.context.fc,
-			&m.context.sc,
-		)
+		context := bp.AddBranch(&p)
 
 		// Measure the verification and loading if the new image with the previous image's handler.
 		handler, err := m.loadHandler.MeasureImageLoad(context, handle)
@@ -92,7 +84,7 @@ func (m *pcrImagesMeasurer) measureOneImage(bp *secboot_tpm2.PCRProtectionProfil
 }
 
 func (m *pcrImagesMeasurer) Measure() ([]*pcrImagesMeasurer, error) {
-	bp := m.context.branch.AddBranchPoint()
+	bp := m.context.AddBranchPoint()
 	m.nextToMeasure = nil
 
 	for _, image := range m.images {

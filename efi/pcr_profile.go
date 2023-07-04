@@ -245,13 +245,7 @@ func (g *pcrProfileGenerator) addPCRProfileBranchForVars(bp *secboot_tpm2.PCRPro
 }
 
 func (g *pcrProfileGenerator) addOnePCRProfileBranch(bp *secboot_tpm2.PCRProtectionProfileBranchPoint, rootVars *varBranch, params *loadParams) error {
-	rootBranch := newPcrBranchCtx(
-		g,
-		bp.AddBranch(),
-		params,
-		rootVars,
-		new(fwContext),
-		new(shimContext))
+	rootBranch := newRootPcrBranchCtx(g, bp.AddBranch(), params, rootVars)
 
 	handler := newFwLoadHandler(g.log)
 	if err := handler.MeasureImageStart(rootBranch); err != nil {

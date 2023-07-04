@@ -45,8 +45,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureOneLeaf(c *C) {
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -65,7 +63,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureOneLeaf(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -96,8 +94,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoLeaf(c *C) {
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -117,7 +113,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoLeaf(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]), NewImageLoadActivity(images[2]))
 	next, err := m.Measure()
@@ -150,8 +146,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerNonLeaf(c *C) {
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -171,7 +165,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerNonLeaf(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]).Loads(NewImageLoadActivity(images[2])))
 	next, err := m.Measure()
@@ -209,8 +203,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoNonLeaf(c *C) {
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo1")
@@ -235,7 +227,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoNonLeaf(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]],
 		NewImageLoadActivity(images[1]).Loads(NewImageLoadActivity(images[3])),
@@ -287,8 +279,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -310,7 +300,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1], KernelCommandlineParams("foo", "bar")))
 	next, err := m.Measure()
@@ -351,8 +341,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithInheritedParams
 
 	params := &LoadParams{SnapModel: model}
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -374,7 +362,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithInheritedParams
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1], KernelCommandlineParams("foo", "bar")))
 	next, err := m.Measure()
@@ -409,8 +397,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithVars(c *C) {
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
 		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -431,7 +417,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithVars(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -463,8 +449,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureVarsAreCopied
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
 		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -486,7 +470,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureVarsAreCopied
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]), NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -520,8 +504,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -530,8 +512,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 	h = crypto.SHA256.New()
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
-
-	fc.AppendVerificationEvent(digest1)
 
 	images := []*mockImage{new(mockImage), new(mockImage)}
 	handlers := mockImageLoadHandlerMap{
@@ -544,7 +524,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
+	bc.FwContext().AppendVerificationEvent(digest1)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -574,8 +555,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -584,8 +563,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 	h = crypto.SHA256.New()
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
-
-	fc.AppendVerificationEvent(digest1)
 
 	images := []*mockImage{new(mockImage), new(mockImage)}
 	handlers := mockImageLoadHandlerMap{
@@ -600,7 +577,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
+	bc.FwContext().AppendVerificationEvent(digest1)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]), NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -634,8 +612,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -644,8 +620,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 	h = crypto.SHA256.New()
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
-
-	sc.AppendVerificationEvent(digest1)
 
 	images := []*mockImage{new(mockImage), new(mockImage)}
 	handlers := mockImageLoadHandlerMap{
@@ -658,7 +632,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
+	bc.ShimContext().AppendVerificationEvent(digest1)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
@@ -688,8 +663,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 
 	params := new(LoadParams)
 	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
-	fc := new(FwContext)
-	sc := new(ShimContext)
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -698,8 +671,6 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 	h = crypto.SHA256.New()
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
-
-	sc.AppendVerificationEvent(digest1)
 
 	images := []*mockImage{new(mockImage), new(mockImage)}
 	handlers := mockImageLoadHandlerMap{
@@ -714,7 +685,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 		alg:      tpm2.HashAlgorithmSHA256,
 		handlers: handlers,
 	}
-	bc := NewPcrBranchCtx(pc, profile.RootBranch(), params, vars, fc, sc)
+	bc := NewRootPcrBranchCtx(pc, profile.RootBranch(), params, vars)
+	bc.ShimContext().AppendVerificationEvent(digest1)
 
 	m := NewPcrImagesMeasurer(bc, handlers[images[0]], NewImageLoadActivity(images[1]), NewImageLoadActivity(images[1]))
 	next, err := m.Measure()
