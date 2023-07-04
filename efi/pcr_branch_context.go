@@ -27,8 +27,8 @@ import (
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
-// pcrBranchContext contains the context associated with a branch of a EFI PCR profile
-// generation
+// pcrBranchContext corresponds to a branch in a EFI PCR profile and its associated
+// context.
 type pcrBranchContext interface {
 	pcrProfileContext
 	Params() *loadParams       // access the externally supplied parameters for this branch
