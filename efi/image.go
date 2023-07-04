@@ -261,7 +261,7 @@ func NewImageLoadSequences(params ...ImageLoadParams) *ImageLoadSequences {
 	return &ImageLoadSequences{params: params}
 }
 
-// Append appends the specified image load.
+// Append appends the specified image load activities.
 func (a *ImageLoadSequences) Append(images ...ImageLoadActivity) *ImageLoadSequences {
 	a.images = append(a.images, images...)
 	return a
