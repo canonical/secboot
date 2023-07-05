@@ -21,6 +21,7 @@ package efi_test
 
 import (
 	"crypto"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -486,4 +487,93 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableUpdate(c *C) {
 		testutil.DecodeHexString(c, "e9281e0f25468a6d97696917babda2393f5c8dceb9514fa0f10a6d9689521771"),
 		testutil.DecodeHexString(c, "7169ed6086c3f082f17769c7bd2152febe0e12c207e99186c4d8922f81dc7793"),
 	})
+}
+
+func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifier(c *C) {
+	profile := secboot_tpm2.NewPCRProtectionProfile()
+
+	var digests tpm2.DigestList
+	for i := 0; i <= 2; i++ {
+		h := crypto.SHA256.New()
+		io.WriteString(h, strconv.Itoa(i))
+		digests = append(digests, h.Sum(nil))
+	}
+
+	images := []Image{new(mockImage), new(mockImage), new(mockImage)}
+
+	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().
+		withExtendPCROnImageLoads(0, digests[0], digests[0]).
+		withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{2})
+	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().
+		withExtendPCROnImageLoads(0, digests[1], digests[1]).
+		withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{2})
+	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{2})
+
+	sequences := NewImageLoadSequences().Append(
+		NewImageLoadActivity(images[0]).Loads(
+			NewImageLoadActivity(images[1]).Loads(
+				NewImageLoadActivity(images[2]),
+			),
+		),
+	)
+	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
+		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
+			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		}, new(tcglog.Log))),
+		WithSecureBootPolicyProfile(),
+		WithMockRootVarsModifierOption(func(vars *RootVarsCollector) error {
+			c.Check(vars.PeekAll()[0].WriteVar("foo", testGuid1, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2}), IsNil)
+			return nil
+		}),
+	), IsNil)
+
+	c.Check(profile.String(), Equals, fmt.Sprintf(`
+ BranchPoint(
+   Branch 0 {
+    ExtendPCR(TPM_ALG_SHA256, 0, 00f324751003eb79761fe622189096b3da044ff2333d02d8845d73704a7182b4)
+    ExtendPCR(TPM_ALG_SHA256, 0, %[1]x)
+    ExtendPCR(TPM_ALG_SHA256, 0, %[2]x)
+   }
+   Branch 1 {
+    ExtendPCR(TPM_ALG_SHA256, 0, 65e90a2a01829ea74d2e7526f14f269ad7ae806c48fd867d2f0aa1216f9193ca)
+    ExtendPCR(TPM_ALG_SHA256, 0, %[1]x)
+    ExtendPCR(TPM_ALG_SHA256, 0, %[2]x)
+   }
+ )
+`, digests[0], digests[1]))
+
+	pcrs, pcrDigests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
+	c.Check(err, IsNil)
+	c.Check(pcrs, DeepEquals, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{0}}})
+	c.Check(pcrDigests, DeepEquals, tpm2.DigestList{
+		testutil.DecodeHexString(c, "e9281e0f25468a6d97696917babda2393f5c8dceb9514fa0f10a6d9689521771"),
+		testutil.DecodeHexString(c, "7169ed6086c3f082f17769c7bd2152febe0e12c207e99186c4d8922f81dc7793"),
+	})
+}
+
+func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifierErr(c *C) {
+	profile := secboot_tpm2.NewPCRProtectionProfile()
+
+	images := []Image{new(mockImage), new(mockImage), new(mockImage)}
+
+	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler()
+	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler()
+	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler()
+
+	sequences := NewImageLoadSequences().Append(
+		NewImageLoadActivity(images[0]).Loads(
+			NewImageLoadActivity(images[1]).Loads(
+				NewImageLoadActivity(images[2]),
+			),
+		),
+	)
+	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
+		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
+			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		}, new(tcglog.Log))),
+		WithSecureBootPolicyProfile(),
+		WithMockRootVarsModifierOption(func(vars *RootVarsCollector) error {
+			return errors.New("some error")
+		}),
+	), ErrorMatches, `cannot process host variable modifier 0: some error`)
 }

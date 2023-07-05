@@ -217,7 +217,7 @@ func (g *pcrProfileGenerator) addPCRProfile(branch *secboot_tpm2.PCRProtectionPr
 	// Collect the starting EFI variable states from the supplied options
 	for i, mod := range g.varModifiers {
 		if err := mod(collector); err != nil {
-			return xerrors.Errorf("cannot process host environment option %d: %w", i, err)
+			return xerrors.Errorf("cannot process host variable modifier %d: %w", i, err)
 		}
 	}
 

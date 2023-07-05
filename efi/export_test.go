@@ -165,3 +165,13 @@ func NewVarUpdate(prev *varUpdate, name efi.VariableDescriptor, attrs efi.Variab
 		attrs:    attrs,
 		data:     data}
 }
+
+type mockRootVarsModifierOption rootVarsModifier
+
+func (o mockRootVarsModifierOption) applyOptionTo(gen *pcrProfileGenerator) {
+	gen.varModifiers = append(gen.varModifiers, rootVarsModifier(o))
+}
+
+func WithMockRootVarsModifierOption(fn func(vars *RootVarsCollector) error) PCRProfileOption {
+	return mockRootVarsModifierOption(fn)
+}
