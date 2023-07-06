@@ -126,12 +126,7 @@ type keyDataPolicy interface {
 	ValidateAuthKey(key secboot.AuxiliaryKey) error
 }
 
-// createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
-// and is used for implementing PCR policy revocation.
-//
-// The NV index will be created with attributes that allow anyone to read the index, and an authorization
-// policy that permits TPM2_NV_Increment with a signed authorization policy.
-func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
+func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, computeAuthPolicies func(tpm2.HashAlgorithmId, tpm2.Name) tpm2.DigestList, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
 	updateKeyName, err := updateKey.Name()
@@ -139,7 +134,7 @@ func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey 
 		return nil, 0, xerrors.Errorf("cannot compute name of update key: %w", err)
 	}
 
-	authPolicies := computeV2PcrPolicyCounterAuthPolicies(nameAlg, updateKeyName)
+	authPolicies := computeAuthPolicies(nameAlg, updateKeyName)
 
 	trial := util.ComputeAuthPolicy(nameAlg)
 	trial.PolicyOR(authPolicies)
@@ -201,7 +196,25 @@ func createPcrPolicyCounter(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey 
 	return public, value, nil
 }
 
-func newPolicyAuthPublicKey(key secboot.AuxiliaryKey) (*tpm2.Public, error) {
+// createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
+// and is used for implementing PCR policy revocation.
+//
+// The NV index will be created with attributes that allow anyone to read the index, and an authorization
+// policy that permits TPM2_NV_Increment with a signed authorization policy.
+var createPcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
+	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV3PcrPolicyCounterAuthPolicies, hmacSession)
+}
+
+// createPcrPolicyCounterLegacy creates and initializes a NV counter that is associated with a sealed key object
+// and is used for implementing PCR policy revocation.
+//
+// The NV index will be created with attributes that allow anyone to read the index, and an authorization
+// policy that permits TPM2_NV_Increment with a signed authorization policy.
+func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
+	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV2PcrPolicyCounterAuthPolicies, hmacSession)
+}
+
+var newPolicyAuthPublicKey = func(key secboot.AuxiliaryKey) (*tpm2.Public, error) {
 	ecdsaKey, err := deriveV3PolicyAuthKey(crypto.SHA256, key)
 	if err != nil {
 		return nil, err
@@ -233,7 +246,10 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 // assertion, which can be used verify that a NV index is associated with this policy.
 //
 // The key argument must be created with newPolicyAuthPublicKey.
-func newKeyDataPolicy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
+//
+// This returns some policy metadata and a policy digest which is used as the auth policy field of the
+// protected object.
+var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
 	keyName, err := key.Name()
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)

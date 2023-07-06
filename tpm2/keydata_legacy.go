@@ -45,7 +45,10 @@ type sealedData struct {
 	AuthPrivateKey secboot.AuxiliaryKey
 }
 
-// SealedKeyObject corresponds to a sealed key data file.
+// SealedKeyObject corresponds to a sealed key data file created by
+// [SealKeyToTPM], [SealKeyToExternalTPMStorageKey] or [SealKeyToTPMMultiple].
+//
+// Deprecated: Use [SealedKeyData].
 type SealedKeyObject struct {
 	sealedKeyDataBase
 }

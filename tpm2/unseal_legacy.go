@@ -72,6 +72,8 @@ import (
 // On success, the unsealed cleartext key is returned as the first return value, and the
 // private part of the key used for authorizing PCR policy updates with
 // SealedKeyObject.UpdatePCRProtectionPolicy is returned as the second return value.
+//
+// Deprecated: Use NewKeyData and the secboot.KeyData API for key recovery.
 func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, err error) {
 	data, err := k.unsealDataFromTPM(tpm.TPMContext, tpm.HmacSession())
 	if err != nil {

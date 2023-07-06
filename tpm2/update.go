@@ -31,6 +31,8 @@ import (
 	"github.com/snapcore/secboot"
 )
 
+var skdbUpdatePCRProtectionPolicyImpl = (*sealedKeyDataBase).updatePCRProtectionPolicyImpl
+
 // updatePCRProtectionPolicyImpl is a helper to update the PCR policy using the supplied
 // profile, authorized with the supplied key.
 //
@@ -208,4 +210,80 @@ func updateKeyPCRProtectionPoliciesCommon(tpm *tpm2.TPMContext, keys []*sealedKe
 	}
 
 	return nil
+}
+
+func updateKeyPCRProtectionPolicies(tpm *tpm2.TPMContext, keys []*SealedKeyData, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
+	var keysCommon []*sealedKeyDataBase
+	for _, key := range keys {
+		keysCommon = append(keysCommon, &key.sealedKeyDataBase)
+	}
+	if err := updateKeyPCRProtectionPoliciesCommon(tpm, keysCommon, authKey, pcrProfile, session); err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		if err := key.k.MarshalAndUpdatePlatformHandle(key); err != nil {
+			return xerrors.Errorf("cannot update TPM platform handle on KeyData: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
+// pcrProfile argument. In order to do this, the caller must also specify the private part of the authorization key
+// that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
+//
+// If the sealed key was created with a PCR policy counter, then the sequence number of the new PCR policy will be
+// incremented by 1 compared with the value associated with the current PCR policy. This does not increment the NV
+// counter on the TPM - this can be done with a subsequent call to RevokeOldPCRProtectionPolicies.
+//
+// On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
+// from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
+func (k *SealedKeyData) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
+	return updateKeyPCRProtectionPolicies(tpm.TPMContext, []*SealedKeyData{k}, authKey, pcrProfile, tpm.HmacSession())
+}
+
+// RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. It does
+// this by incrementing the PCR policy counter associated with this sealed key on the TPM so that it contains the
+// value of the current PCR policy sequence number. PCR policies with a lower sequence number cannot be satisfied
+// and become invalid. The PCR policy sequence number is incremented on each call to UpdatePCRProtectionPolicy.
+// If the key data was not created with a PCR policy counter, then this function does nothing.
+//
+// The caller must also specify the private part of the authorization key that was either returned by SealKeyToTPM
+// or SealedKeyObject.UnsealFromTPM.
+//
+// Note that this will perform a NV write for each call to UpdatePCRProtectionPolicy since the last call
+// to RevokeOldPCRProtectionPolicies. As TPMs may apply rate-limiting to NV writes, this should be called
+// after each call to UpdatePCRProtectionPolicy that removes some PCR policy branches.
+//
+// If validation of the key data fails, a InvalidKeyDataError error will be returned.
+func (k *SealedKeyData) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.AuxiliaryKey) error {
+	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey, tpm.HmacSession())
+}
+
+// UpdateKeyPCRProtectionPolicy updates the PCR protection policy for one or more TPM protected KeyData
+// objects to the profile defined by the pcrProfile argument. The keys must all be related (ie, they were
+// created using NewKeyDataMultiple). If any key in the supplied set is not related, an error will be returned.
+//
+// If validation of any KeyData object fails, an InvalidKeyDataError error will be returned.
+//
+// On success, each of the supplied KeyData objects will have an updated authorization policy that includes a
+// PCR policy computed from the supplied PCRProtectionProfile. They must be persisted using
+// secboot.KeyData.WriteAtomic.
+func UpdateKeyDataPCRProtectionPolicy(tpm *Connection, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile, keys ...*secboot.KeyData) error {
+	if len(keys) == 0 {
+		return errors.New("no sealed keys supplied")
+	}
+
+	var skds []*SealedKeyData
+	for _, kd := range keys {
+		skd, err := NewSealedKeyData(kd)
+		if err != nil {
+			return err
+		}
+		skds = append(skds, skd)
+	}
+
+	return updateKeyPCRProtectionPolicies(tpm.TPMContext, skds, authKey, pcrProfile, tpm.HmacSession())
 }

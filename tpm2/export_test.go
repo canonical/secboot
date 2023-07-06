@@ -36,14 +36,19 @@ var (
 	ComputeV0PinNVIndexPostInitAuthPolicies = computeV0PinNVIndexPostInitAuthPolicies
 	CreatePcrPolicyCounter                  = createPcrPolicyCounter
 	ComputeV1PcrPolicyRefFromCounterName    = computeV1PcrPolicyRefFromCounterName
+	ComputeV3PcrPolicyCounterAuthPolicies   = computeV3PcrPolicyCounterAuthPolicies
 	ComputeV3PcrPolicyRefFromCounterName    = computeV3PcrPolicyRefFromCounterName
 	ComputeSnapModelDigest                  = computeSnapModelDigest
 	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
 	IsPolicyDataError                       = isPolicyDataError
+	MakeKeyData                             = makeKeyData
+	MakeKeyDataPolicy                       = makeKeyDataPolicy
+	MakeKeyDataWithPolicy                   = makeKeyDataWithPolicy
 	NewKeyData                              = newKeyData
 	NewKeyDataPolicy                        = newKeyDataPolicy
 	NewKeyDataPolicyLegacy                  = newKeyDataPolicyLegacy
+	NewPolicyAuthPublicKey                  = newPolicyAuthPublicKey
 	NewPolicyOrDataV0                       = newPolicyOrDataV0
 	NewPolicyOrTree                         = newPolicyOrTree
 	ReadKeyDataV0                           = readKeyDataV0
@@ -61,7 +66,9 @@ type KeyData_v1 = keyData_v1
 type KeyData_v2 = keyData_v2
 type KeyData_v3 = keyData_v3
 type KeyDataError = keyDataError
+type KeyDataParams = keyDataParams
 type KeyDataPolicy = keyDataPolicy
+type KeyDataPolicyParams = keyDataPolicyParams
 type KeyDataPolicy_v0 = keyDataPolicy_v0
 type KeyDataPolicy_v1 = keyDataPolicy_v1
 type KeyDataPolicy_v2 = keyDataPolicy_v2
@@ -123,6 +130,8 @@ func NewPcrPolicyParams(key secboot.AuxiliaryKey, pcrs tpm2.PCRSelectionList, pc
 		policyCounterName: policyCounterName}
 }
 
+type PlatformKeyDataHandler = platformKeyDataHandler
+type SealedKeyDataBase = sealedKeyDataBase
 type SnapModelHasher = snapModelHasher
 type StaticPolicyData_v0 = staticPolicyData_v0
 type StaticPolicyData_v1 = staticPolicyData_v1
@@ -170,12 +179,76 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
+func MockCreatePcrPolicyCounter(fn func(*tpm2.TPMContext, tpm2.Handle, *tpm2.Public, tpm2.SessionContext) (*tpm2.NVPublic, uint64, error)) (restore func()) {
+	orig := createPcrPolicyCounter
+	createPcrPolicyCounter = fn
+	return func() {
+		createPcrPolicyCounter = orig
+	}
+}
+
+func MockNewKeyDataPolicy(fn func(tpm2.HashAlgorithmId, *tpm2.Public, *tpm2.NVPublic, uint64) (KeyDataPolicy, tpm2.Digest, error)) (restore func()) {
+	orig := newKeyDataPolicy
+	newKeyDataPolicy = fn
+	return func() {
+		newKeyDataPolicy = orig
+	}
+}
+
+func MockNewPolicyAuthPublicKey(fn func(authKey secboot.AuxiliaryKey) (*tpm2.Public, error)) (restore func()) {
+	orig := newPolicyAuthPublicKey
+	newPolicyAuthPublicKey = fn
+	return func() {
+		newPolicyAuthPublicKey = orig
+	}
+}
+
+func MockSecbootNewKeyData(fn func(*secboot.KeyParams) (*secboot.KeyData, error)) (restore func()) {
+	orig := secbootNewKeyData
+	secbootNewKeyData = fn
+	return func() {
+		secbootNewKeyData = orig
+	}
+}
+
+func MockSkdbUpdatePCRProtectionPolicyImpl(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.AuxiliaryKey, *tpm2.NVPublic, *PCRProtectionProfile, tpm2.SessionContext) error) (restore func()) {
+	orig := skdbUpdatePCRProtectionPolicyImpl
+	skdbUpdatePCRProtectionPolicyImpl = fn
+	return func() {
+		skdbUpdatePCRProtectionPolicyImpl = orig
+	}
+}
+
+func (k *SealedKeyData) Data() KeyData {
+	return k.data
+}
+
+func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
+	if _, err := k.validateData(tpm, session); err != nil {
+		return err
+	}
+
+	return k.data.Policy().ValidateAuthKey(authKey)
+}
+
+func (k *SealedKeyObject) Data() KeyData {
+	return k.data
+}
+
 func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
 	if _, err := k.validateData(tpm, session); err != nil {
 		return err
 	}
 
 	return k.data.Policy().ValidateAuthKey(authKey)
+}
+
+func (c *createdPcrPolicyCounter) TPM() *tpm2.TPMContext {
+	return c.tpm
+}
+
+func (c *createdPcrPolicyCounter) Session() tpm2.SessionContext {
+	return c.session
 }
 
 func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
