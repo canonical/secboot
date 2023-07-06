@@ -21,11 +21,14 @@ package efi
 
 import (
 	efi "github.com/canonical/go-efilib"
+	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
 // Export constants for testing
 const (
+	BootManagerCodeProfile                     = bootManagerCodeProfile
+	SecureBootPolicyProfile                    = secureBootPolicyProfile
 	ShimName                                   = shimName
 	ShimSbatPolicyLatest                       = shimSbatPolicyLatest
 	ShimSbatPolicyPrevious                     = shimSbatPolicyPrevious
@@ -39,8 +42,12 @@ const (
 var (
 	ApplySignatureDBUpdate    = applySignatureDBUpdate
 	DefaultEnv                = defaultEnv
+	LookupImageLoadHandler    = lookupImageLoadHandler
 	MustParseShimVersion      = mustParseShimVersion
 	NewestSbatLevel           = newestSbatLevel
+	NewRootPcrBranchCtx       = newRootPcrBranchCtx
+	NewPcrImagesMeasurer      = newPcrImagesMeasurer
+	NewPcrProfileGenerator    = newPcrProfileGenerator
 	NewRootVarsCollector      = newRootVarsCollector
 	NewShimImageHandle        = newShimImageHandle
 	OpenPeImage               = openPeImage
@@ -52,14 +59,23 @@ var (
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
+type FwContext = fwContext
+type ImageLoadHandler = imageLoadHandler
+type ImageLoadHandlerMap = imageLoadHandlerMap
 type ImageLoadParamsSet = imageLoadParamsSet
 type LoadParams = loadParams
+type PcrBranchContext = pcrBranchContext
+type PcrImagesMeasurer = pcrImagesMeasurer
+type PcrProfileContext = pcrProfileContext
+type PcrProfileFlags = pcrProfileFlags
 type PeImageHandle = peImageHandle
 type RootVarReaderKey = rootVarReaderKey
+type RootVarsCollector = rootVarsCollector
 type SbatComponent = sbatComponent
 type SecureBootAuthority = secureBootAuthority
 type SecureBootDB = secureBootDB
 type SecureBootPolicyMixin = secureBootPolicyMixin
+type ShimContext = shimContext
 type ShimImageHandle = shimImageHandle
 type ShimSbatLevel = shimSbatLevel
 type ShimSbatPolicy = shimSbatPolicy
@@ -77,6 +93,14 @@ func ImageLoadActivityParams(activity ImageLoadActivity) imageLoadParamsSet {
 	return activity.params()
 }
 
+func (s *ImageLoadSequences) Images() []ImageLoadActivity {
+	return s.images
+}
+
+func (s *ImageLoadSequences) Params() imageLoadParamsSet {
+	return s.params
+}
+
 func MockEFIVarsPath(path string) (restore func()) {
 	origPath := efiVarsPath
 	efiVarsPath = path
@@ -90,6 +114,30 @@ func MockEventLogPath(path string) (restore func()) {
 	eventLogPath = path
 	return func() {
 		eventLogPath = origPath
+	}
+}
+
+func MockMakeImageLoadHandlerMap(fn func() imageLoadHandlerMap) (restore func()) {
+	orig := makeImageLoadHandlerMap
+	makeImageLoadHandlerMap = fn
+	return func() {
+		makeImageLoadHandlerMap = orig
+	}
+}
+
+func MockNewFwLoadHandler(fn func(*tcglog.Log) ImageLoadHandler) (restore func()) {
+	orig := newFwLoadHandler
+	newFwLoadHandler = fn
+	return func() {
+		newFwLoadHandler = orig
+	}
+}
+
+func MockOpenPeImage(fn func(Image) (peImageHandle, error)) (restore func()) {
+	orig := openPeImage
+	openPeImage = fn
+	return func() {
+		openPeImage = orig
 	}
 }
 
@@ -116,4 +164,14 @@ func NewVarUpdate(prev *varUpdate, name efi.VariableDescriptor, attrs efi.Variab
 		name:     name,
 		attrs:    attrs,
 		data:     data}
+}
+
+type mockRootVarsModifierOption rootVarsModifier
+
+func (o mockRootVarsModifierOption) applyOptionTo(gen *pcrProfileGenerator) {
+	gen.varModifiers = append(gen.varModifiers, rootVarsModifier(o))
+}
+
+func WithMockRootVarsModifierOption(fn func(vars *RootVarsCollector) error) PCRProfileOption {
+	return mockRootVarsModifierOption(fn)
 }

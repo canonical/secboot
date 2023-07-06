@@ -259,3 +259,26 @@ func (s *imageSuite) TestImageLoadActivityLoads(c *C) {
 	c.Check(activity.Loads(activities...), Equals, activity)
 	c.Check(ImageLoadActivityNext(activity), DeepEquals, activities)
 }
+
+func (s *imageSuite) TestImageLoadSequencesAppend(c *C) {
+	sequences := NewImageLoadSequences()
+
+	activity1 := NewImageLoadActivity(nil)
+	activity2 := NewImageLoadActivity(nil)
+	c.Check(sequences.Append(activity1, activity2), Equals, sequences)
+	c.Check(sequences.Images(), DeepEquals, []ImageLoadActivity{activity1, activity2})
+
+	activity3 := NewImageLoadActivity(nil)
+	c.Check(sequences.Append(activity3), Equals, sequences)
+	c.Check(sequences.Images(), DeepEquals, []ImageLoadActivity{activity1, activity2, activity3})
+}
+
+func (s *imageSuite) TestImageLoadSequencesParams(c *C) {
+	sequences := NewImageLoadSequences(KernelCommandlineParams(
+		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
+		"console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover"))
+	params := sequences.Params().Resolve(new(LoadParams))
+	c.Check(params, DeepEquals, []LoadParams{
+		{KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run"},
+		{KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover"}})
+}

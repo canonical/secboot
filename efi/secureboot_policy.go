@@ -48,23 +48,6 @@ var (
 	efiVarsPath = "/sys/firmware/efi/efivars" // Default mount point for efivarfs
 )
 
-type shimFlags int
-
-const (
-	// shimHasSbatVerification indicates that the shim
-	// binary performs SBAT verification of subsequent loaders,
-	// and performs an additional measurement of the SBAT
-	// variable.
-	shimHasSbatVerification shimFlags = 1 << iota
-
-	// shimVariableAuthorityEventsMatchSpec indicates that shim
-	// performs EV_EFI_VARIABLE_AUTHORITY events according to the
-	// TCG specification when an image is authenticated with a
-	// EFI_SIGNATURE_DATA structure, ie, it has this commit:
-	// https://github.com/rhboot/shim/commit/e3325f8100f5a14e0684ff80290e53975de1a5d9
-	shimVariableAuthorityEventsMatchSpec
-)
-
 // secureBootDbUpdate corresponds to an on-disk EFI signature database update.
 type secureBootDbUpdate struct {
 	db   efi.VariableDescriptor
@@ -409,7 +392,7 @@ func (b *secureBootPolicyGenBranch) computeAndExtendVerificationMeasurement(imag
 	// Serialize authority certificate for measurement
 	var varData *bytes.Buffer
 	switch {
-	case source == Shim && (b.shimFlags&shimVariableAuthorityEventsMatchSpec == 0 || authority.Source == b.dbSet.shimDb.Name):
+	case source == Shim && (b.shimFlags&shimFixVariableAuthorityEventsMatchSpec == 0 || authority.Source == b.dbSet.shimDb.Name):
 		// Shim measures the certificate data rather than the entire EFI_SIGNATURE_DATA
 		// in some circumstances.
 		varData = bytes.NewBuffer(authority.Signature.Data)
@@ -502,7 +485,7 @@ func (g *secureBootPolicyGen) processShimExecutableLaunch(branches []*secureBoot
 		// have this fix.
 		// XXX: It's possible that this is broken for shims that weren't signed
 		//  for Canonical.
-		flags |= shimVariableAuthorityEventsMatchSpec
+		flags |= shimFixVariableAuthorityEventsMatchSpec
 	}
 
 	for _, b := range branches {
