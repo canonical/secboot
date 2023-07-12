@@ -29,6 +29,7 @@ import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
@@ -44,7 +45,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureOneLeaf(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -54,7 +55,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureOneLeaf(c *C) {
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
 		images[1]: newMockLoadHandler().withExtendPCROnImageStart(1, digest2),
@@ -93,7 +94,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoLeaf(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -103,7 +104,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoLeaf(c *C) {
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest2),
 		images[1]: newMockLoadHandler(),
@@ -145,7 +146,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerNonLeaf(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -155,7 +156,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerNonLeaf(c *C) {
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage), new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage(), newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
 		images[1]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest2),
@@ -202,7 +203,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoNonLeaf(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo1")
@@ -216,7 +217,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoNonLeaf(c *C) {
 	io.WriteString(h, "bar")
 	digest3 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage), new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage(), newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest2),
 		images[1]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest3),
@@ -278,7 +279,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -288,7 +289,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest2),
 		images[1]: newMockLoadHandler().withCheckParamsOnImageStarts(c,
@@ -340,7 +341,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithInheritedParams
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := &LoadParams{SnapModel: model}
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -350,7 +351,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithInheritedParams
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest2),
 		images[1]: newMockLoadHandler().withCheckParamsOnImageStarts(c,
@@ -394,8 +395,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithVars(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
 
 	h := crypto.SHA256.New()
@@ -406,7 +407,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithVars(c *C) {
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
 		images[1]: newMockLoadHandler().
@@ -446,8 +447,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureVarsAreCopied
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
 
 	h := crypto.SHA256.New()
@@ -458,7 +459,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureVarsAreCopied
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest1),
 		images[1]: newMockLoadHandler().
@@ -503,7 +504,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -513,7 +514,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
 		images[1]: newMockLoadHandler().
@@ -554,7 +555,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -564,7 +565,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 	io.WriteString(h, "bar")
 	digest2 := h.Sum(nil)
 
-	images := []*mockImage{new(mockImage), new(mockImage)}
+	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
 		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest1),
 		images[1]: newMockLoadHandler().
@@ -611,7 +612,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -662,7 +663,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, nil)).Next()
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")

@@ -21,6 +21,7 @@ package efi_test
 
 import (
 	"crypto"
+	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -37,6 +38,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
@@ -63,19 +65,52 @@ type mockPeImageHandle struct {
 	*mockImage
 }
 
-func (*mockPeImageHandle) Close() error                                { return nil }
-func (h *mockPeImageHandle) Source() Image                             { return h.mockImage }
-func (*mockPeImageHandle) OpenSection(name string) *io.SectionReader   { return nil }
-func (*mockPeImageHandle) HasSection(name string) bool                 { return false }
-func (*mockPeImageHandle) HasSbatSection() bool                        { return false }
-func (*mockPeImageHandle) SbatComponents() ([]SbatComponent, error)    { return nil, nil }
-func (*mockPeImageHandle) ImageDigest(alg crypto.Hash) ([]byte, error) { return nil, nil }
-func (*mockPeImageHandle) SecureBootSignatures() ([]*efi.WinCertificateAuthenticode, error) {
-	return nil, nil
+func (*mockPeImageHandle) Close() error                              { return nil }
+func (h *mockPeImageHandle) Source() Image                           { return h.mockImage }
+func (*mockPeImageHandle) OpenSection(name string) *io.SectionReader { return nil }
+func (*mockPeImageHandle) HasSection(name string) bool               { return false }
+func (*mockPeImageHandle) HasSbatSection() bool                      { return false }
+func (*mockPeImageHandle) SbatComponents() ([]SbatComponent, error)  { return nil, nil }
+
+func (h *mockPeImageHandle) ImageDigest(alg crypto.Hash) ([]byte, error) {
+	if alg != h.digestAlg {
+		return nil, errors.New("invalid alg")
+	}
+	return h.digest, nil
+}
+
+func (h *mockPeImageHandle) SecureBootSignatures() ([]*efi.WinCertificateAuthenticode, error) {
+	return h.sigs, nil
 }
 
 type mockImage struct {
-	a int
+	digestAlg crypto.Hash
+	digest    []byte
+	sigs      []*efi.WinCertificateAuthenticode
+}
+
+func newMockImage() *mockImage {
+	return new(mockImage)
+}
+
+func (i *mockImage) withDigest(alg crypto.Hash, digest []byte) *mockImage {
+	i.digestAlg = alg
+	i.digest = digest
+	return i
+}
+
+func (i *mockImage) appendSignatures(sigs ...*efi.WinCertificateAuthenticode) *mockImage {
+	if len(sigs) > 0 && i.digestAlg == crypto.Hash(0) {
+		i.digestAlg = sigs[0].DigestAlgorithm()
+		i.digest = sigs[0].Digest()
+	}
+	i.sigs = append(i.sigs, sigs...)
+	return i
+}
+
+func (i *mockImage) sign(c *C, key crypto.Signer, signer *x509.Certificate, certs ...*x509.Certificate) *mockImage {
+	i.sigs = append(i.sigs, efitest.ReadWinCertificateAuthenticodeDetached(c, efitest.GenerateWinCertificateAuthenticodeDetached(c, key, signer, i.digest, i.digestAlg, certs...)))
+	return i
 }
 
 func (i *mockImage) String() string           { return fmt.Sprintf("%p", i) }
@@ -257,22 +292,8 @@ func (h *mockLoadHandler) MeasureImageLoad(ctx PcrBranchContext, image PeImageHa
 	return LookupImageLoadHandler(ctx, image)
 }
 
-type mockEFIVar struct {
-	data  []byte
-	attrs efi.VariableAttributes
-}
-
-type mockEFIEnvironment struct {
-	vars map[efi.VariableDescriptor]*mockEFIVar
-	log  *tcglog.Log
-}
-
-func newMockEFIEnvironment(vars map[efi.VariableDescriptor]*mockEFIVar, log *tcglog.Log) *mockEFIEnvironment {
-	return &mockEFIEnvironment{vars: vars, log: log}
-}
-
-func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *mockEFIEnvironment {
-	vars := make(map[efi.VariableDescriptor]*mockEFIVar)
+func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *efitest.MockHostEnvironment {
+	vars := make(efitest.MockVars)
 	if efivarsDir != "" {
 		dir, err := os.Open(efivarsDir)
 		c.Assert(err, IsNil)
@@ -299,9 +320,9 @@ func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *mockEFIEn
 				c.Fatal(entry.Name(), "contents too short")
 			}
 
-			vars[efi.VariableDescriptor{Name: name, GUID: guid}] = &mockEFIVar{
-				data:  data[4:],
-				attrs: efi.VariableAttributes(binary.LittleEndian.Uint32(data))}
+			vars[efi.VariableDescriptor{Name: name, GUID: guid}] = &efitest.VarEntry{
+				Payload: data[4:],
+				Attrs:   efi.VariableAttributes(binary.LittleEndian.Uint32(data))}
 		}
 	}
 
@@ -314,20 +335,5 @@ func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *mockEFIEn
 		log, err = tcglog.ReadLog(f, &tcglog.LogOptions{})
 		c.Assert(err, IsNil)
 	}
-	return newMockEFIEnvironment(vars, log)
-}
-
-func (e *mockEFIEnvironment) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
-	if e.vars == nil {
-		return nil, 0, efi.ErrVarNotExist
-	}
-	v, found := e.vars[efi.VariableDescriptor{Name: name, GUID: guid}]
-	if !found {
-		return nil, 0, efi.ErrVarNotExist
-	}
-	return v.data, v.attrs, nil
-}
-
-func (e *mockEFIEnvironment) ReadEventLog() (*tcglog.Log, error) {
-	return e.log, nil
+	return efitest.NewMockHostEnvironment(vars, log)
 }

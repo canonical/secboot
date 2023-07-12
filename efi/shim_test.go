@@ -27,6 +27,7 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
@@ -35,8 +36,8 @@ type shimSuite struct{}
 var _ = Suite(&shimSuite{})
 
 func (s *shimSuite) testReadShimSbatPolicy(c *C, data []byte, expected ShimSbatPolicy) error {
-	env := newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "SbatPolicy", GUID: ShimGuid}: {data: data, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "SbatPolicy", GUID: ShimGuid}: {Payload: data, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
 	}, nil)
 	policy, err := ReadShimSbatPolicy(env)
 	if err != nil {
@@ -57,7 +58,7 @@ func (s *shimSuite) TestReadShimSbatPolicyLatest(c *C) {
 }
 
 func (s *shimSuite) TestReadShimSbatPolicyNotExist(c *C) {
-	env := newMockEFIEnvironment(nil, nil)
+	env := efitest.NewMockHostEnvironment(nil, nil)
 	policy, err := ReadShimSbatPolicy(env)
 	c.Check(err, IsNil)
 	c.Check(policy, Equals, ShimSbatPolicyPrevious)

@@ -32,6 +32,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
@@ -107,7 +108,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileLog(c *C) {
 	defer restore()
 
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{}, expectedLog)),
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{}, expectedLog)),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
 }
@@ -122,7 +123,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimple(c *C) {
 		digests = append(digests, h.Sum(nil))
 	}
 
-	images := []Image{new(mockImage), new(mockImage), new(mockImage)}
+	images := []Image{newMockImage(), newMockImage(), newMockImage()}
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0])
 	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[1])
 	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler()
@@ -135,8 +136,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimple(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
@@ -165,7 +166,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimpleWithLeafBranches(c *C) {
 		digests = append(digests, h.Sum(nil))
 	}
 
-	images := []Image{new(mockImage), new(mockImage), new(mockImage), new(mockImage)}
+	images := []Image{newMockImage(), newMockImage(), newMockImage(), newMockImage()}
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0])
 	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[1], digests[2])
 	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler()
@@ -180,8 +181,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimpleWithLeafBranches(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
@@ -218,7 +219,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimpleWithBranches(c *C) {
 		digests = append(digests, h.Sum(nil))
 	}
 
-	images := []Image{new(mockImage), new(mockImage), new(mockImage), new(mockImage)}
+	images := []Image{newMockImage(), newMockImage(), newMockImage(), newMockImage()}
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0], digests[1])
 	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[2])
 	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[2])
@@ -235,8 +236,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimpleWithBranches(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
@@ -274,7 +275,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithParams1(c *C) {
 		digests = append(digests, h.Sum(nil))
 	}
 
-	images := []Image{new(mockImage), new(mockImage), new(mockImage)}
+	images := []Image{newMockImage(), newMockImage(), newMockImage()}
 	params := []*LoadParams{{KernelCommandline: "foo"}, {KernelCommandline: "bar"}}
 
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0], digests[0])
@@ -291,8 +292,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithParams1(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
@@ -329,7 +330,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithParams2(c *C) {
 		digests = append(digests, h.Sum(nil))
 	}
 
-	images := []Image{new(mockImage), new(mockImage), new(mockImage)}
+	images := []Image{newMockImage(), newMockImage(), newMockImage()}
 	params := []*LoadParams{{KernelCommandline: "foo"}, {KernelCommandline: "bar"}}
 
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0])
@@ -346,8 +347,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithParams2(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
@@ -383,7 +384,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithRootParams(c *C) {
 		digests = append(digests, h.Sum(nil))
 	}
 
-	images := []Image{new(mockImage), new(mockImage), new(mockImage)}
+	images := []Image{newMockImage(), newMockImage(), newMockImage()}
 	params := []*LoadParams{{KernelCommandline: "foo"}, {KernelCommandline: "bar"}}
 
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().
@@ -402,8 +403,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithRootParams(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
@@ -441,7 +442,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableUpdate(c *C) {
 		digests = append(digests, h.Sum(nil))
 	}
 
-	images := []Image{new(mockImage), new(mockImage), new(mockImage)}
+	images := []Image{newMockImage(), newMockImage(), newMockImage()}
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().
 		withExtendPCROnImageLoads(0, digests[0], digests[0]).
 		withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{2}).
@@ -459,8 +460,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableUpdate(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
@@ -517,8 +518,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifier(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 		WithMockRootVarsModifierOption(func(vars *RootVarsCollector) error {
@@ -568,8 +569,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifierErr(c *C) {
 		),
 	)
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-			{Name: "foo", GUID: testGuid1}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
+			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
 		WithMockRootVarsModifierOption(func(vars *RootVarsCollector) error {

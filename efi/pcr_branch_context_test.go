@@ -31,6 +31,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
@@ -75,8 +76,8 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxParamsSubBranch(c *C) {
 }
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxVars(c *C) {
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: efi.GlobalVariable}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
 	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), vars)
 	c.Assert(bc, NotNil)
@@ -95,8 +96,8 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxVars(c *C) {
 }
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxVarsSubBranch(c *C) {
-	vars := NewRootVarsCollector(newMockEFIEnvironment(map[efi.VariableDescriptor]*mockEFIVar{
-		{Name: "foo", GUID: efi.GlobalVariable}: {data: []byte{1}, attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
+	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
+		{Name: "foo", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
 	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), new(LoadParams), vars)
 	c.Assert(bc, NotNil)
