@@ -1427,3 +1427,88 @@ func (s *keyDataSuite) TestReadAndWriteWithLegacySnapModelAuthKey(c *C) {
 	c.Check(err, IsNil)
 	c.Check(ok, testutil.IsTrue)
 }
+
+func (s *keyDataSuite) TestLegacyKeyData(c *C) {
+	unlockKey := testutil.DecodeHexString(c, "09a2e672131045221284e026b17de93b395581e82450a01e170150432f8cdf81")
+	primaryKey := testutil.DecodeHexString(c, "1850fbecbe8b3db83a894cb975756c8b69086040f097b03bd4f3b1a3e19c4b86")
+
+	j := []byte(
+		`{` +
+			`"platform_name":"mock",` +
+			`"platform_handle":{` +
+			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",` +
+			`"iv":"i88WWEI7WyJ1gXX5LGhRSg==",` +
+			`"auth-key-hmac":"WybrzR13ozdYwzyt4oyihIHSABZozpHyQSAn+NtQSkA="},` +
+			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",` +
+			`"authorized_snap_models":{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":{` +
+			`"alg":"sha256",` +
+			`"salt":"IPDKKUOoRYwvMWX8LoCCtlGgzgzokAhsh42XnbGUn0s=",` +
+			`"digest":"SSbv/yS8h5pqchVfV9AMHUjhS/vVateojNRRmo624qk="},` +
+			`"hmacs":["OCxZPr5lqnwlNTMYXObK6cXlkcWw3Dx5v+/NRMrCzhw="]}}
+`)
+
+	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	ok, err := keyData.IsSnapModelAuthorized(primaryKey, model)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsTrue)
+
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
+	c.Check(err, IsNil)
+	c.Check(recoveredUnlockKey, DeepEquals, DiskUnlockKey(unlockKey))
+	c.Check(recoveredPrimaryKey, DeepEquals, PrimaryKey(primaryKey))
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	j2, err := ioutil.ReadAll(w.Reader())
+	c.Check(err, IsNil)
+	c.Check(j2, DeepEquals, j)
+
+	model2 := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "other-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+	c.Check(keyData.SetAuthorizedSnapModels(primaryKey, model2), IsNil)
+	ok, err = keyData.IsSnapModelAuthorized(primaryKey, model)
+	c.Check(err, IsNil)
+	c.Check(ok, Not(testutil.IsTrue))
+	ok, err = keyData.IsSnapModelAuthorized(primaryKey, model2)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsTrue)
+
+	w = makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+	c.Check(w.final.Bytes(), DeepEquals, []byte(
+		`{`+
+			`"platform_name":"mock",`+
+			`"platform_handle":{`+
+			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",`+
+			`"iv":"i88WWEI7WyJ1gXX5LGhRSg==",`+
+			`"auth-key-hmac":"WybrzR13ozdYwzyt4oyihIHSABZozpHyQSAn+NtQSkA="},`+
+			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",`+
+			`"authorized_snap_models":{`+
+			`"alg":"sha256",`+
+			`"kdf_alg":"sha256",`+
+			`"key_digest":{`+
+			`"alg":"sha256",`+
+			`"salt":"IPDKKUOoRYwvMWX8LoCCtlGgzgzokAhsh42XnbGUn0s=",`+
+			`"digest":"SSbv/yS8h5pqchVfV9AMHUjhS/vVateojNRRmo624qk="},`+
+			`"hmacs":["JWziaukXiAIsPU22X1RTC/2wEkPN4IdNvgDEzSnWXIc="]}}
+`))
+}
