@@ -244,7 +244,7 @@ func (s *keyDataTestBase) TearDownSuite(c *C) {
 	RegisterPlatformKeyDataHandler(mockPlatformName, nil)
 }
 
-func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, AuxiliaryKey) {
+func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, PrimaryKey) {
 	key := make([]byte, sz1)
 	auxKey := make([]byte, sz2)
 	_, err := rand.Read(key)
@@ -254,7 +254,7 @@ func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, Aux
 	return key, auxKey
 }
 
-func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey AuxiliaryKey, modelAuthHash crypto.Hash) (out *KeyParams) {
+func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, modelAuthHash crypto.Hash) (out *KeyParams) {
 	payload := MarshalKeys(key, auxKey)
 
 	k := make([]byte, 48)
@@ -276,7 +276,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Auxili
 		PlatformName:      mockPlatformName,
 		Handle:            &handle,
 		EncryptedPayload:  make([]byte, len(payload)),
-		AuxiliaryKey:      auxKey,
+		PrimaryKey:        auxKey,
 		SnapModelAuthHash: modelAuthHash}
 	stream.XORKeyStream(out.EncryptedPayload, payload)
 	return
@@ -457,7 +457,7 @@ func (s *keyDataSuite) checkKeyDataJSONAuthModePassphrase(c *C, keyData *KeyData
 
 type testKeyPayloadData struct {
 	key    DiskUnlockKey
-	auxKey AuxiliaryKey
+	auxKey PrimaryKey
 }
 
 func (s *keyDataSuite) testKeyPayload(c *C, data *testKeyPayloadData) {
@@ -505,7 +505,7 @@ func (s *keyDataSuite) TestKeyPayloadUnmarshalInvalid1(c *C) {
 }
 
 func (s *keyDataSuite) TestKeyPayloadUnmarshalInvalid2(c *C) {
-	payload := MarshalKeys(make(DiskUnlockKey, 32), make(AuxiliaryKey, 32))
+	payload := MarshalKeys(make(DiskUnlockKey, 32), make(PrimaryKey, 32))
 	payload = append(payload, 0xff)
 
 	key, auxKey, err := payload.Unmarshal()
@@ -1044,7 +1044,7 @@ func (s *keyDataSuite) TestSetAuthorizedSnapModelsWithWrongKey(c *C) {
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
 
-	c.Check(keyData.SetAuthorizedSnapModels(make(AuxiliaryKey, 32), models...), ErrorMatches, "incorrect key supplied")
+	c.Check(keyData.SetAuthorizedSnapModels(make(PrimaryKey, 32), models...), ErrorMatches, "incorrect key supplied")
 }
 
 type testWriteAtomicData struct {
@@ -1141,7 +1141,7 @@ func (s *keyDataSuite) TestWriteAtomic4(c *C) {
 
 type testReadKeyDataData struct {
 	key        DiskUnlockKey
-	auxKey     AuxiliaryKey
+	auxKey     PrimaryKey
 	id         KeyID
 	r          KeyDataReader
 	model      SnapModel

@@ -257,7 +257,7 @@ func (c *pcrPolicyCounterContext_v1) Get() (uint64, error) {
 	return c.tpm.NVReadCounter(c.index, c.index, c.session)
 }
 
-func (c *pcrPolicyCounterContext_v1) Increment(key secboot.AuxiliaryKey) error {
+func (c *pcrPolicyCounterContext_v1) Increment(key secboot.PrimaryKey) error {
 	ecdsaKey, err := createECDSAPrivateKeyFromTPM(c.updateKey, tpm2.ECCParameter(key))
 	if err != nil {
 		return xerrors.Errorf("cannot create auth key: %w", err)
@@ -319,7 +319,7 @@ func (p *keyDataPolicy_v1) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 		updateKey: p.StaticData.AuthPublicKey}, nil
 }
 
-func (p *keyDataPolicy_v1) ValidateAuthKey(key secboot.AuxiliaryKey) error {
+func (p *keyDataPolicy_v1) ValidateAuthKey(key secboot.PrimaryKey) error {
 	pub, ok := p.StaticData.AuthPublicKey.Public().(*ecdsa.PublicKey)
 	if !ok {
 		return policyDataError{errors.New("unexpected dynamic authorization policy public key type")}

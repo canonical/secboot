@@ -41,7 +41,7 @@ import (
 
 type policyV3Mixin struct{}
 
-func (_ policyV3Mixin) newPolicyAuthPublicKey(c *C, nameAlg tpm2.HashAlgorithmId, key secboot.AuxiliaryKey) *tpm2.Public {
+func (_ policyV3Mixin) newPolicyAuthPublicKey(c *C, nameAlg tpm2.HashAlgorithmId, key secboot.PrimaryKey) *tpm2.Public {
 	ecdsaKey, err := DeriveV3PolicyAuthKey(nameAlg.GetHash(), key)
 	c.Assert(err, IsNil)
 
@@ -122,7 +122,7 @@ type testV3UpdatePCRPolicyData struct {
 }
 
 func (s *policyV3SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV3UpdatePCRPolicyData) {
-	key := make(secboot.AuxiliaryKey, 32)
+	key := make(secboot.PrimaryKey, 32)
 	rand.Read(key)
 
 	authPublicKey := s.newPolicyAuthPublicKey(c, data.authKeyNameAlg, key)
@@ -283,7 +283,7 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyDifferentPCRs(c *C) {
 }
 
 func (s *policyV3SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
-	key := make(secboot.AuxiliaryKey, 32)
+	key := make(secboot.PrimaryKey, 32)
 	rand.Read(key)
 
 	policyCounterPub := &tpm2.NVPublic{
@@ -324,7 +324,7 @@ type testV3ExecutePCRPolicyData struct {
 }
 
 func (s *policyV3Suite) testExecutePCRPolicy(c *C, data *testV3ExecutePCRPolicyData) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	authKeyPublic := s.newPolicyAuthPublicKey(c, data.authKeyNameAlg, authKey)
@@ -675,11 +675,11 @@ type testV3ExecutePCRPolicyErrorHandlingData struct {
 
 	pcrEvents []pcrEvent
 
-	fn func(data *KeyDataPolicy_v3, authKey secboot.AuxiliaryKey)
+	fn func(data *KeyDataPolicy_v3, authKey secboot.PrimaryKey)
 }
 
 func (s *policyV3Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV3ExecutePCRPolicyErrorHandlingData) error {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	authKeyPublic := s.newPolicyAuthPublicKey(c, data.authKeyNameAlg, authKey)
@@ -763,7 +763,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection1(c *C)
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			data.PCRData.Selection = tpm2.PCRSelectionList{}
 		},
 	})
@@ -804,7 +804,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection2(c *C)
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			data.PCRData.Selection = tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{50}}}
 		},
 	})
@@ -845,7 +845,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree1(c *C) {
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			data.PCRData.OrData = PolicyOrData_v0{}
 		},
 	})
@@ -886,7 +886,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree2(c *C) {
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			data.PCRData.OrData[0].Next = 10
 		},
 	})
@@ -931,7 +931,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree3(c *C) {
 				data:  "foo1",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			copy(data.PCRData.OrData[4].Digests[0], make(tpm2.Digest, 32))
 		},
 	})
@@ -972,7 +972,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree4(c *C) {
 				data:  "foo1",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			digest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, data.PCRData.Selection, tpm2.PCRValues{
 				tpm2.HashAlgorithmSHA256: {
 					16: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1", "bar1"),
@@ -1027,7 +1027,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidPolicySequence(c
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			data.PCRData.PolicySequence += 10
 		},
 	})
@@ -1070,7 +1070,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingPCRMismatch(c *C) {
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {},
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {},
 	})
 	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
@@ -1109,7 +1109,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounter
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			data.StaticData.PCRPolicyCounterHandle = 0x81000000
 		},
 	})
@@ -1150,7 +1150,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounter
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			handle := tpm2.Handle(0x01800000)
 			for s.TPM().DoesHandleExist(handle) {
 				handle += 1
@@ -1197,7 +1197,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounter
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			data.StaticData.PCRPolicyCounterHandle = tpm2.HandleNull
 		},
 	})
@@ -1238,7 +1238,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, authKey secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, authKey secboot.PrimaryKey) {
 			pub, _, err := s.TPM().NVReadPublic(tpm2.CreatePartialHandleContext(data.StaticData.PCRPolicyCounterHandle))
 			c.Assert(err, IsNil)
 
@@ -1295,7 +1295,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthPublicKey(c 
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			data.StaticData.AuthPublicKey.NameAlg = tpm2.HashAlgorithmId(tpm2.AlgorithmSM4)
 		},
 	})
@@ -1337,7 +1337,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			copy(data.PCRData.AuthorizedPolicy, make(tpm2.Digest, 32))
 		},
 	})
@@ -1379,7 +1379,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 				data:  "foo",
 			},
 		},
-		fn: func(data *KeyDataPolicy_v3, _ secboot.AuxiliaryKey) {
+		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {
 			key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 			c.Assert(err, IsNil)
 
@@ -1399,7 +1399,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 }
 
 func (s *policyV3Suite) TestPolicyCounterContextGet(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
 
@@ -1420,7 +1420,7 @@ func (s *policyV3Suite) TestPolicyCounterContextGet(c *C) {
 }
 
 func (s *policyV3Suite) TestPolicyCounterContextIncrement(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
 
@@ -1443,7 +1443,7 @@ func (s *policyV3Suite) TestPolicyCounterContextIncrement(c *C) {
 }
 
 func (s *policyV3SuiteNoTPM) TestValidateAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
 
@@ -1454,7 +1454,7 @@ func (s *policyV3SuiteNoTPM) TestValidateAuthKey(c *C) {
 }
 
 func (s *policyV3SuiteNoTPM) TestValidateAuthKeyWrongKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
 

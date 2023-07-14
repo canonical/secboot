@@ -453,7 +453,7 @@ func (s *cryptSuite) checkRecoveryKeyInKeyring(c *C, prefix, path string, expect
 	c.Check(key, DeepEquals, DiskUnlockKey(expected[:]))
 }
 
-func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey AuxiliaryKey) {
+func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey PrimaryKey) {
 	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
 	// so far, mark the current test as expected to fail.
 	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
@@ -464,12 +464,12 @@ func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expect
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, expectedKey)
 
-	auxKey, err := GetAuxiliaryKeyFromKernel(prefix, path, false)
+	auxKey, err := GetPrimaryKeyFromKernel(prefix, path, false)
 	c.Check(err, IsNil)
 	c.Check(auxKey, DeepEquals, expectedAuxKey)
 }
 
-func (s *cryptSuite) newMultipleNamedKeyData(c *C, names ...string) (keyData []*KeyData, keys []DiskUnlockKey, auxKeys []AuxiliaryKey) {
+func (s *cryptSuite) newMultipleNamedKeyData(c *C, names ...string) (keyData []*KeyData, keys []DiskUnlockKey, auxKeys []PrimaryKey) {
 	for _, name := range names {
 		key, auxKey := s.newKeyDataKeys(c, 32, 32)
 		protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
@@ -492,7 +492,7 @@ func (s *cryptSuite) newMultipleNamedKeyData(c *C, names ...string) (keyData []*
 	return keyData, keys, auxKeys
 }
 
-func (s *cryptSuite) newNamedKeyData(c *C, name string) (*KeyData, DiskUnlockKey, AuxiliaryKey) {
+func (s *cryptSuite) newNamedKeyData(c *C, name string) (*KeyData, DiskUnlockKey, PrimaryKey) {
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, name)
 	return keyData[0], keys[0], auxKeys[0]
 }
@@ -1400,7 +1400,7 @@ type testActivateVolumeWithMultipleKeyDataData struct {
 	keyData       []*KeyData
 	activateSlots []int
 	validKey      DiskUnlockKey
-	validAuxKey   AuxiliaryKey
+	validAuxKey   PrimaryKey
 }
 
 func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActivateVolumeWithMultipleKeyDataData) {

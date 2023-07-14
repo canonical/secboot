@@ -74,7 +74,7 @@ import (
 // SealedKeyObject.UpdatePCRProtectionPolicy is returned as the second return value.
 //
 // Deprecated: Use NewKeyData and the secboot.KeyData API for key recovery.
-func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, err error) {
+func (k *SealedKeyObject) UnsealFromTPM(tpm *Connection) (key secboot.DiskUnlockKey, authKey secboot.PrimaryKey, err error) {
 	data, err := k.unsealDataFromTPM(tpm.TPMContext, nil, tpm.HmacSession())
 	if err != nil {
 		return nil, nil, err

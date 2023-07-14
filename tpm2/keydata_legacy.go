@@ -42,7 +42,7 @@ const (
 
 type sealedData struct {
 	Key            secboot.DiskUnlockKey
-	AuthPrivateKey secboot.AuxiliaryKey
+	AuthPrivateKey secboot.PrimaryKey
 }
 
 // SealedKeyObject corresponds to a sealed key data file created by

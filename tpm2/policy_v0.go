@@ -539,7 +539,7 @@ func (c *pcrPolicyCounterContext_v0) Get() (uint64, error) {
 	return c.tpm.NVReadCounter(c.index, c.index, authSession, c.session.IncludeAttrs(tpm2.AttrAudit))
 }
 
-func (c *pcrPolicyCounterContext_v0) Increment(key secboot.AuxiliaryKey) error {
+func (c *pcrPolicyCounterContext_v0) Increment(key secboot.PrimaryKey) error {
 	rsaKey, err := x509.ParsePKCS1PrivateKey(key)
 	if err != nil {
 		return xerrors.Errorf("cannot parse auth key: %w", err)
@@ -609,7 +609,7 @@ func (p *keyDataPolicy_v0) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 		authPolicies: p.StaticData.PCRPolicyCounterAuthPolicies}, nil
 }
 
-func (p *keyDataPolicy_v0) ValidateAuthKey(key secboot.AuxiliaryKey) error {
+func (p *keyDataPolicy_v0) ValidateAuthKey(key secboot.PrimaryKey) error {
 	rsaKey, err := x509.ParsePKCS1PrivateKey(key)
 	if err != nil {
 		return xerrors.Errorf("cannot parse auth key: %w", err)

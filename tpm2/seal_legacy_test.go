@@ -80,7 +80,7 @@ func (s *sealLegacySuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 	c.Check(k.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
 
 	if params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, secboot.AuxiliaryKey(params.AuthKey.D.Bytes()))
+		c.Check(authKey, DeepEquals, secboot.PrimaryKey(params.AuthKey.D.Bytes()))
 	}
 
 	keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(s.TPM())
@@ -273,7 +273,7 @@ func (s *sealLegacySuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMM
 	}
 
 	if data.params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, secboot.AuxiliaryKey(data.params.AuthKey.D.Bytes()))
+		c.Check(authKey, DeepEquals, secboot.PrimaryKey(data.params.AuthKey.D.Bytes()))
 	}
 
 	if data.params.PCRProfile != nil {
@@ -499,7 +499,7 @@ func (s *sealLegacySuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCr
 	c.Check(k.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
 
 	if params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, secboot.AuxiliaryKey(params.AuthKey.D.Bytes()))
+		c.Check(authKey, DeepEquals, secboot.PrimaryKey(params.AuthKey.D.Bytes()))
 	}
 
 	keyUnsealed, authKeyUnsealed, err := k.UnsealFromTPM(s.TPM())

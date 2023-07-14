@@ -59,7 +59,7 @@ type ProtectKeyParams struct {
 	// secboot.KeyData.SetAuthorizedSnapModels APIs. If set, this should be a
 	// random 32-byte number.
 	// If not set, one is generated automatically.
-	AuthKey secboot.AuxiliaryKey
+	AuthKey secboot.PrimaryKey
 
 	// AuthorizedSnapModels is a list of models initially authorized to access
 	// the data protected by the newly created key. These can be updated later
@@ -70,7 +70,7 @@ type ProtectKeyParams struct {
 // makeKeyDataWithPolicy protects the supplied keys using the supplied keySealer and
 // policy data. This can be called multiple times to protect an arbitary number of
 // keys with an identical policy.
-func makeKeyDataWithPolicy(key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, policy *keyDataPolicyParams, sealer keySealer) (*secboot.KeyData, error) {
+func makeKeyDataWithPolicy(key secboot.DiskUnlockKey, authKey secboot.PrimaryKey, policy *keyDataPolicyParams, sealer keySealer) (*secboot.KeyData, error) {
 	var symKey [32 + aes.BlockSize]byte
 	if _, err := rand.Read(symKey[:]); err != nil {
 		return nil, xerrors.Errorf("cannot create symmetric key: %w", err)
@@ -102,7 +102,7 @@ func makeKeyDataWithPolicy(key secboot.DiskUnlockKey, authKey secboot.AuxiliaryK
 		Handle:           skd,
 		EncryptedPayload: payload,
 		PlatformName:     platformName,
-		AuxiliaryKey:     authKey,
+		PrimaryKey:       authKey,
 		// Hardcode SHA-256 here. We already hardcode this as the name algorithm
 		// for the sealed object and elliptic key.
 		SnapModelAuthHash: crypto.SHA256})
@@ -153,12 +153,12 @@ type keyDataPolicyParams struct {
 
 // makeKeyDataPolicy creates the policy data required to seal a key with makeKeyDataWithPolicy
 // and creates a PCR policy counter if required.
-func makeKeyDataPolicy(tpm *tpm2.TPMContext, pcrPolicyCounterHandle tpm2.Handle, authKey secboot.AuxiliaryKey,
+func makeKeyDataPolicy(tpm *tpm2.TPMContext, pcrPolicyCounterHandle tpm2.Handle, authKey secboot.PrimaryKey,
 	session tpm2.SessionContext) (data *keyDataPolicyParams, pcrPolicyCounterOut *createdPcrPolicyCounter,
-	authKeyOut secboot.AuxiliaryKey, err error) {
+	authKeyOut secboot.PrimaryKey, err error) {
 	// Create an auth key.
 	if authKey == nil {
-		authKey = make(secboot.AuxiliaryKey, 32)
+		authKey = make(secboot.PrimaryKey, 32)
 		if _, err := rand.Read(authKey); err != nil {
 			return nil, nil, nil, xerrors.Errorf("cannot create key for signing dynamic authorization policies: %w", err)
 		}
@@ -218,8 +218,8 @@ type keyDataParams struct {
 // makeKeyData protects the supplied keys using the supplied keySealer and
 // parameters. If required, a PCR policy counter is created. The returned key
 // will have an initial PCR policy as specified via the supplied parameters.
-func makeKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, params *keyDataParams,
-	sealer keySealer, session tpm2.SessionContext) (protectedKey *secboot.KeyData, authKeyOut secboot.AuxiliaryKey,
+func makeKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboot.PrimaryKey, params *keyDataParams,
+	sealer keySealer, session tpm2.SessionContext) (protectedKey *secboot.KeyData, authKeyOut secboot.PrimaryKey,
 	pcrPolicyCounterOut *createdPcrPolicyCounter, err error) {
 	policy, pcrPolicyCounter, authKey, err := makeKeyDataPolicy(tpm, params.PCRPolicyCounterHandle, authKey, session)
 	if err != nil {
@@ -282,7 +282,7 @@ func makeKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboo
 // stored anywhere, and certainly mustn't be stored outside of the encrypted container
 // protected by the supplied key. The key is stored encrypted inside the sealed
 // key data and will be returnred from future calls to secboot.KeyData.RecoverKeys.
-func ProtectKeyWithExternalStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKey *secboot.KeyData, authKey secboot.AuxiliaryKey, err error) {
+func ProtectKeyWithExternalStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKey *secboot.KeyData, authKey secboot.PrimaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, nil, errors.New("no ProtectKeyParams provided")
@@ -345,7 +345,7 @@ func ProtectKeyWithExternalStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnloc
 // stored anywhere, and certainly mustn't be stored outside of the encrypted containers
 // protected by the supplied keys. The key is stored encrypted inside the sealed
 // key data and will be returnred from future calls to secboot.KeyData.RecoverKeys.
-func ProtectKeysWithTPM(tpm *Connection, keys []secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKeys []*secboot.KeyData, authKey secboot.AuxiliaryKey, err error) {
+func ProtectKeysWithTPM(tpm *Connection, keys []secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKeys []*secboot.KeyData, authKey secboot.PrimaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, nil, errors.New("no ProtectKeyParams provided")
@@ -433,7 +433,7 @@ func ProtectKeysWithTPM(tpm *Connection, keys []secboot.DiskUnlockKey, params *P
 // stored anywhere, and certainly mustn't be stored outside of the encrypted container
 // protected by the supplied key. The key is stored encrypted inside the sealed
 // key data and will be returnred from future calls to secboot.KeyData.RecoverKeys.
-func ProtectKeyWithTPM(tpm *Connection, key secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKey *secboot.KeyData, authKey secboot.AuxiliaryKey, err error) {
+func ProtectKeyWithTPM(tpm *Connection, key secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKey *secboot.KeyData, authKey secboot.PrimaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, nil, errors.New("no ProtectKeyParams provided")

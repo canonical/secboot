@@ -127,7 +127,7 @@ func NewKeyDataFromSealedKeyObjectFile(path string) (*secboot.KeyData, error) {
 	params := secboot.KeyParams{
 		Handle:            json.RawMessage(handle),
 		PlatformName:      legacyPlatformName,
-		AuxiliaryKey:      make([]byte, 32), // Not used, but must be the expected size
+		PrimaryKey:        make([]byte, 32), // Not used, but must be the expected size
 		SnapModelAuthHash: crypto.SHA256,    // Not used, but just set it a valid alg
 	}
 

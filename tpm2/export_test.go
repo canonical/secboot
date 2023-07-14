@@ -123,7 +123,7 @@ type PcrPolicyData_v3 = pcrPolicyData_v3
 
 type PcrPolicyParams = pcrPolicyParams
 
-func NewPcrPolicyParams(key secboot.AuxiliaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name) *PcrPolicyParams {
+func NewPcrPolicyParams(key secboot.PrimaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name) *PcrPolicyParams {
 	return &PcrPolicyParams{
 		key:               key,
 		pcrs:              pcrs,
@@ -196,7 +196,7 @@ func MockNewKeyDataPolicy(fn func(tpm2.HashAlgorithmId, *tpm2.Public, *tpm2.NVPu
 	}
 }
 
-func MockNewPolicyAuthPublicKey(fn func(authKey secboot.AuxiliaryKey) (*tpm2.Public, error)) (restore func()) {
+func MockNewPolicyAuthPublicKey(fn func(authKey secboot.PrimaryKey) (*tpm2.Public, error)) (restore func()) {
 	orig := newPolicyAuthPublicKey
 	newPolicyAuthPublicKey = fn
 	return func() {
@@ -212,7 +212,7 @@ func MockSecbootNewKeyData(fn func(*secboot.KeyParams) (*secboot.KeyData, error)
 	}
 }
 
-func MockSkdbUpdatePCRProtectionPolicyImpl(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.AuxiliaryKey, *tpm2.NVPublic, *PCRProtectionProfile, tpm2.SessionContext) error) (restore func()) {
+func MockSkdbUpdatePCRProtectionPolicyImpl(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, tpm2.SessionContext) error) (restore func()) {
 	orig := skdbUpdatePCRProtectionPolicyImpl
 	skdbUpdatePCRProtectionPolicyImpl = fn
 	return func() {
@@ -224,7 +224,7 @@ func (k *SealedKeyData) Data() KeyData {
 	return k.data
 }
 
-func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
+func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
 	if _, err := k.validateData(tpm, session); err != nil {
 		return err
 	}
@@ -236,7 +236,7 @@ func (k *SealedKeyObject) Data() KeyData {
 	return k.data
 }
 
-func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
+func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
 	if _, err := k.validateData(tpm, session); err != nil {
 		return err
 	}
@@ -252,7 +252,7 @@ func (c *createdPcrPolicyCounter) Session() tpm2.SessionContext {
 	return c.session
 }
 
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.AuxiliaryKey, session tpm2.SessionContext) error {
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
 	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	if err != nil {
 		return err
