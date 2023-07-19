@@ -44,7 +44,7 @@ var newFwLoadHandler = func(log *tcglog.Log) imageLoadHandler {
 	return &fwLoadHandler{log: log}
 }
 
-func (h *fwLoadHandler) measureSignatureDb(ctx pcrBranchContext, name efi.VariableDescriptor) ([]byte, error) {
+func (h *fwLoadHandler) readAndMeasureSignatureDb(ctx pcrBranchContext, name efi.VariableDescriptor) ([]byte, error) {
 	db, _, err := ctx.Vars().ReadVar(name.Name, name.GUID)
 	if err != nil && err != efi.ErrVarNotExist {
 		return nil, xerrors.Errorf("cannot read current variable: %w", err)
@@ -55,7 +55,7 @@ func (h *fwLoadHandler) measureSignatureDb(ctx pcrBranchContext, name efi.Variab
 }
 
 func (h *fwLoadHandler) measureAuthorizedSignatureDb(ctx pcrBranchContext) error {
-	data, err := h.measureSignatureDb(ctx, Db)
+	data, err := h.readAndMeasureSignatureDb(ctx, Db)
 	if err != nil {
 		return err
 	}
@@ -75,16 +75,16 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// deployed mode on (where UEFI >= 2.5), without a UEFI debugger enabled and which
 	// measure events in the correct order.
 	ctx.MeasureVariable(secureBootPCR, efi.GlobalVariable, sbStateName, []byte{1})
-	if _, err := h.measureSignatureDb(ctx, PK); err != nil {
+	if _, err := h.readAndMeasureSignatureDb(ctx, PK); err != nil {
 		return xerrors.Errorf("cannot measure PK: %w", err)
 	}
-	if _, err := h.measureSignatureDb(ctx, KEK); err != nil {
+	if _, err := h.readAndMeasureSignatureDb(ctx, KEK); err != nil {
 		return xerrors.Errorf("cannot measure KEK: %w", err)
 	}
 	if err := h.measureAuthorizedSignatureDb(ctx); err != nil {
 		return xerrors.Errorf("cannot measure db: %w", err)
 	}
-	if _, err := h.measureSignatureDb(ctx, Dbx); err != nil {
+	if _, err := h.readAndMeasureSignatureDb(ctx, Dbx); err != nil {
 		return xerrors.Errorf("cannot measure dbx: %w", err)
 	}
 	// TODO: Support optional dbt/dbr databases
