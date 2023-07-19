@@ -24,6 +24,7 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/tcglog-parser"
 
 	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/efitest"
@@ -204,6 +205,107 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyAndBootManager
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
 		},
 	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog1(c *C) {
+	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:   tpm2.HashAlgorithmSHA256,
+		flags: SecureBootPolicyProfile}, collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
+	for i, event := range log.Events {
+		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
+			events := log.Events[:i+1]
+			events = append(events, event)
+			if len(log.Events) > i+1 {
+				events = append(events, log.Events[i+1:]...)
+			}
+			log.Events = events
+			break
+		}
+	}
+
+	handler := NewFwLoadHandler(log)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected separator`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog2(c *C) {
+	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:   tpm2.HashAlgorithmSHA256,
+		flags: SecureBootPolicyProfile}, collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
+	for i, event := range log.Events {
+		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
+			events := log.Events[:i]
+			events = append(events, &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIVariableAuthority})
+			events = append(events, event)
+			if len(log.Events) > i+1 {
+				events = append(events, log.Events[i+1:]...)
+			}
+			log.Events = events
+			break
+		}
+	}
+
+	handler := NewFwLoadHandler(log)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected verification event`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog3(c *C) {
+	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:   tpm2.HashAlgorithmSHA256,
+		flags: SecureBootPolicyProfile}, collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
+	for i, event := range log.Events {
+		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
+			events := log.Events[:i]
+			events = append(events, event)
+			events = append(events, &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIVariableDriverConfig})
+			if len(log.Events) > i+1 {
+				events = append(events, log.Events[i+1:]...)
+			}
+			log.Events = events
+			break
+		}
+	}
+
+	handler := NewFwLoadHandler(log)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected configuration event`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog4(c *C) {
+	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:   tpm2.HashAlgorithmSHA256,
+		flags: SecureBootPolicyProfile}, collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
+	for i, event := range log.Events {
+		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
+			events := log.Events[:i]
+			events = append(events, event)
+			events = append(events, &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIBootServicesApplication})
+			if len(log.Events) > i+1 {
+				events = append(events, log.Events[i+1:]...)
+			}
+			log.Events = events
+			break
+		}
+	}
+
+	handler := NewFwLoadHandler(log)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected event type \(EV_EFI_BOOT_SERVICES_APPLICATION\) found in log`)
 }
 
 type testFwMeasureImageLoadData struct {

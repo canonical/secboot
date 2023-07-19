@@ -112,7 +112,8 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			ctx.ExtendPCR(secureBootPCR, tpm2.Digest(e.Digests[ctx.PCRAlg()]))
 			foundSecureBootSeparator = true
 		case e.PCRIndex == secureBootPCR && e.EventType == tcglog.EventTypeEFIVariableAuthority:
-			// secure boot verification event
+			// secure boot verification event - shouldn't see this before the end of secure
+			// boot configuration signal.
 			if !foundSecureBootSeparator {
 				return errors.New("unexpected verification event")
 			}
@@ -120,7 +121,11 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			ctx.FwContext().AppendVerificationEvent(digest)
 			ctx.ExtendPCR(secureBootPCR, digest)
 		case e.PCRIndex == secureBootPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
-			// ignore: part of the secure boot configuration
+			// ignore: part of the secure boot configuration - shouldn't see this after the
+			// end of secure boot configuration signal.
+			if foundSecureBootSeparator {
+				return errors.New("unexpected configuration event")
+			}
 		case e.PCRIndex == secureBootPCR:
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:
