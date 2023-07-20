@@ -21,4 +21,5 @@ package efi
 
 const (
 	bootManagerCodePCR = 4 // Boot Manager Code and Boot Attempts PCR
+	secureBootPCR      = 7 // Secure Boot Policy Measurements PCR
 )

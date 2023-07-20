@@ -21,10 +21,22 @@ package testutil
 
 import (
 	"encoding/pem"
+
+	. "gopkg.in/check.v1"
 )
 
-// MustDecodePEMType decodes a PEM block with the specified type from
+// DecodePEMType decodes a PEM block with the specified type from
 // the supplied data.
+func DecodePEMType(c *C, expectType string, data []byte) []byte {
+	block, rest := pem.Decode(data)
+	c.Assert(rest, HasLen, 0)
+	c.Assert(block.Type, Equals, expectType)
+	return block.Bytes
+}
+
+// MustDecodePEMType decodes a PEM block with the specified type from
+// the supplied data. It panics if the data doesn't contain a block
+// with the specified type or there is extra data.
 func MustDecodePEMType(expectType string, data []byte) []byte {
 	block, rest := pem.Decode(data)
 	if len(rest) > 0 {

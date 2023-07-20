@@ -27,7 +27,7 @@ import (
 
 // fwContext maintains context associated with the platform firmware for a branch
 type fwContext struct {
-	db                 *secureBootDB
+	Db                 *secureBootDB
 	verificationEvents tpm2.DigestList
 }
 

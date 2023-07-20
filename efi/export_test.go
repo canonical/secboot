@@ -45,9 +45,10 @@ var (
 	LookupImageLoadHandler    = lookupImageLoadHandler
 	MustParseShimVersion      = mustParseShimVersion
 	NewestSbatLevel           = newestSbatLevel
-	NewRootPcrBranchCtx       = newRootPcrBranchCtx
+	NewFwLoadHandler          = newFwLoadHandler
 	NewPcrImagesMeasurer      = newPcrImagesMeasurer
 	NewPcrProfileGenerator    = newPcrProfileGenerator
+	NewRootPcrBranchCtx       = newRootPcrBranchCtx
 	NewRootVarsCollector      = newRootVarsCollector
 	NewShimImageHandle        = newShimImageHandle
 	OpenPeImage               = openPeImage
@@ -83,6 +84,7 @@ type ShimVendorCertFormat = shimVendorCertFormat
 type ShimVersion = shimVersion
 type SignatureDBUpdateFirmwareQuirk = signatureDBUpdateFirmwareQuirk
 type VarBranch = varBranch
+type VarReadWriter = varReadWriter
 
 // Helper functions
 func ImageLoadActivityNext(activity ImageLoadActivity) []ImageLoadActivity {
