@@ -58,6 +58,7 @@ func (c *shimLoadHandlerConstructor) WithSbatLevel(level shimSbatLevel) *shimLoa
 	return c
 }
 
+// New implements newImageLoadHandlerFn.
 func (c *shimLoadHandlerConstructor) New(rules imageRuleSet, image peImageHandle) (imageLoadHandler, error) {
 	shim := newShimImageHandle(image)
 	var ver shimVersion
