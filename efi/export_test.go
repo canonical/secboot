@@ -96,6 +96,7 @@ type ShimVersion = shimVersion
 type SignatureDBUpdateFirmwareQuirk = signatureDBUpdateFirmwareQuirk
 type VarBranch = varBranch
 type VarReadWriter = varReadWriter
+type VendorAuthorityGetter = vendorAuthorityGetter
 
 // Helper functions
 func ImageLoadActivityNext(activity ImageLoadActivity) []ImageLoadActivity {

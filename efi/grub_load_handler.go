@@ -34,14 +34,18 @@ type grubLoadHandler struct {
 	Flags grubFlags
 }
 
-func newGrubLoadHandler(_ imageRuleSet, _ peImageHandle) (imageLoadHandler, error) {
-	return new(grubLoadHandler), nil
+type grubLoadHandlerConstructor grubFlags
+
+func newGrubLoadHandlerConstructor(flags grubFlags) grubLoadHandlerConstructor {
+	return grubLoadHandlerConstructor(flags)
 }
 
-func newGrubLoadHandlerWithFlags(flags grubFlags) newImageLoadHandlerFn {
-	return func(_ imageRuleSet, _ peImageHandle) (imageLoadHandler, error) {
-		return &grubLoadHandler{Flags: flags}, nil
-	}
+func (c grubLoadHandlerConstructor) New(_ peImageHandle) (imageLoadHandler, error) {
+	return &grubLoadHandler{Flags: grubFlags(c)}, nil
+}
+
+func newGrubLoadHandler(image peImageHandle) (imageLoadHandler, error) {
+	return newGrubLoadHandlerConstructor(0).New(image)
 }
 
 // MeasureImageStart implements imageLoadHandler.MeasureImageStart.

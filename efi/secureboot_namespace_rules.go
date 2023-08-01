@@ -21,12 +21,6 @@ package efi
 
 import "crypto/x509"
 
-// secureBootAuthoritySet provides a way to customize authorities associated with
-// a set of rules that are scoped to a secure boot namespace.
-type secureBootAuthoritySet interface {
-	// AddAuthorities adds additional authorities to a secure boot namespace
-	// which isused when one authority delegates image signing to another authority
-	// (eg, via shim's vendor cert) in order to identify images signed by the
-	// delegated authority as part of the same namespace.
-	AddAuthorities(certs ...*x509.Certificate)
+type vendorAuthorityGetter interface {
+	VendorAuthorities() ([]*x509.Certificate, error)
 }

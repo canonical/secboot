@@ -20,6 +20,8 @@
 package efi_test
 
 import (
+	"crypto/x509"
+
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	. "gopkg.in/check.v1"
@@ -44,9 +46,7 @@ var _ = Suite(&shimLoadHandlerSuite{})
 func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_7(c *C) {
 	image := newMockUbuntuShimImage15_7(c)
 
-	var rules mockSecureBootNamespaceRules
-
-	handler, err := NewShimLoadHandler(&rules, image.newPeImageHandle())
+	handler, err := NewShimLoadHandler(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
 
@@ -58,7 +58,11 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_7(c *C) {
 	})
 	c.Check(shimHandler.SbatLevel, DeepEquals, ShimSbatLevel{[]byte("sbat,1,2022111500\nshim,2\ngrub,3\n"), []byte("sbat,1,2022052400\ngrub,2\n")})
 
-	c.Check(rules, DeepEquals, mockSecureBootNamespaceRules{testutil.ParseCertificate(c, canonicalCACert)})
+	var v VendorAuthorityGetter
+	c.Assert(handler, Implements, &v)
+	certs, err := handler.(VendorAuthorityGetter).VendorAuthorities()
+	c.Check(err, IsNil)
+	c.Check(certs, DeepEquals, []*x509.Certificate{testutil.ParseCertificate(c, canonicalCACert)})
 }
 
 func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_6(c *C) {
@@ -69,9 +73,7 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_6(c *C) {
 		withShimVersion(MustParseShimVersion("15.6")).
 		withShimVendorDb(vendorDb, ShimVendorCertIsX509)
 
-	var rules mockSecureBootNamespaceRules
-
-	handler, err := NewShimLoadHandlerConstructor().WithSbatLevel(sbatLevel).New(&rules, image.newPeImageHandle())
+	handler, err := NewShimLoadHandlerConstructor().WithSbatLevel(sbatLevel).New(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
 
@@ -83,7 +85,11 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_6(c *C) {
 	})
 	c.Check(shimHandler.SbatLevel, DeepEquals, sbatLevel)
 
-	c.Check(rules, DeepEquals, mockSecureBootNamespaceRules{testutil.ParseCertificate(c, canonicalCACert)})
+	var v VendorAuthorityGetter
+	c.Assert(handler, Implements, &v)
+	certs, err := handler.(VendorAuthorityGetter).VendorAuthorities()
+	c.Check(err, IsNil)
+	c.Check(certs, DeepEquals, []*x509.Certificate{testutil.ParseCertificate(c, canonicalCACert)})
 }
 
 func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_3(c *C) {
@@ -94,9 +100,7 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_3(c *C) {
 		withShimVersion(MustParseShimVersion("15.3")).
 		withShimVendorDb(vendorDb, ShimVendorCertIsX509)
 
-	var rules mockSecureBootNamespaceRules
-
-	handler, err := NewShimLoadHandlerConstructor().WithSbatLevel(sbatLevel).New(&rules, image.newPeImageHandle())
+	handler, err := NewShimLoadHandlerConstructor().WithSbatLevel(sbatLevel).New(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
 
@@ -108,7 +112,11 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_3(c *C) {
 	})
 	c.Check(shimHandler.SbatLevel, DeepEquals, sbatLevel)
 
-	c.Check(rules, DeepEquals, mockSecureBootNamespaceRules{testutil.ParseCertificate(c, canonicalCACert)})
+	var v VendorAuthorityGetter
+	c.Assert(handler, Implements, &v)
+	certs, err := handler.(VendorAuthorityGetter).VendorAuthorities()
+	c.Check(err, IsNil)
+	c.Check(certs, DeepEquals, []*x509.Certificate{testutil.ParseCertificate(c, canonicalCACert)})
 }
 
 func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_2(c *C) {
@@ -118,9 +126,7 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_2(c *C) {
 		withShimVersion(MustParseShimVersion("15.2")).
 		withShimVendorDb(vendorDb, ShimVendorCertIsX509)
 
-	var rules mockSecureBootNamespaceRules
-
-	handler, err := NewShimLoadHandler(&rules, image.newPeImageHandle())
+	handler, err := NewShimLoadHandler(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
 
@@ -132,24 +138,24 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15_2(c *C) {
 	})
 	c.Check(shimHandler.SbatLevel, DeepEquals, ShimSbatLevel{})
 
-	c.Check(rules, DeepEquals, mockSecureBootNamespaceRules{testutil.ParseCertificate(c, canonicalCACert)})
+	var v VendorAuthorityGetter
+	c.Assert(handler, Implements, &v)
+	certs, err := handler.(VendorAuthorityGetter).VendorAuthorities()
+	c.Check(err, IsNil)
+	c.Check(certs, DeepEquals, []*x509.Certificate{testutil.ParseCertificate(c, canonicalCACert)})
 }
 
 func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15(c *C) {
 	image := newMockImage().withShimVersion(MustParseShimVersion("15"))
 
-	var rules mockSecureBootNamespaceRules
-
-	_, err := NewShimLoadHandler(&rules, image.newPeImageHandle())
+	_, err := NewShimLoadHandler(image.newPeImageHandle())
 	c.Assert(err, ErrorMatches, "unsupported shim version < 15.2")
 }
 
 func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15Ubuntu(c *C) {
 	image := newMockUbuntuShimImage15a(c)
 
-	var rules mockSecureBootNamespaceRules
-
-	handler, err := NewShimLoadHandlerConstructor().WithVersion(MustParseShimVersion("15.2")).New(&rules, image.newPeImageHandle())
+	handler, err := NewShimLoadHandlerConstructor().WithVersion(MustParseShimVersion("15.2")).New(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
 
@@ -161,7 +167,11 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandler15Ubuntu(c *C) {
 	})
 	c.Check(shimHandler.SbatLevel, DeepEquals, ShimSbatLevel{})
 
-	c.Check(rules, DeepEquals, mockSecureBootNamespaceRules{testutil.ParseCertificate(c, canonicalCACert)})
+	var v VendorAuthorityGetter
+	c.Assert(handler, Implements, &v)
+	certs, err := handler.(VendorAuthorityGetter).VendorAuthorities()
+	c.Check(err, IsNil)
+	c.Check(certs, DeepEquals, []*x509.Certificate{testutil.ParseCertificate(c, canonicalCACert)})
 }
 
 func (s *shimLoadHandlerSuite) TestNewShimLoadHandlerWithVendorDb15_7(c *C) {
@@ -173,9 +183,7 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandlerWithVendorDb15_7(c *C) {
 		withShimVendorDb(vendorDb, ShimVendorCertIsDb).
 		withShimSbatLevel(sbatLevel)
 
-	var rules mockSecureBootNamespaceRules
-
-	handler, err := NewShimLoadHandler(&rules, image.newPeImageHandle())
+	handler, err := NewShimLoadHandler(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
 
@@ -187,7 +195,11 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandlerWithVendorDb15_7(c *C) {
 	})
 	c.Check(shimHandler.SbatLevel, DeepEquals, sbatLevel)
 
-	c.Check(rules, DeepEquals, mockSecureBootNamespaceRules{testutil.ParseCertificate(c, canonicalCACert)})
+	var v VendorAuthorityGetter
+	c.Assert(handler, Implements, &v)
+	certs, err := handler.(VendorAuthorityGetter).VendorAuthorities()
+	c.Check(err, IsNil)
+	c.Check(certs, DeepEquals, []*x509.Certificate{testutil.ParseCertificate(c, canonicalCACert)})
 }
 
 func (s *shimLoadHandlerSuite) TestNewShimLoadHandlerWithVendorDb15_6(c *C) {
@@ -198,9 +210,7 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandlerWithVendorDb15_6(c *C) {
 		withShimVersion(MustParseShimVersion("15.6")).
 		withShimVendorDb(vendorDb, ShimVendorCertIsDb)
 
-	var rules mockSecureBootNamespaceRules
-
-	handler, err := NewShimLoadHandlerConstructor().WithSbatLevel(sbatLevel).New(&rules, image.newPeImageHandle())
+	handler, err := NewShimLoadHandlerConstructor().WithSbatLevel(sbatLevel).New(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
 
@@ -212,7 +222,11 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandlerWithVendorDb15_6(c *C) {
 	})
 	c.Check(shimHandler.SbatLevel, DeepEquals, sbatLevel)
 
-	c.Check(rules, DeepEquals, mockSecureBootNamespaceRules{testutil.ParseCertificate(c, canonicalCACert)})
+	var v VendorAuthorityGetter
+	c.Assert(handler, Implements, &v)
+	certs, err := handler.(VendorAuthorityGetter).VendorAuthorities()
+	c.Check(err, IsNil)
+	c.Check(certs, DeepEquals, []*x509.Certificate{testutil.ParseCertificate(c, canonicalCACert)})
 }
 
 type testShimMeasureImageStartData struct {

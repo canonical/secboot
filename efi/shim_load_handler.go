@@ -58,8 +58,7 @@ func (c *shimLoadHandlerConstructor) WithSbatLevel(level shimSbatLevel) *shimLoa
 	return c
 }
 
-// New implements newImageLoadHandlerFn.
-func (c *shimLoadHandlerConstructor) New(rules imageRuleSet, image peImageHandle) (imageLoadHandler, error) {
+func (c *shimLoadHandlerConstructor) New(image peImageHandle) (imageLoadHandler, error) {
 	shim := newShimImageHandle(image)
 	var ver shimVersion
 	if c.version != nil {
@@ -138,28 +137,6 @@ func (c *shimLoadHandlerConstructor) New(rules imageRuleSet, image peImageHandle
 		}
 	}
 
-	if authoritySet, ok := rules.(secureBootAuthoritySet); ok {
-		// Add built-in vendor certs from the rule set that constructed us so that
-		// rules that are based around a secure boot namespace recognize images
-		// signed by these vendor certs as part of the same namespace.
-		var certs []*x509.Certificate
-		for _, esl := range vendorDb {
-			if esl.Type != efi.CertX509Guid {
-				continue
-			}
-			if len(esl.Signatures) == 0 {
-				continue
-			}
-
-			cert, err := x509.ParseCertificate(esl.Signatures[0].Data)
-			if err != nil {
-				return nil, xerrors.Errorf("cannot parse vendor cert: %w", err)
-			}
-			certs = append(certs, cert)
-		}
-		authoritySet.AddAuthorities(certs...)
-	}
-
 	return &shimLoadHandler{
 		Flags: flags,
 		VendorDb: &secureBootDB{
@@ -169,8 +146,27 @@ func (c *shimLoadHandlerConstructor) New(rules imageRuleSet, image peImageHandle
 		SbatLevel: sbatLevel}, nil
 }
 
-func newShimLoadHandler(rules imageRuleSet, image peImageHandle) (imageLoadHandler, error) {
-	return newShimLoadHandlerConstructor().New(rules, image)
+func newShimLoadHandler(image peImageHandle) (imageLoadHandler, error) {
+	return newShimLoadHandlerConstructor().New(image)
+}
+
+func (h *shimLoadHandler) VendorAuthorities() ([]*x509.Certificate, error) {
+	var vendorCerts []*x509.Certificate
+	for i, esl := range h.VendorDb.Contents {
+		if esl.Type != efi.CertX509Guid {
+			continue
+		}
+		if len(esl.Signatures) == 0 {
+			continue
+		}
+
+		cert, err := x509.ParseCertificate(esl.Signatures[0].Data)
+		if err != nil {
+			return nil, xerrors.Errorf("cannot parse vendor cert at %d: %w", i, err)
+		}
+		vendorCerts = append(vendorCerts, cert)
+	}
+	return vendorCerts, nil
 }
 
 // MeasureImageStart implements imageLoadHandler.MeasureImageStart.
