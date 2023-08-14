@@ -90,7 +90,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 	}
 
 	var authValue []byte
-	if authKey != nil {
+	if len(authKey) > 0 {
 		authValue, err = deriveAuthValue(authKey, k.data.Public().NameAlg.Size())
 		if err != nil {
 			return nil, xerrors.Errorf("cannot derive auth value: %w", err)
