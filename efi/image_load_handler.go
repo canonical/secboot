@@ -19,6 +19,8 @@
 
 package efi
 
+import "errors"
+
 // imageLoadHandler is an abstraction for measuring boot events
 // associated with a single image.
 type imageLoadHandler interface {
@@ -30,6 +32,16 @@ type imageLoadHandler interface {
 	// and loading of the supplied image by the image associated with
 	// this handler, to the supplied branch.
 	MeasureImageLoad(ctx pcrBranchContext, image peImageHandle) (imageLoadHandler, error)
+}
+
+// errNoHandler is returned from a imageLoadHandlerConstructor if there is
+// no appropriate handler
+var errNoHandler = errors.New("no handler")
+
+// imageLoadHandlerConstructor is an abstraction for constructing a new imageLoadHandler
+// for a specific image.
+type imageLoadHandlerConstructor interface {
+	NewImageLoadHandler(image peImageHandle) (imageLoadHandler, error)
 }
 
 // imageLoadHandlerMap is an abstraction for mapping an image to an

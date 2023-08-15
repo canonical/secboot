@@ -28,10 +28,15 @@ import (
 // Export constants for testing
 const (
 	BootManagerCodeProfile                     = bootManagerCodeProfile
+	GrubChainloaderUsesShimProtocol            = grubChainloaderUsesShimProtocol
 	SecureBootPolicyProfile                    = secureBootPolicyProfile
+	ShimFixVariableAuthorityEventsMatchSpec    = shimFixVariableAuthorityEventsMatchSpec
+	ShimHasSbatRevocationManagement            = shimHasSbatRevocationManagement
+	ShimHasSbatVerification                    = shimHasSbatVerification
 	ShimName                                   = shimName
 	ShimSbatPolicyLatest                       = shimSbatPolicyLatest
 	ShimSbatPolicyPrevious                     = shimSbatPolicyPrevious
+	ShimVendorCertContainsDb                   = shimVendorCertContainsDb
 	ShimVendorCertIsX509                       = shimVendorCertIsX509
 	ShimVendorCertIsDb                         = shimVendorCertIsDb
 	SignatureDBUpdateNoFirmwareQuirk           = signatureDBUpdateNoFirmwareQuirk
@@ -40,27 +45,31 @@ const (
 
 // Export variables and unexported functions for testing
 var (
-	ApplySignatureDBUpdate    = applySignatureDBUpdate
-	DefaultEnv                = defaultEnv
-	LookupImageLoadHandler    = lookupImageLoadHandler
-	MustParseShimVersion      = mustParseShimVersion
-	NewestSbatLevel           = newestSbatLevel
-	NewFwLoadHandler          = newFwLoadHandler
-	NewPcrImagesMeasurer      = newPcrImagesMeasurer
-	NewPcrProfileGenerator    = newPcrProfileGenerator
-	NewRootPcrBranchCtx       = newRootPcrBranchCtx
-	NewRootVarsCollector      = newRootVarsCollector
-	NewShimImageHandle        = newShimImageHandle
-	OpenPeImage               = openPeImage
-	ParseShimVersion          = parseShimVersion
-	ParseShimVersionDataIdent = parseShimVersionDataIdent
-	ReadShimSbatPolicy        = readShimSbatPolicy
-	ShimGuid                  = shimGuid
+	ApplySignatureDBUpdate        = applySignatureDBUpdate
+	DefaultEnv                    = defaultEnv
+	LookupImageLoadHandler        = lookupImageLoadHandler
+	MustParseShimVersion          = mustParseShimVersion
+	NewestSbatLevel               = newestSbatLevel
+	NewFwLoadHandler              = newFwLoadHandler
+	NewPcrImagesMeasurer          = newPcrImagesMeasurer
+	NewPcrProfileGenerator        = newPcrProfileGenerator
+	NewRootPcrBranchCtx           = newRootPcrBranchCtx
+	NewRootVarsCollector          = newRootVarsCollector
+	NewShimImageHandle            = newShimImageHandle
+	NewShimLoadHandler            = newShimLoadHandler
+	NewShimLoadHandlerConstructor = newShimLoadHandlerConstructor
+	OpenPeImage                   = openPeImage
+	ParseShimVersion              = parseShimVersion
+	ParseShimVersionDataIdent     = parseShimVersionDataIdent
+	ReadShimSbatPolicy            = readShimSbatPolicy
+	ShimGuid                      = shimGuid
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
 // unexported members of some unexported types.
 type FwContext = fwContext
+type GrubFlags = grubFlags
+type GrubLoadHandler = grubLoadHandler
 type ImageLoadHandler = imageLoadHandler
 type ImageLoadHandlerMap = imageLoadHandlerMap
 type ImageLoadParamsSet = imageLoadParamsSet
@@ -77,7 +86,9 @@ type SecureBootAuthority = secureBootAuthority
 type SecureBootDB = secureBootDB
 type SecureBootPolicyMixin = secureBootPolicyMixin
 type ShimContext = shimContext
+type ShimFlags = shimFlags
 type ShimImageHandle = shimImageHandle
+type ShimLoadHandler = shimLoadHandler
 type ShimSbatLevel = shimSbatLevel
 type ShimSbatPolicy = shimSbatPolicy
 type ShimVendorCertFormat = shimVendorCertFormat
@@ -85,6 +96,7 @@ type ShimVersion = shimVersion
 type SignatureDBUpdateFirmwareQuirk = signatureDBUpdateFirmwareQuirk
 type VarBranch = varBranch
 type VarReadWriter = varReadWriter
+type VendorAuthorityGetter = vendorAuthorityGetter
 
 // Helper functions
 func ImageLoadActivityNext(activity ImageLoadActivity) []ImageLoadActivity {
@@ -132,6 +144,14 @@ func MockNewFwLoadHandler(fn func(*tcglog.Log) ImageLoadHandler) (restore func()
 	newFwLoadHandler = fn
 	return func() {
 		newFwLoadHandler = orig
+	}
+}
+
+func MockNewShimImageHandle(fn func(peImageHandle) shimImageHandle) (restore func()) {
+	orig := newShimImageHandle
+	newShimImageHandle = fn
+	return func() {
+		newShimImageHandle = orig
 	}
 }
 

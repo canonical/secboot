@@ -24,6 +24,7 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 
+	. "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 )
 
@@ -121,6 +122,18 @@ func withMsSecureBootConfig() mockVarsConfig {
 
 func withTestSecureBootConfig() mockVarsConfig {
 	return withSecureBootConfig(true, testPK, testSecureBootConfig)
+}
+
+func withSbatLevel(level []byte) mockVarsConfig {
+	return func(c *C, vars efitest.MockVars) {
+		vars.Set("SbatLevelRT", ShimGuid, efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, level)
+	}
+}
+
+func withSbatPolicy(policy ShimSbatPolicy) mockVarsConfig {
+	return func(c *C, vars efitest.MockVars) {
+		vars.Set("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{uint8(policy)})
+	}
 }
 
 func withSecureBootDisabled() mockVarsConfig {
