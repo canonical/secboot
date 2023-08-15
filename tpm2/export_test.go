@@ -39,6 +39,7 @@ var (
 	ComputeV3PcrPolicyCounterAuthPolicies   = computeV3PcrPolicyCounterAuthPolicies
 	ComputeV3PcrPolicyRefFromCounterName    = computeV3PcrPolicyRefFromCounterName
 	ComputeSnapModelDigest                  = computeSnapModelDigest
+	DeriveAuthValue                         = deriveAuthValue
 	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
 	IsPolicyDataError                       = isPolicyDataError

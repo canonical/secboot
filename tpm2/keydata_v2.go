@@ -68,6 +68,10 @@ func (d *keyData_v2) Private() tpm2.Private {
 	return d.KeyPrivate
 }
 
+func (d *keyData_v2) SetPrivate(priv tpm2.Private) {
+	panic("not supported")
+}
+
 func (d *keyData_v2) Public() *tpm2.Public {
 	return d.KeyPublic
 }

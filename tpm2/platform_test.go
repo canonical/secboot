@@ -64,6 +64,36 @@ func (s *platformSuite) SetUpTest(c *C) {
 
 var _ = Suite(&platformSuite{})
 
+func (s *platformSuite) TestDeriveAuthValue(c *C) {
+	key := testutil.DecodeHexString(c, "eb3df724b267220a2ebf1ad93ca05c7ba7ab2b321f2e7fddbc9741882b274433290973b9f9ecb6a64396da33d717f7af")
+	expected := testutil.DecodeHexString(c, "874fcd20ed7c7071f6fd1d9ccb8ebc088c902712ba6cad7a14d7db71d75673b8")
+
+	value, err := DeriveAuthValue(key, 32)
+	c.Check(err, IsNil)
+	c.Check(value, DeepEquals, expected)
+	c.Logf("%x", value)
+}
+
+func (s *platformSuite) TestDeriveAuthValueDifferentLen(c *C) {
+	key := testutil.DecodeHexString(c, "eb3df724b267220a2ebf1ad93ca05c7ba7ab2b321f2e7fddbc9741882b274433290973b9f9ecb6a64396da33d717f7af")
+	expected := testutil.DecodeHexString(c, "874fcd20ed7c7071f6fd1d9ccb8ebc088c902712")
+
+	value, err := DeriveAuthValue(key, 20)
+	c.Check(err, IsNil)
+	c.Check(value, DeepEquals, expected)
+	c.Logf("%x", value)
+}
+
+func (s *platformSuite) TestDeriveAuthValueDifferentKey(c *C) {
+	key := testutil.DecodeHexString(c, "7facbeb6f2a7f233f68059da3f1d9c9706530eced4cca76ba1e1551f0e814c40ac2a076e208880ab6d2afe31f04e096a")
+	expected := testutil.DecodeHexString(c, "fc69c90fe401ed40906698fe290e6be07b8c7b8b5b42b6166044cf9e32b8e300")
+
+	value, err := DeriveAuthValue(key, 32)
+	c.Check(err, IsNil)
+	c.Check(value, DeepEquals, expected)
+	c.Logf("%x", value)
+}
+
 func (s *platformSuite) TestRecoverKeysIntegrated(c *C) {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
@@ -76,6 +106,88 @@ func (s *platformSuite) TestRecoverKeysIntegrated(c *C) {
 	c.Assert(err, IsNil)
 
 	keyUnsealed, authKeyUnsealed, err := k.RecoverKeys()
+	c.Check(err, IsNil)
+	c.Check(keyUnsealed, DeepEquals, key)
+	c.Check(authKeyUnsealed, DeepEquals, authKey)
+}
+
+func (s *platformSuite) TestRecoverKeysWithPassphraseIntegrated(c *C) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+
+	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	c.Assert(err, IsNil)
+
+	var kdf testutil.MockKDF
+	c.Check(k.SetPassphrase("passphrase", nil, &kdf), IsNil)
+
+	keyUnsealed, authKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase", &kdf)
+	c.Check(err, IsNil)
+	c.Check(keyUnsealed, DeepEquals, key)
+	c.Check(authKeyUnsealed, DeepEquals, authKey)
+}
+
+func (s *platformSuite) TestRecoverKeysWithBadPassphraseIntegrated(c *C) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+
+	k, _, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	c.Assert(err, IsNil)
+
+	var kdf testutil.MockKDF
+	c.Check(k.SetPassphrase("passphrase", nil, &kdf), IsNil)
+
+	_, _, err = k.RecoverKeysWithPassphrase("1234", &kdf)
+	c.Check(err, Equals, secboot.ErrInvalidPassphrase)
+}
+
+func (s *platformSuite) TestChangePassphraseIntegrated(c *C) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+
+	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	c.Assert(err, IsNil)
+
+	var kdf testutil.MockKDF
+	c.Check(k.SetPassphrase("passphrase", nil, &kdf), IsNil)
+
+	c.Check(k.ChangePassphrase("passphrase", "1234", nil, &kdf), IsNil)
+
+	keyUnsealed, authKeyUnsealed, err := k.RecoverKeysWithPassphrase("1234", &kdf)
+	c.Check(err, IsNil)
+	c.Check(keyUnsealed, DeepEquals, key)
+	c.Check(authKeyUnsealed, DeepEquals, authKey)
+}
+
+func (s *platformSuite) TestChangePassphraseWithBadPassphraseIntegrated(c *C) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+
+	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	c.Assert(err, IsNil)
+
+	var kdf testutil.MockKDF
+	c.Check(k.SetPassphrase("passphrase", nil, &kdf), IsNil)
+
+	c.Check(k.ChangePassphrase("1234", "1234", nil, &kdf), Equals, secboot.ErrInvalidPassphrase)
+
+	keyUnsealed, authKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase", &kdf)
 	c.Check(err, IsNil)
 	c.Check(keyUnsealed, DeepEquals, key)
 	c.Check(authKeyUnsealed, DeepEquals, authKey)
@@ -317,4 +429,84 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingProvisioningError(c *C
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorUninitialized)
 	c.Check(err, ErrorMatches, "the TPM is not correctly provisioned")
+}
+
+func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+
+	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	c.Assert(err, IsNil)
+
+	var platformHandle json.RawMessage
+	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
+
+	var handler PlatformKeyDataHandler
+	platformHandle, err = handler.ChangeAuthKey(platformHandle, nil, []byte{1, 2, 3, 4})
+	c.Check(err, IsNil)
+
+	payload, err := handler.RecoverKeysWithAuthKey(&secboot.PlatformKeyData{
+		EncodedHandle:    platformHandle,
+		EncryptedPayload: s.lastEncryptedPayload}, []byte{1, 2, 3, 4})
+
+	keyUnsealed, authKeyUnsealed, err := payload.Unmarshal()
+	c.Check(err, IsNil)
+	c.Check(keyUnsealed, DeepEquals, key)
+	c.Check(authKeyUnsealed, DeepEquals, authKey)
+}
+
+func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+
+	k, _, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	c.Assert(err, IsNil)
+
+	var platformHandle json.RawMessage
+	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
+
+	var handler PlatformKeyDataHandler
+	platformHandle, err = handler.ChangeAuthKey(platformHandle, nil, []byte{1, 2, 3, 4})
+	c.Check(err, IsNil)
+
+	_, err = handler.RecoverKeysWithAuthKey(&secboot.PlatformKeyData{
+		EncodedHandle:    platformHandle,
+		EncryptedPayload: s.lastEncryptedPayload}, []byte{5, 6, 7, 8})
+	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
+	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidAuthKey)
+	c.Check(err, ErrorMatches, "cannot unseal key: TPM returned an error for session 1 whilst executing command TPM_CC_Unseal: "+
+		"TPM_RC_AUTH_FAIL \\(the authorization HMAC check failed and DA counter incremented\\)")
+}
+
+func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
+	key := make(secboot.DiskUnlockKey, 32)
+	rand.Read(key)
+
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+
+	k, _, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	c.Assert(err, IsNil)
+
+	var platformHandle json.RawMessage
+	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
+
+	var handler PlatformKeyDataHandler
+	platformHandle, err = handler.ChangeAuthKey(platformHandle, nil, []byte{1, 2, 3, 4})
+	c.Check(err, IsNil)
+
+	_, err = handler.ChangeAuthKey(platformHandle, nil, []byte{5, 6, 7, 8})
+	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
+	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidAuthKey)
+	c.Check(err, ErrorMatches, "TPM returned an error for session 1 whilst executing command TPM_CC_ObjectChangeAuth: "+
+		"TPM_RC_AUTH_FAIL \\(the authorization HMAC check failed and DA counter incremented\\)")
 }

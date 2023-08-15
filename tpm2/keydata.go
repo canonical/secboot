@@ -58,8 +58,10 @@ type keyData interface {
 	// implementation is not responsible for serializing this.
 	Version() uint32
 
-	Private() tpm2.Private // Private area of sealed key object
-	Public() *tpm2.Public  // Public area of sealed key object
+	Private() tpm2.Private        // Private area of sealed key object
+	SetPrivate(priv tpm2.Private) // Update the private area of sealed key object
+
+	Public() *tpm2.Public // Public area of sealed key object
 
 	// ImportSymSeed is the encrypted seed used for importing the
 	// sealed key object. This will be nil if the sealed object does
