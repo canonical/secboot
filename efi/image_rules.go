@@ -110,12 +110,12 @@ func (r *imageRules) NewImageLoadHandler(image peImageHandle) (imageLoadHandler,
 	for _, rule := range r.rules {
 		matches, err := rule.match.Matches(image)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot run \"%s\" rule: %w", rule.name, err)
+			return nil, xerrors.Errorf("cannot run \"%s\" image rule: %w", rule.name, err)
 		}
 		if matches {
 			handler, err := rule.create(image)
 			if err != nil {
-				return nil, xerrors.Errorf("cannot create using \"%s\" rule: %w", rule.name, err)
+				return nil, xerrors.Errorf("cannot create using \"%s\" image rule: %w", rule.name, err)
 			}
 			return handler, nil
 		}
@@ -238,6 +238,6 @@ func (p *shimVersionPredicate) Matches(image peImageHandle) (bool, error) {
 	case "<":
 		return res < 0, nil
 	default:
-		return false, fmt.Errorf("invalid operator %s", p.operator)
+		return false, fmt.Errorf("invalid shim version operator %s", p.operator)
 	}
 }
