@@ -35,6 +35,8 @@ type secureBootNamespaceRulesSuite struct{}
 var _ = Suite(&secureBootNamespaceRulesSuite{})
 
 func (s *secureBootNamespaceRulesSuite) TestRulesMatch1(c *C) {
+	// This tests that the rules successfully match a binary with a single
+	// signature created by the authority associated with the namespace.
 	image := newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)).newPeImageHandle()
 
 	cert := testutil.ParseCertificate(c, msUefiCACert)
@@ -58,6 +60,9 @@ func (s *secureBootNamespaceRulesSuite) TestRulesMatch1(c *C) {
 }
 
 func (s *secureBootNamespaceRulesSuite) TestRulesMatch2(c *C) {
+	// This tests that the rules successfully match a binary with 2
+	// signatures, where only one is created by the authority associated with
+	// the namespace.
 	sig := efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)
 	image := newMockImage().withDigest(sig.DigestAlgorithm(), sig.Digest()).sign(c, testutil.ParsePKCS1PrivateKey(c, testUefiSigningKey1_1), testutil.ParseCertificate(c, testUefiSigningCert1_1)).appendSignatures(sig).newPeImageHandle()
 
@@ -82,6 +87,9 @@ func (s *secureBootNamespaceRulesSuite) TestRulesMatch2(c *C) {
 }
 
 func (s *secureBootNamespaceRulesSuite) TestRulesMatch3(c *C) {
+	// This tests that the rules successfully match a binary with a single
+	// signature created by the authority associated with the namespace, but
+	// uses a different authority compared with TestRulesMatch1.
 	sig := efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)
 	image := newMockImage().withDigest(sig.DigestAlgorithm(), sig.Digest()).sign(c, testutil.ParsePKCS1PrivateKey(c, testUefiSigningKey1_1), testutil.ParseCertificate(c, testUefiSigningCert1_1)).newPeImageHandle()
 
@@ -106,17 +114,20 @@ func (s *secureBootNamespaceRulesSuite) TestRulesMatch3(c *C) {
 }
 
 func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch1(c *C) {
+	// This tests that the rules don't match a binary without a signature
+	// created by the authority associated with the namespace.
 	sig := efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)
 	image := newMockImage().withDigest(sig.DigestAlgorithm(), sig.Digest()).sign(c, testutil.ParsePKCS1PrivateKey(c, testUefiSigningKey1_1), testutil.ParseCertificate(c, testUefiSigningCert1_1)).newPeImageHandle()
 
 	cert := testutil.ParseCertificate(c, msUefiCACert)
 
+	cond := &mockImagePredicate{result: true}
 	rules := NewSecureBootNamespaceRules(
 		"test",
 		WithAuthority(cert.RawSubject, cert.SubjectKeyId, cert.PublicKeyAlgorithm),
 		WithImageRule(
 			"rule1",
-			&mockImagePredicate{result: true},
+			cond,
 			func(i PeImageHandle) (ImageLoadHandler, error) {
 				return nil, errors.New("not reached")
 			},
@@ -124,19 +135,24 @@ func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch1(c *C) {
 	)
 	_, err := rules.NewImageLoadHandler(image)
 	c.Check(err, Equals, ErrNoHandler)
+	c.Check(cond.testedImages, IsNil)
 }
 
 func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch2(c *C) {
+	// This tests that the rules correctly handle a binary with a single signature
+	// created by the authority associated with the namespace, but where there isn't
+	// an appropriate rule to match.
 	image := newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)).newPeImageHandle()
 
 	cert := testutil.ParseCertificate(c, msUefiCACert)
 
+	cond := new(mockImagePredicate)
 	rules := NewSecureBootNamespaceRules(
 		"test",
 		WithAuthority(cert.RawSubject, cert.SubjectKeyId, cert.PublicKeyAlgorithm),
 		WithImageRule(
 			"rule1",
-			new(mockImagePredicate),
+			cond,
 			func(i PeImageHandle) (ImageLoadHandler, error) {
 				return nil, errors.New("not reached")
 			},
@@ -144,19 +160,22 @@ func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch2(c *C) {
 	)
 	_, err := rules.NewImageLoadHandler(image)
 	c.Check(err, Equals, ErrNoHandler)
+	c.Check(cond.testedImages, DeepEquals, []PeImageHandle{image})
 }
 
 func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch3(c *C) {
+	// This tests that the rules don't match a binary with no signatures.
 	image := newMockImage().newPeImageHandle()
 
 	cert := testutil.ParseCertificate(c, msUefiCACert)
 
+	cond := new(mockImagePredicate)
 	rules := NewSecureBootNamespaceRules(
 		"test",
 		WithAuthority(cert.RawSubject, cert.SubjectKeyId, cert.PublicKeyAlgorithm),
 		WithImageRule(
 			"rule1",
-			new(mockImagePredicate),
+			cond,
 			func(i PeImageHandle) (ImageLoadHandler, error) {
 				return nil, errors.New("not reached")
 			},
@@ -164,6 +183,7 @@ func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch3(c *C) {
 	)
 	_, err := rules.NewImageLoadHandler(image)
 	c.Check(err, Equals, ErrNoHandler)
+	c.Check(cond.testedImages, IsNil)
 }
 
 type mockLoadHandlerWithVendorAuthorities struct {
