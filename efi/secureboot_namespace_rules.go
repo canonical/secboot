@@ -26,6 +26,13 @@ import (
 	"golang.org/x/xerrors"
 )
 
+// vendorAuthorityGetter provides a way for an imageLoadHandler created by
+// secureBootNamespaceRules to supplement the CA's associated with a secure
+// boot namespace in the case where the associated image contains a delegated
+// signing authority (eg, shim's vendor certificate). This allows the extra
+// authorities to become part of the same namespace and permits components
+// signed by these extra authorities to be recognized by the same set of
+// rules without having to embed multiple certificates.
 type vendorAuthorityGetter interface {
 	VendorAuthorities() ([]*x509.Certificate, error)
 }
