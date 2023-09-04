@@ -19,7 +19,11 @@
 
 package efi
 
-import "errors"
+import (
+	"errors"
+
+	"golang.org/x/xerrors"
+)
 
 // imageLoadHandler is an abstraction for measuring boot events
 // associated with a single image.
@@ -51,6 +55,43 @@ type imageLoadHandlerMap interface {
 	// Callers should assume that calling this multiple times with an image
 	// backed by the same source will return the same handler.
 	LookupHandler(image peImageHandle) (imageLoadHandler, error)
+}
+
+type imageLoadHandlerLazyMap struct {
+	handlers     map[Image]imageLoadHandler
+	constructors []imageLoadHandlerConstructor
+}
+
+func newImageLoadHandlerLazyMap(constructors ...imageLoadHandlerConstructor) *imageLoadHandlerLazyMap {
+	return &imageLoadHandlerLazyMap{
+		handlers:     make(map[Image]imageLoadHandler),
+		constructors: constructors,
+	}
+}
+
+// LookupHandler implements imageLoadHandlerMap
+func (m *imageLoadHandlerLazyMap) LookupHandler(image peImageHandle) (imageLoadHandler, error) {
+	handler, exists := m.handlers[image.Source()]
+	if exists {
+		return handler, nil
+	}
+
+	for _, c := range m.constructors {
+		handler, err := c.NewImageLoadHandler(image)
+		switch {
+		case err == errNoHandler:
+			// skip
+		case err != nil:
+			return nil, xerrors.Errorf("cannot create image load handler using %v: %w", c, err)
+		default:
+			m.handlers[image.Source()] = handler
+			return handler, nil
+		}
+	}
+
+	// We shouldn't actually reach here because the fallback rules always returns
+	// something.
+	return nil, errors.New("no handler for image")
 }
 
 var makeImageLoadHandlerMap = func() imageLoadHandlerMap {

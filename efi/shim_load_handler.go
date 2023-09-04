@@ -150,6 +150,7 @@ func newShimLoadHandler(image peImageHandle) (imageLoadHandler, error) {
 	return newShimLoadHandlerConstructor().New(image)
 }
 
+// VendorAuthorities implements vendorAuthorityGetter.
 func (h *shimLoadHandler) VendorAuthorities() ([]*x509.Certificate, error) {
 	var vendorCerts []*x509.Certificate
 	for i, esl := range h.VendorDb.Contents {
