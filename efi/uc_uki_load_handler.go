@@ -31,6 +31,7 @@ func newUbuntuCoreUKILoadHandler(_ peImageHandle) (imageLoadHandler, error) {
 
 func (h *ubuntuCoreUKILoadHandler) MeasureImageStart(_ pcrBranchContext) error {
 	// TODO: Add stuff that the kernel measures here
+	// for now clients can continue using AddSystemdStubProfile
 	return nil
 }
 

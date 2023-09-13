@@ -57,7 +57,7 @@ func (u signatureDBUpdatesOption) applyOptionTo(gen *pcrProfileGenerator) {
 			for _, quirk := range []signatureDBUpdateFirmwareQuirk{
 				signatureDBUpdateNoFirmwareQuirk,
 				signatureDBUpdateFirmwareDedupIgnoresOwner} {
-				// create branch by copying the root varBranch
+				// create a branch per quirk by copying the root varBranch
 				branch := *root
 
 				// This creates a root variable instance for each intermediate state.
