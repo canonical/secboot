@@ -24,7 +24,11 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	efi "github.com/canonical/go-efilib"
+
 	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/internal/efitest"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 type mockImageLoadHandlerConstructor struct {
@@ -101,4 +105,31 @@ func (s *imageLoadHandlerSuite) TestImageLoadHandlerLazyMapError(c *C) {
 	image := newMockImage()
 	_, err := m.LookupHandler(image.newPeImageHandle())
 	c.Check(err, ErrorMatches, `cannot create image load handler using mock handler: some error`)
+}
+
+func (s *imageLoadHandlerSuite) TestDefaultLookupMS(c *C) {
+	image := newMockUbuntuShimImage15_4(c)
+
+	m := MakeImageLoadHandlerMap()
+	handler, err := m.LookupHandler(image.newPeImageHandle())
+	c.Assert(err, IsNil)
+	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
+
+	shimHandler := handler.(*ShimLoadHandler)
+	c.Check(shimHandler.Flags, Equals, ShimHasSbatVerification|ShimFixVariableAuthorityEventsMatchSpec)
+	c.Check(shimHandler.VendorDb, DeepEquals, &SecureBootDB{
+		Name:     efi.VariableDescriptor{Name: "Shim", GUID: ShimGuid},
+		Contents: efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})},
+	})
+	c.Check(shimHandler.SbatLevel, DeepEquals, ShimSbatLevel{[]byte("sbat,1,2021030218\n"), []byte("sbat,1,2021030218\n")})
+}
+
+func (s *imageLoadHandlerSuite) TestDefaultLookupFallback(c *C) {
+	image := newMockUbuntuGrubImage1(c).unsign()
+
+	m := MakeImageLoadHandlerMap()
+	handler, err := m.LookupHandler(image.newPeImageHandle())
+	c.Assert(err, IsNil)
+	c.Assert(handler, testutil.ConvertibleTo, &GrubLoadHandler{})
+	c.Check(handler, DeepEquals, new(GrubLoadHandler))
 }

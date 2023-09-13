@@ -250,6 +250,11 @@ func (i *mockImage) sign(c *C, key crypto.Signer, signer *x509.Certificate, cert
 	return i
 }
 
+func (i *mockImage) unsign() *mockImage {
+	i.sigs = nil
+	return i
+}
+
 func (i *mockImage) addSection(name string, data []byte) *mockImage {
 	i.sections[name] = data
 	return i
@@ -286,6 +291,24 @@ func newMockUbuntuShimImage15a(c *C) *mockImage {
 		withShimVendorDb(efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})}, ShimVendorCertIsX509)
 }
 
+func newMockUbuntuShimImage15b(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig2)).
+		withShimVersion(MustParseShimVersion("15")).
+		withShimVendorDb(efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})}, ShimVendorCertIsX509)
+}
+
+func newMockUbuntuShimImage15_4(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)).
+		withSbat([]SbatComponent{
+			{Name: "shim"},
+			{Name: "shim.ubuntu"},
+		}).
+		withShimVersion(MustParseShimVersion("15.4")).
+		withShimVendorDb(efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})}, ShimVendorCertIsX509)
+}
+
 func newMockUbuntuShimImage15_7(c *C) *mockImage {
 	return newMockImage().
 		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4)).
@@ -296,6 +319,75 @@ func newMockUbuntuShimImage15_7(c *C) *mockImage {
 		withShimVersion(MustParseShimVersion("15.7")).
 		withShimVendorDb(efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})}, ShimVendorCertIsX509).
 		withShimSbatLevel(ShimSbatLevel{[]byte("sbat,1,2022111500\nshim,2\ngrub,3\n"), []byte("sbat,1,2022052400\ngrub,2\n")})
+}
+
+func newMockUbuntuGrubImage1(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig1)).
+		addSection(".mods", nil)
+}
+
+func newMockUbuntuGrubImage2(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig2)).
+		addSection(".mods", nil).
+		withSbat([]SbatComponent{
+			{Name: "grub"},
+			{Name: "grub.ubuntu"},
+		})
+}
+
+func newMockUbuntuGrubImage3(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig3)).
+		addSection(".mods", nil).
+		withSbat([]SbatComponent{
+			{Name: "grub"},
+			{Name: "grub.ubuntu"},
+		})
+}
+
+func newMockUbuntuKernelImage1(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, kernelUbuntuSig1)).
+		addSection(".linux", nil).
+		addSection(".initrd", nil)
+}
+
+func newMockUbuntuKernelImage2(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, kernelUbuntuSig2)).
+		addSection(".linux", nil).
+		addSection(".initrd", nil).
+		addSection(".sdmagic", nil).
+		withSbat([]SbatComponent{
+			{Name: "systemd"},
+			{Name: "systemd.ubuntu"},
+		})
+}
+
+func newMockUbuntuKernelImage3(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, kernelUbuntuSig3)).
+		addSection(".linux", nil).
+		addSection(".initrd", nil).
+		addSection(".sdmagic", nil).
+		withSbat([]SbatComponent{
+			{Name: "systemd"},
+			{Name: "systemd.ubuntu"},
+		})
+}
+
+func newMockUbuntuKernelImage4(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, kernelUbuntuSig4)).
+		addSection(".linux", nil).
+		addSection(".initrd", nil).
+		addSection(".sdmagic", nil).
+		withSbat([]SbatComponent{
+			{Name: "systemd"},
+			{Name: "systemd.ubuntu"},
+		})
 }
 
 func (i *mockImage) String() string           { return fmt.Sprintf("%p", i) }

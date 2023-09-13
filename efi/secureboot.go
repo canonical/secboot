@@ -49,6 +49,38 @@ type SignatureDBUpdate struct {
 	Data []byte                 // The update payload
 }
 
+type signatureDBUpdatesOption []*SignatureDBUpdate
+
+func (u signatureDBUpdatesOption) applyOptionTo(gen *pcrProfileGenerator) {
+	gen.varModifiers = append(gen.varModifiers, func(rootVars *rootVarsCollector) error {
+		for _, root := range rootVars.PeekAll() {
+			for _, quirk := range []signatureDBUpdateFirmwareQuirk{
+				signatureDBUpdateNoFirmwareQuirk,
+				signatureDBUpdateFirmwareDedupIgnoresOwner} {
+				// create a branch per quirk by copying the root varBranch
+				branch := *root
+
+				// This creates a root variable instance for each intermediate state.
+				for i, update := range u {
+					if err := applySignatureDBUpdate(&branch, update, quirk); err != nil {
+						return xerrors.Errorf("cannot compute signature database update %d: %w", i, err)
+					}
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// WithSignatureDBUpdates can be supplied to AddPCRProfile to compute the profile
+// for each of the supplied signature database updates in turn, in addition to the
+// current signature database contents. This should only be supplied once. If a
+// profile needs to be computed for more than one signature database update,
+// provide them all in a single option.
+func WithSignatureDBUpdates(updates ...*SignatureDBUpdate) PCRProfileOption {
+	return signatureDBUpdatesOption(updates)
+}
+
 // secureBootAuthority describes the CA that authenticates an image.
 type secureBootAuthority struct {
 	Source    efi.VariableDescriptor
