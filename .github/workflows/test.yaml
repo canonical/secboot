@@ -7,11 +7,17 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        goversion:
+          - 1.18
+          # TODO: enable stable, right now tests fails there
+          # - stable
     steps:
-    - name: Set up Go 1.18
+    - name: Set up Go ${{ matrix.goversion }}
       uses: actions/setup-go@v4
       with:
-        go-version: 1.18
+        go-version: ${{ matrix.goversion }}
     - name: Checkout code
       uses: actions/checkout@v3
     - name: Install dependencies
