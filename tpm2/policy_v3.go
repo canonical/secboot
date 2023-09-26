@@ -34,6 +34,7 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
+	internal_crypto "github.com/snapcore/secboot/internal/crypto"
 )
 
 func computeV3PcrPolicyRefFromCounterName(name tpm2.Name) tpm2.Nonce {
@@ -54,7 +55,7 @@ func computeV3PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 // is used as an input key to derive various context-specific keys, such as this one.
 func deriveV3PolicyAuthKey(alg crypto.Hash, auxKey secboot.AuxiliaryKey) (*ecdsa.PrivateKey, error) {
 	r := hkdf.Expand(func() hash.Hash { return alg.New() }, auxKey, []byte("TPM2-POLICY-AUTH"))
-	return ecdsa.GenerateKey(elliptic.P256(), r)
+	return internal_crypto.GenerateECDSAKey(elliptic.P256(), r)
 }
 
 // staticPolicyData_v3 represents version 3 of the metadata for executing a

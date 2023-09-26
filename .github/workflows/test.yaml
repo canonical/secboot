@@ -11,8 +11,7 @@ jobs:
       matrix:
         goversion:
           - 1.18
-          # TODO: enable stable, right now tests fails there
-          # - stable
+          - stable
     steps:
     - name: Set up Go ${{ matrix.goversion }}
       uses: actions/setup-go@v4
