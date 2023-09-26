@@ -29,7 +29,12 @@ import (
 var one = new(big.Int).SetInt64(1)
 
 // GenerateECDSAKey generates a new elliptic key pair using the method described by
-// FIPS186-4 section B.4.1.
+// FIPS186-4 section B.4.1. This method is deterministic (given the same sequence of
+// random bytes, it will generate the same key) and is not sensitive to changes in the
+// standard library between go releases. This is required because the tpm2 package needs
+// to be able to deterministically derive keys from a sequence of bytes. The method
+// used to generate keys using crypto/ecdsa package changed in go1.20 to one that is
+// non-deterministic.
 func GenerateECDSAKey(curve elliptic.Curve, rand io.Reader) (*ecdsa.PrivateKey, error) {
 	params := curve.Params()
 
