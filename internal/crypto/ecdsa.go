@@ -44,7 +44,7 @@ func GenerateECDSAKey(curve elliptic.Curve, rand io.Reader) (*ecdsa.PrivateKey, 
 	// 4. Obtain a string of N+64 bits from an RBG
 	//
 	//  For P-521, this is N+63 bits because of the rounding error, but the original
-	//  crypto/ecdsa had this quirk as well and this function has to be compabible with
+	//  crypto/ecdsa had this quirk as well and this function has to be compatible with
 	//  that.
 	b := make([]byte, N+8)
 	_, err := io.ReadFull(rand, b)
