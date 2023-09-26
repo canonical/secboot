@@ -42,9 +42,6 @@ func (s *ecdsaSuite) TestGenerateECDSAKey(c *C) {
 	c.Check(key.X.Bytes(), DeepEquals, testutil.DecodeHexString(c, "918457cb51bde6efaa14eb028cfab900c02778ac7978ab2d6c9d451f1cf153ea"))
 	c.Check(key.Y.Bytes(), DeepEquals, testutil.DecodeHexString(c, "08a18bb52b3cb984ef71e76d449f8c6c98ad1b5e3702089ad63a02b25f232812"))
 	c.Check(elliptic.P256().IsOnCurve(key.X, key.Y), testutil.IsTrue)
-	c.Logf("d=%x", key.D)
-	c.Logf("x=%x", key.X)
-	c.Logf("y=%x", key.Y)
 }
 
 func (s *ecdsaSuite) TestGenerateECDSAKeyDifferentRandomBytes(c *C) {
@@ -56,9 +53,6 @@ func (s *ecdsaSuite) TestGenerateECDSAKeyDifferentRandomBytes(c *C) {
 	c.Check(key.X.Bytes(), DeepEquals, testutil.DecodeHexString(c, "9ef4c92f4db77ebc84299c73832da6188e6b1c1d852218c70509ceac0d8a8613"))
 	c.Check(key.Y.Bytes(), DeepEquals, testutil.DecodeHexString(c, "cf7345866f20b51bb21a01f68f18c7f95c70d3555a8eddeafe572794e0306118"))
 	c.Check(elliptic.P256().IsOnCurve(key.X, key.Y), testutil.IsTrue)
-	c.Logf("d=%x", key.D)
-	c.Logf("x=%x", key.X)
-	c.Logf("y=%x", key.Y)
 }
 
 func (s *ecdsaSuite) TestGenerateECDSAKeyDifferentCurve(c *C) {
@@ -69,7 +63,4 @@ func (s *ecdsaSuite) TestGenerateECDSAKeyDifferentCurve(c *C) {
 	c.Check(key.X.Bytes(), DeepEquals, testutil.DecodeHexString(c, "01eb7185ee58a503f743581c1ceea4a40b367c7cbe5a81aae539280921b008defa7a2427e070f4b6ca4c383e2f844e7e48fd8da64c59a9d052c29f0c75fbe3c77aa4"))
 	c.Check(key.Y.Bytes(), DeepEquals, testutil.DecodeHexString(c, "01a8a21ba6ff4ad05c70d1b29a37e11bdfa8092d434b982b80341c3e229f7479431422b1b9d45ca0354b32211b083d8a31ab55a4d4d01a8be1e75a0e02526d4656c4"))
 	c.Check(elliptic.P521().IsOnCurve(key.X, key.Y), testutil.IsTrue)
-	c.Logf("d=%x", key.D)
-	c.Logf("x=%x", key.X)
-	c.Logf("y=%x", key.Y)
 }
