@@ -411,7 +411,7 @@ func (s *cryptsetupSuite) TestFormatWithInvalidKeyslotsAreaSize(c *C) {
 }
 
 func (s *cryptsetupSuite) TestFormatWithInlineCryptoEngine(c *C) {
-	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", "")
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", "echo cryptsetup 2.6.1")
 	defer mockCryptsetup.Restore()
 
 	key := make([]byte, 32)
@@ -422,9 +422,10 @@ func (s *cryptsetupSuite) TestFormatWithInlineCryptoEngine(c *C) {
 		KeyslotsAreaKiBSize: 2 * 1024,
 		InlineCryptoEngine:  true}
 	err := Format("some-path", "test", key, options)
-	c.Check(err, IsNil)
-	c.Assert(mockCryptsetup.Calls(), HasLen, 1)
-	c.Check(mockCryptsetup.Calls()[0], snapd_testutil.Contains, "--inline-crypto-engine")
+	c.Assert(err, IsNil)
+	// feature detection
+	c.Assert(mockCryptsetup.Calls(), HasLen, 3)
+	c.Check(mockCryptsetup.Calls()[2], snapd_testutil.Contains, "--inline-crypto-engine")
 }
 
 type testAddKeyData struct {
