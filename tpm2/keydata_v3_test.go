@@ -72,8 +72,7 @@ func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 		var err error
 		policyCounterPub, policyCount, err = CreatePcrPolicyCounter(s.TPM().TPMContext, pcrPolicyCounterHandle, authKeyPublic, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
-		policyCounterName, err = policyCounterPub.Name()
-		c.Check(err, IsNil)
+		policyCounterName = policyCounterPub.Name()
 	}
 
 	// Create sealed object
@@ -143,7 +142,7 @@ func (s *keyDataV3Suite) newMockImportableKeyData(c *C) KeyData {
 	srkPub, _, _, err := s.TPM().ReadPublic(s.primary)
 	c.Assert(err, IsNil)
 
-	_, priv, symSeed, err := util.CreateDuplicationObjectFromSensitive(sensitive, pub, srkPub, nil, nil)
+	_, priv, symSeed, err := util.CreateDuplicationObject(sensitive, pub, srkPub, nil, nil)
 	c.Assert(err, IsNil)
 
 	return &KeyData_v3{

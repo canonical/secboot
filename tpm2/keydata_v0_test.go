@@ -65,11 +65,9 @@ func (s *keyDataV0Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	authKeyPublic := util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
 	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
-	authKeyName, err := authKeyPublic.Name()
-	c.Assert(err, IsNil)
 
 	// Create a mock PCR policy counter
-	policyCounter, count, policyCounterPolicies := s.createMockPcrPolicyCounter(c, pcrPolicyCounterHandle, authKeyName)
+	policyCounter, count, policyCounterPolicies := s.createMockPcrPolicyCounter(c, pcrPolicyCounterHandle, authKeyPublic.Name())
 
 	// Create sealed object
 	secret := []byte("secret data")
@@ -124,24 +122,20 @@ func (s *keyDataV0Suite) TestNoImport(c *C) {
 
 func (s *keyDataV0Suite) TestValidateOK1(c *C) {
 	data, expectedPcrPolicyCounter := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
-	expectedName, err := expectedPcrPolicyCounter.Name()
-	c.Check(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, IsNil)
-	c.Check(pcrPolicyCounter.Name(), DeepEquals, expectedName)
+	c.Check(pcrPolicyCounter.Name(), DeepEquals, expectedPcrPolicyCounter.Name())
 }
 
 func (s *keyDataV0Suite) TestValidateOK2(c *C) {
 	data, expectedPcrPolicyCounter := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x018ff000))
-	expectedName, err := expectedPcrPolicyCounter.Name()
-	c.Check(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
 	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, session)
 	c.Check(err, IsNil)
-	c.Check(pcrPolicyCounter.Name(), DeepEquals, expectedName)
+	c.Check(pcrPolicyCounter.Name(), DeepEquals, expectedPcrPolicyCounter.Name())
 }
 
 func (s *keyDataV0Suite) TestValidateNoLockIndex(c *C) {

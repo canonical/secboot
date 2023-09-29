@@ -69,8 +69,7 @@ func (s *keyDataV1Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	if pcrPolicyCounterHandle != tpm2.HandleNull {
 		policyCounterPub, policyCount, err = CreatePcrPolicyCounter(s.TPM().TPMContext, pcrPolicyCounterHandle, authKeyPublic, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
-		policyCounterName, err = policyCounterPub.Name()
-		c.Check(err, IsNil)
+		policyCounterName = policyCounterPub.Name()
 	}
 
 	// Create sealed object

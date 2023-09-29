@@ -23,6 +23,7 @@ import (
 	"encoding/binary"
 
 	"github.com/canonical/go-tpm2"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
@@ -57,7 +58,7 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 	}
 
 	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
-	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
+	expectedPcrs = expectedPcrs.MustMerge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
 	var expectedDigests tpm2.DigestList
 	for _, v := range data.values {
 		d, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
@@ -67,7 +68,7 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 	c.Check(AddSnapModelProfile(branch, data.params), IsNil)
 	pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Assert(err, IsNil)
-	c.Check(pcrs.Equal(expectedPcrs), Equals, true)
+	c.Check(pcrs, tpm2_testutil.TPMValueDeepEquals, expectedPcrs)
 	c.Check(digests, DeepEquals, expectedDigests)
 	if c.Failed() {
 		c.Logf("Profile:\n%s", profile)

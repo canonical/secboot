@@ -469,7 +469,7 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	c.Check(pub.AuthPolicy, DeepEquals, tpm2.Digest(testutil.DecodeHexString(c, "f47efcbc358c13854bfda01bfc38ce166b1abf0c8509e6b522cdc2edc69488a3")))
 	c.Check(count, Equals, testCount)
 
-	name, err := pub.Name()
+	name, err := pub.ComputeName()
 	c.Check(err, IsNil)
 
 	index, err := s.TPM().CreateResourceContextFromTPM(handle)
@@ -547,7 +547,7 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	c.Check(pub.AuthPolicy, DeepEquals, tpm2.Digest(testutil.DecodeHexString(c, "f47efcbc358c13854bfda01bfc38ce166b1abf0c8509e6b522cdc2edc69488a3")))
 	c.Check(count, Equals, testCount)
 
-	name, err := pub.Name()
+	name, err := pub.ComputeName()
 	c.Check(err, IsNil)
 
 	index, err := s.TPM().CreateResourceContextFromTPM(handle)

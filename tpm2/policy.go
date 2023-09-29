@@ -129,12 +129,7 @@ type keyDataPolicy interface {
 func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, computeAuthPolicies func(tpm2.HashAlgorithmId, tpm2.Name) tpm2.DigestList, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
-	updateKeyName, err := updateKey.Name()
-	if err != nil {
-		return nil, 0, xerrors.Errorf("cannot compute name of update key: %w", err)
-	}
-
-	authPolicies := computeAuthPolicies(nameAlg, updateKeyName)
+	authPolicies := computeAuthPolicies(nameAlg, updateKey.Name())
 
 	trial := util.ComputeAuthPolicy(nameAlg)
 	trial.PolicyOR(authPolicies)
@@ -250,23 +245,15 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 // This returns some policy metadata and a policy digest which is used as the auth policy field of the
 // protected object.
 var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
-	keyName, err := key.Name()
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
-	}
-
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	var pcrPolicyCounterName tpm2.Name
 	if pcrPolicyCounterPub != nil {
 		pcrPolicyCounterHandle = pcrPolicyCounterPub.Index
-		pcrPolicyCounterName, err = pcrPolicyCounterPub.Name()
-		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
-		}
+		pcrPolicyCounterName = pcrPolicyCounterPub.Name()
 	}
 
 	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(computeV3PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
+	trial.PolicyAuthorize(computeV3PcrPolicyRefFromCounterName(pcrPolicyCounterName), key.Name())
 	trial.PolicyAuthValue()
 
 	return &keyDataPolicy_v3{
@@ -292,23 +279,15 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolic
 // but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
 // assertion, which can be used verify that a NV index is associated with this policy.
 func newKeyDataPolicyLegacy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
-	keyName, err := key.Name()
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
-	}
-
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	var pcrPolicyCounterName tpm2.Name
 	if pcrPolicyCounterPub != nil {
 		pcrPolicyCounterHandle = pcrPolicyCounterPub.Index
-		pcrPolicyCounterName, err = pcrPolicyCounterPub.Name()
-		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
-		}
+		pcrPolicyCounterName = pcrPolicyCounterPub.Name()
 	}
 
 	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
+	trial.PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), key.Name())
 	trial.PolicyAuthValue()
 
 	return &keyDataPolicy_v2{

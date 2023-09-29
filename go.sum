@@ -13,6 +13,12 @@ github.com/canonical/go-tpm2 v0.0.0-20210827151749-f80ff5afff61/go.mod h1:vG41hd
 github.com/canonical/go-tpm2 v0.1.0/go.mod h1:vG41hdbBjV4+/fkubTT1ENBBqSkLwLr7mCeW9Y6kpZY=
 github.com/canonical/go-tpm2 v0.3.1 h1:s6lz1VQcuFsXykNX8rUA4acVFPgQy6r4I7JIOjHJK8o=
 github.com/canonical/go-tpm2 v0.3.1/go.mod h1:zKG2ng7qzxp+siDIa1Scd3h/cXF5Di13Havf5ZwfaVY=
+github.com/canonical/go-tpm2 v1.0.0 h1:g03/robj/c+98Hm2GEkkBnKkkhy0xgFZ7GWE/4HzbwM=
+github.com/canonical/go-tpm2 v1.0.0/go.mod h1:zKG2ng7qzxp+siDIa1Scd3h/cXF5Di13Havf5ZwfaVY=
+github.com/canonical/go-tpm2 v1.0.1 h1:llz9Cha9gWxmM4menwHNb7ngVmGy1QmFyoVznHYS6mQ=
+github.com/canonical/go-tpm2 v1.0.1/go.mod h1:FD6TavnteNqLZv1m3meU0QighLDmfyEq5+ShiN2Ik64=
+github.com/canonical/go-tpm2 v1.0.2 h1:2HNCI/UKghbVaR8Ix1BEcK6G/GzKlkOoBSXNc7R7mLw=
+github.com/canonical/go-tpm2 v1.0.2/go.mod h1:FD6TavnteNqLZv1m3meU0QighLDmfyEq5+ShiN2Ik64=
 github.com/canonical/tcglog-parser v0.0.0-20210824131805-69fa1e9f0ad2/go.mod h1:QoW2apR2tBl6T/4czdND/EHjL1Ia9cCmQnIj9Xe0Kt8=
 github.com/canonical/tcglog-parser v0.0.0-20230429160108-0d6d239de69d h1:TAe+Vi2UduW6+Ie8SPJROhkCEPo15CLY/gZqrA9viwk=
 github.com/canonical/tcglog-parser v0.0.0-20230429160108-0d6d239de69d/go.mod h1:AoJVV7tUwDDGPZkKqwqAMGdPiH7x45JLNmxFrxfoxcs=

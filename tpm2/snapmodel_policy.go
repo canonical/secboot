@@ -235,7 +235,7 @@ func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapMode
 			return xerrors.Errorf("cannot compute digest for algorithm %v: %w", s.Hash, err)
 		}
 
-		digests = append(digests, tpm2.TaggedHash{HashAlg: s.Hash, Digest: digest})
+		digests = append(digests, tpm2.MakeTaggedHash(s.Hash, digest))
 	}
 
 	return tpm.PCRExtend(tpm.PCRHandleContext(pcrIndex), digests, tpm.HmacSession())

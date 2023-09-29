@@ -121,7 +121,7 @@ func (s *compatTestSuiteBase) replayPCRSequenceFromReader(c *C, r io.Reader) {
 		digest, err := hex.DecodeString(components[2])
 		c.Assert(err, IsNil)
 
-		c.Assert(s.TPM().PCRExtend(s.TPM().PCRHandleContext(pcr), tpm2.TaggedHashList{{HashAlg: tpm2.HashAlgorithmId(alg), Digest: digest}}, nil), IsNil)
+		c.Assert(s.TPM().PCRExtend(s.TPM().PCRHandleContext(pcr), tpm2.TaggedHashList{tpm2.MakeTaggedHash(tpm2.HashAlgorithmId(alg), digest)}, nil), IsNil)
 	}
 }
 

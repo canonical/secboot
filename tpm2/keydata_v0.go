@@ -114,14 +114,14 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 		return nil, xerrors.Errorf("cannot read public area of lock NV index: %w", err)
 	}
 	lockNVPub.Attrs &^= tpm2.AttrNVReadLocked
-	lockNVName, err := lockNVPub.Name()
+	lockNVName, err := lockNVPub.ComputeName()
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute name of lock NV index: %w", err)
 	}
 
 	// Validate the type and scheme of the dynamic authorization policy signing key.
 	authPublicKey := d.PolicyData.StaticData.AuthPublicKey
-	authKeyName, err := authPublicKey.Name()
+	authKeyName, err := authPublicKey.ComputeName()
 	if err != nil {
 		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}
@@ -173,7 +173,7 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 		return nil, keyDataError{errors.New("cannot determine if PCR policy counter has a valid authorization policy: algorithm unavailable")}
 	}
 	pcrPolicyCounterAuthPolicies := d.PolicyData.StaticData.PCRPolicyCounterAuthPolicies
-	expectedPCRPolicyCounterAuthPolicies := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authKeyName)
+	expectedPCRPolicyCounterAuthPolicies := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authPublicKey.Name())
 	if len(pcrPolicyCounterAuthPolicies)-1 != len(expectedPCRPolicyCounterAuthPolicies) {
 		return nil, keyDataError{errors.New("unexpected number of OR policy digests for PCR policy counter")}
 	}

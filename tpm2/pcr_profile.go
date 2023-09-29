@@ -623,7 +623,7 @@ func (p *PCRProtectionProfile) fail(msg string) {
 }
 
 func (p *PCRProtectionProfile) addPCRToReadFromTPM(alg tpm2.HashAlgorithmId, pcr int) {
-	p.pcrsToReadFromTPM = p.pcrsToReadFromTPM.Merge(
+	p.pcrsToReadFromTPM = p.pcrsToReadFromTPM.MustMerge(
 		tpm2.PCRSelectionList{{Hash: alg, Select: []int{pcr}}})
 }
 
@@ -687,7 +687,7 @@ func (p *PCRProtectionProfile) AddProfileOR(profiles ...*PCRProtectionProfile) *
 			return p
 		}
 
-		p.pcrsToReadFromTPM = p.pcrsToReadFromTPM.Merge(sub.pcrsToReadFromTPM)
+		p.pcrsToReadFromTPM = p.pcrsToReadFromTPM.MustMerge(sub.pcrsToReadFromTPM)
 		bp.childBranches = append(bp.childBranches, branch)
 	}
 
@@ -1136,7 +1136,7 @@ func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 		if err != nil {
 			return nil, nil, xerrors.Errorf("cannot compute PCR digest from values: %w", err)
 		}
-		if !p.Equal(pcrs) {
+		if !mu.DeepEqual(p, pcrs) {
 			return nil, nil, errors.New("not all branches contain values for the same sets of PCRs")
 		}
 		pcrDigests = append(pcrDigests, digest)

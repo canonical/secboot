@@ -255,11 +255,6 @@ func (c *pcrPolicyCounterContext_v1) Increment(key secboot.AuxiliaryKey) error {
 		return xerrors.Errorf("cannot create auth key: %w", err)
 	}
 
-	updateKeyName, err := c.updateKey.Name()
-	if err != nil {
-		return xerrors.Errorf("cannot compute name of update key: %w", err)
-	}
-
 	// Begin a policy session to increment the index.
 	policySession, err := c.tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, c.index.Name().Algorithm())
 	if err != nil {
@@ -290,7 +285,7 @@ func (c *pcrPolicyCounterContext_v1) Increment(key secboot.AuxiliaryKey) error {
 	if _, _, err := c.tpm.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, signature); err != nil {
 		return err
 	}
-	authPolicies := computeV1PcrPolicyCounterAuthPolicies(c.index.Name().Algorithm(), updateKeyName)
+	authPolicies := computeV1PcrPolicyCounterAuthPolicies(c.index.Name().Algorithm(), c.updateKey.Name())
 	if err := c.tpm.PolicyOR(policySession, authPolicies); err != nil {
 		return err
 	}

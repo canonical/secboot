@@ -100,15 +100,10 @@ func (m *policyV0Mixin) createMockPcrPolicyCounter(c *C, handle tpm2.Handle, aut
 
 func (m *policyV0Mixin) newMockKeyDataPolicy(c *C, alg tpm2.HashAlgorithmId, authKey *tpm2.Public, pcrPolicyCounter *tpm2.NVPublic,
 	pcrPolicySequence uint64, pcrPolicyCounterAuthPolicies tpm2.DigestList) (KeyDataPolicy, tpm2.Digest) {
-	authKeyName, err := authKey.Name()
-	c.Check(err, IsNil)
-
-	pcrPolicyCounterName, err := pcrPolicyCounter.Name()
-	c.Check(err, IsNil)
 
 	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(nil, authKeyName)
-	trial.PolicySecret(pcrPolicyCounterName, nil)
+	trial.PolicyAuthorize(nil, authKey.Name())
+	trial.PolicySecret(pcrPolicyCounter.Name(), nil)
 	trial.PolicyNV(m.lockIndexName, nil, 0, tpm2.OpEq)
 
 	return &KeyDataPolicy_v0{
@@ -332,8 +327,6 @@ func (s *policyV0SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV0UpdatePCRPoli
 		NameAlg: tpm2.HashAlgorithmSHA256,
 		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 		Size:    8}
-	policyCounterName, err := policyCounterPub.Name()
-	c.Check(err, IsNil)
 
 	var policyData KeyDataPolicy = &KeyDataPolicy_v0{
 		StaticData: &StaticPolicyData_v0{
@@ -341,10 +334,10 @@ func (s *policyV0SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV0UpdatePCRPoli
 		PCRData: &PcrPolicyData_v0{
 			PolicySequence: data.initialSeq}}
 
-	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(key), data.pcrs, data.pcrDigests, policyCounterName)
+	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(key), data.pcrs, data.pcrDigests, policyCounterPub.Name())
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
-	c.Check(policyData.(*KeyDataPolicy_v0).PCRData.Selection.Equal(data.pcrs), testutil.IsTrue)
+	c.Check(policyData.(*KeyDataPolicy_v0).PCRData.Selection, tpm2_testutil.TPMValueDeepEquals, data.pcrs)
 
 	orTree, err := policyData.(*KeyDataPolicy_v0).PCRData.OrData.Resolve()
 	c.Assert(err, IsNil)
@@ -475,8 +468,6 @@ func (s *policyV0SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 		NameAlg: tpm2.HashAlgorithmSHA256,
 		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 		Size:    8}
-	policyCounterName, err := policyCounterPub.Name()
-	c.Check(err, IsNil)
 
 	policyData1 := &KeyDataPolicy_v0{
 		StaticData: &StaticPolicyData_v0{
@@ -487,7 +478,7 @@ func (s *policyV0SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(key),
 		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		tpm2.DigestList{hash(crypto.SHA256, "1"), hash(crypto.SHA256, "2")},
-		policyCounterName)
+		policyCounterPub.Name())
 	c.Check(policyData1.UpdatePCRPolicy(tpm2.HashAlgorithmSHA256, params), IsNil)
 
 	var policyData2 KeyDataPolicy = &KeyDataPolicy_v0{
@@ -518,12 +509,8 @@ func (s *policyV0Suite) testExecutePCRPolicy(c *C, data *testV0ExecutePCRPolicyD
 	authKey, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
 	authKeyPublic := util.NewExternalRSAPublicKey(data.authKeyNameAlg, templates.KeyUsageSign, nil, &authKey.PublicKey)
-	authKeyName, err := authKeyPublic.Name()
-	c.Check(err, IsNil)
 
-	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyName)
-	policyCounterName, err := policyCounterPub.Name()
-	c.Check(err, IsNil)
+	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyPublic.Name())
 
 	policyData, expectedDigest := s.newMockKeyDataPolicy(c, data.alg, authKeyPublic, policyCounterPub, policyCount, policyCounterPolicies)
 
@@ -533,7 +520,7 @@ func (s *policyV0Suite) testExecutePCRPolicy(c *C, data *testV0ExecutePCRPolicyD
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(authKey), data.pcrs, digests, policyCounterName)
+	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(authKey), data.pcrs, digests, policyCounterPub.Name())
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -831,12 +818,8 @@ func (s *policyV0Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV0Exec
 	authKey, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
 	authKeyPublic := util.NewExternalRSAPublicKey(data.authKeyNameAlg, templates.KeyUsageSign, nil, &authKey.PublicKey)
-	authKeyName, err := authKeyPublic.Name()
-	c.Check(err, IsNil)
 
-	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyName)
-	policyCounterName, err := policyCounterPub.Name()
-	c.Check(err, IsNil)
+	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyPublic.Name())
 
 	policyData, expectedDigest := s.newMockKeyDataPolicy(c, data.alg, authKeyPublic, policyCounterPub, policyCount, policyCounterPolicies)
 
@@ -846,7 +829,7 @@ func (s *policyV0Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV0Exec
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(authKey), data.pcrs, digests, policyCounterName)
+	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(authKey), data.pcrs, digests, policyCounterPub.Name())
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -1586,10 +1569,8 @@ func (s *policyV0Suite) TestPolicyCounterContextGet(c *C) {
 	authKey, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
 	authKeyPublic := util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
-	authKeyName, err := authKeyPublic.Name()
-	c.Check(err, IsNil)
 
-	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, 0x01800000), authKeyName)
+	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, 0x01800000), authKeyPublic.Name())
 
 	data := &KeyDataPolicy_v0{
 		StaticData: &StaticPolicyData_v0{
@@ -1609,10 +1590,8 @@ func (s *policyV0Suite) TestPolicyCounterContextIncrement(c *C) {
 	authKey, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
 	authKeyPublic := util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
-	authKeyName, err := authKeyPublic.Name()
-	c.Check(err, IsNil)
 
-	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, 0x01800000), authKeyName)
+	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, 0x01800000), authKeyPublic.Name())
 
 	data := &KeyDataPolicy_v0{
 		StaticData: &StaticPolicyData_v0{

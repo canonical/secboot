@@ -24,6 +24,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
@@ -56,7 +57,7 @@ func (s *pcrProfileSuite) testPCRProtectionProfile(c *C, data *testPCRProtection
 
 	pcrs, pcrDigests, err := data.profile.ComputePCRDigests(nil, data.alg)
 	c.Assert(err, IsNil)
-	c.Check(pcrs.Equal(expectedPcrs), testutil.IsTrue)
+	c.Check(pcrs, tpm2_testutil.TPMValueDeepEquals, expectedPcrs)
 	c.Check(pcrDigests, DeepEquals, expectedDigests)
 
 	if c.Failed() {
@@ -1082,7 +1083,7 @@ func (s *pcrProfileTPMSuite) TestAddValueFromTPM(c *C) {
 	p := NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 23)
 	pcrs, digests, err := p.ComputePCRDigests(s.TPM().TPMContext, tpm2.HashAlgorithmSHA256)
 	c.Check(err, IsNil)
-	c.Check(pcrs.Equal(tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}}), testutil.IsTrue)
+	c.Check(pcrs, tpm2_testutil.TPMValueDeepEquals, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}})
 	c.Check(digests, HasLen, 1)
 
 	expectedDigest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}}, values)
@@ -1105,10 +1106,10 @@ func (s *pcrProfileTPMSuite) TestAddValueFromTPMAddProfileORPropagatesSelection(
 
 	pcrs, digests, err := p.ComputePCRDigests(s.TPM().TPMContext, tpm2.HashAlgorithmSHA256)
 	c.Check(err, IsNil)
-	c.Check(pcrs.Equal(tpm2.PCRSelectionList{
+	c.Check(pcrs, tpm2_testutil.TPMValueDeepEquals, tpm2.PCRSelectionList{
 		{Hash: tpm2.HashAlgorithmSHA1, Select: []int{23}},
 		{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}},
-	}), testutil.IsTrue)
+	})
 	c.Check(digests, HasLen, 1)
 
 	expectedDigest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{
