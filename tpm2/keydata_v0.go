@@ -173,7 +173,7 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 		return nil, keyDataError{errors.New("cannot determine if PCR policy counter has a valid authorization policy: algorithm unavailable")}
 	}
 	pcrPolicyCounterAuthPolicies := d.PolicyData.StaticData.PCRPolicyCounterAuthPolicies
-	expectedPCRPolicyCounterAuthPolicies := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authPublicKey.Name())
+	expectedPCRPolicyCounterAuthPolicies := computeV0PinNVIndexPostInitAuthPolicies(pcrPolicyCounterPub.NameAlg, authKeyName)
 	if len(pcrPolicyCounterAuthPolicies)-1 != len(expectedPCRPolicyCounterAuthPolicies) {
 		return nil, keyDataError{errors.New("unexpected number of OR policy digests for PCR policy counter")}
 	}

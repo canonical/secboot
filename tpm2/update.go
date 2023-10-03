@@ -47,6 +47,8 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, 
 	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, session tpm2.SessionContext) error {
 	var counterName tpm2.Name
 	if counterPub != nil {
+		// Callers obtain a valid counterPub from sealedKeyDataBase.validateData, so
+		// we know that this succeeds. If it failed, we would sign an invalid policy.
 		counterName = counterPub.Name()
 	}
 

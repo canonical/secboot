@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/xerrors"
@@ -46,6 +47,13 @@ func computeV1PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 	// a policy assertion without knowing the authorization value (reading the value of this counter does require the
 	// authorization value, but it is always empty and this policy doesn't allow it to be changed).
 	var authPolicies tpm2.DigestList
+
+	if !updateKeyName.IsValid() {
+		// avoid a panic if updateKeyName is invalid. Note that this will
+		// produce invalid policies - callers should take steps to ensure that
+		// updateKeyName is valid.
+		updateKeyName = tpm2.Name(mu.MustMarshalToBytes(tpm2.HandleUnassigned))
+	}
 
 	trial := util.ComputeAuthPolicy(alg)
 	trial.PolicyNvWritten(false)
