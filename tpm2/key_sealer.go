@@ -96,7 +96,7 @@ func (s *importableObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2
 	pub.AuthPolicy = policy
 
 	// Now create the importable sealed key object (duplication object).
-	_, priv, importSymSeed, err := util.CreateDuplicationObjectFromSensitive(sensitive, pub, s.tpmKey, nil, nil)
+	_, priv, importSymSeed, err := util.CreateDuplicationObject(sensitive, pub, s.tpmKey, nil, nil)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create duplication object: %w", err)
 	}

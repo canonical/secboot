@@ -164,7 +164,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 	pub.Unique = &tpm2.PublicIDU{KeyedHash: h.Sum(nil)}
 
 	// Now create the importable sealed key object (duplication object).
-	_, priv, importSymSeed, err := util.CreateDuplicationObjectFromSensitive(&sensitive, pub, tpmKey, nil, nil)
+	_, priv, importSymSeed, err := util.CreateDuplicationObject(&sensitive, pub, tpmKey, nil, nil)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create duplication object: %w", err)
 	}

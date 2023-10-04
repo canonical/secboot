@@ -24,6 +24,7 @@ import (
 	"runtime"
 
 	"github.com/canonical/go-tpm2"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
@@ -64,7 +65,7 @@ func (s *securebootPolicySuite) testAddSecureBootPolicyProfile(c *C, data *testA
 		profile = secboot_tpm2.NewPCRProtectionProfile()
 	}
 	expectedPcrs, _, _ := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
-	expectedPcrs = expectedPcrs.Merge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{7}}})
+	expectedPcrs = expectedPcrs.MustMerge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{7}}})
 	var expectedDigests tpm2.DigestList
 	for _, v := range data.values {
 		d, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
@@ -79,7 +80,7 @@ func (s *securebootPolicySuite) testAddSecureBootPolicyProfile(c *C, data *testA
 
 		pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 		c.Check(err, IsNil)
-		c.Check(pcrs.Equal(expectedPcrs), Equals, true)
+		c.Check(pcrs, tpm2_testutil.TPMValueDeepEquals, expectedPcrs)
 		c.Check(digests, DeepEquals, expectedDigests)
 		if c.Failed() {
 			c.Logf("Profile:\n%s", profile)

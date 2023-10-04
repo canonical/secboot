@@ -167,24 +167,15 @@ func verifyEk(cert *x509.Certificate, ek tpm2.ResourceContext) error {
 	}
 	ekPublic.Unique.RSA = pubKey.N.Bytes()
 
-	expectedEkName, err := ekPublic.Name()
-	if err != nil {
-		panic(fmt.Sprintf("cannot compute expected name of EK object: %v", err))
-	}
-
 	// Verify that the public area associated with context corresponds to the object that the endorsement certificate was issued for.
 	// We do this by comparing the name read back from the TPM with the one we computed from the EK template with the certificate's
 	// public key inserted in to it (remember that go-tpm2 has already verified that the name that was read back is consistent with the
 	// public area).
-	if !bytes.Equal(ek.Name(), expectedEkName) {
+	if !bytes.Equal(ek.Name(), ekPublic.Name()) {
 		// An exponent of 0 in the public area corresponds to the default (65537) exponent, but some TPM's don't return 0 in the
 		// public area (my Nuvoton TPM, for example). If the initial name comparison with exponent == 0 failed, try exponent == 65537.
 		ekPublic.Params.RSADetail.Exponent = uint32(pubKey.E)
-		expectedEkName, err := ekPublic.Name()
-		if err != nil {
-			panic(fmt.Sprintf("cannot compute expected name of EK object: %v", err))
-		}
-		if !bytes.Equal(ek.Name(), expectedEkName) {
+		if !bytes.Equal(ek.Name(), ekPublic.Name()) {
 			return errors.New("public area doesn't match certificate")
 		}
 	}

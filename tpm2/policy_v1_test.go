@@ -27,6 +27,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/templates"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
@@ -99,8 +100,7 @@ func (s *policyV1SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV1UpdatePCRPoli
 			NameAlg: tpm2.HashAlgorithmSHA256,
 			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 			Size:    8}
-		policyCounterName, err = policyCounterPub.Name()
-		c.Check(err, IsNil)
+		policyCounterName = policyCounterPub.Name()
 	}
 
 	var policyData KeyDataPolicy = &KeyDataPolicy_v1{
@@ -112,7 +112,7 @@ func (s *policyV1SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV1UpdatePCRPoli
 	params := NewPcrPolicyParams(key.D.Bytes(), data.pcrs, data.pcrDigests, policyCounterName)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
-	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.Selection.Equal(data.pcrs), testutil.IsTrue)
+	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.Selection, tpm2_testutil.TPMValueDeepEquals, data.pcrs)
 
 	orTree, err := policyData.(*KeyDataPolicy_v1).PCRData.OrData.Resolve()
 	c.Assert(err, IsNil)
@@ -257,8 +257,6 @@ func (s *policyV1SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 		NameAlg: tpm2.HashAlgorithmSHA256,
 		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 		Size:    8}
-	policyCounterName, err := policyCounterPub.Name()
-	c.Check(err, IsNil)
 
 	policyData1 := &KeyDataPolicy_v1{
 		StaticData: &StaticPolicyData_v1{
@@ -269,7 +267,7 @@ func (s *policyV1SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 	params := NewPcrPolicyParams(key.D.Bytes(),
 		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		tpm2.DigestList{hash(crypto.SHA256, "1"), hash(crypto.SHA256, "2")},
-		policyCounterName)
+		policyCounterPub.Name())
 	c.Check(policyData1.UpdatePCRPolicy(tpm2.HashAlgorithmSHA256, params), IsNil)
 
 	var policyData2 KeyDataPolicy = &KeyDataPolicy_v1{
@@ -302,8 +300,7 @@ func (s *policyV1Suite) testExecutePCRPolicy(c *C, data *testV1ExecutePCRPolicyD
 	if data.policyCounterHandle != tpm2.HandleNull {
 		policyCounterPub, policyCount, err = CreatePcrPolicyCounter(s.TPM().TPMContext, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyPublic, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
-		policyCounterName, err = policyCounterPub.Name()
-		c.Check(err, IsNil)
+		policyCounterName = policyCounterPub.Name()
 	}
 
 	policyData, expectedDigest, err := NewKeyDataPolicyLegacy(data.alg, authKeyPublic, policyCounterPub, policyCount)
@@ -656,8 +653,7 @@ func (s *policyV1Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV1Exec
 	if data.policyCounterHandle != tpm2.HandleNull {
 		policyCounterPub, policyCount, err = CreatePcrPolicyCounter(s.TPM().TPMContext, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyPublic, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
-		policyCounterName, err = policyCounterPub.Name()
-		c.Check(err, IsNil)
+		policyCounterName = policyCounterPub.Name()
 	}
 
 	policyData, expectedDigest, err := NewKeyDataPolicyLegacy(data.alg, authKeyPublic, policyCounterPub, policyCount)

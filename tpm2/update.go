@@ -47,11 +47,9 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, 
 	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, session tpm2.SessionContext) error {
 	var counterName tpm2.Name
 	if counterPub != nil {
-		var err error
-		counterName, err = counterPub.Name()
-		if err != nil {
-			return xerrors.Errorf("cannot compute name of policy counter: %w", err)
-		}
+		// Callers obtain a valid counterPub from sealedKeyDataBase.validateData, so
+		// we know that this succeeds. If it failed, we would sign an invalid policy.
+		counterName = counterPub.Name()
 	}
 
 	var supportedPcrs tpm2.PCRSelectionList

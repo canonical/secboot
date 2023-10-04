@@ -129,12 +129,7 @@ type keyDataPolicy interface {
 func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, computeAuthPolicies func(tpm2.HashAlgorithmId, tpm2.Name) tpm2.DigestList, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
-	updateKeyName, err := updateKey.Name()
-	if err != nil {
-		return nil, 0, xerrors.Errorf("cannot compute name of update key: %w", err)
-	}
-
-	authPolicies := computeAuthPolicies(nameAlg, updateKeyName)
+	authPolicies := computeAuthPolicies(nameAlg, updateKey.Name())
 
 	trial := util.ComputeAuthPolicy(nameAlg)
 	trial.PolicyOR(authPolicies)
@@ -200,7 +195,8 @@ func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, update
 // and is used for implementing PCR policy revocation.
 //
 // The NV index will be created with attributes that allow anyone to read the index, and an authorization
-// policy that permits TPM2_NV_Increment with a signed authorization policy.
+// policy that permits TPM2_NV_Increment with a signed authorization policy. The caller must ensure that the
+// updateKey argument is a valid public key.
 var createPcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
 	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV3PcrPolicyCounterAuthPolicies, hmacSession)
 }
@@ -209,7 +205,8 @@ var createPcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 // and is used for implementing PCR policy revocation.
 //
 // The NV index will be created with attributes that allow anyone to read the index, and an authorization
-// policy that permits TPM2_NV_Increment with a signed authorization policy.
+// policy that permits TPM2_NV_Increment with a signed authorization policy. The caller must ensure that the
+// updateKey argument is a valid public key.
 func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
 	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV2PcrPolicyCounterAuthPolicies, hmacSession)
 }
@@ -243,30 +240,23 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 //
 // PCR policies support revocation by way of a NV counter. The revocation check is part of the PCR policy,
 // but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
-// assertion, which can be used verify that a NV index is associated with this policy.
+// assertion, which can be used verify that a NV index is associated with this policy. The caller must ensure
+// that the pcrPolicyCounterPub argument is valid if supplied.
 //
 // The key argument must be created with newPolicyAuthPublicKey.
 //
 // This returns some policy metadata and a policy digest which is used as the auth policy field of the
 // protected object.
 var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
-	keyName, err := key.Name()
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
-	}
-
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	var pcrPolicyCounterName tpm2.Name
 	if pcrPolicyCounterPub != nil {
 		pcrPolicyCounterHandle = pcrPolicyCounterPub.Index
-		pcrPolicyCounterName, err = pcrPolicyCounterPub.Name()
-		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
-		}
+		pcrPolicyCounterName = pcrPolicyCounterPub.Name()
 	}
 
 	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(computeV3PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
+	trial.PolicyAuthorize(computeV3PcrPolicyRefFromCounterName(pcrPolicyCounterName), key.Name())
 	trial.PolicyAuthValue()
 
 	return &keyDataPolicy_v3{
@@ -290,25 +280,18 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolic
 //
 // PCR policies support revocation by way of a NV counter. The revocation check is part of the PCR policy,
 // but the counter is bound to the static policy by including it in the policyRef for the PolicyAuthorize
-// assertion, which can be used verify that a NV index is associated with this policy.
+// assertion, which can be used verify that a NV index is associated with this policy. The caller must ensure
+// that the pcrPolicyCounterPub argument is valid if supplied.
 func newKeyDataPolicyLegacy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
-	keyName, err := key.Name()
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute name of signing key for dynamic policy authorization: %w", err)
-	}
-
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	var pcrPolicyCounterName tpm2.Name
 	if pcrPolicyCounterPub != nil {
 		pcrPolicyCounterHandle = pcrPolicyCounterPub.Index
-		pcrPolicyCounterName, err = pcrPolicyCounterPub.Name()
-		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot compute name of PCR policy counter: %w", err)
-		}
+		pcrPolicyCounterName = pcrPolicyCounterPub.Name()
 	}
 
 	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), keyName)
+	trial.PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), key.Name())
 	trial.PolicyAuthValue()
 
 	return &keyDataPolicy_v2{

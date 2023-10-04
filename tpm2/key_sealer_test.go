@@ -179,7 +179,7 @@ func (s *importableObjectKeySealerSuite) testCreateSealedObject(c *C, data *test
 			KeyedHashDetail: &tpm2.KeyedHashParams{
 				Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}})
 
-	sensitive, err := util.UnwrapDuplicationObjectToSensitive(priv, pub, key, srk.NameAlg, &srk.Params.RSADetail.Symmetric, nil, importSymSeed, nil)
+	sensitive, err := util.UnwrapDuplicationObject(priv, pub, key, srk.NameAlg, &srk.Params.RSADetail.Symmetric, importSymSeed, nil, nil)
 	c.Assert(err, IsNil)
 
 	c.Check(sensitive.Type, Equals, tpm2.ObjectTypeKeyedHash)

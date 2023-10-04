@@ -70,7 +70,7 @@ func (_ *keyData_v1) Imported(_ tpm2.Private) {
 func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	// Validate the type and scheme of the dynamic authorization policy signing key.
 	authPublicKey := d.PolicyData.StaticData.AuthPublicKey
-	authKeyName, err := authPublicKey.Name()
+	authKeyName, err := authPublicKey.ComputeName()
 	if err != nil {
 		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}

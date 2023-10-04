@@ -28,6 +28,7 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/go-tpm2/util"
 	"github.com/canonical/tcglog-parser"
 	. "gopkg.in/check.v1"
@@ -629,7 +630,7 @@ func (s *pcrProfileSuite) testAddPCRProfile(c *C, data *testAddPCRProfileData, o
 		if i == 0 {
 			expectedPcrs = pcrs
 		} else {
-			c.Assert(pcrs.Equal(expectedPcrs), testutil.IsTrue)
+			c.Assert(pcrs, tpm2_testutil.TPMValueDeepEquals, expectedPcrs)
 		}
 		expectedDigests = append(expectedDigests, digest)
 	}
@@ -641,7 +642,7 @@ func (s *pcrProfileSuite) testAddPCRProfile(c *C, data *testAddPCRProfileData, o
 
 	pcrs, digests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Assert(err, IsNil)
-	c.Check(pcrs.Equal(expectedPcrs), testutil.IsTrue)
+	c.Check(pcrs, tpm2_testutil.TPMValueDeepEquals, expectedPcrs)
 	c.Check(digests, DeepEquals, expectedDigests)
 	if c.Failed() {
 		c.Logf("Profile:\n%s", profile)
