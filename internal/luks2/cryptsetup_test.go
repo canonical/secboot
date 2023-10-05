@@ -410,6 +410,24 @@ func (s *cryptsetupSuite) TestFormatWithInvalidKeyslotsAreaSize(c *C) {
 	c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KeyslotsAreaKiBSize: 41}), ErrorMatches, "cannot set keyslots area size to 41 KiB")
 }
 
+func (s *cryptsetupSuite) TestFormatWithInlineCryptoEngine(c *C) {
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", "echo cryptsetup 2.6.1")
+	defer mockCryptsetup.Restore()
+
+	key := make([]byte, 32)
+	rand.Read(key)
+	options := &FormatOptions{
+		KDFOptions: KDFOptions{
+			MemoryKiB: 32 * 1024, ForceIterations: 4},
+		KeyslotsAreaKiBSize: 2 * 1024,
+		InlineCryptoEngine:  true}
+	err := Format("some-path", "test", key, options)
+	c.Assert(err, IsNil)
+	// feature detection
+	c.Assert(mockCryptsetup.Calls(), HasLen, 3)
+	c.Check(mockCryptsetup.Calls()[2], snapd_testutil.Contains, "--inline-crypto-engine")
+}
+
 type testAddKeyData struct {
 	key     []byte
 	options *AddKeyOptions
