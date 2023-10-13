@@ -19,6 +19,8 @@
 
 package secboot
 
+import "crypto"
+
 // PlatformHandlerErrorType indicates the type of error that
 // PlatformHandlerError is associated with.
 type PlatformHandlerErrorType int
@@ -64,8 +66,11 @@ func (e *PlatformHandlerError) Unwrap() error {
 // PlatformKeyData represents the data exchanged between this package and
 // platform implementations via the PlatformKeyDataHandler.
 type PlatformKeyData struct {
-	EncodedHandle    []byte // The JSON encoded platform handle
-	EncryptedPayload []byte // The encrypted payload
+	Version       int
+	EncodedHandle []byte // The JSON encoded platform handle
+	KDFAlg        crypto.Hash
+
+	AuthMode AuthMode
 }
 
 // PlatormKeyDataHandler is the interface that this go package uses to
@@ -73,7 +78,7 @@ type PlatformKeyData struct {
 type PlatformKeyDataHandler interface {
 	// RecoverKeys attempts to recover the cleartext keys from the supplied key
 	// data using this platform's secure device.
-	RecoverKeys(data *PlatformKeyData) (KeyPayload, error)
+	RecoverKeys(data *PlatformKeyData, encryptedPayload []byte) ([]byte, error)
 
 	// RecoverKeysWithAuthKey attempts to recover the cleartext keys from the
 	// supplied data using this platform's secure device. The key parameter
@@ -84,7 +89,7 @@ type PlatformKeyDataHandler interface {
 	// other devices, the integration should provide a way of validating the key in
 	// a way that requires the use of the secure device (eg, such as computing a HMAC of
 	// it using a hardware backed key).
-	RecoverKeysWithAuthKey(data *PlatformKeyData, key []byte) (KeyPayload, error)
+	RecoverKeysWithAuthKey(data *PlatformKeyData, encryptedPayload, key []byte) ([]byte, error)
 
 	// ChangeAuthKey is called to notify the platform implementation that the
 	// passphrase is being changed. The old and new parameters are passphrase derived
@@ -92,7 +97,7 @@ type PlatformKeyDataHandler interface {
 	// where old will be nil) or disabled (where new will be nil).
 	//
 	// On success, it should return an updated handle.
-	ChangeAuthKey(handle, old, new []byte) ([]byte, error)
+	ChangeAuthKey(data *PlatformKeyData, old, new []byte) ([]byte, error)
 }
 
 var handlers = make(map[string]PlatformKeyDataHandler)
