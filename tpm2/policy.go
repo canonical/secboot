@@ -44,7 +44,8 @@ const (
 
 // pcrPolicyParams provides the parameters to keyDataPolicy.updatePcrPolicy.
 type pcrPolicyParams struct {
-	key secboot.PrimaryKey // Key used to authorize the generated dynamic authorization policy
+	key  secboot.PrimaryKey // Key used to authorize the generated dynamic authorization policy
+	role []byte
 
 	pcrs       tpm2.PCRSelectionList // PCR selection
 	pcrDigests tpm2.DigestList       // Approved PCR digests
