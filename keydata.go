@@ -42,8 +42,11 @@ import (
 )
 
 const (
+	KeyDataVersion int = 2
+
 	kdfType                            = "argon2i"
 	nilHash                    hashAlg = 0
+	passphraseKeyLen                   = 32
 	passphraseEncryptionKeyLen         = 32
 	passphraseEncryption               = "aes-cfb"
 )
@@ -115,49 +118,12 @@ type DiskUnlockKey []byte
 // object without having to create a new object.
 type PrimaryKey []byte
 
-// KeyPayload is the payload that should be encrypted by a platform's secure device.
-type KeyPayload []byte
-
-// Unmarshal obtains the keys from this payload.
-func (c KeyPayload) Unmarshal() (key DiskUnlockKey, auxKey PrimaryKey, err error) {
-	r := bytes.NewReader(c)
-
-	var sz uint16
-	if err := binary.Read(r, binary.BigEndian, &sz); err != nil {
-		return nil, nil, err
-	}
-
-	if sz > 0 {
-		key = make(DiskUnlockKey, sz)
-		if _, err := r.Read(key); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	if err := binary.Read(r, binary.BigEndian, &sz); err != nil {
-		return nil, nil, err
-	}
-
-	if sz > 0 {
-		auxKey = make(PrimaryKey, sz)
-		if _, err := r.Read(auxKey); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	if r.Len() > 0 {
-		return nil, nil, fmt.Errorf("%v excess byte(s)", r.Len())
-	}
-
-	return
-}
-
-// AuthMode corresponds to a set of authentication mechanisms.
-type AuthMode uint32
+// AuthMode corresponds to an authentication mechanism.
+type AuthMode uint8
 
 const (
-	AuthModeNone       AuthMode = 0
-	AuthModePassphrase AuthMode = 1 << iota
+	AuthModeNone AuthMode = iota
+	AuthModePassphrase
 )
 
 // KeyParams provides parameters required to create a new KeyData object.
@@ -171,8 +137,9 @@ type KeyParams struct {
 	// already encoded to JSON can be supplied using the json.RawMessage type.
 	Handle interface{}
 
-	EncryptedPayload []byte // The encrypted payload
-	PlatformName     string // Name of the platform that produced this data
+	// EncryptedPayload contains the encrypted and authenticated payload. The
+	// plaintext payload should be created with [MakeDiskUnlockKey].
+	EncryptedPayload []byte
 
 	// PrimaryKey is a key used to authorize changes to the key data.
 	// It must match the key protected inside PlatformKeyData.EncryptedPayload.
@@ -182,6 +149,27 @@ type KeyParams struct {
 	// device models, and also the digest algorithm used to produce the
 	// key digest.
 	SnapModelAuthHash crypto.Hash
+	PlatformName      string // Name of the platform that produced this data
+
+	// KDFAlg is the digest algorithm used to derive additional keys during
+	// the use of the created KeyData. It must match the algorithm passed to
+	// [MakeDiskUnlockKey]. The zero value here has a special meaning which
+	// is reserved to support legacy TPM2 key data files, and tells the
+	// KeyData to use the unique key as the unlock key rather than using it
+	// to derive the unlock key.
+	KDFAlg crypto.Hash
+}
+
+// KeyWithPassphraseParams provides parameters required to create a new KeyData
+// object with a passphrase enabled. It should be produced by a platform
+// implementation.
+type KeyWithPassphraseParams struct {
+	KeyParams
+	KDFOptions *KDFOptions // The passphrase KDF options
+
+	// AuthKeySize is the size of key to derive from the passphrase for
+	// use by the platform implementation.
+	AuthKeySize int
 }
 
 // KeyID is the unique ID for a KeyData object. It is used to facilitate the
@@ -413,23 +401,21 @@ type kdfData struct {
 	CPUs   int    `json:"cpus"`
 }
 
-// passphraseData is the data associated with a passphrase protected
-// key.
-type passphraseData struct {
+// passphraseParams contains parameters for passphrase authentication.
+type passphraseParams struct {
 	// KDF contains the key derivation parameters used to derive
-	// an encryption key from an input passphrase.
+	// an intermediate key from an input passphrase.
 	KDF kdfData `json:"kdf"`
 
-	Encryption string `json:"encryption"` // Encryption algorithm - currently only aes-cfb
-	KeySize    int    `json:"key_size"`   // Size of encryption key to derive from passphrase
-
-	// EncryptedPayload is the platform protected payload additionally
-	// protected by a passphrase derived key using the parameters
-	// of this structure.
-	EncryptedPayload []byte `json:"encrypted_payload"`
+	Encryption        string `json:"encryption"`          // Encryption algorithm - currently only aes-cfb
+	DerivedKeySize    int    `json:"derived_key_size"`    // Size of key to derive from passphrase using the parameters of the KDF field.
+	EncryptionKeySize int    `json:"encryption_key_size"` // Size of encryption key to derive from passphrase derived key
+	AuthKeySize       int    `json:"auth_key_size"`       // Size of auth key to derive from passphrase derived key
 }
 
 type keyData struct {
+	Version int `json:"version"`
+
 	PlatformName string `json:"platform_name"` // used to identify a PlatformKeyDataHandler
 
 	// PlatformHandle is an opaque blob of data used by the associated
@@ -437,10 +423,12 @@ type keyData struct {
 	// the encrypted payloads.
 	PlatformHandle json.RawMessage `json:"platform_handle"`
 
+	KDFAlg hashAlg `json:"kdf_alg,omitempty"`
+
 	// EncryptedPayload is the platform protected key payload.
 	EncryptedPayload []byte `json:"encrypted_payload"`
 
-	PassphraseParams *passphraseData `json:"passphrase_params,omitempty"`
+	PassphraseParams *passphraseParams `json:"passphrase_params,omitempty"`
 
 	// AuthorizedSnapModels contains information about the Snap models
 	// that have been authorized to access the data protected by this key.
@@ -517,110 +505,177 @@ func (d *KeyData) snapModelAuthKey(auxKey PrimaryKey) ([]byte, error) {
 	return hmacKey, nil
 }
 
-func (d *KeyData) updatePassphrase(payload, oldKey []byte, passphrase string, kdfOptions *KDFOptions, kdf KDF) error {
+func (d *KeyData) derivePassphraseKeys(passphrase string, kdf KDF) (key, iv, auth []byte, err error) {
+	if d.data.PassphraseParams == nil {
+		return nil, nil, nil, errors.New("no passphrase params")
+	}
+
+	params := d.data.PassphraseParams
+	if params.KDF.Type != kdfType {
+		// Only Argon2i is supported
+		return nil, nil, nil, fmt.Errorf("unexpected intermediate KDF type \"%s\"", params.KDF.Type)
+	}
+	if params.DerivedKeySize < 0 {
+		return nil, nil, nil, fmt.Errorf("invalid derived key size (%d bytes)", params.DerivedKeySize)
+	}
+	if params.EncryptionKeySize < 0 || params.EncryptionKeySize > 32 {
+		// The key size can't be larger than 32 with the supported cipher
+		return nil, nil, nil, fmt.Errorf("invalid encryption key size (%d bytes)", params.EncryptionKeySize)
+	}
+	if params.AuthKeySize < 0 {
+		return nil, nil, nil, fmt.Errorf("invalid auth key size (%d bytes)", params.AuthKeySize)
+	}
+
+	kdfAlg := d.data.KDFAlg
+	if !kdfAlg.Available() {
+		return nil, nil, nil, fmt.Errorf("unavailable leaf KDF digest algorithm %v", kdfAlg)
+	}
+
+	// Include derivation parameters in the Argon2 salt in order to protect them
+	builder := cryptobyte.NewBuilder(nil)
+	builder.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // SEQUENCE {
+		b.AddASN1OctetString(params.KDF.Salt)                               // salt OCTET STRING
+		kdfAlg.marshalASN1(b)                                               // kdfAlgorithm AlgorithmIdentifier
+		b.AddASN1(cryptobyte_asn1.UTF8String, func(b *cryptobyte.Builder) { // encryption UTF8String
+			b.AddBytes([]byte(params.Encryption))
+		})
+		b.AddASN1Int64(int64(params.EncryptionKeySize)) // encryptionKeySize INTEGER
+		b.AddASN1Int64(int64(params.AuthKeySize))       // authKeySize INTEGER
+	})
+	salt, err := builder.Bytes()
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot serialize salt: %w", err)
+	}
+
+	costParams := &KDFCostParams{
+		Time:      uint32(params.KDF.Time),
+		MemoryKiB: uint32(params.KDF.Memory),
+		Threads:   uint8(params.KDF.CPUs)}
+	derived, err := kdf.Derive(passphrase, salt, costParams, uint32(params.DerivedKeySize))
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot derive key from passphrase: %w", err)
+	}
+	if len(derived) != params.DerivedKeySize {
+		return nil, nil, nil, errors.New("KDF returned unexpected key length")
+	}
+
+	key = make([]byte, params.EncryptionKeySize)
+	r := hkdf.Expand(func() hash.Hash { return kdfAlg.New() }, derived, []byte("PASSPHRASE-ENC"))
+	if _, err := io.ReadFull(r, key); err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot derive encryption key: %w", err)
+	}
+
+	iv = make([]byte, aes.BlockSize)
+	r = hkdf.Expand(func() hash.Hash { return kdfAlg.New() }, derived, []byte("PASSPHRASE-IV"))
+	if _, err := io.ReadFull(r, iv); err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot derive IV: %w", err)
+	}
+
+	auth = make([]byte, params.AuthKeySize)
+	r = hkdf.Expand(func() hash.Hash { return kdfAlg.New() }, derived, []byte("PASSPHRASE-AUTH"))
+	if _, err := io.ReadFull(r, auth); err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot derive auth key: %w", err)
+	}
+
+	return key, iv, auth, nil
+}
+
+func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string, kdf KDF) error {
 	handler := handlers[d.data.PlatformName]
 	if handler == nil {
 		return ErrNoPlatformHandlerRegistered
 	}
 
-	if kdfOptions == nil {
-		var defaultOptions KDFOptions
-		kdfOptions = &defaultOptions
-	}
-
-	// Derive both a key and an IV from the passphrase in a single pass.
-	keyLen := passphraseEncryptionKeyLen + aes.BlockSize
-
-	params, err := kdfOptions.deriveCostParams(keyLen, kdf)
-	if err != nil {
-		return xerrors.Errorf("cannot derive KDF cost parameters: %w", err)
-	}
-
-	var salt [16]byte
-	if _, err := rand.Read(salt[:]); err != nil {
-		return xerrors.Errorf("cannot read salt for new passphrase: %w", err)
-	}
-
-	key, err := kdf.Derive(passphrase, salt[:], params, uint32(keyLen))
-	if err != nil {
-		return xerrors.Errorf("cannot derive key for new passphrase: %w", err)
-	}
-	if len(key) != keyLen {
-		return errors.New("KDF returned unexpected key length")
-	}
-
-	handle, err := handler.ChangeAuthKey(d.data.PlatformHandle, oldKey, key)
+	key, iv, authKey, err := d.derivePassphraseKeys(passphrase, kdf)
 	if err != nil {
 		return err
 	}
 
-	c, err := aes.NewCipher(key[:passphraseEncryptionKeyLen])
+	if d.data.PassphraseParams.Encryption != passphraseEncryption {
+		// Only AES-CFB is supported
+		return fmt.Errorf("unexpected encryption algorithm \"%s\"", d.data.PassphraseParams.Encryption)
+	}
+
+	handle, err := handler.ChangeAuthKey(d.platformKeyData(), oldAuthKey, authKey)
+	if err != nil {
+		return err
+	}
+
+	c, err := aes.NewCipher(key)
 	if err != nil {
 		return xerrors.Errorf("cannot create cipher: %w", err)
 	}
 
 	d.data.PlatformHandle = handle
-	d.data.PassphraseProtectedPayload = &passphraseData{
-		KDF: kdfData{
-			Type:   kdfType,
-			Salt:   salt[:],
-			Time:   int(params.Time),
-			Memory: int(params.MemoryKiB),
-			CPUs:   int(params.Threads)},
-		Encryption:       passphraseEncryption,
-		KeySize:          passphraseEncryptionKeyLen,
-		EncryptedPayload: make([]byte, len(payload))}
-
-	stream := cipher.NewCFBEncrypter(c, key[passphraseEncryptionKeyLen:])
-	stream.XORKeyStream(d.data.PassphraseProtectedPayload.EncryptedPayload, payload)
+	d.data.EncryptedPayload = make([]byte, len(payload))
+	stream := cipher.NewCFBEncrypter(c, iv)
+	stream.XORKeyStream(d.data.EncryptedPayload, payload)
 
 	return nil
 }
 
-func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte, key []byte, err error) {
-	if d.AuthMode()&AuthModePassphrase == 0 {
-		return nil, nil, errors.New("passphrase is not enabled")
-	}
-
-	data := d.data.PassphraseProtectedPayload
-	if data.KDF.Type != kdfType {
-		// Only Argon2i is supported
-		return nil, nil, fmt.Errorf("unexpected KDF type \"%s\"", data.KDF.Type)
-	}
-	if data.Encryption != passphraseEncryption {
-		// Only AES-CFB is supported
-		return nil, nil, fmt.Errorf("unexpected encryption algorithm \"%s\"", data.Encryption)
-	}
-	if data.KeySize > 32 {
-		// The key size can't be larger than 32 with the supported cipher
-		return nil, nil, fmt.Errorf("invalid key size (%d bytes)", data.KeySize)
-	}
-
-	// Derive both the key and IV from the passphrase in a single pass.
-	keyLen := data.KeySize + aes.BlockSize
-
-	params := &KDFCostParams{
-		Time:      uint32(data.KDF.Time),
-		MemoryKiB: uint32(data.KDF.Memory),
-		Threads:   uint8(data.KDF.CPUs)}
-	key, err = kdf.Derive(passphrase, data.KDF.Salt, params, uint32(keyLen))
+func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte, authKey []byte, err error) {
+	key, iv, authKey, err := d.derivePassphraseKeys(passphrase, kdf)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot derive key from passphrase: %w", err)
-	}
-	if len(key) != keyLen {
-		return nil, nil, errors.New("KDF returned unexpected key length")
+		return nil, nil, err
 	}
 
-	payload = make([]byte, len(data.EncryptedPayload))
+	if d.data.PassphraseParams.Encryption != passphraseEncryption {
+		// Only AES-CFB is supported
+		return nil, nil, fmt.Errorf("unexpected encryption algorithm \"%s\"", d.data.PassphraseParams.Encryption)
+	}
 
-	c, err := aes.NewCipher(key[:data.KeySize])
+	payload = make([]byte, len(d.data.EncryptedPayload))
+
+	c, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("cannot create cipher: %w", err)
 	}
-	stream := cipher.NewCFBDecrypter(c, key[data.KeySize:])
-	stream.XORKeyStream(payload, data.EncryptedPayload)
+	stream := cipher.NewCFBDecrypter(c, iv)
+	stream.XORKeyStream(payload, d.data.EncryptedPayload)
 
-	return payload, key, nil
+	return payload, authKey, nil
+}
+
+func (d *KeyData) platformKeyData() *PlatformKeyData {
+	return &PlatformKeyData{
+		Version:       d.Version(),
+		EncodedHandle: d.data.PlatformHandle,
+		KDFAlg:        crypto.Hash(d.data.KDFAlg),
+		AuthMode:      d.AuthMode(),
+	}
+}
+
+func (d *KeyData) recoverKeysCommon(data []byte) (DiskUnlockKey, PrimaryKey, error) {
+	switch d.Version() {
+	case 1:
+		unlockKey, primaryKey, err := unmarshalV1KeyPayload(data)
+		if err != nil {
+			return nil, nil, &InvalidKeyDataError{xerrors.Errorf("cannot unmarshal cleartext key payload: %w", err)}
+		}
+		return unlockKey, primaryKey, nil
+	case 2:
+		if d.data.KDFAlg != nilHash && !d.data.KDFAlg.Available() {
+			return nil, nil, fmt.Errorf("unavailable KDF digest algorithm %v", d.data.KDFAlg)
+		}
+		pk, err := unmarshalProtectedKeys(data)
+		if err != nil {
+			return nil, nil, &InvalidKeyDataError{xerrors.Errorf("cannot unmarshal cleartext key payload: %w", err)}
+		}
+		return pk.unlockKey(crypto.Hash(d.data.KDFAlg)), pk.primary, nil
+	default:
+		return nil, nil, fmt.Errorf("invalid keydata version %d", d.Version())
+	}
+}
+
+func (d *KeyData) Version() int {
+	switch d.data.Version {
+	case 0:
+		// This field was missing in v1
+		return 1
+	default:
+		return d.data.Version
+	}
 }
 
 // ReadableName returns a human-readable name for this key data, useful for
@@ -698,24 +753,17 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, PrimaryKey, error) {
 		return nil, nil, ErrNoPlatformHandlerRegistered
 	}
 
-	c, err := handler.RecoverKeys(&PlatformKeyData{
-		EncodedHandle:    d.data.PlatformHandle,
-		EncryptedPayload: d.data.EncryptedPayload})
+	c, err := handler.RecoverKeys(d.platformKeyData(), d.data.EncryptedPayload)
 	if err != nil {
 		return nil, nil, processPlatformHandlerError(err)
 	}
 
-	key, auxKey, err := c.Unmarshal()
-	if err != nil {
-		return nil, nil, &InvalidKeyDataError{xerrors.Errorf("cannot unmarshal cleartext key payload: %w", err)}
-	}
-
-	return key, auxKey, nil
+	return d.recoverKeysCommon(c)
 }
 
 func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnlockKey, PrimaryKey, error) {
-	if d.AuthMode()&AuthModePassphrase == 0 {
-		return nil, nil, errors.New("no passphrase is set")
+	if d.AuthMode() != AuthModePassphrase {
+		return nil, nil, errors.New("cannot recover key with passphrase")
 	}
 
 	handler := handlers[d.data.PlatformName]
@@ -728,20 +776,12 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnl
 		return nil, nil, err
 	}
 
-	data := &PlatformKeyData{
-		EncodedHandle:    d.data.PlatformHandle,
-		EncryptedPayload: payload}
-	c, err := handler.RecoverKeysWithAuthKey(data, key)
+	c, err := handler.RecoverKeysWithAuthKey(d.platformKeyData(), payload, key)
 	if err != nil {
 		return nil, nil, processPlatformHandlerError(err)
 	}
 
-	key, auxKey, err := c.Unmarshal()
-	if err != nil {
-		return nil, nil, &InvalidKeyDataError{xerrors.Errorf("cannot unmarshal cleartext key payload: %w", err)}
-	}
-
-	return key, auxKey, nil
+	return d.recoverKeysCommon(c)
 }
 
 // IsSnapModelAuthorized indicates whether the supplied Snap device model is trusted to
@@ -846,7 +886,7 @@ func (d *KeyData) SetPassphrase(passphrase string, kdfOptions *KDFOptions, kdf K
 // provides the Argon2 KDF implementation that will be used - this should ultimately
 // execute the implementation returned by the Argon2iKDF function, but the caller
 // can choose to execute this in a short-lived utility process.
-func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string, kdfOptions *KDFOptions, kdf KDF) error {
+func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string, kdf KDF) error {
 	if d.AuthMode()&AuthModePassphrase == 0 {
 		return errors.New("cannot change passphrase without setting an initial passphrase")
 	}
@@ -856,7 +896,7 @@ func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string, kdfOptio
 		return err
 	}
 
-	if err := d.updatePassphrase(payload, oldKey, newPassphrase, kdfOptions, kdf); err != nil {
+	if err := d.updatePassphrase(payload, oldKey, newPassphrase, kdf); err != nil {
 		return processPlatformHandlerError(err)
 	}
 
@@ -941,8 +981,10 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 
 	kd := &KeyData{
 		data: keyData{
+			Version:          KeyDataVersion,
 			PlatformName:     params.PlatformName,
 			PlatformHandle:   json.RawMessage(encodedHandle),
+			KDFAlg:           hashAlg(params.KDFAlg),
 			EncryptedPayload: params.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
 				alg:    hashAlg(params.SnapModelAuthHash),
@@ -964,20 +1006,70 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 	return kd, nil
 }
 
-// MarshalKeys serializes the supplied disk unlock key and auxiliary key in
-// to a format that is ready to be encrypted by a platform's secure device.
-func MarshalKeys(key DiskUnlockKey, auxKey PrimaryKey) KeyPayload {
-	w := new(bytes.Buffer)
-	binary.Write(w, binary.BigEndian, uint16(len(key)))
-	w.Write(key)
-	binary.Write(w, binary.BigEndian, uint16(len(auxKey)))
-	w.Write(auxKey)
-	return w.Bytes()
+func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string, kdf KDF) (*KeyData, error) {
+	kd, err := NewKeyData(&params.KeyParams)
+	if err != nil {
+		return nil, err
+	}
+
+	kdfOptions := params.KDFOptions
+	if kdfOptions == nil {
+		var defaultOptions KDFOptions
+		kdfOptions = &defaultOptions
+	}
+
+	costParams, err := kdfOptions.deriveCostParams(passphraseEncryptionKeyLen+aes.BlockSize, kdf)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot derive KDF cost parameters: %w", err)
+	}
+
+	var salt [16]byte
+	if _, err := rand.Read(salt[:]); err != nil {
+		return nil, xerrors.Errorf("cannot read salt: %w", err)
+	}
+
+	kd.data.PassphraseParams = &passphraseParams{
+		KDF: kdfData{
+			Type:   kdfType,
+			Salt:   salt[:],
+			Time:   int(costParams.Time),
+			Memory: int(costParams.MemoryKiB),
+			CPUs:   int(costParams.Threads),
+		},
+		Encryption:        passphraseEncryption,
+		DerivedKeySize:    passphraseKeyLen,
+		EncryptionKeySize: passphraseEncryptionKeyLen,
+		AuthKeySize:       params.AuthKeySize,
+	}
+
+	if err := kd.updatePassphrase(kd.data.EncryptedPayload, make([]byte, params.AuthKeySize), passphrase, kdf); err != nil {
+		return nil, xerrors.Errorf("cannot set passphrase: %w", err)
+	}
+
+	return kd, nil
 }
 
 type protectedKeys struct {
 	primary PrimaryKey
 	unique  []byte
+}
+
+func unmarshalProtectedKeys(data []byte) (*protectedKeys, error) {
+	s := cryptobyte.String(data)
+	if !s.ReadASN1(&s, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("malformed input")
+	}
+
+	pk := new(protectedKeys)
+
+	if !s.ReadASN1Bytes((*[]byte)(&pk.primary), cryptobyte_asn1.OCTET_STRING) {
+		return nil, errors.New("malformed primary key")
+	}
+	if !s.ReadASN1Bytes(&pk.unique, cryptobyte_asn1.OCTET_STRING) {
+		return nil, errors.New("malformed unique key")
+	}
+
+	return pk, nil
 }
 
 func (k *protectedKeys) unlockKey(alg crypto.Hash) DiskUnlockKey {
@@ -1021,4 +1113,15 @@ func MakeDiskUnlockKey(rand io.Reader, alg crypto.Hash, primaryKey PrimaryKey) (
 	}
 
 	return pk.unlockKey(alg), cleartextPayload, nil
+}
+
+// MarshalKeys serializes the supplied disk unlock key and auxiliary key in
+// to a format that is ready to be encrypted by a platform's secure device.
+func MarshalKeys(key DiskUnlockKey, auxKey PrimaryKey) []byte {
+	w := new(bytes.Buffer)
+	binary.Write(w, binary.BigEndian, uint16(len(key)))
+	w.Write(key)
+	binary.Write(w, binary.BigEndian, uint16(len(auxKey)))
+	w.Write(auxKey)
+	return w.Bytes()
 }
