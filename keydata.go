@@ -25,6 +25,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/asn1"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -36,7 +37,6 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
-
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/xerrors"
 )
@@ -50,6 +50,11 @@ const (
 
 var (
 	snapModelHMACKDFLabel = []byte("SNAP-MODEL-HMAC")
+	sha1Oid               = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	sha224Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
+	sha256Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+	sha384Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
+	sha512Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
 )
 
 // ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
@@ -197,6 +202,7 @@ type KeyDataReader interface {
 	ReadableName() string
 }
 
+// hashAlg corresponds to a digest algorithm.
 type hashAlg crypto.Hash
 
 func (a hashAlg) Available() bool {
@@ -225,8 +231,10 @@ func (a hashAlg) MarshalJSON() ([]byte, error) {
 		s = "sha384"
 	case crypto.SHA512:
 		s = "sha512"
+	case crypto.Hash(nilHash):
+		s = "null"
 	default:
-		return nil, fmt.Errorf("unknown has algorithm: %v", crypto.Hash(a))
+		return nil, fmt.Errorf("unknown hash algorithm: %v", crypto.Hash(a))
 	}
 
 	return json.Marshal(s)
@@ -250,10 +258,36 @@ func (a *hashAlg) UnmarshalJSON(b []byte) error {
 	case "sha512":
 		*a = hashAlg(crypto.SHA512)
 	default:
+		// be permissive here and allow everything to be
+		// unmarshalled.
 		*a = nilHash
 	}
 
 	return nil
+}
+
+func (a hashAlg) marshalASN1(b *cryptobyte.Builder) {
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // AlgorithmIdentifier ::= SEQUENCE {
+		var oid asn1.ObjectIdentifier
+
+		switch crypto.Hash(a) {
+		case crypto.SHA1:
+			oid = sha1Oid
+		case crypto.SHA224:
+			oid = sha224Oid
+		case crypto.SHA256:
+			oid = sha256Oid
+		case crypto.SHA384:
+			oid = sha384Oid
+		case crypto.SHA512:
+			oid = sha512Oid
+		default:
+			b.SetError(fmt.Errorf("unknown hash algorithm: %v", crypto.Hash(a)))
+			return
+		}
+		b.AddASN1ObjectIdentifier(oid) // algorithm OBJECT IDENTIFIER
+		b.AddASN1NULL()                // parameters ANY DEFINED BY algorithm OPTIONAL
+	})
 }
 
 type snapModelHMAC []byte
