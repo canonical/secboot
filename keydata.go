@@ -608,6 +608,7 @@ func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string
 
 	d.data.PlatformHandle = handle
 	d.data.EncryptedPayload = make([]byte, len(payload))
+
 	stream := cipher.NewCFBEncrypter(c, iv)
 	stream.XORKeyStream(d.data.EncryptedPayload, payload)
 
@@ -854,30 +855,8 @@ func (d *KeyData) SetAuthorizedSnapModels(auxKey PrimaryKey, models ...SnapModel
 	return nil
 }
 
-// SetPassphrase sets a passphrase on this key data, which can be used to recover
-// the keys via the KeyData.RecoverKeysWithPassphrase API. This can only be called when
-// KeyData.AuthMode returns AuthModeNone. Once a passphrase has been set, the
-// KeyData.RecoverKeys API can no longer be used.
-//
-// The kdfOptions argument configures the Argon2 KDF settings. The kdf argument
-// provides the Argon2 KDF implementation that will be used - this should ultimately
-// execute the implementation returned by the Argon2iKDF function, but the caller
-// can choose to execute this in a short-lived utility process.
-func (d *KeyData) SetPassphrase(passphrase string, kdfOptions *KDFOptions, kdf KDF) error {
-	if d.AuthMode() != AuthModeNone {
-		return errors.New("cannot set passphrase without authorization")
-	}
-
-	if err := d.updatePassphrase(d.data.EncryptedPayload, nil, passphrase, kdfOptions, kdf); err != nil {
-		return err
-	}
-
-	d.data.EncryptedPayload = nil
-	return nil
-}
-
 // ChangePassphrase updates the passphrase used to recover the keys from this key data
-// via the KeyData.RecoverKeysWithPassphraseAPI. This can only be called if a passhphrase
+// via the KeyData.RecoverKeysWithPassphrase API. This can only be called if a passhphrase
 // has been set previously (KeyData.AuthMode returns AuthModePassphrase).
 //
 // The current passphrase must be supplied via the oldPassphrase argument.
@@ -900,41 +879,6 @@ func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string, kdf KDF)
 		return processPlatformHandlerError(err)
 	}
 
-	return nil
-}
-
-// ClearPassphraseWithPassphrase clears the passphrase from this key data so that the
-// keys can be recovered via the KeyData.RecoverKeys API. This can only be called if a
-// passhphrase has been set previously (KeyData.AuthMode returns AuthModePassphrase).
-//
-// The current passphrase must be supplied.
-//
-// The kdf argument provides the Argon2 KDF implementation that will be used - this
-// should ultimately execute the implementation returned by the Argon2iKDF function,
-// but the caller can choose to execute this in a short-lived utility process.
-func (d *KeyData) ClearPassphraseWithPassphrase(passphrase string, kdf KDF) error {
-	if d.AuthMode()&AuthModePassphrase == 0 {
-		return errors.New("no passphrase is set")
-	}
-
-	handler := handlers[d.data.PlatformName]
-	if handler == nil {
-		return ErrNoPlatformHandlerRegistered
-	}
-
-	payload, key, err := d.openWithPassphrase(passphrase, kdf)
-	if err != nil {
-		return err
-	}
-
-	handle, err := handler.ChangeAuthKey(d.data.PlatformHandle, key, nil)
-	if err != nil {
-		return processPlatformHandlerError(err)
-	}
-
-	d.data.PlatformHandle = handle
-	d.data.EncryptedPayload = payload
-	d.data.PassphraseProtectedPayload = nil
 	return nil
 }
 
