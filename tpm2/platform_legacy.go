@@ -27,16 +27,32 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
 )
 
+// legacyProtectedKeys exists to serialize the keys returned from a legacy
+// TPM key data file into a format that can be recovered by secboot.KeyData.
+type legacyProtectedKeys struct {
+	authKey   secboot.PrimaryKey
+	unlockKey secboot.DiskUnlockKey
+}
+
+func (k *legacyProtectedKeys) marshalASN1(b *cryptobyte.Builder) {
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1OctetString(k.authKey)
+		b.AddASN1OctetString(k.unlockKey)
+	})
+}
+
 const legacyPlatformName = "tpm2-legacy"
 
 type legacyPlatformKeyDataHandler struct{}
 
-func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData) (secboot.KeyPayload, error) {
+func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData, encryptedPayload []byte) ([]byte, error) {
 	tpm, err := ConnectToTPM()
 	switch {
 	case err == ErrNoTPM2Device:
@@ -86,14 +102,21 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	return secboot.MarshalKeys(key, authKey), nil
+	keys := &legacyProtectedKeys{
+		authKey:   authKey,
+		unlockKey: key,
+	}
+
+	b := cryptobyte.NewBuilder(nil)
+	keys.marshalASN1(b)
+	return b.Bytes()
 }
 
-func (h *legacyPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKeyData, key []byte) (secboot.KeyPayload, error) {
+func (h *legacyPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKeyData, encryptedPayload, key []byte) ([]byte, error) {
 	return nil, fmt.Errorf("passphrase authentication is not supported for the %s platform", legacyPlatformName)
 }
 
-func (h *legacyPlatformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte, error) {
+func (h *legacyPlatformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte) ([]byte, error) {
 	return nil, fmt.Errorf("passphrase authentication is not supported for the %s platform", legacyPlatformName)
 }
 
@@ -125,10 +148,9 @@ func NewKeyDataFromSealedKeyObjectFile(path string) (*secboot.KeyData, error) {
 	}
 
 	params := secboot.KeyParams{
-		Handle:            json.RawMessage(handle),
-		PlatformName:      legacyPlatformName,
-		PrimaryKey:        make([]byte, 32), // Not used, but must be the expected size
-		SnapModelAuthHash: crypto.SHA256,    // Not used, but just set it a valid alg
+		Handle:       json.RawMessage(handle),
+		PlatformName: legacyPlatformName,
+		KDFAlg:       crypto.Hash(0), // this is a bit of a hack to tell it to use a non derived unlock key
 	}
 
 	return secboot.NewKeyData(&params)

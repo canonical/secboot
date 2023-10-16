@@ -21,6 +21,7 @@ package tpm2
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"errors"
@@ -228,4 +229,25 @@ func digestListContains(list tpm2.DigestList, digest tpm2.Digest) bool {
 		}
 	}
 	return false
+}
+
+func hashAlgorithmIdFromCryptoHash(alg crypto.Hash) (tpm2.HashAlgorithmId, error) {
+	switch alg {
+	case crypto.SHA1:
+		return tpm2.HashAlgorithmSHA1, nil
+	case crypto.SHA256:
+		return tpm2.HashAlgorithmSHA256, nil
+	case crypto.SHA384:
+		return tpm2.HashAlgorithmSHA384, nil
+	case crypto.SHA512:
+		return tpm2.HashAlgorithmSHA512, nil
+	case crypto.SHA3_256:
+		return tpm2.HashAlgorithmSHA3_256, nil
+	case crypto.SHA3_384:
+		return tpm2.HashAlgorithmSHA3_384, nil
+	case crypto.SHA3_512:
+		return tpm2.HashAlgorithmSHA3_512, nil
+	default:
+		return tpm2.HashAlgorithmNull, errors.New("unrecognized digest algorithm")
+	}
 }

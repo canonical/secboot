@@ -20,19 +20,14 @@
 package tpm2
 
 import (
-	"crypto"
-	"crypto/aes"
-	"crypto/cipher"
 	_ "crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
-	"io"
+	"math"
 
 	"github.com/canonical/go-tpm2"
 
-	"golang.org/x/crypto/hkdf"
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
@@ -41,33 +36,21 @@ import (
 
 const platformName = "tpm2"
 
-// deriveAuthValue derives the TPM authorization value from a passphrase derived key.
-// XXX: I want this to live in the secboot package but there needs to be a way for
-// this package to express the desired key size, so it's here for now.
-func deriveAuthValue(key []byte, sz int) ([]byte, error) {
-	r := hkdf.Expand(func() hash.Hash { return crypto.SHA256.New() }, key, []byte("PASSPHRASE-AUTH"))
-
-	authValue := make([]byte, sz)
-	if _, err := io.ReadFull(r, authValue); err != nil {
-		return nil, xerrors.Errorf("cannot obtain auth value: %w", err)
-	}
-
-	return authValue, nil
-}
-
 type platformKeyDataHandler struct{}
 
-func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData, authKey []byte) (secboot.KeyPayload, error) {
-	tpm, err := ConnectToTPM()
-	switch {
-	case err == ErrNoTPM2Device:
+func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData, encryptedPayload, authKey []byte) ([]byte, error) {
+	if data.Version < 0 || int64(data.Version) > math.MaxUint32 {
 		return nil, &secboot.PlatformHandlerError{
-			Type: secboot.PlatformHandlerErrorUnavailable,
-			Err:  err}
-	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+			Type: secboot.PlatformHandlerErrorInvalidData,
+			Err:  fmt.Errorf("invalid base key data version: %d", data.Version)}
 	}
-	defer tpm.Close()
+
+	kdfAlg, err := hashAlgorithmIdFromCryptoHash(data.KDFAlg)
+	if err != nil {
+		return nil, &secboot.PlatformHandlerError{
+			Type: secboot.PlatformHandlerErrorInvalidData,
+			Err:  errors.New("invalid KDF algorithm")}
+	}
 
 	var k *SealedKeyData
 	if err := json.Unmarshal(data.EncodedHandle, &k); err != nil {
@@ -83,21 +66,19 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 			Type: secboot.PlatformHandlerErrorInvalidData,
 			Err:  fmt.Errorf("invalid key data version: %d", k.data.Version())}
 	}
-	if !k.data.Public().NameAlg.IsValid() {
+
+	tpm, err := ConnectToTPM()
+	switch {
+	case err == ErrNoTPM2Device:
 		return nil, &secboot.PlatformHandlerError{
-			Type: secboot.PlatformHandlerErrorInvalidData,
-			Err:  fmt.Errorf("invalid name algorithm for sealed object: %d", k.data.Version())}
+			Type: secboot.PlatformHandlerErrorUnavailable,
+			Err:  err}
+	case err != nil:
+		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
 	}
+	defer tpm.Close()
 
-	var authValue []byte
-	if len(authKey) > 0 {
-		authValue, err = deriveAuthValue(authKey, k.data.Public().NameAlg.Size())
-		if err != nil {
-			return nil, xerrors.Errorf("cannot derive auth value: %w", err)
-		}
-	}
-
-	symKey, err := k.unsealDataFromTPM(tpm.TPMContext, authValue, tpm.HmacSession())
+	symKey, err := k.unsealDataFromTPM(tpm.TPMContext, authKey, tpm.HmacSession())
 	if err != nil {
 		var e InvalidKeyDataError
 		switch {
@@ -121,33 +102,25 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	if len(symKey) != 32+aes.BlockSize {
+	payload, err := k.data.Decrypt(symKey, encryptedPayload, uint32(data.Version), kdfAlg, data.AuthMode)
+	if err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
-			Err:  errors.New("unsealed symmetric key has the wrong length")}
+			Err:  xerrors.Errorf("cannot recover encrypted payload: %w", err)}
 	}
-
-	payload := make(secboot.KeyPayload, len(data.EncryptedPayload))
-
-	b, err := aes.NewCipher(symKey[:32])
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create new cipher: %w", err)
-	}
-	stream := cipher.NewCFBDecrypter(b, symKey[32:])
-	stream.XORKeyStream(payload, data.EncryptedPayload)
 
 	return payload, nil
 }
 
-func (h *platformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData) (secboot.KeyPayload, error) {
-	return h.recoverKeysCommon(data, nil)
+func (h *platformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData, encryptedPayload []byte) ([]byte, error) {
+	return h.recoverKeysCommon(data, encryptedPayload, nil)
 }
 
-func (h *platformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKeyData, key []byte) (secboot.KeyPayload, error) {
-	return h.recoverKeysCommon(data, key)
+func (h *platformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKeyData, encryptedPayload, key []byte) ([]byte, error) {
+	return h.recoverKeysCommon(data, encryptedPayload, key)
 }
 
-func (h *platformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte, error) {
+func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte) ([]byte, error) {
 	tpm, err := ConnectToTPM()
 	switch {
 	case err == ErrNoTPM2Device:
@@ -160,7 +133,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte,
 	defer tpm.Close()
 
 	var k *SealedKeyData
-	if err := json.Unmarshal(handle, &k); err != nil {
+	if err := json.Unmarshal(data.EncodedHandle, &k); err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
 			Err:  err}
@@ -213,23 +186,8 @@ func (h *platformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte,
 	}
 	defer tpm.FlushContext(keyObject)
 
-	if len(old) > 0 {
-		v, err := deriveAuthValue(old, keyObject.Name().Algorithm().Size())
-		if err != nil {
-			return nil, xerrors.Errorf("cannot derive old auth value: %w", err)
-		}
-		keyObject.SetAuthValue(v)
-	}
-
-	var newAuthValue []byte
-	if len(new) > 0 {
-		newAuthValue, err = deriveAuthValue(new, keyObject.Name().Algorithm().Size())
-		if err != nil {
-			return nil, xerrors.Errorf("cannot derive new auth value: %w", err)
-		}
-	}
-
-	priv, err := tpm.ObjectChangeAuth(keyObject, srk, newAuthValue, tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
+	keyObject.SetAuthValue(old)
+	priv, err := tpm.ObjectChangeAuth(keyObject, srk, new, tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
 		if tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandObjectChangeAuth, 1) {
 			return nil, &secboot.PlatformHandlerError{
