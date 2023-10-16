@@ -136,6 +136,7 @@ type staticPolicyData_v3 struct {
 	AuthPublicKey          *tpm2.Public
 	PCRPolicyRef           tpm2.Nonce
 	PCRPolicyCounterHandle tpm2.Handle
+	RequireAuthValue       bool
 }
 
 // pcrPolicyData_v3 represents version 3 of the PCR policy metadata for
@@ -266,13 +267,10 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 		return err
 	}
 
-	// For metadata versions > 0, PIN support was implemented by requiring knowlege of the authorization value for
-	// the sealed key object when this policy session is used to unseal it, although this support was never
-	// used and has been removed.
-	// XXX: This mechanism will be re-used as part of the passphrase integration in the future, although the
-	//  authorization value will be a passphrase derived key.
-	if err := tpm.PolicyAuthValue(policySession); err != nil {
-		return err
+	if p.StaticData.RequireAuthValue {
+		if err := tpm.PolicyAuthValue(policySession); err != nil {
+			return err
+		}
 	}
 
 	return nil
