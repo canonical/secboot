@@ -68,6 +68,7 @@ func (e *PlatformHandlerError) Unwrap() error {
 type PlatformKeyData struct {
 	Generation    int
 	EncodedHandle []byte // The JSON encoded platform handle
+	Role          string
 	KDFAlg        crypto.Hash
 
 	AuthMode AuthMode
