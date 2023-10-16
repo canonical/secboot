@@ -26,8 +26,10 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"math"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
 
 	"golang.org/x/crypto/hkdf"
@@ -37,24 +39,94 @@ import (
 	internal_crypto "github.com/snapcore/secboot/internal/crypto"
 )
 
-func computeV3PcrPolicyRefFromCounterName(name tpm2.Name) tpm2.Nonce {
-	return computeV1PcrPolicyRefFromCounterName(name)
+// computeV3PcrPolicyRefFromCounterName computes the reference used for authorization of signed
+// PCR policies from the supplied role and PCR policy counter name. If name is empty, then the
+// name of the null handle is assumed. The policy ref serves 2 purposes:
+//  1. It limits the scope of the signed policy to just PCR policies for keys with the same role
+//     (the key may be able to sign different types of policy in the future, for example, to permit
+//     recovery with a signed assertion).
+//  2. It binds the name of the PCR policy counter to the static authorization policy.
+func computeV3PcrPolicyRefFromCounterName(alg tpm2.HashAlgorithmId, role []byte, name tpm2.Name) tpm2.Nonce {
+	if len(role) > math.MaxUint16 {
+		// This avoids a panic in MustMarshalToWriter. We check
+		// the length of this is valid during key creation in
+		// newKeyDataPolicy. It's an error to have to truncate it
+		// but the error will be caught elsewhere because we'll
+		// generate the wrong policy ref.
+		role = role[:math.MaxUint16]
+	}
+	if len(name) == 0 {
+		name = tpm2.Name(mu.MustMarshalToBytes(tpm2.HandleNull))
+	}
+
+	// Hash the role and PCR policy counter name
+	// TODO: Maybe have a dummy TPM2_PolicyNV assertion in the static policy
+	//  to bind it to the PCR policy counter as an alternative to hashing
+	//  its name here.
+	h := alg.NewHash()
+	mu.MustMarshalToWriter(h, role, name)
+	digest := h.Sum(nil)
+
+	// Hash again with a string literal prefix
+	h = alg.NewHash()
+	h.Write([]byte("PCR-POLICY"))
+	h.Write(digest)
+
+	return h.Sum(nil)
 }
 
-func computeV3PcrPolicyRefFromCounterContext(context tpm2.ResourceContext) tpm2.Nonce {
-	return computeV1PcrPolicyRefFromCounterContext(context)
+// computeV3PcrPolicyRefFromCounterContext computes the reference used for authorization of
+// signed PCR policies from the supplied ResourceContext.
+func computeV3PcrPolicyRefFromCounterContext(alg tpm2.HashAlgorithmId, role []byte, context tpm2.ResourceContext) tpm2.Nonce {
+	var name tpm2.Name
+	if context != nil {
+		name = context.Name()
+	}
+
+	return computeV3PcrPolicyRefFromCounterName(alg, role, name)
 }
 
+// computeV3PcrPolicyCounterAuthPolicies computes the authorization policy digests passed to
+// TPM2_PolicyOR for a PCR policy counter that can be updated with the key associated with
+// updateKeyName.
 func computeV3PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
-	return computeV1PcrPolicyCounterAuthPolicies(alg, updateKeyName)
+	// The NV index requires 3 policies:
+	// - A policy to read the index with no authorization.
+	// - A policy to initialize the index with no authorization.
+	// - A policy for updating the index to revoke old PCR policies using a signed assertion.
+	var authPolicies tpm2.DigestList
+
+	if !updateKeyName.IsValid() {
+		// avoid a panic if updateKeyName is invalid. Note that this will
+		// produce invalid policies - callers should take steps to ensure that
+		// updateKeyName is valid.
+		// TODO: Use tpm2.MakeHandleName here
+		updateKeyName = tpm2.Name(mu.MustMarshalToBytes(tpm2.HandleUnassigned))
+	}
+
+	trial := util.ComputeAuthPolicy(alg)
+	trial.PolicyCommandCode(tpm2.CommandNVRead)
+	authPolicies = append(authPolicies, trial.GetDigest())
+
+	trial = util.ComputeAuthPolicy(alg)
+	trial.PolicyNvWritten(false)
+	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
+	authPolicies = append(authPolicies, trial.GetDigest())
+
+	trial = util.ComputeAuthPolicy(alg)
+	trial.PolicySigned(updateKeyName, []byte("PCR-POLICY-REVOKE"))
+	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
+	authPolicies = append(authPolicies, trial.GetDigest())
+
+	return authPolicies
 }
 
 // deriveV3PolicyAuthKey derives an elliptic curve key for signing authorization policies from the
 // supplied input key. Pre-v3 key objects stored the private part of the elliptic curve key inside
 // the sealed key, but v3 keys are wrapped by secboot.KeyData which protects an auxiliary key that
 // is used as an input key to derive various context-specific keys, such as this one.
-func deriveV3PolicyAuthKey(alg crypto.Hash, auxKey secboot.PrimaryKey) (*ecdsa.PrivateKey, error) {
-	r := hkdf.Expand(func() hash.Hash { return alg.New() }, auxKey, []byte("TPM2-POLICY-AUTH"))
+func deriveV3PolicyAuthKey(alg crypto.Hash, key secboot.PrimaryKey) (*ecdsa.PrivateKey, error) {
+	r := hkdf.Expand(func() hash.Hash { return alg.New() }, key, []byte("TPM2-POLICY-AUTH"))
 	return internal_crypto.GenerateECDSAKey(elliptic.P256(), r)
 }
 
@@ -62,6 +134,7 @@ func deriveV3PolicyAuthKey(alg crypto.Hash, auxKey secboot.PrimaryKey) (*ecdsa.P
 // policy session that never changes for the life of a key.
 type staticPolicyData_v3 struct {
 	AuthPublicKey          *tpm2.Public
+	PCRPolicyRef           tpm2.Nonce
 	PCRPolicyCounterHandle tpm2.Handle
 }
 
@@ -70,7 +143,7 @@ type staticPolicyData_v3 struct {
 // as version 2.
 type pcrPolicyData_v3 = pcrPolicyData_v2
 
-// keyDataPolicy_v2 represents version 2 of the metadata for executing a
+// keyDataPolicy_v3 represents version 3 of the metadata for executing a
 // policy session.
 type keyDataPolicy_v3 struct {
 	StaticData *staticPolicyData_v3
@@ -119,7 +192,7 @@ func (p *keyDataPolicy_v3) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 		Details: &tpm2.SigSchemeU{
 			ECDSA: &tpm2.SigSchemeECDSA{
 				HashAlg: p.StaticData.AuthPublicKey.NameAlg}}}
-	if err := pcrData.authorizePolicy(key, scheme, trial.GetDigest(), computeV3PcrPolicyRefFromCounterName(params.policyCounterName)); err != nil {
+	if err := pcrData.authorizePolicy(key, scheme, trial.GetDigest(), p.StaticData.PCRPolicyRef); err != nil {
 		return xerrors.Errorf("cannot authorize policy: %w", err)
 	}
 
@@ -169,8 +242,7 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	}
 	defer tpm.FlushContext(authorizeKey)
 
-	pcrPolicyRef := computeV3PcrPolicyRefFromCounterContext(pcrPolicyCounter)
-
+	pcrPolicyRef := p.StaticData.PCRPolicyRef
 	pcrPolicyDigest, err := util.ComputePolicyAuthorizeDigest(authPublicKey.NameAlg, p.PCRData.AuthorizedPolicy, pcrPolicyRef)
 	if err != nil {
 		return policyDataError{xerrors.Errorf("cannot compute PCR policy digest: %w", err)}
@@ -245,15 +317,18 @@ func (c *pcrPolicyCounterContext_v3) Increment(key secboot.PrimaryKey) error {
 		Details: &tpm2.SigSchemeU{
 			ECDSA: &tpm2.SigSchemeECDSA{
 				HashAlg: c.updateKey.NameAlg}}}
-	signature, err := util.SignPolicyAuthorization(ecdsaKey, &scheme, policySession.NonceTPM(), nil, nil, 0)
+	signature, err := util.SignPolicyAuthorization(ecdsaKey, &scheme, policySession.NonceTPM(), nil, []byte("PCR-POLICY-REVOKE"), 0)
 	if err != nil {
 		return xerrors.Errorf("cannot sign authorization: %w", err)
 	}
 
-	if _, _, err := c.tpm.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, signature); err != nil {
+	if _, _, err := c.tpm.PolicySigned(keyLoaded, policySession, true, nil, []byte("PCR-POLICY-REVOKE"), 0, signature); err != nil {
 		return err
 	}
-	authPolicies := computeV1PcrPolicyCounterAuthPolicies(c.index.Name().Algorithm(), c.updateKey.Name())
+	if err := c.tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
+		return err
+	}
+	authPolicies := computeV3PcrPolicyCounterAuthPolicies(c.index.Name().Algorithm(), c.updateKey.Name())
 	if err := c.tpm.PolicyOR(policySession, authPolicies); err != nil {
 		return err
 	}
