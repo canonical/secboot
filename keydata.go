@@ -438,11 +438,9 @@ type keyData struct {
 	PlatformHandle json.RawMessage `json:"platform_handle"`
 
 	// EncryptedPayload is the platform protected key payload.
-	EncryptedPayload []byte `json:"encrypted_payload,omitempty"`
+	EncryptedPayload []byte `json:"encrypted_payload"`
 
-	// PassphraseProtectedPayload is the platform protected key
-	// payload additionally protected by a passphrase.
-	PassphraseProtectedPayload *passphraseData `json:"passphrase_protected_payload,omitempty"`
+	PassphraseParams *passphraseData `json:"passphrase_params,omitempty"`
 
 	// AuthorizedSnapModels contains information about the Snap models
 	// that have been authorized to access the data protected by this key.
@@ -643,15 +641,12 @@ func (d *KeyData) UniqueID() (KeyID, error) {
 
 // AuthMode indicates the authentication mechanisms enabled for this key data.
 func (d *KeyData) AuthMode() (out AuthMode) {
-	if len(d.data.EncryptedPayload) > 0 {
+	switch {
+	case d.data.PassphraseParams != nil:
+		return AuthModePassphrase
+	default:
 		return AuthModeNone
 	}
-
-	if d.data.PassphraseProtectedPayload != nil {
-		out |= AuthModePassphrase
-	}
-
-	return out
 }
 
 // UnmarshalPlatformHandle unmarshals the JSON platform handle payload into the
