@@ -21,15 +21,33 @@ package tpm2
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"errors"
 	"io"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
+	"github.com/snapcore/secboot"
 
 	"golang.org/x/xerrors"
 )
+
+type additionalData_v3 struct {
+	BaseVersion uint32
+	KDFAlg      tpm2.HashAlgorithmId
+	AuthMode    secboot.AuthMode
+}
+
+func (d additionalData_v3) Marshal(w io.Writer) error {
+	_, err := mu.MarshalToWriter(w, uint32(3), d.BaseVersion, d.KDFAlg, d.AuthMode)
+	return err
+}
+
+func (d *additionalData_v3) Unmarshal(r io.Reader) error {
+	return errors.New("not supported")
+}
 
 // keyData_v3 represents version 3 of keyData.
 type keyData_v3 struct {
@@ -137,4 +155,32 @@ func (d *keyData_v3) Write(w io.Writer) error {
 
 func (d *keyData_v3) Policy() keyDataPolicy {
 	return d.PolicyData
+}
+
+func (d *keyData_v3) Decrypt(key, payload []byte, baseVersion uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
+	// We only support AES-256-GCM with a 12-byte nonce, so we expect 44 bytes here
+	if len(key) != 32+12 {
+		return nil, errors.New("invalid symmetric key size")
+	}
+
+	aad, err := mu.MarshalToBytes(&additionalData_v3{
+		BaseVersion: baseVersion,
+		KDFAlg:      kdfAlg,
+		AuthMode:    authMode,
+	})
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create AAD: %w", err)
+	}
+
+	b, err := aes.NewCipher(key[:32])
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create cipher: %w", err)
+	}
+
+	aead, err := cipher.NewGCM(b)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create AEAD cipher: %w", err)
+	}
+
+	return aead.Open(nil, key[32:], payload, aad)
 }

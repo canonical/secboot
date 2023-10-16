@@ -28,6 +28,7 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
+	"github.com/snapcore/secboot"
 
 	"golang.org/x/xerrors"
 )
@@ -199,4 +200,8 @@ func (d *keyData_v0) Write(w io.Writer) error {
 
 func (d *keyData_v0) Policy() keyDataPolicy {
 	return d.PolicyData
+}
+
+func (d *keyData_v0) Decrypt(key, payload []byte, baseVersion uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
+	return nil, errors.New("not supported")
 }

@@ -83,6 +83,10 @@ type keyData interface {
 
 	// Policy corresponds to the authorization policy for this key data.
 	Policy() keyDataPolicy
+
+	// Decrypt performs authenticated decryption of the encrypted payload and the associated data.
+	// This is relevant only for keydata versions 3 and later.
+	Decrypt(key, payload []byte, baseVersion uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error)
 }
 
 func readKeyData(r io.Reader, version uint32) (keyData, error) {
