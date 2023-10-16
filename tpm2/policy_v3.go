@@ -171,10 +171,10 @@ func (p *keyDataPolicy_v3) PCRPolicySequence() uint64 {
 // validated during execution before executing the corresponding PolicyAuthorize assertion as part of the
 // static policy.
 func (p *keyDataPolicy_v3) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcrPolicyParams) error {
-	pcrData := p.PCRData.new(params)
+	pcrData := new(pcrPolicyData_v3)
 
 	trial := util.ComputeAuthPolicy(alg)
-	if err := pcrData.addPcrAssertions(alg, trial, params.pcrDigests); err != nil {
+	if err := pcrData.addPcrAssertions(alg, trial, params.pcrs, params.pcrDigests); err != nil {
 		return xerrors.Errorf("cannot compute base PCR policy: %w", err)
 	}
 
