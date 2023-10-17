@@ -74,11 +74,11 @@ func (s *keyDataV0Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	template := tpm2_testutil.NewSealedObjectTemplate()
 
-	policyData, policy := s.newMockKeyDataPolicy(c, template.NameAlg, authKeyPublic, policyCounter, count, policyCounterPolicies)
+	policyData, policy := s.newMockKeyDataPolicy(c, template.NameAlg, authKeyPublic, policyCounter, policyCounterPolicies)
 	template.AuthPolicy = policy
 
 	policyData.(*KeyDataPolicy_v0).PCRData = &PcrPolicyData_v0{
-		PolicySequence:   policyData.PCRPolicySequence(),
+		PolicySequence:   count,
 		AuthorizedPolicy: make(tpm2.Digest, 32),
 		AuthorizedPolicySignature: &tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgRSAPSS,

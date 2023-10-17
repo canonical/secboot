@@ -99,7 +99,7 @@ func (m *policyV0Mixin) createMockPcrPolicyCounter(c *C, handle tpm2.Handle, aut
 }
 
 func (m *policyV0Mixin) newMockKeyDataPolicy(c *C, alg tpm2.HashAlgorithmId, authKey *tpm2.Public, pcrPolicyCounter *tpm2.NVPublic,
-	pcrPolicySequence uint64, pcrPolicyCounterAuthPolicies tpm2.DigestList) (KeyDataPolicy, tpm2.Digest) {
+	pcrPolicyCounterAuthPolicies tpm2.DigestList) (KeyDataPolicy, tpm2.Digest) {
 
 	trial := util.ComputeAuthPolicy(alg)
 	trial.PolicyAuthorize(nil, authKey.Name())
@@ -111,8 +111,7 @@ func (m *policyV0Mixin) newMockKeyDataPolicy(c *C, alg tpm2.HashAlgorithmId, aut
 			AuthPublicKey:                authKey,
 			PCRPolicyCounterHandle:       pcrPolicyCounter.Index,
 			PCRPolicyCounterAuthPolicies: pcrPolicyCounterAuthPolicies},
-		PCRData: &PcrPolicyData_v0{
-			PolicySequence: pcrPolicySequence}}, trial.GetDigest()
+	}, trial.GetDigest()
 }
 
 type policyV0SuiteNoTPM struct {
@@ -331,10 +330,9 @@ func (s *policyV0SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV0UpdatePCRPoli
 	var policyData KeyDataPolicy = &KeyDataPolicy_v0{
 		StaticData: &StaticPolicyData_v0{
 			AuthPublicKey: util.NewExternalRSAPublicKey(data.authKeyNameAlg, templates.KeyUsageSign, nil, &key.PublicKey)},
-		PCRData: &PcrPolicyData_v0{
-			PolicySequence: data.initialSeq}}
+	}
 
-	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(key), data.pcrs, data.pcrDigests, policyCounterPub.Name())
+	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(key), data.pcrs, data.pcrDigests, policyCounterPub.Name(), data.initialSeq)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	c.Check(policyData.(*KeyDataPolicy_v0).PCRData.Selection, tpm2_testutil.TPMValueDeepEquals, data.pcrs)
@@ -472,13 +470,12 @@ func (s *policyV0SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 	policyData1 := &KeyDataPolicy_v0{
 		StaticData: &StaticPolicyData_v0{
 			AuthPublicKey: util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &key.PublicKey)},
-		PCRData: &PcrPolicyData_v0{
-			PolicySequence: 5000}}
+	}
 
 	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(key),
 		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		tpm2.DigestList{hash(crypto.SHA256, "1"), hash(crypto.SHA256, "2")},
-		policyCounterPub.Name())
+		policyCounterPub.Name(), 5000)
 	c.Check(policyData1.UpdatePCRPolicy(tpm2.HashAlgorithmSHA256, params), IsNil)
 
 	var policyData2 KeyDataPolicy = &KeyDataPolicy_v0{
@@ -512,7 +509,7 @@ func (s *policyV0Suite) testExecutePCRPolicy(c *C, data *testV0ExecutePCRPolicyD
 
 	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyPublic.Name())
 
-	policyData, expectedDigest := s.newMockKeyDataPolicy(c, data.alg, authKeyPublic, policyCounterPub, policyCount, policyCounterPolicies)
+	policyData, expectedDigest := s.newMockKeyDataPolicy(c, data.alg, authKeyPublic, policyCounterPub, policyCounterPolicies)
 
 	var digests tpm2.DigestList
 	for _, v := range data.pcrValues {
@@ -520,7 +517,7 @@ func (s *policyV0Suite) testExecutePCRPolicy(c *C, data *testV0ExecutePCRPolicyD
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(authKey), data.pcrs, digests, policyCounterPub.Name())
+	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(authKey), data.pcrs, digests, policyCounterPub.Name(), policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -821,7 +818,7 @@ func (s *policyV0Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV0Exec
 
 	policyCounterPub, policyCount, policyCounterPolicies := s.createMockPcrPolicyCounter(c, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyPublic.Name())
 
-	policyData, expectedDigest := s.newMockKeyDataPolicy(c, data.alg, authKeyPublic, policyCounterPub, policyCount, policyCounterPolicies)
+	policyData, expectedDigest := s.newMockKeyDataPolicy(c, data.alg, authKeyPublic, policyCounterPub, policyCounterPolicies)
 
 	var digests tpm2.DigestList
 	for _, v := range data.pcrValues {
@@ -829,7 +826,7 @@ func (s *policyV0Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV0Exec
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(authKey), data.pcrs, digests, policyCounterPub.Name())
+	params := NewPcrPolicyParams(x509.MarshalPKCS1PrivateKey(authKey), data.pcrs, digests, policyCounterPub.Name(), policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {

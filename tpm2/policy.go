@@ -54,6 +54,8 @@ type pcrPolicyParams struct {
 	// policies. The name must be associated with the handle in the keyDataPolicy,
 	// else the policy will not work.
 	policyCounterName tpm2.Name
+
+	policySequence uint64 // the PCR policy sequence
 }
 
 // policyOrNode represents a collection of up to 8 digests used in a single
@@ -248,7 +250,7 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 //
 // This returns some policy metadata and a policy digest which is used as the auth policy field of the
 // protected object.
-var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
+var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic) (keyDataPolicy, tpm2.Digest, error) {
 	if len(role) > 1024 {
 		// We serialize this in the TPM wire format in computeV3PcrPolicyRefFromCounterName
 		// and define the type as TPM2B_MAX_BUFFER in the SE041, and this has a maximum size
@@ -276,7 +278,6 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role str
 			PCRPolicyRef:           pcrPolicyRef,
 			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
 		PCRData: &pcrPolicyData_v3{
-			PolicySequence: pcrPolicySequence,
 			// Set AuthorizedPolicySignature here because this object needs to be
 			// serializable before the initial signature is created.
 			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}, trial.GetDigest(), nil

@@ -106,10 +106,9 @@ func (s *policyV1SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV1UpdatePCRPoli
 	var policyData KeyDataPolicy = &KeyDataPolicy_v1{
 		StaticData: &StaticPolicyData_v1{
 			AuthPublicKey: util.NewExternalECCPublicKey(data.authKeyNameAlg, templates.KeyUsageSign, nil, &key.PublicKey)},
-		PCRData: &PcrPolicyData_v1{
-			PolicySequence: data.initialSeq}}
+	}
 
-	params := NewPcrPolicyParams(key.D.Bytes(), data.pcrs, data.pcrDigests, policyCounterName)
+	params := NewPcrPolicyParams(key.D.Bytes(), data.pcrs, data.pcrDigests, policyCounterName, data.initialSeq)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.Selection, tpm2_testutil.TPMValueDeepEquals, data.pcrs)
@@ -124,7 +123,10 @@ func (s *policyV1SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV1UpdatePCRPoli
 	}
 	s.checkPolicyOrTree(c, data.alg, digests, orTree)
 
-	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.PolicySequence, Equals, data.initialSeq+1)
+	// Skip check for NoCounter case
+	if data.policyCounterHandle != tpm2.HandleNull {
+		c.Check(policyData.(*KeyDataPolicy_v1).PCRData.PolicySequence, Equals, data.initialSeq+1)
+	}
 
 	c.Logf("%x", policyData.(*KeyDataPolicy_v1).PCRData.AuthorizedPolicy)
 	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.AuthorizedPolicy, DeepEquals, data.expectedPolicy)
@@ -261,13 +263,12 @@ func (s *policyV1SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 	policyData1 := &KeyDataPolicy_v1{
 		StaticData: &StaticPolicyData_v1{
 			AuthPublicKey: util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &key.PublicKey)},
-		PCRData: &PcrPolicyData_v1{
-			PolicySequence: 5000}}
+	}
 
 	params := NewPcrPolicyParams(key.D.Bytes(),
 		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		tpm2.DigestList{hash(crypto.SHA256, "1"), hash(crypto.SHA256, "2")},
-		policyCounterPub.Name())
+		policyCounterPub.Name(), 5000)
 	c.Check(policyData1.UpdatePCRPolicy(tpm2.HashAlgorithmSHA256, params), IsNil)
 
 	var policyData2 KeyDataPolicy = &KeyDataPolicy_v1{
@@ -313,7 +314,7 @@ func (s *policyV1Suite) testExecutePCRPolicy(c *C, data *testV1ExecutePCRPolicyD
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterName)
+	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterName, policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -666,7 +667,7 @@ func (s *policyV1Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV1Exec
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterName)
+	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterName, policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {

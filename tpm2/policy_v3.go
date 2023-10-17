@@ -179,7 +179,7 @@ func (p *keyDataPolicy_v3) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 	}
 
 	if params.policyCounterName != nil {
-		pcrData.addRevocationCheck(trial, params.policyCounterName)
+		pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence)
 	}
 
 	key, err := deriveV3PolicyAuthKey(p.StaticData.AuthPublicKey.NameAlg.GetHash(), params.key)

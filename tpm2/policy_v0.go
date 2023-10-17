@@ -273,10 +273,11 @@ func (d *pcrPolicyData_v0) addPcrAssertions(alg tpm2.HashAlgorithmId, trial *uti
 	return nil
 }
 
-func (d *pcrPolicyData_v0) addRevocationCheck(trial *util.TrialAuthPolicy, policyCounterName tpm2.Name) {
+func (d *pcrPolicyData_v0) addRevocationCheck(trial *util.TrialAuthPolicy, policyCounterName tpm2.Name, policySequence uint64) {
 	operandB := make([]byte, 8)
-	binary.BigEndian.PutUint64(operandB, d.PolicySequence)
+	binary.BigEndian.PutUint64(operandB, policySequence)
 	trial.PolicyNV(policyCounterName, operandB, 0, tpm2.OpUnsignedLE)
+	d.PolicySequence = policySequence
 }
 
 func (d *pcrPolicyData_v0) authorizePolicy(key crypto.PrivateKey, scheme *tpm2.SigScheme, approvedPolicy tpm2.Digest, policyRef tpm2.Nonce) error {
@@ -373,7 +374,7 @@ func (p *keyDataPolicy_v0) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 		return xerrors.Errorf("cannot compute base PCR policy: %w", err)
 	}
 
-	pcrData.addRevocationCheck(trial, params.policyCounterName)
+	pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence+1)
 
 	key, err := x509.ParsePKCS1PrivateKey(params.key)
 	if err != nil {
