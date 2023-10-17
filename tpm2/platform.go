@@ -148,7 +148,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	}
 
 	// Validate the initial key data
-	_, err = k.validateData(tpm.TPMContext, tpm.HmacSession())
+	_, err = k.validateData(tpm.TPMContext, data.Role, tpm.HmacSession())
 	switch {
 	case isKeyDataError(err):
 		return nil, &secboot.PlatformHandlerError{
@@ -201,7 +201,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 
 	// Validate the modified key. There's no reason for this to fail, but do it anyway. We haven't made
 	// any persistent changes yet and still have an opportunity to back out.
-	if _, err = k.validateData(tpm.TPMContext, tpm.HmacSession()); err != nil {
+	if _, err = k.validateData(tpm.TPMContext, data.Role, tpm.HmacSession()); err != nil {
 		return nil, xerrors.Errorf("cannot validate key data after auth value change: %w", err)
 	}
 
