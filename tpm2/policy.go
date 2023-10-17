@@ -129,18 +129,22 @@ type keyDataPolicy interface {
 	ValidateAuthKey(key secboot.PrimaryKey) error
 }
 
-func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, computeAuthPolicies func(tpm2.HashAlgorithmId, tpm2.Name) tpm2.DigestList, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
+// createPcrPolicyCounterLegacy creates and initializes a NV counter that is associated with a sealed key object
+// and is used for implementing PCR policy revocation.
+//
+// The NV index will be created with attributes that allow anyone to read the index, and an authorization
+// policy that permits TPM2_NV_Increment with a signed authorization policy.
+func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (public *tpm2.NVPublic, value uint64, err error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
-	authPolicies := computeAuthPolicies(nameAlg, updateKey.Name())
+	authPolicies := computeV2PcrPolicyCounterAuthPolicies(nameAlg, updateKey.Name())
 
 	trial := util.ComputeAuthPolicy(nameAlg)
 	trial.PolicyOR(authPolicies)
 
-	// Define the NV index
-	public := &tpm2.NVPublic{
+	public = &tpm2.NVPublic{
 		Index:      handle,
-		NameAlg:    nameAlg,
+		NameAlg:    tpm2.HashAlgorithmSHA256,
 		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
 		AuthPolicy: trial.GetDigest(),
 		Size:       8}
@@ -149,20 +153,15 @@ func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, update
 	if err != nil {
 		return nil, 0, err
 	}
-
-	// NVDefineSpace was integrity protected, so we know that we have an index with the expected public area at the handle we specified
-	// at this point.
-
-	succeeded := false
 	defer func() {
-		if succeeded {
+		if err == nil {
 			return
 		}
 		tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, hmacSession)
 	}()
 
 	// Begin a session to initialize the index.
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, nameAlg)
+	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, public.NameAlg)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -181,37 +180,92 @@ func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, update
 		return nil, 0, err
 	}
 
-	// The index has a different name now that it has been written, so update the public area we return so that it can be used
-	// to construct an authorization policy.
+	// The index has a different name now that it has been written, so update the public area
+	// we return so that it can be used to construct an authorization policy.
 	public.Attrs |= tpm2.AttrNVWritten
 
-	value, err := tpm.NVReadCounter(index, index, hmacSession)
+	// Read the current value
+	value, err = tpm.NVReadCounter(index, index, hmacSession)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	succeeded = true
 	return public, value, nil
 }
 
-// createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
+// ensurePcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
 // and is used for implementing PCR policy revocation.
 //
 // The NV index will be created with attributes that allow anyone to read the index, and an authorization
-// policy that permits TPM2_NV_Increment with a signed authorization policy. The caller must ensure that the
-// updateKey argument is a valid public key.
-var createPcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
-	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV3PcrPolicyCounterAuthPolicies, hmacSession)
-}
+// policy that permits TPM2_NV_Increment with a signed authorization policy.
+var ensurePcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (public *tpm2.NVPublic, err error) {
+	nameAlg := tpm2.HashAlgorithmSHA256
 
-// createPcrPolicyCounterLegacy creates and initializes a NV counter that is associated with a sealed key object
-// and is used for implementing PCR policy revocation.
-//
-// The NV index will be created with attributes that allow anyone to read the index, and an authorization
-// policy that permits TPM2_NV_Increment with a signed authorization policy. The caller must ensure that the
-// updateKey argument is a valid public key.
-func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
-	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV2PcrPolicyCounterAuthPolicies, hmacSession)
+	authPolicies := computeV3PcrPolicyCounterAuthPolicies(nameAlg, updateKey.Name())
+
+	trial := util.ComputeAuthPolicy(nameAlg)
+	trial.PolicyOR(authPolicies)
+
+	public = &tpm2.NVPublic{
+		Index:      handle,
+		NameAlg:    tpm2.HashAlgorithmSHA256,
+		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA),
+		AuthPolicy: trial.GetDigest(),
+		Size:       8}
+
+	index, err := tpm.CreateResourceContextFromTPM(handle, hmacSession)
+	switch {
+	case tpm2.IsResourceUnavailableError(err, handle):
+		// ok, need to create
+		index, err = tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, public, hmacSession)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if err == nil {
+				return
+			}
+			tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, hmacSession)
+		}()
+
+		// Begin a session to initialize the index.
+		policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, public.NameAlg)
+		if err != nil {
+			return nil, err
+		}
+		defer tpm.FlushContext(policySession)
+
+		// Execute the policy assertions
+		if err := tpm.PolicyNvWritten(policySession, false); err != nil {
+			return nil, err
+		}
+		if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
+			return nil, err
+		}
+		if err := tpm.PolicyOR(policySession, authPolicies); err != nil {
+			return nil, err
+		}
+
+		// Initialize the index
+		if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
+			return nil, err
+		}
+	case err != nil:
+		// unexpected error
+		return nil, err
+	}
+
+	// The index has a different name once it has been written, so update the public area
+	// we return so that it can be used to construct an authorization policy.
+	public.Attrs |= tpm2.AttrNVWritten
+
+	// Make sure the name matches that returned from the TPM - this catches the case
+	// where an index already exists but it has the wrong public area.
+	if !bytes.Equal(public.Name(), index.Name()) {
+		return nil, TPMResourceExistsError{handle}
+	}
+
+	return public, nil
 }
 
 var newPolicyAuthPublicKey = func(key secboot.PrimaryKey) (*tpm2.Public, error) {
