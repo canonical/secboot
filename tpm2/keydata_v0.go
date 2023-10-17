@@ -101,7 +101,11 @@ func (_ *keyData_v0) Imported(_ tpm2.Private) {
 	panic("not supported")
 }
 
-func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+	if len(role) > 0 {
+		return nil, errors.New("unexpected role")
+	}
+
 	// Obtain the name of the legacy lock NV index.
 	lockNV, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {

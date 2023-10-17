@@ -93,7 +93,7 @@ func (d *keyData_v3) Imported(priv tpm2.Private) {
 	d.KeyImportSymSeed = nil
 }
 
-func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	if d.KeyImportSymSeed != nil {
 		return nil, errors.New("cannot validate importable key data")
 	}
@@ -133,12 +133,18 @@ func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionCont
 		}
 	}
 
+	// Make sure the saved PCR policy ref matches what we expect
+	pcrPolicyRef := computeV3PcrPolicyRefFromCounterContext(authPublicKey.NameAlg, role, pcrPolicyCounter)
+	if !bytes.Equal(pcrPolicyRef, d.PolicyData.StaticData.PCRPolicyRef) {
+		return nil, keyDataError{errors.New("unexpected PCR policy ref")}
+	}
+
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
 	if !d.KeyPublic.NameAlg.Available() {
 		return nil, keyDataError{errors.New("cannot determine if static authorization policy matches sealed key object: algorithm unavailable")}
 	}
 	trial := util.ComputeAuthPolicy(d.KeyPublic.NameAlg)
-	trial.PolicyAuthorize(computeV3PcrPolicyRefFromCounterContext(pcrPolicyCounter), authKeyName)
+	trial.PolicyAuthorize(d.PolicyData.StaticData.PCRPolicyRef, authKeyName)
 	trial.PolicyAuthValue()
 
 	if !bytes.Equal(trial.GetDigest(), d.KeyPublic.AuthPolicy) {
