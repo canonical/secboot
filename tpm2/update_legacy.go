@@ -93,7 +93,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 		return InvalidKeyDataError{"invalid metadata version"}
 	}
 
-	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, policyUpdateData.AuthKey, tpm.HmacSession())
+	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, policyUpdateData.AuthKey, "", tpm.HmacSession())
 }
 
 // UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
@@ -125,7 +125,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey sec
 //
 // If validation of the key data fails, a InvalidKeyDataError error will be returned.
 func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.PrimaryKey) error {
-	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey, tpm.HmacSession())
+	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, authKey, "", tpm.HmacSession())
 }
 
 // UpdateKeyPCRProtectionPolicyMultiple updates the PCR protection policy for the supplied sealed key objects to the

@@ -109,8 +109,8 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, 
 	return k.data.Policy().UpdatePCRPolicy(alg, params)
 }
 
-func (k *sealedKeyDataBase) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContext, key secboot.PrimaryKey, session tpm2.SessionContext) error {
-	pcrPolicyCounterPub, err := k.validateData(tpm, session)
+func (k *sealedKeyDataBase) revokeOldPCRProtectionPolicies(tpm *tpm2.TPMContext, key secboot.PrimaryKey, role string, session tpm2.SessionContext) error {
+	pcrPolicyCounterPub, err := k.validateData(tpm, role, session)
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
@@ -257,7 +257,7 @@ func (k *SealedKeyData) UpdatePCRProtectionPolicy(tpm *Connection, authKey secbo
 //
 // If validation of the key data fails, a InvalidKeyDataError error will be returned.
 func (k *SealedKeyData) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.PrimaryKey) error {
-	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey, tpm.HmacSession())
+	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, authKey, k.k.Role(), tpm.HmacSession())
 }
 
 // UpdateKeyPCRProtectionPolicy updates the PCR protection policy for one or more TPM protected KeyData
