@@ -291,7 +291,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 	var pcrPolicyCounterPub *tpm2.NVPublic
 	var pcrPolicyCount uint64
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
-		pcrPolicyCounterPub, pcrPolicyCount, err = createPcrPolicyCounter(tpm.TPMContext, params.PCRPolicyCounterHandle, authPublicKey, session)
+		pcrPolicyCounterPub, pcrPolicyCount, err = createPcrPolicyCounterLegacy(tpm.TPMContext, params.PCRPolicyCounterHandle, authPublicKey, session)
 		switch {
 		case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
 			return nil, TPMResourceExistsError{params.PCRPolicyCounterHandle}
