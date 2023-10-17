@@ -34,7 +34,8 @@ import (
 )
 
 var (
-	secbootNewKeyData = secboot.NewKeyData
+	secbootNewKeyData               = secboot.NewKeyData
+	secbootNewKeyDataWithPassphrase = secboot.NewKeyDataWithPassphrase
 )
 
 // ProtectKeyParams provides arguments for the ProtectKey* APIs.
@@ -140,6 +141,38 @@ func (c *createdPcrPolicyCounter) undefineOnError(err error) {
 		return
 	}
 	c.tpm.NVUndefineSpace(c.tpm.OwnerHandleContext(), index, c.session)
+}
+
+type keyDataConstructor func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error)
+
+func (fn keyDataConstructor) NewKeyData(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
+	return fn(skd, role, encryptedPayload, kdfAlg)
+}
+
+var makeKeyDataNoAuth keyDataConstructor = func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
+	return secbootNewKeyData(&secboot.KeyParams{
+		Handle:           skd,
+		Role:             role,
+		EncryptedPayload: encryptedPayload,
+		PlatformName:     platformName,
+		KDFAlg:           kdfAlg,
+	})
+}
+
+func makeKeyDataWithPassphraseConstructor(kdfOptions *secboot.KDFOptions, passphrase string, kdf secboot.KDF) keyDataConstructor {
+	return func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
+		return secbootNewKeyDataWithPassphrase(&secboot.KeyWithPassphraseParams{
+			KeyParams: secboot.KeyParams{
+				Handle:           skd,
+				Role:             role,
+				EncryptedPayload: encryptedPayload,
+				PlatformName:     platformName,
+				KDFAlg:           kdfAlg,
+			},
+			KDFOptions:  kdfOptions,
+			AuthKeySize: skd.data.Public().NameAlg.Size(),
+		}, passphrase, kdf)
+	}
 }
 
 // keyDataPolicyParams corresponds to the parameters of a key's computed authorization
