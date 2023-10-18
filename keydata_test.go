@@ -39,6 +39,8 @@ import (
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
 
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
@@ -1511,4 +1513,33 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 			`"digest":"SSbv/yS8h5pqchVfV9AMHUjhS/vVateojNRRmo624qk="},`+
 			`"hmacs":["JWziaukXiAIsPU22X1RTC/2wEkPN4IdNvgDEzSnWXIc="]}}
 `))
+}
+
+func (s *keyDataSuite) TestMakeDiskUnlockKey(c *C) {
+	primaryKey := testutil.DecodeHexString(c, "1850fbecbe8b3db83a894cb975756c8b69086040f097b03bd4f3b1a3e19c4b86")
+	kdfAlg := crypto.SHA256
+	unique := testutil.DecodeHexString(c, "1850fbecbe8b3db83a894cb975756c8b69086040f097b03bd4f3b1a3e19c4b86")
+
+	reader := new(bytes.Buffer)
+	reader.Write(unique)
+
+	unlockKey, clearTextPayload, err := MakeDiskUnlockKey(reader, kdfAlg, primaryKey)
+	c.Assert(err, IsNil)
+
+	knownGoodUnlockKey := testutil.DecodeHexString(c, "8b78ddabd8e38a6513e654638c0f7b8c738d5461a403564d19d98e7f8ed469cb")
+	c.Check(unlockKey, DeepEquals, DiskUnlockKey(knownGoodUnlockKey))
+
+	knownGoodPayload := testutil.DecodeHexString(c, "304404201850fbecbe8b3db83a894cb975756c8b69086040f097b03bd4f3b1a3e19c4b8604201850fbecbe8b3db83a894cb975756c8b69086040f097b03bd4f3b1a3e19c4b86")
+	c.Check(clearTextPayload, DeepEquals, knownGoodPayload)
+
+	st := cryptobyte.String(clearTextPayload)
+	c.Assert(st.ReadASN1(&st, cryptobyte_asn1.SEQUENCE), Equals, true)
+
+	var p PrimaryKey
+	c.Assert(st.ReadASN1Bytes((*[]byte)(&p), cryptobyte_asn1.OCTET_STRING), Equals, true)
+	c.Check(p, DeepEquals, PrimaryKey(primaryKey))
+
+	var u []byte
+	c.Assert(st.ReadASN1Bytes(&u, cryptobyte_asn1.OCTET_STRING), Equals, true)
+	c.Check(u, DeepEquals, unique)
 }

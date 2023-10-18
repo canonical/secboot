@@ -34,6 +34,9 @@ import (
 
 	drbg "github.com/canonical/go-sp800.90a-drbg"
 
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/xerrors"
 )
@@ -941,4 +944,52 @@ func MarshalKeys(key DiskUnlockKey, auxKey PrimaryKey) KeyPayload {
 	binary.Write(w, binary.BigEndian, uint16(len(auxKey)))
 	w.Write(auxKey)
 	return w.Bytes()
+}
+
+type protectedKeys struct {
+	primary PrimaryKey
+	unique  []byte
+}
+
+func (k *protectedKeys) unlockKey(alg crypto.Hash) DiskUnlockKey {
+	if alg == crypto.Hash(nilHash) {
+		// This is to support the legacy TPM key data created
+		// via tpm2.NewKeyDataFromSealedKeyObjectFile.
+		return k.unique
+	}
+
+	unlockKey := make([]byte, len(k.primary))
+	r := hkdf.New(func() hash.Hash { return alg.New() }, k.primary, k.unique, []byte("UNLOCK"))
+	if _, err := io.ReadFull(r, unlockKey); err != nil {
+		panic(err)
+	}
+	return unlockKey
+}
+
+func (k *protectedKeys) marshalASN1(builder *cryptobyte.Builder) {
+	builder.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // ProtectedKeys ::= SEQUENCE {
+		b.AddASN1OctetString(k.primary) // primary OCTETSTRING
+		b.AddASN1OctetString(k.unique)  // unique OCTETSTRING
+	})
+}
+
+func MakeDiskUnlockKey(rand io.Reader, alg crypto.Hash, primaryKey PrimaryKey) (unlockKey DiskUnlockKey, cleartextPayload []byte, err error) {
+	unique := make([]byte, len(primaryKey))
+	if _, err := io.ReadFull(rand, unique); err != nil {
+		return nil, nil, xerrors.Errorf("cannot make unique ID: %w", err)
+	}
+
+	pk := &protectedKeys{
+		primary: primaryKey,
+		unique:  unique,
+	}
+
+	builder := cryptobyte.NewBuilder(nil)
+	pk.marshalASN1(builder)
+	cleartextPayload, err = builder.Bytes()
+	if err != nil {
+		return nil, nil, xerrors.Errorf("cannot marshal cleartext payload: %w", err)
+	}
+
+	return pk.unlockKey(alg), cleartextPayload, nil
 }
