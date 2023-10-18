@@ -31,9 +31,9 @@ import (
 	"github.com/snapcore/secboot"
 )
 
-var skdbUpdatePCRProtectionPolicyImpl = (*sealedKeyDataBase).updatePCRProtectionPolicyImpl
+var skdbUpdatePCRProtectionPolicyNoValidate = (*sealedKeyDataBase).updatePCRProtectionPolicyNoValidate
 
-// updatePCRProtectionPolicyImpl is a helper to update the PCR policy using the supplied
+// updatePCRProtectionPolicyNoValidate is a helper to update the PCR policy using the supplied
 // profile, authorized with the supplied key.
 //
 // If tpm is not nil, this function will verify that the supplied profile produces a PCR
@@ -43,13 +43,33 @@ var skdbUpdatePCRProtectionPolicyImpl = (*sealedKeyDataBase).updatePCRProtection
 //
 // If k.data.policy().pcrPolicyCounterHandle() is not tpm2.HandleNull, then counterPub
 // must be supplied, and it must correspond to the public area associated with that handle.
-func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, key secboot.PrimaryKey,
-	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, session tpm2.SessionContext) error {
+func (k *sealedKeyDataBase) updatePCRProtectionPolicyNoValidate(tpm *tpm2.TPMContext, key secboot.PrimaryKey,
+	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, incrementPolicyVersion bool,
+	session tpm2.SessionContext) error {
 	var counterName tpm2.Name
+	var policySequence uint64
 	if counterPub != nil {
+		if tpm == nil {
+			return errors.New("TPM connection required to update PCR policy with revocation")
+		}
+
 		// Callers obtain a valid counterPub from sealedKeyDataBase.validateData, so
 		// we know that this succeeds. If it failed, we would sign an invalid policy.
 		counterName = counterPub.Name()
+
+		counterContext, err := k.data.Policy().PCRPolicyCounterContext(tpm, counterPub, session)
+		if err != nil {
+			return xerrors.Errorf("cannot obtain PCR policy counter context: %w", err)
+		}
+
+		value, err := counterContext.Get()
+		if err != nil {
+			return xerrors.Errorf("cannot obtain PCR policy counter value: %w", err)
+		}
+		policySequence = value
+		if incrementPolicyVersion {
+			policySequence += 1
+		}
 	}
 
 	var supportedPcrs tpm2.PCRSelectionList
@@ -105,7 +125,8 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, 
 		key:               key,
 		pcrs:              pcrs,
 		pcrDigests:        pcrDigests,
-		policyCounterName: counterName}
+		policyCounterName: counterName,
+		policySequence:    policySequence}
 	return k.data.Policy().UpdatePCRPolicy(alg, params)
 }
 
