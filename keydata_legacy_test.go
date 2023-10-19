@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"hash"
+	"io"
 	"math/rand"
 
 	"golang.org/x/xerrors"
@@ -132,6 +133,15 @@ func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, n
 	handle.AuthKeyHMAC = m.Sum(nil)
 
 	return json.Marshal(&handle)
+}
+
+type mockKeyDataReader struct {
+	readableName string
+	io.Reader
+}
+
+func (r *mockKeyDataReader) ReadableName() string {
+	return r.readableName
 }
 
 type keyDataTestBase struct {
@@ -297,6 +307,18 @@ func (s *keyDataLegacySuite) TestRecoverKeysInvalidData(c *C) {
 	c.Assert(err, IsNil)
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
 	c.Check(err, ErrorMatches, "invalid key data: JSON decode error: json: cannot unmarshal string into Go value of type secboot.mockPlatformKeyDataHandle")
+	c.Check(recoveredKey, IsNil)
+	c.Check(recoveredAuxKey, IsNil)
+}
+
+func (s *keyDataLegacySuite) TestRecoverKeysWithPassphraseAuthModeNone(c *C) {
+	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeysWithPassphrase("", nil)
+	c.Check(err, ErrorMatches, "cannot recover key with passphrase")
 	c.Check(recoveredKey, IsNil)
 	c.Check(recoveredAuxKey, IsNil)
 }
