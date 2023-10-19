@@ -91,7 +91,8 @@ type testKeyDataLuksWriterData struct {
 }
 
 func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
 
 	s.luks2.devices[data.path] = &mockLUKS2Container{
 		tokens: map[int]luks2.Token{
@@ -101,9 +102,8 @@ func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
 					TokenKeyslot: data.slot},
 				Priority: data.initPriority},
 		},
-		keyslots: map[int][]byte{data.slot: key}}
+		keyslots: map[int][]byte{data.slot: unlockKey}}
 
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
@@ -232,7 +232,8 @@ type testKeyDataLuksReaderData struct {
 }
 
 func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
 
 	s.luks2.devices[data.path] = &mockLUKS2Container{
 		tokens: map[int]luks2.Token{
@@ -242,9 +243,8 @@ func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 					TokenName:    data.name},
 				Priority: data.priority},
 		},
-		keyslots: map[int][]byte{data.slot: key}}
+		keyslots: map[int][]byte{data.slot: unlockKey}}
 
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
@@ -264,7 +264,7 @@ func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
 
-	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
+	c.Check(keyData.SetAuthorizedSnapModels(primaryKey, models...), IsNil)
 
 	expectedId, err := keyData.UniqueID()
 	c.Check(err, IsNil)
@@ -291,12 +291,12 @@ func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 	c.Check(err, IsNil)
 	c.Check(id, DeepEquals, expectedId)
 
-	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
 	c.Check(err, IsNil)
-	c.Check(recoveredKey, DeepEquals, key)
-	c.Check(recoveredAuxKey, DeepEquals, auxKey)
+	c.Check(recoveredUnlockKey, DeepEquals, unlockKey)
+	c.Check(recoveredPrimaryKey, DeepEquals, primaryKey)
 
-	authorized, err := keyData.IsSnapModelAuthorized(recoveredAuxKey, models[0])
+	authorized, err := keyData.IsSnapModelAuthorized(recoveredPrimaryKey, models[0])
 	c.Check(err, IsNil)
 	c.Check(authorized, testutil.IsTrue)
 }
@@ -377,10 +377,9 @@ var _ = Suite(&keyDataLuksUnmockedSuite{})
 func (s *keyDataLuksUnmockedSuite) TestReaderAndWriter(c *C) {
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	c.Check(InitializeLUKS2Container(path, "", key, nil), IsNil)
-
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
+	c.Check(InitializeLUKS2Container(path, "", unlockKey, nil), IsNil)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -408,8 +407,8 @@ func (s *keyDataLuksUnmockedSuite) TestReaderAndWriter(c *C) {
 	c.Check(err, IsNil)
 	c.Check(id, DeepEquals, expectedId)
 
-	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
 	c.Check(err, IsNil)
-	c.Check(recoveredKey, DeepEquals, key)
-	c.Check(recoveredAuxKey, DeepEquals, auxKey)
+	c.Check(recoveredUnlockKey, DeepEquals, unlockKey)
+	c.Check(recoveredPrimaryKey, DeepEquals, primaryKey)
 }

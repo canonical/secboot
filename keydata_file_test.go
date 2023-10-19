@@ -45,8 +45,8 @@ func (s *keyDataFileSuite) SetUpTest(c *C) {
 var _ = Suite(&keyDataFileSuite{})
 
 func (s *keyDataFileSuite) TestWriter(c *C) {
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -63,8 +63,8 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 }
 
 func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -87,8 +87,8 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 }
 
 func (s *keyDataFileSuite) TestReader(c *C) {
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -109,7 +109,7 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
 
-	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
+	c.Check(keyData.SetAuthorizedSnapModels(primaryKey, models...), IsNil)
 
 	expectedId, err := keyData.UniqueID()
 	c.Check(err, IsNil)
@@ -131,12 +131,12 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 	c.Check(err, IsNil)
 	c.Check(id, DeepEquals, expectedId)
 
-	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
 	c.Check(err, IsNil)
-	c.Check(recoveredKey, DeepEquals, key)
-	c.Check(recoveredAuxKey, DeepEquals, auxKey)
+	c.Check(recoveredUnlockKey, DeepEquals, unlockKey)
+	c.Check(recoveredPrimaryKey, DeepEquals, primaryKey)
 
-	authorized, err := keyData.IsSnapModelAuthorized(recoveredAuxKey, models[0])
+	authorized, err := keyData.IsSnapModelAuthorized(recoveredPrimaryKey, models[0])
 	c.Check(err, IsNil)
 	c.Check(authorized, testutil.IsTrue)
 }

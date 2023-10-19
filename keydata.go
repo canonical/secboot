@@ -663,7 +663,7 @@ func (d *KeyData) recoverKeysCommon(data []byte) (DiskUnlockKey, PrimaryKey, err
 		if err != nil {
 			return nil, nil, &InvalidKeyDataError{xerrors.Errorf("cannot unmarshal cleartext key payload: %w", err)}
 		}
-		return pk.unlockKey(crypto.Hash(d.data.KDFAlg)), pk.primary, nil
+		return pk.unlockKey(crypto.Hash(d.data.KDFAlg)), pk.Primary, nil
 	default:
 		return nil, nil, fmt.Errorf("invalid keydata version %d", d.Version())
 	}
@@ -994,8 +994,8 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 }
 
 type protectedKeys struct {
-	primary PrimaryKey
-	unique  []byte
+	Primary PrimaryKey
+	Unique  []byte
 }
 
 func unmarshalProtectedKeys(data []byte) (*protectedKeys, error) {
@@ -1006,10 +1006,10 @@ func unmarshalProtectedKeys(data []byte) (*protectedKeys, error) {
 
 	pk := new(protectedKeys)
 
-	if !s.ReadASN1Bytes((*[]byte)(&pk.primary), cryptobyte_asn1.OCTET_STRING) {
+	if !s.ReadASN1Bytes((*[]byte)(&pk.Primary), cryptobyte_asn1.OCTET_STRING) {
 		return nil, errors.New("malformed primary key")
 	}
-	if !s.ReadASN1Bytes(&pk.unique, cryptobyte_asn1.OCTET_STRING) {
+	if !s.ReadASN1Bytes(&pk.Unique, cryptobyte_asn1.OCTET_STRING) {
 		return nil, errors.New("malformed unique key")
 	}
 
@@ -1020,11 +1020,11 @@ func (k *protectedKeys) unlockKey(alg crypto.Hash) DiskUnlockKey {
 	if alg == crypto.Hash(nilHash) {
 		// This is to support the legacy TPM key data created
 		// via tpm2.NewKeyDataFromSealedKeyObjectFile.
-		return k.unique
+		return k.Unique
 	}
 
-	unlockKey := make([]byte, len(k.primary))
-	r := hkdf.New(func() hash.Hash { return alg.New() }, k.primary, k.unique, []byte("UNLOCK"))
+	unlockKey := make([]byte, len(k.Primary))
+	r := hkdf.New(func() hash.Hash { return alg.New() }, k.Primary, k.Unique, []byte("UNLOCK"))
 	if _, err := io.ReadFull(r, unlockKey); err != nil {
 		panic(err)
 	}
@@ -1033,8 +1033,8 @@ func (k *protectedKeys) unlockKey(alg crypto.Hash) DiskUnlockKey {
 
 func (k *protectedKeys) marshalASN1(builder *cryptobyte.Builder) {
 	builder.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // ProtectedKeys ::= SEQUENCE {
-		b.AddASN1OctetString(k.primary) // primary OCTETSTRING
-		b.AddASN1OctetString(k.unique)  // unique OCTETSTRING
+		b.AddASN1OctetString(k.Primary) // primary OCTETSTRING
+		b.AddASN1OctetString(k.Unique)  // unique OCTETSTRING
 	})
 }
 
@@ -1045,8 +1045,8 @@ func MakeDiskUnlockKey(rand io.Reader, alg crypto.Hash, primaryKey PrimaryKey) (
 	}
 
 	pk := &protectedKeys{
-		primary: primaryKey,
-		unique:  unique,
+		Primary: primaryKey,
+		Unique:  unique,
 	}
 
 	builder := cryptobyte.NewBuilder(nil)
