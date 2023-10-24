@@ -37,7 +37,6 @@ import (
 
 	. "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luks2/luks2test"
-	"github.com/snapcore/secboot/internal/paths"
 	"github.com/snapcore/secboot/internal/paths/pathstest"
 )
 
@@ -222,7 +221,7 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 
 	cipher := SelectCipher()
 	keysize := KeySize(cipher)
-	cmd := []string{"cryptsetup", "-q", "luksFormat", "--type", "luks2",
+	cmd := []string{"cryptsetup", "--batch-mode", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", cipher, "--key-size", strconv.Itoa(keysize * 8),
 		"--label", data.label, "--pbkdf", "argon2i"}
 	cmd = append(cmd, data.extraArgs...)
@@ -452,14 +451,12 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	c.Check(AddKey(devicePath, primaryKey, data.key, data.options), IsNil)
 
 	c.Assert(s.cryptsetup.Calls(), HasLen, 1)
-	c.Assert(s.cryptsetup.Calls()[0], HasLen, 10+len(data.extraArgs))
-	c.Check(s.cryptsetup.Calls()[0][0:5], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file"})
-	c.Check(s.cryptsetup.Calls()[0][5], Matches, filepath.Join(paths.RunDir, filepath.Base(os.Args[0]))+"\\.[0-9]+/fifo")
-	c.Check(s.cryptsetup.Calls()[0][6:8], DeepEquals, []string{"--pbkdf", "argon2i"})
+	c.Assert(s.cryptsetup.Calls()[0], HasLen, 13+len(data.extraArgs))
+	c.Check(s.cryptsetup.Calls()[0][0:11], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file", "-", "--keyfile-size", strconv.Itoa(len(primaryKey)), "--batch-mode", "--pbkdf", "argon2i"})
 	if len(data.extraArgs) > 0 {
-		c.Check(s.cryptsetup.Calls()[0][8:8+len(data.extraArgs)], DeepEquals, data.extraArgs)
+		c.Check(s.cryptsetup.Calls()[0][11:11+len(data.extraArgs)], DeepEquals, data.extraArgs)
 	}
-	c.Check(s.cryptsetup.Calls()[0][8+len(data.extraArgs):], DeepEquals, []string{devicePath, "-"})
+	c.Check(s.cryptsetup.Calls()[0][11+len(data.extraArgs):], DeepEquals, []string{devicePath, "-"})
 
 	endInfo, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
