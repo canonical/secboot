@@ -297,7 +297,7 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 	ksize := keySize(cipher)
 	args := []string{
 		// batch processing, no password verification for formatting an existing LUKS container
-		"-q",
+		"--batch-mode",
 		// formatting a new volume
 		"luksFormat",
 		// use LUKS2

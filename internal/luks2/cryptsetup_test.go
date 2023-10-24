@@ -221,7 +221,7 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 
 	cipher := SelectCipher()
 	keysize := KeySize(cipher)
-	cmd := []string{"cryptsetup", "-q", "luksFormat", "--type", "luks2",
+	cmd := []string{"cryptsetup", "--batch-mode", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", cipher, "--key-size", strconv.Itoa(keysize * 8),
 		"--label", data.label, "--pbkdf", "argon2i"}
 	cmd = append(cmd, data.extraArgs...)
