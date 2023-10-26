@@ -53,6 +53,21 @@ func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 			// pubkey alg
 			x509.RSA,
 		),
+		withAuthorityOnlyForTesting(
+			// O = Snake Oil
+			[]byte{
+				0x30, 0x14, 0x31, 0x12, 0x30, 0x10, 0x06, 0x03, 0x55, 0x04,
+				0x0a, 0x0c, 0x09, 0x53, 0x6e, 0x61, 0x6b, 0x65, 0x20, 0x4f,
+				0x69, 0x6c,
+			},
+			// SKID
+			[]byte{
+				0x14, 0x3e, 0xce, 0x5d, 0xbd, 0x93, 0xea, 0xc3, 0xb2, 0xb1,
+				0x1a, 0x37, 0x86, 0x3d, 0x9f, 0xd7, 0x94, 0x97, 0xf0, 0x8f,
+			},
+			// pubkey alg
+			x509.RSA,
+		),
 		withImageRule(
 			"SBAT-capable shim with .sbatlevel section",
 			imageMatchesAll(
@@ -119,6 +134,15 @@ func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 			),
 			newShimLoadHandlerConstructor().WithVersion(mustParseShimVersion("15.2")).New,
 		),
+		withImageRuleOnlyForTesting(
+			"Ubuntu shim 15 with required patches, signed with snakeoil key",
+			imageMatchesAll(
+				imageSectionExists(".vendor_cert"),
+				shimVersionIs("==", "15"),
+				imageSignedByOrganization("Snake Oil"),
+			),
+			newShimLoadHandlerConstructor().WithVersion(mustParseShimVersion("15.2")).New,
+		),
 		// Pre SBAT shims - unsupported. These will cause an error from
 		// newShimLoadHandler rather than allowing this to fallback to the
 		// null handler.
@@ -138,6 +162,17 @@ func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 				imageMatchesAll(
 					imageSectionExists("mods"),
 					imageSignedByOrganization("Canonical Ltd."),
+				),
+			),
+			newGrubLoadHandlerConstructor(grubChainloaderUsesShimProtocol).New,
+		),
+		withImageRuleOnlyForTesting(
+			"Ubuntu grub, signed with snakeoil or other test key",
+			imageMatchesAll(
+				imageSectionExists(".mods"),
+				imageMatchesAny(
+					imageSignedByOrganization("Snake Oil"),
+					imageSignedByCommonName("new vendor certificate"),
 				),
 			),
 			newGrubLoadHandlerConstructor(grubChainloaderUsesShimProtocol).New,

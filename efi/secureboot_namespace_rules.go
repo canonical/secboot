@@ -22,7 +22,9 @@ package efi
 import (
 	"bytes"
 	"crypto/x509"
+	"os"
 
+	"github.com/snapcore/snapd/osutil"
 	"golang.org/x/xerrors"
 )
 
@@ -55,11 +57,29 @@ func withAuthority(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicK
 	}
 }
 
+// withAuthority adds the specified secure boot authority to a secureBootNamespaceRules,
+// only during testing.
+func withAuthorityOnlyForTesting(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicKeyAlgorithm) secureBootNamespaceOption {
+	if !osutil.IsTestBinary() && os.Getenv("SPREAD_SYSTEM") == "" {
+		return func(_ *secureBootNamespaceRules) {}
+	}
+	return withAuthority(subject, subjectKeyId, publicKeyAlgorithm)
+}
+
 // withImageRule adds the specified rule to a secureBootNamespaceRules.
 func withImageRule(name string, match imagePredicate, create newImageLoadHandlerFn) secureBootNamespaceOption {
 	return func(ns *secureBootNamespaceRules) {
 		ns.rules = append(ns.rules, newImageRule(name, match, create))
 	}
+}
+
+// withImageRule adds the specified rule to a secureBootNamespaceRules,
+// only during testing.
+func withImageRuleOnlyForTesting(name string, match imagePredicate, create newImageLoadHandlerFn) secureBootNamespaceOption {
+	if !osutil.IsTestBinary() && os.Getenv("SPREAD_SYSTEM") == "" {
+		return func(_ *secureBootNamespaceRules) {}
+	}
+	return withImageRule(name, match, create)
 }
 
 type secureBootNamespaceOption func(*secureBootNamespaceRules)

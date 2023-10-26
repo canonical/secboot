@@ -165,6 +165,23 @@ func (p imageSignedByOrganization) Matches(image peImageHandle) (bool, error) {
 	return false, nil
 }
 
+// imageSignedByCommonName is a predicate that is satisfied if an
+// image is signed by a subject with the specified common name.
+type imageSignedByCommonName string
+
+func (p imageSignedByCommonName) Matches(image peImageHandle) (bool, error) {
+	sigs, err := image.SecureBootSignatures()
+	if err != nil {
+		return false, err
+	}
+	for _, sig := range sigs {
+		if sig.GetSigner().Subject.CommonName == string(p) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 type imageDigestPredicate struct {
 	alg    crypto.Hash
 	digest []byte
