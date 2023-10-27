@@ -242,6 +242,7 @@ type KeyDataScopeParams struct {
 	Role       string
 	KDFAlg     crypto.Hash
 	MDAlg      crypto.Hash
+	ModelAlg   crypto.Hash
 }
 
 type KeyDataScope struct {
@@ -249,11 +250,21 @@ type KeyDataScope struct {
 }
 
 func NewKeyDataScope(params *KeyDataScopeParams) (*KeyDataScope, error) {
+
+	if params.ModelAlg == 0 {
+		return nil, errors.New("No model digest algorithm specified")
+	}
+
 	out := &KeyDataScope{
 		data: keyDataScope{
 			Version: 1,
 			KDFAlg:  hashAlg(params.KDFAlg),
 			MDAlg:   hashAlg(params.MDAlg),
+			Params: scopeParams{
+				ModelDigests: digestList{
+					Alg: hashAlg(params.ModelAlg),
+				},
+			},
 		},
 	}
 
