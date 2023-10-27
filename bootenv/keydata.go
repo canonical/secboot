@@ -458,6 +458,8 @@ func (d *KeyDataScope) MakeAdditionalData(baseVersion int, kdfAlg crypto.Hash, a
 
 	aad := &additionalData{
 		version:          d.data.Version,
+		baseVersion:      baseVersion,
+		kdfAlg:           hashAlg(kdfAlg),
 		authMode:         authMode,
 		keyIdentifierAlg: alg,
 		keyIdentifier:    h.Sum(nil),
