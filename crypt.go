@@ -822,10 +822,9 @@ func ListLUKS2ContainerRecoveryKeyNames(devicePath string) ([]string, error) {
 }
 
 // DeleteLUKS2ContainerKey deletes the keyslot with the specified name from the
-// LUKS2 container at the specified path. An existing key associated with a different
-// keyslot must be supplied. This will return an error if the container only has a
-// single keyslot remaining.
-func DeleteLUKS2ContainerKey(devicePath, keyslotName string, existingKey DiskUnlockKey) error {
+// LUKS2 container at the specified path. This will return an error if the container
+// only has a single keyslot remaining.
+func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
@@ -847,7 +846,7 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string, existingKey DiskUnl
 	removeOrphanedTokens(devicePath, view)
 
 	slot := token.Keyslots()[0]
-	if err := luks2KillSlot(devicePath, slot, existingKey); err != nil {
+	if err := luks2KillSlot(devicePath, slot); err != nil {
 		return xerrors.Errorf("cannot kill existing slot %d: %w", slot, err)
 	}
 

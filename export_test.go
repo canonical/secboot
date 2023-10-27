@@ -70,7 +70,7 @@ func MockLUKS2ImportToken(fn func(string, luks2.Token, *luks2.ImportTokenOptions
 	}
 }
 
-func MockLUKS2KillSlot(fn func(string, int, []byte) error) (restore func()) {
+func MockLUKS2KillSlot(fn func(string, int) error) (restore func()) {
 	origKillSlot := luks2KillSlot
 	luks2KillSlot = fn
 	return func() {

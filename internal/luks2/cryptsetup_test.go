@@ -900,7 +900,6 @@ func (s *cryptsetupSuite) TestRemoveNonExistantToken(c *C) {
 type testKillSlotData struct {
 	key1    []byte
 	key2    []byte
-	key     []byte
 	slotId  int
 	testKey []byte
 }
@@ -920,10 +919,10 @@ func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 
 	s.cryptsetup.ForgetCalls()
 
-	c.Check(KillSlot(devicePath, data.slotId, data.key), IsNil)
+	c.Check(KillSlot(devicePath, data.slotId), IsNil)
 
 	c.Check(s.cryptsetup.Calls(), DeepEquals, [][]string{
-		{"cryptsetup", "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(data.slotId)},
+		{"cryptsetup", "luksKillSlot", "--batch-mode", "--type", "luks2", devicePath, strconv.Itoa(data.slotId)},
 	})
 
 	info, err = ReadHeader(devicePath, LockModeBlocking)
@@ -944,7 +943,6 @@ func (s *cryptsetupSuite) TestKillSlot1(c *C) {
 	s.testKillSlot(c, &testKillSlotData{
 		key1:    key1,
 		key2:    key2,
-		key:     key1,
 		slotId:  1,
 		testKey: key1})
 }
@@ -958,27 +956,8 @@ func (s *cryptsetupSuite) TestKillSlot2(c *C) {
 	s.testKillSlot(c, &testKillSlotData{
 		key1:    key1,
 		key2:    key2,
-		key:     key2,
 		slotId:  0,
 		testKey: key2})
-}
-
-func (s *cryptsetupSuite) TestKillSlotWithWrongPassphrase(c *C) {
-	key1 := make([]byte, 32)
-	rand.Read(key1)
-	key2 := make([]byte, 32)
-	rand.Read(key2)
-
-	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
-
-	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
-	c.Assert(Format(devicePath, "", key1, &FormatOptions{KDFOptions: kdfOptions}), IsNil)
-	c.Assert(AddKey(devicePath, key1, key2, &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
-
-	c.Check(KillSlot(devicePath, 1, key2), ErrorMatches, "cryptsetup failed with: No key available with this passphrase.")
-
-	luks2test.CheckLUKS2Passphrase(c, devicePath, key1)
-	luks2test.CheckLUKS2Passphrase(c, devicePath, key2)
 }
 
 func (s *cryptsetupSuite) TestKillNonExistantSlot(c *C) {
@@ -989,7 +968,7 @@ func (s *cryptsetupSuite) TestKillNonExistantSlot(c *C) {
 	options := FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}
 	c.Assert(Format(devicePath, "", key, &options), IsNil)
 
-	c.Check(KillSlot(devicePath, 8, key), ErrorMatches, "cryptsetup failed with: Keyslot 8 is not active.")
+	c.Check(KillSlot(devicePath, 8), ErrorMatches, "cryptsetup failed with: Keyslot 8 is not active.")
 
 	luks2test.CheckLUKS2Passphrase(c, devicePath, key)
 }

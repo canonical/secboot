@@ -436,12 +436,11 @@ func RemoveToken(devicePath string, id int) error {
 }
 
 // KillSlot erases the keyslot with the supplied slot number from the specified LUKS2 container.
-// Note that a valid key for a remaining keyslot must be supplied.
 //
-// WARNING: This function will remove the last keyslot if the key associated with it
-// is supplied, which will make the encrypted data permanently inaccessible.
-func KillSlot(devicePath string, slot int, key []byte) error {
-	return cryptsetupCmd(bytes.NewReader(key), "luksKillSlot", "--type", "luks2", "--key-file", "-", devicePath, strconv.Itoa(slot))
+// WARNING: This function will remove the last keyslot if there is only one left,
+// which will make the encrypted data permanently inaccessible.
+func KillSlot(devicePath string, slot int) error {
+	return cryptsetupCmd(nil, "luksKillSlot", "--batch-mode", "--type", "luks2", devicePath, strconv.Itoa(slot))
 }
 
 // SetSlotPriority sets the priority of the keyslot with the supplied slot number on
