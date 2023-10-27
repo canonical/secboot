@@ -136,7 +136,7 @@ func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 					sbatComponentExists("grub.ubuntu"),
 				),
 				imageMatchesAll(
-					imageSectionExists(".mods"),
+					imageSectionExists("mods"),
 					imageSignedByOrganization("Canonical Ltd."),
 				),
 			),
@@ -149,7 +149,7 @@ func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 					sbatSectionExists,
 					sbatComponentExists("grub"),
 				),
-				imageSectionExists(".mods"),
+				imageSectionExists("mods"),
 			),
 			newGrubLoadHandler,
 		),
@@ -186,7 +186,7 @@ func makeFallbackImageRules() *imageRules {
 		// Grub
 		newImageRule(
 			"grub",
-			imageSectionExists(".mods"),
+			imageSectionExists("mods"),
 			newGrubLoadHandler,
 		),
 		// TODO: add rules for Ubuntu Core UKI and Ubuntu grub that are not part of

@@ -324,13 +324,13 @@ func newMockUbuntuShimImage15_7(c *C) *mockImage {
 func newMockUbuntuGrubImage1(c *C) *mockImage {
 	return newMockImage().
 		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig1)).
-		addSection(".mods", nil)
+		addSection("mods", nil)
 }
 
 func newMockUbuntuGrubImage2(c *C) *mockImage {
 	return newMockImage().
 		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig2)).
-		addSection(".mods", nil).
+		addSection("mods", nil).
 		withSbat([]SbatComponent{
 			{Name: "grub"},
 			{Name: "grub.ubuntu"},
@@ -340,7 +340,7 @@ func newMockUbuntuGrubImage2(c *C) *mockImage {
 func newMockUbuntuGrubImage3(c *C) *mockImage {
 	return newMockImage().
 		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig3)).
-		addSection(".mods", nil).
+		addSection("mods", nil).
 		withSbat([]SbatComponent{
 			{Name: "grub"},
 			{Name: "grub.ubuntu"},
