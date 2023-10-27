@@ -1507,6 +1507,10 @@ func (s *keyDataSuite) TestReadAndWriteWithUnsaltedKeyDigest(c *C) {
 		`{` +
 			`"platform_name":"mock",` +
 			`"platform_handle":"iTnGw6iFTfDgGS+KMtDHx2yF0bpNaTWyzeLtsbaC9YaspcssRrHzcRsNrubyEVT9",` +
+			// The new role field will be added as "" by default during unmarshalling
+			// with ReadKeyData even if it is missing.
+			// Explicitly adding the role field here so that the test passes.
+			`"role":"",` +
 			`"encrypted_payload":"fYM/SYjIRZj7JOJA710c9hSsxp5NpEchEVXgozd1KgxqZ/TOzIvWF9WYSrRcXiy1vsyjhkF0Svh3ihfApzvje7tTQRI=",` +
 			`"authorized_snap_models":{` +
 			`"alg":"sha256",` +
@@ -1563,6 +1567,10 @@ func (s *keyDataSuite) TestReadAndWriteWithLegacySnapModelAuthKey(c *C) {
 			`"key":"u2wBdkkDL0c5ovbM9z/3VoRVy6cHMs3YdwiUL+mNl/Q=",` +
 			`"iv":"sXJZ9DUc26Qz5x4/FwjFzA==",` +
 			`"auth-key-hmac":"JVayPium5JZZrEkqb7bsiQXPWJHEhX3r0aHjByulHXs="},` +
+			// The new role field will be added as "" by default during unmarshalling
+			// with ReadKeyData even if it is missing.
+			// Explicitly adding the role field here so that the test passes.
+			`"role":"",` +
 			`"encrypted_payload":"eDTWEozwRLFh1td/i+eufBDIFHiYJoQqhw51jPuWAy0hfJaw22ywTau+UdqRXQTh4bTl8LZhaDpBGk3wBMjLO8Y3l4Q=",` +
 			`"authorized_snap_models":{` +
 			`"alg":"sha256",` +
@@ -1625,6 +1633,10 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 			`"exp-generation":1,` +
 			`"exp-kdf_alg":0,` +
 			`"exp-auth-mode":0},` +
+			// The new role field will be added as "" by default during unmarshalling
+			// with ReadKeyData even if it is missing.
+			// Explicitly adding the role field here so that the test passes.
+			`"role":"",` +
 			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",` +
 			`"authorized_snap_models":{` +
 			`"alg":"sha256",` +
@@ -1660,6 +1672,7 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	j2, err := ioutil.ReadAll(w.Reader())
+
 	c.Check(err, IsNil)
 	c.Check(j2, DeepEquals, j)
 
@@ -1690,6 +1703,10 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 			`"exp-generation":1,`+
 			`"exp-kdf_alg":0,`+
 			`"exp-auth-mode":0},`+
+			// The new role field will be added as "" by default during unmarshalling
+			// with ReadKeyData even if it is missing.
+			// Explicitly adding the role field here so that the test passes.
+			`"role":"",`+
 			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",`+
 			`"authorized_snap_models":{`+
 			`"alg":"sha256",`+
