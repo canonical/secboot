@@ -22,9 +22,8 @@ package efi
 import (
 	"bytes"
 	"crypto/x509"
-	"os"
 
-	"github.com/snapcore/snapd/osutil"
+	"github.com/snapcore/snapd/snapdenv"
 	"golang.org/x/xerrors"
 )
 
@@ -60,7 +59,7 @@ func withAuthority(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicK
 // withAuthority adds the specified secure boot authority to a secureBootNamespaceRules,
 // only during testing.
 func withAuthorityOnlyForTesting(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicKeyAlgorithm) secureBootNamespaceOption {
-	if !osutil.IsTestBinary() && os.Getenv("SPREAD_SYSTEM") == "" {
+	if !snapdenv.Testing() {
 		return func(_ *secureBootNamespaceRules) {}
 	}
 	return withAuthority(subject, subjectKeyId, publicKeyAlgorithm)
@@ -76,7 +75,7 @@ func withImageRule(name string, match imagePredicate, create newImageLoadHandler
 // withImageRule adds the specified rule to a secureBootNamespaceRules,
 // only during testing.
 func withImageRuleOnlyForTesting(name string, match imagePredicate, create newImageLoadHandlerFn) secureBootNamespaceOption {
-	if !osutil.IsTestBinary() && os.Getenv("SPREAD_SYSTEM") == "" {
+	if !snapdenv.Testing() {
 		return func(_ *secureBootNamespaceRules) {}
 	}
 	return withImageRule(name, match, create)
