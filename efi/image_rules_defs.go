@@ -163,7 +163,7 @@ func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 				),
 				imageMatchesAll(
 					imageSectionExists("mods"),
-					imageSignedByOrganization("Canonical Ltd."),
+					grubHasPrefix("/EFI/ubuntu"),
 				),
 			),
 			newGrubLoadHandlerConstructor(grubChainloaderUsesShimProtocol).New,
@@ -209,14 +209,22 @@ func makeFallbackImageRules() *imageRules {
 			imageSectionExists(".vendor_cert"),
 			newShimLoadHandler,
 		),
+		// Ubuntu grub
+		newImageRule(
+			"grub",
+			imageMatchesAll(
+				imageSectionExists("mods"),
+				grubHasPrefix("/EFI/ubuntu"),
+			),
+			newGrubLoadHandlerConstructor(grubChainloaderUsesShimProtocol).New,
+		),
 		// Grub
 		newImageRule(
 			"grub",
 			imageSectionExists("mods"),
 			newGrubLoadHandler,
 		),
-		// TODO: add rules for Ubuntu Core UKI and Ubuntu grub that are not part of
-		// the MS UEFI CA?
+		// TODO: add rules for Ubuntu Core UKIs that are not part of the MS UEFI CA
 		//
 		// Catch-all for unrecognized leaf images
 		newImageRule(

@@ -58,6 +58,7 @@ var (
 	MustParseShimVersion                        = mustParseShimVersion
 	NewestSbatLevel                             = newestSbatLevel
 	NewFwLoadHandler                            = newFwLoadHandler
+	NewGrubImageHandle                          = newGrubImageHandle
 	NewImageLoadHandlerLazyMap                  = newImageLoadHandlerLazyMap
 	NewImageRule                                = newImageRule
 	NewImageRules                               = newImageRules
@@ -86,6 +87,7 @@ var (
 // unexported members of some unexported types.
 type FwContext = fwContext
 type GrubFlags = grubFlags
+type GrubImageHandle = grubImageHandle
 type GrubLoadHandler = grubLoadHandler
 type ImageLoadHandler = imageLoadHandler
 type ImageLoadHandlerMap = imageLoadHandlerMap
@@ -160,6 +162,14 @@ func MockNewFwLoadHandler(fn func(*tcglog.Log) ImageLoadHandler) (restore func()
 	newFwLoadHandler = fn
 	return func() {
 		newFwLoadHandler = orig
+	}
+}
+
+func MockNewGrubImageHandle(fn func(peImageHandle) grubImageHandle) (restore func()) {
+	orig := newGrubImageHandle
+	newGrubImageHandle = fn
+	return func() {
+		newGrubImageHandle = orig
 	}
 }
 

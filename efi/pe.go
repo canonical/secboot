@@ -51,6 +51,8 @@ type peImageHandle interface {
 	// Source returns the image source
 	Source() Image
 
+	Machine() uint16
+
 	// OpenSection returns a new io.SectionReader for the section with
 	// the specified name, or nil if no section exists.
 	OpenSection(name string) *io.SectionReader
@@ -107,6 +109,10 @@ func (h *peImageHandleImpl) Close() error {
 
 func (h *peImageHandleImpl) Source() Image {
 	return h.source
+}
+
+func (h *peImageHandleImpl) Machine() uint16 {
+	return h.pefile.Machine
 }
 
 func (h *peImageHandleImpl) OpenSection(name string) *io.SectionReader {

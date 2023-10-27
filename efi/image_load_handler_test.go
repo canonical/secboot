@@ -48,6 +48,17 @@ func (c *mockImageLoadHandlerConstructor) NewImageLoadHandler(image PeImageHandl
 
 type imageLoadHandlerSuite struct {
 	mockShimImageHandleMixin
+	mockGrubImageHandleMixin
+}
+
+func (s *imageLoadHandlerSuite) SetUpTest(c *C) {
+	s.mockShimImageHandleMixin.SetUpTest(c)
+	s.mockGrubImageHandleMixin.SetUpTest(c)
+}
+
+func (s *imageLoadHandlerSuite) TearDownTest(c *C) {
+	s.mockShimImageHandleMixin.TearDownTest(c)
+	s.mockGrubImageHandleMixin.TearDownTest(c)
 }
 
 var _ = Suite(&imageLoadHandlerSuite{})
@@ -131,5 +142,5 @@ func (s *imageLoadHandlerSuite) TestDefaultLookupFallback(c *C) {
 	handler, err := m.LookupHandler(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &GrubLoadHandler{})
-	c.Check(handler, DeepEquals, new(GrubLoadHandler))
+	c.Check(handler.(*GrubLoadHandler).Flags, Equals, GrubChainloaderUsesShimProtocol)
 }

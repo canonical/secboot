@@ -34,6 +34,17 @@ import (
 
 type imageRulesDefsSuite struct {
 	mockShimImageHandleMixin
+	mockGrubImageHandleMixin
+}
+
+func (s *imageRulesDefsSuite) SetUpTest(c *C) {
+	s.mockShimImageHandleMixin.SetUpTest(c)
+	s.mockGrubImageHandleMixin.SetUpTest(c)
+}
+
+func (s *imageRulesDefsSuite) TearDownTest(c *C) {
+	s.mockShimImageHandleMixin.TearDownTest(c)
+	s.mockGrubImageHandleMixin.TearDownTest(c)
 }
 
 var _ = Suite(&imageRulesDefsSuite{})
@@ -237,7 +248,7 @@ func (s *imageRulesDefsSuite) TestFallbackNewImageLoadHandlerShim(c *C) {
 	c.Check(shimHandler.SbatLevel, DeepEquals, ShimSbatLevel{[]byte("sbat,1,2022111500\nshim,2\ngrub,3\n"), []byte("sbat,1,2022052400\ngrub,2\n")})
 }
 
-func (s *imageRulesDefsSuite) TestFallbackNewImageLoadHandlerGrub(c *C) {
+func (s *imageRulesDefsSuite) TestFallbackNewImageLoadHandlerUbuntuGrub(c *C) {
 	// verify that grub is recognized by the fallback rules
 	image := newMockUbuntuGrubImage1(c)
 
@@ -245,9 +256,21 @@ func (s *imageRulesDefsSuite) TestFallbackNewImageLoadHandlerGrub(c *C) {
 	handler, err := rules.NewImageLoadHandler(image.newPeImageHandle())
 	c.Assert(err, IsNil)
 	c.Assert(handler, testutil.ConvertibleTo, &GrubLoadHandler{})
-	c.Check(handler.(*GrubLoadHandler), DeepEquals, new(GrubLoadHandler))
+	c.Check(handler.(*GrubLoadHandler).Flags, Equals, GrubChainloaderUsesShimProtocol)
 }
 
+func (s *imageRulesDefsSuite) TestFallbackNewImageLoadHandlerGrub(c *C) {
+	// verify that grub is recognized by the fallback rules
+	image := newMockImage().
+		addSection("mods", nil).
+		withGrubPrefix("/EFI/debian")
+
+	rules := MakeFallbackImageRules()
+	handler, err := rules.NewImageLoadHandler(image.newPeImageHandle())
+	c.Assert(err, IsNil)
+	c.Assert(handler, testutil.ConvertibleTo, &GrubLoadHandler{})
+	c.Check(handler.(*GrubLoadHandler), DeepEquals, new(GrubLoadHandler))
+}
 func (s *imageRulesDefsSuite) TestFallbackNewImageLoadHandlerNull(c *C) {
 	// verify that an unrecognized leaf image is recognized by the fallback rules
 	image := newMockImage()
