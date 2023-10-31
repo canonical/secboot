@@ -145,7 +145,9 @@ func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 	}
 	trial := util.ComputeAuthPolicy(d.KeyPublic.NameAlg)
 	trial.PolicyAuthorize(d.PolicyData.StaticData.PCRPolicyRef, authKeyName)
-	trial.PolicyAuthValue()
+	if d.PolicyData.StaticData.RequireAuthValue {
+		trial.PolicyAuthValue()
+	}
 
 	if !bytes.Equal(trial.GetDigest(), d.KeyPublic.AuthPolicy) {
 		return nil, keyDataError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
