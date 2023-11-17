@@ -20,7 +20,11 @@
 package tpm2
 
 import (
+	"errors"
+
 	"github.com/canonical/go-tpm2"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 
 	"github.com/snapcore/secboot"
 )
@@ -34,18 +38,18 @@ const (
 // Export variables and unexported functions for testing
 var (
 	ComputeV0PinNVIndexPostInitAuthPolicies = computeV0PinNVIndexPostInitAuthPolicies
-	CreatePcrPolicyCounter                  = createPcrPolicyCounter
+	CreatePcrPolicyCounter                  = createPcrPolicyCounterLegacy
+	EnsurePcrPolicyCounter                  = ensurePcrPolicyCounter
 	ComputeV1PcrPolicyRefFromCounterName    = computeV1PcrPolicyRefFromCounterName
 	ComputeV3PcrPolicyCounterAuthPolicies   = computeV3PcrPolicyCounterAuthPolicies
 	ComputeV3PcrPolicyRefFromCounterName    = computeV3PcrPolicyRefFromCounterName
 	ComputeSnapModelDigest                  = computeSnapModelDigest
-	DeriveAuthValue                         = deriveAuthValue
 	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
 	IsPolicyDataError                       = isPolicyDataError
-	MakeKeyData                             = makeKeyData
-	MakeKeyDataPolicy                       = makeKeyDataPolicy
-	MakeKeyDataWithPolicy                   = makeKeyDataWithPolicy
+	MakeSealedKeyData                       = makeSealedKeyData
+	MakeKeyDataNoAuth                       = makeKeyDataNoAuth
+	MakeKeyDataWithPassphraseConstructor    = makeKeyDataWithPassphraseConstructor
 	NewKeyData                              = newKeyData
 	NewKeyDataPolicy                        = newKeyDataPolicy
 	NewKeyDataPolicyLegacy                  = newKeyDataPolicyLegacy
@@ -66,10 +70,10 @@ type KeyData_v0 = keyData_v0
 type KeyData_v1 = keyData_v1
 type KeyData_v2 = keyData_v2
 type KeyData_v3 = keyData_v3
+type AdditionalData_v3 = additionalData_v3
 type KeyDataError = keyDataError
-type KeyDataParams = keyDataParams
+type SealedKeyDataParams = makeSealedKeyDataParams
 type KeyDataPolicy = keyDataPolicy
-type KeyDataPolicyParams = keyDataPolicyParams
 type KeyDataPolicy_v0 = keyDataPolicy_v0
 type KeyDataPolicy_v1 = keyDataPolicy_v1
 type KeyDataPolicy_v2 = keyDataPolicy_v2
@@ -182,15 +186,15 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
-func MockCreatePcrPolicyCounter(fn func(*tpm2.TPMContext, tpm2.Handle, *tpm2.Public, tpm2.SessionContext) (*tpm2.NVPublic, uint64, error)) (restore func()) {
-	orig := createPcrPolicyCounter
-	createPcrPolicyCounter = fn
+func MockEnsurePcrPolicyCounter(fn func(*tpm2.TPMContext, tpm2.Handle, *tpm2.Public, tpm2.SessionContext) (*tpm2.NVPublic, error)) (restore func()) {
+	orig := ensurePcrPolicyCounter
+	ensurePcrPolicyCounter = fn
 	return func() {
-		createPcrPolicyCounter = orig
+		ensurePcrPolicyCounter = orig
 	}
 }
 
-func MockNewKeyDataPolicy(fn func(tpm2.HashAlgorithmId, *tpm2.Public, *tpm2.NVPublic, uint64) (KeyDataPolicy, tpm2.Digest, error)) (restore func()) {
+func MockNewKeyDataPolicy(fn func(tpm2.HashAlgorithmId, *tpm2.Public, string, *tpm2.NVPublic, bool) (KeyDataPolicy, tpm2.Digest, error)) (restore func()) {
 	orig := newKeyDataPolicy
 	newKeyDataPolicy = fn
 	return func() {
@@ -214,11 +218,19 @@ func MockSecbootNewKeyData(fn func(*secboot.KeyParams) (*secboot.KeyData, error)
 	}
 }
 
-func MockSkdbUpdatePCRProtectionPolicyImpl(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, tpm2.SessionContext) error) (restore func()) {
-	orig := skdbUpdatePCRProtectionPolicyImpl
-	skdbUpdatePCRProtectionPolicyImpl = fn
+func MockSecbootNewKeyDataWithPassphrase(fn func(*secboot.KeyWithPassphraseParams, string, secboot.KDF) (*secboot.KeyData, error)) (restore func()) {
+	orig := secbootNewKeyDataWithPassphrase
+	secbootNewKeyDataWithPassphrase = fn
 	return func() {
-		skdbUpdatePCRProtectionPolicyImpl = orig
+		secbootNewKeyDataWithPassphrase = orig
+	}
+}
+
+func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, bool, tpm2.SessionContext) error) (restore func()) {
+	orig := skdbUpdatePCRProtectionPolicyNoValidate
+	skdbUpdatePCRProtectionPolicyNoValidate = fn
+	return func() {
+		skdbUpdatePCRProtectionPolicyNoValidate = orig
 	}
 }
 
@@ -226,32 +238,24 @@ func (k *SealedKeyData) Data() KeyData {
 	return k.data
 }
 
-func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
-	if _, err := k.validateData(tpm, session); err != nil {
-		return err
-	}
-
-	return k.data.Policy().ValidateAuthKey(authKey)
-}
-
 func (k *SealedKeyObject) Data() KeyData {
 	return k.data
 }
 
 func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
-	if _, err := k.validateData(tpm, session); err != nil {
+	if _, err := k.validateData(tpm, "", session); err != nil {
 		return err
 	}
 
 	return k.data.Policy().ValidateAuthKey(authKey)
 }
 
-func (c *createdPcrPolicyCounter) TPM() *tpm2.TPMContext {
-	return c.tpm
-}
+func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
+	if _, err := k.validateData(tpm, "", session); err != nil {
+		return err
+	}
 
-func (c *createdPcrPolicyCounter) Session() tpm2.SessionContext {
-	return c.session
+	return k.data.Policy().ValidateAuthKey(authKey)
 }
 
 func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
@@ -261,4 +265,27 @@ func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.P
 	}
 
 	return k.Validate(tpm, authKey, session)
+}
+
+type protectedKeys struct {
+	Primary secboot.PrimaryKey
+	Unique  []byte
+}
+
+func UnmarshalProtectedKeys(data []byte) (*protectedKeys, error) {
+	s := cryptobyte.String(data)
+	if !s.ReadASN1(&s, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("malformed input")
+	}
+
+	pk := new(protectedKeys)
+
+	if !s.ReadASN1Bytes((*[]byte)(&pk.Primary), cryptobyte_asn1.OCTET_STRING) {
+		return nil, errors.New("malformed primary key")
+	}
+	if !s.ReadASN1Bytes(&pk.Unique, cryptobyte_asn1.OCTET_STRING) {
+		return nil, errors.New("malformed unique key")
+	}
+
+	return pk, nil
 }

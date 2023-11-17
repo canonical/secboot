@@ -100,16 +100,16 @@ func makeKeyDataWithPassphraseConstructor(kdfOptions *secboot.KDFOptions, passph
 }
 
 type makeSealedKeyDataParams struct {
-	pcrProfile             *PCRProtectionProfile
-	role                   string
-	pcrPolicyCounterHandle tpm2.Handle
-	primaryKey             secboot.PrimaryKey
-	authMode               secboot.AuthMode
+	PcrProfile             *PCRProtectionProfile
+	Role                   string
+	PcrPolicyCounterHandle tpm2.Handle
+	PrimaryKey             secboot.PrimaryKey
+	AuthMode               secboot.AuthMode
 }
 
 func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, sealer keySealer, constructor keyDataConstructor, session tpm2.SessionContext) (*secboot.KeyData, secboot.PrimaryKey, secboot.DiskUnlockKey, error) {
 	// Create a primary key, if required.
-	primaryKey := params.primaryKey
+	primaryKey := params.PrimaryKey
 	if primaryKey == nil {
 		primaryKey = make(secboot.PrimaryKey, 32)
 		if _, err := rand.Read(primaryKey); err != nil {
@@ -125,16 +125,16 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 
 	// Create PCR policy counter, if requested and if one doesn't already exist.
 	var pcrPolicyCounterPub *tpm2.NVPublic
-	if params.pcrPolicyCounterHandle != tpm2.HandleNull {
+	if params.PcrPolicyCounterHandle != tpm2.HandleNull {
 		if tpm == nil {
 			return nil, nil, nil, errors.New("cannot create a PCR policy counter without a TPM connection")
 		}
 
 		var err error
-		pcrPolicyCounterPub, err = ensurePcrPolicyCounter(tpm, params.pcrPolicyCounterHandle, authPublicKey, session)
+		pcrPolicyCounterPub, err = ensurePcrPolicyCounter(tpm, params.PcrPolicyCounterHandle, authPublicKey, session)
 		switch {
 		case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
-			return nil, nil, nil, TPMResourceExistsError{params.pcrPolicyCounterHandle}
+			return nil, nil, nil, TPMResourceExistsError{params.PcrPolicyCounterHandle}
 		case isAuthFailError(err, tpm2.CommandNVDefineSpace, 1):
 			return nil, nil, nil, AuthFailError{tpm2.HandleOwner}
 		case err != nil:
@@ -144,9 +144,9 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 
 	// Create the initial policy data.
 	nameAlg := tpm2.HashAlgorithmSHA256
-	requireAuthValue := params.authMode != secboot.AuthModeNone
+	requireAuthValue := params.AuthMode != secboot.AuthModeNone
 
-	policyData, authPolicyDigest, err := newKeyDataPolicy(nameAlg, authPublicKey, params.role, pcrPolicyCounterPub, requireAuthValue)
+	policyData, authPolicyDigest, err := newKeyDataPolicy(nameAlg, authPublicKey, params.Role, pcrPolicyCounterPub, requireAuthValue)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create initial policy data: %w", err)
 	}
@@ -171,7 +171,7 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	skd := &SealedKeyData{sealedKeyDataBase: sealedKeyDataBase{data: data}}
 
 	// Set the initial PCR policy.
-	pcrProfile := params.pcrProfile
+	pcrProfile := params.PcrProfile
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
@@ -189,7 +189,7 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	aad, err := mu.MarshalToBytes(&additionalData_v3{
 		BaseVersion: uint32(secboot.KeyDataVersion),
 		KDFAlg:      tpm2.HashAlgorithmSHA256,
-		AuthMode:    params.authMode,
+		AuthMode:    params.AuthMode,
 	})
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create AAD: %w", err)
@@ -206,7 +206,7 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	ciphertext := aead.Seal(nil, symKey[32:], payload, aad)
 
 	// Construct the secboot.KeyData object
-	kd, err := constructor.NewKeyData(skd, params.role, ciphertext, kdfAlg)
+	kd, err := constructor.NewKeyData(skd, params.Role, ciphertext, kdfAlg)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create key data object: %w", err)
 	}
@@ -240,11 +240,11 @@ func NewExternalTPMProtectedKey(tpmKey *tpm2.Public, params *ProtectKeyParams) (
 	sealer := &importableObjectKeySealer{tpmKey: tpmKey}
 
 	return makeSealedKeyData(nil, &makeSealedKeyDataParams{
-		primaryKey:             params.PrimaryKey,
-		pcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
-		authMode:               secboot.AuthModeNone,
-		role:                   params.Role,
-		pcrProfile:             params.PCRProfile,
+		PrimaryKey:             params.PrimaryKey,
+		PcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
+		AuthMode:               secboot.AuthModeNone,
+		Role:                   params.Role,
+		PcrProfile:             params.PCRProfile,
 	}, sealer, makeKeyDataNoAuth, nil)
 }
 
@@ -278,11 +278,11 @@ func NewTPMProtectedKey(tpm *Connection, params *ProtectKeyParams) (protectedKey
 	sealer := &sealedObjectKeySealer{tpm}
 
 	return makeSealedKeyData(tpm.TPMContext, &makeSealedKeyDataParams{
-		pcrProfile:             params.PCRProfile,
-		role:                   params.Role,
-		pcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
-		primaryKey:             params.PrimaryKey,
-		authMode:               secboot.AuthModeNone,
+		PcrProfile:             params.PCRProfile,
+		Role:                   params.Role,
+		PcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
+		PrimaryKey:             params.PrimaryKey,
+		AuthMode:               secboot.AuthModeNone,
 	}, sealer, makeKeyDataNoAuth, tpm.HmacSession())
 }
 
@@ -295,10 +295,10 @@ func NewTPMPassphraseProtectedKey(tpm *Connection, params *PassphraseProtectKeyP
 	sealer := &sealedObjectKeySealer{tpm}
 
 	return makeSealedKeyData(tpm.TPMContext, &makeSealedKeyDataParams{
-		primaryKey:             params.PrimaryKey,
-		pcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
-		authMode:               secboot.AuthModePassphrase,
-		role:                   params.Role,
-		pcrProfile:             params.PCRProfile,
+		PrimaryKey:             params.PrimaryKey,
+		PcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
+		AuthMode:               secboot.AuthModePassphrase,
+		Role:                   params.Role,
+		PcrProfile:             params.PCRProfile,
 	}, sealer, makeKeyDataWithPassphraseConstructor(params.KDFOptions, passphrase, kdf), tpm.HmacSession())
 }
