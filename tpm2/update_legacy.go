@@ -20,6 +20,7 @@
 package tpm2
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -148,6 +149,32 @@ func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObje
 		if err := key.UpdatePCRProtectionPolicy(tpm, authKey, pcrProfile); err != nil {
 			return xerrors.Errorf("cannot update key at index %d: %w", i, err)
 		}
+	}
+
+	// Validate secondary key objects and make sure they are related
+	primaryKey := keys[0]
+	session := tpm.HmacSession()
+	for i, k := range keys[1:] {
+		if k.data.Version() != primaryKey.data.Version() {
+			return fmt.Errorf("key data at index %d has a different metadata version compared to the primary key data", i+1)
+		}
+
+		if _, err := k.validateData(tpm.TPMContext, "", session); err != nil {
+			if isKeyDataError(err) {
+				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i+1)}
+			}
+			return xerrors.Errorf("cannot validate related key data: %w", err)
+		}
+		// The metadata is valid and consistent with the object's static authorization policy.
+		// Verify that it also has the same static authorization policy as the first key object passed
+		// to this function. This policy digest includes a cryptographic record of the PCR policy counter
+		// and dynamic authorization policy signing key, so this is the only check required to determine
+		// if 2 keys are related.
+		if !bytes.Equal(k.data.Public().AuthPolicy, primaryKey.data.Public().AuthPolicy) {
+			return InvalidKeyDataError{fmt.Sprintf("key data at index %d is not related to the primary key data", i+1)}
+		}
+
+		k.data.Policy().SetPCRPolicyFrom(primaryKey.data.Policy())
 	}
 
 	return nil
