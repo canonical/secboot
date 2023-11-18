@@ -249,7 +249,7 @@ func (s *viewSuite) TestViewReread(c *C) {
 			TokenName:    "foo",
 			TokenKeyslot: 2}}
 	c.Check(luks2.ImportToken(path, token2, nil), IsNil)
-	c.Check(luks2.KillSlot(path, 2, make([]byte, 32)), IsNil)
+	c.Check(luks2.KillSlot(path, 2), IsNil)
 
 	c.Check(view.Reread(), IsNil)
 

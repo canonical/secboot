@@ -147,7 +147,7 @@ func (s *tokenSuite) TestDecodeOrphanedRecoveryToken(c *C) {
 			TokenName:    "recovery",
 			TokenKeyslot: 0}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
-	c.Check(luks2.KillSlot(path, 0, make([]byte, 32)), IsNil)
+	c.Check(luks2.KillSlot(path, 0), IsNil)
 
 	header, err := luks2.ReadHeader(path, luks2.LockModeNonBlocking)
 	c.Assert(err, IsNil)
@@ -304,7 +304,7 @@ func (s *tokenSuite) TestDecodeOrphanedKeyDataToken(c *C) {
 			TokenName:    "bar",
 			TokenKeyslot: 0}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
-	c.Check(luks2.KillSlot(path, 0, make([]byte, 32)), IsNil)
+	c.Check(luks2.KillSlot(path, 0), IsNil)
 
 	header, err := luks2.ReadHeader(path, luks2.LockModeNonBlocking)
 	c.Assert(err, IsNil)
