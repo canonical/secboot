@@ -21,7 +21,6 @@ package tpm2
 
 import (
 	"errors"
-	"fmt"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -216,10 +215,6 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 	// Reinitialize the connection, which creates a new session that's salted with a value protected with the newly provisioned EK.
 	// This will have a symmetric algorithm for parameter encryption during HierarchyChangeAuth.
 	if err := t.init(); err != nil {
-		var verifyErr verificationError
-		if xerrors.As(err, &verifyErr) {
-			return TPMVerificationError{fmt.Sprintf("cannot reinitialize TPM connection after provisioning endorsement key: %v", err)}
-		}
 		return xerrors.Errorf("cannot reinitialize TPM connection after provisioning endorsement key: %w", err)
 	}
 	session = t.HmacSession()

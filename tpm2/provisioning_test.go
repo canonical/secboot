@@ -385,26 +385,6 @@ func (s *provisioningSuite) TestProvisionWithOwnerAuth(c *C) {
 	s.validateSRK(c)
 }
 
-func (s *provisioningSimulatorSuite) TestProvisionWithInvalidEkCert(c *C) {
-	ConnectToTPM = secureConnectToDefaultTPMHelper
-	defer func() { ConnectToTPM = ConnectToDefaultTPM }()
-
-	s.ReinitTPMConnectionFromExisting(c)
-
-	// Temporarily modify the public template so that ProvisionTPM generates a primary key that doesn't match the EK cert
-	ekTemplate := tcg.MakeDefaultEKTemplate()
-	ekTemplate.Unique.RSA[0] = 0xff
-	restore := tpm2test.MockEKTemplate(ekTemplate)
-	s.AddCleanup(restore)
-
-	err := s.TPM().EnsureProvisioned(ProvisionModeFull, nil)
-	c.Assert(err, testutil.ConvertibleTo, TPMVerificationError{})
-	c.Check(err, ErrorMatches, "cannot verify that the TPM is the device for which "+
-		"the supplied EK certificate was issued: cannot reinitialize TPM connection "+
-		"after provisioning endorsement key: cannot verify public area of endorsement "+
-		"key read from the TPM: public area doesn't match certificate")
-}
-
 func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, mode ProvisionMode) {
 	template := tpm2.Public{
 		Type:    tpm2.ObjectTypeRSA,

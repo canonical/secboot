@@ -20,9 +20,7 @@
 package tpm2_test
 
 import (
-	"bytes"
 	"crypto"
-	"crypto/x509"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -54,21 +52,6 @@ func init() {
 }
 
 func Test(t *testing.T) { TestingT(t) }
-
-func secureConnectToDefaultTPMHelper() (*Connection, error) {
-	buf := new(bytes.Buffer)
-
-	caCert, err := x509.ParseCertificate(testCACert)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, buf); err != nil {
-		return nil, err
-	}
-
-	return SecureConnectToDefaultTPM(buf, nil)
-}
 
 // Set the hierarchy auth to testAuth. Fatal on failure
 func setHierarchyAuthForTest(t *testing.T, tpm *Connection, hierarchy tpm2.ResourceContext) {
