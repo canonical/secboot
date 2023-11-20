@@ -241,7 +241,7 @@ func makeKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboo
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	if err := skdbUpdatePCRProtectionPolicyImpl(&skd.sealedKeyDataBase, tpm, authKey, pcrPolicyCounter.Pub(), pcrProfile, session); err != nil {
+	if err := skdbUpdatePCRProtectionPolicyImpl(&skd.sealedKeyDataBase, tpm, authKey, pcrPolicyCounter.Pub(), pcrProfile); err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot set initial PCR policy: %w", err)
 	}
 	if err := protectedKey.MarshalAndUpdatePlatformHandle(skd); err != nil {

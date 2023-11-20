@@ -44,7 +44,7 @@ var skdbUpdatePCRProtectionPolicyImpl = (*sealedKeyDataBase).updatePCRProtection
 // If k.data.policy().pcrPolicyCounterHandle() is not tpm2.HandleNull, then counterPub
 // must be supplied, and it must correspond to the public area associated with that handle.
 func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey,
-	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, session tpm2.SessionContext) error {
+	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile) error {
 	var counterName tpm2.Name
 	if counterPub != nil {
 		// Callers obtain a valid counterPub from sealedKeyDataBase.validateData, so
@@ -55,7 +55,7 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, 
 	var supportedPcrs tpm2.PCRSelectionList
 	if tpm != nil {
 		var err error
-		supportedPcrs, err = tpm.GetCapabilityPCRs(session.IncludeAttrs(tpm2.AttrAudit))
+		supportedPcrs, err = tpm.GetCapabilityPCRs()
 		if err != nil {
 			return xerrors.Errorf("cannot determine supported PCRs: %w", err)
 		}
@@ -109,8 +109,8 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, 
 	return k.data.Policy().UpdatePCRPolicy(alg, params)
 }
 
-func (k *sealedKeyDataBase) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey, session tpm2.SessionContext) error {
-	pcrPolicyCounterPub, err := k.validateData(tpm, session)
+func (k *sealedKeyDataBase) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey) error {
+	pcrPolicyCounterPub, err := k.validateData(tpm)
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
@@ -124,7 +124,7 @@ func (k *sealedKeyDataBase) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMCont
 
 	target := k.data.Policy().PCRPolicySequence()
 
-	context, err := k.data.Policy().PCRPolicyCounterContext(tpm, pcrPolicyCounterPub, session)
+	context, err := k.data.Policy().PCRPolicyCounterContext(tpm, pcrPolicyCounterPub)
 	if err != nil {
 		return xerrors.Errorf("cannot create context for PCR policy counter: %w", err)
 	}
@@ -157,11 +157,11 @@ func (k *sealedKeyDataBase) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMCont
 	return nil
 }
 
-func updateKeyPCRProtectionPoliciesCommon(tpm *tpm2.TPMContext, keys []*sealedKeyDataBase, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
+func updateKeyPCRProtectionPoliciesCommon(tpm *tpm2.TPMContext, keys []*sealedKeyDataBase, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
 	primaryKey := keys[0]
 
 	// Validate the primary key object
-	pcrPolicyCounterPub, err := primaryKey.validateData(tpm, session)
+	pcrPolicyCounterPub, err := primaryKey.validateData(tpm)
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
@@ -179,7 +179,7 @@ func updateKeyPCRProtectionPoliciesCommon(tpm *tpm2.TPMContext, keys []*sealedKe
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	if err := primaryKey.updatePCRProtectionPolicyImpl(tpm, authKey, pcrPolicyCounterPub, pcrProfile, session); err != nil {
+	if err := primaryKey.updatePCRProtectionPolicyImpl(tpm, authKey, pcrPolicyCounterPub, pcrProfile); err != nil {
 		return xerrors.Errorf("cannot update PCR authorization policy: %w", err)
 	}
 
@@ -189,7 +189,7 @@ func updateKeyPCRProtectionPoliciesCommon(tpm *tpm2.TPMContext, keys []*sealedKe
 			return fmt.Errorf("key data at index %d has a different metadata version compared to the primary key data", i+1)
 		}
 
-		if _, err := k.validateData(tpm, session); err != nil {
+		if _, err := k.validateData(tpm); err != nil {
 			if isKeyDataError(err) {
 				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i+1)}
 			}
@@ -210,12 +210,12 @@ func updateKeyPCRProtectionPoliciesCommon(tpm *tpm2.TPMContext, keys []*sealedKe
 	return nil
 }
 
-func updateKeyPCRProtectionPolicies(tpm *tpm2.TPMContext, keys []*SealedKeyData, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile, session tpm2.SessionContext) error {
+func updateKeyPCRProtectionPolicies(tpm *tpm2.TPMContext, keys []*SealedKeyData, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
 	var keysCommon []*sealedKeyDataBase
 	for _, key := range keys {
 		keysCommon = append(keysCommon, &key.sealedKeyDataBase)
 	}
-	if err := updateKeyPCRProtectionPoliciesCommon(tpm, keysCommon, authKey, pcrProfile, session); err != nil {
+	if err := updateKeyPCRProtectionPoliciesCommon(tpm, keysCommon, authKey, pcrProfile); err != nil {
 		return err
 	}
 
@@ -239,7 +239,7 @@ func updateKeyPCRProtectionPolicies(tpm *tpm2.TPMContext, keys []*SealedKeyData,
 // On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
 // from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
 func (k *SealedKeyData) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
-	return updateKeyPCRProtectionPolicies(tpm.TPMContext, []*SealedKeyData{k}, authKey, pcrProfile, tpm.HmacSession())
+	return updateKeyPCRProtectionPolicies(tpm.TPMContext, []*SealedKeyData{k}, authKey, pcrProfile)
 }
 
 // RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. It does
@@ -257,7 +257,7 @@ func (k *SealedKeyData) UpdatePCRProtectionPolicy(tpm *Connection, authKey secbo
 //
 // If validation of the key data fails, a InvalidKeyDataError error will be returned.
 func (k *SealedKeyData) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.AuxiliaryKey) error {
-	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey, tpm.HmacSession())
+	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey)
 }
 
 // UpdateKeyPCRProtectionPolicy updates the PCR protection policy for one or more TPM protected KeyData
@@ -283,5 +283,5 @@ func UpdateKeyDataPCRProtectionPolicy(tpm *Connection, authKey secboot.Auxiliary
 		skds = append(skds, skd)
 	}
 
-	return updateKeyPCRProtectionPolicies(tpm.TPMContext, skds, authKey, pcrProfile, tpm.HmacSession())
+	return updateKeyPCRProtectionPolicies(tpm.TPMContext, skds, authKey, pcrProfile)
 }

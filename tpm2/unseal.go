@@ -77,7 +77,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 		}
 
 		// Load the key data
-		keyObject, err := k.load(tpm, srk, session)
+		keyObject, err := k.load(tpm, srk)
 		if isLoadInvalidParamError(err) || isImportInvalidParamError(err) {
 			// The supplied key data is invalid or is not protected by the supplied SRK.
 			lastError = InvalidKeyDataError{

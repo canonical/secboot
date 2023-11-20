@@ -123,8 +123,7 @@ func (s *keyDataV0Suite) TestNoImport(c *C) {
 func (s *keyDataV0Suite) TestValidateOK1(c *C) {
 	data, expectedPcrPolicyCounter := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, session)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, expectedPcrPolicyCounter.Name())
 }
@@ -132,8 +131,7 @@ func (s *keyDataV0Suite) TestValidateOK1(c *C) {
 func (s *keyDataV0Suite) TestValidateOK2(c *C) {
 	data, expectedPcrPolicyCounter := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x018ff000))
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, session)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, expectedPcrPolicyCounter.Name())
 }
@@ -145,8 +143,7 @@ func (s *keyDataV0Suite) TestValidateNoLockIndex(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err = data.ValidateData(s.TPM().TPMContext, session)
+	_, err = data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "lock NV index is unavailable")
 }
@@ -156,8 +153,7 @@ func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
 
 	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey.NameAlg = tpm2.HashAlgorithmNull
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	_, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "cannot compute name of dynamic authorization policy key: unsupported name algorithm or algorithm not linked into binary: TPM_ALG_NULL")
 }
@@ -167,8 +163,7 @@ func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
 
 	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey.Type = tpm2.ObjectTypeECC
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	_, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "public area of dynamic authorization policy signing key has the wrong type")
 }
@@ -181,8 +176,7 @@ func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyScheme(c *C) {
 		Details: &tpm2.AsymSchemeU{
 			RSASSA: &tpm2.SigSchemeRSASSA{HashAlg: tpm2.HashAlgorithmSHA256}}}
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	_, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "dynamic authorization policy signing key has unexpected scheme")
 }
@@ -192,8 +186,7 @@ func (s *keyDataV0Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
 
 	data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterHandle = 0x81000000
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	_, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "PCR policy counter handle is invalid")
 }
@@ -205,8 +198,7 @@ func (s *keyDataV0Suite) TestValidateNoPolicyCounter(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err = data.ValidateData(s.TPM().TPMContext, session)
+	_, err = data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "PCR policy counter is unavailable")
 }
@@ -216,8 +208,7 @@ func (s *keyDataV0Suite) TestValidateInvalidSealedObjectNameAlg(c *C) {
 
 	data.Public().NameAlg = tpm2.HashAlgorithmNull
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	_, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "cannot determine if static authorization policy matches sealed key object: algorithm unavailable")
 }
@@ -229,8 +220,7 @@ func (s *keyDataV0Suite) TestValidateWrongAuthKey(c *C) {
 	c.Assert(err, IsNil)
 	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey = util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err = data.ValidateData(s.TPM().TPMContext, session)
+	_, err = data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
@@ -250,8 +240,7 @@ func (s *keyDataV0Suite) TestValidateWrongPolicyCounter(c *C) {
 		Size:    8}
 	s.NVDefineSpace(c, tpm2.HandleOwner, nil, &nvPub)
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err = data.ValidateData(s.TPM().TPMContext, session)
+	_, err = data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
@@ -270,8 +259,7 @@ func (s *keyDataV0Suite) TestValidateWrongLockIndex(c *C) {
 		Size:    0}
 	s.NVDefineSpace(c, tpm2.HandleOwner, nil, &nvPub)
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err = data.ValidateData(s.TPM().TPMContext, session)
+	_, err = data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
@@ -281,8 +269,7 @@ func (s *keyDataV0Suite) TestValidateWrongPolicyCounterAuthPolicies1(c *C) {
 
 	data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterAuthPolicies = data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterAuthPolicies[1:]
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	_, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "unexpected number of OR policy digests for PCR policy counter")
 }
@@ -292,8 +279,7 @@ func (s *keyDataV0Suite) TestValidateWrongPolicyCounterAuthPolicies2(c *C) {
 
 	copy(data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterAuthPolicies[1], make([]byte, 32))
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	_, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "unexpected OR policy digest for PCR policy counter")
 }
@@ -303,8 +289,7 @@ func (s *keyDataV0Suite) TestValidateWrongPolicyCounterAuthPolicies3(c *C) {
 
 	copy(data.(*KeyData_v0).PolicyData.StaticData.PCRPolicyCounterAuthPolicies[0], make([]byte, 32))
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, session)
+	_, err := data.ValidateData(s.TPM().TPMContext)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "PCR policy counter has unexpected authorization policy")
 }

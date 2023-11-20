@@ -88,11 +88,11 @@ func (d *keyData_v2) Imported(priv tpm2.Private) {
 	d.KeyImportSymSeed = nil
 }
 
-func (d *keyData_v2) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v2) ValidateData(tpm *tpm2.TPMContext) (tpm2.ResourceContext, error) {
 	if d.KeyImportSymSeed != nil {
 		return nil, errors.New("cannot validate importable key data")
 	}
-	return d.AsV1().ValidateData(tpm, session)
+	return d.AsV1().ValidateData(tpm)
 }
 
 func (d *keyData_v2) Write(w io.Writer) error {

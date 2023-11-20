@@ -175,7 +175,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte,
 	}
 
 	// Validate the initial key data
-	_, err = k.validateData(tpm.TPMContext, tpm.HmacSession())
+	_, err = k.validateData(tpm.TPMContext)
 	switch {
 	case isKeyDataError(err):
 		return nil, &secboot.PlatformHandlerError{
@@ -195,7 +195,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte,
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
-	keyObject, err := k.load(tpm.TPMContext, srk, tpm.HmacSession())
+	keyObject, err := k.load(tpm.TPMContext, srk)
 	switch {
 	case isLoadInvalidParamError(err) || isImportInvalidParamError(err):
 		// The supplied key data is invalid or is not protected by the supplied SRK.
@@ -243,7 +243,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte,
 
 	// Validate the modified key. There's no reason for this to fail, but do it anyway. We haven't made
 	// any persistent changes yet and still have an opportunity to back out.
-	if _, err = k.validateData(tpm.TPMContext, tpm.HmacSession()); err != nil {
+	if _, err = k.validateData(tpm.TPMContext); err != nil {
 		return nil, xerrors.Errorf("cannot validate key data after auth value change: %w", err)
 	}
 

@@ -42,7 +42,7 @@ type Connection struct {
 // disabled by the platform firmware by disabling the storage and endorsement hierarchies, but still remain visible to the operating
 // system.
 func (t *Connection) IsEnabled() bool {
-	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyStartupClear, 1, t.HmacSession().IncludeAttrs(tpm2.AttrAudit))
+	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyStartupClear, 1)
 	if err != nil || len(props) == 0 {
 		return false
 	}
@@ -102,7 +102,7 @@ func (t *Connection) init() error {
 	if ek != nil {
 		// Do a sanity check that the public area returned from the TPM has the expected properties.
 		// If it doesn't, then don't use it, as TPM2_StartAuthSession might fail.
-		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, tcg.EKTemplate, nil); err != nil {
+		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, tcg.EKTemplate); err != nil {
 			return xerrors.Errorf("cannot determine if object is a primary key in the endorsement hierarchy: %w", err)
 		} else if !ok {
 			ek = nil

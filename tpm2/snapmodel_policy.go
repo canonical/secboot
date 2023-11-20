@@ -69,7 +69,7 @@ func (h *tpmSnapModelHasher) Write(data []byte) (int, error) {
 }
 
 func (h *tpmSnapModelHasher) Complete() ([]byte, error) {
-	digest, _, err := h.tpm.SequenceExecute(h.seq, h.buf, tpm2.HandleNull, h.tpm.HmacSession())
+	digest, _, err := h.tpm.SequenceExecute(h.seq, h.buf, tpm2.HandleNull, nil)
 	return digest, err
 }
 
@@ -206,7 +206,7 @@ func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
 	// in case it is ever bumped.
 	binary.LittleEndian.PutUint32(epoch[:], zeroSnapSystemEpoch)
 
-	if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcrIndex), seq, epoch[:], tpm.HmacSession(), nil); err != nil {
+	if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcrIndex), seq, epoch[:], nil, nil); err != nil {
 		return xerrors.Errorf("cannot execute event sequence: %w", err)
 	}
 
@@ -217,7 +217,7 @@ func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
 // for all supported PCR banks. See the documentation for AddSnapModelProfile for details of
 // how the digest of the model is computed.
 func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapModel) error {
-	pcrSelection, err := tpm.GetCapabilityPCRs(tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit))
+	pcrSelection, err := tpm.GetCapabilityPCRs()
 	if err != nil {
 		return xerrors.Errorf("cannot determine supported PCR banks: %w", err)
 	}
@@ -238,5 +238,5 @@ func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapMode
 		digests = append(digests, tpm2.MakeTaggedHash(s.Hash, digest))
 	}
 
-	return tpm.PCRExtend(tpm.PCRHandleContext(pcrIndex), digests, tpm.HmacSession())
+	return tpm.PCRExtend(tpm.PCRHandleContext(pcrIndex), digests, nil)
 }

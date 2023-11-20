@@ -119,7 +119,7 @@ type keyDataPolicy interface {
 	// PCRPolicyCounterContext returns a context for the PCR policy counter
 	// associated with this keyDataPolicy. The supplied public area must match
 	// the public area of the counter associated with this policy.
-	PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic, session tpm2.SessionContext) (pcrPolicyCounterContext, error)
+	PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic) (pcrPolicyCounterContext, error)
 
 	// ValidateAuthKey verifies that the supplied key is associated with this
 	// keyDataPolicy.
@@ -174,7 +174,7 @@ func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, update
 	}
 
 	// Initialize the index
-	if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
+	if err := tpm.NVIncrement(index, index, policySession); err != nil {
 		return nil, 0, err
 	}
 
@@ -182,7 +182,7 @@ func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, update
 	// to construct an authorization policy.
 	public.Attrs |= tpm2.AttrNVWritten
 
-	value, err := tpm.NVReadCounter(index, index, hmacSession)
+	value, err := tpm.NVReadCounter(index, index, nil)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -443,8 +443,6 @@ func (t *policyOrTree) executeAssertions(tpm *tpm2.TPMContext, session tpm2.Sess
 // (eg, the initramfs), and the environment in which a sealed key should not be permitted to be unsealed
 // (eg, the OS runtime).
 func BlockPCRProtectionPolicies(tpm *Connection, pcrs []int) error {
-	session := tpm.HmacSession()
-
 	// The fence is a hash of uint32(0), which is the same as EV_SEPARATOR (which can be uint32(0) or uint32(-1))
 	fence := make([]byte, 4)
 
@@ -454,7 +452,7 @@ func BlockPCRProtectionPolicies(tpm *Connection, pcrs []int) error {
 		if err != nil {
 			return xerrors.Errorf("cannot being hash sequence: %w", err)
 		}
-		if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcr), seq, fence, session, nil); err != nil {
+		if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcr), seq, fence, nil, nil); err != nil {
 			return xerrors.Errorf("cannot execute hash sequence: %w", err)
 		}
 	}

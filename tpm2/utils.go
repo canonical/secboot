@@ -97,13 +97,8 @@ func isTpmErrorWithHandle(err error) bool {
 // detect if the unique field of the specified template was actually used to create the object. As a consequnce, it should be used
 // with caution. This function returning true is no guarantee that recreating the object with the specified template would create
 // the same object.
-func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2.ResourceContext, template *tpm2.Public,
-	session tpm2.SessionContext) (bool, error) {
-	if session != nil {
-		session = session.IncludeAttrs(tpm2.AttrAudit)
-	}
-
-	pub, _, qualifiedName, err := tpm.ReadPublic(object, session)
+func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2.ResourceContext, template *tpm2.Public) (bool, error) {
+	pub, _, qualifiedName, err := tpm.ReadPublic(object)
 	if err != nil {
 		var he *tpm2.TPMHandleError
 		if xerrors.As(err, &he) && he.Code == tpm2.ErrorHandle {

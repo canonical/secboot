@@ -1244,7 +1244,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 
 			target := data.PCRData.PolicySequence
 
-			context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, pub, s.TPM().HmacSession())
+			context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, pub)
 			c.Assert(err, IsNil)
 			for {
 				current, err := context.Get()
@@ -1411,7 +1411,7 @@ func (s *policyV3Suite) TestPolicyCounterContextGet(c *C) {
 			AuthPublicKey:          authKeyPublic,
 			PCRPolicyCounterHandle: policyCounterPub.Index}}
 
-	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub, s.TPM().HmacSession())
+	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub)
 	c.Assert(err, IsNil)
 
 	count, err := context.Get()
@@ -1432,7 +1432,7 @@ func (s *policyV3Suite) TestPolicyCounterContextIncrement(c *C) {
 			AuthPublicKey:          authKeyPublic,
 			PCRPolicyCounterHandle: policyCounterPub.Index}}
 
-	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub, s.TPM().HmacSession())
+	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub)
 	c.Assert(err, IsNil)
 
 	c.Check(context.Increment(authKey), IsNil)
