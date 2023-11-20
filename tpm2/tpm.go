@@ -33,7 +33,6 @@ import (
 // Connection corresponds to a connection to a TPM device, and is a wrapper around *tpm2.TPMContext.
 type Connection struct {
 	*tpm2.TPMContext
-	ek             tpm2.ResourceContext
 	provisionedSrk tpm2.ResourceContext
 	hmacSession    tpm2.SessionContext
 }
@@ -58,16 +57,6 @@ func (t *Connection) LockoutAuthSet() bool {
 	return tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet > 0
 }
 
-// EndorsementKey returns a reference to the TPM's persistent endorsement key, if one exists. If the endorsement key certificate has
-// been verified, the returned ResourceContext will correspond to the object for which the certificate was issued and can safely be
-// used to share secrets with the TPM.
-func (t *Connection) EndorsementKey() (tpm2.ResourceContext, error) {
-	if t.ek == nil {
-		return nil, ErrTPMProvisioning
-	}
-	return t.ek, nil
-}
-
 // HmacSession returns a HMAC session instance which was created in order to conduct a proof-of-ownership check of the private part
 // of the endorsement key on the TPM. It is retained in order to reduce the number of sessions that need to be created during unseal
 // operations, and is created with a symmetric algorithm so that it is suitable for parameter encryption.
@@ -88,18 +77,21 @@ func (t *Connection) Close() error {
 	return t.TPMContext.Close()
 }
 
-func (t *Connection) init() error {
+func (t *Connection) init() (err error) {
 	// Allow init to be called more than once by flushing the previous session
 	if t.hmacSession != nil && t.hmacSession.Handle() != tpm2.HandleUnassigned {
 		t.FlushContext(t.hmacSession)
 		t.hmacSession = nil
 	}
-	t.ek = nil
 	t.provisionedSrk = nil
 
-	ek, _ := t.CreateResourceContextFromTPM(tcg.EKHandle)
-
-	if ek != nil {
+	ek, err := t.CreateResourceContextFromTPM(tcg.EKHandle)
+	switch {
+	case tpm2.IsResourceUnavailableError(err, tcg.EKHandle):
+		// ok
+	case err != nil:
+		return xerrors.Errorf("cannot obtain EK context: %w", err)
+	default:
 		// Do a sanity check that the public area returned from the TPM has the expected properties.
 		// If it doesn't, then don't use it, as TPM2_StartAuthSession might fail.
 		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, tcg.EKTemplate); err != nil {
@@ -127,7 +119,6 @@ func (t *Connection) init() error {
 
 	succeeded = true
 
-	t.ek = ek
 	t.hmacSession = session
 	return nil
 }

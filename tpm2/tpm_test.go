@@ -121,15 +121,6 @@ func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEk bool) {
 		c.Check(tpm.Close(), IsNil)
 	}()
 
-	ek, err := tpm.EndorsementKey()
-	if !hasEk {
-		c.Check(ek, IsNil)
-		c.Check(err, Equals, ErrTPMProvisioning)
-	} else {
-		c.Check(ek.Handle(), Equals, tcg.EKHandle)
-		c.Check(err, IsNil)
-	}
-
 	session := tpm.HmacSession()
 	c.Check(session, NotNil)
 	c.Check(session.Handle().Type(), Equals, tpm2.HandleTypeHMACSession)
