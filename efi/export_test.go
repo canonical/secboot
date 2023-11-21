@@ -138,14 +138,6 @@ func (s *ImageLoadSequences) Params() imageLoadParamsSet {
 	return s.params
 }
 
-func MockEFIVarsPath(path string) (restore func()) {
-	origPath := efiVarsPath
-	efiVarsPath = path
-	return func() {
-		efiVarsPath = origPath
-	}
-}
-
 func MockEventLogPath(path string) (restore func()) {
 	origPath := eventLogPath
 	eventLogPath = path

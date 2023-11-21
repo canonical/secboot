@@ -23,19 +23,13 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/x509"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"regexp"
 	"testing"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/tcglog-parser"
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi"
@@ -588,52 +582,6 @@ func (h *mockLoadHandler) MeasureImageLoad(ctx PcrBranchContext, image PeImageHa
 		}
 	}
 	return LookupImageLoadHandler(ctx, image)
-}
-
-func newMockEFIEnvironmentFromFiles(c *C, efivarsDir, logFile string) *efitest.MockHostEnvironment {
-	vars := make(efitest.MockVars)
-	if efivarsDir != "" {
-		dir, err := os.Open(efivarsDir)
-		c.Assert(err, IsNil)
-		defer dir.Close()
-
-		entries, err := dir.Readdir(-1)
-		c.Assert(err, IsNil)
-
-		r := regexp.MustCompile(`^([[:alnum:]]+)-([[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12})$`)
-
-		for _, entry := range entries {
-			m := r.FindStringSubmatch(entry.Name())
-			if len(m) == 0 {
-				continue
-			}
-
-			name := m[1]
-			guid, err := efi.DecodeGUIDString(m[2])
-			c.Assert(err, IsNil)
-
-			data, err := ioutil.ReadFile(filepath.Join(efivarsDir, entry.Name()))
-			c.Assert(err, IsNil)
-			if len(data) < 4 {
-				c.Fatal(entry.Name(), "contents too short")
-			}
-
-			vars[efi.VariableDescriptor{Name: name, GUID: guid}] = &efitest.VarEntry{
-				Payload: data[4:],
-				Attrs:   efi.VariableAttributes(binary.LittleEndian.Uint32(data))}
-		}
-	}
-
-	var log *tcglog.Log
-	if logFile != "" {
-		f, err := os.Open(logFile)
-		c.Assert(err, IsNil)
-		defer f.Close()
-
-		log, err = tcglog.ReadLog(f, &tcglog.LogOptions{})
-		c.Assert(err, IsNil)
-	}
-	return efitest.NewMockHostEnvironment(vars, log)
 }
 
 type mockSecureBootNamespaceRules []*x509.Certificate

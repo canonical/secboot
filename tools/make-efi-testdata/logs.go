@@ -403,9 +403,6 @@ type logData struct {
 
 var logs = []logData{
 	{name: "eventlog_sb"},
-	{name: "eventlog_sb_no_efi_action", opts: logOptions{omitEFIActionEvents: true}},
-	{name: "eventlog_sb_no_shim_verification", opts: logOptions{noShimVerification: true}},
-	{name: "eventlog_sb_no_sbat", opts: logOptions{noSBAT: true}},
 	{name: "eventlog_no_sb", opts: logOptions{secureBootDisabled: true}}}
 
 func makeTCGLogs(srcDir, dstDir string) error {

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/canonical/go-sp800.90a-drbg"
+	drbg "github.com/canonical/go-sp800.90a-drbg"
 
 	"golang.org/x/xerrors"
 )
@@ -46,10 +46,6 @@ func run() error {
 
 	if err := makeEFIVars(srcDir, dstDir); err != nil {
 		return xerrors.Errorf("cannot create EFI variables: %w", err)
-	}
-
-	if err := makeDbUpdates(srcDir, dstDir); err != nil {
-		return xerrors.Errorf("cannot create DB updates: %w", err)
 	}
 
 	if err := makeMockApps(srcDir, dstDir); err != nil {
