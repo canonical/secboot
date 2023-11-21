@@ -44,20 +44,12 @@ func run() error {
 		return xerrors.Errorf("cannot clean environment: %w", err)
 	}
 
-	if err := makeEFIVars(srcDir, dstDir); err != nil {
-		return xerrors.Errorf("cannot create EFI variables: %w", err)
-	}
-
 	if err := makeMockApps(srcDir, dstDir); err != nil {
 		return xerrors.Errorf("cannot create mock EFI apps: %w", err)
 	}
 
 	if err := writeCertificates(srcDir, dstDir); err != nil {
 		return xerrors.Errorf("cannot write certificates: %w", err)
-	}
-
-	if err := makeTCGLogs(srcDir, dstDir); err != nil {
-		return xerrors.Errorf("cannot create mock TCG logs: %w", err)
 	}
 
 	if err := recordBuildEnv(dstDir); err != nil {

@@ -22,7 +22,6 @@ package efi
 import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot/internal/testutil"
 )
 
 // Export constants for testing
@@ -178,12 +177,9 @@ func MockOpenPeImage(fn func(Image) (peImageHandle, error)) (restore func()) {
 	}
 }
 
-func MockReadVar(dir string) (restore func()) {
+func MockReadVar(fn func(string, efi.GUID) ([]byte, efi.VariableAttributes, error)) (restore func()) {
 	origReadVar := readVar
-	readVar = func(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
-		return testutil.EFIReadVar(dir, name, guid)
-	}
-
+	readVar = fn
 	return func() {
 		readVar = origReadVar
 	}
