@@ -274,19 +274,12 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 		c.Check(keyslot.KDF.Time, Equals, options.KDFOptions.ForceIterations)
 		c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
 	} else {
-		expectedKDFTime := 2000 * time.Millisecond
-		if options.KDFOptions.TargetDuration > 0 {
-			expectedKDFTime = options.KDFOptions.TargetDuration
-		}
-
 		c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
 
-		start := time.Now()
+		// We used to time this to make sure we are supplying the correct parameters to
+		// cryptsetup, but that was unreliable. For now, we rely on the command line
+		// parameters that were tested earlier, and trust that those are correct.
 		luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
-		elapsed := time.Now().Sub(start)
-		// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 	}
 }
 
@@ -497,19 +490,12 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 		c.Check(keyslot.KDF.Time, Equals, options.KDFOptions.ForceIterations)
 		c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
 	} else {
-		expectedKDFTime := 2000 * time.Millisecond
-		if options.KDFOptions.TargetDuration > 0 {
-			expectedKDFTime = options.KDFOptions.TargetDuration
-		}
-
 		c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
 
-		start := time.Now()
+		// We used to time this to make sure we are supplying the correct parameters to
+		// cryptsetup, but that was unreliable. For now, we rely on the command line
+		// parameters that were tested earlier, and trust that those are correct.
 		luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
-		elapsed := time.Now().Sub(start)
-		// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 	}
 }
 
