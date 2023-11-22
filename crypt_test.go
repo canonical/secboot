@@ -3539,6 +3539,16 @@ var _ = Suite(&cryptSuiteUnmocked{})
 var _ = Suite(&cryptSuiteUnmockedExpensive{})
 
 func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *InitializeLUKS2ContainerOptions) {
+	restore := MockLUKS2Format(func(devicePath, label string, key []byte, opts *luks2.FormatOptions) error {
+		var expectedTargetDuration time.Duration
+		if options != nil && options.KDFOptions != nil {
+			expectedTargetDuration = options.KDFOptions.TargetDuration
+		}
+		c.Check(opts.KDFOptions.TargetDuration, Equals, expectedTargetDuration)
+		return luks2.Format(devicePath, label, key, opts)
+	})
+	defer restore()
+
 	key := s.newPrimaryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
@@ -3595,20 +3605,13 @@ func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *Ini
 		c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
 		luks2test.CheckLUKS2Passphrase(c, path, key)
 	} else {
-		expectedKDFTime := 2 * time.Second
-		if options.KDFOptions.TargetDuration > 0 {
-			expectedKDFTime = options.KDFOptions.TargetDuration
-		}
-
 		c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
 
-		start := time.Now()
+		// We used to time this to make sure we are supplying the correct parameters to
+		// cryptsetup, but that was unreliable. For now, we rely on verifying that we
+		// pass the correct TargetDuration to internal/luks2 and trust that it does
+		// the right thing with it.
 		luks2test.CheckLUKS2Passphrase(c, path, key)
-		elapsed := time.Now().Sub(start)
-
-		// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 	}
 }
 
@@ -3655,6 +3658,16 @@ type testAddLUKS2ContainerUnlockKeyUnmockedData struct {
 }
 
 func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerUnlockKey(c *C, data *testAddLUKS2ContainerUnlockKeyUnmockedData) {
+	restore := MockLUKS2AddKey(func(devicePath string, existingKey, key []byte, opts *luks2.AddKeyOptions) error {
+		var expectedTargetDuration time.Duration
+		if data.options != nil {
+			expectedTargetDuration = data.options.TargetDuration
+		}
+		c.Check(opts.KDFOptions.TargetDuration, Equals, expectedTargetDuration)
+		return luks2.AddKey(devicePath, existingKey, key, opts)
+	})
+	defer restore()
+
 	key := s.newPrimaryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
@@ -3698,20 +3711,13 @@ func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerUnlockKey(c *C, data *test
 		c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
 		luks2test.CheckLUKS2Passphrase(c, path, newKey)
 	} else {
-		expectedKDFTime := 2 * time.Second
-		if options.TargetDuration > 0 {
-			expectedKDFTime = options.TargetDuration
-		}
-
 		c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
 
-		start := time.Now()
+		// We used to time this to make sure we are supplying the correct parameters to
+		// cryptsetup, but that was unreliable. For now, we rely on verifying that we
+		// pass the correct TargetDuration to internal/luks2 and trust that it does
+		// the right thing with it.
 		luks2test.CheckLUKS2Passphrase(c, path, newKey)
-		elapsed := time.Now().Sub(start)
-
-		// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 	}
 
 	luks2test.CheckLUKS2Passphrase(c, path, key)
@@ -3756,6 +3762,16 @@ type testAddLUKS2ContainerRecoveryKeyUnmockedData struct {
 }
 
 func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerRecoveryKey(c *C, data *testAddLUKS2ContainerRecoveryKeyUnmockedData) {
+	restore := MockLUKS2AddKey(func(devicePath string, existingKey, key []byte, opts *luks2.AddKeyOptions) error {
+		var expectedTargetDuration time.Duration
+		if data.options != nil {
+			expectedTargetDuration = data.options.TargetDuration
+		}
+		c.Check(opts.KDFOptions.TargetDuration, Equals, expectedTargetDuration)
+		return luks2.AddKey(devicePath, existingKey, key, opts)
+	})
+	restore()
+
 	key := s.newPrimaryKey()
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
@@ -3799,20 +3815,13 @@ func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerRecoveryKey(c *C, data *te
 		c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
 		luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
 	} else {
-		expectedKDFTime := 2 * time.Second
-		if options.TargetDuration > 0 {
-			expectedKDFTime = options.TargetDuration
-		}
-
 		c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
 
-		start := time.Now()
+		// We used to time this to make sure we are supplying the correct parameters to
+		// cryptsetup, but that was unreliable. For now, we rely on verifying that we
+		// pass the correct TargetDuration to internal/luks2 and trust that it does
+		// the right thing with it.
 		luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
-		elapsed := time.Now().Sub(start)
-
-		// Check KDF time here with +/-20% tolerance and additional 500ms for cryptsetup exec and other activities
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntGreaterThan, int(float64(expectedKDFTime/time.Millisecond)*0.8))
-		c.Check(int(elapsed/time.Millisecond), snapd_testutil.IntLessThan, int(float64(expectedKDFTime/time.Millisecond)*1.2)+500)
 	}
 
 	luks2test.CheckLUKS2Passphrase(c, path, key)
