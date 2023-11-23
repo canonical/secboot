@@ -609,7 +609,8 @@ func InitializeLUKS2Container(devicePath, label string, key DiskUnlockKey, optio
 			MetadataKiBSize:     options.MetadataKiBSize,
 			KeyslotsAreaKiBSize: options.KeyslotsAreaKiBSize,
 			KDFOptions:          options.KDFOptions,
-			InitialKeyslotName:  options.InitialKeyslotName}
+			InitialKeyslotName:  options.InitialKeyslotName,
+			InlineCryptoEngine:  options.InlineCryptoEngine}
 	}
 
 	if options.KDFOptions == nil {
