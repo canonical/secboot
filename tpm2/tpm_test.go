@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
@@ -185,7 +186,7 @@ func (t *mockTPM12Tcti) Close() error {
 	return nil
 }
 
-func (t *mockTPM12Tcti) SetLocality(locality uint8) error {
+func (t *mockTPM12Tcti) SetTimeout(timeout time.Duration) error {
 	return nil
 }
 
