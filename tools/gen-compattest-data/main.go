@@ -22,6 +22,7 @@ package main
 import (
 	"crypto/rand"
 	"crypto/x509"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -33,11 +34,7 @@ import (
 	"github.com/canonical/go-tpm2/mssim"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/snapd/asserts"
 
-	"golang.org/x/xerrors"
-
-	"github.com/snapcore/secboot"
 	secboot_efi "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
@@ -73,58 +70,63 @@ func init() {
 }
 
 func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2.PCRProtectionProfile, error) {
-	profile := secboot_tpm2.NewPCRProtectionProfile()
+	return nil, errors.New("TODO: This function needs porting to the efi.AddPCRProfile API")
+	/*
+	   profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	sbpParams := secboot_efi.SecureBootPolicyProfileParams{
-		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-		LoadSequences: []secboot_efi.ImageLoadActivity{
-			secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockshim1.efi.signed.1"), secboot_efi.Firmware).Loads(
-				secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockgrub1.efi.signed.shim"), secboot_efi.Shim).Loads(
-					secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockkernel1.efi.signed.shim"), secboot_efi.Shim),
-				),
-			),
-		},
-		Environment: env,
-	}
+	   	sbpParams := secboot_efi.SecureBootPolicyProfileParams{
+	   		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+	   		LoadSequences: []secboot_efi.ImageLoadActivity{
+	   			secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockshim1.efi.signed.1"), secboot_efi.Firmware).Loads(
+	   				secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockgrub1.efi.signed.shim"), secboot_efi.Shim).Loads(
+	   					secboot_efi.NewImageLoadActivity(secboot_efi.FileImage("efi/testdata/mockkernel1.efi.signed.shim"), secboot_efi.Shim),
+	   				),
+	   			),
+	   		},
+	   		Environment: env,
+	   	}
 
-	if err := secboot_efi.AddSecureBootPolicyProfile(profile, &sbpParams); err != nil {
-		return nil, xerrors.Errorf("cannot add secureboot policy profile: %w", err)
-	}
+	   	if err := secboot_efi.AddSecureBootPolicyProfile(profile, &sbpParams); err != nil {
+	   		return nil, xerrors.Errorf("cannot add secureboot policy profile: %w", err)
+	   	}
 
-	sdefisParams := secboot_efi.SystemdStubProfileParams{
-		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-		PCRIndex:     12,
-		KernelCmdlines: []string{
-			"snapd_recovery_mode=run quiet console=tty1 panic=-1",
-			"snapd_recovery_mode=recover quiet console=tty1 panic=-1",
-		},
-	}
+	   	sdefisParams := secboot_efi.SystemdStubProfileParams{
+	   		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+	   		PCRIndex:     12,
+	   		KernelCmdlines: []string{
+	   			"snapd_recovery_mode=run quiet console=tty1 panic=-1",
+	   			"snapd_recovery_mode=recover quiet console=tty1 panic=-1",
+	   		},
+	   	}
 
-	if err := secboot_efi.AddSystemdStubProfile(profile.RootBranch(), &sdefisParams); err != nil {
-		return nil, xerrors.Errorf("cannot add systemd EFI stub profile: %w", err)
-	}
+	   	if err := secboot_efi.AddSystemdStubProfile(profile.RootBranch(), &sdefisParams); err != nil {
+	   		return nil, xerrors.Errorf("cannot add systemd EFI stub profile: %w", err)
+	   	}
 
-	modelData, err := ioutil.ReadFile("tools/gen-compattest-data/data/fake-model")
-	if err != nil {
-		return nil, xerrors.Errorf("cannot read model assertion: %w", err)
-	}
+	   modelData, err := ioutil.ReadFile("tools/gen-compattest-data/data/fake-model")
 
-	model, err := asserts.Decode(modelData)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot decode model assertion: %w", err)
-	}
+	   	if err != nil {
+	   		return nil, xerrors.Errorf("cannot read model assertion: %w", err)
+	   	}
 
-	smParams := secboot_tpm2.SnapModelProfileParams{
-		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
-		PCRIndex:     12,
-		Models:       []secboot.SnapModel{model.(secboot.SnapModel)},
-	}
+	   model, err := asserts.Decode(modelData)
 
-	if err := secboot_tpm2.AddSnapModelProfile(profile.RootBranch(), &smParams); err != nil {
-		return nil, xerrors.Errorf("cannot add snap model profile: %w", err)
-	}
+	   	if err != nil {
+	   		return nil, xerrors.Errorf("cannot decode model assertion: %w", err)
+	   	}
 
-	return profile, nil
+	   	smParams := secboot_tpm2.SnapModelProfileParams{
+	   		PCRAlgorithm: tpm2.HashAlgorithmSHA256,
+	   		PCRIndex:     12,
+	   		Models:       []secboot.SnapModel{model.(secboot.SnapModel)},
+	   	}
+
+	   	if err := secboot_tpm2.AddSnapModelProfile(profile.RootBranch(), &smParams); err != nil {
+	   		return nil, xerrors.Errorf("cannot add snap model profile: %w", err)
+	   	}
+
+	   return profile, nil
+	*/
 }
 
 func run() int {
@@ -150,6 +152,8 @@ func run() int {
 	})
 	defer restore()
 
+	// TODO: This data was deleted in https://github.com/snapcore/secboot/pull/156 and
+	//  https://github.com/snapcore/secboot/pull/274.
 	env := &mockEFIEnvironment{"efi/testdata/efivars2", "efi/testdata/eventlog1.bin"}
 
 	tpm, err := secboot_tpm2.ConnectToDefaultTPM()
