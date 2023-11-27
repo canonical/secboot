@@ -21,6 +21,7 @@ package tpm2test
 
 import (
 	"os"
+	"time"
 
 	"github.com/canonical/go-tpm2"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
@@ -64,8 +65,8 @@ func (t *TCTI) Close() error {
 	return t.tcti.Close()
 }
 
-func (t *TCTI) SetLocality(locality uint8) error {
-	return t.tcti.SetLocality(locality)
+func (t *TCTI) SetTimeout(timeout time.Duration) error {
+	return t.tcti.SetTimeout(timeout)
 }
 
 func (t *TCTI) MakeSticky(handle tpm2.Handle, sticky bool) error {

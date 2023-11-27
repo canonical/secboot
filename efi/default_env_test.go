@@ -20,12 +20,15 @@
 package efi_test
 
 import (
+	"io"
 	"os"
+	"path/filepath"
 
 	efi "github.com/canonical/go-efilib"
+	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	. "github.com/snapcore/secboot/efi"
-	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/efitest"
 
 	. "gopkg.in/check.v1"
 )
@@ -40,17 +43,26 @@ type testReadVarData struct {
 }
 
 func (s *defaultEnvSuite) testReadVar(c *C, data *testReadVarData) {
-	restore := MockReadVar("testdata/efivars_ms")
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	restore := MockReadVar(func(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
+		entry, exists := vars[efi.VariableDescriptor{Name: name, GUID: guid}]
+		if !exists {
+			return nil, 0, efi.ErrVarNotExist
+		}
+		return entry.Payload, entry.Attrs, nil
+	})
 	defer restore()
 
-	varData, attrs, err := DefaultEnv.ReadVar(data.name, data.guid)
-	c.Check(err, IsNil)
+	payload, attrs, err := DefaultEnv.ReadVar(data.name, data.guid)
 
-	expectedVarData, expectedAttrs, err := testutil.EFIReadVar("testdata/efivars_ms", data.name, data.guid)
-	c.Check(err, IsNil)
-
-	c.Check(attrs, Equals, expectedAttrs)
-	c.Check(varData, DeepEquals, expectedVarData)
+	entry, exists := vars[efi.VariableDescriptor{Name: data.name, GUID: data.guid}]
+	if !exists {
+		c.Check(err, Equals, efi.ErrVarNotExist)
+	} else {
+		c.Check(err, IsNil)
+		c.Check(attrs, Equals, entry.Attrs)
+		c.Check(payload, DeepEquals, entry.Payload)
+	}
 }
 
 func (s *defaultEnvSuite) TestReadVar1(c *C) {
@@ -71,27 +83,45 @@ func (s *defaultEnvSuite) TestReadVar3(c *C) {
 		guid: efi.ImageSecurityDatabaseGuid})
 }
 
-func (s *defaultEnvSuite) testReadEventLog(c *C, path string) {
+func (s *defaultEnvSuite) TestReadVarNotExist(c *C) {
+	s.testReadVar(c, &testReadVarData{
+		name: "SecureBoot",
+		guid: efi.ImageSecurityDatabaseGuid})
+}
+
+func (s *defaultEnvSuite) testReadEventLog(c *C, opts *efitest.LogOptions) {
+	dir := c.MkDir()
+	path := filepath.Join(dir, "log")
+
+	log := efitest.NewLog(c, opts)
+
+	logFile, err := os.Create(path)
+	c.Assert(err, IsNil)
+	defer logFile.Close()
+
+	c.Check(log.Write(logFile), IsNil)
+
 	restore := MockEventLogPath(path)
 	defer restore()
 
-	log, err := DefaultEnv.ReadEventLog()
+	log, err = DefaultEnv.ReadEventLog()
 	c.Assert(err, IsNil)
 
-	f, err := os.Open(path)
-	c.Assert(err, IsNil)
-	defer f.Close()
-
-	expectedLog, err := tcglog.ReadLog(f, &tcglog.LogOptions{})
+	_, err = logFile.Seek(0, io.SeekStart)
+	c.Check(err, IsNil)
+	expectedLog, err := tcglog.ReadLog(logFile, &tcglog.LogOptions{})
 	c.Assert(err, IsNil)
 
 	c.Check(log, DeepEquals, expectedLog)
 }
 
 func (s *defaultEnvSuite) TestReadEventLog1(c *C) {
-	s.testReadEventLog(c, "testdata/eventlog_sb.bin")
+	s.testReadEventLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 }
 
 func (s *defaultEnvSuite) TestReadEventLog2(c *C) {
-	s.testReadEventLog(c, "testdata/eventlog_no_sb.bin")
+	s.testReadEventLog(c, &efitest.LogOptions{
+		Algorithms:         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+		SecureBootDisabled: true,
+	})
 }
