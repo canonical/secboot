@@ -47,56 +47,71 @@ const (
 //
 // If a transient SRK is created, it is flushed from the TPM before this function
 // returns.
-func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
-	var lastError error
+func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.SessionContext) (keyObject tpm2.ResourceContext, policySession tpm2.SessionContext, err error) {
 	for try := tryPersistentSRK; try <= tryMax; try++ {
 		var srk tpm2.ResourceContext
+		var thisErr error
 		if try == tryPersistentSRK {
-			var err error
-			srk, err = tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
-			if tpm2.IsResourceUnavailableError(err, tcg.SRKHandle) {
+			srk, thisErr = tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			if tpm2.IsResourceUnavailableError(thisErr, tcg.SRKHandle) {
 				// No SRK - save the error and try creating a transient
-				lastError = ErrTPMProvisioning
+				err = ErrTPMProvisioning
 				continue
-			} else if err != nil {
+			} else if thisErr != nil {
 				// This is an unexpected error
-				return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
+				return nil, nil, xerrors.Errorf("cannot create context for SRK: %w", thisErr)
 			}
 		} else {
-			var err error
-			srk, _, _, _, _, err = tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, selectSrkTemplate(tpm, session), nil, nil, session)
-			if isAuthFailError(err, tpm2.CommandCreatePrimary, 1) {
+			srk, _, _, _, _, thisErr = tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, selectSrkTemplate(tpm, session), nil, nil, session)
+			if isAuthFailError(thisErr, tpm2.CommandCreatePrimary, 1) {
 				// We don't know the authorization value for the storage hierarchy - ignore
 				// this so we end up returning the last error.
 				continue
-			} else if err != nil {
+			} else if thisErr != nil {
 				// This is an unexpected error
-				return nil, xerrors.Errorf("cannot create transient SRK: %w", err)
+				return nil, nil, xerrors.Errorf("cannot create transient SRK: %w", err)
 			}
 			defer tpm.FlushContext(srk)
 		}
 
 		// Load the key data
-		keyObject, err := k.load(tpm, srk)
+		keyObject, err = k.load(tpm, srk)
 		if isLoadInvalidParamError(err) || isImportInvalidParamError(err) {
 			// The supplied key data is invalid or is not protected by the supplied SRK.
-			lastError = InvalidKeyDataError{
+			err = InvalidKeyDataError{
 				fmt.Sprintf("cannot load sealed key object into TPM: %v. Either the sealed key object is bad or the TPM owner has changed", err)}
 			continue
 		} else if isLoadInvalidParentError(err) || isImportInvalidParentError(err) {
 			// The supplied SRK is not a valid storage parent.
-			lastError = ErrTPMProvisioning
+			err = ErrTPMProvisioning
 			continue
 		} else if err != nil {
 			// This is an unexpected error
-			return nil, xerrors.Errorf("cannot load sealed key object into TPM: %w", err)
+			return nil, nil, xerrors.Errorf("cannot load sealed key object into TPM: %w", err)
 		}
 
-		return keyObject, nil
+		defer func() {
+			if err == nil {
+				return
+			}
+			tpm.FlushContext(keyObject)
+		}()
+
+		// Begin policy session with parameter encryption support and salted with the SRK.
+		symmetric := &tpm2.SymDef{
+			Algorithm: tpm2.SymAlgorithmAES,
+			KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+			Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
+		}
+		policySession, err = tpm.StartAuthSession(srk, nil, tpm2.SessionTypePolicy, symmetric, k.data.Public().NameAlg)
+		if err != nil {
+			return nil, nil, xerrors.Errorf("cannot start policy session: %w", err)
+		}
+		return keyObject, policySession.WithAttrs(tpm2.AttrResponseEncrypt), nil
 	}
 
 	// No more attempts left - return the last error
-	return nil, lastError
+	return nil, nil, err
 }
 
 func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []byte, hmacSession tpm2.SessionContext) (data []byte, err error) {
@@ -110,21 +125,18 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []
 		return nil, ErrTPMLockout
 	}
 
-	keyObject, err := k.loadForUnseal(tpm, hmacSession)
+	keyObject, policySession, err := k.loadForUnseal(tpm, hmacSession)
 	if err != nil {
 		return nil, err
 	}
-	defer tpm.FlushContext(keyObject)
+	defer func() {
+		tpm.FlushContext(keyObject)
+		tpm.FlushContext(policySession)
+	}()
 
 	keyObject.SetAuthValue(authValue)
 
-	// Begin and execute policy session
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.Public().NameAlg)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot start policy session: %w", err)
-	}
-	defer tpm.FlushContext(policySession)
-
+	// Execute policy session
 	if err := k.data.Policy().ExecutePCRPolicy(tpm, policySession, hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
@@ -137,7 +149,7 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []
 	}
 
 	// Unseal
-	data, err = tpm.Unseal(keyObject, policySession, hmacSession.IncludeAttrs(tpm2.AttrResponseEncrypt))
+	data, err = tpm.Unseal(keyObject, policySession)
 	switch {
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
 		return nil, InvalidKeyDataError{"the authorization policy check failed during unsealing"}

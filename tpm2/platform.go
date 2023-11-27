@@ -229,7 +229,19 @@ func (h *platformKeyDataHandler) ChangeAuthKey(handle, old, new []byte) ([]byte,
 		}
 	}
 
-	priv, err := tpm.ObjectChangeAuth(keyObject, srk, newAuthValue, tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
+	// Begin session for parameter encryption, salted with the SRK.
+	symmetric := &tpm2.SymDef{
+		Algorithm: tpm2.SymAlgorithmAES,
+		KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
+	}
+	session, err := tpm.StartAuthSession(srk, nil, tpm2.SessionTypeHMAC, symmetric, k.data.Public().NameAlg, nil)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create session: %w", err)
+	}
+	defer tpm.FlushContext(session)
+
+	priv, err := tpm.ObjectChangeAuth(keyObject, srk, newAuthValue, session.WithAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
 		if tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandObjectChangeAuth, 1) {
 			return nil, &secboot.PlatformHandlerError{

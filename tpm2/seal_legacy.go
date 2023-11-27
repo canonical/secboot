@@ -248,7 +248,6 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		return nil, errors.New("provided AuthKey must be from elliptic.P256, no other curve is supported")
 	}
 
-	// Use the HMAC session created when the connection was opened rather than creating a new one.
 	session := tpm.HmacSession()
 
 	// Obtain a context for the SRK now. If we're called immediately after ProvisionTPM without closing the Connection, we use the
@@ -308,7 +307,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 			if err != nil {
 				return
 			}
-			tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, session)
+			tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, tpm.HmacSession())
 		}()
 	}
 
@@ -332,6 +331,20 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 			os.Remove(key.Path)
 		}
 	}()
+
+	// Begin session for parameter encryption, salted with the SRK.
+	symmetric := &tpm2.SymDef{
+		Algorithm: tpm2.SymAlgorithmAES,
+		KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
+	}
+	session, err = tpm.StartAuthSession(srk, nil, tpm2.SessionTypeHMAC, symmetric, defaultSessionHashAlgorithm, nil)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create session: %w", err)
+	}
+	defer tpm.FlushContext(session)
+
+	session = session.WithAttrs(tpm2.AttrContinueSession)
 
 	// Seal each key.
 	for i, key := range keys {
