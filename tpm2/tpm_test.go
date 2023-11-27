@@ -28,6 +28,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/canonical/go-tpm2/templates"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	. "gopkg.in/check.v1"
@@ -114,7 +115,7 @@ func (s *tpmSuitePlatform) TestConnectionLockoutAuthSet(c *C) {
 	c.Check(s.TPM().LockoutAuthSet(), testutil.IsTrue)
 }
 
-func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEk bool) {
+func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEncryption bool) {
 	tpm, err := ConnectToDefaultTPM()
 	c.Assert(err, IsNil)
 	defer func() {
@@ -124,6 +125,16 @@ func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEk bool) {
 	session := tpm.HmacSession()
 	c.Check(session, NotNil)
 	c.Check(session.Handle().Type(), Equals, tpm2.HandleTypeHMACSession)
+
+	if hasEncryption {
+		session = session.IncludeAttrs(tpm2.AttrResponseEncrypt)
+	}
+	_, err = tpm.GetRandom(16, session)
+	if hasEncryption {
+		c.Check(err, IsNil)
+	} else {
+		c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAttributes, tpm2.CommandGetRandom, 1), testutil.IsTrue)
+	}
 }
 
 func (s *tpmSuiteSimulator) TestConnectToDefaultTPMUnprovisioned(c *C) {
@@ -137,7 +148,7 @@ func (s *tpmSuite) TestConnectToDefaultTPMProvisioned(c *C) {
 }
 
 func (s *tpmSuite) TestConnectToDefaultTPMInvalidEK(c *C) {
-	primary := s.CreatePrimary(c, tpm2.HandleEndorsement, tcg.SRKTemplate)
+	primary := s.CreatePrimary(c, tpm2.HandleOwner, tpm2_testutil.NewRSAKeyTemplate(templates.KeyUsageDecrypt, nil))
 	s.EvictControl(c, tpm2.HandleOwner, primary, tcg.EKHandle)
 	s.testConnectToDefaultTPM(c, false)
 }

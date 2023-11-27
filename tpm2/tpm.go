@@ -92,32 +92,35 @@ func (t *Connection) init() (err error) {
 	case err != nil:
 		return xerrors.Errorf("cannot obtain EK context: %w", err)
 	default:
-		// Do a sanity check that the public area returned from the TPM has the expected properties.
-		// If it doesn't, then don't use it, as TPM2_StartAuthSession might fail.
-		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, tcg.EKTemplate); err != nil {
-			return xerrors.Errorf("cannot determine if object is a primary key in the endorsement hierarchy: %w", err)
-		} else if !ok {
+		// Do a sanity check that the obtained context corresponds to a suitable key.
+		// A suitable key is a non-duplicable aysymmetric storage parent. If it's not,
+		// then don't use it.
+		pub, _, _, err := t.ReadPublic(ek)
+		if err != nil {
+			return xerrors.Errorf("cannot obtain EK public area: %w", err)
+		}
+
+		if !pub.IsAsymmetric() || !pub.IsStorageParent() || pub.Attrs&(tpm2.AttrFixedParent|tpm2.AttrFixedTPM) != tpm2.AttrFixedParent|tpm2.AttrFixedTPM {
 			ek = nil
 		}
 	}
 
-	symmetric := tpm2.SymDef{
-		Algorithm: tpm2.SymAlgorithmAES,
-		KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
-		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}}
-	session, err := t.StartAuthSession(ek, nil, tpm2.SessionTypeHMAC, &symmetric, defaultSessionHashAlgorithm, nil)
+	// Only enable parameter encryption if we have a suitable TPM key for key exchange.
+	// If we don't, this means that any APIs that request parameter encryption with this
+	// session will fail hard if the the TPM isn't provisioned.
+	var symmetric *tpm2.SymDef
+	if ek != nil {
+		symmetric = &tpm2.SymDef{
+			Algorithm: tpm2.SymAlgorithmAES,
+			KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+			Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
+		}
+	}
+
+	session, err := t.StartAuthSession(ek, nil, tpm2.SessionTypeHMAC, symmetric, defaultSessionHashAlgorithm, nil)
 	if err != nil {
 		return xerrors.Errorf("cannot create HMAC session: %w", err)
 	}
-	succeeded := false
-	defer func() {
-		if succeeded {
-			return
-		}
-		t.FlushContext(session)
-	}()
-
-	succeeded = true
 
 	t.hmacSession = session
 	return nil
