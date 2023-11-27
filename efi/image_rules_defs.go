@@ -168,17 +168,6 @@ func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 			),
 			newGrubLoadHandlerConstructor(grubChainloaderUsesShimProtocol).New,
 		),
-		withImageRuleOnlyForTesting(
-			"Ubuntu grub, signed with snakeoil or other test key",
-			imageMatchesAll(
-				imageSectionExists(".mods"),
-				imageMatchesAny(
-					imageSignedByOrganization("Snake Oil"),
-					imageSignedByCommonName("new vendor certificate"),
-				),
-			),
-			newGrubLoadHandlerConstructor(grubChainloaderUsesShimProtocol).New,
-		),
 		withImageRule(
 			"grub",
 			imageMatchesAny(
