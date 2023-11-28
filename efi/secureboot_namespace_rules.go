@@ -27,6 +27,10 @@ import (
 	"golang.org/x/xerrors"
 )
 
+var (
+	snapdenvTesting = snapdenv.Testing
+)
+
 // vendorAuthorityGetter provides a way for an imageLoadHandler created by
 // secureBootNamespaceRules to supplement the CA's associated with a secure
 // boot namespace in the case where the associated image contains a delegated
@@ -60,10 +64,11 @@ func withAuthority(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicK
 	}
 }
 
-// withSigner adds the specified secure boot authority to a secureBootNamespaceRules,
-// only during testing.
+// withSelfSignedSignerOnlyForTesting adds the specified secure boot authority to a
+// secureBootNamespaceRules, only during testing. This also supports the case where the
+// specified authority is the signer.
 func withSelfSignedSignerOnlyForTesting(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicKeyAlgorithm, signatureAlgorithm x509.SignatureAlgorithm) secureBootNamespaceOption {
-	if !snapdenv.Testing() {
+	if !snapdenvTesting() {
 		return func(_ *secureBootNamespaceRules) {}
 	}
 	return func(ns *secureBootNamespaceRules) {
@@ -84,10 +89,10 @@ func withImageRule(name string, match imagePredicate, create newImageLoadHandler
 	}
 }
 
-// withImageRule adds the specified rule to a secureBootNamespaceRules,
+// withImageRuleOnlyForTesting adds the specified rule to a secureBootNamespaceRules,
 // only during testing.
 func withImageRuleOnlyForTesting(name string, match imagePredicate, create newImageLoadHandlerFn) secureBootNamespaceOption {
-	if !snapdenv.Testing() {
+	if !snapdenvTesting() {
 		return func(_ *secureBootNamespaceRules) {}
 	}
 	return withImageRule(name, match, create)

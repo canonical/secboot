@@ -78,6 +78,8 @@ var (
 	ShimVersionIs                               = shimVersionIs
 	WithAuthority                               = withAuthority
 	WithImageRule                               = withImageRule
+	WithImageRuleOnlyForTesting                 = withImageRuleOnlyForTesting
+	WithSelfSignedSignerOnlyForTesting          = withSelfSignedSignerOnlyForTesting
 )
 
 // Alias some unexported types for testing. These are required in order to pass these between functions in tests, or to access
@@ -182,6 +184,14 @@ func MockReadVar(fn func(string, efi.GUID) ([]byte, efi.VariableAttributes, erro
 	readVar = fn
 	return func() {
 		readVar = origReadVar
+	}
+}
+
+func MockSnapdenvTesting(testing bool) (restore func()) {
+	orig := snapdenvTesting
+	snapdenvTesting = func() bool { return testing }
+	return func() {
+		snapdenvTesting = orig
 	}
 }
 
