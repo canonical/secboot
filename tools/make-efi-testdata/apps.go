@@ -109,12 +109,28 @@ func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []moc
 			filename:  "mockshim_no_sbat.efi.signed.1.1.1",
 		},
 		{
+			path: filepath.Join(srcDir, "grub"),
+			name: "mockgrub",
+			makeExtraArgs: []string{
+				"GRUB_PREFIX=/EFI/ubuntu",
+				"WITH_SBAT=1",
+			},
+			filename: "mockgrub.efi",
+		},
+		{
+			path: filepath.Join(srcDir, "grub"),
+			name: "mockgrub_debian",
+			makeExtraArgs: []string{
+				"GRUB_PREFIX=/EFI/debian",
+				"WITH_SBAT=1",
+			},
+			filename: "mockgrub_debian.efi",
+		},
+		{
 			path:          filepath.Join(srcDir, "grub"),
-			name:          "mockgrub1",
+			name:          "mockgrub_no_prefix",
 			makeExtraArgs: []string{"WITH_SBAT=1"},
-			signKeys:      []string{filepath.Join(srcDir, "keys", "TestShimVendorSigning.1.key")},
-			signCerts:     [][]byte{certs["TestShimVendorSigning.1"]},
-			filename:      "mockgrub1.efi.signed.shim.1",
+			filename:      "mockgrub_no_prefix.efi",
 		},
 		{
 			path:     filepath.Join(srcDir, "kernel"),

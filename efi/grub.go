@@ -56,9 +56,12 @@ type grubModule struct {
 	*io.SectionReader
 }
 
+// grubImageHandle corresponds to a grub image.
 type grubImageHandle interface {
 	peImageHandle
 
+	// Prefix returns the path that grub uses to load its configuration
+	// from the ESP.
 	Prefix() (string, error)
 }
 

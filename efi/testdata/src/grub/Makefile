@@ -13,6 +13,9 @@ NAME		?= mock
 SBAT_CSV	?= $(TOPDIR)/sbat.csv
 
 CPPFLAGS += -DNAME=\"$(NAME)\"
+ifneq ($(origin GRUB_PREFIX), undefined)
+	CPPFLAGS += -DGRUB_PREFIX=\"$(GRUB_PREFIX)\"
+endif
 
 sbat_data.o: $(SBAT_CSV)
 	$(CC) $(CFLAGS) -x c -c -o $@ /dev/null
@@ -20,7 +23,7 @@ sbat_data.o: $(SBAT_CSV)
 		--set-section-flags .sbat=contents,alloc,load,readonly,data \
 		$@
 
-OBJS    = main_$(ARCH).o data.o
+OBJS    = main_$(ARCH).o data.o mods.o
 ifneq ($(origin WITH_SBAT), undefined)
 	OBJS += sbat_data.o
 endif
@@ -32,4 +35,4 @@ $(NAME).so: $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
 %.efi: %.so
-	$(OBJCOPY) -j .text -j .data -j .reloc -j .sbat --target=efi-app-$(ARCH) $^ $@
+	$(OBJCOPY) -j .text -j .data -j .reloc -j .sbat -jmods --target=efi-app-$(ARCH) $^ $@

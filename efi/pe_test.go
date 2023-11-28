@@ -127,7 +127,7 @@ func (s *peSuite) TestPeImageHandleSbatComponents1(c *C) {
 
 func (s *peSuite) TestPeImageHandleSbatComponents2(c *C) {
 	s.testPeImageHandleSbatComponents(
-		c, "testdata/amd64/mockgrub1.efi.signed.shim.1",
+		c, "testdata/amd64/mockgrub.efi",
 		[]SbatComponent{
 			{Name: "grub", Generation: 1, VendorName: "Free Software Foundation", VendorPackageName: "grub", VendorVersion: "2.06", VendorUrl: "https://www.gnu.org/software/grub/"},
 			{Name: "grub.acme", Generation: 1, VendorName: "Acme Corporation", VendorPackageName: "grub", VendorVersion: "1", VendorUrl: "https://acme.invalid/grub"},
@@ -158,7 +158,7 @@ func (s *peSuite) TestPeImageHandleImageDigest1(c *C) {
 }
 
 func (s *peSuite) TestPeImageHandleImageDigest2(c *C) {
-	s.testPeImageHandleImageDigest(c, "testdata/amd64/mockgrub1.efi.signed.shim.1", crypto.SHA256)
+	s.testPeImageHandleImageDigest(c, "testdata/amd64/mockgrub.efi", crypto.SHA256)
 }
 
 func (s *peSuite) TestPeImageHandleImageDigestSHA1(c *C) {
