@@ -271,6 +271,7 @@ func (s *imageRulesDefsSuite) TestFallbackNewImageLoadHandlerGrub(c *C) {
 	c.Assert(handler, testutil.ConvertibleTo, &GrubLoadHandler{})
 	c.Check(handler.(*GrubLoadHandler), DeepEquals, new(GrubLoadHandler))
 }
+
 func (s *imageRulesDefsSuite) TestFallbackNewImageLoadHandlerNull(c *C) {
 	// verify that an unrecognized leaf image is recognized by the fallback rules
 	image := newMockImage()

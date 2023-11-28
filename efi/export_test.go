@@ -87,6 +87,7 @@ var (
 // unexported members of some unexported types.
 type FwContext = fwContext
 type GrubFlags = grubFlags
+type GrubHasPrefix = grubHasPrefix
 type GrubImageHandle = grubImageHandle
 type GrubLoadHandler = grubLoadHandler
 type ImageLoadHandler = imageLoadHandler

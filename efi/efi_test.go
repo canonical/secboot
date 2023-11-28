@@ -216,6 +216,9 @@ type mockGrubImageHandle struct {
 }
 
 func (h *mockGrubImageHandle) Prefix() (string, error) {
+	if h.grubPrefix == "" {
+		return "", errors.New("no prefix")
+	}
 	return h.grubPrefix, nil
 }
 
