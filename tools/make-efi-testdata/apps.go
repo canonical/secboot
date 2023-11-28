@@ -94,9 +94,9 @@ func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []moc
 				"SBAT_VAR_LATEST=sbat,1,2022111500\\\\nshim,2\\\\ngrub,3\\\\n",
 				"WITH_SBAT=1",
 				"WITH_SBATLEVEL=1"},
-			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning2.1.1.key"), filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
-			signCerts: [][]byte{certs["TestUefiSigning2.1.1"], certs["TestUefiSigning1.1.1"]},
-			filename:  "mockshim.efi.signed.2.1.1+1.1.1",
+			signKeys:  []string{filepath.Join(srcDir, "keys", "TestUefiSigning1.2.1.key"), filepath.Join(srcDir, "keys", "TestUefiSigning1.1.1.key")},
+			signCerts: [][]byte{certs["TestUefiSigning1.2.1"], certs["TestUefiSigning1.1.1"]},
+			filename:  "mockshim.efi.signed.1.2.1+1.1.1",
 		},
 		{
 			path: filepath.Join(srcDir, "shim"),

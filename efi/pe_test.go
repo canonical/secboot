@@ -193,8 +193,8 @@ func (s *peSuite) TestPeImageHandleSecureBootSignaturesUnsigned(c *C) {
 
 func (s *peSuite) TestPeImageHandleSecureBootSignaturesDualSigned(c *C) {
 	s.testPeImageHandleSecureBootSignatures(c,
-		"testdata/amd64/mockshim.efi.signed.2.1.1+1.1.1",
+		"testdata/amd64/mockshim.efi.signed.1.2.1+1.1.1",
 		[][]byte{
-			testutil.DecodeHexString(c, "f1260899324e0ba7d98058decd55df34faf9884b5429288e0e67bbb2917e4609"),
+			testutil.DecodeHexString(c, "713af30678aba44b6c437cfc4fec26d386d3e2fea75b055df010d4af7b11b484"),
 			testutil.DecodeHexString(c, "4c503fa92a4d6ab180962c29aa8324cc873e8f74b259fb28347443ac8fef6af8")})
 }

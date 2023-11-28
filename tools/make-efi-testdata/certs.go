@@ -101,6 +101,20 @@ var certDatas = []certData{
 		},
 	},
 	{
+		name:         "TestUefiSigning1.2.1",
+		issuer:       "TestUefiCA1.2",
+		extKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
+		keyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageContentCommitment | x509.KeyUsageKeyEncipherment,
+		serialNumber: big.NewInt(1),
+		subject: pkix.Name{
+			Country:      []string{"GB"},
+			Organization: []string{"Fake Corporation"},
+			Locality:     []string{"London"},
+			Province:     []string{"England"},
+			CommonName:   "Test UEFI Secure Boot Signing 1",
+		},
+	},
+	{
 		name:         "TestShimVendorCA",
 		isCA:         true,
 		keyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
