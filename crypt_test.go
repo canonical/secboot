@@ -3540,6 +3540,11 @@ var _ = Suite(&cryptSuiteUnmockedExpensive{})
 
 func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *InitializeLUKS2ContainerOptions) {
 	restore := MockLUKS2Format(func(devicePath, label string, key []byte, opts *luks2.FormatOptions) error {
+		// We only test that InlineCryptoEngine is passed
+		// through. But it will likely not work, so we disable
+		// it.
+		c.Check(opts.InlineCryptoEngine, Equals, options != nil && options.InlineCryptoEngine)
+		opts.InlineCryptoEngine = false
 		var expectedTargetDuration time.Duration
 		if options != nil && options.KDFOptions != nil {
 			expectedTargetDuration = options.KDFOptions.TargetDuration
@@ -3650,6 +3655,12 @@ func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2ContainerWithCustomKDFM
 func (s *cryptSuiteUnmocked) TestInitializeLUKS2ContainerWithCustomKDFIterations(c *C) {
 	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
 		KDFOptions: &KDFOptions{MemoryKiB: 32, ForceIterations: 8}})
+}
+
+func (s *cryptSuiteUnmocked) TestInitializeLUKS2ContainerInlineCryptoEngine(c *C) {
+	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
+		InlineCryptoEngine: true,
+	})
 }
 
 type testAddLUKS2ContainerUnlockKeyUnmockedData struct {
