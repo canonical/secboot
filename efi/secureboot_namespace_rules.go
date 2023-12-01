@@ -55,6 +55,7 @@ type secureBootAuthorityIdentity struct {
 }
 
 // withAuthority adds the specified secure boot authority to a secureBootNamespaceRules.
+// Note that this won't match if the specified authority directly signs things.
 func withAuthority(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicKeyAlgorithm) secureBootNamespaceOption {
 	return func(ns *secureBootNamespaceRules) {
 		ns.authorities = append(ns.authorities, &secureBootAuthorityIdentity{
@@ -66,7 +67,9 @@ func withAuthority(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicK
 
 // withSelfSignedSignerOnlyForTesting adds the specified secure boot authority to a
 // secureBootNamespaceRules, only during testing. This also supports the case where the
-// specified authority is the signer.
+// specified authority directly signs things. This is used to ensure that binaries signed
+// by a production CA that are re-signed during testing by a testing-only CA are still
+// detected correctly, in the same way that the production binary would be.
 func withSelfSignedSignerOnlyForTesting(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicKeyAlgorithm, signatureAlgorithm x509.SignatureAlgorithm) secureBootNamespaceOption {
 	if !snapdenvTesting() {
 		return func(_ *secureBootNamespaceRules) {}
@@ -122,6 +125,9 @@ func newSecureBootNamespaceRules(name string, options ...secureBootNamespaceOpti
 
 func (r *secureBootNamespaceRules) AddAuthorities(certs ...*x509.Certificate) {
 	for _, cert := range certs {
+		// Avoid adding duplicates. Note that this is only guaranteed to de-duplicate
+		// those certificates added via this API, as the built-in certificates only
+		// have a minimal set of fields populated and we don't try to handle that case.
 		found := false
 		for _, authority := range r.authorities {
 			if bytes.Equal(authority.subject, cert.RawSubject) &&
