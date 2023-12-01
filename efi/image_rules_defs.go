@@ -211,7 +211,7 @@ func makeFallbackImageRules() *imageRules {
 		),
 		// Ubuntu grub
 		newImageRule(
-			"grub",
+			"Ubuntu grub",
 			imageMatchesAll(
 				imageSectionExists("mods"),
 				grubHasPrefix("/EFI/ubuntu"),

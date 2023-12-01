@@ -29,28 +29,37 @@ import (
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
 
+// grubObjTypePrefix is the module type for a module containing the
+// grub prefix.
 const grubObjTypePrefix uint32 = 3
 
+// grubModuleHeader is an individual module header
 type grubModuleHeader struct {
-	Type uint32
-	Size uint32
+	Type uint32 // the module type
+	Size uint32 // the module size, including the header
 }
 
+// grubModuleMagic represent the bytes that the mods section starts with.
 const grubModuleMagic uint32 = 0x676d696d
 
+// grubModuleInfo32 is the header at the start of the mods section, for
+// 32 bit builds.
 type grubModuleInfo32 struct {
 	Magic  uint32
-	Offset uint32
-	Size   uint32
+	Offset uint32 // the offset of the first module, from the start of this header
+	Size   uint32 // the size of all modules, including this header
 }
 
+// grubModuleInfo64 is the header at the start of the mods section, for
+// 64 bit builds.
 type grubModuleInfo64 struct {
 	Magic   uint32
 	Padding uint32
-	Offset  uint64
-	Size    uint64
+	Offset  uint64 // the offset of the first module, from the start of this header
+	Size    uint64 // the size of all modules, including this header
 }
 
+// grubModule represents a grub module
 type grubModule struct {
 	Type uint32
 	*io.SectionReader
@@ -90,13 +99,13 @@ func (h *grubImageHandleImpl) mods() ([]grubModule, error) {
 		if info.Magic != grubModuleMagic {
 			return nil, errors.New("invalid modules magic")
 		}
-		if info.Size > math.MaxInt64 {
+		if info.Offset > math.MaxInt64 {
 			return nil, errors.New("invalid modules offset")
 		}
-		if info.Size > math.MaxInt64 || info.Size < uint64(binary.Size(info)) {
+		if info.Size > math.MaxInt64 || info.Size < info.Offset {
 			return nil, errors.New("invalid modules size")
 		}
-		r = io.NewSectionReader(section, int64(info.Offset), int64(info.Size)-int64(binary.Size(info)))
+		r = io.NewSectionReader(section, int64(info.Offset), int64(info.Size)-int64(info.Offset))
 	case pe.IMAGE_FILE_MACHINE_ARM, pe.IMAGE_FILE_MACHINE_I386, pe.IMAGE_FILE_MACHINE_RISCV32:
 		var info grubModuleInfo32
 		if err := binary.Read(section, binary.LittleEndian, &info); err != nil {
@@ -105,10 +114,10 @@ func (h *grubImageHandleImpl) mods() ([]grubModule, error) {
 		if info.Magic != grubModuleMagic {
 			return nil, errors.New("invalid module magic")
 		}
-		if info.Size < uint32(binary.Size(info.Size)) {
+		if info.Size < info.Offset {
 			return nil, errors.New("invalid modules size")
 		}
-		r = io.NewSectionReader(section, int64(info.Offset), int64(info.Size)-int64(binary.Size(info)))
+		r = io.NewSectionReader(section, int64(info.Offset), int64(info.Size)-int64(info.Offset))
 	default:
 		return nil, fmt.Errorf("unrecognized machine: %d", h.Machine())
 	}
