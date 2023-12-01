@@ -23,7 +23,12 @@ import (
 	"bytes"
 	"crypto/x509"
 
+	"github.com/snapcore/snapd/snapdenv"
 	"golang.org/x/xerrors"
+)
+
+var (
+	snapdenvTesting = snapdenv.Testing
 )
 
 // vendorAuthorityGetter provides a way for an imageLoadHandler created by
@@ -43,9 +48,14 @@ type secureBootAuthorityIdentity struct {
 	subject            []byte
 	subjectKeyId       []byte
 	publicKeyAlgorithm x509.PublicKeyAlgorithm
+
+	issuer             []byte
+	authorityKeyId     []byte
+	signatureAlgorithm x509.SignatureAlgorithm
 }
 
 // withAuthority adds the specified secure boot authority to a secureBootNamespaceRules.
+// Note that this won't match if the specified authority directly signs things.
 func withAuthority(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicKeyAlgorithm) secureBootNamespaceOption {
 	return func(ns *secureBootNamespaceRules) {
 		ns.authorities = append(ns.authorities, &secureBootAuthorityIdentity{
@@ -55,11 +65,40 @@ func withAuthority(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicK
 	}
 }
 
+// withSelfSignedSignerOnlyForTesting adds the specified secure boot authority to a
+// secureBootNamespaceRules, only during testing. This also supports the case where the
+// specified authority directly signs things. This is used to ensure that binaries signed
+// by a production CA that are re-signed during testing by a testing-only CA are still
+// detected correctly, in the same way that the production binary would be.
+func withSelfSignedSignerOnlyForTesting(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicKeyAlgorithm, signatureAlgorithm x509.SignatureAlgorithm) secureBootNamespaceOption {
+	if !snapdenvTesting() {
+		return func(_ *secureBootNamespaceRules) {}
+	}
+	return func(ns *secureBootNamespaceRules) {
+		ns.authorities = append(ns.authorities, &secureBootAuthorityIdentity{
+			subject:            subject,
+			subjectKeyId:       subjectKeyId,
+			publicKeyAlgorithm: publicKeyAlgorithm,
+			issuer:             subject,
+			authorityKeyId:     subjectKeyId,
+			signatureAlgorithm: signatureAlgorithm})
+	}
+}
+
 // withImageRule adds the specified rule to a secureBootNamespaceRules.
 func withImageRule(name string, match imagePredicate, create newImageLoadHandlerFn) secureBootNamespaceOption {
 	return func(ns *secureBootNamespaceRules) {
 		ns.rules = append(ns.rules, newImageRule(name, match, create))
 	}
+}
+
+// withImageRuleOnlyForTesting adds the specified rule to a secureBootNamespaceRules,
+// only during testing.
+func withImageRuleOnlyForTesting(name string, match imagePredicate, create newImageLoadHandlerFn) secureBootNamespaceOption {
+	if !snapdenvTesting() {
+		return func(_ *secureBootNamespaceRules) {}
+	}
+	return withImageRule(name, match, create)
 }
 
 type secureBootNamespaceOption func(*secureBootNamespaceRules)
@@ -86,11 +125,17 @@ func newSecureBootNamespaceRules(name string, options ...secureBootNamespaceOpti
 
 func (r *secureBootNamespaceRules) AddAuthorities(certs ...*x509.Certificate) {
 	for _, cert := range certs {
+		// Avoid adding duplicates. Note that this is only guaranteed to de-duplicate
+		// those certificates added via this API, as the built-in certificates only
+		// have a minimal set of fields populated and we don't try to handle that case.
 		found := false
 		for _, authority := range r.authorities {
 			if bytes.Equal(authority.subject, cert.RawSubject) &&
 				bytes.Equal(authority.subjectKeyId, cert.SubjectKeyId) &&
-				authority.publicKeyAlgorithm == cert.PublicKeyAlgorithm {
+				authority.publicKeyAlgorithm == cert.PublicKeyAlgorithm &&
+				bytes.Equal(authority.issuer, cert.RawIssuer) &&
+				bytes.Equal(authority.authorityKeyId, cert.AuthorityKeyId) &&
+				authority.signatureAlgorithm == cert.SignatureAlgorithm {
 				found = true
 				break
 			}
@@ -100,6 +145,9 @@ func (r *secureBootNamespaceRules) AddAuthorities(certs ...*x509.Certificate) {
 				subject:            cert.RawSubject,
 				subjectKeyId:       cert.SubjectKeyId,
 				publicKeyAlgorithm: cert.PublicKeyAlgorithm,
+				issuer:             cert.RawIssuer,
+				authorityKeyId:     cert.AuthorityKeyId,
+				signatureAlgorithm: cert.SignatureAlgorithm,
 			})
 		}
 	}
@@ -118,7 +166,10 @@ func (r *secureBootNamespaceRules) NewImageLoadHandler(image peImageHandle) (ima
 		cert := &x509.Certificate{
 			RawSubject:         authority.subject,
 			SubjectKeyId:       authority.subjectKeyId,
-			PublicKeyAlgorithm: authority.publicKeyAlgorithm}
+			PublicKeyAlgorithm: authority.publicKeyAlgorithm,
+			RawIssuer:          authority.issuer,
+			AuthorityKeyId:     authority.authorityKeyId,
+			SignatureAlgorithm: authority.signatureAlgorithm}
 		for _, sig := range sigs {
 			if !sig.CertLikelyTrustAnchor(cert) {
 				continue

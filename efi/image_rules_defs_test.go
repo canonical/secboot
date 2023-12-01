@@ -20,6 +20,9 @@
 package efi_test
 
 import (
+	"crypto"
+	"io"
+
 	efi "github.com/canonical/go-efilib"
 
 	. "gopkg.in/check.v1"
@@ -107,6 +110,45 @@ func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerUbuntuShim15WithFixes2(c 
 		Contents: efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})},
 	})
 	c.Check(shimHandler.SbatLevel, DeepEquals, ShimSbatLevel{})
+}
+
+func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerUbuntuShim15WithFixesInTesting(c *C) {
+	// Verify we get a correctly configured shimLoadHandler for the Ubuntu shim 15 with
+	// the required fixes (1.41+15+1552672080.a4a1fbe-0ubuntu1), when it is rebuilt and
+	// re-signed in snapd spread tests.
+	restore := MockSnapdenvTesting(true)
+	defer restore()
+
+	h := crypto.SHA256.New()
+	io.WriteString(h, "foo")
+
+	// simulate rebuilding and re-signing shim in spread tests
+	image := newMockUbuntuShimImage15a(c).unsign().withDigest(crypto.SHA256, h.Sum(nil)).sign(c, testutil.ParsePKCS1PrivateKey(c, snakeoilKey), testutil.ParseCertificate(c, snakeoilCert))
+
+	rules := MakeMicrosoftUEFICASecureBootNamespaceRules()
+	handler, err := rules.NewImageLoadHandler(image.newPeImageHandle())
+	c.Assert(err, IsNil)
+	c.Assert(handler, testutil.ConvertibleTo, &ShimLoadHandler{})
+
+	shimHandler := handler.(*ShimLoadHandler)
+	c.Check(shimHandler.Flags, Equals, ShimFlags(0))
+	c.Check(shimHandler.VendorDb, DeepEquals, &SecureBootDB{
+		Name:     efi.VariableDescriptor{Name: "Shim", GUID: ShimGuid},
+		Contents: efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})},
+	})
+	c.Check(shimHandler.SbatLevel, DeepEquals, ShimSbatLevel{})
+}
+
+func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerIgnoreTestAuthorityWhenNotInTestMode(c *C) {
+	// Verify that the snakeoil key used in snapd spread tests is ignored when not in test mode.
+	restore := MockSnapdenvTesting(false)
+	defer restore()
+
+	image := newMockUbuntuShimImage15a(c).unsign().sign(c, testutil.ParsePKCS1PrivateKey(c, snakeoilKey), testutil.ParseCertificate(c, snakeoilCert))
+
+	rules := MakeMicrosoftUEFICASecureBootNamespaceRules()
+	_, err := rules.NewImageLoadHandler(image.newPeImageHandle())
+	c.Check(err, Equals, ErrNoHandler)
 }
 
 func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerUbuntuGrubSbat(c *C) {

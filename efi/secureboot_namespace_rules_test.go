@@ -113,6 +113,65 @@ func (s *secureBootNamespaceRulesSuite) TestRulesMatch3(c *C) {
 	c.Check(handler, DeepEquals, newMockLoadHandler())
 }
 
+func (s *secureBootNamespaceRulesSuite) TestRulesMatch4(c *C) {
+	// This tests that the test only rule successfully matches a binary
+	// with a single signature created by the authority associated with
+	// the namespace, when in testing mode.
+	restore := MockSnapdenvTesting(true)
+	defer restore()
+
+	image := newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)).newPeImageHandle()
+
+	cert := testutil.ParseCertificate(c, msUefiCACert)
+
+	rules := NewSecureBootNamespaceRules(
+		"test",
+		WithAuthority(cert.RawSubject, cert.SubjectKeyId, cert.PublicKeyAlgorithm),
+		WithImageRuleOnlyForTesting(
+			"rule1",
+			&mockImagePredicate{result: true},
+			func(i PeImageHandle) (ImageLoadHandler, error) {
+				c.Check(i, Equals, image)
+
+				return newMockLoadHandler(), nil
+			},
+		),
+	)
+	handler, err := rules.NewImageLoadHandler(image)
+	c.Check(err, IsNil)
+	c.Check(handler, DeepEquals, newMockLoadHandler())
+}
+
+func (s *secureBootNamespaceRulesSuite) TestRulesMatch5(c *C) {
+	// This tests that the rules successfully match a binary with a single
+	// signature signed directly by the test-only authority associated with the
+	// namespace, when in testing mode.
+	restore := MockSnapdenvTesting(true)
+	defer restore()
+
+	cert := testutil.ParseCertificate(c, snakeoilCert)
+
+	sig := efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)
+	image := newMockImage().withDigest(sig.DigestAlgorithm(), sig.Digest()).sign(c, testutil.ParsePKCS1PrivateKey(c, snakeoilKey), cert).newPeImageHandle()
+
+	rules := NewSecureBootNamespaceRules(
+		"test",
+		WithSelfSignedSignerOnlyForTesting(cert.RawSubject, cert.SubjectKeyId, cert.PublicKeyAlgorithm, cert.SignatureAlgorithm),
+		WithImageRule(
+			"rule1",
+			&mockImagePredicate{result: true},
+			func(i PeImageHandle) (ImageLoadHandler, error) {
+				c.Check(i, Equals, image)
+
+				return newMockLoadHandler(), nil
+			},
+		),
+	)
+	handler, err := rules.NewImageLoadHandler(image)
+	c.Check(err, IsNil)
+	c.Check(handler, DeepEquals, newMockLoadHandler())
+}
+
 func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch1(c *C) {
 	// This tests that the rules don't match a binary without a signature
 	// created by the authority associated with the namespace.
@@ -173,6 +232,62 @@ func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch3(c *C) {
 	rules := NewSecureBootNamespaceRules(
 		"test",
 		WithAuthority(cert.RawSubject, cert.SubjectKeyId, cert.PublicKeyAlgorithm),
+		WithImageRule(
+			"rule1",
+			cond,
+			func(i PeImageHandle) (ImageLoadHandler, error) {
+				return nil, errors.New("not reached")
+			},
+		),
+	)
+	_, err := rules.NewImageLoadHandler(image)
+	c.Check(err, Equals, ErrNoHandler)
+	c.Check(cond.testedImages, IsNil)
+}
+
+func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch4(c *C) {
+	// This tests that testing only rules don't match a binary with a single
+	// signature created by the authority associated with the namespace.
+	restore := MockSnapdenvTesting(false)
+	defer restore()
+
+	image := newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)).newPeImageHandle()
+
+	cert := testutil.ParseCertificate(c, msUefiCACert)
+
+	cond := &mockImagePredicate{result: true}
+	rules := NewSecureBootNamespaceRules(
+		"test",
+		WithAuthority(cert.RawSubject, cert.SubjectKeyId, cert.PublicKeyAlgorithm),
+		WithImageRuleOnlyForTesting(
+			"rule1",
+			cond,
+			func(i PeImageHandle) (ImageLoadHandler, error) {
+				return nil, errors.New("not reached")
+			},
+		),
+	)
+	_, err := rules.NewImageLoadHandler(image)
+	c.Check(err, Equals, ErrNoHandler)
+	c.Check(cond.testedImages, IsNil)
+}
+
+func (s *secureBootNamespaceRulesSuite) TestRulesNoMatch5(c *C) {
+	// This tests that the rules don't match a binary with a single signature
+	// signed directly by the test-only authority associated with the namespace,
+	// when not in testing mode.
+	restore := MockSnapdenvTesting(false)
+	defer restore()
+
+	cert := testutil.ParseCertificate(c, snakeoilCert)
+
+	sig := efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)
+	image := newMockImage().withDigest(sig.DigestAlgorithm(), sig.Digest()).sign(c, testutil.ParsePKCS1PrivateKey(c, snakeoilKey), cert).newPeImageHandle()
+
+	cond := &mockImagePredicate{result: true}
+	rules := NewSecureBootNamespaceRules(
+		"test",
+		WithSelfSignedSignerOnlyForTesting(cert.RawSubject, cert.SubjectKeyId, cert.PublicKeyAlgorithm, cert.SignatureAlgorithm),
 		WithImageRule(
 			"rule1",
 			cond,

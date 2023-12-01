@@ -37,9 +37,15 @@ var (
 
 	//go:embed testdata/src/certs/canonical-uefi-ca.crt
 	canonicalCACertPEM []byte
+
+	//go:embed testdata/src/certs/PkKek-1-snakeoil.pem
+	snakeoilCertPEM []byte
 )
 
 var (
+	//go:embed testdata/src/keys/PkKek-1-snakeoil.key
+	snakeoilKeyPEM []byte
+
 	//go:embed testdata/src/keys/TestPk1.key
 	testPKKey1PEM []byte
 

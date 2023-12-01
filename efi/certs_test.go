@@ -51,6 +51,9 @@ var (
 	testUefiSigningKey1_1  []byte
 	testUefiCACert2        []byte
 	testUefiCAKey2         []byte
+
+	snakeoilCert []byte
+	snakeoilKey  []byte
 )
 
 func initTestCertificate(key []byte, subject pkix.Name, serialNumber *big.Int, isCA bool, keyUsage x509.KeyUsage, extKeyUsage []x509.ExtKeyUsage, issuerCert []byte, issuerKey []byte) []byte {
@@ -124,6 +127,9 @@ func init() {
 	testUefiCAKey1 = testutil.MustDecodePEMType("RSA PRIVATE KEY", testUefiCAKey1PEM)
 	testUefiSigningKey1_1 = testutil.MustDecodePEMType("RSA PRIVATE KEY", testUefiSigningKey1_1PEM)
 	testUefiCAKey2 = testutil.MustDecodePEMType("RSA PRIVATE KEY", testUefiCAKey2PEM)
+
+	snakeoilCert = testutil.MustDecodePEMType("CERTIFICATE", snakeoilCertPEM)
+	snakeoilKey = testutil.MustDecodePEMType("RSA PRIVATE KEY", snakeoilKeyPEM)
 
 	testPKCert1 = initTestCertificate(
 		testPKKey1,
