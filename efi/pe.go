@@ -51,6 +51,7 @@ type peImageHandle interface {
 	// Source returns the image source
 	Source() Image
 
+	// Machine is the target machine
 	Machine() uint16
 
 	// OpenSection returns a new io.SectionReader for the section with

@@ -35,4 +35,4 @@ $(NAME).so: $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
 %.efi: %.so
-	$(OBJCOPY) -j .text -j .data -j .reloc -j .sbat -jmods --target=efi-app-$(ARCH) $^ $@
+	$(OBJCOPY) -j .text -j .data -j .reloc -j .sbat -j mods --target=efi-app-$(ARCH) $^ $@

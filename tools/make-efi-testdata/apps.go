@@ -30,7 +30,21 @@ type mockAppData struct {
 	filename  string
 }
 
-func newMockAppData(srcDir, vendorCertDir string, certs map[string][]byte) []mockAppData {
+func newMockAppData386(srcDir, vendorCertDir string, certs map[string][]byte) []mockAppData {
+	return []mockAppData{
+		{
+			path: filepath.Join(srcDir, "grub"),
+			name: "mockgrub",
+			makeExtraArgs: []string{
+				"GRUB_PREFIX=/EFI/ubuntu",
+				"WITH_SBAT=1",
+			},
+			filename: "mockgrub.efi",
+		},
+	}
+}
+
+func newMockAppDataAMD64(srcDir, vendorCertDir string, certs map[string][]byte) []mockAppData {
 	return []mockAppData{
 		{
 			path: filepath.Join(srcDir, "shim"),
@@ -154,7 +168,17 @@ func makeOneMockApp(tmpDir, dstDir string, data *mockAppData, arch string) error
 	args = append(args, data.makeExtraArgs...)
 
 	if runtime.GOARCH != arch {
-		args = append(args, "CROSS_COMPILE="+crossToolchains[arch])
+		if runtime.GOARCH == "amd64" && arch == "386" {
+			args = append(args, "ASFLAGS=-m32")
+			args = append(args, "CFLAGS=-m32")
+			args = append(args, "ARCH=ia32")
+		} else {
+			cross, exists := crossToolchains[arch]
+			if !exists {
+				return fmt.Errorf("unsupported architecture %q", arch)
+			}
+			args = append(args, "CROSS_COMPILE="+cross)
+		}
 	}
 	args = append(args, "-f", filepath.Join(data.path, "Makefile"), efiName)
 
@@ -246,8 +270,13 @@ func makeMockApps(srcDir, dstDir string) error {
 		return xerrors.Errorf("cannot write certificates to tmpdir: %w", err)
 	}
 
-	for _, data := range newMockAppData(srcDir, tmpDir, certs) {
+	for _, data := range newMockAppDataAMD64(srcDir, tmpDir, certs) {
 		if err := makeOneMockApp(tmpDir, dstDir, &data, "amd64"); err != nil {
+			return xerrors.Errorf("cannot create %s: %w", data.name, err)
+		}
+	}
+	for _, data := range newMockAppData386(srcDir, tmpDir, certs) {
+		if err := makeOneMockApp(tmpDir, dstDir, &data, "386"); err != nil {
 			return xerrors.Errorf("cannot create %s: %w", data.name, err)
 		}
 	}

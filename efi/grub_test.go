@@ -53,6 +53,18 @@ func (s *grubSuite) TestGrubImageHandlePrefix2(c *C) {
 	c.Check(prefix, Equals, "/EFI/debian")
 }
 
+func (s *grubSuite) TestGrubImageHandlePrefix3(c *C) {
+	image, err := OpenPeImage(NewFileImage("testdata/386/mockgrub.efi"))
+	c.Assert(err, IsNil)
+	defer image.Close()
+
+	grubImage := NewGrubImageHandle(image)
+
+	prefix, err := grubImage.Prefix()
+	c.Check(err, IsNil)
+	c.Check(prefix, Equals, "/EFI/ubuntu")
+}
+
 func (s *grubSuite) TestGrubImageHandlePrefixNone(c *C) {
 	image, err := OpenPeImage(NewFileImage("testdata/amd64/mockgrub_no_prefix.efi"))
 	c.Assert(err, IsNil)
