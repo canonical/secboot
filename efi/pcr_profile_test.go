@@ -586,16 +586,19 @@ type pcrProfileSuite struct {
 	restoreNewShimImageHandle func()
 	mockImageHandleMixin
 	mockShimImageHandleMixin
+	mockGrubImageHandleMixin
 }
 
 func (s *pcrProfileSuite) SetUpTest(c *C) {
 	s.mockImageHandleMixin.SetUpTest(c)
 	s.mockShimImageHandleMixin.SetUpTest(c)
+	s.mockGrubImageHandleMixin.SetUpTest(c)
 }
 
 func (s *pcrProfileSuite) TearDownTest(c *C) {
 	s.mockImageHandleMixin.TearDownTest(c)
 	s.mockShimImageHandleMixin.TearDownTest(c)
+	s.mockGrubImageHandleMixin.TearDownTest(c)
 }
 
 var _ = Suite(&pcrProfileSuite{})

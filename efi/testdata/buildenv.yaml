@@ -1,7 +1,7 @@
 go-arch: amd64
 go-version: go1.18.10
 kernel-version: |
-  Linux version 6.2.0-37-generic (buildd@bos03-amd64-010) (x86_64-linux-gnu-gcc-12 (Ubuntu 12.3.0-1ubuntu1~23.04) 12.3.0, GNU ld (GNU Binutils for Ubuntu) 2.40) #38-Ubuntu SMP PREEMPT_DYNAMIC Mon Oct 30 21:04:52 UTC 2023
+  Linux version 6.2.0-39-generic (buildd@bos03-amd64-014) (x86_64-linux-gnu-gcc-12 (Ubuntu 12.3.0-1ubuntu1~23.04) 12.3.0, GNU ld (GNU Binutils for Ubuntu) 2.40) #40-Ubuntu SMP PREEMPT_DYNAMIC Tue Nov 14 14:18:00 UTC 2023
 os-release:
   BUG_REPORT_URL: '"https://bugs.launchpad.net/ubuntu/"'
   HOME_URL: '"https://www.ubuntu.com/"'
@@ -51,8 +51,8 @@ packages:
   libbinutils: 2.40-2ubuntu4.1
   libblkid1: 2.38.1-4ubuntu12.38.1-4ubuntu1
   libbz2-1.0: 1.0.8-5build1
-  libc-bin: 2.37-0ubuntu2.1
-  libc6: 2.37-0ubuntu2.12.37-0ubuntu2.1
+  libc-bin: 2.37-0ubuntu2.2
+  libc6: 2.37-0ubuntu2.22.37-0ubuntu2.2
   libcap-ng0: 0.8.3-1build2
   libcap2: 1:2.66-3ubuntu2.11:2.66-3ubuntu2.1
   libcc1-0: 13.1.0-2ubuntu2~23.04
@@ -88,11 +88,11 @@ packages:
   libsmartcols1: 2.38.1-4ubuntu1
   libssl3: 3.0.8-1ubuntu1.43.0.8-1ubuntu1.4
   libstdc++6: 13.1.0-2ubuntu2~23.0413.1.0-2ubuntu2~23.04
-  libsystemd0: 252.5-2ubuntu3.1252.5-2ubuntu3.1
+  libsystemd0: 252.5-2ubuntu3.2252.5-2ubuntu3.2
   libtinfo6: 6.4-2ubuntu0.16.4-2ubuntu0.1
   libtsan2: 13.1.0-2ubuntu2~23.04
   libubsan1: 13.1.0-2ubuntu2~23.04
-  libudev1: 252.5-2ubuntu3.1252.5-2ubuntu3.1
+  libudev1: 252.5-2ubuntu3.2252.5-2ubuntu3.2
   libuuid1: 2.38.1-4ubuntu12.38.1-4ubuntu1
   libzstd1: 1.5.4+dfsg2-41.5.4+dfsg2-4
   login: 1:4.13+dfsg1-1ubuntu1
@@ -103,7 +103,7 @@ packages:
   sbsigntool: 0.9.4-3.1ubuntu2
   sed: 4.9-1
   sysvinit-utils: 3.06-2ubuntu1
-  tar: 1.34+dfsg-1.2ubuntu0.1
+  tar: 1.34+dfsg-1.2ubuntu0.2
   usrmerge: 33ubuntu1
   util-linux: 2.38.1-4ubuntu1
   util-linux-extra: 2.38.1-4ubuntu1

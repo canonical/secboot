@@ -241,3 +241,15 @@ func (p *shimVersionPredicate) Matches(image peImageHandle) (bool, error) {
 		return false, fmt.Errorf("invalid shim version operator %s", p.operator)
 	}
 }
+
+type grubHasPrefix string
+
+func (p grubHasPrefix) Matches(image peImageHandle) (bool, error) {
+	grub := newGrubImageHandle(image)
+	prefix, err := grub.Prefix()
+	if err != nil {
+		return false, fmt.Errorf("cannot obtain grub prefix: %w", err)
+	}
+
+	return prefix == string(p), nil
+}

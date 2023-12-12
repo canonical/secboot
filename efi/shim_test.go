@@ -320,7 +320,7 @@ func (s *shimSuite) TestShimImageHandleReadVendorDBEmpty(c *C) {
 
 func (s *shimSuite) TestShimImageHandleReadVendorDBNoVendorCert(c *C) {
 	err := s.testShimImageHandleReadVendorDB(c, &testShimImageHandleReadVendorDBData{
-		path: "testdata/amd64/mockgrub1.efi.signed.shim.1"})
+		path: "testdata/amd64/mockgrub.efi"})
 	c.Check(err, ErrorMatches, "no .vendor_cert section")
 }
 

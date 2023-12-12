@@ -43,6 +43,17 @@ func (p *mockImagePredicate) Matches(image PeImageHandle) (bool, error) {
 
 type imageRulesSuite struct {
 	mockShimImageHandleMixin
+	mockGrubImageHandleMixin
+}
+
+func (s *imageRulesSuite) SetUpTest(c *C) {
+	s.mockShimImageHandleMixin.SetUpTest(c)
+	s.mockGrubImageHandleMixin.SetUpTest(c)
+}
+
+func (s *imageRulesSuite) TearDownTest(c *C) {
+	s.mockShimImageHandleMixin.TearDownTest(c)
+	s.mockGrubImageHandleMixin.TearDownTest(c)
 }
 
 var _ = Suite(&imageRulesSuite{})
@@ -490,6 +501,41 @@ func (s *imageRulesSuite) TestShimVersionErr(c *C) {
 	pred := ShimVersionIs("<=", "15.4")
 	_, err := pred.Matches(image)
 	c.Check(err, ErrorMatches, `cannot obtain shim version: no version`)
+}
+
+func (s *imageRulesSuite) TestGrubHasPrefixTrue1(c *C) {
+	image := newMockImage().withGrubPrefix("/EFI/ubuntu").newPeImageHandle()
+
+	pred := GrubHasPrefix("/EFI/ubuntu")
+	match, err := pred.Matches(image)
+	c.Check(err, IsNil)
+	c.Check(match, testutil.IsTrue)
+}
+
+func (s *imageRulesSuite) TestGrubHasPrefixTrue2(c *C) {
+	image := newMockImage().withGrubPrefix("/EFI/debian").newPeImageHandle()
+
+	pred := GrubHasPrefix("/EFI/debian")
+	match, err := pred.Matches(image)
+	c.Check(err, IsNil)
+	c.Check(match, testutil.IsTrue)
+}
+
+func (s *imageRulesSuite) TestGrubHasPrefixFalse(c *C) {
+	image := newMockImage().withGrubPrefix("/EFI/debian").newPeImageHandle()
+
+	pred := GrubHasPrefix("/EFI/ubuntu")
+	match, err := pred.Matches(image)
+	c.Check(err, IsNil)
+	c.Check(match, testutil.IsFalse)
+}
+
+func (s *imageRulesSuite) TestGrubHasPrefixErr(c *C) {
+	image := newMockImage().newPeImageHandle()
+
+	pred := GrubHasPrefix("/EFI/ubuntu")
+	_, err := pred.Matches(image)
+	c.Check(err, ErrorMatches, `cannot obtain grub prefix: no prefix`)
 }
 
 func (s *imageRulesSuite) TestImageRulesMatch1(c *C) {
