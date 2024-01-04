@@ -21,7 +21,6 @@ package tpm2test
 
 import (
 	"os"
-	"time"
 
 	"github.com/canonical/go-tpm2"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
@@ -63,14 +62,6 @@ func (t *TCTI) Close() error {
 	}
 	t.closed = true
 	return t.tcti.Close()
-}
-
-func (t *TCTI) SetTimeout(timeout time.Duration) error {
-	return t.tcti.SetTimeout(timeout)
-}
-
-func (t *TCTI) MakeSticky(handle tpm2.Handle, sticky bool) error {
-	return t.tcti.MakeSticky(handle, sticky)
 }
 
 // SetKeepOpen provides a mechanism to keep the underlying connection
