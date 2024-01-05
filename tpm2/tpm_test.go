@@ -25,7 +25,6 @@ import (
 	"io"
 	"os"
 	"syscall"
-	"time"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
@@ -183,14 +182,6 @@ func (t *mockTPM12Tcti) Write(data []byte) (int, error) {
 }
 
 func (t *mockTPM12Tcti) Close() error {
-	return nil
-}
-
-func (t *mockTPM12Tcti) SetTimeout(timeout time.Duration) error {
-	return nil
-}
-
-func (t *mockTPM12Tcti) MakeSticky(handle tpm2.Handle, sticky bool) error {
 	return nil
 }
 
