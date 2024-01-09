@@ -1,168 +1,37 @@
-package secboot
+package secboot_test
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
-	"encoding/json"
-	"errors"
 	"hash"
-	"io"
 	"math/rand"
 
-	"golang.org/x/xerrors"
+	. "github.com/snapcore/secboot"
 	. "gopkg.in/check.v1"
 )
 
-const mockPlatformName = "mock-legacy"
-
-const (
-	mockPlatformDeviceStateOK = iota
-	mockPlatformDeviceStateUnavailable
-	mockPlatformDeviceStateUninitialized
-)
-
-type mockPlatformKeyDataHandle struct {
-	Key         []byte `json:"key"`
-	IV          []byte `json:"iv"`
-	AuthKeyHMAC []byte `json:"auth-key-hmac"`
+type keyDataLegacyTestBase struct {
+	keyDataTestBase
 }
 
-type mockPlatformKeyDataHandler struct {
-	state             int
-	passphraseSupport bool
-}
-
-func (h *mockPlatformKeyDataHandler) checkState() error {
-	switch h.state {
-	case mockPlatformDeviceStateUnavailable:
-		return &PlatformHandlerError{Type: PlatformHandlerErrorUnavailable, Err: errors.New("the platform device is unavailable")}
-	case mockPlatformDeviceStateUninitialized:
-		return &PlatformHandlerError{Type: PlatformHandlerErrorUninitialized, Err: errors.New("the platform device is uninitialized")}
-	default:
-		return nil
-	}
-}
-
-func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mockPlatformKeyDataHandle, error) {
-	var handle mockPlatformKeyDataHandle
-	if err := json.Unmarshal(data.EncodedHandle, &handle); err != nil {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: xerrors.Errorf("JSON decode error: %w", err)}
-	}
-	return &handle, nil
-}
-
-func (h *mockPlatformKeyDataHandler) checkKey(handle *mockPlatformKeyDataHandle, key []byte) error {
-	m := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
-	m.Write(key)
-	if !bytes.Equal(handle.AuthKeyHMAC, m.Sum(nil)) {
-		return &PlatformHandlerError{Type: PlatformHandlerErrorInvalidAuthKey, Err: errors.New("the supplied key is incorrect")}
-	}
-
-	return nil
-}
-
-func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHandle, payload []byte) ([]byte, error) {
-	b, err := aes.NewCipher(handle.Key)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create cipher: %w", err)
-	}
-
-	s := cipher.NewCFBDecrypter(b, handle.IV)
-	out := make([]byte, len(payload))
-	s.XORKeyStream(out, payload)
-	return out, nil
-}
-
-func (h *mockPlatformKeyDataHandler) RecoverKeys(data *PlatformKeyData, encryptedPayload []byte) ([]byte, error) {
-	if err := h.checkState(); err != nil {
-		return nil, err
-	}
-
-	handle, err := h.unmarshalHandle(data)
-	if err != nil {
-		return nil, err
-	}
-
-	return h.recoverKeys(handle, encryptedPayload)
-}
-
-func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyData, encryptedPayload []byte, key []byte) ([]byte, error) {
-	if !h.passphraseSupport {
-		return nil, errors.New("not supported")
-	}
-
-	if err := h.checkState(); err != nil {
-		return nil, err
-	}
-
-	handle, err := h.unmarshalHandle(data)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := h.checkKey(handle, key); err != nil {
-		return nil, err
-	}
-
-	return h.recoverKeys(handle, encryptedPayload)
-}
-
-func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, new []byte) ([]byte, error) {
-	if !h.passphraseSupport {
-		return nil, errors.New("not supported")
-	}
-
-	if err := h.checkState(); err != nil {
-		return nil, err
-	}
-
-	handle, err := h.unmarshalHandle(data)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := h.checkKey(handle, old); err != nil {
-		return nil, err
-	}
-
-	m := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
-	m.Write(new)
-	handle.AuthKeyHMAC = m.Sum(nil)
-
-	return json.Marshal(&handle)
-}
-
-type mockKeyDataReader struct {
-	readableName string
-	io.Reader
-}
-
-func (r *mockKeyDataReader) ReadableName() string {
-	return r.readableName
-}
-
-type keyDataTestBase struct {
-	handler *mockPlatformKeyDataHandler
-}
-
-func (s *keyDataTestBase) SetUpSuite(c *C) {
+func (s *keyDataLegacyTestBase) SetUpSuite(c *C) {
 	s.handler = &mockPlatformKeyDataHandler{}
-	RegisterPlatformKeyDataHandler(mockPlatformName, s.handler)
+	s.mockPlatformName = "mock-legacy"
+	RegisterPlatformKeyDataHandler(s.mockPlatformName, s.handler)
 }
 
-func (s *keyDataTestBase) SetUpTest(c *C) {
+func (s *keyDataLegacyTestBase) SetUpTest(c *C) {
 	s.handler.state = mockPlatformDeviceStateOK
 	s.handler.passphraseSupport = false
 }
 
-func (s *keyDataTestBase) TearDownSuite(c *C) {
-	RegisterPlatformKeyDataHandler(mockPlatformName, nil)
+func (s *keyDataLegacyTestBase) TearDownSuite(c *C) {
+	RegisterPlatformKeyDataHandler(s.mockPlatformName, nil)
 }
 
-func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, PrimaryKey) {
+func (s *keyDataLegacyTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, PrimaryKey) {
 	key := make([]byte, sz1)
 	auxKey := make([]byte, sz2)
 	_, err := rand.Read(key)
@@ -172,7 +41,7 @@ func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, Pri
 	return key, auxKey
 }
 
-func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, modelAuthHash crypto.Hash) (out *KeyParams) {
+func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, modelAuthHash crypto.Hash) (out *KeyParams) {
 	payload := MarshalKeys(key, auxKey)
 
 	k := make([]byte, 48)
@@ -191,7 +60,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Primar
 	stream := cipher.NewCFBEncrypter(b, handle.IV)
 
 	out = &KeyParams{
-		PlatformName:      mockPlatformName,
+		PlatformName:      s.mockPlatformName,
 		Handle:            &handle,
 		EncryptedPayload:  make([]byte, len(payload)),
 		PrimaryKey:        auxKey,
@@ -201,7 +70,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Primar
 }
 
 type keyDataLegacySuite struct {
-	keyDataTestBase
+	keyDataLegacyTestBase
 }
 
 var _ = Suite(&keyDataLegacySuite{})
@@ -269,8 +138,8 @@ func (s *keyDataLegacySuite) TestRecoverKeys(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
+	MockKeyDataVersion(1)
 	keyData, err := NewKeyData(protected)
-	keyData.data.Version = 1
 
 	c.Assert(err, IsNil)
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
@@ -285,8 +154,8 @@ func (s *keyDataLegacySuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 
 	protected.PlatformName = "foo"
 
+	MockKeyDataVersion(1)
 	keyData, err := NewKeyData(protected)
-	keyData.data.Version = 1
 
 	c.Assert(err, IsNil)
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
@@ -301,12 +170,12 @@ func (s *keyDataLegacySuite) TestRecoverKeysInvalidData(c *C) {
 
 	protected.Handle = []byte("\"\"")
 
+	MockKeyDataVersion(1)
 	keyData, err := NewKeyData(protected)
-	keyData.data.Version = 1
 
 	c.Assert(err, IsNil)
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
-	c.Check(err, ErrorMatches, "invalid key data: JSON decode error: json: cannot unmarshal string into Go value of type secboot.mockPlatformKeyDataHandle")
+	c.Check(err, ErrorMatches, "invalid key data: JSON decode error: json: cannot unmarshal string into Go value of type secboot_test.mockPlatformKeyDataHandle")
 	c.Check(recoveredKey, IsNil)
 	c.Check(recoveredAuxKey, IsNil)
 }

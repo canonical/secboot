@@ -126,3 +126,11 @@ func MockStderr(w io.Writer) (restore func()) {
 		osStderr = orig
 	}
 }
+
+func MockKeyDataVersion(n int) (restore func()) {
+	orig := keyDataVersion
+	keyDataVersion = n
+	return func() {
+		keyDataVersion = orig
+	}
+}

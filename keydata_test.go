@@ -48,8 +48,6 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-const mockPlatformName = "mock"
-
 type mockPlatformKeyDataHandle struct {
 	Key         []byte `json:"key"`
 	IV          []byte `json:"iv"`
@@ -231,12 +229,14 @@ func toHash(c *C, v interface{}) crypto.Hash {
 }
 
 type keyDataTestBase struct {
-	handler *mockPlatformKeyDataHandler
+	handler          *mockPlatformKeyDataHandler
+	mockPlatformName string
 }
 
 func (s *keyDataTestBase) SetUpSuite(c *C) {
 	s.handler = &mockPlatformKeyDataHandler{}
-	RegisterPlatformKeyDataHandler(mockPlatformName, s.handler)
+	s.mockPlatformName = "mock"
+	RegisterPlatformKeyDataHandler(s.mockPlatformName, s.handler)
 }
 
 func (s *keyDataTestBase) SetUpTest(c *C) {
@@ -245,7 +245,7 @@ func (s *keyDataTestBase) SetUpTest(c *C) {
 }
 
 func (s *keyDataTestBase) TearDownSuite(c *C) {
-	RegisterPlatformKeyDataHandler(mockPlatformName, nil)
+	RegisterPlatformKeyDataHandler(s.mockPlatformName, nil)
 }
 
 func (s *keyDataTestBase) newPrimaryKey(c *C, sz1 int) PrimaryKey {
@@ -281,7 +281,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, modelAuth
 	stream := cipher.NewCFBEncrypter(b, handle.IV)
 
 	out = &KeyParams{
-		PlatformName:      mockPlatformName,
+		PlatformName:      s.mockPlatformName,
 		Handle:            &handle,
 		EncryptedPayload:  make([]byte, len(payload)),
 		PrimaryKey:        primaryKey,

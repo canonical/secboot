@@ -42,8 +42,6 @@ import (
 )
 
 const (
-	KeyDataVersion int = 2
-
 	kdfType                            = "argon2i"
 	nilHash                    hashAlg = 0
 	passphraseKeyLen                   = 32
@@ -52,12 +50,13 @@ const (
 )
 
 var (
-	snapModelHMACKDFLabel = []byte("SNAP-MODEL-HMAC")
-	sha1Oid               = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
-	sha224Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
-	sha256Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
-	sha384Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
-	sha512Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
+	keyDataVersion        int = 2
+	snapModelHMACKDFLabel     = []byte("SNAP-MODEL-HMAC")
+	sha1Oid                   = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	sha224Oid                 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
+	sha256Oid                 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+	sha384Oid                 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
+	sha512Oid                 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
 )
 
 // ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
@@ -925,7 +924,7 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 
 	kd := &KeyData{
 		data: keyData{
-			Version:          KeyDataVersion,
+			Version:          keyDataVersion,
 			PlatformName:     params.PlatformName,
 			PlatformHandle:   json.RawMessage(encodedHandle),
 			KDFAlg:           hashAlg(params.KDFAlg),
