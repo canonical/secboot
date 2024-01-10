@@ -138,7 +138,8 @@ func (s *keyDataLegacySuite) TestRecoverKeys(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
 
-	MockKeyDataVersion(1)
+	restore := MockKeyDataVersion(0)
+	defer restore()
 	keyData, err := NewKeyData(protected)
 
 	c.Assert(err, IsNil)
@@ -154,7 +155,8 @@ func (s *keyDataLegacySuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 
 	protected.PlatformName = "foo"
 
-	MockKeyDataVersion(1)
+	restore := MockKeyDataVersion(0)
+	defer restore()
 	keyData, err := NewKeyData(protected)
 
 	c.Assert(err, IsNil)
@@ -170,7 +172,8 @@ func (s *keyDataLegacySuite) TestRecoverKeysInvalidData(c *C) {
 
 	protected.Handle = []byte("\"\"")
 
-	MockKeyDataVersion(1)
+	restore := MockKeyDataVersion(0)
+	defer restore()
 	keyData, err := NewKeyData(protected)
 
 	c.Assert(err, IsNil)

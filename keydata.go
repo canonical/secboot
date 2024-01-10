@@ -413,7 +413,7 @@ type passphraseParams struct {
 }
 
 type keyData struct {
-	Version int `json:"version"`
+	Version int `json:"version,omitempty"`
 
 	PlatformName string `json:"platform_name"` // used to identify a PlatformKeyDataHandler
 

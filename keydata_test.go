@@ -1251,7 +1251,6 @@ func (s *keyDataSuite) TestReadAndWriteWithUnsaltedKeyDigest(c *C) {
 	auxKey := testutil.DecodeHexString(c, "8107f1c65c58934f0d59245d1d94d312ea803e69c8599a7bac8c67fe253232f2")
 	j := []byte(
 		`{` +
-			`"version":0,` +
 			`"platform_name":"mock",` +
 			`"platform_handle":"iTnGw6iFTfDgGS+KMtDHx2yF0bpNaTWyzeLtsbaC9YaspcssRrHzcRsNrubyEVT9",` +
 			`"encrypted_payload":"fYM/SYjIRZj7JOJA710c9hSsxp5NpEchEVXgozd1KgxqZ/TOzIvWF9WYSrRcXiy1vsyjhkF0Svh3ihfApzvje7tTQRI=",` +
@@ -1305,7 +1304,6 @@ func (s *keyDataSuite) TestReadAndWriteWithLegacySnapModelAuthKey(c *C) {
 
 	j := []byte(
 		`{` +
-			`"version":0,` +
 			`"platform_name":"mock",` +
 			`"platform_handle":{` +
 			`"key":"u2wBdkkDL0c5ovbM9z/3VoRVy6cHMs3YdwiUL+mNl/Q=",` +
@@ -1365,10 +1363,6 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 
 	j := []byte(
 		`{` +
-			// The new version field will be added as 0 by default during unmarshalling
-			// with ReadKeyData even if it is missing.
-			// Explicitly adding the version field here so that the test passes.
-			`"version":0,` +
 			`"platform_name":"mock",` +
 			`"platform_handle":{` +
 			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",` +
@@ -1431,10 +1425,6 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 	c.Check(keyData.WriteAtomic(w), IsNil)
 	c.Check(w.final.Bytes(), DeepEquals, []byte(
 		`{`+
-			// The new version field will be added as 0 by default during unmarshalling
-			// with ReadKeyData even if it is missing.
-			// Explicitly adding the version field here so that the test passes.
-			`"version":0,`+
 			`"platform_name":"mock",`+
 			`"platform_handle":{`+
 			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",`+
