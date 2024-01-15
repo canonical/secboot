@@ -29,6 +29,7 @@ import (
 var (
 	UnmarshalV1KeyPayload  = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys = unmarshalProtectedKeys
+	KeyDataVersion         = keyDataVersion
 )
 
 type ProtectedKeys = protectedKeys

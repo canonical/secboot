@@ -46,7 +46,7 @@ var _ = Suite(&keyDataFileSuite{})
 
 func (s *keyDataFileSuite) TestWriter(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -59,12 +59,17 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	s.checkKeyDataJSONFromReaderAuthModeNone(c, f, protected, 0)
+	var j map[string]interface{}
+
+	d := json.NewDecoder(f)
+	c.Check(d.Decode(&j), IsNil)
+
+	s.checkKeyDataJSONDecodedAuthModeNone(c, j, protected, 0)
 }
 
 func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -88,7 +93,7 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 
 func (s *keyDataFileSuite) TestReader(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)

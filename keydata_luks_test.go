@@ -92,7 +92,7 @@ type testKeyDataLuksWriterData struct {
 
 func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
 
 	s.luks2.devices[data.path] = &mockLUKS2Container{
 		tokens: map[int]luks2.Token{
@@ -233,7 +233,7 @@ type testKeyDataLuksReaderData struct {
 
 func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
 
 	s.luks2.devices[data.path] = &mockLUKS2Container{
 		tokens: map[int]luks2.Token{
@@ -378,7 +378,7 @@ func (s *keyDataLuksUnmockedSuite) TestReaderAndWriter(c *C) {
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
 	c.Check(InitializeLUKS2Container(path, "", unlockKey, nil), IsNil)
 
 	keyData, err := NewKeyData(protected)

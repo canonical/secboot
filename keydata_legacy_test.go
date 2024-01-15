@@ -41,7 +41,7 @@ func (s *keyDataLegacyTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKe
 	return key, auxKey
 }
 
-func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, modelAuthHash crypto.Hash) (out *KeyParams) {
+func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams) {
 	payload := MarshalKeys(key, auxKey)
 
 	k := make([]byte, 48)
@@ -49,8 +49,12 @@ func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey 
 	c.Assert(err, IsNil)
 
 	handle := mockPlatformKeyDataHandle{
-		Key: k[:32],
-		IV:  k[32:]}
+		Key:              k[:32],
+		IV:               k[32:],
+		ExpectedVersion:  1,
+		ExpectedKDFAlg:   kdfAlg,
+		ExpectedAuthMode: AuthModeNone,
+	}
 
 	h := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
 	handle.AuthKeyHMAC = h.Sum(nil)
@@ -136,7 +140,7 @@ func (s *keyDataLegacySuite) TestLegacyKeyPayloadUnmarshalInvalid2(c *C) {
 
 func (s *keyDataLegacySuite) TestRecoverKeys(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256, crypto.SHA256)
 
 	restore := MockKeyDataVersion(0)
 	defer restore()
@@ -151,7 +155,7 @@ func (s *keyDataLegacySuite) TestRecoverKeys(c *C) {
 
 func (s *keyDataLegacySuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256, crypto.SHA256)
 
 	protected.PlatformName = "foo"
 
@@ -168,7 +172,7 @@ func (s *keyDataLegacySuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 
 func (s *keyDataLegacySuite) TestRecoverKeysInvalidData(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256, crypto.SHA256)
 
 	protected.Handle = []byte("\"\"")
 
@@ -185,7 +189,7 @@ func (s *keyDataLegacySuite) TestRecoverKeysInvalidData(c *C) {
 
 func (s *keyDataLegacySuite) TestRecoverKeysWithPassphraseAuthModeNone(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256, crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
