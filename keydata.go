@@ -668,6 +668,8 @@ func (d *KeyData) recoverKeysCommon(data []byte) (DiskUnlockKey, PrimaryKey, err
 	}
 }
 
+// Version returns this key data's version. Since the version field didn't exist
+// for key data versions < 2, we fake the version returned to 1.
 func (d *KeyData) Version() int {
 	switch d.data.Version {
 	case 0:
@@ -1037,6 +1039,9 @@ func (k *protectedKeys) marshalASN1(builder *cryptobyte.Builder) {
 	})
 }
 
+// MakeDiskUnlockKey derives a disk unlock key from a passed primary key and
+// a random salt. It returns that key as well as a payload in cleartext containing
+// the primary key and the generated salt.
 func MakeDiskUnlockKey(rand io.Reader, alg crypto.Hash, primaryKey PrimaryKey) (unlockKey DiskUnlockKey, cleartextPayload []byte, err error) {
 	unique := make([]byte, len(primaryKey))
 	if _, err := io.ReadFull(rand, unique); err != nil {

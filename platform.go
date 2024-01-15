@@ -76,12 +76,12 @@ type PlatformKeyData struct {
 // PlatormKeyDataHandler is the interface that this go package uses to
 // interact with a platform's secure device for the purpose of recovering keys.
 type PlatformKeyDataHandler interface {
-	// RecoverKeys attempts to recover the cleartext keys from the supplied key
-	// data using this platform's secure device.
+	// RecoverKeys attempts to recover the cleartext keys from the supplied encrypted
+	// payload using this platform's secure device.
 	RecoverKeys(data *PlatformKeyData, encryptedPayload []byte) ([]byte, error)
 
 	// RecoverKeysWithAuthKey attempts to recover the cleartext keys from the
-	// supplied data using this platform's secure device. The key parameter
+	// encrypted payload using this platform's secure device. The key parameter
 	// is a passphrase derived key to enable passphrase support to be integrated
 	// with the secure device. The platform implementation doesn't provide the primary
 	// mechanism of protecting keys with a passphrase - this is done in the platform
