@@ -681,10 +681,7 @@ func (s *keyDataSuite) TestMarshalAndUpdatePlatformHandle(c *C) {
 
 	protected.Handle = handle
 
-	w := makeMockKeyDataWriter()
-	c.Check(keyData.WriteAtomic(w), IsNil)
-
-	s.checkKeyDataJSONFromReaderAuthModeNone(c, w.Reader(), protected, 0)
+	s.checkKeyDataJSONAuthModeNone(c, keyData, protected, 0)
 }
 
 func (s *keyDataSuite) TestRecoverKeys(c *C) {
@@ -1049,10 +1046,7 @@ type testWriteAtomicData struct {
 }
 
 func (s *keyDataSuite) testWriteAtomic(c *C, data *testWriteAtomicData) {
-	w := makeMockKeyDataWriter()
-	c.Check(data.keyData.WriteAtomic(w), IsNil)
-
-	s.checkKeyDataJSONFromReaderAuthModeNone(c, w.Reader(), data.params, data.nmodels)
+	s.checkKeyDataJSONAuthModeNone(c, data.keyData, data.params, data.nmodels)
 }
 
 func (s *keyDataSuite) TestWriteAtomic1(c *C) {
