@@ -237,6 +237,8 @@ func (d *additionalData) marshalASN1(b *cryptobyte.Builder) {
 	})
 }
 
+// KeyDataScopeParams defines the parameters for the creation of a
+// key data scope object.
 type KeyDataScopeParams struct {
 	PrimaryKey secboot.PrimaryKey
 	Role       string
@@ -245,10 +247,19 @@ type KeyDataScopeParams struct {
 	ModelAlg   crypto.Hash
 }
 
+// KeyDataScope represents a key data's scope object which encapsulates information
+// about the scope of the key such as valid models or boot modes.
 type KeyDataScope struct {
 	data keyDataScope
 }
 
+// NewKeyDataScope creates a new scope object from the given parameters.
+//
+// The PrimaryKey and the role parameters are used to derive a role unique
+// signing key which is used to sign a hash (using MDAlg) of an ASN1 marshalled
+// payload containing model digests and boot modes (which are now considered as
+// authorized for the scope). Initially that payload is empty.
+// The produced signature is stored in the scope object.
 func NewKeyDataScope(params *KeyDataScopeParams) (*KeyDataScope, error) {
 
 	if params.ModelAlg == 0 {
@@ -342,6 +353,14 @@ func (d *KeyDataScope) isAuthorized() (bool, error) {
 	return ecdsa.VerifyASN1(d.data.PublicKey.PublicKey, h.Sum(nil), d.data.Signature), nil
 }
 
+// SetAuthorizedSnapModels is used to set new authorized models for an existing key data scope.
+//
+// Each supplied model is ASN1 serialized and a digest is produced (using a model digest
+// algorithm that can be specific per digest list). The PrimaryKey and the role parameters
+// are used to derive a role unique signing key which is used to sign a hash (using scope's
+// MDAlg) of an ASN1 marshalled payload containing the already authorized boot modes and the
+// new models' digest list.
+// On error the scope's already authorized model digests remain unchanged.
 func (d *KeyDataScope) SetAuthorizedSnapModels(key secboot.PrimaryKey, role string, models ...secboot.SnapModel) (err error) {
 	alg := d.data.Params.ModelDigests.Alg
 	if !alg.Available() {
@@ -370,6 +389,12 @@ func (d *KeyDataScope) SetAuthorizedSnapModels(key secboot.PrimaryKey, role stri
 	return d.authorize(key, role)
 }
 
+// SetAuthorizedBootModes is used to set new authorized boot modes for existing key data scope.
+//
+// The PrimaryKey and the role parameters are used to derive a role unique signing key which is
+// used to sign a hash (using scope's MDAlg) of an ASN1 marshalled payload containing the already
+// authorized model digests and the new boot modes.
+// On error the scope's already authorized boot modes remain unchanged.
 func (d *KeyDataScope) SetAuthorizedBootModes(key secboot.PrimaryKey, role string, modes ...string) (err error) {
 	currentModes := d.data.Params.Modes
 	d.data.Params.Modes = modes
@@ -384,6 +409,8 @@ func (d *KeyDataScope) SetAuthorizedBootModes(key secboot.PrimaryKey, role strin
 	return d.authorize(key, role)
 }
 
+// IsBootEnvironmentAuthorized checks if the current boot environment (model and boot mode) is
+// matches the key data's scope authorized models and boot modes.
 func (d *KeyDataScope) IsBootEnvironmentAuthorized() error {
 	ok, err := d.isAuthorized()
 	if err != nil {
@@ -442,6 +469,8 @@ func (d *KeyDataScope) IsBootEnvironmentAuthorized() error {
 	return nil
 }
 
+// MakeAdditionalData constructs the additional data that need to be integrity protected for
+// a key data scope (in AES-GCM for example).
 func (d *KeyDataScope) MakeAdditionalData(baseVersion int, kdfAlg crypto.Hash, authMode secboot.AuthMode) ([]byte, error) {
 	alg := d.data.MDAlg
 	if !alg.Available() {
