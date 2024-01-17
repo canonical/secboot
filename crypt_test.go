@@ -1059,8 +1059,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData9(c *C) {
 }
 
 type testActivateVolumeWithKeyDataErrorHandlingData struct {
-	primaryKey  DiskUnlockKey
-	recoveryKey RecoveryKey
+	diskUnlockKey DiskUnlockKey
+	recoveryKey   RecoveryKey
 
 	authRequestor *mockAuthRequestor
 
@@ -1077,7 +1077,7 @@ type testActivateVolumeWithKeyDataErrorHandlingData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *testActivateVolumeWithKeyDataErrorHandlingData) error {
-	s.addMockKeyslot("/dev/sda1", data.primaryKey)
+	s.addMockKeyslot("/dev/sda1", data.diskUnlockKey)
 	s.addMockKeyslot("/dev/sda1", data.recoveryKey[:])
 
 	var authRequestor AuthRequestor
@@ -1148,7 +1148,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling2(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
@@ -1166,7 +1166,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
 	s.handler.state = mockPlatformDeviceStateUninitialized
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
@@ -1199,7 +1199,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		recoveryKeyTries: 0,
 		keyData:          keyData,
@@ -1220,7 +1220,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}}},
 		recoveryKeyTries: 1,
@@ -1243,7 +1243,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}, recoveryKey}},
 		recoveryKeyTries: 2,
@@ -1261,7 +1261,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{errors.New("some error"), recoveryKey}},
 		recoveryKeyTries: 2,
@@ -1290,8 +1290,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling10(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:  key,
-		recoveryKey: recoveryKey,
+		diskUnlockKey: key,
+		recoveryKey:   recoveryKey,
 		authRequestor: &mockAuthRequestor{
 			passphraseResponses:  []interface{}{"incorrect", "invalid"},
 			recoveryKeyResponses: []interface{}{recoveryKey}},
@@ -1335,8 +1335,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling13(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:  key,
-		recoveryKey: recoveryKey,
+		diskUnlockKey: key,
+		recoveryKey:   recoveryKey,
 		authRequestor: &mockAuthRequestor{
 			passphraseResponses:  []interface{}{""},
 			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
@@ -1391,8 +1391,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling16(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:  key,
-		recoveryKey: recoveryKey,
+		diskUnlockKey: key,
+		recoveryKey:   recoveryKey,
 		authRequestor: &mockAuthRequestor{
 			passphraseResponses:  []interface{}{errors.New("")},
 			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
