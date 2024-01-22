@@ -951,6 +951,10 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 	return kd, nil
 }
 
+// NewKeyDataWithPassphrase is similar to NewKeyData but creates KeyData objects that are supported
+// by a passphrase, which is passed as an extra argument. The supplied KeyWithPassphraseParams include
+// in addition to the KeyParams fields, the KDFOptions and AuthKeySize fields which are used in the key
+// derivation process.
 func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string, kdf KDF) (*KeyData, error) {
 	kd, err := NewKeyData(&params.KeyParams)
 	if err != nil {
@@ -994,6 +998,8 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 	return kd, nil
 }
 
+// protectedKeys is used to pack a primary key and a unique value from which
+// an unlock key is derived.
 type protectedKeys struct {
 	Primary PrimaryKey
 	Unique  []byte
