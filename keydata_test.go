@@ -31,6 +31,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -775,6 +776,114 @@ func (s *keyDataSuite) TestRecoverKeysWithPassphrase1(c *C) {
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphrase2(c *C) {
 	s.testRecoverKeysWithPassphrase(c, "1234")
+}
+
+type testRecoverKeysWithPassphraseErrorHandlingData struct {
+	kdfType           string
+	errMsg            string
+	derivedKeySize    int
+	encryptionKeySize int
+	authKeySize       int
+}
+
+func (s *keyDataSuite) testRecoverKeysWithPassphraseErrorHandling(c *C, data *testRecoverKeysWithPassphraseErrorHandlingData) {
+	s.handler.passphraseSupport = true
+
+	if data.kdfType == "" {
+		data.kdfType = "argon2i"
+	}
+
+	if data.derivedKeySize == 0 {
+		data.derivedKeySize = 32
+	}
+
+	if data.encryptionKeySize == 0 {
+		data.encryptionKeySize = 32
+	}
+
+	if data.authKeySize == 0 {
+		data.authKeySize = 32
+	}
+
+	j := []byte(
+		`{` +
+			`"version":2,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"GtaI3cZX9H3Ig1YxSCPTxLshteV0AXK2pFgQuE5NRIQ=",` +
+			`"iv":"0VUZD/yYi6PfRzdPB0a1GA==",` +
+			`"auth-key-hmac":"7/AmPJvhwHNY/E1a3oEoqF5xjmt5FBr9YTppQvESUSY=",` +
+			`"exp-version":2,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":1},` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"m5Qz8plfHf+M51BJgTN35pUEKQhHLSz59y9miniM1pEeLeZMWSsLuUHRjL3n9azbxckIHOLYYmAyNg9bF7VoFcQWsHMeww==",` +
+			`"passphrase_params":` +
+			`{` +
+			`"kdf":` +
+			`{` +
+			`"type":"` + data.kdfType + `",` +
+			`"salt":"8A3SHdXVwCzEmD7YMKkyWw==",` +
+			`"time":4,` +
+			`"memory":1024063,` +
+			`"cpus":4},` +
+			`"encryption":"aes-cfb",` +
+			`"derived_key_size":` + fmt.Sprint(data.derivedKeySize) + `,` +
+			`"encryption_key_size":` + fmt.Sprint(data.encryptionKeySize) + `,` +
+			`"auth_key_size":` + fmt.Sprint(data.authKeySize) + `},` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"FvNTIAyRqLt3dHi0vboZR8xUM7JLG3J/tu8Xt7qY8/A=",` +
+			`"digest":"2ueYVTxhTxFX64L4+afifv1G9Vaf97JdkyUZ7wxJgPs="},` +
+			`"hmacs":null}}
+	`)
+	keyData, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	var kdf testutil.MockKDF
+	_, _, err = keyData.RecoverKeysWithPassphrase("passphrase", &kdf)
+	c.Check(err.Error(), Equals, data.errMsg)
+}
+
+func (s *keyDataSuite) TestRecoverKeysWithPassphraseNotSupportedKDF(c *C) {
+	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
+		kdfType: "other",
+		errMsg:  "unexpected intermediate KDF type \"other\"",
+	})
+}
+
+func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidDerivedKeySize(c *C) {
+	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
+		derivedKeySize: -1,
+		errMsg:         "invalid derived key size (-1 bytes)",
+	})
+}
+
+func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidEncryptionKeySizeSmall(c *C) {
+	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
+		encryptionKeySize: -1,
+		errMsg:            "invalid encryption key size (-1 bytes)",
+	})
+}
+
+func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidEncryptionKeySizeBig(c *C) {
+	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
+		encryptionKeySize: 33,
+		errMsg:            "invalid encryption key size (33 bytes)",
+	})
+}
+
+func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidAuthKeySize(c *C) {
+	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
+		authKeySize: -1,
+		errMsg:      "invalid auth key size (-1 bytes)",
+	})
 }
 
 func (s *keyDataSuite) TestNewKeyDataWithPassphraseNotSupported(c *C) {
