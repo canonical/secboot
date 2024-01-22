@@ -109,23 +109,72 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingModelAlg(c *C) {
 	c.Assert(err, ErrorMatches, "No model digest algorithm specified")
 }
 
-func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
+type testMakeAdditionalDataData struct {
+	keyDataScopeVersion int
+	baseVersion         int
+	authMode            secboot.AuthMode
+	mdAlg               crypto.Hash
+	keyDigestHashAlg    crypto.Hash
+	// These are used to derive the signing key whose digest go
+	// into the additional data.
+	signingKeyDerivationAlg crypto.Hash
+	role                    string
+}
+
+func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditionalDataData) {
 	primaryKey := s.newPrimaryKey(c, 32)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
-		Role:       "test",
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
+		Role:       data.role,
+		KDFAlg:     data.signingKeyDerivationAlg,
+		MDAlg:      data.mdAlg,
 		ModelAlg:   crypto.SHA256,
 	}
 
 	kds, err := NewKeyDataScope(params)
 	c.Assert(err, IsNil)
 
-	_, err = kds.MakeAdditionalData(1, crypto.SHA256, secboot.AuthModeNone)
+	if data.keyDataScopeVersion != 0 {
+		kds.TestSetVersion(data.keyDataScopeVersion)
+	}
+
+	aadBytes, err := kds.MakeAdditionalData(data.baseVersion, data.keyDigestHashAlg, data.authMode)
 	c.Check(err, IsNil)
 
+	aad, err := UnmarshalAdditionalData(aadBytes)
+	c.Assert(err, IsNil)
+
+	c.Check(aad.Version, Equals, 1)
+	c.Check(aad.BaseVersion, Equals, data.baseVersion)
+	c.Check(crypto.Hash(aad.KdfAlg), Equals, data.keyDigestHashAlg)
+	c.Check(aad.AuthMode, Equals, data.authMode)
+	c.Check(crypto.Hash(aad.KeyIdentifierAlg), Equals, data.signingKeyDerivationAlg)
+
+	c.Check(kds.TestMatch(data.keyDigestHashAlg, aad.KeyIdentifier), Equals, true)
+
+}
+
+func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
+	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
+		baseVersion:             1,
+		authMode:                secboot.AuthModeNone,
+		mdAlg:                   crypto.SHA256,
+		keyDigestHashAlg:        crypto.SHA256,
+		signingKeyDerivationAlg: crypto.SHA256,
+		role:                    "foo",
+	})
+}
+
+func (s *keyDataPlatformSuite) TestMakeAdditionalDataWithPassphrase(c *C) {
+	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
+		baseVersion:             1,
+		authMode:                secboot.AuthModePassphrase,
+		mdAlg:                   crypto.SHA256,
+		keyDigestHashAlg:        crypto.SHA256,
+		signingKeyDerivationAlg: crypto.SHA256,
+		role:                    "foo",
+	})
 }
 
 func (s *keyDataPlatformSuite) mockState(c *C) {

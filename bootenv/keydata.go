@@ -138,6 +138,43 @@ func (a hashAlg) marshalASN1(b *cryptobyte.Builder) {
 	})
 }
 
+func unmarshalHashAlg(s *cryptobyte.String) (hashAlg, error) {
+	var str cryptobyte.String
+
+	if !s.ReadASN1(&str, cryptobyte_asn1.SEQUENCE) {
+		return 0, errors.New("malformed input")
+	}
+
+	var oid asn1.ObjectIdentifier
+
+	if !str.ReadASN1ObjectIdentifier(&oid) {
+		return 0, errors.New("malformed Algorithm identifier")
+	}
+
+	var null uint8
+
+	if !str.ReadUint8(&null) {
+		return 0, errors.New("malformed input")
+	}
+
+	if len(oid) == len(sha1Oid) {
+		return hashAlg(crypto.SHA1), nil
+	}
+
+	switch oid[8] {
+	case sha224Oid[8]:
+		return hashAlg(crypto.SHA224), nil
+	case sha256Oid[8]:
+		return hashAlg(crypto.SHA256), nil
+	case sha384Oid[8]:
+		return hashAlg(crypto.SHA384), nil
+	case sha512Oid[8]:
+		return hashAlg(crypto.SHA512), nil
+	default:
+		return 0, errors.New("unsupported hash algorithm")
+	}
+}
+
 // digestList corresponds to a list of digests.
 type digestList struct {
 	Alg     hashAlg  `json:"alg"`     // The digest algorithm
@@ -217,23 +254,23 @@ type keyDataScope struct {
 	MDAlg  hashAlg `json:"md_alg"`
 }
 
-type additionalData struct {
-	version          int
-	baseVersion      int
-	kdfAlg           hashAlg
-	authMode         secboot.AuthMode
-	keyIdentifierAlg hashAlg
-	keyIdentifier    []byte
+type AdditionalData struct {
+	Version          int
+	BaseVersion      int
+	KdfAlg           hashAlg
+	AuthMode         secboot.AuthMode
+	KeyIdentifierAlg hashAlg
+	KeyIdentifier    []byte
 }
 
-func (d *additionalData) marshalASN1(b *cryptobyte.Builder) {
+func (d *AdditionalData) marshalASN1(b *cryptobyte.Builder) {
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // SEQUENCE {
-		b.AddASN1Int64(int64(d.version))      // version INTEGER
-		b.AddASN1Int64(int64(d.baseVersion))  // baseVersion INTEGER
-		d.kdfAlg.marshalASN1(b)               // kdfAlg AlgorithmIdentifier
-		b.AddASN1Enum(int64(d.authMode))      // authMode ENUMERATED
-		d.keyIdentifierAlg.marshalASN1(b)     // keyIdentifierAlg AlgorithmIdentifier
-		b.AddASN1OctetString(d.keyIdentifier) // keyIdentifier OCTET STRING
+		b.AddASN1Int64(int64(d.Version))      // version INTEGER
+		b.AddASN1Int64(int64(d.BaseVersion))  // baseVersion INTEGER
+		d.KdfAlg.marshalASN1(b)               // kdfAlg AlgorithmIdentifier
+		b.AddASN1Enum(int64(d.AuthMode))      // authMode ENUMERATED
+		d.KeyIdentifierAlg.marshalASN1(b)     // keyIdentifierAlg AlgorithmIdentifier
+		b.AddASN1OctetString(d.KeyIdentifier) // keyIdentifier OCTET STRING
 	})
 }
 
@@ -485,13 +522,13 @@ func (d *KeyDataScope) MakeAdditionalData(baseVersion int, kdfAlg crypto.Hash, a
 	h := alg.New()
 	h.Write(der)
 
-	aad := &additionalData{
-		version:          d.data.Version,
-		baseVersion:      baseVersion,
-		kdfAlg:           hashAlg(kdfAlg),
-		authMode:         authMode,
-		keyIdentifierAlg: alg,
-		keyIdentifier:    h.Sum(nil),
+	aad := &AdditionalData{
+		Version:          d.data.Version,
+		BaseVersion:      baseVersion,
+		KdfAlg:           hashAlg(kdfAlg),
+		AuthMode:         authMode,
+		KeyIdentifierAlg: alg,
+		KeyIdentifier:    h.Sum(nil),
 	}
 
 	builder := cryptobyte.NewBuilder(nil)
