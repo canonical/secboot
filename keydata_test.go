@@ -898,16 +898,43 @@ func (s *keyDataSuite) TestNewKeyDataWithPassphraseNotSupported(c *C) {
 }
 
 func (s *keyDataSuite) TestChangePassphraseNotSupported(c *C) {
-	// s.handler.passphraseSupport = false with KeydataWithPassphrase payload
-	j := []byte(`{"version":2,"platform_name":"mock","platform_handle":{"key":` +
-		`"6yrcBpn9ZmjZgiLqFZtp1nns+3zjVo/yxrbSqwhTuf4=","iv":"HDEMeSzmDmsGZTzVTOxPOw==",` +
-		`"auth-key-hmac":"WQ3rrqhi5TMVHYiP3j10UG0h2D8nKQ0cs9YvXZGzRA8="},"kdf_alg":"sha256",` +
-		`"encrypted_payload":"uAUgcV48QrqgOQL1dI+CRRdVTSzEnTguKW0HXQFnU2q1SjIi45AvbcawnUhQl2k8rl2SBDL2RS4uIBZDlFaWiAHbwmX9ig==",` +
-		`"passphrase_params":{"kdf":{"type":"argon2i","salt":"Uj1araXwSDK+WlzQ8RNQMg==","time":4,"memory":1024063,"cpus":4},` +
-		`"encryption":"aes-cfb","derived_key_size":32,` +
-		`"encryption_key_size":32,"auth_key_size":32},"authorized_snap_models":{` +
-		`"alg":"sha256","kdf_alg":"sha256","key_digest":{"alg":"sha256","salt":"KAToqFGUwszVEjyOmc0Pil5uuhouNhaVynRLllPx7dU=",` +
-		`"digest":"GegPT/eBoSl1X9m5pSYcgdme/NtRA2/W4q38WDz4HHQ="},"hmacs":null}}`)
+	// Test that changing passphrase of a key data with a passphrase set
+	// fails when the platform handler doesn't have passphrase support.
+	j := []byte(
+		`{` +
+			`"version":2,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"6yrcBpn9ZmjZgiLqFZtp1nns+3zjVo/yxrbSqwhTuf4=",` +
+			`"iv":"HDEMeSzmDmsGZTzVTOxPOw==",` +
+			`"auth-key-hmac":"WQ3rrqhi5TMVHYiP3j10UG0h2D8nKQ0cs9YvXZGzRA8="},` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"uAUgcV48QrqgOQL1dI+CRRdVTSzEnTguKW0HXQFnU2q1SjIi45AvbcawnUhQl2k8rl2SBDL2RS4uIBZDlFaWiAHbwmX9ig==",` +
+			`"passphrase_params":` +
+			`{` +
+			`"kdf":` +
+			`{` +
+			`"type":"argon2i",` +
+			`"salt":"Uj1araXwSDK+WlzQ8RNQMg==",` +
+			`"time":4,` +
+			`"memory":1024063,` +
+			`"cpus":4},` +
+			`"encryption":"aes-cfb",` +
+			`"derived_key_size":32,` +
+			`"encryption_key_size":32,` +
+			`"auth_key_size":32},` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"KAToqFGUwszVEjyOmc0Pil5uuhouNhaVynRLllPx7dU=",` +
+			`"digest":"GegPT/eBoSl1X9m5pSYcgdme/NtRA2/W4q38WDz4HHQ="},` +
+			`"hmacs":null}}
+		`)
 
 	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
 	c.Assert(err, IsNil)
@@ -916,15 +943,33 @@ func (s *keyDataSuite) TestChangePassphraseNotSupported(c *C) {
 }
 
 func (s *keyDataSuite) TestChangePassphraseWithoutInitial(c *C) {
-	// s.handler.passphraseSupport = true with Keydata payload
-	j := []byte(`{"version":2,"platform_name":"mock","platform_handle":{"key":` +
-		`"6yrcBpn9ZmjZgiLqFZtp1nns+3zjVo/yxrbSqwhTuf4=","iv":"HDEMeSzmDmsGZTzVTOxPOw==",` +
-		`"auth-key-hmac":"WQ3rrqhi5TMVHYiP3j10UG0h2D8nKQ0cs9YvXZGzRA8="},"kdf_alg":"sha256",` +
-		`"encrypted_payload":"uAUgcV48QrqgOQL1dI+CRRdVTSzEnTguKW0HXQFnU2q1SjIi45AvbcawnUhQl2k8rl2SBDL2RS4uIBZDlFaWiAHbwmX9ig==",` +
-		`"encryption":"aes-cfb","derived_key_size":32,` +
-		`"encryption_key_size":32,"auth_key_size":32},"authorized_snap_models":{` +
-		`"alg":"sha256","kdf_alg":"sha256","key_digest":{"alg":"sha256","salt":"KAToqFGUwszVEjyOmc0Pil5uuhouNhaVynRLllPx7dU=",` +
-		`"digest":"GegPT/eBoSl1X9m5pSYcgdme/NtRA2/W4q38WDz4HHQ="},"hmacs":null}}`)
+	// Test that changing passphrase on a key data without a passphrase set fails.
+	j := []byte(
+		`{` +
+			`"version":2,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"6yrcBpn9ZmjZgiLqFZtp1nns+3zjVo/yxrbSqwhTuf4=",` +
+			`"iv":"HDEMeSzmDmsGZTzVTOxPOw==",` +
+			`"auth-key-hmac":"WQ3rrqhi5TMVHYiP3j10UG0h2D8nKQ0cs9YvXZGzRA8="},` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"uAUgcV48QrqgOQL1dI+CRRdVTSzEnTguKW0HXQFnU2q1SjIi45AvbcawnUhQl2k8rl2SBDL2RS4uIBZDlFaWiAHbwmX9ig==",` +
+			`"encryption":"aes-cfb",` +
+			`"derived_key_size":32,` +
+			`"encryption_key_size":32,` +
+			`"auth_key_size":32},` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"KAToqFGUwszVEjyOmc0Pil5uuhouNhaVynRLllPx7dU=",` +
+			`"digest":"GegPT/eBoSl1X9m5pSYcgdme/NtRA2/W4q38WDz4HHQ="},` +
+			`"hmacs":null}}
+		`)
 
 	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
 	c.Assert(err, IsNil)
