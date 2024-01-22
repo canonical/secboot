@@ -20,6 +20,8 @@
 package secboot
 
 import (
+	"bytes"
+	"encoding/binary"
 	"io"
 
 	"github.com/snapcore/secboot/internal/luks2"
@@ -148,4 +150,15 @@ func MockHashAlgAvailable() (restore func()) {
 
 func (d *KeyData) DerivePassphraseKeys(passphrase string, kdf KDF) (key, iv, auth []byte, err error) {
 	return d.derivePassphraseKeys(passphrase, kdf)
+}
+
+// MarshalV1Keys serializes the supplied disk unlock key and auxiliary key in
+// the v1 format that is ready to be encrypted by a platform's secure device.
+func MarshalV1Keys(key DiskUnlockKey, auxKey PrimaryKey) []byte {
+	w := new(bytes.Buffer)
+	binary.Write(w, binary.BigEndian, uint16(len(key)))
+	w.Write(key)
+	binary.Write(w, binary.BigEndian, uint16(len(auxKey)))
+	w.Write(auxKey)
+	return w.Bytes()
 }

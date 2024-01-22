@@ -248,24 +248,6 @@ func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "other-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-
-	c.Check(keyData.SetAuthorizedSnapModels(primaryKey, models...), IsNil)
-
 	expectedId, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 
@@ -295,10 +277,6 @@ func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 	c.Check(err, IsNil)
 	c.Check(recoveredUnlockKey, DeepEquals, unlockKey)
 	c.Check(recoveredPrimaryKey, DeepEquals, primaryKey)
-
-	authorized, err := keyData.IsSnapModelAuthorized(recoveredPrimaryKey, models[0])
-	c.Check(err, IsNil)
-	c.Check(authorized, testutil.IsTrue)
 }
 
 func (s *keyDataLuksSuite) TestReader(c *C) {
