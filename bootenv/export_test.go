@@ -22,10 +22,13 @@ package bootenv
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/x509"
 	"errors"
 
 	"github.com/snapcore/secboot"
+	internal_crypto "github.com/snapcore/secboot/internal/crypto"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
@@ -121,4 +124,21 @@ func (d *KeyDataScope) TestMatch(KDFAlg crypto.Hash, keyIdentifier []byte) bool 
 	h := KDFAlg.New()
 	h.Write(der)
 	return bytes.Equal(h.Sum(nil), keyIdentifier)
+}
+
+func NewHashAlg(alg crypto.Hash) hashAlg {
+	return hashAlg(alg)
+}
+
+func NewEcdsaPublicKey(rand []byte) (ecdsaPublicKey, error) {
+	var pk ecdsaPublicKey
+
+	privateKey, err := internal_crypto.GenerateECDSAKey(elliptic.P256(), bytes.NewReader(rand))
+	if err != nil {
+		return pk, err
+	}
+
+	pk.PublicKey = privateKey.Public().(*ecdsa.PublicKey)
+
+	return pk, nil
 }

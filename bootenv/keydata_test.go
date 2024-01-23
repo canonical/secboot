@@ -22,6 +22,9 @@ package bootenv_test
 import (
 	"crypto"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 
 	. "gopkg.in/check.v1"
 
@@ -507,4 +510,112 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthInvalidBootMode(c *C) {
 		validModes:  validModes,
 		bootMode:    invalidBootMode,
 	}), ErrorMatches, "unauthorized boot mode")
+}
+
+func (s *keyDataPlatformSuite) TestHashAlgMarshalJSON(c *C) {
+	for _, t := range []struct {
+		alg     crypto.Hash
+		nameAlg string
+	}{
+		{crypto.SHA1, "\"sha1\""},
+		{crypto.SHA224, "\"sha224\""},
+		{crypto.SHA256, "\"sha256\""},
+		{crypto.SHA384, "\"sha384\""},
+		{crypto.SHA512, "\"sha512\""},
+	} {
+		hashAlg := NewHashAlg(t.alg)
+		hashAlgJSON, err := hashAlg.MarshalJSON()
+		c.Assert(err, IsNil)
+		c.Check(string(hashAlgJSON), Equals, t.nameAlg)
+	}
+}
+
+func (s *keyDataPlatformSuite) TestHashAlgMarshalJSONInvalid(c *C) {
+	unsupportedAlgorithms := []crypto.Hash{
+		crypto.MD4,
+		crypto.MD5,
+		crypto.MD5SHA1,
+		crypto.RIPEMD160,
+		crypto.SHA3_224,
+		crypto.SHA3_256,
+		crypto.SHA3_384,
+		crypto.SHA3_512,
+		crypto.SHA512_224,
+		crypto.SHA512_256,
+		crypto.BLAKE2s_256,
+		crypto.BLAKE2b_256,
+		crypto.BLAKE2b_384,
+		crypto.BLAKE2b_512,
+	}
+
+	for _, alg := range unsupportedAlgorithms {
+		hashAlg := NewHashAlg(alg)
+		hashAlgJSON, err := hashAlg.MarshalJSON()
+		c.Assert(string(hashAlgJSON), Equals, "")
+		c.Check(err.Error(), Equals, fmt.Sprintf("unknown hash algorithm: %v", crypto.Hash(alg)))
+	}
+}
+
+func (s *keyDataPlatformSuite) TestHashAlgUnmarshalJSON(c *C) {
+	for _, t := range []struct {
+		alg     crypto.Hash
+		nameAlg string
+	}{
+		{crypto.SHA1, "\"sha1\""},
+		{crypto.SHA224, "\"sha224\""},
+		{crypto.SHA256, "\"sha256\""},
+		{crypto.SHA384, "\"sha384\""},
+		{crypto.SHA512, "\"sha512\""},
+		{0, "\"foo\""},
+	} {
+		hashAlg := NewHashAlg(crypto.SHA256)
+		err := hashAlg.UnmarshalJSON([]byte(t.nameAlg))
+		c.Assert(err, IsNil)
+		c.Check(crypto.Hash(hashAlg), Equals, t.alg)
+	}
+}
+
+func (s *keyDataPlatformSuite) TestHashAlgUnmarshalJSONInvalid(c *C) {
+	hashAlg := NewHashAlg(crypto.SHA256)
+	err := hashAlg.UnmarshalJSON([]byte("}"))
+
+	e, ok := err.(*json.SyntaxError)
+	c.Assert(ok, Equals, true)
+	c.Assert(e, ErrorMatches, "invalid character '}' looking for beginning of value")
+}
+
+func (s *keyDataPlatformSuite) TestEcdsaPublicKeyMarshalJSONAndUnmarshalJSON(c *C) {
+	rand := testutil.DecodeHexString(c, "12617b35cd4dea2364d2b5c99165c7d8a24249afdf58519796748335d842d0484a6b953e5a42a97d7f9a012d401ab007f1be6e964f48ed1138fdd902eadbea10d50e0eab02ed1a4935867bfa65e270df2100439d2a631b1c501da698a43031e709092b96")
+
+	pk, err := NewEcdsaPublicKey(rand)
+	c.Assert(err, IsNil)
+
+	expected, err := base64.StdEncoding.DecodeString("Ik1Ga3dFd1lIS29aSXpqMENBUVlJS29aSXpqMERBUWNEUWdBRXlmU0tTbGJTSjcyYnQ1Yk1WWmpyd2tJeDVXZFNrRlcrMjJ1TXp6Um13VEVFN3VwZW9hYWZ3RmNheFBDSTA1NWI5UnlPdC9xbmRxQ3ZqSnhKQmwrNWpRPT0i")
+	c.Assert(err, IsNil)
+
+	pkBytes, err := pk.MarshalJSON()
+	c.Assert(err, IsNil)
+
+	c.Check(pkBytes, DeepEquals, expected)
+
+	unmarshalledPk, err := NewEcdsaPublicKey(rand)
+	c.Assert(err, IsNil)
+
+	err = unmarshalledPk.UnmarshalJSON(pkBytes)
+	c.Assert(err, IsNil)
+
+	c.Check(unmarshalledPk, DeepEquals, pk)
+}
+
+func (s *keyDataPlatformSuite) TestEcdsaPublicKeyUnmarshalJSONInvalid(c *C) {
+	// Test with a serialized RSA key
+	pkBytes, err := base64.StdEncoding.DecodeString("Ik1Ed3dEUVlKS29aSWh2Y05BUUVCQlFBREt3QXdLQUloQU1jbC9Vdks0ZzdFZE5LQ0gwQTlraklzd1ZHOFI1S1BUOEVvQjd1V0dDZlRBZ01CQUFFPSI=")
+	c.Assert(err, IsNil)
+
+	rand := testutil.DecodeHexString(c, "617b35cd4dea2364d2b5c99165c7d8a24249afdf58519796748335d842d0484a6b953e5a42a97d7f9a012d401ab007f1be6e964f48ed1138fdd902eadbea10d50e0eab02ed1a4935867bfa65e270df2100439d2a631b1c501da698a43031e709092b96")
+	unmarshalledPk, err := NewEcdsaPublicKey(rand)
+	c.Assert(err, IsNil)
+
+	err = unmarshalledPk.UnmarshalJSON(pkBytes)
+	c.Check(err, ErrorMatches, "invalid key type")
 }
