@@ -21,6 +21,7 @@ package bootenv_test
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -680,4 +681,41 @@ func (s *keyDataPlatformSuite) TestEcdsaPublicKeyUnmarshalJSONInvalid(c *C) {
 
 	err = unmarshalledPk.UnmarshalJSON(pkBytes)
 	c.Check(err, ErrorMatches, "invalid key type")
+}
+
+func (s *keyDataPlatformSuite) TestDeriveSigner(c *C) {
+	primaryKey := s.newPrimaryKey(c, 32)
+	role := "test"
+
+	params := &KeyDataScopeParams{
+		PrimaryKey: primaryKey,
+		Role:       role,
+		KDFAlg:     crypto.SHA256,
+		MDAlg:      crypto.SHA256,
+		ModelAlg:   crypto.SHA256,
+	}
+
+	kds, err := NewKeyDataScope(params)
+	c.Assert(err, IsNil)
+	c.Check(kds, NotNil)
+
+	err = kds.IsBootEnvironmentAuthorized()
+	c.Check(err, IsNil)
+
+	signer, err := kds.DeriveSigner(primaryKey, role)
+	c.Assert(err, IsNil)
+
+	prevKey, ok := signer.(*ecdsa.PrivateKey)
+	c.Assert(ok, Equals, true)
+
+	for i := 0; i < 10; i++ {
+		signer, err := kds.DeriveSigner(primaryKey, role)
+		c.Assert(err, IsNil)
+
+		key, ok := signer.(*ecdsa.PrivateKey)
+		c.Assert(ok, Equals, true)
+		c.Check(key.Equal(prevKey), Equals, true)
+		prevKey = key
+	}
+
 }

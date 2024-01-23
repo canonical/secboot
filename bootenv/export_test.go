@@ -126,6 +126,10 @@ func (d *KeyDataScope) TestMatch(KDFAlg crypto.Hash, keyIdentifier []byte) bool 
 	return bytes.Equal(h.Sum(nil), keyIdentifier)
 }
 
+func (d *KeyDataScope) DeriveSigner(key secboot.PrimaryKey, role string) (crypto.Signer, error) {
+	return d.deriveSigner(key, role)
+}
+
 func NewHashAlg(alg crypto.Hash) hashAlg {
 	return hashAlg(alg)
 }
