@@ -149,8 +149,23 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 }
 
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey, slot int, keyData *KeyData, auxKey PrimaryKey) error {
-	if s.model != SkipSnapModelCheck {
-		authorized, err := keyData.IsSnapModelAuthorized(auxKey, s.model)
+	model := s.model
+	// Snap model checking is skipped for generation 2 keys regardless of the model argument.
+	// Although a gen 1 key could fake the generation field which is unprotected to also
+	// bypass the model version check, that will result in an umarshalling error later on.
+	switch keyData.Generation() {
+	case 1:
+		if model == nil {
+			return errors.New("nil Model for generation 1 key")
+		}
+	default:
+		// Model authorization checking is skipped for version 2 keys and
+		// up as it is now responsibility of the platform to verify the model.
+		model = SkipSnapModelCheck
+	}
+
+	if model != SkipSnapModelCheck {
+		authorized, err := keyData.IsSnapModelAuthorized(auxKey, model)
 		switch {
 		case err != nil:
 			return xerrors.Errorf("cannot check if snap model is authorized: %w", err)
@@ -429,10 +444,6 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 	if options.RecoveryKeyTries < 0 {
 		return errors.New("invalid RecoveryKeyTries")
 	}
-	if options.Model == nil {
-		return errors.New("nil Model")
-	}
-
 	if (options.PassphraseTries > 0 || options.RecoveryKeyTries > 0) && authRequestor == nil {
 		return errors.New("nil authRequestor")
 	}
