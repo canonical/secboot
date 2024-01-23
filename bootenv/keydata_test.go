@@ -400,6 +400,37 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesInvalidRole(c *C) {
 		}), ErrorMatches, "incorrect key supplied")
 }
 
+func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesWrongKey(c *C) {
+	primaryKey := s.newPrimaryKey(c, 32)
+
+	validModes := []string{
+		"modeFoo",
+	}
+	data := &testSetAuthorizedBootModesData{
+		kDFAlg:     crypto.SHA256,
+		mDAlg:      crypto.SHA256,
+		modelAlg:   crypto.SHA256,
+		validRole:  "test",
+		role:       "different",
+		validModes: validModes,
+	}
+
+	params := &KeyDataScopeParams{
+		PrimaryKey: primaryKey,
+		Role:       data.validRole,
+		KDFAlg:     data.kDFAlg,
+		MDAlg:      data.mDAlg,
+		ModelAlg:   data.modelAlg,
+	}
+
+	kds, err := NewKeyDataScope(params)
+	c.Assert(err, IsNil)
+
+	wrongKey := s.newPrimaryKey(c, 32)
+	err = kds.SetAuthorizedBootModes(wrongKey, data.role, data.validModes...)
+	c.Check(err, ErrorMatches, "incorrect key supplied")
+}
+
 type testBootEnvAuthData struct {
 	kDFAlg      crypto.Hash
 	mDAlg       crypto.Hash
