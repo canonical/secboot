@@ -304,12 +304,10 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg cr
 	stream := cipher.NewCFBEncrypter(b, handle.IV)
 
 	out = &KeyParams{
-		PlatformName:      s.mockPlatformName,
-		Handle:            &handle,
-		EncryptedPayload:  make([]byte, len(payload)),
-		PrimaryKey:        primaryKey,
-		KDFAlg:            kdfAlg,
-		SnapModelAuthHash: modelAuthHash}
+		PlatformName:     s.mockPlatformName,
+		Handle:           &handle,
+		EncryptedPayload: make([]byte, len(payload)),
+		KDFAlg:           kdfAlg}
 	stream.XORKeyStream(out.EncryptedPayload, payload)
 
 	return out, unlockKey
