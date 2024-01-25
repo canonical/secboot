@@ -57,7 +57,7 @@ var _ = Suite(&updateSuite{})
 
 type testUpdatePCRProtectionPolicyData struct {
 	pcrPolicyCounterHandle tpm2.Handle
-	authKey                secboot.AuxiliaryKey
+	authKey                secboot.PrimaryKey
 }
 
 func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRProtectionPolicyData) {
@@ -102,7 +102,7 @@ func (s *updateSuite) TestUpdatePCRProtectionPolicyNoPCRPolicyCounter(c *C) {
 }
 
 func (s *updateSuite) TestUpdatePCRProtectionPolicyWithProvidedAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	s.testUpdatePCRProtectionPolicy(c, &testUpdatePCRProtectionPolicyData{
@@ -223,7 +223,7 @@ func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicyUnrelated1(c *C) {
 		keys = append(keys, key)
 	}
 
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	var ks []*secboot.KeyData
@@ -243,13 +243,13 @@ func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicyUnrelated1(c *C) {
 
 func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicyUnrelated2(c *C) {
 	var keys []secboot.DiskUnlockKey
-	var authKeys []secboot.AuxiliaryKey
+	var authKeys []secboot.PrimaryKey
 	for i := 0; i < 2; i++ {
 		key := make(secboot.DiskUnlockKey, 32)
 		rand.Read(key)
 		keys = append(keys, key)
 
-		authKey := make(secboot.AuxiliaryKey, 32)
+		authKey := make(secboot.PrimaryKey, 32)
 		rand.Read(authKey)
 		authKeys = append(authKeys, authKey)
 	}

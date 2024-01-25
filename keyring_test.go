@@ -111,59 +111,59 @@ func (s *keyringSuite) TestGetDiskUnlockKeyFromKernelAndRemove(c *C) {
 	c.Check(err, ErrorMatches, "cannot find key: required key not available")
 }
 
-type testGetAuxiliaryKeyFromKernelData struct {
-	key        AuxiliaryKey
+type testGetPrimaryKeyFromKernelData struct {
+	key        PrimaryKey
 	prefix     string
 	devicePath string
 }
 
-func (s *keyringSuite) testGetAuxiliaryKeyFromKernel(c *C, data *testGetAuxiliaryKeyFromKernelData) {
+func (s *keyringSuite) testGetPrimaryKeyFromKernel(c *C, data *testGetPrimaryKeyFromKernelData) {
 	prefix := data.prefix
 	if prefix == "" {
 		prefix = "ubuntu-fde"
 	}
 	c.Check(keyring.AddKeyToUserKeyring(data.key, data.devicePath, "aux", prefix), IsNil)
 
-	key, err := GetAuxiliaryKeyFromKernel(data.prefix, data.devicePath, false)
+	key, err := GetPrimaryKeyFromKernel(data.prefix, data.devicePath, false)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, data.key)
 }
 
-func (s *keyringSuite) TestGetAuxiliaryKeyFromKernel1(c *C) {
-	key := make(AuxiliaryKey, 32)
+func (s *keyringSuite) TestGetPrimaryKeyFromKernel1(c *C) {
+	key := make(PrimaryKey, 32)
 	rand.Read(key)
 
-	s.testGetAuxiliaryKeyFromKernel(c, &testGetAuxiliaryKeyFromKernelData{
+	s.testGetPrimaryKeyFromKernel(c, &testGetPrimaryKeyFromKernelData{
 		key:        key,
 		devicePath: "/dev/sda1"})
 }
 
-func (s *keyringSuite) TestGetAuxiliaryKeyFromKernel2(c *C) {
-	key := make(AuxiliaryKey, 32)
+func (s *keyringSuite) TestGetPrimaryKeyFromKernel2(c *C) {
+	key := make(PrimaryKey, 32)
 	rand.Read(key)
 
-	s.testGetAuxiliaryKeyFromKernel(c, &testGetAuxiliaryKeyFromKernelData{
+	s.testGetPrimaryKeyFromKernel(c, &testGetPrimaryKeyFromKernelData{
 		key:        key,
 		prefix:     "foo",
 		devicePath: "/dev/nvme0n1p2"})
 }
 
-func (s *keyringSuite) TestGetAuxiliaryKeyFromKernelNoKey(c *C) {
-	_, err := GetAuxiliaryKeyFromKernel("", "/dev/sda1", false)
+func (s *keyringSuite) TestGetPrimaryKeyFromKernelNoKey(c *C) {
+	_, err := GetPrimaryKeyFromKernel("", "/dev/sda1", false)
 	c.Check(err, ErrorMatches, "cannot find key in kernel keyring")
 }
 
-func (s *keyringSuite) TestGetAuxiliaryKeyFromKernelAndRemove(c *C) {
-	key := make(AuxiliaryKey, 32)
+func (s *keyringSuite) TestGetPrimaryKeyFromKernelAndRemove(c *C) {
+	key := make(PrimaryKey, 32)
 	rand.Read(key)
 
 	c.Check(keyring.AddKeyToUserKeyring(key, "/dev/sda1", "aux", "ubuntu-fde"), IsNil)
 
-	key2, err := GetAuxiliaryKeyFromKernel("", "/dev/sda1", true)
+	key2, err := GetPrimaryKeyFromKernel("", "/dev/sda1", true)
 	c.Check(err, IsNil)
 	c.Check(key2, DeepEquals, key)
 
-	_, err = GetAuxiliaryKeyFromKernel("", "/dev/sda1", true)
+	_, err = GetPrimaryKeyFromKernel("", "/dev/sda1", true)
 	c.Check(err, ErrorMatches, "cannot find key in kernel keyring")
 
 	_, err = keyring.GetKeyFromUserKeyring("/dev/sda1", "aux", "ubuntu-fde")

@@ -321,7 +321,7 @@ func (s *sealSuite) TestProtectKeyWithTPMNoPCRPolicyCounterHandle(c *C) {
 }
 
 func (s *sealSuite) TestProtectKeyWithTPMWithProvidedAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
@@ -535,7 +535,7 @@ func (s *sealSuite) TestProtectKeysWithTPMNoPCRPolicyCounterHandle(c *C) {
 }
 
 func (s *sealSuite) TestProtectKeysWithTPMWithProvidedAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
@@ -716,7 +716,7 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKeyNilPCRProfileAndNoAuthor
 }
 
 func (s *sealSuite) TestProtectKeyWithExternalStorageKeyWithProvidedAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	s.testProtectKeyWithExternalStorageKey(c, &ProtectKeyParams{
@@ -797,7 +797,7 @@ type sealSuiteNoTPM struct {
 
 	lastKeyParams *secboot.KeyParams
 
-	lastAuthKey       secboot.AuxiliaryKey
+	lastAuthKey       secboot.PrimaryKey
 	lastAuthKeyPublic *tpm2.Public
 }
 
@@ -812,7 +812,7 @@ func (s *sealSuiteNoTPM) SetUpTest(c *C) {
 
 	s.lastAuthKey = nil
 	s.lastAuthKeyPublic = nil
-	s.AddCleanup(MockNewPolicyAuthPublicKey(func(authKey secboot.AuxiliaryKey) (*tpm2.Public, error) {
+	s.AddCleanup(MockNewPolicyAuthPublicKey(func(authKey secboot.PrimaryKey) (*tpm2.Public, error) {
 		s.lastAuthKey = authKey
 
 		pub, err := NewPolicyAuthPublicKey(authKey)
@@ -830,7 +830,7 @@ type testMakeKeyDataWithPolicyData struct {
 func (s *sealSuiteNoTPM) testMakeKeyDataWithPolicy(c *C, data *testMakeKeyDataWithPolicyData) {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	var sealer mockKeySealer
@@ -841,7 +841,7 @@ func (s *sealSuiteNoTPM) testMakeKeyDataWithPolicy(c *C, data *testMakeKeyDataWi
 
 	c.Assert(s.lastKeyParams, NotNil)
 	c.Check(s.lastKeyParams.PlatformName, Equals, "tpm2")
-	c.Check(s.lastKeyParams.AuxiliaryKey, DeepEquals, authKey)
+	c.Check(s.lastKeyParams.PrimaryKey, DeepEquals, authKey)
 	c.Check(s.lastKeyParams.SnapModelAuthHash, Equals, crypto.SHA256)
 
 	skd, err := NewSealedKeyData(kd)
@@ -939,7 +939,7 @@ func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentPolicyVersion(c *C) {
 
 type testMakeKeyDataPolicyData struct {
 	pcrPolicyCounterHandle       tpm2.Handle
-	authKey                      secboot.AuxiliaryKey
+	authKey                      secboot.PrimaryKey
 	initialPcrPolicyCounterValue uint64
 }
 
@@ -1051,7 +1051,7 @@ func (s *sealSuiteNoTPM) TestMakeKeyDataPolicyWithProvidedAuthKey(c *C) {
 }
 
 type testMakeKeyDataData struct {
-	authKey                      secboot.AuxiliaryKey
+	authKey                      secboot.PrimaryKey
 	params                       *KeyDataParams
 	initialPcrPolicyCounterValue uint64
 }
@@ -1113,7 +1113,7 @@ func (s *sealSuiteNoTPM) testMakeKeyData(c *C, data *testMakeKeyDataData) {
 	defer restore()
 
 	pcrPolicyInitialized := false
-	restore = MockSkdbUpdatePCRProtectionPolicyImpl(func(skdb *SealedKeyDataBase, tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey, counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, session tpm2.SessionContext) error {
+	restore = MockSkdbUpdatePCRProtectionPolicyImpl(func(skdb *SealedKeyDataBase, tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, session tpm2.SessionContext) error {
 		c.Check(tpm, Equals, mockTpm)
 		c.Check(authKey, DeepEquals, s.lastAuthKey)
 		c.Check(counterPub, Equals, mockPcrPolicyCounterPub)
@@ -1141,7 +1141,7 @@ func (s *sealSuiteNoTPM) testMakeKeyData(c *C, data *testMakeKeyDataData) {
 
 	c.Assert(s.lastKeyParams, NotNil)
 	c.Check(s.lastKeyParams.PlatformName, Equals, "tpm2")
-	c.Check(s.lastKeyParams.AuxiliaryKey, DeepEquals, s.lastAuthKey)
+	c.Check(s.lastKeyParams.PrimaryKey, DeepEquals, s.lastAuthKey)
 	c.Check(s.lastKeyParams.SnapModelAuthHash, Equals, crypto.SHA256)
 
 	skd, err := NewSealedKeyData(kd)

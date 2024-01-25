@@ -244,7 +244,7 @@ func (s *keyDataTestBase) TearDownSuite(c *C) {
 	RegisterPlatformKeyDataHandler(mockPlatformName, nil)
 }
 
-func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, AuxiliaryKey) {
+func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, PrimaryKey) {
 	key := make([]byte, sz1)
 	auxKey := make([]byte, sz2)
 	_, err := rand.Read(key)
@@ -254,7 +254,7 @@ func (s *keyDataTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, Aux
 	return key, auxKey
 }
 
-func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey AuxiliaryKey, modelAuthHash crypto.Hash) (out *KeyParams) {
+func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, modelAuthHash crypto.Hash) (out *KeyParams) {
 	payload := MarshalKeys(key, auxKey)
 
 	k := make([]byte, 48)
@@ -276,7 +276,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey Auxili
 		PlatformName:      mockPlatformName,
 		Handle:            &handle,
 		EncryptedPayload:  make([]byte, len(payload)),
-		AuxiliaryKey:      auxKey,
+		PrimaryKey:        auxKey,
 		SnapModelAuthHash: modelAuthHash}
 	stream.XORKeyStream(out.EncryptedPayload, payload)
 	return
@@ -457,7 +457,7 @@ func (s *keyDataSuite) checkKeyDataJSONAuthModePassphrase(c *C, keyData *KeyData
 
 type testKeyPayloadData struct {
 	key    DiskUnlockKey
-	auxKey AuxiliaryKey
+	auxKey PrimaryKey
 }
 
 func (s *keyDataSuite) testKeyPayload(c *C, data *testKeyPayloadData) {
@@ -505,7 +505,7 @@ func (s *keyDataSuite) TestKeyPayloadUnmarshalInvalid1(c *C) {
 }
 
 func (s *keyDataSuite) TestKeyPayloadUnmarshalInvalid2(c *C) {
-	payload := MarshalKeys(make(DiskUnlockKey, 32), make(AuxiliaryKey, 32))
+	payload := MarshalKeys(make(DiskUnlockKey, 32), make(PrimaryKey, 32))
 	payload = append(payload, 0xff)
 
 	key, auxKey, err := payload.Unmarshal()
@@ -1044,7 +1044,7 @@ func (s *keyDataSuite) TestSetAuthorizedSnapModelsWithWrongKey(c *C) {
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
 
-	c.Check(keyData.SetAuthorizedSnapModels(make(AuxiliaryKey, 32), models...), ErrorMatches, "incorrect key supplied")
+	c.Check(keyData.SetAuthorizedSnapModels(make(PrimaryKey, 32), models...), ErrorMatches, "incorrect key supplied")
 }
 
 type testWriteAtomicData struct {
@@ -1141,7 +1141,7 @@ func (s *keyDataSuite) TestWriteAtomic4(c *C) {
 
 type testReadKeyDataData struct {
 	key        DiskUnlockKey
-	auxKey     AuxiliaryKey
+	auxKey     PrimaryKey
 	id         KeyID
 	r          KeyDataReader
 	model      SnapModel
@@ -1426,4 +1426,89 @@ func (s *keyDataSuite) TestReadAndWriteWithLegacySnapModelAuthKey(c *C) {
 	ok, err = keyData.IsSnapModelAuthorized(auxKey, model2)
 	c.Check(err, IsNil)
 	c.Check(ok, testutil.IsTrue)
+}
+
+func (s *keyDataSuite) TestLegacyKeyData(c *C) {
+	unlockKey := testutil.DecodeHexString(c, "09a2e672131045221284e026b17de93b395581e82450a01e170150432f8cdf81")
+	primaryKey := testutil.DecodeHexString(c, "1850fbecbe8b3db83a894cb975756c8b69086040f097b03bd4f3b1a3e19c4b86")
+
+	j := []byte(
+		`{` +
+			`"platform_name":"mock",` +
+			`"platform_handle":{` +
+			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",` +
+			`"iv":"i88WWEI7WyJ1gXX5LGhRSg==",` +
+			`"auth-key-hmac":"WybrzR13ozdYwzyt4oyihIHSABZozpHyQSAn+NtQSkA="},` +
+			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",` +
+			`"authorized_snap_models":{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":{` +
+			`"alg":"sha256",` +
+			`"salt":"IPDKKUOoRYwvMWX8LoCCtlGgzgzokAhsh42XnbGUn0s=",` +
+			`"digest":"SSbv/yS8h5pqchVfV9AMHUjhS/vVateojNRRmo624qk="},` +
+			`"hmacs":["OCxZPr5lqnwlNTMYXObK6cXlkcWw3Dx5v+/NRMrCzhw="]}}
+`)
+
+	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	ok, err := keyData.IsSnapModelAuthorized(primaryKey, model)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsTrue)
+
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
+	c.Check(err, IsNil)
+	c.Check(recoveredUnlockKey, DeepEquals, DiskUnlockKey(unlockKey))
+	c.Check(recoveredPrimaryKey, DeepEquals, PrimaryKey(primaryKey))
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	j2, err := ioutil.ReadAll(w.Reader())
+	c.Check(err, IsNil)
+	c.Check(j2, DeepEquals, j)
+
+	model2 := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "other-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+	c.Check(keyData.SetAuthorizedSnapModels(primaryKey, model2), IsNil)
+	ok, err = keyData.IsSnapModelAuthorized(primaryKey, model)
+	c.Check(err, IsNil)
+	c.Check(ok, Not(testutil.IsTrue))
+	ok, err = keyData.IsSnapModelAuthorized(primaryKey, model2)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsTrue)
+
+	w = makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+	c.Check(w.final.Bytes(), DeepEquals, []byte(
+		`{`+
+			`"platform_name":"mock",`+
+			`"platform_handle":{`+
+			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",`+
+			`"iv":"i88WWEI7WyJ1gXX5LGhRSg==",`+
+			`"auth-key-hmac":"WybrzR13ozdYwzyt4oyihIHSABZozpHyQSAn+NtQSkA="},`+
+			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",`+
+			`"authorized_snap_models":{`+
+			`"alg":"sha256",`+
+			`"kdf_alg":"sha256",`+
+			`"key_digest":{`+
+			`"alg":"sha256",`+
+			`"salt":"IPDKKUOoRYwvMWX8LoCCtlGgzgzokAhsh42XnbGUn0s=",`+
+			`"digest":"SSbv/yS8h5pqchVfV9AMHUjhS/vVateojNRRmo624qk="},`+
+			`"hmacs":["JWziaukXiAIsPU22X1RTC/2wEkPN4IdNvgDEzSnWXIc="]}}
+`))
 }

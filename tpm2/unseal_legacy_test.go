@@ -167,7 +167,7 @@ func (s *unsealSuite) TestUnsealImportableFromTPMNilPCRProfile(c *C) {
 	s.testUnsealImportableFromTPM(c, &KeyCreationParams{PCRPolicyCounterHandle: tpm2.HandleNull})
 }
 
-func (s *unsealSuite) testUnsealFromTPMErrorHandling(c *C, prepare func(string, secboot.AuxiliaryKey)) error {
+func (s *unsealSuite) testUnsealFromTPMErrorHandling(c *C, prepare func(string, secboot.PrimaryKey)) error {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
@@ -189,7 +189,7 @@ func (s *unsealSuite) testUnsealFromTPMErrorHandling(c *C, prepare func(string, 
 }
 
 func (s *unsealSuite) TestUnsealFromTPMErrorHandlingLockout(c *C) {
-	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.AuxiliaryKey) {
+	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.PrimaryKey) {
 		// Put the TPM in DA lockout mode
 		c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	})
@@ -197,7 +197,7 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingLockout(c *C) {
 }
 
 func (s *unsealSuite) TestUnsealFromTPMErrorHandlingInvalidPCRProfile(c *C) {
-	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.AuxiliaryKey) {
+	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.PrimaryKey) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 	})
@@ -207,7 +207,7 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingInvalidPCRProfile(c *C) {
 }
 
 func (s *unsealSuite) TestUnsealFromTPMErrorHandlingRevokedPolicy(c *C) {
-	err := s.testUnsealFromTPMErrorHandling(c, func(path string, authKey secboot.AuxiliaryKey) {
+	err := s.testUnsealFromTPMErrorHandling(c, func(path string, authKey secboot.PrimaryKey) {
 		k, err := ReadSealedKeyObjectFromFile(path)
 		c.Assert(err, IsNil)
 		c.Check(k.UpdatePCRProtectionPolicy(s.TPM(), authKey, nil), IsNil)
@@ -219,7 +219,7 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingRevokedPolicy(c *C) {
 }
 
 func (s *unsealSuite) TestUnsealFromTPMErrorHandlingSealedKeyAccessLocked(c *C) {
-	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.AuxiliaryKey) {
+	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.PrimaryKey) {
 		c.Check(BlockPCRProtectionPolicies(s.TPM(), []int{23}), IsNil)
 	})
 	c.Check(err, testutil.ConvertibleTo, InvalidKeyDataError{})

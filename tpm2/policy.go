@@ -44,7 +44,7 @@ const (
 
 // pcrPolicyParams provides the parameters to keyDataPolicy.updatePcrPolicy.
 type pcrPolicyParams struct {
-	key secboot.AuxiliaryKey // Key used to authorize the generated dynamic authorization policy
+	key secboot.PrimaryKey // Key used to authorize the generated dynamic authorization policy
 
 	pcrs       tpm2.PCRSelectionList // PCR selection
 	pcrDigests tpm2.DigestList       // Approved PCR digests
@@ -92,8 +92,8 @@ type policyOrTree struct {
 
 // pcrPolicyCounterContext corresponds to a PCR policy counter.
 type pcrPolicyCounterContext interface {
-	Get() (uint64, error)                     // Return the current counter value
-	Increment(key secboot.AuxiliaryKey) error // Increment the counter value using the supplied key for authorization
+	Get() (uint64, error)                   // Return the current counter value
+	Increment(key secboot.PrimaryKey) error // Increment the counter value using the supplied key for authorization
 }
 
 // keyDataPolicy corresponds to the authorization policy for keyData.
@@ -123,7 +123,7 @@ type keyDataPolicy interface {
 
 	// ValidateAuthKey verifies that the supplied key is associated with this
 	// keyDataPolicy.
-	ValidateAuthKey(key secboot.AuxiliaryKey) error
+	ValidateAuthKey(key secboot.PrimaryKey) error
 }
 
 func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, computeAuthPolicies func(tpm2.HashAlgorithmId, tpm2.Name) tpm2.DigestList, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
@@ -211,7 +211,7 @@ func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV2PcrPolicyCounterAuthPolicies, hmacSession)
 }
 
-var newPolicyAuthPublicKey = func(key secboot.AuxiliaryKey) (*tpm2.Public, error) {
+var newPolicyAuthPublicKey = func(key secboot.PrimaryKey) (*tpm2.Public, error) {
 	ecdsaKey, err := deriveV3PolicyAuthKey(crypto.SHA256, key)
 	if err != nil {
 		return nil, err

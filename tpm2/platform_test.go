@@ -344,7 +344,7 @@ func (s *platformSuite) TestRecoverKeysNoTPMConnection(c *C) {
 	c.Check(err, ErrorMatches, "no TPM2 device is available")
 }
 
-func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*secboot.KeyData, secboot.AuxiliaryKey)) error {
+func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*secboot.KeyData, secboot.PrimaryKey)) error {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
@@ -368,7 +368,7 @@ func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*s
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingLockout(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
 		// Put the TPM in DA lockout mode
 		c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	})
@@ -379,7 +379,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingLockout(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingInvalidPCRProfile(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 	})
@@ -390,7 +390,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingInvalidPCRProfile(c *C
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(k *secboot.KeyData, authKey secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(k *secboot.KeyData, authKey secboot.PrimaryKey) {
 		w := newMockKeyDataWriter()
 		c.Check(k.WriteAtomic(w), IsNil)
 
@@ -409,7 +409,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingSealedKeyAccessLocked(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
 		c.Check(BlockPCRProtectionPolicies(s.TPM(), []int{23}), IsNil)
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
@@ -419,7 +419,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingSealedKeyAccessLocked(
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingProvisioningError(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
 		srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
 		c.Assert(err, IsNil)
 		s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())

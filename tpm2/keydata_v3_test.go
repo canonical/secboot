@@ -59,7 +59,7 @@ func (s *keyDataV3Suite) SetUpTest(c *C) {
 
 func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle) (KeyData, tpm2.Name) {
 	// Create the auth key
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
@@ -110,7 +110,7 @@ func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 func (s *keyDataV3Suite) newMockImportableKeyData(c *C) KeyData {
 	// Create the auth key
-	authKey := make(secboot.AuxiliaryKey, 32)
+	authKey := make(secboot.PrimaryKey, 32)
 	rand.Read(authKey)
 
 	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)

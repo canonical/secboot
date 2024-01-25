@@ -103,15 +103,15 @@ func (e *PlatformDeviceUnavailableError) Unwrap() error {
 // DiskUnlockKey is the key used to unlock a LUKS volume.
 type DiskUnlockKey []byte
 
-// AuxiliaryKey is an additional key used to modify properties of a KeyData
+// PrimaryKey is an additional key used to modify properties of a KeyData
 // object without having to create a new object.
-type AuxiliaryKey []byte
+type PrimaryKey []byte
 
 // KeyPayload is the payload that should be encrypted by a platform's secure device.
 type KeyPayload []byte
 
 // Unmarshal obtains the keys from this payload.
-func (c KeyPayload) Unmarshal() (key DiskUnlockKey, auxKey AuxiliaryKey, err error) {
+func (c KeyPayload) Unmarshal() (key DiskUnlockKey, auxKey PrimaryKey, err error) {
 	r := bytes.NewReader(c)
 
 	var sz uint16
@@ -131,7 +131,7 @@ func (c KeyPayload) Unmarshal() (key DiskUnlockKey, auxKey AuxiliaryKey, err err
 	}
 
 	if sz > 0 {
-		auxKey = make(AuxiliaryKey, sz)
+		auxKey = make(PrimaryKey, sz)
 		if _, err := r.Read(auxKey); err != nil {
 			return nil, nil, err
 		}
@@ -166,9 +166,9 @@ type KeyParams struct {
 	EncryptedPayload []byte // The encrypted payload
 	PlatformName     string // Name of the platform that produced this data
 
-	// AuxiliaryKey is a key used to authorize changes to the key data.
+	// PrimaryKey is a key used to authorize changes to the key data.
 	// It must match the key protected inside PlatformKeyData.EncryptedPayload.
-	AuxiliaryKey AuxiliaryKey
+	PrimaryKey PrimaryKey
 
 	// SnapModelAuthHash is the digest algorithm used for HMACs of Snap
 	// device models, and also the digest algorithm used to produce the
@@ -437,7 +437,7 @@ type KeyData struct {
 	data         keyData
 }
 
-func (d *KeyData) snapModelAuthKeyLegacy(auxKey AuxiliaryKey) ([]byte, error) {
+func (d *KeyData) snapModelAuthKeyLegacy(auxKey PrimaryKey) ([]byte, error) {
 	rng, err := drbg.NewCTRWithExternalEntropy(32, auxKey, nil, snapModelHMACKDFLabel, nil)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot instantiate DRBG: %w", err)
@@ -456,7 +456,7 @@ func (d *KeyData) snapModelAuthKeyLegacy(auxKey AuxiliaryKey) ([]byte, error) {
 	return hmacKey, nil
 }
 
-func (d *KeyData) snapModelAuthKey(auxKey AuxiliaryKey) ([]byte, error) {
+func (d *KeyData) snapModelAuthKey(auxKey PrimaryKey) ([]byte, error) {
 	kdfAlg := d.data.AuthorizedSnapModels.kdfAlg
 	if kdfAlg == nilHash {
 		return d.snapModelAuthKeyLegacy(auxKey)
@@ -656,7 +656,7 @@ func (d *KeyData) MarshalAndUpdatePlatformHandle(handle interface{}) error {
 //
 // If the keys cannot be recovered because the platform's secure device is not
 // available, a *PlatformDeviceUnavailableError error will be returned.
-func (d *KeyData) RecoverKeys() (DiskUnlockKey, AuxiliaryKey, error) {
+func (d *KeyData) RecoverKeys() (DiskUnlockKey, PrimaryKey, error) {
 	if d.AuthMode() != AuthModeNone {
 		return nil, nil, errors.New("cannot recover key without authorization")
 	}
@@ -681,7 +681,7 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, AuxiliaryKey, error) {
 	return key, auxKey, nil
 }
 
-func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnlockKey, AuxiliaryKey, error) {
+func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnlockKey, PrimaryKey, error) {
 	if d.AuthMode()&AuthModePassphrase == 0 {
 		return nil, nil, errors.New("no passphrase is set")
 	}
@@ -716,7 +716,7 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnl
 // access the data on the encrypted volume protected by this key data.
 //
 // The supplied auxKey is obtained using one of the RecoverKeys* functions.
-func (d *KeyData) IsSnapModelAuthorized(auxKey AuxiliaryKey, model SnapModel) (bool, error) {
+func (d *KeyData) IsSnapModelAuthorized(auxKey PrimaryKey, model SnapModel) (bool, error) {
 	hmacKey, err := d.snapModelAuthKey(auxKey)
 	if err != nil {
 		return false, xerrors.Errorf("cannot obtain auth key: %w", err)
@@ -744,7 +744,7 @@ func (d *KeyData) IsSnapModelAuthorized(auxKey AuxiliaryKey, model SnapModel) (b
 //
 // The supplied auxKey is obtained using one of the RecoverKeys* functions. If the
 // supplied auxKey is incorrect, then an error will be returned.
-func (d *KeyData) SetAuthorizedSnapModels(auxKey AuxiliaryKey, models ...SnapModel) error {
+func (d *KeyData) SetAuthorizedSnapModels(auxKey PrimaryKey, models ...SnapModel) error {
 	hmacKey, err := d.snapModelAuthKey(auxKey)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain auth key: %w", err)
@@ -919,7 +919,7 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 					Alg:  hashAlg(params.SnapModelAuthHash),
 					Salt: salt[:]}}}}
 
-	authKey, err := kd.snapModelAuthKey(params.AuxiliaryKey)
+	authKey, err := kd.snapModelAuthKey(params.PrimaryKey)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot compute snap model auth key: %w", err)
 	}
@@ -934,7 +934,7 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 
 // MarshalKeys serializes the supplied disk unlock key and auxiliary key in
 // to a format that is ready to be encrypted by a platform's secure device.
-func MarshalKeys(key DiskUnlockKey, auxKey AuxiliaryKey) KeyPayload {
+func MarshalKeys(key DiskUnlockKey, auxKey PrimaryKey) KeyPayload {
 	w := new(bytes.Buffer)
 	binary.Write(w, binary.BigEndian, uint16(len(key)))
 	w.Write(key)

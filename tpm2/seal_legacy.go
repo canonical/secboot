@@ -96,7 +96,7 @@ type KeyCreationParams struct {
 // AuthKey in the params argument.
 //
 // Deprecated: Use ProtectKeyWithExternalStorageKey.
-func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
+func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.PrimaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
@@ -234,7 +234,7 @@ type SealKeyRequest struct {
 // AuthKey in the params argument.
 //
 // Deprecated: Use ProtectKeysWithTPM.
-func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
+func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCreationParams) (authKey secboot.PrimaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
@@ -411,6 +411,6 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 // AuthKey in the params argument.
 //
 // Deprecated: Use ProtectKeyWithTPM.
-func SealKeyToTPM(tpm *Connection, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
+func SealKeyToTPM(tpm *Connection, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.PrimaryKey, err error) {
 	return SealKeyToTPMMultiple(tpm, []*SealKeyRequest{{Key: key, Path: keyPath}}, params)
 }

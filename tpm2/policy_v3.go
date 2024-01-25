@@ -53,7 +53,7 @@ func computeV3PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 // supplied input key. Pre-v3 key objects stored the private part of the elliptic curve key inside
 // the sealed key, but v3 keys are wrapped by secboot.KeyData which protects an auxiliary key that
 // is used as an input key to derive various context-specific keys, such as this one.
-func deriveV3PolicyAuthKey(alg crypto.Hash, auxKey secboot.AuxiliaryKey) (*ecdsa.PrivateKey, error) {
+func deriveV3PolicyAuthKey(alg crypto.Hash, auxKey secboot.PrimaryKey) (*ecdsa.PrivateKey, error) {
 	r := hkdf.Expand(func() hash.Hash { return alg.New() }, auxKey, []byte("TPM2-POLICY-AUTH"))
 	return internal_crypto.GenerateECDSAKey(elliptic.P256(), r)
 }
@@ -217,7 +217,7 @@ func (c *pcrPolicyCounterContext_v3) Get() (uint64, error) {
 	return c.tpm.NVReadCounter(c.index, c.index, c.session)
 }
 
-func (c *pcrPolicyCounterContext_v3) Increment(key secboot.AuxiliaryKey) error {
+func (c *pcrPolicyCounterContext_v3) Increment(key secboot.PrimaryKey) error {
 	ecdsaKey, err := deriveV3PolicyAuthKey(c.updateKey.NameAlg.GetHash(), key)
 	if err != nil {
 		return xerrors.Errorf("cannot derive auth key: %w", err)
@@ -279,7 +279,7 @@ func (p *keyDataPolicy_v3) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 		updateKey: p.StaticData.AuthPublicKey}, nil
 }
 
-func (p *keyDataPolicy_v3) ValidateAuthKey(key secboot.AuxiliaryKey) error {
+func (p *keyDataPolicy_v3) ValidateAuthKey(key secboot.PrimaryKey) error {
 	priv, err := deriveV3PolicyAuthKey(p.StaticData.AuthPublicKey.NameAlg.GetHash(), key)
 	if err != nil {
 		return xerrors.Errorf("cannot derive private key: %w", err)

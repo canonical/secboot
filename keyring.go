@@ -72,7 +72,7 @@ func GetDiskUnlockKeyFromKernel(prefix, devicePath string, remove bool) (DiskUnl
 	return key, nil
 }
 
-// GetAuxiliaryKeyFromKernel retrieves the auxiliary key associated with the
+// GetPrimaryKeyFromKernel retrieves the auxiliary key associated with the
 // KeyData that was used to unlock the encrypted container at the specified path.
 // The value of prefix must match the prefix that was supplied via
 // ActivateVolumeOptions during unlocking.
@@ -81,7 +81,7 @@ func GetDiskUnlockKeyFromKernel(prefix, devicePath string, remove bool) (DiskUnl
 // to returning.
 //
 // If no key is found, a ErrKernelKeyNotFound error will be returned.
-func GetAuxiliaryKeyFromKernel(prefix, devicePath string, remove bool) (AuxiliaryKey, error) {
+func GetPrimaryKeyFromKernel(prefix, devicePath string, remove bool) (PrimaryKey, error) {
 	key, err := keyring.GetKeyFromUserKeyring(devicePath, keyringPurposeAuxiliary, keyringPrefixOrDefault(prefix))
 	if err != nil {
 		var e syscall.Errno
