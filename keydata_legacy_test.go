@@ -56,7 +56,7 @@ func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey 
 		ExpectedAuthMode: AuthModeNone,
 	}
 
-	h := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
+	h := hmac.New(func() hash.Hash { return kdfAlg.New() }, handle.Key)
 	handle.AuthKeyHMAC = h.Sum(nil)
 
 	b, err := aes.NewCipher(handle.Key)

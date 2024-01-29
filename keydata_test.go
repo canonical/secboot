@@ -280,7 +280,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg cr
 	_, err := rand.Read(unique)
 	c.Assert(err, IsNil)
 
-	unlockKey, payload, err := MakeDiskUnlockKey(bytes.NewReader(unique), crypto.SHA256, primaryKey)
+	unlockKey, payload, err := MakeDiskUnlockKey(bytes.NewReader(unique), kdfAlg, primaryKey)
 	c.Assert(err, IsNil)
 
 	k := make([]byte, 48)
