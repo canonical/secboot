@@ -21,6 +21,7 @@ package secboot_test
 
 import (
 	"crypto"
+	"encoding/json"
 	"os"
 	"path/filepath"
 
