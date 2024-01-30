@@ -588,6 +588,11 @@ func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte
 	return payload, key, nil
 }
 
+// PlatformName returns the name of the platform that handles this key data.
+func (d *KeyData) PlatformName() string {
+	return d.data.PlatformName
+}
+
 // ReadableName returns a human-readable name for this key data, useful for
 // including in errors.
 func (d *KeyData) ReadableName() string {
