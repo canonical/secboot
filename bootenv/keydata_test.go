@@ -20,16 +20,22 @@
 package bootenv_test
 
 import (
+	"bytes"
 	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/hmac"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"hash"
 
+	"golang.org/x/xerrors"
 	. "gopkg.in/check.v1"
 
-	"github.com/snapcore/secboot"
 	. "github.com/snapcore/secboot"
 	. "github.com/snapcore/secboot/bootenv"
 	"github.com/snapcore/secboot/internal/testutil"
@@ -38,22 +44,15 @@ import (
 
 type keyDataPlatformSuite struct {
 	snapd_testutil.BaseTest
-	Model    secboot.SnapModel
+	Model    SnapModel
 	BootMode string
 }
 
 var _ = Suite(&keyDataPlatformSuite{})
 
-func (s *keyDataPlatformSuite) newPrimaryKey(c *C, sz1 int) PrimaryKey {
-	primaryKey := make(PrimaryKey, sz1)
-	_, err := rand.Read(primaryKey)
-	c.Assert(err, IsNil)
-
-	return primaryKey
-}
-
 func (s *keyDataPlatformSuite) TestNewKeyDataScopeSuccess(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -72,7 +71,8 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeSuccess(c *C) {
 }
 
 func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingKDF(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -81,12 +81,13 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingKDF(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	_, err := NewKeyDataScope(params)
+	_, err = NewKeyDataScope(params)
 	c.Assert(err, ErrorMatches, "KDF algorithm unavailable")
 }
 
 func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingMD(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -95,12 +96,13 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingMD(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	_, err := NewKeyDataScope(params)
+	_, err = NewKeyDataScope(params)
 	c.Assert(err, ErrorMatches, "MD algorithm unavailable")
 }
 
 func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingModelAlg(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -109,14 +111,14 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingModelAlg(c *C) {
 		MDAlg:      crypto.SHA256,
 	}
 
-	_, err := NewKeyDataScope(params)
+	_, err = NewKeyDataScope(params)
 	c.Assert(err, ErrorMatches, "No model digest algorithm specified")
 }
 
 type testMakeAdditionalDataData struct {
 	keyDataScopeVersion int
 	baseVersion         int
-	authMode            secboot.AuthMode
+	authMode            AuthMode
 	mdAlg               crypto.Hash
 	keyDigestHashAlg    crypto.Hash
 	// These are used to derive the signing key whose digest go
@@ -126,7 +128,8 @@ type testMakeAdditionalDataData struct {
 }
 
 func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditionalDataData) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -156,13 +159,12 @@ func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditi
 	c.Check(crypto.Hash(aad.KeyIdentifierAlg), Equals, data.signingKeyDerivationAlg)
 
 	c.Check(kds.TestMatch(data.keyDigestHashAlg, aad.KeyIdentifier), Equals, true)
-
 }
 
 func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
 	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
 		baseVersion:             1,
-		authMode:                secboot.AuthModeNone,
+		authMode:                AuthModeNone,
 		mdAlg:                   crypto.SHA256,
 		keyDigestHashAlg:        crypto.SHA256,
 		signingKeyDerivationAlg: crypto.SHA256,
@@ -173,7 +175,7 @@ func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
 func (s *keyDataPlatformSuite) TestMakeAdditionalDataWithPassphrase(c *C) {
 	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
 		baseVersion:             1,
-		authMode:                secboot.AuthModePassphrase,
+		authMode:                AuthModePassphrase,
 		mdAlg:                   crypto.SHA256,
 		keyDigestHashAlg:        crypto.SHA256,
 		signingKeyDerivationAlg: crypto.SHA256,
@@ -217,7 +219,8 @@ func (s *keyDataPlatformSuite) makeMockModelAssertion(c *C, modelName string) Sn
 }
 
 func (s *keyDataPlatformSuite) TestBootEnvAuthStateErrors(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -260,7 +263,8 @@ type testSetAuthorizedSnapModelsData struct {
 }
 
 func (s *keyDataPlatformSuite) testSetAuthorizedSnapModels(c *C, data *testSetAuthorizedSnapModelsData) error {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -310,7 +314,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModelsInvalidRole(c *C) {
 }
 
 func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModelsWrongKey(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	validModels := []SnapModel{
 		s.makeMockModelAssertion(c, "model-a"),
@@ -335,7 +340,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModelsWrongKey(c *C) {
 	kds, err := NewKeyDataScope(params)
 	c.Assert(err, IsNil)
 
-	wrongKey := s.newPrimaryKey(c, 32)
+	wrongKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 	err = kds.SetAuthorizedSnapModels(wrongKey, data.role, data.validModels...)
 	c.Check(err, ErrorMatches, "incorrect key supplied")
 }
@@ -350,7 +356,8 @@ type testSetAuthorizedBootModesData struct {
 }
 
 func (s *keyDataPlatformSuite) testSetAuthorizedBootModes(c *C, data *testSetAuthorizedBootModesData) error {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -402,7 +409,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesInvalidRole(c *C) {
 }
 
 func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesWrongKey(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	validModes := []string{
 		"modeFoo",
@@ -427,7 +435,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesWrongKey(c *C) {
 	kds, err := NewKeyDataScope(params)
 	c.Assert(err, IsNil)
 
-	wrongKey := s.newPrimaryKey(c, 32)
+	wrongKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 	err = kds.SetAuthorizedBootModes(wrongKey, data.role, data.validModes...)
 	c.Check(err, ErrorMatches, "incorrect key supplied")
 }
@@ -445,7 +454,8 @@ type testBootEnvAuthData struct {
 }
 
 func (s *keyDataPlatformSuite) testBootEnvAuth(c *C, data *testBootEnvAuthData) error {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
@@ -684,7 +694,8 @@ func (s *keyDataPlatformSuite) TestEcdsaPublicKeyUnmarshalJSONInvalid(c *C) {
 }
 
 func (s *keyDataPlatformSuite) TestDeriveSigner(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
 	role := "test"
 
 	params := &KeyDataScopeParams{
@@ -717,5 +728,281 @@ func (s *keyDataPlatformSuite) TestDeriveSigner(c *C) {
 		c.Check(key.Equal(prevKey), Equals, true)
 		prevKey = key
 	}
+}
 
+type mockPlatformKeyDataHandle struct {
+	Key         []byte `json:"key"`
+	IV          []byte `json:"iv"`
+	AuthKeyHMAC []byte `json:"auth-key-hmac"`
+}
+
+const (
+	mockPlatformDeviceStateOK = iota
+	mockPlatformDeviceStateUnavailable
+	mockPlatformDeviceStateUninitialized
+)
+
+type mockPlatformKeyDataHandler struct {
+	state  int
+	scopes []*KeyDataScope
+}
+
+func (h *mockPlatformKeyDataHandler) checkState() error {
+	switch h.state {
+	case mockPlatformDeviceStateUnavailable:
+		return &PlatformHandlerError{Type: PlatformHandlerErrorUnavailable, Err: errors.New("the platform device is unavailable")}
+	case mockPlatformDeviceStateUninitialized:
+		return &PlatformHandlerError{Type: PlatformHandlerErrorUninitialized, Err: errors.New("the platform device is uninitialized")}
+	default:
+		return nil
+	}
+}
+
+func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mockPlatformKeyDataHandle, error) {
+	var handle mockPlatformKeyDataHandle
+	if err := json.Unmarshal(data.EncodedHandle, &handle); err != nil {
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: xerrors.Errorf("JSON decode error: %w", err)}
+	}
+	return &handle, nil
+}
+
+func (h *mockPlatformKeyDataHandler) checkKey(handle *mockPlatformKeyDataHandle, key []byte) error {
+	m := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
+	m.Write(key)
+	if !bytes.Equal(handle.AuthKeyHMAC, m.Sum(nil)) {
+		return &PlatformHandlerError{Type: PlatformHandlerErrorInvalidAuthKey, Err: errors.New("the supplied key is incorrect")}
+	}
+
+	return nil
+}
+
+func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHandle, payload []byte) ([]byte, error) {
+	var authorized bool
+	var err error
+	for _, s := range h.scopes {
+		err = s.IsBootEnvironmentAuthorized()
+		if err == nil {
+			authorized = true
+			break
+		}
+	}
+
+	if len(h.scopes) > 0 && !authorized {
+		return nil, err
+	}
+
+	b, err := aes.NewCipher(handle.Key)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create cipher: %w", err)
+	}
+
+	s := cipher.NewCFBDecrypter(b, handle.IV)
+	out := make([]byte, len(payload))
+	s.XORKeyStream(out, payload)
+	return out, nil
+}
+
+func (h *mockPlatformKeyDataHandler) RecoverKeys(data *PlatformKeyData, encryptedPayload []byte) ([]byte, error) {
+	if err := h.checkState(); err != nil {
+		return nil, err
+	}
+
+	handle, err := h.unmarshalHandle(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.recoverKeys(handle, encryptedPayload)
+}
+
+func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyData, encryptedPayload []byte, key []byte) ([]byte, error) {
+	if err := h.checkState(); err != nil {
+		return nil, err
+	}
+
+	handle, err := h.unmarshalHandle(data)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := h.checkKey(handle, key); err != nil {
+		return nil, err
+	}
+
+	return h.recoverKeys(handle, encryptedPayload)
+}
+
+func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, new []byte) ([]byte, error) {
+	if err := h.checkState(); err != nil {
+		return nil, err
+	}
+
+	handle, err := h.unmarshalHandle(data)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := h.checkKey(handle, old); err != nil {
+		return nil, err
+	}
+
+	m := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
+	m.Write(new)
+	handle.AuthKeyHMAC = m.Sum(nil)
+
+	return json.Marshal(&handle)
+}
+
+type keyDataScopeSuite struct {
+	handler *mockPlatformKeyDataHandler
+}
+
+func (s *keyDataScopeSuite) SetUpTest(c *C) {
+	s.handler = &mockPlatformKeyDataHandler{}
+	RegisterPlatformKeyDataHandler("mock-scope", s.handler)
+	s.handler.scopes = nil
+}
+
+var _ = Suite(&keyDataScopeSuite{})
+
+func (s *keyDataScopeSuite) mockProtectKeys(c *C, primaryKey PrimaryKey, KDFAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams, unlockKey DiskUnlockKey) {
+	unique := make([]byte, len(primaryKey))
+	_, err := rand.Read(unique)
+	c.Assert(err, IsNil)
+
+	reader := new(bytes.Buffer)
+	reader.Write(unique)
+
+	unlockKey, payload, err := MakeDiskUnlockKey(reader, crypto.SHA256, primaryKey)
+	c.Assert(err, IsNil)
+
+	k := make([]byte, 48)
+	_, err = rand.Read(k)
+	c.Assert(err, IsNil)
+
+	handle := mockPlatformKeyDataHandle{
+		Key: k[:32],
+		IV:  k[32:],
+	}
+
+	h := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
+	h.Write(make([]byte, 32))
+	handle.AuthKeyHMAC = h.Sum(nil)
+
+	b, err := aes.NewCipher(handle.Key)
+	c.Assert(err, IsNil)
+	stream := cipher.NewCFBEncrypter(b, handle.IV)
+
+	out = &KeyParams{
+		PlatformName:     "mock-scope",
+		Handle:           &handle,
+		EncryptedPayload: make([]byte, len(payload)),
+		KDFAlg:           KDFAlg}
+	stream.XORKeyStream(out.EncryptedPayload, payload)
+
+	return out, unlockKey
+}
+
+type testRecoverKeysData struct {
+	*KeyDataScopeParams
+	authRole string
+	modes    []string
+	models   []SnapModel
+}
+
+func (s *keyDataScopeSuite) testRecoverKeys(c *C, params *testRecoverKeysData) error {
+	kds, err := NewKeyDataScope(params.KeyDataScopeParams)
+	c.Assert(err, IsNil)
+
+	err = kds.SetAuthorizedBootModes(params.KeyDataScopeParams.PrimaryKey, params.authRole, params.modes...)
+	if err != nil {
+		return err
+	}
+
+	err = kds.SetAuthorizedSnapModels(params.KeyDataScopeParams.PrimaryKey, params.authRole, params.models...)
+	if err != nil {
+		return err
+	}
+
+	s.handler.scopes = append(s.handler.scopes, kds)
+
+	protected, unlockKey := s.mockProtectKeys(c, params.KeyDataScopeParams.PrimaryKey, params.KeyDataScopeParams.KDFAlg, params.KeyDataScopeParams.ModelAlg)
+
+	keyData, err := NewKeyData(protected)
+	if err != nil {
+		return err
+	}
+
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
+	if err != nil {
+		return err
+	}
+	c.Check(recoveredUnlockKey, DeepEquals, unlockKey)
+	c.Check(recoveredPrimaryKey, DeepEquals, params.KeyDataScopeParams.PrimaryKey)
+	return nil
+}
+
+func (s *keyDataScopeSuite) TestRecoverKeysModeMismatch(c *C) {
+	mode := "modeFoo"
+	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	SetBootMode(mode)
+	SetModel(model)
+
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
+	c.Check(s.testRecoverKeys(c, &testRecoverKeysData{
+		KeyDataScopeParams: &KeyDataScopeParams{
+			PrimaryKey: primaryKey,
+			Role:       "roleFoo",
+			KDFAlg:     crypto.SHA256,
+			MDAlg:      crypto.SHA256,
+			ModelAlg:   crypto.SHA256,
+		},
+		authRole: "roleFoo",
+		modes:    []string{"modeBar"},
+	}), ErrorMatches, "cannot perform action because of an unexpected error: unauthorized boot mode")
+}
+
+func (s *keyDataScopeSuite) TestRecoverKeysModelMismatch(c *C) {
+	mode := "modeFoo"
+	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	SetBootMode(mode)
+	SetModel(model)
+
+	modelB := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "other-fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
+	c.Check(s.testRecoverKeys(c, &testRecoverKeysData{
+		KeyDataScopeParams: &KeyDataScopeParams{
+			PrimaryKey: primaryKey,
+			Role:       "foo",
+			KDFAlg:     crypto.SHA256,
+			MDAlg:      crypto.SHA256,
+			ModelAlg:   crypto.SHA256,
+		},
+		authRole: "foo",
+		modes:    []string{mode},
+		models:   []SnapModel{modelB},
+	}), ErrorMatches, "cannot perform action because of an unexpected error: unauthorized model")
 }
