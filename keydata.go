@@ -48,12 +48,12 @@ const (
 )
 
 var (
-	keyDataGeneration int = 2
-	sha1Oid               = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
-	sha224Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
-	sha256Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
-	sha384Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
-	sha512Oid             = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
+	KeyDataGeneration = 2
+	sha1Oid           = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	sha224Oid         = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
+	sha256Oid         = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+	sha384Oid         = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
+	sha512Oid         = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
 )
 
 // ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
@@ -715,7 +715,7 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 
 	kd := &KeyData{
 		data: keyData{
-			Generation:       keyDataGeneration,
+			Generation:       KeyDataGeneration,
 			PlatformName:     params.PlatformName,
 			Role:             params.Role,
 			PlatformHandle:   json.RawMessage(encodedHandle),
