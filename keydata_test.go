@@ -886,6 +886,14 @@ func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidAuthKeySize(c *C) {
 	})
 }
 
+func (s *keyDataSuite) TestRecoverKeysWithPassphraseUnavailableKDF(c *C) {
+	restore := MockHashAlgAvailable()
+	defer restore()
+	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
+		errMsg: fmt.Sprintf("unavailable leaf KDF digest algorithm %d", crypto.SHA256),
+	})
+}
+
 func (s *keyDataSuite) TestNewKeyDataWithPassphraseNotSupported(c *C) {
 	// Test that creation of a new key data with passphrase fails when the
 	// platform handler doesn't have passphrase support.

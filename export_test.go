@@ -135,3 +135,13 @@ func MockKeyDataVersion(n int) (restore func()) {
 		keyDataVersion = orig
 	}
 }
+
+func MockHashAlgAvailable() (restore func()) {
+	orig := hashAlgAvailable
+	hashAlgAvailable = func(*hashAlg) bool {
+		return false
+	}
+	return func() {
+		hashAlgAvailable = orig
+	}
+}

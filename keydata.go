@@ -192,6 +192,8 @@ type KeyDataReader interface {
 // hashAlg corresponds to a digest algorithm.
 type hashAlg crypto.Hash
 
+var hashAlgAvailable = (*hashAlg).Available
+
 func (a hashAlg) Available() bool {
 	return crypto.Hash(a).Available()
 }
@@ -526,7 +528,7 @@ func (d *KeyData) derivePassphraseKeys(passphrase string, kdf KDF) (key, iv, aut
 	}
 
 	kdfAlg := d.data.KDFAlg
-	if !kdfAlg.Available() {
+	if !hashAlgAvailable(&kdfAlg) {
 		return nil, nil, nil, fmt.Errorf("unavailable leaf KDF digest algorithm %v", kdfAlg)
 	}
 
