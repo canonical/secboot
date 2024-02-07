@@ -145,3 +145,7 @@ func MockHashAlgAvailable() (restore func()) {
 		hashAlgAvailable = orig
 	}
 }
+
+func (d *KeyData) DerivePassphraseKeys(passphrase string, kdf KDF) (key, iv, auth []byte, err error) {
+	return d.derivePassphraseKeys(passphrase, kdf)
+}

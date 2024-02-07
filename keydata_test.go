@@ -1428,6 +1428,68 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 		authorized: false})
 }
 
+func (s *keyDataSuite) TestKeyDataDerivePassphraseKeysExpectedInfoFields(c *C) {
+	// Test that key derivation from passphrase is using expected info fields
+	s.handler.passphraseSupport = true
+
+	// Valid KeyData with passphrase "passphrase"
+	j := []byte(
+		`{` +
+			`"version":2,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"PNmzLCfVurOXSYAFaLAOdHuhBMo7fmrFS2RtNooe3fw=",` +
+			`"iv":"D84HW2UYyF6nOMyfEPMtiQ==",` +
+			`"auth-key-hmac":"EAMRNlNzn3Tz47uM9kLTgXBaM341G4D6W3f57PDc8xs=",` +
+			`"exp-version":2,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":1},` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"JV78CDs5AG/KQfJC/Q0kg9zrUX+3l7x9jDZyalg3+roBhkCEcNZiV4AMwreO01uDJyKdovTRHPoCYlNwpwfVBEuTlfvrpQ==",` +
+			`"passphrase_params":` +
+			`{` +
+			`"kdf":` +
+			`{` +
+			`"type":"argon2i",` +
+			`"salt":"cFP5Mb1Djp3EP160ejEClg==",` +
+			`"time":4,` +
+			`"memory":1024063,` +
+			`"cpus":4},` +
+			`"encryption":"aes-cfb",` +
+			`"derived_key_size":32,` +
+			`"encryption_key_size":32,` +
+			`"auth_key_size":32},` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"g1zdFrK4+AKyQpaDiQ2Udwijdf/sKvfbRKKWxSBl7sc=",` +
+			`"digest":"8sVvLZOkRD6RWjLFSp/pOPrKoibsr+VWyGhv4M2aph8="},` +
+			`"hmacs":null}}
+`)
+	expectedKey, err := base64.StdEncoding.DecodeString("C058QWvAAc5sp6Ef2NeQwk0mJk8OS4wrcceYEruHXno=")
+	c.Check(err, IsNil)
+	expectedIV, err := base64.StdEncoding.DecodeString("x78OL7OTqRQfONsOb8yaPQ==")
+	c.Check(err, IsNil)
+	expectedAuth, err := base64.StdEncoding.DecodeString("+AdPOck2Ek8CyCVfSOV3eYClrQMiNqAri0Ra4Ldbohc=")
+	c.Check(err, IsNil)
+
+	kd, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	var kdf testutil.MockKDF
+	key, iv, auth, err := kd.DerivePassphraseKeys("passphrase", &kdf)
+	c.Assert(err, IsNil)
+
+	c.Check(key, DeepEquals, expectedKey)
+	c.Check(iv, DeepEquals, expectedIV)
+	c.Check(auth, DeepEquals, expectedAuth)
+}
+
 // Legacy tests
 func (s *keyDataSuite) TestReadAndWriteWithUnsaltedKeyDigest(c *C) {
 	// Verify that we can read an old key data with an unsalted HMAC key
