@@ -42,7 +42,7 @@ func (s *keyDataLegacyTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKe
 }
 
 func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams) {
-	payload := MarshalKeys(key, auxKey)
+	payload := MarshalV1Keys(key, auxKey)
 
 	k := make([]byte, 48)
 	_, err := rand.Read(k)
@@ -83,7 +83,7 @@ type testLegacyKeyPayloadData struct {
 }
 
 func (s *keyDataLegacySuite) testKeyPayload(c *C, data *testLegacyKeyPayloadData) {
-	payload := MarshalKeys(data.key, data.auxKey)
+	payload := MarshalV1Keys(data.key, data.auxKey)
 
 	key, auxKey, err := UnmarshalV1KeyPayload(payload)
 	c.Check(err, IsNil)
@@ -127,7 +127,7 @@ func (s *keyDataLegacySuite) TestLegacyKeyPayloadUnmarshalInvalid1(c *C) {
 }
 
 func (s *keyDataLegacySuite) TestLegacyKeyPayloadUnmarshalInvalid2(c *C) {
-	payload := MarshalKeys(make(DiskUnlockKey, 32), make(PrimaryKey, 32))
+	payload := MarshalV1Keys(make(DiskUnlockKey, 32), make(PrimaryKey, 32))
 	payload = append(payload, 0xff)
 
 	key, auxKey, err := UnmarshalV1KeyPayload(payload)
