@@ -424,6 +424,9 @@ type keyData struct {
 	// the encrypted payloads.
 	PlatformHandle json.RawMessage `json:"platform_handle"`
 
+	// KDFAlg is the algorithm that is used to derive the unlock key from a primary key.
+	// It is also used to derive additional keys from the passphrase derived key in
+	// derivePassphraseKeys.
 	KDFAlg hashAlg `json:"kdf_alg,omitempty"`
 
 	// EncryptedPayload is the platform protected key payload.
