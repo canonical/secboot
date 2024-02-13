@@ -50,12 +50,12 @@ import (
 )
 
 type mockPlatformKeyDataHandle struct {
-	Key              []byte      `json:"key"`
-	IV               []byte      `json:"iv"`
-	AuthKeyHMAC      []byte      `json:"auth-key-hmac"`
-	ExpectedVersion  int         `json:"exp-version"`
-	ExpectedKDFAlg   crypto.Hash `json:"exp-kdf_alg"`
-	ExpectedAuthMode AuthMode    `json:"exp-auth-mode"`
+	Key                []byte      `json:"key"`
+	IV                 []byte      `json:"iv"`
+	AuthKeyHMAC        []byte      `json:"auth-key-hmac"`
+	ExpectedGeneration int         `json:"exp-generation"`
+	ExpectedKDFAlg     crypto.Hash `json:"exp-kdf_alg"`
+	ExpectedAuthMode   AuthMode    `json:"exp-auth-mode"`
 }
 
 const (
@@ -86,11 +86,11 @@ func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mo
 		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: xerrors.Errorf("JSON decode error: %w", err)}
 	}
 
-	if data.Version != handle.ExpectedVersion {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("unexpected version")}
+	if data.Generation != handle.ExpectedGeneration {
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("unexpected generation")}
 	}
 
-	if data.Version > 1 {
+	if data.Generation > 1 {
 		if data.KDFAlg != handle.ExpectedKDFAlg {
 			return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("unexpected KDFAlg")}
 		}
@@ -288,11 +288,11 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg cr
 	c.Assert(err, IsNil)
 
 	handle := mockPlatformKeyDataHandle{
-		Key:              k[:32],
-		IV:               k[32:],
-		ExpectedVersion:  KeyDataVersion,
-		ExpectedKDFAlg:   kdfAlg,
-		ExpectedAuthMode: AuthModeNone,
+		Key:                k[:32],
+		IV:                 k[32:],
+		ExpectedGeneration: KeyDataGeneration,
+		ExpectedKDFAlg:     kdfAlg,
+		ExpectedAuthMode:   AuthModeNone,
 	}
 
 	h := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
@@ -322,7 +322,7 @@ func (s *keyDataTestBase) mockProtectKeysWithPassphrase(c *C, primaryKey Primary
 	c.Assert(ok, testutil.IsTrue)
 
 	expectedHandle.ExpectedAuthMode = AuthModePassphrase
-	expectedHandle.ExpectedVersion = KeyDataVersion
+	expectedHandle.ExpectedGeneration = KeyDataGeneration
 	expectedHandle.ExpectedKDFAlg = KDFAlg
 
 	if kdfOptions == nil {
@@ -357,9 +357,9 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 	_, ok = j["kdf_alg"].(string)
 	c.Check(ok, testutil.IsTrue)
 
-	version, ok := j["version"].(float64)
+	generation, ok := j["generation"].(float64)
 	c.Check(ok, testutil.IsTrue)
-	c.Check(version, Equals, float64(2))
+	c.Check(generation, Equals, float64(2))
 
 	m, ok := j["authorized_snap_models"].(map[string]interface{})
 	c.Assert(ok, testutil.IsTrue)
@@ -807,14 +807,14 @@ func (s *keyDataSuite) testRecoverKeysWithPassphraseErrorHandling(c *C, data *te
 
 	j := []byte(
 		`{` +
-			`"version":2,` +
+			`"generation":2,` +
 			`"platform_name":"mock",` +
 			`"platform_handle":` +
 			`{` +
 			`"key":"GtaI3cZX9H3Ig1YxSCPTxLshteV0AXK2pFgQuE5NRIQ=",` +
 			`"iv":"0VUZD/yYi6PfRzdPB0a1GA==",` +
 			`"auth-key-hmac":"7/AmPJvhwHNY/E1a3oEoqF5xjmt5FBr9YTppQvESUSY=",` +
-			`"exp-version":2,` +
+			`"exp-generation":2,` +
 			`"exp-kdf_alg":5,` +
 			`"exp-auth-mode":1},` +
 			`"kdf_alg":"sha256",` +
@@ -910,7 +910,7 @@ func (s *keyDataSuite) TestChangePassphraseNotSupported(c *C) {
 	// fails when the platform handler doesn't have passphrase support.
 	j := []byte(
 		`{` +
-			`"version":2,` +
+			`"generation":2,` +
 			`"platform_name":"mock",` +
 			`"platform_handle":` +
 			`{` +
@@ -954,7 +954,7 @@ func (s *keyDataSuite) TestChangePassphraseWithoutInitial(c *C) {
 	// Test that changing passphrase on a key data without a passphrase set fails.
 	j := []byte(
 		`{` +
-			`"version":2,` +
+			`"generation":2,` +
 			`"platform_name":"mock",` +
 			`"platform_handle":` +
 			`{` +
@@ -1435,14 +1435,14 @@ func (s *keyDataSuite) TestKeyDataDerivePassphraseKeysExpectedInfoFields(c *C) {
 	// Valid KeyData with passphrase "passphrase"
 	j := []byte(
 		`{` +
-			`"version":2,` +
+			`"generation":2,` +
 			`"platform_name":"mock",` +
 			`"platform_handle":` +
 			`{` +
 			`"key":"PNmzLCfVurOXSYAFaLAOdHuhBMo7fmrFS2RtNooe3fw=",` +
 			`"iv":"D84HW2UYyF6nOMyfEPMtiQ==",` +
 			`"auth-key-hmac":"EAMRNlNzn3Tz47uM9kLTgXBaM341G4D6W3f57PDc8xs=",` +
-			`"exp-version":2,` +
+			`"exp-generation":2,` +
 			`"exp-kdf_alg":5,` +
 			`"exp-auth-mode":1},` +
 			`"kdf_alg":"sha256",` +
@@ -1616,7 +1616,7 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",` +
 			`"iv":"i88WWEI7WyJ1gXX5LGhRSg==",` +
 			`"auth-key-hmac":"WybrzR13ozdYwzyt4oyihIHSABZozpHyQSAn+NtQSkA=",` +
-			`"exp-version":1,` +
+			`"exp-generation":1,` +
 			`"exp-kdf_alg":0,` +
 			`"exp-auth-mode":0},` +
 			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",` +
@@ -1681,7 +1681,7 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",`+
 			`"iv":"i88WWEI7WyJ1gXX5LGhRSg==",`+
 			`"auth-key-hmac":"WybrzR13ozdYwzyt4oyihIHSABZozpHyQSAn+NtQSkA=",`+
-			`"exp-version":1,`+
+			`"exp-generation":1,`+
 			`"exp-kdf_alg":0,`+
 			`"exp-auth-mode":0},`+
 			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",`+

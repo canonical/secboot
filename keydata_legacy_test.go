@@ -49,11 +49,11 @@ func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey 
 	c.Assert(err, IsNil)
 
 	handle := mockPlatformKeyDataHandle{
-		Key:              k[:32],
-		IV:               k[32:],
-		ExpectedVersion:  1,
-		ExpectedKDFAlg:   kdfAlg,
-		ExpectedAuthMode: AuthModeNone,
+		Key:                k[:32],
+		IV:                 k[32:],
+		ExpectedGeneration: 1,
+		ExpectedKDFAlg:     kdfAlg,
+		ExpectedAuthMode:   AuthModeNone,
 	}
 
 	h := hmac.New(func() hash.Hash { return kdfAlg.New() }, handle.Key)
@@ -142,7 +142,7 @@ func (s *keyDataLegacySuite) TestRecoverKeys(c *C) {
 	key, auxKey := s.newKeyDataKeys(c, 32, 32)
 	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256, crypto.SHA256)
 
-	restore := MockKeyDataVersion(0)
+	restore := MockKeyDataGeneration(0)
 	defer restore()
 	keyData, err := NewKeyData(protected)
 
@@ -159,7 +159,7 @@ func (s *keyDataLegacySuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 
 	protected.PlatformName = "foo"
 
-	restore := MockKeyDataVersion(0)
+	restore := MockKeyDataGeneration(0)
 	defer restore()
 	keyData, err := NewKeyData(protected)
 
@@ -176,7 +176,7 @@ func (s *keyDataLegacySuite) TestRecoverKeysInvalidData(c *C) {
 
 	protected.Handle = []byte("\"\"")
 
-	restore := MockKeyDataVersion(0)
+	restore := MockKeyDataGeneration(0)
 	defer restore()
 	keyData, err := NewKeyData(protected)
 

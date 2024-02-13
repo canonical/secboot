@@ -50,7 +50,7 @@ const (
 )
 
 var (
-	keyDataVersion        int = 2
+	keyDataGeneration     int = 2
 	snapModelHMACKDFLabel     = []byte("SNAP-MODEL-HMAC")
 	sha1Oid                   = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
 	sha224Oid                 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
@@ -415,7 +415,11 @@ type passphraseParams struct {
 }
 
 type keyData struct {
-	Version int `json:"version,omitempty"`
+	// Generation is a number used to differentiate between different key formats.
+	// i.e Gen1 keys are binary serialized and include a primary and an unlock key while
+	// Gen2 keys are ASN1 serialized and include a primary key and a unique key which is
+	// used to derive the unlock key.
+	Generation int `json:"generation,omitempty"`
 
 	PlatformName string `json:"platform_name"` // used to identify a PlatformKeyDataHandler
 
@@ -644,7 +648,7 @@ func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte
 
 func (d *KeyData) platformKeyData() *PlatformKeyData {
 	return &PlatformKeyData{
-		Version:       d.Version(),
+		Generation:    d.Generation(),
 		EncodedHandle: d.data.PlatformHandle,
 		KDFAlg:        crypto.Hash(d.data.KDFAlg),
 		AuthMode:      d.AuthMode(),
@@ -652,7 +656,7 @@ func (d *KeyData) platformKeyData() *PlatformKeyData {
 }
 
 func (d *KeyData) recoverKeysCommon(data []byte) (DiskUnlockKey, PrimaryKey, error) {
-	switch d.Version() {
+	switch d.Generation() {
 	case 1:
 		unlockKey, primaryKey, err := unmarshalV1KeyPayload(data)
 		if err != nil {
@@ -669,19 +673,19 @@ func (d *KeyData) recoverKeysCommon(data []byte) (DiskUnlockKey, PrimaryKey, err
 		}
 		return pk.unlockKey(crypto.Hash(d.data.KDFAlg)), pk.Primary, nil
 	default:
-		return nil, nil, fmt.Errorf("invalid keydata version %d", d.Version())
+		return nil, nil, fmt.Errorf("invalid keydata generation %d", d.Generation())
 	}
 }
 
-// Version returns this key data's version. Since the version field didn't exist
-// for key data versions < 2, we fake the version returned to 1.
-func (d *KeyData) Version() int {
-	switch d.data.Version {
+// Generation returns this keydata's generation. Since the generation field didn't exist
+// for older keydata with generation < 2, we fake the generation returned to 1.
+func (d *KeyData) Generation() int {
+	switch d.data.Generation {
 	case 0:
-		// This field was missing in v1
+		// This field was missing in gen1
 		return 1
 	default:
-		return d.data.Version
+		return d.data.Generation
 	}
 }
 
@@ -931,7 +935,7 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 
 	kd := &KeyData{
 		data: keyData{
-			Version:          keyDataVersion,
+			Generation:       keyDataGeneration,
 			PlatformName:     params.PlatformName,
 			PlatformHandle:   json.RawMessage(encodedHandle),
 			KDFAlg:           hashAlg(params.KDFAlg),

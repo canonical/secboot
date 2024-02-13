@@ -29,7 +29,7 @@ import (
 var (
 	UnmarshalV1KeyPayload  = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys = unmarshalProtectedKeys
-	KeyDataVersion         = keyDataVersion
+	KeyDataGeneration      = keyDataGeneration
 )
 
 type ProtectedKeys = protectedKeys
@@ -128,11 +128,11 @@ func MockStderr(w io.Writer) (restore func()) {
 	}
 }
 
-func MockKeyDataVersion(n int) (restore func()) {
-	orig := keyDataVersion
-	keyDataVersion = n
+func MockKeyDataGeneration(n int) (restore func()) {
+	orig := keyDataGeneration
+	keyDataGeneration = n
 	return func() {
-		keyDataVersion = orig
+		keyDataGeneration = orig
 	}
 }
 
