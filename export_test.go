@@ -26,6 +26,14 @@ import (
 	"github.com/snapcore/secboot/internal/luksview"
 )
 
+var (
+	UnmarshalV1KeyPayload  = unmarshalV1KeyPayload
+	UnmarshalProtectedKeys = unmarshalProtectedKeys
+	KeyDataGeneration      = keyDataGeneration
+)
+
+type ProtectedKeys = protectedKeys
+
 func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
 	return o.deriveCostParams(keyLen, kdf)
 }
@@ -118,4 +126,26 @@ func MockStderr(w io.Writer) (restore func()) {
 	return func() {
 		osStderr = orig
 	}
+}
+
+func MockKeyDataGeneration(n int) (restore func()) {
+	orig := keyDataGeneration
+	keyDataGeneration = n
+	return func() {
+		keyDataGeneration = orig
+	}
+}
+
+func MockHashAlgAvailable() (restore func()) {
+	orig := hashAlgAvailable
+	hashAlgAvailable = func(*hashAlg) bool {
+		return false
+	}
+	return func() {
+		hashAlgAvailable = orig
+	}
+}
+
+func (d *KeyData) DerivePassphraseKeys(passphrase string, kdf KDF) (key, iv, auth []byte, err error) {
+	return d.derivePassphraseKeys(passphrase, kdf)
 }
