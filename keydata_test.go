@@ -687,11 +687,11 @@ func (s *keyDataSuite) TestNewKeyData(c *C) {
 }
 
 func (s *keyDataSuite) TestKeyDataPlatformName(c *C) {
-	key, auxKey := s.newKeyDataKeys(c, 32, 32)
-	protected := s.mockProtectKeys(c, key, auxKey, crypto.SHA256)
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
-	c.Check(keyData.PlatformName(), Equals, mockPlatformName)
+	c.Check(keyData.PlatformName(), Equals, s.mockPlatformName)
 }
 
 func (s *keyDataSuite) TestUnmarshalPlatformHandle(c *C) {
