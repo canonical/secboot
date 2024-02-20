@@ -43,7 +43,7 @@ import (
 
 const (
 	kdfType                            = "argon2i"
-	nilHash                    hashAlg = 0
+	nilHash                    HashAlg = 0
 	passphraseKeyLen                   = 32
 	passphraseEncryptionKeyLen         = 32
 	passphraseEncryption               = "aes-cfb"
@@ -189,24 +189,24 @@ type KeyDataReader interface {
 	ReadableName() string
 }
 
-// hashAlg corresponds to a digest algorithm.
-type hashAlg crypto.Hash
+// HashAlg corresponds to a digest algorithm.
+type HashAlg crypto.Hash
 
-var hashAlgAvailable = (*hashAlg).Available
+var hashAlgAvailable = (*HashAlg).Available
 
-func (a hashAlg) Available() bool {
+func (a HashAlg) Available() bool {
 	return crypto.Hash(a).Available()
 }
 
-func (a hashAlg) New() hash.Hash {
+func (a HashAlg) New() hash.Hash {
 	return crypto.Hash(a).New()
 }
 
-func (a hashAlg) Size() int {
+func (a HashAlg) Size() int {
 	return crypto.Hash(a).Size()
 }
 
-func (a hashAlg) MarshalJSON() ([]byte, error) {
+func (a HashAlg) MarshalJSON() ([]byte, error) {
 	var s string
 
 	switch crypto.Hash(a) {
@@ -229,7 +229,7 @@ func (a hashAlg) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s)
 }
 
-func (a *hashAlg) UnmarshalJSON(b []byte) error {
+func (a *HashAlg) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -237,15 +237,15 @@ func (a *hashAlg) UnmarshalJSON(b []byte) error {
 
 	switch s {
 	case "sha1":
-		*a = hashAlg(crypto.SHA1)
+		*a = HashAlg(crypto.SHA1)
 	case "sha224":
-		*a = hashAlg(crypto.SHA224)
+		*a = HashAlg(crypto.SHA224)
 	case "sha256":
-		*a = hashAlg(crypto.SHA256)
+		*a = HashAlg(crypto.SHA256)
 	case "sha384":
-		*a = hashAlg(crypto.SHA384)
+		*a = HashAlg(crypto.SHA384)
 	case "sha512":
-		*a = hashAlg(crypto.SHA512)
+		*a = HashAlg(crypto.SHA512)
 	default:
 		// be permissive here and allow everything to be
 		// unmarshalled.
@@ -255,7 +255,7 @@ func (a *hashAlg) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a hashAlg) marshalASN1(b *cryptobyte.Builder) {
+func (a HashAlg) MarshalASN1(b *cryptobyte.Builder) {
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // AlgorithmIdentifier ::= SEQUENCE {
 		var oid asn1.ObjectIdentifier
 
@@ -294,19 +294,19 @@ func (l snapModelHMACList) contains(h snapModelHMAC) bool {
 
 // keyDigest contains a salted digest to verify the correctness of a key.
 type keyDigest struct {
-	Alg    hashAlg `json:"alg"`
+	Alg    HashAlg `json:"alg"`
 	Salt   []byte  `json:"salt"`
 	Digest []byte  `json:"digest"`
 }
 
 // hkdfData contains the parameters used to derive a key using HKDF.
 type hkdfData struct {
-	Alg hashAlg `json:"alg"` // Digest algorithm to use for HKDF
+	Alg HashAlg `json:"alg"` // Digest algorithm to use for HKDF
 }
 
 type authorizedSnapModelsRaw struct {
-	Alg       hashAlg           `json:"alg"`
-	KDFAlg    hashAlg           `json:"kdf_alg,omitempty"`
+	Alg       HashAlg           `json:"alg"`
+	KDFAlg    HashAlg           `json:"kdf_alg,omitempty"`
 	KeyDigest json.RawMessage   `json:"key_digest"`
 	Hmacs     snapModelHMACList `json:"hmacs"`
 }
@@ -314,8 +314,8 @@ type authorizedSnapModelsRaw struct {
 // authorizedSnapModels defines the Snap models that have been
 // authorized to access the data protected by a key.
 type authorizedSnapModels struct {
-	alg       hashAlg           // Digest algorithm used for the authorized model HMACs
-	kdfAlg    hashAlg           // Digest algorithm used to derive the HMAC key with HKDF. Zero for legacy (DRBG) derivation.
+	alg       HashAlg           // Digest algorithm used for the authorized model HMACs
+	kdfAlg    HashAlg           // Digest algorithm used to derive the HMAC key with HKDF. Zero for legacy (DRBG) derivation.
 	keyDigest keyDigest         // information used to validate the correctness of the HMAC key
 	hmacs     snapModelHMACList // the list of HMACs of authorized models
 
@@ -431,7 +431,7 @@ type keyData struct {
 	// KDFAlg is the algorithm that is used to derive the unlock key from a primary key.
 	// It is also used to derive additional keys from the passphrase derived key in
 	// derivePassphraseKeys.
-	KDFAlg hashAlg `json:"kdf_alg,omitempty"`
+	KDFAlg HashAlg `json:"kdf_alg,omitempty"`
 
 	// EncryptedPayload is the platform protected key payload.
 	EncryptedPayload []byte `json:"encrypted_payload"`
@@ -543,7 +543,7 @@ func (d *KeyData) derivePassphraseKeys(passphrase string, kdf KDF) (key, iv, aut
 	builder := cryptobyte.NewBuilder(nil)
 	builder.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // SEQUENCE {
 		b.AddASN1OctetString(params.KDF.Salt)                               // salt OCTET STRING
-		kdfAlg.marshalASN1(b)                                               // kdfAlgorithm AlgorithmIdentifier
+		kdfAlg.MarshalASN1(b)                                               // kdfAlgorithm AlgorithmIdentifier
 		b.AddASN1(cryptobyte_asn1.UTF8String, func(b *cryptobyte.Builder) { // encryption UTF8String
 			b.AddBytes([]byte(params.Encryption))
 		})
@@ -943,13 +943,13 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 			Generation:       keyDataGeneration,
 			PlatformName:     params.PlatformName,
 			PlatformHandle:   json.RawMessage(encodedHandle),
-			KDFAlg:           hashAlg(params.KDFAlg),
+			KDFAlg:           HashAlg(params.KDFAlg),
 			EncryptedPayload: params.EncryptedPayload,
 			AuthorizedSnapModels: authorizedSnapModels{
-				alg:    hashAlg(params.SnapModelAuthHash),
-				kdfAlg: hashAlg(params.SnapModelAuthHash),
+				alg:    HashAlg(params.SnapModelAuthHash),
+				kdfAlg: HashAlg(params.SnapModelAuthHash),
 				keyDigest: keyDigest{
-					Alg:  hashAlg(params.SnapModelAuthHash),
+					Alg:  HashAlg(params.SnapModelAuthHash),
 					Salt: salt[:]}}}}
 
 	authKey, err := kd.snapModelAuthKey(params.PrimaryKey)

@@ -486,7 +486,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	c.Check(err, IsNil)
 
 	// TODO properly unmarshal from field
-	// and expose hashAlg helpers
+	// and expose HashAlg helpers
 	kdfAlg := crypto.SHA256
 	sha256Oid := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 
