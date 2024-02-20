@@ -12,26 +12,28 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type keyDataLegacyTestBase struct {
+type keyDataLegacySuite struct {
 	keyDataTestBase
 }
 
-func (s *keyDataLegacyTestBase) SetUpSuite(c *C) {
+var _ = Suite(&keyDataLegacySuite{})
+
+func (s *keyDataLegacySuite) SetUpSuite(c *C) {
 	s.handler = &mockPlatformKeyDataHandler{}
 	s.mockPlatformName = "mock-legacy"
 	RegisterPlatformKeyDataHandler(s.mockPlatformName, s.handler)
 }
 
-func (s *keyDataLegacyTestBase) SetUpTest(c *C) {
+func (s *keyDataLegacySuite) SetUpTest(c *C) {
 	s.handler.state = mockPlatformDeviceStateOK
 	s.handler.passphraseSupport = false
 }
 
-func (s *keyDataLegacyTestBase) TearDownSuite(c *C) {
+func (s *keyDataLegacySuite) TearDownSuite(c *C) {
 	RegisterPlatformKeyDataHandler(s.mockPlatformName, nil)
 }
 
-func (s *keyDataLegacyTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, PrimaryKey) {
+func (s *keyDataLegacySuite) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, PrimaryKey) {
 	key := make([]byte, sz1)
 	auxKey := make([]byte, sz2)
 	_, err := rand.Read(key)
@@ -41,7 +43,7 @@ func (s *keyDataLegacyTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKe
 	return key, auxKey
 }
 
-func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams) {
+func (s *keyDataLegacySuite) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams) {
 	payload := MarshalKeys(key, auxKey)
 
 	k := make([]byte, 48)
@@ -72,12 +74,6 @@ func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey 
 	stream.XORKeyStream(out.EncryptedPayload, payload)
 	return
 }
-
-type keyDataLegacySuite struct {
-	keyDataLegacyTestBase
-}
-
-var _ = Suite(&keyDataLegacySuite{})
 
 type testLegacyKeyPayloadData struct {
 	key    DiskUnlockKey
