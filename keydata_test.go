@@ -1479,12 +1479,9 @@ func (s *keyDataSuite) TestKeyDataDerivePassphraseKeysExpectedInfoFields(c *C) {
 			`"digest":"8sVvLZOkRD6RWjLFSp/pOPrKoibsr+VWyGhv4M2aph8="},` +
 			`"hmacs":null}}
 `)
-	expectedKey, err := base64.StdEncoding.DecodeString("C058QWvAAc5sp6Ef2NeQwk0mJk8OS4wrcceYEruHXno=")
-	c.Check(err, IsNil)
-	expectedIV, err := base64.StdEncoding.DecodeString("x78OL7OTqRQfONsOb8yaPQ==")
-	c.Check(err, IsNil)
-	expectedAuth, err := base64.StdEncoding.DecodeString("+AdPOck2Ek8CyCVfSOV3eYClrQMiNqAri0Ra4Ldbohc=")
-	c.Check(err, IsNil)
+	expectedKey := testutil.DecodeHexString(c, "0b4e7c416bc001ce6ca7a11fd8d790c24d26264f0e4b8c2b71c79812bb875e7a")
+	expectedIV := testutil.DecodeHexString(c, "c7bf0e2fb393a9141f38db0e6fcc9a3d")
+	expectedAuth := testutil.DecodeHexString(c, "f8074f39c936124f02c8255f48e5777980a5ad032236a02b8b445ae0b75ba217")
 
 	kd, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
 	c.Assert(err, IsNil)
