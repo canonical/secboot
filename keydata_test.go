@@ -44,18 +44,30 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/hkdf"
-	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 )
 
 type mockPlatformKeyDataHandle struct {
-	Key                []byte      `json:"key"`
-	IV                 []byte      `json:"iv"`
-	AuthKeyHMAC        []byte      `json:"auth-key-hmac"`
-	ExpectedGeneration int         `json:"exp-generation"`
-	ExpectedKDFAlg     crypto.Hash `json:"exp-kdf_alg"`
-	ExpectedAuthMode   AuthMode    `json:"exp-auth-mode"`
+	Key         []byte `json:"key"`
+	Nonce       []byte `json:"nonce"`
+	AuthKeyHMAC []byte `json:"auth-key-hmac"`
+}
+
+type mockPlatformAdditionalData struct {
+	ExpectedGeneration int
+	ExpectedKDFAlg     HashAlg
+	ExpectedAuthMode   AuthMode
+}
+
+func (d mockPlatformAdditionalData) MarshalASN1(b *cryptobyte.Builder) {
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1Int64(int64(d.ExpectedGeneration))
+		if d.ExpectedGeneration > 1 {
+			d.ExpectedKDFAlg.MarshalASN1(b)
+		}
+		b.AddASN1Enum(int64(d.ExpectedAuthMode))
+	})
 }
 
 const (
@@ -80,27 +92,22 @@ func (h *mockPlatformKeyDataHandler) checkState() error {
 	}
 }
 
-func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mockPlatformKeyDataHandle, error) {
+func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mockPlatformKeyDataHandle, *mockPlatformAdditionalData, error) {
 	var handle mockPlatformKeyDataHandle
 	if err := json.Unmarshal(data.EncodedHandle, &handle); err != nil {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: xerrors.Errorf("JSON decode error: %w", err)}
+		return nil, nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: fmt.Errorf("JSON decode error: %w", err)}
 	}
 
-	if data.Generation != handle.ExpectedGeneration {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("unexpected generation")}
+	aad := mockPlatformAdditionalData{
+		ExpectedGeneration: data.Generation,
+		ExpectedAuthMode:   data.AuthMode,
 	}
 
 	if data.Generation > 1 {
-		if data.KDFAlg != handle.ExpectedKDFAlg {
-			return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("unexpected KDFAlg")}
-		}
+		aad.ExpectedKDFAlg = HashAlg(data.KDFAlg)
 	}
 
-	if data.AuthMode != handle.ExpectedAuthMode {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("unexpected AuthMode")}
-	}
-
-	return &handle, nil
+	return &handle, &aad, nil
 }
 
 func (h *mockPlatformKeyDataHandler) checkKey(handle *mockPlatformKeyDataHandle, key []byte) error {
@@ -113,15 +120,32 @@ func (h *mockPlatformKeyDataHandler) checkKey(handle *mockPlatformKeyDataHandle,
 	return nil
 }
 
-func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHandle, payload []byte) ([]byte, error) {
+func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHandle, payload []byte, aad *mockPlatformAdditionalData) ([]byte, error) {
 	b, err := aes.NewCipher(handle.Key)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create cipher: %w", err)
+		return nil, fmt.Errorf("cannot create cipher: %w", err)
 	}
 
-	s := cipher.NewCFBDecrypter(b, handle.IV)
-	out := make([]byte, len(payload))
-	s.XORKeyStream(out, payload)
+	aead, err := cipher.NewGCM(b)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create AEAD: %w", err)
+	}
+
+	builder := cryptobyte.NewBuilder(nil)
+	aad.MarshalASN1(builder)
+	aadBytes, err := builder.Bytes()
+	if err != nil {
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: fmt.Errorf("cannot serialize AAD: %w", err)}
+	}
+
+	out, err := aead.Open(nil, handle.Nonce, payload, aadBytes)
+	if err != nil {
+		return nil, &PlatformHandlerError{
+			Type: PlatformHandlerErrorInvalidData,
+			Err:  fmt.Errorf("cannot open payload: %w (Expected values: generation: %d, KDFAlg: %d, AuthMode: %d)", err, aad.ExpectedGeneration, aad.ExpectedKDFAlg, aad.ExpectedAuthMode),
+		}
+	}
+
 	return out, nil
 }
 
@@ -130,12 +154,12 @@ func (h *mockPlatformKeyDataHandler) RecoverKeys(data *PlatformKeyData, encrypte
 		return nil, err
 	}
 
-	handle, err := h.unmarshalHandle(data)
+	handle, aad, err := h.unmarshalHandle(data)
 	if err != nil {
 		return nil, err
 	}
 
-	return h.recoverKeys(handle, encryptedPayload)
+	return h.recoverKeys(handle, encryptedPayload, aad)
 }
 
 func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyData, encryptedPayload []byte, key []byte) ([]byte, error) {
@@ -147,7 +171,7 @@ func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyDat
 		return nil, err
 	}
 
-	handle, err := h.unmarshalHandle(data)
+	handle, aad, err := h.unmarshalHandle(data)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +180,7 @@ func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyDat
 		return nil, err
 	}
 
-	return h.recoverKeys(handle, encryptedPayload)
+	return h.recoverKeys(handle, encryptedPayload, aad)
 }
 
 func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, new []byte) ([]byte, error) {
@@ -168,7 +192,7 @@ func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, n
 		return nil, err
 	}
 
-	handle, err := h.unmarshalHandle(data)
+	handle, _, err := h.unmarshalHandle(data)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +299,7 @@ func (s *keyDataTestBase) newPrimaryKey(c *C, sz1 int) PrimaryKey {
 	return primaryKey
 }
 
-func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams, unlockKey DiskUnlockKey) {
+func (s *keyDataTestBase) mockProtectKeysWithAuthMode(c *C, primaryKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash, authMode AuthMode) (out *KeyParams, unlockKey DiskUnlockKey) {
 	unique := make([]byte, len(primaryKey))
 	_, err := rand.Read(unique)
 	c.Assert(err, IsNil)
@@ -283,47 +307,54 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg cr
 	unlockKey, payload, err := MakeDiskUnlockKey(bytes.NewReader(unique), kdfAlg, primaryKey)
 	c.Assert(err, IsNil)
 
-	k := make([]byte, 48)
+	k := make([]byte, 44)
 	_, err = rand.Read(k)
 	c.Assert(err, IsNil)
 
 	handle := mockPlatformKeyDataHandle{
-		Key:                k[:32],
-		IV:                 k[32:],
-		ExpectedGeneration: KeyDataGeneration,
-		ExpectedKDFAlg:     kdfAlg,
-		ExpectedAuthMode:   AuthModeNone,
+		Key:   k[:32],
+		Nonce: k[32:],
 	}
 
 	h := hmac.New(func() hash.Hash { return crypto.SHA256.New() }, handle.Key)
 	h.Write(make([]byte, 32))
 	handle.AuthKeyHMAC = h.Sum(nil)
 
+	aad := mockPlatformAdditionalData{
+		ExpectedGeneration: KeyDataGeneration,
+		ExpectedKDFAlg:     HashAlg(kdfAlg),
+		ExpectedAuthMode:   authMode,
+	}
+
+	builder := cryptobyte.NewBuilder(nil)
+	aad.MarshalASN1(builder)
+	aadBytes, err := builder.Bytes()
+	c.Assert(err, IsNil)
+
 	b, err := aes.NewCipher(handle.Key)
 	c.Assert(err, IsNil)
-	stream := cipher.NewCFBEncrypter(b, handle.IV)
+
+	aead, err := cipher.NewGCM(b)
+	c.Assert(err, IsNil)
+	ciphertext := aead.Seal(nil, handle.Nonce, payload, aadBytes)
 
 	out = &KeyParams{
 		PlatformName:      s.mockPlatformName,
 		Handle:            &handle,
-		EncryptedPayload:  make([]byte, len(payload)),
+		EncryptedPayload:  ciphertext,
 		PrimaryKey:        primaryKey,
 		KDFAlg:            kdfAlg,
 		SnapModelAuthHash: modelAuthHash}
-	stream.XORKeyStream(out.EncryptedPayload, payload)
 
 	return out, unlockKey
 }
 
+func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams, unlockKey DiskUnlockKey) {
+	return s.mockProtectKeysWithAuthMode(c, primaryKey, kdfAlg, modelAuthHash, AuthModeNone)
+}
+
 func (s *keyDataTestBase) mockProtectKeysWithPassphrase(c *C, primaryKey PrimaryKey, kdfOptions *KDFOptions, authKeySize int, KDFAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyWithPassphraseParams, unlockKey DiskUnlockKey) {
-	kp, unlockKey := s.mockProtectKeys(c, primaryKey, KDFAlg, modelAuthHash)
-
-	expectedHandle, ok := kp.Handle.(*mockPlatformKeyDataHandle)
-	c.Assert(ok, testutil.IsTrue)
-
-	expectedHandle.ExpectedAuthMode = AuthModePassphrase
-	expectedHandle.ExpectedGeneration = KeyDataGeneration
-	expectedHandle.ExpectedKDFAlg = KDFAlg
+	kp, unlockKey := s.mockProtectKeysWithAuthMode(c, primaryKey, KDFAlg, modelAuthHash, AuthModePassphrase)
 
 	if kdfOptions == nil {
 		var defaultOptions KDFOptions
@@ -352,7 +383,7 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 	c.Check(json.Unmarshal(handleBytes, &handle), IsNil)
 
 	c.Check(handle.Key, DeepEquals, expectedHandle.Key)
-	c.Check(handle.IV, DeepEquals, expectedHandle.IV)
+	c.Check(handle.Nonce, DeepEquals, expectedHandle.Nonce)
 
 	_, ok = j["kdf_alg"].(string)
 	c.Check(ok, testutil.IsTrue)
@@ -487,7 +518,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	c.Check(err, IsNil)
 
 	// TODO properly unmarshal from field
-	// and expose hashAlg helpers
+	// and expose HashAlg helpers
 	kdfAlg := crypto.SHA256
 	sha256Oid := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 
@@ -729,7 +760,7 @@ func (s *keyDataSuite) TestRecoverKeys(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
-	c.Check(err, IsNil)
+	c.Assert(err, IsNil)
 	c.Check(recoveredUnlockKey, DeepEquals, unlockKey)
 	c.Check(recoveredPrimaryKey, DeepEquals, primaryKey)
 }
@@ -773,7 +804,7 @@ func (s *keyDataSuite) testRecoverKeysWithPassphrase(c *C, passphrase string) {
 	c.Assert(err, IsNil)
 
 	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeysWithPassphrase(passphrase, &kdf)
-	c.Check(err, IsNil)
+	c.Assert(err, IsNil)
 	c.Check(recoveredUnlockKey, DeepEquals, unlockKey)
 	c.Check(recoveredPrimaryKey, DeepEquals, primaryKey)
 }
@@ -1479,12 +1510,9 @@ func (s *keyDataSuite) TestKeyDataDerivePassphraseKeysExpectedInfoFields(c *C) {
 			`"digest":"8sVvLZOkRD6RWjLFSp/pOPrKoibsr+VWyGhv4M2aph8="},` +
 			`"hmacs":null}}
 `)
-	expectedKey, err := base64.StdEncoding.DecodeString("C058QWvAAc5sp6Ef2NeQwk0mJk8OS4wrcceYEruHXno=")
-	c.Check(err, IsNil)
-	expectedIV, err := base64.StdEncoding.DecodeString("x78OL7OTqRQfONsOb8yaPQ==")
-	c.Check(err, IsNil)
-	expectedAuth, err := base64.StdEncoding.DecodeString("+AdPOck2Ek8CyCVfSOV3eYClrQMiNqAri0Ra4Ldbohc=")
-	c.Check(err, IsNil)
+	expectedKey := testutil.DecodeHexString(c, "0b4e7c416bc001ce6ca7a11fd8d790c24d26264f0e4b8c2b71c79812bb875e7a")
+	expectedIV := testutil.DecodeHexString(c, "c7bf0e2fb393a9141f38db0e6fcc9a3d")
+	expectedAuth := testutil.DecodeHexString(c, "f8074f39c936124f02c8255f48e5777980a5ad032236a02b8b445ae0b75ba217")
 
 	kd, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
 	c.Assert(err, IsNil)
@@ -1555,24 +1583,30 @@ func (s *keyDataSuite) TestReadAndWriteWithUnsaltedKeyDigest(c *C) {
 }
 
 func (s *keyDataSuite) TestReadAndWriteWithLegacySnapModelAuthKey(c *C) {
-	//key := testutil.DecodeHexString(c, "b813218b7877f83ef305ee5704310d05f8a0e648a0fe190dc229e17448cd91ec")
-	auxKey := testutil.DecodeHexString(c, "67bb324dd1b40a41c5db84e6248fdacea2505e19fa954b96580b77fadff1a257")
+	//key := testutil.DecodeHexString(c, "c233638068b814c5d7940e475bf6f9c7471f478d323377b0a140a931b96c6d34")
+	auxKey := testutil.DecodeHexString(c, "393f0ffeb36f7dead878459508cdd17ba6424800055e9d0bc0911f21312f38c0")
 
 	j := []byte(
 		`{` +
 			`"platform_name":"mock",` +
-			`"platform_handle":{` +
-			`"key":"u2wBdkkDL0c5ovbM9z/3VoRVy6cHMs3YdwiUL+mNl/Q=",` +
-			`"iv":"sXJZ9DUc26Qz5x4/FwjFzA==",` +
-			`"auth-key-hmac":"JVayPium5JZZrEkqb7bsiQXPWJHEhX3r0aHjByulHXs="},` +
-			`"encrypted_payload":"eDTWEozwRLFh1td/i+eufBDIFHiYJoQqhw51jPuWAy0hfJaw22ywTau+UdqRXQTh4bTl8LZhaDpBGk3wBMjLO8Y3l4Q=",` +
-			`"authorized_snap_models":{` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"30/iP5NzI2uiUMi0uvnRJDe4JLBPSLwuYx2ZlPLa+60=",` +
+			`"nonce":"iQDK71QqyTMJC8OW",` +
+			`"auth-key-hmac":"c4Ii3yEmZNf7YKmX5P9WW8d7fOnWTjGo/sh+UdlkxEc=",` +
+			`"exp-generation":1,` +
+			`"exp-auth-mode":0},` +
+			`"encrypted_payload":"GPADtKRj875UYeP+Ui/vYMKjrMVlHiHKNmGLd5g6v64JbFEboTu+R6UnnaFIgKtqem9eTxMgPTgrm/FFhd4YyruIxuMST33+hlmxqEFgjIpzrFLJ",` +
+			`"authorized_snap_models":` +
+			`{` +
 			`"alg":"sha256",` +
-			`"key_digest":{` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
 			`"alg":"sha256",` +
-			`"salt":"TLiHg00TtO6R8EKYavCxtxAwvivNncKn7z0F3ZvVZOU=",` +
-			`"digest":"yRQPnWba/JE4uKB9oxVuhOcB/Ue0cW6H+X3epl1ldSQ="},` +
-			`"hmacs":["mpjxUcFTqGpX+zDyFzDBwT77tZCqaktY9QQXswVNXKk="]}}
+			`"salt":"sIAZ3xLt2RajCH1b9BQmL6PrFLp03pdJsMsjp+R3WZ0=",` +
+			`"digest":"QJtyKktRBF94GZ8Eor03N7+hGCmPvXlbRDOninc8JFA="},` +
+			`"hmacs":["B9dY1xrZJNODnvPxLu0+/gie12NKkdZZEgicWicMvxQ="]}}
 `)
 
 	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
@@ -1614,28 +1648,30 @@ func (s *keyDataSuite) TestReadAndWriteWithLegacySnapModelAuthKey(c *C) {
 }
 
 func (s *keyDataSuite) TestLegacyKeyData(c *C) {
-	unlockKey := testutil.DecodeHexString(c, "09a2e672131045221284e026b17de93b395581e82450a01e170150432f8cdf81")
-	primaryKey := testutil.DecodeHexString(c, "1850fbecbe8b3db83a894cb975756c8b69086040f097b03bd4f3b1a3e19c4b86")
+	primaryKey := testutil.DecodeHexString(c, "22720f44a17bfca895b400d6e20486f086a37d2dbfe82a526fa692f2ef2d18db")
+	unlockKey := testutil.DecodeHexString(c, "2a9f13d57ad7a0d46984704ee5cba33f5eae13e7b6c0dec2fdc25d786c9adbea")
 
 	j := []byte(
 		`{` +
 			`"platform_name":"mock",` +
-			`"platform_handle":{` +
-			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",` +
-			`"iv":"i88WWEI7WyJ1gXX5LGhRSg==",` +
-			`"auth-key-hmac":"WybrzR13ozdYwzyt4oyihIHSABZozpHyQSAn+NtQSkA=",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"CR57jotIb2JuEC3A01pxgtS0wsR/JlWMDewz/hgBSas=",` +
+			`"nonce":"rEqJHsvl54qmUg/o",` +
+			`"auth-key-hmac":"KOA3RMNpwTlzH64OQwXktGHSzkVc9cNgwpcFGxMmC4w=",` +
 			`"exp-generation":1,` +
-			`"exp-kdf_alg":0,` +
 			`"exp-auth-mode":0},` +
-			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",` +
-			`"authorized_snap_models":{` +
+			`"encrypted_payload":"C/mHti+RxN1xH6gshK2Ods81jl8qqMAwmD9gC7R93Jv2RJ6yqV4LtRzFOqLfaNGEp4nCNUWpDDWy47NNCBiDgIDTLTXUqnthCpdFJY0BGcQUflCu",` +
+			`"authorized_snap_models":` +
+			`{` +
 			`"alg":"sha256",` +
 			`"kdf_alg":"sha256",` +
-			`"key_digest":{` +
+			`"key_digest":` +
+			`{` +
 			`"alg":"sha256",` +
-			`"salt":"IPDKKUOoRYwvMWX8LoCCtlGgzgzokAhsh42XnbGUn0s=",` +
-			`"digest":"SSbv/yS8h5pqchVfV9AMHUjhS/vVateojNRRmo624qk="},` +
-			`"hmacs":["OCxZPr5lqnwlNTMYXObK6cXlkcWw3Dx5v+/NRMrCzhw="]}}
+			`"salt":"rMefH+alUfhHL6mxhXl3CjG2/MwxToUjo0z5KlKcYA0=",` +
+			`"digest":"asrFaUEfM1Mfp/0ozqxVssvyB4gZI3O4ntn5FylDups="},` +
+			`"hmacs":["MyyoG1y3CqoBxOSgolkbZSoTfl7KYh8P4L+4Ak6lcZo="]}}
 `)
 
 	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
@@ -1654,7 +1690,7 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 	c.Check(ok, testutil.IsTrue)
 
 	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
-	c.Check(err, IsNil)
+	c.Assert(err, IsNil)
 	c.Check(recoveredUnlockKey, DeepEquals, DiskUnlockKey(unlockKey))
 	c.Check(recoveredPrimaryKey, DeepEquals, PrimaryKey(primaryKey))
 
@@ -1685,22 +1721,24 @@ func (s *keyDataSuite) TestLegacyKeyData(c *C) {
 	c.Check(w.final.Bytes(), DeepEquals, []byte(
 		`{`+
 			`"platform_name":"mock",`+
-			`"platform_handle":{`+
-			`"key":"7AQQmeIwl5iv3V+yTszelcdF6MkJpKz+7EA0kKUJNEo=",`+
-			`"iv":"i88WWEI7WyJ1gXX5LGhRSg==",`+
-			`"auth-key-hmac":"WybrzR13ozdYwzyt4oyihIHSABZozpHyQSAn+NtQSkA=",`+
+			`"platform_handle":`+
+			`{`+
+			`"key":"CR57jotIb2JuEC3A01pxgtS0wsR/JlWMDewz/hgBSas=",`+
+			`"nonce":"rEqJHsvl54qmUg/o",`+
+			`"auth-key-hmac":"KOA3RMNpwTlzH64OQwXktGHSzkVc9cNgwpcFGxMmC4w=",`+
 			`"exp-generation":1,`+
-			`"exp-kdf_alg":0,`+
 			`"exp-auth-mode":0},`+
-			`"encrypted_payload":"eMeLrknRAi/dFBM607WPxFOCE1L9RZ4xxUs+Leodz78s/id7Eq+IHhZdOC/stXSNe+Gn/PWgPxcd0TfEPUs5TA350lo=",`+
-			`"authorized_snap_models":{`+
+			`"encrypted_payload":"C/mHti+RxN1xH6gshK2Ods81jl8qqMAwmD9gC7R93Jv2RJ6yqV4LtRzFOqLfaNGEp4nCNUWpDDWy47NNCBiDgIDTLTXUqnthCpdFJY0BGcQUflCu",`+
+			`"authorized_snap_models":`+
+			`{`+
 			`"alg":"sha256",`+
 			`"kdf_alg":"sha256",`+
-			`"key_digest":{`+
+			`"key_digest":`+
+			`{`+
 			`"alg":"sha256",`+
-			`"salt":"IPDKKUOoRYwvMWX8LoCCtlGgzgzokAhsh42XnbGUn0s=",`+
-			`"digest":"SSbv/yS8h5pqchVfV9AMHUjhS/vVateojNRRmo624qk="},`+
-			`"hmacs":["JWziaukXiAIsPU22X1RTC/2wEkPN4IdNvgDEzSnWXIc="]}}
+			`"salt":"rMefH+alUfhHL6mxhXl3CjG2/MwxToUjo0z5KlKcYA0=",`+
+			`"digest":"asrFaUEfM1Mfp/0ozqxVssvyB4gZI3O4ntn5FylDups="},`+
+			`"hmacs":["g8u5j57IjMkD2ume5u44D2MXvy9ygcGu5IIsGoPQtCM="]}}
 `))
 }
 

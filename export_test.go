@@ -138,7 +138,7 @@ func MockKeyDataGeneration(n int) (restore func()) {
 
 func MockHashAlgAvailable() (restore func()) {
 	orig := hashAlgAvailable
-	hashAlgAvailable = func(*hashAlg) bool {
+	hashAlgAvailable = func(*HashAlg) bool {
 		return false
 	}
 	return func() {
