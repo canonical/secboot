@@ -85,15 +85,15 @@ func (l snapModelHMACList) contains(h snapModelHMAC) bool {
 }
 
 type authorizedSnapModelsRaw struct {
-	Alg       hashAlg           `json:"alg"`
-	KDFAlg    hashAlg           `json:"kdf_alg,omitempty"`
+	Alg       HashAlg           `json:"alg"`
+	KDFAlg    HashAlg           `json:"kdf_alg,omitempty"`
 	KeyDigest json.RawMessage   `json:"key_digest"`
 	Hmacs     snapModelHMACList `json:"hmacs"`
 }
 
 // keyDigest contains a salted digest to verify the correctness of a key.
 type keyDigest struct {
-	Alg    hashAlg `json:"alg"`
+	Alg    HashAlg `json:"alg"`
 	Salt   []byte  `json:"salt"`
 	Digest []byte  `json:"digest"`
 }
@@ -101,8 +101,8 @@ type keyDigest struct {
 // authorizedSnapModels defines the Snap models that have been
 // authorized to access the data protected by a key.
 type authorizedSnapModels struct {
-	alg       hashAlg           // Digest algorithm used for the authorized model HMACs
-	kdfAlg    hashAlg           // Digest algorithm used to derive the HMAC key with HKDF. Zero for legacy (DRBG) derivation.
+	alg       HashAlg           // Digest algorithm used for the authorized model HMACs
+	kdfAlg    HashAlg           // Digest algorithm used to derive the HMAC key with HKDF. Zero for legacy (DRBG) derivation.
 	keyDigest keyDigest         // information used to validate the correctness of the HMAC key
 	hmacs     snapModelHMACList // the list of HMACs of authorized models
 
