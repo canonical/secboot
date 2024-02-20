@@ -44,7 +44,6 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/hkdf"
-	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 )
@@ -83,7 +82,7 @@ func (h *mockPlatformKeyDataHandler) checkState() error {
 func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mockPlatformKeyDataHandle, error) {
 	var handle mockPlatformKeyDataHandle
 	if err := json.Unmarshal(data.EncodedHandle, &handle); err != nil {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: xerrors.Errorf("JSON decode error: %w", err)}
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: fmt.Errorf("JSON decode error: %w", err)}
 	}
 
 	if data.Generation != handle.ExpectedGeneration {
@@ -116,7 +115,7 @@ func (h *mockPlatformKeyDataHandler) checkKey(handle *mockPlatformKeyDataHandle,
 func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHandle, payload []byte) ([]byte, error) {
 	b, err := aes.NewCipher(handle.Key)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create cipher: %w", err)
+		return nil, fmt.Errorf("cannot create cipher: %w", err)
 	}
 
 	s := cipher.NewCFBDecrypter(b, handle.IV)
