@@ -280,8 +280,8 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthStateErrors(c *C) {
 }
 
 type testSetAuthorizedSnapModelsData struct {
-	kDFAlg      crypto.Hash
-	mDAlg       crypto.Hash
+	kdfAlg      crypto.Hash
+	mdAlg       crypto.Hash
 	modelAlg    crypto.Hash
 	validRole   string
 	role        string
@@ -295,8 +295,8 @@ func (s *keyDataPlatformSuite) testSetAuthorizedSnapModels(c *C, data *testSetAu
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
 		Role:       data.validRole,
-		KDFAlg:     data.kDFAlg,
-		MDAlg:      data.mDAlg,
+		KDFAlg:     data.kdfAlg,
+		MDAlg:      data.mdAlg,
 		ModelAlg:   data.modelAlg,
 	}
 
@@ -310,8 +310,8 @@ func (s *keyDataPlatformSuite) testSetAuthorizedSnapModels(c *C, data *testSetAu
 
 		c.Check(kdsData.Version, Equals, 1)
 		c.Check(crypto.Hash(kdsData.Params.ModelDigests.Alg), Equals, data.modelAlg)
-		c.Check(crypto.Hash(kdsData.KDFAlg), Equals, data.kDFAlg)
-		c.Check(crypto.Hash(kdsData.MDAlg), Equals, data.mDAlg)
+		c.Check(crypto.Hash(kdsData.KDFAlg), Equals, data.kdfAlg)
+		c.Check(crypto.Hash(kdsData.MDAlg), Equals, data.mdAlg)
 
 		signer, err := kds.DeriveSigner(primaryKey, data.validRole)
 		c.Assert(err, IsNil)
@@ -327,8 +327,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModels(c *C) {
 	}
 	c.Check(
 		s.testSetAuthorizedSnapModels(c, &testSetAuthorizedSnapModelsData{
-			kDFAlg:      crypto.SHA256,
-			mDAlg:       crypto.SHA256,
+			kdfAlg:      crypto.SHA256,
+			mdAlg:       crypto.SHA256,
 			modelAlg:    crypto.SHA256,
 			validRole:   "test",
 			role:        "test",
@@ -344,8 +344,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModelsInvalidRole(c *C) {
 	}
 	c.Check(
 		s.testSetAuthorizedSnapModels(c, &testSetAuthorizedSnapModelsData{
-			kDFAlg:      crypto.SHA256,
-			mDAlg:       crypto.SHA256,
+			kdfAlg:      crypto.SHA256,
+			mdAlg:       crypto.SHA256,
 			modelAlg:    crypto.SHA256,
 			validRole:   "test",
 			role:        "different",
@@ -384,8 +384,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModelsWrongKey(c *C) {
 }
 
 type testSetAuthorizedBootModesData struct {
-	kDFAlg     crypto.Hash
-	mDAlg      crypto.Hash
+	kdfAlg     crypto.Hash
+	mdAlg      crypto.Hash
 	modelAlg   crypto.Hash
 	validRole  string
 	role       string
@@ -399,8 +399,8 @@ func (s *keyDataPlatformSuite) testSetAuthorizedBootModes(c *C, data *testSetAut
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
 		Role:       data.validRole,
-		KDFAlg:     data.kDFAlg,
-		MDAlg:      data.mDAlg,
+		KDFAlg:     data.kdfAlg,
+		MDAlg:      data.mdAlg,
 		ModelAlg:   data.modelAlg,
 	}
 
@@ -418,8 +418,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModes(c *C) {
 	}
 	c.Check(
 		s.testSetAuthorizedBootModes(c, &testSetAuthorizedBootModesData{
-			kDFAlg:     crypto.SHA256,
-			mDAlg:      crypto.SHA256,
+			kdfAlg:     crypto.SHA256,
+			mdAlg:      crypto.SHA256,
 			modelAlg:   crypto.SHA256,
 			validRole:  "test",
 			role:       "test",
@@ -436,8 +436,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesInvalidRole(c *C) {
 
 	c.Check(
 		s.testSetAuthorizedBootModes(c, &testSetAuthorizedBootModesData{
-			kDFAlg:     crypto.SHA256,
-			mDAlg:      crypto.SHA256,
+			kdfAlg:     crypto.SHA256,
+			mdAlg:      crypto.SHA256,
 			modelAlg:   crypto.SHA256,
 			validRole:  "test",
 			role:       "different",
@@ -453,8 +453,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesWrongKey(c *C) {
 		"modeFoo",
 	}
 	data := &testSetAuthorizedBootModesData{
-		kDFAlg:     crypto.SHA256,
-		mDAlg:      crypto.SHA256,
+		kdfAlg:     crypto.SHA256,
+		mdAlg:      crypto.SHA256,
 		modelAlg:   crypto.SHA256,
 		validRole:  "test",
 		role:       "different",
@@ -464,8 +464,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesWrongKey(c *C) {
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
 		Role:       data.validRole,
-		KDFAlg:     data.kDFAlg,
-		MDAlg:      data.mDAlg,
+		KDFAlg:     data.kdfAlg,
+		MDAlg:      data.mdAlg,
 		ModelAlg:   data.modelAlg,
 	}
 
@@ -479,8 +479,8 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesWrongKey(c *C) {
 }
 
 type testBootEnvAuthData struct {
-	kDFAlg      crypto.Hash
-	mDAlg       crypto.Hash
+	kdfAlg      crypto.Hash
+	mdAlg       crypto.Hash
 	modelAlg    crypto.Hash
 	validRole   string
 	role        string
@@ -497,8 +497,8 @@ func (s *keyDataPlatformSuite) testBootEnvAuth(c *C, data *testBootEnvAuthData) 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
 		Role:       data.validRole,
-		KDFAlg:     data.kDFAlg,
-		MDAlg:      data.mDAlg,
+		KDFAlg:     data.kdfAlg,
+		MDAlg:      data.mdAlg,
 		ModelAlg:   data.modelAlg,
 	}
 
@@ -533,8 +533,8 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthValid1(c *C) {
 	s.mockState(c)
 
 	c.Check(s.testBootEnvAuth(c, &testBootEnvAuthData{
-		kDFAlg:      crypto.SHA256,
-		mDAlg:       crypto.SHA256,
+		kdfAlg:      crypto.SHA256,
+		mdAlg:       crypto.SHA256,
 		modelAlg:    crypto.SHA256,
 		validRole:   "test",
 		role:        "test",
@@ -558,8 +558,8 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthValid2(c *C) {
 	s.mockState(c)
 
 	c.Check(s.testBootEnvAuth(c, &testBootEnvAuthData{
-		kDFAlg:      crypto.SHA256,
-		mDAlg:       crypto.SHA256,
+		kdfAlg:      crypto.SHA256,
+		mdAlg:       crypto.SHA256,
 		modelAlg:    crypto.SHA256,
 		validRole:   "test",
 		role:        "test",
@@ -584,8 +584,8 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthInvalidModel(c *C) {
 	s.mockState(c)
 
 	c.Check(s.testBootEnvAuth(c, &testBootEnvAuthData{
-		kDFAlg:      crypto.SHA256,
-		mDAlg:       crypto.SHA256,
+		kdfAlg:      crypto.SHA256,
+		mdAlg:       crypto.SHA256,
 		modelAlg:    crypto.SHA256,
 		role:        "test",
 		validRole:   "test",
@@ -610,8 +610,8 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthInvalidBootMode(c *C) {
 	s.mockState(c)
 
 	c.Check(s.testBootEnvAuth(c, &testBootEnvAuthData{
-		kDFAlg:      crypto.SHA256,
-		mDAlg:       crypto.SHA256,
+		kdfAlg:      crypto.SHA256,
+		mdAlg:       crypto.SHA256,
 		modelAlg:    crypto.SHA256,
 		validRole:   "test",
 		role:        "test",
