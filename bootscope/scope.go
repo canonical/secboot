@@ -17,6 +17,12 @@
  *
  */
 
+// Package bootscope implements key scoping support for platforms that
+// don't support measured boot.
+//
+// It is used to track the currently used boot mode and model, provides
+// the KeyDataScope object which encapsulates boot environment information
+// and helper functions used to authenticate and associate a scope with a key.
 package bootscope
 
 import (
