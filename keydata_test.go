@@ -1064,6 +1064,25 @@ func (s *keyDataSuite) TestChangePassphraseForceIterations(c *C) {
 		kdfOptions:  &KDFOptions{ForceIterations: 3, MemoryKiB: 32 * 1024}})
 }
 
+func (s *keyDataSuite) TestChangePassphraseWrongPassphrase(c *C) {
+	s.handler.passphraseSupport = true
+
+	primaryKey := s.newPrimaryKey(c, 32)
+
+	kdfOptions := &KDFOptions{
+		TargetDuration: 100 * time.Millisecond,
+	}
+	protected, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, kdfOptions, 32, crypto.SHA256, crypto.SHA256)
+
+	var kdf testutil.MockKDF
+	keyData, err := NewKeyDataWithPassphrase(protected, "12345678", &kdf)
+	c.Check(err, IsNil)
+
+	c.Check(keyData.ChangePassphrase("passphrase", "12345678", &kdf), Equals, ErrInvalidPassphrase)
+
+	s.checkKeyDataJSONAuthModePassphrase(c, keyData, protected, 0, "12345678", kdfOptions)
+}
+
 func (s *keyDataSuite) TestSnapModelAuthErrorHandling(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
 	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
