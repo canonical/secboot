@@ -409,6 +409,19 @@ func (s *keyDataPlatformSuite) testSetAuthorizedBootModes(c *C, data *testSetAut
 
 	err = kds.SetAuthorizedBootModes(primaryKey, data.role, data.validModes...)
 
+	if err == nil {
+		kdsData := kds.Data()
+
+		c.Check(kdsData.Version, Equals, 1)
+		c.Check(crypto.Hash(kdsData.Params.ModelDigests.Alg), Equals, data.modelAlg)
+		c.Check(crypto.Hash(kdsData.KDFAlg), Equals, data.kdfAlg)
+		c.Check(crypto.Hash(kdsData.MDAlg), Equals, data.mdAlg)
+
+		signer, err := kds.DeriveSigner(primaryKey, data.validRole)
+		c.Assert(err, IsNil)
+		c.Check(kdsData.PublicKey.PublicKey, DeepEquals, signer.Public().(*ecdsa.PublicKey))
+	}
+
 	return err
 }
 
