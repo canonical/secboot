@@ -218,8 +218,10 @@ type keyDataScope struct {
 }
 
 type additionalData struct {
-	Version          int
-	BaseVersion      int
+	// Version corresponds to the version field of the keyDataScope object
+	Version int
+	// Generation corresponds to the generation field of the keyData object
+	Generation       int
 	KdfAlg           hashAlg
 	AuthMode         secboot.AuthMode
 	KeyIdentifierAlg hashAlg
@@ -229,7 +231,7 @@ type additionalData struct {
 func (d *additionalData) marshalASN1(b *cryptobyte.Builder) {
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // SEQUENCE {
 		b.AddASN1Int64(int64(d.Version))      // version INTEGER
-		b.AddASN1Int64(int64(d.BaseVersion))  // baseVersion INTEGER
+		b.AddASN1Int64(int64(d.Generation))   // generation INTEGER
 		d.KdfAlg.marshalASN1(b)               // kdfAlg AlgorithmIdentifier
 		b.AddASN1Enum(int64(d.AuthMode))      // authMode ENUMERATED
 		d.KeyIdentifierAlg.marshalASN1(b)     // keyIdentifierAlg AlgorithmIdentifier
@@ -473,7 +475,7 @@ func (d *KeyDataScope) IsBootEnvironmentAuthorized() error {
 // a key data scope. For example a platform using AES-GCM can use it to ensure that the authentication
 // mode of a key data object is immutable and tampering of this can be detected by the early boot
 // environment.
-func (d *KeyDataScope) MakeAdditionalData(baseVersion int, kdfAlg crypto.Hash, authMode secboot.AuthMode) ([]byte, error) {
+func (d *KeyDataScope) MakeAdditionalData(generation int, kdfAlg crypto.Hash, authMode secboot.AuthMode) ([]byte, error) {
 	alg := d.data.MDAlg
 	if !alg.Available() {
 		return nil, errors.New("MD algorithm unavailable")
@@ -489,7 +491,7 @@ func (d *KeyDataScope) MakeAdditionalData(baseVersion int, kdfAlg crypto.Hash, a
 
 	aad := &additionalData{
 		Version:          d.data.Version,
-		BaseVersion:      baseVersion,
+		Generation:       generation,
 		KdfAlg:           hashAlg(kdfAlg),
 		AuthMode:         authMode,
 		KeyIdentifierAlg: alg,

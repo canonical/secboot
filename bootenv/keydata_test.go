@@ -117,7 +117,7 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingModelAlg(c *C) {
 
 type testMakeAdditionalDataData struct {
 	keyDataScopeVersion int
-	baseVersion         int
+	generation          int
 	authMode            AuthMode
 	mdAlg               crypto.Hash
 	keyDigestHashAlg    crypto.Hash
@@ -146,14 +146,14 @@ func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditi
 		kds.TestSetVersion(data.keyDataScopeVersion)
 	}
 
-	aadBytes, err := kds.MakeAdditionalData(data.baseVersion, data.keyDigestHashAlg, data.authMode)
+	aadBytes, err := kds.MakeAdditionalData(data.generation, data.keyDigestHashAlg, data.authMode)
 	c.Check(err, IsNil)
 
 	aad, err := UnmarshalAdditionalData(aadBytes)
 	c.Assert(err, IsNil)
 
 	c.Check(aad.Version, Equals, 1)
-	c.Check(aad.BaseVersion, Equals, data.baseVersion)
+	c.Check(aad.Generation, Equals, data.generation)
 	c.Check(crypto.Hash(aad.KdfAlg), Equals, data.keyDigestHashAlg)
 	c.Check(aad.AuthMode, Equals, data.authMode)
 	c.Check(crypto.Hash(aad.KeyIdentifierAlg), Equals, data.signingKeyDerivationAlg)
@@ -163,7 +163,7 @@ func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditi
 
 func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
 	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
-		baseVersion:             1,
+		generation:              1,
 		authMode:                AuthModeNone,
 		mdAlg:                   crypto.SHA256,
 		keyDigestHashAlg:        crypto.SHA256,
@@ -174,7 +174,7 @@ func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
 
 func (s *keyDataPlatformSuite) TestMakeAdditionalDataWithPassphrase(c *C) {
 	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
-		baseVersion:             1,
+		generation:              1,
 		authMode:                AuthModePassphrase,
 		mdAlg:                   crypto.SHA256,
 		keyDigestHashAlg:        crypto.SHA256,

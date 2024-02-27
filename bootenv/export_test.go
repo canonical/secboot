@@ -125,7 +125,7 @@ func UnmarshalAdditionalData(data []byte) (*additionalData, error) {
 		return nil, errors.New("malformed version")
 	}
 
-	if !s.ReadASN1Integer(&aad.BaseVersion) {
+	if !s.ReadASN1Integer(&aad.Generation) {
 		return nil, errors.New("malformed base version")
 	}
 
