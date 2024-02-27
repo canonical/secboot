@@ -143,7 +143,7 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingModelAlg(c *C) {
 	c.Assert(err, ErrorMatches, "No model digest algorithm specified")
 }
 
-type testMakeAdditionalDataData struct {
+type testMakeAEADAdditionalDataData struct {
 	primaryKey          PrimaryKey
 	keyDataScopeVersion int
 	generation          int
@@ -157,7 +157,7 @@ type testMakeAdditionalDataData struct {
 	expectedAad             []byte
 }
 
-func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditionalDataData) {
+func (s *keyDataPlatformSuite) testMakeAEADAdditionalData(c *C, data *testMakeAEADAdditionalDataData) {
 	params := &KeyDataScopeParams{
 		PrimaryKey: data.primaryKey,
 		Role:       data.role,
@@ -173,17 +173,17 @@ func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditi
 		kds.TestSetVersion(data.keyDataScopeVersion)
 	}
 
-	aadBytes, err := kds.MakeAdditionalData(data.generation, data.keyDigestHashAlg, data.authMode)
+	aadBytes, err := kds.MakeAEADAdditionalData(data.generation, data.keyDigestHashAlg, data.authMode)
 	c.Check(err, IsNil)
 
 	c.Check(aadBytes, DeepEquals, data.expectedAad)
 }
 
-func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
+func (s *keyDataPlatformSuite) TestMakeAEADAdditionalData(c *C) {
 	primaryKey := testutil.DecodeHexString(c, "ab40b798dd6b47ca77d93241f40036d6d86e03f365b4ef9171b23e2bc38b9ef3")
 	expectedAad := testutil.DecodeHexString(c, "3049020101020101300d060960864801650304020105000a0100300d06096086480165030402010500042077511e42d7c0b2df1881189bd4720806fc92a6dee76cd1c9fe40c32310f6068d")
 
-	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
+	s.testMakeAEADAdditionalData(c, &testMakeAEADAdditionalDataData{
 		primaryKey:              primaryKey,
 		generation:              1,
 		authMode:                AuthModeNone,
@@ -195,11 +195,11 @@ func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
 	})
 }
 
-func (s *keyDataPlatformSuite) TestMakeAdditionalDataWithPassphrase(c *C) {
+func (s *keyDataPlatformSuite) TestMakeAEADAdditionalDataWithPassphrase(c *C) {
 	primaryKey := testutil.DecodeHexString(c, "45db13f9857336d338c12a5e71aae5434032c3419b9e4e82c2de42cf510d93ee")
 	expectedAad := testutil.DecodeHexString(c, "3049020101020101300d060960864801650304020105000a0101300d060960864801650304020105000420765f9750024ce485a32d50c6595fa16fca71b4ea110a2e8361d070a975ba9bcc")
 
-	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
+	s.testMakeAEADAdditionalData(c, &testMakeAEADAdditionalDataData{
 		primaryKey:              primaryKey,
 		generation:              1,
 		authMode:                AuthModePassphrase,
