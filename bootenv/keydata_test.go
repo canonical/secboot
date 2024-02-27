@@ -730,6 +730,95 @@ func (s *keyDataPlatformSuite) TestDeriveSigner(c *C) {
 	}
 }
 
+func (s *keyDataPlatformSuite) TestDeriveSignerFixedKey1(c *C) {
+	primaryKey := testutil.DecodeHexString(c, "90e29c3b7902dfc239c1c7aa5928ee232be2f1e7a4018aa7c5465a03a4c0be30")
+	role := "test"
+
+	params := &KeyDataScopeParams{
+		PrimaryKey: primaryKey,
+		Role:       role,
+		KDFAlg:     crypto.SHA256,
+		MDAlg:      crypto.SHA256,
+		ModelAlg:   crypto.SHA256,
+	}
+
+	kds, err := NewKeyDataScope(params)
+	c.Assert(err, IsNil)
+	c.Check(kds, NotNil)
+
+	signer, err := kds.DeriveSigner(primaryKey, role)
+	c.Assert(err, IsNil)
+
+	prevKey, ok := signer.(*ecdsa.PrivateKey)
+	c.Assert(ok, Equals, true)
+
+	expectedDerivedKey := testutil.DecodeHexString(c, "ff7ac99d7a0f16980777b9ace6c316e43e3edb4b0575fab5c22ea80d3e031c1d")
+	c.Check(prevKey.X.Bytes(), DeepEquals, expectedDerivedKey)
+}
+
+func (s *keyDataPlatformSuite) TestDeriveSignerFixedKey2(c *C) {
+	primaryKey := testutil.DecodeHexString(c, "cc0ba15ded8561e2278d78a5c4c215653c9b1f872325a9e67882a89088e57023")
+	role := "test"
+
+	params := &KeyDataScopeParams{
+		PrimaryKey: primaryKey,
+		Role:       role,
+		KDFAlg:     crypto.SHA256,
+		MDAlg:      crypto.SHA256,
+		ModelAlg:   crypto.SHA256,
+	}
+
+	kds, err := NewKeyDataScope(params)
+	c.Assert(err, IsNil)
+	c.Check(kds, NotNil)
+
+	signer, err := kds.DeriveSigner(primaryKey, role)
+	c.Assert(err, IsNil)
+
+	privKey, ok := signer.(*ecdsa.PrivateKey)
+	c.Assert(ok, Equals, true)
+
+	expectedDerivedKey := testutil.DecodeHexString(c, "05962e1c19be2dc1c676b4d6fe0934f2f4af6f584bf03640f5acd9c399b960c6")
+	c.Check(privKey.X.Bytes(), DeepEquals, expectedDerivedKey)
+}
+
+func (s *keyDataPlatformSuite) TestDeriveSignerDifferentRoleMismatch(c *C) {
+	primaryKey := testutil.DecodeHexString(c, "90e29c3b7902dfc239c1c7aa5928ee232be2f1e7a4018aa7c5465a03a4c0be30")
+	role := "test"
+
+	params := &KeyDataScopeParams{
+		PrimaryKey: primaryKey,
+		Role:       role,
+		KDFAlg:     crypto.SHA256,
+		MDAlg:      crypto.SHA256,
+		ModelAlg:   crypto.SHA256,
+	}
+
+	kds, err := NewKeyDataScope(params)
+	c.Assert(err, IsNil)
+	c.Check(kds, NotNil)
+
+	signer, err := kds.DeriveSigner(primaryKey, role)
+	c.Assert(err, IsNil)
+
+	privKey, ok := signer.(*ecdsa.PrivateKey)
+	c.Assert(ok, Equals, true)
+
+	expectedDerivedKey := testutil.DecodeHexString(c, "ff7ac99d7a0f16980777b9ace6c316e43e3edb4b0575fab5c22ea80d3e031c1d")
+	c.Check(privKey.X.Bytes(), DeepEquals, expectedDerivedKey)
+
+	signer2, err := kds.DeriveSigner(primaryKey, "different")
+	c.Assert(err, IsNil)
+
+	privKey2, ok := signer2.(*ecdsa.PrivateKey)
+	c.Assert(ok, Equals, true)
+
+	expectedDerivedKey2 := testutil.DecodeHexString(c, "d518d18c366e6faac72c8fc1a180e01a7d52bc3e60512e990c10309fd6c82c9d")
+	c.Check(privKey2.X.Bytes(), DeepEquals, expectedDerivedKey2)
+
+	c.Check(privKey2.X.Bytes(), Not(DeepEquals), privKey.X.Bytes())
+}
+
 type mockPlatformKeyDataHandle struct {
 	Key         []byte `json:"key"`
 	IV          []byte `json:"iv"`
