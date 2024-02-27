@@ -254,7 +254,7 @@ type keyDataScope struct {
 	MDAlg  hashAlg `json:"md_alg"`
 }
 
-type AdditionalData struct {
+type additionalData struct {
 	Version          int
 	BaseVersion      int
 	KdfAlg           hashAlg
@@ -263,7 +263,7 @@ type AdditionalData struct {
 	KeyIdentifier    []byte
 }
 
-func (d *AdditionalData) marshalASN1(b *cryptobyte.Builder) {
+func (d *additionalData) marshalASN1(b *cryptobyte.Builder) {
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // SEQUENCE {
 		b.AddASN1Int64(int64(d.Version))      // version INTEGER
 		b.AddASN1Int64(int64(d.BaseVersion))  // baseVersion INTEGER
@@ -522,7 +522,7 @@ func (d *KeyDataScope) MakeAdditionalData(baseVersion int, kdfAlg crypto.Hash, a
 	h := alg.New()
 	h.Write(der)
 
-	aad := &AdditionalData{
+	aad := &additionalData{
 		Version:          d.data.Version,
 		BaseVersion:      baseVersion,
 		KdfAlg:           hashAlg(kdfAlg),

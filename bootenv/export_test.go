@@ -74,14 +74,14 @@ func (d *KeyDataScope) TestSetVersion(version int) {
 	d.data.Version = version
 }
 
-func UnmarshalAdditionalData(data []byte) (*AdditionalData, error) {
+func UnmarshalAdditionalData(data []byte) (*additionalData, error) {
 	s := cryptobyte.String(data)
 
 	if !s.ReadASN1(&s, cryptobyte_asn1.SEQUENCE) {
 		return nil, errors.New("malformed input")
 	}
 
-	aad := new(AdditionalData)
+	aad := new(additionalData)
 
 	if !s.ReadASN1Integer(&aad.Version) {
 		return nil, errors.New("malformed version")
