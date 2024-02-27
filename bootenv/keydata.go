@@ -267,7 +267,7 @@ type KeyDataScope struct {
 // NewKeyDataScope creates a new scope object from the given parameters.
 //
 // The PrimaryKey and the role parameters are used to derive a role unique
-// signing key which is used to sign a hash (using MDAlg) of an ASN1 marshalled
+// signing key which is used to sign a hash (using MDAlg) of a DER encoded
 // payload containing model digests and boot modes (which are now considered as
 // authorized for the scope). Initially that payload is empty.
 // The produced signature is stored in the scope object.
@@ -366,10 +366,10 @@ func (d *KeyDataScope) isAuthorized() (bool, error) {
 
 // SetAuthorizedSnapModels is used to set new authorized models for an existing key data scope.
 //
-// Each supplied model is ASN1 serialized and a digest is produced (using a model digest
+// Each supplied model is DER encoded and a digest is produced (using a model digest
 // algorithm that can be specific per digest list). The PrimaryKey and the role parameters
 // are used to derive a role unique signing key which is used to sign a hash (using scope's
-// MDAlg) of an ASN1 marshalled payload containing the already authorized boot modes and the
+// MDAlg) of a DER encoded payload containing the already authorized boot modes and the
 // new models' digest list.
 // On error the scope's already authorized model digests remain unchanged.
 func (d *KeyDataScope) SetAuthorizedSnapModels(key secboot.PrimaryKey, role string, models ...secboot.SnapModel) (err error) {
@@ -403,7 +403,7 @@ func (d *KeyDataScope) SetAuthorizedSnapModels(key secboot.PrimaryKey, role stri
 // SetAuthorizedBootModes is used to set new authorized boot modes for existing key data scope.
 //
 // The PrimaryKey and the role parameters are used to derive a role unique signing key which is
-// used to sign a hash (using scope's MDAlg) of an ASN1 marshalled payload containing the already
+// used to sign a hash (using scope's MDAlg) of a DER encoded payload containing the already
 // authorized model digests and the new boot modes.
 // On error the scope's already authorized boot modes remain unchanged.
 func (d *KeyDataScope) SetAuthorizedBootModes(key secboot.PrimaryKey, role string, modes ...string) (err error) {

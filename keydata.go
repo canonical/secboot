@@ -295,7 +295,7 @@ type passphraseParams struct {
 type keyData struct {
 	// Generation is a number used to differentiate between different key formats.
 	// i.e Gen1 keys are binary serialized and include a primary and an unlock key while
-	// Gen2 keys are ASN1 serialized and include a primary key and a unique key which is
+	// Gen2 keys are DER encoded and include a primary key and a unique key which is
 	// used to derive the unlock key.
 	Generation int `json:"generation,omitempty"`
 
