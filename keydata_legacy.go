@@ -38,7 +38,7 @@ var (
 	snapModelHMACKDFLabel = []byte("SNAP-MODEL-HMAC")
 )
 
-func unmarshalV1KeyPayload(data []byte) (unlockKey DiskUnlockKey, primaryKey PrimaryKey, err error) {
+func unmarshalV1KeyPayload(data []byte) (unlockKey DiskUnlockKey, auxKey PrimaryKey, err error) {
 	r := bytes.NewReader(data)
 
 	var sz uint16
@@ -58,8 +58,8 @@ func unmarshalV1KeyPayload(data []byte) (unlockKey DiskUnlockKey, primaryKey Pri
 	}
 
 	if sz > 0 {
-		primaryKey = make(PrimaryKey, sz)
-		if _, err := r.Read(primaryKey); err != nil {
+		auxKey = make(PrimaryKey, sz)
+		if _, err := r.Read(auxKey); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -68,7 +68,7 @@ func unmarshalV1KeyPayload(data []byte) (unlockKey DiskUnlockKey, primaryKey Pri
 		return nil, nil, fmt.Errorf("%v excess byte(s)", r.Len())
 	}
 
-	return unlockKey, primaryKey, nil
+	return unlockKey, auxKey, nil
 }
 
 type snapModelHMAC []byte
