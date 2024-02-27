@@ -329,6 +329,8 @@ type keyData struct {
 
 	// AuthorizedSnapModels contains information about the Snap models
 	// that have been authorized to access the data protected by this key.
+	// This field is only used by gen 1 keys. Gen 2 keys handle authorized
+	// snap models differently depending on the platform implementation.
 	AuthorizedSnapModels *authorizedSnapModels `json:"authorized_snap_models,omitempty"`
 }
 
