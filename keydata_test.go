@@ -1100,12 +1100,12 @@ func (s *keyDataSuite) TestWriteAtomic1(c *C) {
 }
 
 type testReadKeyDataData struct {
-	diskUnlockKey DiskUnlockKey
-	primaryKey    PrimaryKey
-	id            KeyID
-	r             KeyDataReader
-	model         SnapModel
-	authorized    bool
+	unlockKey  DiskUnlockKey
+	primaryKey PrimaryKey
+	id         KeyID
+	r          KeyDataReader
+	model      SnapModel
+	authorized bool
 }
 
 func (s *keyDataSuite) testReadKeyData(c *C, data *testReadKeyDataData) {
@@ -1119,7 +1119,7 @@ func (s *keyDataSuite) testReadKeyData(c *C, data *testReadKeyDataData) {
 
 	unlockKey, primaryKey, err := keyData.RecoverKeys()
 	c.Check(err, IsNil)
-	c.Check(unlockKey, DeepEquals, data.diskUnlockKey)
+	c.Check(unlockKey, DeepEquals, data.unlockKey)
 	c.Check(primaryKey, DeepEquals, data.primaryKey)
 }
 
@@ -1137,10 +1137,10 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
-		diskUnlockKey: unlockKey,
-		primaryKey:    primaryKey,
-		id:            id,
-		r:             &mockKeyDataReader{"foo", w.Reader()},
+		unlockKey:  unlockKey,
+		primaryKey: primaryKey,
+		id:         id,
+		r:          &mockKeyDataReader{"foo", w.Reader()},
 	})
 }
 
@@ -1158,10 +1158,10 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 	c.Check(err, IsNil)
 
 	s.testReadKeyData(c, &testReadKeyDataData{
-		diskUnlockKey: unlockKey,
-		primaryKey:    primaryKey,
-		id:            id,
-		r:             &mockKeyDataReader{"bar", w.Reader()},
+		unlockKey:  unlockKey,
+		primaryKey: primaryKey,
+		id:         id,
+		r:          &mockKeyDataReader{"bar", w.Reader()},
 	})
 }
 
@@ -1179,10 +1179,10 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 	c.Check(err, IsNil)
 
 	params := &testReadKeyDataData{
-		diskUnlockKey: unlockKey,
-		primaryKey:    primaryKey,
-		id:            id,
-		r:             &mockKeyDataReader{"foo", w.Reader()},
+		unlockKey:  unlockKey,
+		primaryKey: primaryKey,
+		id:         id,
+		r:          &mockKeyDataReader{"foo", w.Reader()},
 	}
 
 	s.testReadKeyData(c, params)
@@ -1202,10 +1202,10 @@ func (s *keyDataSuite) TestReadKeyData4(c *C) {
 	c.Check(err, IsNil)
 
 	params := &testReadKeyDataData{
-		diskUnlockKey: unlockKey,
-		primaryKey:    primaryKey,
-		id:            id,
-		r:             &mockKeyDataReader{"foo", w.Reader()},
+		unlockKey:  unlockKey,
+		primaryKey: primaryKey,
+		id:         id,
+		r:          &mockKeyDataReader{"foo", w.Reader()},
 	}
 
 	s.testReadKeyData(c, params)
