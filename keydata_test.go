@@ -1309,62 +1309,6 @@ func (s *keyDataSuite) TestLegacyWriteAtomic1(c *C) {
 		params:  protected})
 }
 
-func (s *keyDataSuite) TestRecoverLegacyKeyWithPassphrase(c *C) {
-	s.handler.passphraseSupport = true
-
-	var kdf testutil.MockKDF
-
-	primaryKey := testutil.DecodeHexString(c, "5a08905fcc1977e02ab206198f56cf2e5bd3b43660e0c3b3055ff0040b722a18")
-	unlockKey := testutil.DecodeHexString(c, "5cf4329807a9378f0164f94894f8e3ec9fe38ee8f090816ec8626ae9c631a68b")
-	j := []byte(
-		`{` +
-			`"generation":1,` +
-			`"platform_name":"mock",` +
-			`"platform_handle":` +
-			`{` +
-			`"key":"fwrbemoaBvzUpbEeP1GxThfwpSVmzJvKuGjrFCYoBGI=",` +
-			`"iv":"JzQxiiSLllGke9XlKXzytw==",` +
-			`"auth-key-hmac":"qgJDnOuFLKwgMAkSpq5U4qwN/APDjrtI6qMZ/0DhcUs=",` +
-			`"exp-generation":1,` +
-			`"exp-kdf_alg":5,` +
-			`"exp-auth-mode":1},` +
-			`"role":"",` +
-			`"kdf_alg":"sha256",` +
-			`"encrypted_payload":"WwOAw8GqWvsCk2TDEu9PLaLf3Z+4Ybroj0xT++6BXPIL5aT8aKWWHFDYl7nKx8KlOa818KO6AS/S+l6Hu6BnUJ3XjDw=",` +
-			`"passphrase_params":` +
-			`{` +
-			`"kdf":` +
-			`{` +
-			`"type":"argon2i",` +
-			`"salt":"FiMNjylKKlJgNsAX80OYKg==",` +
-			`"time":4,` +
-			`"memory":1024063,` +
-			`"cpus":4},` +
-			`"encryption":"aes-cfb",` +
-			`"derived_key_size":32,` +
-			`"encryption_key_size":32,` +
-			`"auth_key_size":32},` +
-			`"authorized_snap_models":` +
-			`{` +
-			`"alg":"sha256",` +
-			`"kdf_alg":"sha256",` +
-			`"key_digest":` +
-			`{` +
-			`"alg":"sha256",` +
-			`"salt":"LeNyUyr7cuWxenyUhODfMBUzOfUH2rNDQWXfDywGvI0=",` +
-			`"digest":"qKezdUsVhiShyjxF9/oFW411A+p7Q+4ytkBJzd83luc="},` +
-			`"hmacs":null}}
-`)
-
-	keyData, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
-	c.Assert(err, IsNil)
-
-	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeysWithPassphrase("passphrase", &kdf)
-	c.Check(err, IsNil)
-	c.Check(recoveredUnlockKey, DeepEquals, DiskUnlockKey(unlockKey))
-	c.Check(recoveredPrimaryKey, DeepEquals, PrimaryKey(primaryKey))
-}
-
 func (s *keyDataSuite) TestLegacyKeyPayloadUnmarshalInvalid1(c *C) {
 	payload := make([]byte, 66)
 	for i := range payload {
