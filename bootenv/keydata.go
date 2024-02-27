@@ -138,43 +138,6 @@ func (a hashAlg) marshalASN1(b *cryptobyte.Builder) {
 	})
 }
 
-func unmarshalHashAlg(s *cryptobyte.String) (hashAlg, error) {
-	var str cryptobyte.String
-
-	if !s.ReadASN1(&str, cryptobyte_asn1.SEQUENCE) {
-		return 0, errors.New("malformed input")
-	}
-
-	var oid asn1.ObjectIdentifier
-
-	if !str.ReadASN1ObjectIdentifier(&oid) {
-		return 0, errors.New("malformed Algorithm identifier")
-	}
-
-	var null uint8
-
-	if !str.ReadUint8(&null) {
-		return 0, errors.New("malformed input")
-	}
-
-	if len(oid) == len(sha1Oid) {
-		return hashAlg(crypto.SHA1), nil
-	}
-
-	switch oid[8] {
-	case sha224Oid[8]:
-		return hashAlg(crypto.SHA224), nil
-	case sha256Oid[8]:
-		return hashAlg(crypto.SHA256), nil
-	case sha384Oid[8]:
-		return hashAlg(crypto.SHA384), nil
-	case sha512Oid[8]:
-		return hashAlg(crypto.SHA512), nil
-	default:
-		return 0, errors.New("unsupported hash algorithm")
-	}
-}
-
 // digestList corresponds to a list of digests.
 type digestList struct {
 	Alg     hashAlg  `json:"alg"`     // The digest algorithm
