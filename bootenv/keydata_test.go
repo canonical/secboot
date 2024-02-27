@@ -304,6 +304,20 @@ func (s *keyDataPlatformSuite) testSetAuthorizedSnapModels(c *C, data *testSetAu
 	c.Assert(err, IsNil)
 
 	err = kds.SetAuthorizedSnapModels(primaryKey, data.role, data.validModels...)
+
+	if err == nil {
+		kdsData := kds.Data()
+
+		c.Check(kdsData.Version, Equals, 1)
+		c.Check(crypto.Hash(kdsData.Params.ModelDigests.Alg), Equals, data.modelAlg)
+		c.Check(crypto.Hash(kdsData.KDFAlg), Equals, data.kDFAlg)
+		c.Check(crypto.Hash(kdsData.MDAlg), Equals, data.mDAlg)
+
+		signer, err := kds.DeriveSigner(primaryKey, data.validRole)
+		c.Assert(err, IsNil)
+		c.Check(kdsData.PublicKey.PublicKey, DeepEquals, signer.Public().(*ecdsa.PublicKey))
+	}
+
 	return err
 }
 
