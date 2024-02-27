@@ -71,8 +71,7 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeSuccess(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(kds, NotNil)
 
-	err = kds.IsBootEnvironmentAuthorized()
-	c.Check(err, IsNil)
+	c.Check(kds.IsBootEnvironmentAuthorized(), IsNil)
 
 	data := kds.Data()
 
@@ -726,8 +725,7 @@ func (s *keyDataPlatformSuite) TestDeriveSigner(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(kds, NotNil)
 
-	err = kds.IsBootEnvironmentAuthorized()
-	c.Check(err, IsNil)
+	c.Check(kds.IsBootEnvironmentAuthorized(), IsNil)
 
 	signer, err := kds.DeriveSigner(primaryKey, role)
 	c.Assert(err, IsNil)
