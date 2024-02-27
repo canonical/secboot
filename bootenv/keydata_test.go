@@ -360,21 +360,18 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModelsWrongKey(c *C) {
 	validModels := []SnapModel{
 		s.makeMockModelAssertion(c, "model-a"),
 	}
-	data := &testSetAuthorizedSnapModelsData{
-		kDFAlg:      crypto.SHA256,
-		mDAlg:       crypto.SHA256,
-		modelAlg:    crypto.SHA256,
-		validRole:   "test",
-		role:        "different",
-		validModels: validModels,
-	}
+
+	validRole := "test"
+	kdfAlg := crypto.SHA256
+	mdAlg := crypto.SHA256
+	modelAlg := crypto.SHA256
 
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
-		Role:       data.validRole,
-		KDFAlg:     data.kDFAlg,
-		MDAlg:      data.mDAlg,
-		ModelAlg:   data.modelAlg,
+		Role:       validRole,
+		KDFAlg:     kdfAlg,
+		MDAlg:      mdAlg,
+		ModelAlg:   modelAlg,
 	}
 
 	kds, err := NewKeyDataScope(params)
@@ -382,7 +379,7 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModelsWrongKey(c *C) {
 
 	wrongKey, err := NewPrimaryKey(32)
 	c.Assert(err, IsNil)
-	err = kds.SetAuthorizedSnapModels(wrongKey, data.role, data.validModels...)
+	err = kds.SetAuthorizedSnapModels(wrongKey, "different", validModels...)
 	c.Check(err, ErrorMatches, "incorrect key supplied")
 }
 
