@@ -45,8 +45,10 @@ import (
 
 type keyDataPlatformSuite struct {
 	snapd_testutil.BaseTest
-	Model    SnapModel
-	BootMode string
+}
+
+func (s *keyDataPlatformSuite) SetUpTest(c *C) {
+	ClearBootModeAndModel()
 }
 
 var _ = Suite(&keyDataPlatformSuite{})
@@ -207,31 +209,6 @@ func (s *keyDataPlatformSuite) TestMakeAdditionalDataWithPassphrase(c *C) {
 		role:                    "foo",
 		expectedAad:             expectedAad,
 	})
-}
-
-func (s *keyDataPlatformSuite) mockState(c *C) {
-	s.AddCleanup(
-		MockSetModel(func(model SnapModel) bool {
-			s.Model = model
-			return true
-		}),
-	)
-	s.AddCleanup(
-		MockSetBootMode(func(mode string) bool {
-			s.BootMode = mode
-			return true
-		}),
-	)
-	s.AddCleanup(
-		MockLoadCurrentModel(func() (SnapModel, error) {
-			return s.Model, nil
-		}),
-	)
-	s.AddCleanup(
-		MockLoadCurrenBootMode(func() (string, error) {
-			return s.BootMode, nil
-		}),
-	)
 }
 
 func (s *keyDataPlatformSuite) makeMockModelAssertion(c *C, modelName string) SnapModel {
@@ -543,8 +520,6 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthValid1(c *C) {
 		"modeFoo",
 	}
 
-	s.mockState(c)
-
 	c.Check(s.testBootEnvAuth(c, &testBootEnvAuthData{
 		kdfAlg:      crypto.SHA256,
 		mdAlg:       crypto.SHA256,
@@ -567,8 +542,6 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthValid2(c *C) {
 	validModes := []string{
 		"modeFoo",
 	}
-
-	s.mockState(c)
 
 	c.Check(s.testBootEnvAuth(c, &testBootEnvAuthData{
 		kdfAlg:      crypto.SHA256,
@@ -594,8 +567,6 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthInvalidModel(c *C) {
 		"modeFoo",
 	}
 
-	s.mockState(c)
-
 	c.Check(s.testBootEnvAuth(c, &testBootEnvAuthData{
 		kdfAlg:      crypto.SHA256,
 		mdAlg:       crypto.SHA256,
@@ -619,8 +590,6 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthInvalidBootMode(c *C) {
 	}
 
 	invalidBootMode := "modeBar"
-
-	s.mockState(c)
 
 	c.Check(s.testBootEnvAuth(c, &testBootEnvAuthData{
 		kdfAlg:      crypto.SHA256,

@@ -27,6 +27,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"errors"
+	"sync/atomic"
 
 	"github.com/snapcore/secboot"
 	internal_crypto "github.com/snapcore/secboot/internal/crypto"
@@ -38,36 +39,9 @@ var (
 	ComputeSnapModelHash = computeSnapModelHash
 )
 
-func MockSetModel(f func(secboot.SnapModel) bool) (restore func()) {
-	origSetModel := SetModel
-	SetModel = f
-	return func() {
-		SetModel = origSetModel
-	}
-}
-
-func MockSetBootMode(f func(string) bool) (restore func()) {
-	origSetBootMode := SetBootMode
-	SetBootMode = f
-	return func() {
-		SetBootMode = origSetBootMode
-	}
-}
-
-func MockLoadCurrentModel(f func() (secboot.SnapModel, error)) (restore func()) {
-	origLoadCurrentModel := loadCurrentModel
-	loadCurrentModel = f
-	return func() {
-		loadCurrentModel = origLoadCurrentModel
-	}
-}
-
-func MockLoadCurrenBootMode(f func() (string, error)) (restore func()) {
-	origLoadCurrentBootMode := loadCurrentBootMode
-	loadCurrentBootMode = f
-	return func() {
-		loadCurrentBootMode = origLoadCurrentBootMode
-	}
+func ClearBootModeAndModel() {
+	currentModel = atomic.Value{}
+	currentBootMode = atomic.Value{}
 }
 
 func (d *KeyDataScope) TestSetVersion(version int) {

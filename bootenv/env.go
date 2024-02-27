@@ -20,7 +20,6 @@
 package bootenv
 
 import (
-	"errors"
 	"sync/atomic"
 
 	"github.com/snapcore/secboot"
@@ -31,26 +30,10 @@ var (
 	currentBootMode atomic.Value
 )
 
-var SetModel = func(model secboot.SnapModel) bool {
-	return currentModel.CompareAndSwap(nil, model)
+func SetModel(model secboot.SnapModel) {
+	currentModel.Store(model)
 }
 
-var SetBootMode = func(mode string) bool {
-	return currentBootMode.CompareAndSwap(nil, mode)
-}
-
-var loadCurrentModel = func() (secboot.SnapModel, error) {
-	model, ok := currentModel.Load().(secboot.SnapModel)
-	if !ok {
-		return nil, errors.New("SetModel hasn't been called yet")
-	}
-	return model, nil
-}
-
-var loadCurrentBootMode = func() (string, error) {
-	mode, ok := currentBootMode.Load().(string)
-	if !ok {
-		return "", errors.New("SetBootMode hasn't been called yet")
-	}
-	return mode, nil
+func SetBootMode(mode string) {
+	currentBootMode.Store(mode)
 }

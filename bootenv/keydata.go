@@ -437,9 +437,9 @@ func (d *KeyDataScope) IsBootEnvironmentAuthorized() error {
 	}
 
 	if len(d.data.Params.ModelDigests.Digests) > 0 {
-		model, err := loadCurrentModel()
-		if err != nil {
-			return err
+		model, ok := currentModel.Load().(secboot.SnapModel)
+		if !ok {
+			return errors.New("SetModel hasn't been called yet")
 		}
 
 		currentModelDigest, err := computeSnapModelHash(crypto.Hash(alg), model)
@@ -460,9 +460,9 @@ func (d *KeyDataScope) IsBootEnvironmentAuthorized() error {
 	}
 
 	if len(d.data.Params.Modes) > 0 {
-		mode, err := loadCurrentBootMode()
-		if err != nil {
-			return err
+		mode, ok := currentBootMode.Load().(string)
+		if !ok {
+			return errors.New("SetBootMode hasn't been called yet")
 		}
 
 		found := false
