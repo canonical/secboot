@@ -767,11 +767,11 @@ func (s *keyDataPlatformSuite) TestDeriveSignerFixedKey1(c *C) {
 	signer, err := kds.DeriveSigner(primaryKey, role)
 	c.Assert(err, IsNil)
 
-	prevKey, ok := signer.(*ecdsa.PrivateKey)
+	privKey, ok := signer.(*ecdsa.PrivateKey)
 	c.Assert(ok, Equals, true)
 
 	expectedDerivedKey := testutil.DecodeHexString(c, "ff7ac99d7a0f16980777b9ace6c316e43e3edb4b0575fab5c22ea80d3e031c1d")
-	c.Check(prevKey.X.Bytes(), DeepEquals, expectedDerivedKey)
+	c.Check(privKey.X.Bytes(), DeepEquals, expectedDerivedKey)
 }
 
 func (s *keyDataPlatformSuite) TestDeriveSignerFixedKey2(c *C) {
