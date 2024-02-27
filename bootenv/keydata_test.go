@@ -142,6 +142,7 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingModelAlg(c *C) {
 }
 
 type testMakeAdditionalDataData struct {
+	primaryKey          PrimaryKey
 	keyDataScopeVersion int
 	generation          int
 	authMode            AuthMode
@@ -151,14 +152,12 @@ type testMakeAdditionalDataData struct {
 	// into the additional data.
 	signingKeyDerivationAlg crypto.Hash
 	role                    string
+	expectedAad             []byte
 }
 
 func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditionalDataData) {
-	primaryKey, err := NewPrimaryKey(32)
-	c.Assert(err, IsNil)
-
 	params := &KeyDataScopeParams{
-		PrimaryKey: primaryKey,
+		PrimaryKey: data.primaryKey,
 		Role:       data.role,
 		KDFAlg:     data.signingKeyDerivationAlg,
 		MDAlg:      data.mdAlg,
@@ -175,37 +174,38 @@ func (s *keyDataPlatformSuite) testMakeAdditionalData(c *C, data *testMakeAdditi
 	aadBytes, err := kds.MakeAdditionalData(data.generation, data.keyDigestHashAlg, data.authMode)
 	c.Check(err, IsNil)
 
-	aad, err := UnmarshalAdditionalData(aadBytes)
-	c.Assert(err, IsNil)
-
-	c.Check(aad.Version, Equals, 1)
-	c.Check(aad.Generation, Equals, data.generation)
-	c.Check(crypto.Hash(aad.KdfAlg), Equals, data.keyDigestHashAlg)
-	c.Check(aad.AuthMode, Equals, data.authMode)
-	c.Check(crypto.Hash(aad.KeyIdentifierAlg), Equals, data.signingKeyDerivationAlg)
-
-	c.Check(kds.TestMatch(data.keyDigestHashAlg, aad.KeyIdentifier), Equals, true)
+	c.Check(aadBytes, DeepEquals, data.expectedAad)
 }
 
 func (s *keyDataPlatformSuite) TestMakeAdditionalData(c *C) {
+	primaryKey := testutil.DecodeHexString(c, "ab40b798dd6b47ca77d93241f40036d6d86e03f365b4ef9171b23e2bc38b9ef3")
+	expectedAad := testutil.DecodeHexString(c, "3049020101020101300d060960864801650304020105000a0100300d06096086480165030402010500042077511e42d7c0b2df1881189bd4720806fc92a6dee76cd1c9fe40c32310f6068d")
+
 	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
+		primaryKey:              primaryKey,
 		generation:              1,
 		authMode:                AuthModeNone,
 		mdAlg:                   crypto.SHA256,
 		keyDigestHashAlg:        crypto.SHA256,
 		signingKeyDerivationAlg: crypto.SHA256,
 		role:                    "foo",
+		expectedAad:             expectedAad,
 	})
 }
 
 func (s *keyDataPlatformSuite) TestMakeAdditionalDataWithPassphrase(c *C) {
+	primaryKey := testutil.DecodeHexString(c, "45db13f9857336d338c12a5e71aae5434032c3419b9e4e82c2de42cf510d93ee")
+	expectedAad := testutil.DecodeHexString(c, "3049020101020101300d060960864801650304020105000a0101300d060960864801650304020105000420765f9750024ce485a32d50c6595fa16fca71b4ea110a2e8361d070a975ba9bcc")
+
 	s.testMakeAdditionalData(c, &testMakeAdditionalDataData{
+		primaryKey:              primaryKey,
 		generation:              1,
 		authMode:                AuthModePassphrase,
 		mdAlg:                   crypto.SHA256,
 		keyDigestHashAlg:        crypto.SHA256,
 		signingKeyDerivationAlg: crypto.SHA256,
 		role:                    "foo",
+		expectedAad:             expectedAad,
 	})
 }
 

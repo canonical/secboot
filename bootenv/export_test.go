@@ -111,48 +111,6 @@ func unmarshalHashAlg(s *cryptobyte.String) (hashAlg, error) {
 	}
 }
 
-func UnmarshalAdditionalData(data []byte) (*additionalData, error) {
-	s := cryptobyte.String(data)
-
-	if !s.ReadASN1(&s, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("malformed input")
-	}
-
-	aad := new(additionalData)
-
-	if !s.ReadASN1Integer(&aad.Version) {
-		return nil, errors.New("malformed version")
-	}
-
-	if !s.ReadASN1Integer(&aad.Generation) {
-		return nil, errors.New("malformed base version")
-	}
-
-	kdfAlg, err := unmarshalHashAlg(&s)
-	if err != nil {
-		return nil, errors.New("malformed kdf")
-	}
-	aad.KdfAlg = kdfAlg
-
-	var authMode int
-	if !s.ReadASN1Enum(&authMode) {
-		return nil, errors.New("malformed Auth mode")
-	}
-	aad.AuthMode = secboot.AuthMode(authMode)
-
-	keyIdAlg, err := unmarshalHashAlg(&s)
-	if err != nil {
-		return nil, errors.New("malformed kdf")
-	}
-	aad.KeyIdentifierAlg = keyIdAlg
-
-	if !s.ReadASN1Bytes(&aad.KeyIdentifier, cryptobyte_asn1.OCTET_STRING) {
-		return nil, errors.New("malformed Key identifier")
-	}
-
-	return aad, nil
-}
-
 func (d *KeyDataScope) TestMatch(KDFAlg crypto.Hash, keyIdentifier []byte) bool {
 	der, err := x509.MarshalPKIXPublicKey(d.data.PublicKey.PublicKey)
 	if err != nil {
