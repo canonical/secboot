@@ -507,7 +507,9 @@ func (d *KeyDataScope) IsBootEnvironmentAuthorized() error {
 }
 
 // MakeAdditionalData constructs the additional data that need to be integrity protected for
-// a key data scope (in AES-GCM for example).
+// a key data scope. For example a platform using AES-GCM can use it to ensure that the authentication
+// mode of a key data object is immutable and tampering of this can be detected by the early boot
+// environment.
 func (d *KeyDataScope) MakeAdditionalData(baseVersion int, kdfAlg crypto.Hash, authMode secboot.AuthMode) ([]byte, error) {
 	alg := d.data.MDAlg
 	if !alg.Available() {
