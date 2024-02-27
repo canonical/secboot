@@ -24,7 +24,6 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/x509"
 	"encoding/asn1"
 	"errors"
@@ -184,16 +183,6 @@ func NewEcdsaPublicKey(rand []byte) (ecdsaPublicKey, error) {
 	pk.PublicKey = privateKey.Public().(*ecdsa.PublicKey)
 
 	return pk, nil
-}
-
-func NewPrimaryKey(sz1 int) (secboot.PrimaryKey, error) {
-	primaryKey := make(secboot.PrimaryKey, sz1)
-	_, err := rand.Read(primaryKey)
-	if err != nil {
-		return nil, err
-	}
-
-	return primaryKey, nil
 }
 
 func (d *KeyDataScope) Data() keyDataScope {
