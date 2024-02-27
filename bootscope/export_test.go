@@ -25,14 +25,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
-	"encoding/asn1"
-	"errors"
 	"sync/atomic"
 
 	"github.com/snapcore/secboot"
 	internal_crypto "github.com/snapcore/secboot/internal/crypto"
-	"golang.org/x/crypto/cryptobyte"
-	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 var (
@@ -46,43 +42,6 @@ func ClearBootModeAndModel() {
 
 func (d *KeyDataScope) TestSetVersion(version int) {
 	d.data.Version = version
-}
-
-func unmarshalHashAlg(s *cryptobyte.String) (hashAlg, error) {
-	var str cryptobyte.String
-
-	if !s.ReadASN1(&str, cryptobyte_asn1.SEQUENCE) {
-		return 0, errors.New("malformed input")
-	}
-
-	var oid asn1.ObjectIdentifier
-
-	if !str.ReadASN1ObjectIdentifier(&oid) {
-		return 0, errors.New("malformed Algorithm identifier")
-	}
-
-	var null uint8
-
-	if !str.ReadUint8(&null) {
-		return 0, errors.New("malformed input")
-	}
-
-	if len(oid) == len(sha1Oid) {
-		return hashAlg(crypto.SHA1), nil
-	}
-
-	switch oid[8] {
-	case sha224Oid[8]:
-		return hashAlg(crypto.SHA224), nil
-	case sha256Oid[8]:
-		return hashAlg(crypto.SHA256), nil
-	case sha384Oid[8]:
-		return hashAlg(crypto.SHA384), nil
-	case sha512Oid[8]:
-		return hashAlg(crypto.SHA512), nil
-	default:
-		return 0, errors.New("unsupported hash algorithm")
-	}
 }
 
 func (d *KeyDataScope) TestMatch(KDFAlg crypto.Hash, keyIdentifier []byte) bool {
