@@ -17,7 +17,7 @@
  *
  */
 
-package bootenv_test
+package bootscope_test
 
 import (
 	"bytes"
@@ -38,7 +38,7 @@ import (
 
 	"github.com/snapcore/secboot"
 	. "github.com/snapcore/secboot"
-	. "github.com/snapcore/secboot/bootenv"
+	. "github.com/snapcore/secboot/bootscope"
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 )

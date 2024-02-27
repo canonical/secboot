@@ -17,7 +17,7 @@
  *
  */
 
-package bootenv
+package bootscope
 
 import (
 	"sync/atomic"

@@ -17,13 +17,13 @@
  *
  */
 
-package bootenv_test
+package bootscope_test
 
 import (
 	"crypto"
 	"encoding/base64"
 
-	"github.com/snapcore/secboot/bootenv"
+	"github.com/snapcore/secboot/bootscope"
 	"github.com/snapcore/secboot/internal/testutil"
 	. "gopkg.in/check.v1"
 )
@@ -46,7 +46,7 @@ func (s *snapSuite) TestComputeSnapModelHash(c *C) {
 	expected, err := base64.StdEncoding.DecodeString("OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU=")
 	c.Assert(err, IsNil)
 
-	modelAsn, err := bootenv.ComputeSnapModelHash(alg, model)
+	modelAsn, err := bootscope.ComputeSnapModelHash(alg, model)
 	c.Assert(err, IsNil)
 	c.Check(modelAsn, DeepEquals, expected)
 }
