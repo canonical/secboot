@@ -244,9 +244,18 @@ func (d *additionalData) marshalASN1(b *cryptobyte.Builder) {
 type KeyDataScopeParams struct {
 	PrimaryKey secboot.PrimaryKey
 	Role       string
-	KDFAlg     crypto.Hash
-	MDAlg      crypto.Hash
-	ModelAlg   crypto.Hash
+
+	// KDFAlg specifies the algorithm used to derive the role unique
+	// signing key from the primary key.
+	KDFAlg crypto.Hash
+
+	// MDAlg specifies the algorithm used to compute the digest of the scope
+	// object (which includes model digests and the boot modes). This is signed
+	// with the role unique signing key to produce the scope signature.
+	MDAlg crypto.Hash
+
+	// ModelAlg specifies the algorithm used to compute the model digests.
+	ModelAlg crypto.Hash
 }
 
 // KeyDataScope represents a key data's scope object which encapsulates information
