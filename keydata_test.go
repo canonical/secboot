@@ -1083,19 +1083,6 @@ func (s *keyDataSuite) TestChangePassphraseWrongPassphrase(c *C) {
 	s.checkKeyDataJSONAuthModePassphrase(c, keyData, protected, 0, "12345678", kdfOptions)
 }
 
-func (s *keyDataSuite) TestSnapModelAuthErrorHandling(c *C) {
-	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
-	keyData, err := NewKeyData(protected)
-
-	w := makeMockKeyDataWriter()
-	c.Check(keyData.WriteAtomic(w), IsNil)
-
-	authorized, err := keyData.IsSnapModelAuthorized(primaryKey, nil)
-	c.Check(err, ErrorMatches, "unsupported key data generation number")
-	c.Check(authorized, Equals, false)
-}
-
 type testWriteAtomicData struct {
 	keyData *KeyData
 	params  *KeyParams
@@ -1533,6 +1520,19 @@ func (s *keyDataSuite) TestLegacySnapModelAuth6(c *C) {
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 		authorized: false})
+}
+
+func (s *keyDataSuite) TestLegacySnapModelAuthErrorHandling(c *C) {
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	keyData, err := NewKeyData(protected)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData.WriteAtomic(w), IsNil)
+
+	authorized, err := keyData.IsSnapModelAuthorized(primaryKey, nil)
+	c.Check(err, ErrorMatches, "unsupported key data generation number")
+	c.Check(authorized, Equals, false)
 }
 
 func (s *keyDataSuite) TestLegacySetAuthorizedSnapModelsWithWrongKey(c *C) {
