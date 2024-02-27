@@ -195,3 +195,7 @@ func NewPrimaryKey(sz1 int) (secboot.PrimaryKey, error) {
 
 	return primaryKey, nil
 }
+
+func (d *KeyDataScope) Data() keyDataScope {
+	return d.data
+}

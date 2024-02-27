@@ -54,12 +54,17 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeSuccess(c *C) {
 	primaryKey, err := NewPrimaryKey(32)
 	c.Assert(err, IsNil)
 
+	role := "test"
+	kdfAlg := crypto.SHA256
+	mdAlg := crypto.SHA256
+	modelAlg := crypto.SHA256
+
 	params := &KeyDataScopeParams{
 		PrimaryKey: primaryKey,
-		Role:       "test",
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
+		Role:       role,
+		KDFAlg:     kdfAlg,
+		MDAlg:      mdAlg,
+		ModelAlg:   modelAlg,
 	}
 
 	kds, err := NewKeyDataScope(params)
@@ -68,6 +73,17 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeSuccess(c *C) {
 
 	err = kds.IsBootEnvironmentAuthorized()
 	c.Check(err, IsNil)
+
+	data := kds.Data()
+
+	c.Check(data.Version, Equals, 1)
+	c.Check(crypto.Hash(data.Params.ModelDigests.Alg), Equals, modelAlg)
+	c.Check(crypto.Hash(data.KDFAlg), Equals, kdfAlg)
+	c.Check(crypto.Hash(data.MDAlg), Equals, mdAlg)
+
+	signer, err := kds.DeriveSigner(primaryKey, role)
+	c.Assert(err, IsNil)
+	c.Check(data.PublicKey.PublicKey, DeepEquals, signer.Public().(*ecdsa.PublicKey))
 }
 
 func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingKDF(c *C) {
