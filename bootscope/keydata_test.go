@@ -712,6 +712,35 @@ func (s *keyDataPlatformSuite) TestEcdsaPublicKeyUnmarshalJSONInvalid(c *C) {
 	c.Check(err, ErrorMatches, "invalid key type")
 }
 
+func (s *keyDataPlatformSuite) TestKeyDataScopeMarshalJSONAndUnmarshalJSON(c *C) {
+	primaryKey, err := NewPrimaryKey(32)
+	c.Assert(err, IsNil)
+	role := "test"
+
+	params := &KeyDataScopeParams{
+		PrimaryKey: primaryKey,
+		Role:       role,
+		KDFAlg:     crypto.SHA256,
+		MDAlg:      crypto.SHA256,
+		ModelAlg:   crypto.SHA256,
+	}
+
+	kds, err := NewKeyDataScope(params)
+	c.Assert(err, IsNil)
+	c.Check(kds, NotNil)
+
+	kdsBytes, err := kds.MarshalJSON()
+	c.Check(err, IsNil)
+
+	var kds2 KeyDataScope
+
+	kds2.UnmarshalJSON(kdsBytes)
+
+	kdsBytes2, err := kds2.MarshalJSON()
+	c.Assert(err, IsNil)
+	c.Check(kdsBytes2, DeepEquals, kdsBytes)
+}
+
 func (s *keyDataPlatformSuite) TestDeriveSigner(c *C) {
 	primaryKey, err := NewPrimaryKey(32)
 	c.Assert(err, IsNil)

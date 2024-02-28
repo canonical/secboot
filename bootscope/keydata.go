@@ -264,6 +264,19 @@ type KeyDataScope struct {
 	data keyDataScope
 }
 
+func (d KeyDataScope) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.data)
+}
+
+func (d *KeyDataScope) UnmarshalJSON(data []byte) error {
+	var kds keyDataScope
+	if err := json.Unmarshal(data, &kds); err != nil {
+		return err
+	}
+	d.data = kds
+	return nil
+}
+
 // NewKeyDataScope creates a new scope object from the given parameters.
 //
 // The PrimaryKey and the role parameters are used to derive a role unique
