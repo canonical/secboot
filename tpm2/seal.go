@@ -187,9 +187,9 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	}
 
 	aad, err := mu.MarshalToBytes(&additionalData_v3{
-		BaseVersion: uint32(secboot.KeyDataVersion),
-		KDFAlg:      tpm2.HashAlgorithmSHA256,
-		AuthMode:    params.AuthMode,
+		Generation: uint32(secboot.KeyDataGeneration),
+		KDFAlg:     tpm2.HashAlgorithmSHA256,
+		AuthMode:   params.AuthMode,
 	})
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create AAD: %w", err)

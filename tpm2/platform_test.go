@@ -197,7 +197,7 @@ func (s *platformSuite) testRecoverKeys(c *C, params *ProtectKeyParams) {
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
 	platformKeyData := &secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),
@@ -253,7 +253,7 @@ func (s *platformSuite) testRecoverKeysNoValidSRK(c *C, prepareSrk func()) {
 
 	var handler PlatformKeyDataHandler
 	payload, err := handler.RecoverKeys(&secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256)},
 		s.lastEncryptedPayload)
@@ -307,7 +307,7 @@ func (s *platformSuite) testRecoverKeysImportable(c *C, params *ProtectKeyParams
 
 	var handler PlatformKeyDataHandler
 	payload, err := handler.RecoverKeys(&secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256)},
 		s.lastEncryptedPayload)
@@ -356,7 +356,7 @@ func (s *platformSuite) TestRecoverKeysNoTPMConnection(c *C) {
 
 	var handler PlatformKeyDataHandler
 	_, err = handler.RecoverKeys(&secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256)},
 		s.lastEncryptedPayload)
@@ -381,7 +381,7 @@ func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*s
 
 	var handler PlatformKeyDataHandler
 	_, err = handler.RecoverKeys(&secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		AuthMode:      secboot.AuthModeNone,
 		Role:          "",
 		KDFAlg:        crypto.Hash(crypto.SHA256),
@@ -502,7 +502,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
 	platformKeyData := &secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),
@@ -513,7 +513,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: newHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),
@@ -579,7 +579,7 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
 	platformKeyData := &secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),
@@ -590,7 +590,7 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: newHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		// AuthMode:      k.AuthMode(),
@@ -651,7 +651,7 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
 	platformKeyData := &secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),
@@ -662,7 +662,7 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
-		Version:       k.Version(),
+		Generation:    k.Generation(),
 		EncodedHandle: newHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),

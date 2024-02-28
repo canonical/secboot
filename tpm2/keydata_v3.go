@@ -35,13 +35,13 @@ import (
 )
 
 type additionalData_v3 struct {
-	BaseVersion uint32
-	KDFAlg      tpm2.HashAlgorithmId
-	AuthMode    secboot.AuthMode
+	Generation uint32
+	KDFAlg     tpm2.HashAlgorithmId
+	AuthMode   secboot.AuthMode
 }
 
 func (d additionalData_v3) Marshal(w io.Writer) error {
-	_, err := mu.MarshalToWriter(w, uint32(3), d.BaseVersion, d.KDFAlg, d.AuthMode)
+	_, err := mu.MarshalToWriter(w, uint32(3), d.Generation, d.KDFAlg, d.AuthMode)
 	return err
 }
 
@@ -165,16 +165,16 @@ func (d *keyData_v3) Policy() keyDataPolicy {
 	return d.PolicyData
 }
 
-func (d *keyData_v3) Decrypt(key, payload []byte, baseVersion uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
+func (d *keyData_v3) Decrypt(key, payload []byte, generation uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
 	// We only support AES-256-GCM with a 12-byte nonce, so we expect 44 bytes here
 	if len(key) != 32+12 {
 		return nil, errors.New("invalid symmetric key size")
 	}
 
 	aad, err := mu.MarshalToBytes(&additionalData_v3{
-		BaseVersion: baseVersion,
-		KDFAlg:      kdfAlg,
-		AuthMode:    authMode,
+		Generation: generation,
+		KDFAlg:     kdfAlg,
+		AuthMode:   authMode,
 	})
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create AAD: %w", err)

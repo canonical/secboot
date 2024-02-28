@@ -39,10 +39,10 @@ const platformName = "tpm2"
 type platformKeyDataHandler struct{}
 
 func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData, encryptedPayload, authKey []byte) ([]byte, error) {
-	if data.Version < 0 || int64(data.Version) > math.MaxUint32 {
+	if data.Generation < 0 || int64(data.Generation) > math.MaxUint32 {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
-			Err:  fmt.Errorf("invalid base key data version: %d", data.Version)}
+			Err:  fmt.Errorf("invalid key data generation: %d", data.Generation)}
 	}
 
 	kdfAlg, err := hashAlgorithmIdFromCryptoHash(data.KDFAlg)
@@ -102,7 +102,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	payload, err := k.data.Decrypt(symKey, encryptedPayload, uint32(data.Version), kdfAlg, data.AuthMode)
+	payload, err := k.data.Decrypt(symKey, encryptedPayload, uint32(data.Generation), kdfAlg, data.AuthMode)
 	if err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,

@@ -619,9 +619,9 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 	c.Assert(err, IsNil)
 
 	aad, err := mu.MarshalToBytes(&AdditionalData_v3{
-		BaseVersion: uint32(kd.Version()),
-		KDFAlg:      tpm2.HashAlgorithmSHA256,
-		AuthMode:    kd.AuthMode(),
+		Generation: uint32(kd.Generation()),
+		KDFAlg:     tpm2.HashAlgorithmSHA256,
+		AuthMode:   kd.AuthMode(),
 	})
 
 	aead, err := cipher.NewGCM(b)
