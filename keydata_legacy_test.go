@@ -64,11 +64,9 @@ func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey 
 	stream := cipher.NewCFBEncrypter(b, handle.IV)
 
 	out = &KeyParams{
-		PlatformName:      s.mockPlatformName,
-		Handle:            &handle,
-		EncryptedPayload:  make([]byte, len(payload)),
-		PrimaryKey:        auxKey,
-		SnapModelAuthHash: modelAuthHash}
+		PlatformName:     s.mockPlatformName,
+		Handle:           &handle,
+		EncryptedPayload: make([]byte, len(payload))}
 	stream.XORKeyStream(out.EncryptedPayload, payload)
 	return
 }

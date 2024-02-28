@@ -813,7 +813,6 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 }
 
 type testActivateVolumeWithKeyDataData struct {
-	authorizedModels []SnapModel
 	passphrase       string
 	volumeName       string
 	sourceDevicePath string
@@ -837,8 +836,6 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 		keyData, unlockKey, primaryKey = s.newNamedKeyData(c, "")
 	}
 	slot := s.addMockKeyslot(data.sourceDevicePath, unlockKey)
-
-	c.Check(keyData.SetAuthorizedSnapModels(primaryKey, data.authorizedModels...), IsNil)
 
 	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
 
@@ -884,17 +881,9 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData1(c *C) {
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
-		authorizedModels: models,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		model:            models[0]})
@@ -902,44 +891,11 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData1(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData2(c *C) {
 	// Test with different volumeName / sourceDevicePath
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
-		authorizedModels: models,
 		volumeName:       "foo",
 		sourceDevicePath: "/dev/vda2",
-		model:            models[0]})
-}
-
-func (s *cryptSuite) TestActivateVolumeWithKeyData3(c *C) {
-	// Test with different authorized models
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "other-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-
-	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
-		authorizedModels: models,
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
 		model:            models[0]})
 }
 
@@ -953,39 +909,21 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData4(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData5(c *C) {
 	// Test with passphrase
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
 		passphrase:       "1234",
-		authorizedModels: models,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		passphraseTries:  1,
 		authResponses:    []interface{}{"1234"},
-		model:            models[0]})
+	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData6(c *C) {
 	// Test with passphrase using multiple tries
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
 		passphrase:       "1234",
-		authorizedModels: models,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		passphraseTries:  3,
@@ -995,17 +933,9 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData6(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData7(c *C) {
 	// Test with LUKS token
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
-		authorizedModels: models,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		model:            models[0],
@@ -1015,17 +945,9 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData7(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData8(c *C) {
 	// Test with LUKS token with passphrase
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
-		authorizedModels: models,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		model:            models[0],
@@ -1040,17 +962,9 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData9(c *C) {
 	// Test with LUKS token and keyslot != 0
 	s.addMockKeyslot("/dev/sda1", nil) // add an empty slot
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
-		authorizedModels: models,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		model:            models[0],
@@ -1059,8 +973,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData9(c *C) {
 }
 
 type testActivateVolumeWithKeyDataErrorHandlingData struct {
-	primaryKey  DiskUnlockKey
-	recoveryKey RecoveryKey
+	diskUnlockKey DiskUnlockKey
+	recoveryKey   RecoveryKey
 
 	authRequestor *mockAuthRequestor
 
@@ -1077,7 +991,7 @@ type testActivateVolumeWithKeyDataErrorHandlingData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *testActivateVolumeWithKeyDataErrorHandlingData) error {
-	s.addMockKeyslot("/dev/sda1", data.primaryKey)
+	s.addMockKeyslot("/dev/sda1", data.diskUnlockKey)
 	s.addMockKeyslot("/dev/sda1", data.recoveryKey[:])
 
 	var authRequestor AuthRequestor
@@ -1148,7 +1062,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling2(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
@@ -1166,7 +1080,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
 	s.handler.state = mockPlatformDeviceStateUninitialized
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
@@ -1199,7 +1113,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		recoveryKeyTries: 0,
 		keyData:          keyData,
@@ -1220,7 +1134,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}}},
 		recoveryKeyTries: 1,
@@ -1243,7 +1157,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}, recoveryKey}},
 		recoveryKeyTries: 2,
@@ -1261,7 +1175,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
 	s.handler.state = mockPlatformDeviceStateUnavailable
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
+		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{errors.New("some error"), recoveryKey}},
 		recoveryKeyTries: 2,
@@ -1290,8 +1204,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling10(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:  key,
-		recoveryKey: recoveryKey,
+		diskUnlockKey: key,
+		recoveryKey:   recoveryKey,
 		authRequestor: &mockAuthRequestor{
 			passphraseResponses:  []interface{}{"incorrect", "invalid"},
 			recoveryKeyResponses: []interface{}{recoveryKey}},
@@ -1335,8 +1249,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling13(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:  key,
-		recoveryKey: recoveryKey,
+		diskUnlockKey: key,
+		recoveryKey:   recoveryKey,
 		authRequestor: &mockAuthRequestor{
 			passphraseResponses:  []interface{}{""},
 			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
@@ -1352,38 +1266,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling13(c *C) {
 		"systemd-cryptsetup failed with: exit status 1")
 }
 
-func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling14(c *C) {
-	// Test with an invalid value for SnapModel
-	keyData, _, _ := s.newNamedKeyData(c, "")
-
-	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		keyData: keyData,
-	}), ErrorMatches, "nil Model")
-}
-
-func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling15(c *C) {
-	// Test that activation fails if the supplied model is not authorized
-	keyData, key, _ := s.newNamedKeyData(c, "foo")
-	recoveryKey := s.newRecoveryKey()
-
-	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:       key,
-		recoveryKey:      recoveryKey,
-		recoveryKeyTries: 0,
-		keyData:          keyData,
-		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		activateTries: 0,
-	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
-		"- foo: snap model is not authorized\n"+
-		"and activation with recovery key failed: no recovery key tries permitted")
-}
-
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling16(c *C) {
 	// Test that error in authRequestor error surfaces
 	var kdf testutil.MockKDF
@@ -1391,8 +1273,8 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling16(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		primaryKey:  key,
-		recoveryKey: recoveryKey,
+		diskUnlockKey: key,
+		recoveryKey:   recoveryKey,
 		authRequestor: &mockAuthRequestor{
 			passphraseResponses:  []interface{}{errors.New("")},
 			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
@@ -1457,16 +1339,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData1(c *C) {
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
@@ -1483,16 +1356,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData2(c *C) {
 	// Test with a different volumeName / sourceDevicePath
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
@@ -1509,16 +1373,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData3(c *C) {
 	// Try with an invalid first key - the second key should be used for activation.
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys[1:],
@@ -1537,16 +1392,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData4(c *C) {
 	passphrases := []string{"1234", "5678"}
 	keyData, keys, auxKeys := s.newMultipleNamedKeyDataWithPassphrases(c, passphrases, &kdf, "", "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
@@ -1567,16 +1413,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData5(c *C) {
 	passphrases := []string{"1234", "5678"}
 	keyData, keys, auxKeys := s.newMultipleNamedKeyDataWithPassphrases(c, passphrases, &kdf, "", "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
@@ -1602,16 +1439,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData6(c *C) {
 	unlockKeys := []DiskUnlockKey{unlockKey1, unlockKey2}
 	primaryKeys := []PrimaryKey{primaryKey1, primaryKey2}
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(primaryKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(primaryKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             unlockKeys,
@@ -1632,16 +1460,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData7(c *C) {
 	passphrases := []string{"1234", "5678"}
 	keyData, keys, auxKeys := s.newMultipleNamedKeyDataWithPassphrases(c, passphrases, &kdf, "", "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
@@ -1668,16 +1487,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData8(c *C) {
 	unlockKeys := []DiskUnlockKey{unlockKey1, unlockKey2}
 	primaryKeys := []PrimaryKey{primaryKey1, primaryKey2}
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(primaryKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(primaryKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             unlockKeys[1:],
@@ -1692,54 +1502,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData8(c *C) {
 		validAuxKey:      primaryKeys[1]})
 }
 
-func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData9(c *C) {
-	// Try where the supplied model cannot be authorized via the first key - the
-	// second key should be used for activation.
-	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
-
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "other-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-	}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models[0]), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models[1]), IsNil)
-
-	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
-		keys:             keys,
-		keyData:          keyData,
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		model:            models[1],
-		activateSlots:    []int{luks2.AnySlot},
-		validKey:         keys[1],
-		validAuxKey:      auxKeys[1]})
-}
-
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData10(c *C) {
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
-
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
@@ -1756,18 +1520,9 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData11(c *C) {
 	// Test priority for LUKS stored keys
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "luks1", "luks2")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+	models := []SnapModel{nil}
 
 	for i := range keyData {
-		c.Check(keyData[i].SetAuthorizedSnapModels(auxKeys[i], models...), IsNil)
-
 		w := makeMockKeyDataWriter()
 		c.Check(keyData[i].WriteAtomic(w), IsNil)
 
@@ -1795,16 +1550,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData13(c *C) {
 	// Test that external keyData has precedence over the LUKS stored ones
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "luks", "external")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	w := makeMockKeyDataWriter()
 	c.Check(keyData[0].WriteAtomic(w), IsNil)
@@ -1828,42 +1574,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData13(c *C) {
 		validAuxKey:      auxKeys[1]})
 }
 
-func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData14(c *C) {
-	// Test unauthorized external keyData with authorized LUKS keyData
-	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "luks", "external")
-
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-
-	w := makeMockKeyDataWriter()
-	c.Check(keyData[0].WriteAtomic(w), IsNil)
-
-	token := &luksview.KeyDataToken{
-		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 0,
-			TokenName:    "default",
-		},
-		Data: w.final.Bytes()}
-	s.addMockToken("/dev/sda1", token)
-
-	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
-		keys:             keys,
-		keyData:          keyData[1:],
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
-		activateSlots:    []int{0},
-		validKey:         keys[0],
-		validAuxKey:      auxKeys[0]})
-}
-
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData15(c *C) {
 	// Test activation with empty LUKS token but valid external token
 	slot := s.addMockKeyslot("/dev/sda1", nil) // add an empty slot for the empty token
@@ -1876,15 +1586,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData15(c *C) {
 
 	keyData, key, auxKey := s.newNamedKeyData(c, "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
+	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             []DiskUnlockKey{key},
@@ -1910,15 +1612,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData16(c *C) {
 
 	keyData, key, auxKey := s.newNamedKeyData(c, "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData.SetAuthorizedSnapModels(auxKey, models...), IsNil)
+	models := []SnapModel{nil}
 
 	stderr := new(bytes.Buffer)
 	restore := MockStderr(stderr)
@@ -1944,16 +1638,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData17(c *C) {
 
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	for i, kd := range keyData {
 		w := makeMockKeyDataWriter()
@@ -1984,16 +1669,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData18(c *C) {
 	// valid LUKS token.
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
-	models := []SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
-	c.Check(keyData[0].SetAuthorizedSnapModels(auxKeys[0], models...), IsNil)
-	c.Check(keyData[1].SetAuthorizedSnapModels(auxKeys[1], models...), IsNil)
+	models := []SnapModel{nil}
 
 	w := makeMockKeyDataWriter()
 	c.Check(keyData[1].WriteAtomic(w), IsNil)
@@ -2319,38 +1995,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling13(c *C) 
 		"- bar: cannot recover key: the supplied passphrase is incorrect\n"+
 		"and activation with recovery key failed: cannot activate volume: "+
 		"systemd-cryptsetup failed with: exit status 1")
-}
-
-func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling14(c *C) {
-	// Test with an invalid value for SnapModel.
-	keyData, _, _ := s.newMultipleNamedKeyData(c, "", "")
-
-	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
-		keyData: keyData,
-	}), ErrorMatches, "nil Model")
-}
-func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling15(c *C) {
-	// Test with an unauthorized snap model.
-	keyData, keys, _ := s.newMultipleNamedKeyData(c, "foo", "bar")
-	recoveryKey := s.newRecoveryKey()
-
-	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
-		keys:        keys,
-		recoveryKey: recoveryKey,
-		keyData:     keyData,
-		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "fake-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		recoveryKeyTries: 0,
-		activateTries:    0,
-	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
-		"- foo: snap model is not authorized\n"+
-		"- bar: snap model is not authorized\n"+
-		"and activation with recovery key failed: no recovery key tries permitted")
 }
 
 type testActivateVolumeWithKeyData struct {
@@ -4048,4 +3692,617 @@ func (s *cryptSuiteUnmocked) TestRenameLUKS2ContainerRecoveryKey(c *C) {
 			TokenBase: luksview.TokenBase{
 				TokenName:    "bar",
 				TokenKeyslot: 1}}})
+}
+
+// Legacy
+func (s *cryptSuite) TestActivateVolumeWithLegacyKeyData3(c *C) {
+	var err error
+	var unlockKey DiskUnlockKey
+	var primaryKey PrimaryKey
+	var keyData *KeyData
+	var kdf testutil.MockKDF
+
+	data := &testActivateVolumeWithKeyDataData{
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1"}
+
+	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	primaryKey = testutil.DecodeHexString(c, "b410288b4d466cbeb08b490e5a1728dad0282b27c15f1f4828cac62e88fb7ff5")
+	unlockKey = testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+	j := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	keyData, err = ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	slot := s.addMockKeyslot(data.sourceDevicePath, unlockKey)
+
+	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
+
+	options := &ActivateVolumeOptions{
+		PassphraseTries: data.passphraseTries,
+		KeyringPrefix:   data.keyringPrefix,
+		Model:           model}
+
+	slot = luks2.AnySlot
+	err = ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, &kdf, options, keyData)
+
+	c.Assert(err, IsNil)
+
+	c.Check(s.luks2.operations, DeepEquals, []string{
+		"newLUKSView(" + data.sourceDevicePath + ",0)",
+		fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", slot),
+	})
+
+	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
+	for _, rsp := range authRequestor.passphraseRequests {
+		c.Check(rsp.volumeName, Equals, data.volumeName)
+		c.Check(rsp.sourceDevicePath, Equals, data.sourceDevicePath)
+	}
+
+	// This should be done last because it may fail in some circumstances.
+	s.checkKeyDataKeysInKeyring(c, data.keyringPrefix, data.sourceDevicePath, unlockKey, primaryKey)
+}
+
+func (s *cryptSuite) TestActivateVolumeWithLegacyKeyDataErrorHandling14(c *C) {
+	// Test with an invalid value for SnapModel for legacy keys
+	j := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"EKvGikEsIkaMQpQGr6PA1pzC224nYteGa56YD0PUaLU=",` +
+			`"iv":"8VkzdjS3JTQwiF8V8/dVKw==",` +
+			`"auth-key-hmac":"8q4FsJLVf4FMje665gkwOjlMlhVghEcrRKC+vdbn+sk=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"oCi+ViIX3cX6OcxzERB8x5GnDBiQtI3mnP919E0JHj/J9IbE8Pqq22YuHlp+/tYjE8Gkhf2YEJKRjwke45HEKXOA/eE=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"HBRH/GTYQ2so2Fau3U6ZvAYgiRmnb6t4WHpuOKNpkK8=",` +
+			`"digest":"eNjOwEPldwEXNSOkgAk/oJ8OhU3hjr+UnYqVf6lEFi0="},` +
+			`"hmacs":null}}
+`)
+
+	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		keyData: keyData,
+	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
+		"- : nil Model for generation 1 key\n"+
+		"and activation with recovery key failed: no recovery key tries permitted")
+}
+
+func (s *cryptSuite) TestActivateVolumeWithLegacyKeyDataErrorHandling15(c *C) {
+	// Test that activation fails for legacy keys lif the supplied model is not authorized
+	key := testutil.DecodeHexString(c, "f7fa464710317654f14f22ab6eff4c88f13a77d78045f2a882e47c62286093b2")
+	j := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"fGSmc6pljAph4q00AKuniTSl19yZSHOO5ClFBnm3mEg=",` +
+			`"iv":"GanDRGxWSx4stoOC8ueRaQ==",` +
+			`"auth-key-hmac":"NPjHH7EG+guHv7ZUl5tetrD7268e6+kx4TIiOUzC2ks=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"kDm5zMabUoz83oLJMhmjWMmFexRSPJi0+yYgyGlp6l9hr20e4NZCzyiIchrHRXjS/ipVLy42H2pPm0fdTF3YXnYuKnk=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"7G4XkozL+sVJ2+vcp0zof6m3M6XRNSooHdV07GFmG74=",` +
+			`"digest":"bCda3tRyxm9yobtWLPflFzdpXOWoSyBkLjAI4Ni/+pE="},` +
+			`"hmacs":null}}
+`)
+
+	keyData, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		diskUnlockKey:    key,
+		recoveryKey:      recoveryKey,
+		recoveryKeyTries: 0,
+		keyData:          keyData,
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		activateTries: 0,
+	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
+		"- foo: snap model is not authorized\n"+
+		"and activation with recovery key failed: no recovery key tries permitted")
+}
+
+func (s *cryptSuite) TestActivateVolumeWithLegacyKeyDataErrorHandling17(c *C) {
+	// Test that activation fails with unmarshalling error if a legacy key fakes the generation
+	// field to bypass snap model verification
+	key := testutil.DecodeHexString(c, "97999b1af0988ee671ad3313bff8c47e09673d40b4b8a0600b6b2a691f0ed305")
+
+	j := []byte(
+		`{` +
+			`"generation":2,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"suC0CHFlXXv6yUy96YU1Teb5kSS5wzXIWKVawHDP2g8=",` +
+			`"iv":"7opsk4XdsYrV6OYaif9Z3A==",` +
+			`"auth-key-hmac":"3mTDfXUVrXRiFqDyzqzq6/shJe+oWL7QCSvRSADzXyI=",` +
+			`"exp-generation":2,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0` +
+			`},` +
+			`` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"QDlIsEnR3y9KTj4Sv9o99GIve2G7RYdTKIxjMS1LxUWmQrCUND0Eojpn1bAThpQWBS2Gj2dXplyCpZiNLJEagzAnyyQ=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"JDdYOi26PGM2/sIoHeMAfEFV6pwUpUAGIbGSJk65gi0=",` +
+			`"digest":"WmBY95DnbednRIQqMj+sYlWZBxaHIumjE6zI+1nEkIg="` +
+			`},` +
+			`` +
+			`"hmacs":null}}
+`)
+
+	keyData, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+
+	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
+		diskUnlockKey:    key,
+		recoveryKey:      recoveryKey,
+		recoveryKeyTries: 0,
+		keyData:          keyData,
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		activateTries: 0,
+	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
+		"- foo: cannot recover key: invalid key data: cannot unmarshal cleartext key payload: malformed input\n"+
+		"and activation with recovery key failed: no recovery key tries permitted")
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyData9(c *C) {
+	// Try where the supplied model cannot be authorized via the first key - the
+	// second key should be used for activation.
+	var keyData []*KeyData
+	var keys []DiskUnlockKey
+	var primaryKeys []PrimaryKey
+
+	keys = append(keys, testutil.DecodeHexString(c, "ea2acab1d4c292fb47580c7a324d4b7a037dbbc182cb495e6e10ed12601f1286"))
+	keys = append(keys, testutil.DecodeHexString(c, "1be119d0ecf75cc4716f2e30b1a9c3406d4edfacd6d407c07b431a23a1945556"))
+	primaryKeys = append(primaryKeys, testutil.DecodeHexString(c, "c2f01b85dad3f609a522454005368491a33febfc125773138f3844539518d717"))
+	primaryKeys = append(primaryKeys, testutil.DecodeHexString(c, "c8f5ae362f24ddab000a61c5e5a688f4eb6a4d117d62fae7d42fba70ac1a0826"))
+
+	j := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"Mbe9jfsXuzwadGP43ReLafF88yrUJWl9dBmUVgslnyY=",` +
+			`"iv":"ZgrEKJcNZ7UKTe1eZ92JTQ==",` +
+			`"auth-key-hmac":"2himzm8giL4MiusN/wLP277Cww2MXwuYY+jrZtIg8iw=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"kfcx26i0fXh0D+V6L8/QBglGbV7wavLBBWMO5oDywSQuBhl+rfSQY0eE7ClPHHqXntlTBgqwPkbuRnT/ScE6hwtlm6M=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"0pND7IfM0fnKpq0uquaMfdiGmYIXnIO2y24jbG9y/fc=",` +
+			`"digest":"AvLUNyjCNuxEFOgWfT/U7AcCgYfXrfEfm8ADkcfUF8s="},` +
+			`"hmacs":null}}
+
+`)
+
+	kd, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+	keyData = append(keyData, kd)
+
+	j = []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"X8Fpc9zrqbU3zR2ON65nfGKf1fGu1OGCudn7BZb4mMw=",` +
+			`"iv":"0+Tc+gGgDBlOsuvIMOFkSw==",` +
+			`"auth-key-hmac":"nk0nw4qcWMlsKQcBx7Tkqm6H68UVxL+UPV1IjJsXf6s=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"HcskA6HBVj9JBQPa7S1ci+Yn9tlbzby+5V3ygb/MW0cFFu4GgQgbtOGXBEGB/yPC2vaH3Q+e4W21NEFDExCqp3bTFlU=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"MsiD5TLUa52lG8ovkDpWu16c4iz8mvbRX4fi858RklA=",` +
+			`"digest":"o/GwjEc83qhhiyXWHV900kfqQf0yv33M7k/OYzflHCs="},` +
+			`"hmacs":null}}
+`)
+
+	kd, err = ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+	keyData = append(keyData, kd)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+	}
+
+	c.Check(keyData[0].SetAuthorizedSnapModels(primaryKeys[0], models[0]), IsNil)
+	c.Check(keyData[1].SetAuthorizedSnapModels(primaryKeys[1], models[1]), IsNil)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys,
+		keyData:          keyData,
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[1],
+		activateSlots:    []int{luks2.AnySlot},
+		validKey:         keys[1],
+		validAuxKey:      primaryKeys[1]})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyData14(c *C) {
+	// Test unauthorized external keyData with authorized LUKS keyData
+	var keyData []*KeyData
+	var keys []DiskUnlockKey
+	var primaryKeys []PrimaryKey
+
+	keys = append(keys, testutil.DecodeHexString(c, "ea2acab1d4c292fb47580c7a324d4b7a037dbbc182cb495e6e10ed12601f1286"))
+	keys = append(keys, testutil.DecodeHexString(c, "1be119d0ecf75cc4716f2e30b1a9c3406d4edfacd6d407c07b431a23a1945556"))
+	primaryKeys = append(primaryKeys, testutil.DecodeHexString(c, "c2f01b85dad3f609a522454005368491a33febfc125773138f3844539518d717"))
+	primaryKeys = append(primaryKeys, testutil.DecodeHexString(c, "c8f5ae362f24ddab000a61c5e5a688f4eb6a4d117d62fae7d42fba70ac1a0826"))
+
+	j := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"Mbe9jfsXuzwadGP43ReLafF88yrUJWl9dBmUVgslnyY=",` +
+			`"iv":"ZgrEKJcNZ7UKTe1eZ92JTQ==",` +
+			`"auth-key-hmac":"2himzm8giL4MiusN/wLP277Cww2MXwuYY+jrZtIg8iw=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"kfcx26i0fXh0D+V6L8/QBglGbV7wavLBBWMO5oDywSQuBhl+rfSQY0eE7ClPHHqXntlTBgqwPkbuRnT/ScE6hwtlm6M=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"0pND7IfM0fnKpq0uquaMfdiGmYIXnIO2y24jbG9y/fc=",` +
+			`"digest":"AvLUNyjCNuxEFOgWfT/U7AcCgYfXrfEfm8ADkcfUF8s="},` +
+			`"hmacs":null}}
+
+`)
+
+	kd, err := ReadKeyData(&mockKeyDataReader{"luks", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+	keyData = append(keyData, kd)
+
+	j = []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"X8Fpc9zrqbU3zR2ON65nfGKf1fGu1OGCudn7BZb4mMw=",` +
+			`"iv":"0+Tc+gGgDBlOsuvIMOFkSw==",` +
+			`"auth-key-hmac":"nk0nw4qcWMlsKQcBx7Tkqm6H68UVxL+UPV1IjJsXf6s=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"HcskA6HBVj9JBQPa7S1ci+Yn9tlbzby+5V3ygb/MW0cFFu4GgQgbtOGXBEGB/yPC2vaH3Q+e4W21NEFDExCqp3bTFlU=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"MsiD5TLUa52lG8ovkDpWu16c4iz8mvbRX4fi858RklA=",` +
+			`"digest":"o/GwjEc83qhhiyXWHV900kfqQf0yv33M7k/OYzflHCs="},` +
+			`"hmacs":null}}
+`)
+
+	kd, err = ReadKeyData(&mockKeyDataReader{"external", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+	keyData = append(keyData, kd)
+
+	models := []SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}
+
+	c.Check(keyData[0].SetAuthorizedSnapModels(primaryKeys[0], models...), IsNil)
+
+	w := makeMockKeyDataWriter()
+	c.Check(keyData[0].WriteAtomic(w), IsNil)
+
+	token := &luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslot: 0,
+			TokenName:    "default",
+		},
+		Data: w.final.Bytes()}
+	s.addMockToken("/dev/sda1", token)
+
+	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
+		keys:             keys,
+		keyData:          keyData[1:],
+		volumeName:       "data",
+		sourceDevicePath: "/dev/sda1",
+		model:            models[0],
+		activateSlots:    []int{0},
+		validKey:         keys[0],
+		validAuxKey:      primaryKeys[0]})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyDataErrorHandling14(c *C) {
+	// Test with an invalid value for SnapModel.
+	var keyData []*KeyData
+
+	j := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"Mbe9jfsXuzwadGP43ReLafF88yrUJWl9dBmUVgslnyY=",` +
+			`"iv":"ZgrEKJcNZ7UKTe1eZ92JTQ==",` +
+			`"auth-key-hmac":"2himzm8giL4MiusN/wLP277Cww2MXwuYY+jrZtIg8iw=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"kfcx26i0fXh0D+V6L8/QBglGbV7wavLBBWMO5oDywSQuBhl+rfSQY0eE7ClPHHqXntlTBgqwPkbuRnT/ScE6hwtlm6M=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"0pND7IfM0fnKpq0uquaMfdiGmYIXnIO2y24jbG9y/fc=",` +
+			`"digest":"AvLUNyjCNuxEFOgWfT/U7AcCgYfXrfEfm8ADkcfUF8s="},` +
+			`"hmacs":null}}
+
+`)
+
+	kd, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+	keyData = append(keyData, kd)
+
+	j = []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"X8Fpc9zrqbU3zR2ON65nfGKf1fGu1OGCudn7BZb4mMw=",` +
+			`"iv":"0+Tc+gGgDBlOsuvIMOFkSw==",` +
+			`"auth-key-hmac":"nk0nw4qcWMlsKQcBx7Tkqm6H68UVxL+UPV1IjJsXf6s=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"HcskA6HBVj9JBQPa7S1ci+Yn9tlbzby+5V3ygb/MW0cFFu4GgQgbtOGXBEGB/yPC2vaH3Q+e4W21NEFDExCqp3bTFlU=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"MsiD5TLUa52lG8ovkDpWu16c4iz8mvbRX4fi858RklA=",` +
+			`"digest":"o/GwjEc83qhhiyXWHV900kfqQf0yv33M7k/OYzflHCs="},` +
+			`"hmacs":null}}
+`)
+
+	kd, err = ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+	keyData = append(keyData, kd)
+
+	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
+		keyData: keyData,
+	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
+		"- : nil Model for generation 1 key\n"+
+		"- : nil Model for generation 1 key\n"+
+		"and activation with recovery key failed: no recovery key tries permitted")
+}
+
+func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyDataErrorHandling15(c *C) {
+	// Test with an unauthorized snap model.
+	var keyData []*KeyData
+	var keys []DiskUnlockKey
+
+	keys = append(keys, testutil.DecodeHexString(c, "ea2acab1d4c292fb47580c7a324d4b7a037dbbc182cb495e6e10ed12601f1286"))
+	keys = append(keys, testutil.DecodeHexString(c, "1be119d0ecf75cc4716f2e30b1a9c3406d4edfacd6d407c07b431a23a1945556"))
+
+	j := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"Mbe9jfsXuzwadGP43ReLafF88yrUJWl9dBmUVgslnyY=",` +
+			`"iv":"ZgrEKJcNZ7UKTe1eZ92JTQ==",` +
+			`"auth-key-hmac":"2himzm8giL4MiusN/wLP277Cww2MXwuYY+jrZtIg8iw=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"kfcx26i0fXh0D+V6L8/QBglGbV7wavLBBWMO5oDywSQuBhl+rfSQY0eE7ClPHHqXntlTBgqwPkbuRnT/ScE6hwtlm6M=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"0pND7IfM0fnKpq0uquaMfdiGmYIXnIO2y24jbG9y/fc=",` +
+			`"digest":"AvLUNyjCNuxEFOgWfT/U7AcCgYfXrfEfm8ADkcfUF8s="},` +
+			`"hmacs":null}}
+
+`)
+
+	kd, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+	keyData = append(keyData, kd)
+
+	j = []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"X8Fpc9zrqbU3zR2ON65nfGKf1fGu1OGCudn7BZb4mMw=",` +
+			`"iv":"0+Tc+gGgDBlOsuvIMOFkSw==",` +
+			`"auth-key-hmac":"nk0nw4qcWMlsKQcBx7Tkqm6H68UVxL+UPV1IjJsXf6s=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"HcskA6HBVj9JBQPa7S1ci+Yn9tlbzby+5V3ygb/MW0cFFu4GgQgbtOGXBEGB/yPC2vaH3Q+e4W21NEFDExCqp3bTFlU=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"MsiD5TLUa52lG8ovkDpWu16c4iz8mvbRX4fi858RklA=",` +
+			`"digest":"o/GwjEc83qhhiyXWHV900kfqQf0yv33M7k/OYzflHCs="},` +
+			`"hmacs":null}}
+`)
+
+	kd, err = ReadKeyData(&mockKeyDataReader{"bar", bytes.NewReader(j)})
+	c.Assert(err, IsNil)
+	keyData = append(keyData, kd)
+
+	recoveryKey := s.newRecoveryKey()
+
+	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
+		keys:        keys,
+		recoveryKey: recoveryKey,
+		keyData:     keyData,
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		recoveryKeyTries: 0,
+		activateTries:    0,
+	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
+		"- foo: snap model is not authorized\n"+
+		"- bar: snap model is not authorized\n"+
+		"and activation with recovery key failed: no recovery key tries permitted")
 }
