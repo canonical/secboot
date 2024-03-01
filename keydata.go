@@ -46,22 +46,29 @@ const (
 )
 
 var (
-	KeyDataGeneration = 2
-	sha1Oid           = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
-	sha224Oid         = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
-	sha256Oid         = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
-	sha384Oid         = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
-	sha512Oid         = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
+	sha1Oid   = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	sha224Oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
+	sha256Oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+	sha384Oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
+	sha512Oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
 )
 
-// ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
-// appropriate platform handler is registered using the
-// RegisterPlatformKeyDataHandler API.
-var ErrNoPlatformHandlerRegistered = errors.New("no appropriate platform handler is registered")
+var (
+	// KeyDataGeneration describes the generation number of new keys created by NewKeyData.
+	// This will be supplied via PlatformKeyDataHandler and should generally be
+	// authenticated by the platform code in order to protect against future key format
+	// changes that might have security relevant implications.
+	KeyDataGeneration = 2
 
-// ErrInvalidPassphrase is returned from KeyData methods that require
-// knowledge of a passphrase is the supplied passphrase is incorrect.
-var ErrInvalidPassphrase = errors.New("the supplied passphrase is incorrect")
+	// ErrNoPlatformHandlerRegistered is returned from KeyData methods if no
+	// appropriate platform handler is registered using the
+	// RegisterPlatformKeyDataHandler API.
+	ErrNoPlatformHandlerRegistered = errors.New("no appropriate platform handler is registered")
+
+	// ErrInvalidPassphrase is returned from KeyData methods that require
+	// knowledge of a passphrase is the supplied passphrase is incorrect.
+	ErrInvalidPassphrase = errors.New("the supplied passphrase is incorrect")
+)
 
 // InvalidKeyDataError is returned from KeyData methods if the key data
 // is invalid in some way.
