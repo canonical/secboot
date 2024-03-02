@@ -213,7 +213,7 @@ var ensurePcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 		AuthPolicy: trial.GetDigest(),
 		Size:       8}
 
-	index, err := tpm.CreateResourceContextFromTPM(handle, hmacSession)
+	index, err := tpm.CreateResourceContextFromTPM(handle, hmacSession.IncludeAttrs(tpm2.AttrAudit))
 	switch {
 	case tpm2.IsResourceUnavailableError(err, handle):
 		// ok, need to create

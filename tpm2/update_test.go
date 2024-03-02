@@ -161,3 +161,42 @@ func (s *updateSuite) TestRevokeOldPCRProtectionPoliciesWithoutPCRPolicyCounter(
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 }
+
+func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy(c *C) {
+	primaryKey := make(secboot.PrimaryKey, 32)
+	rand.Read(primaryKey)
+
+	// Protect the keys with an initial PCR policy that can't be satisfied
+	params := &ProtectKeyParams{
+		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		PrimaryKey:             primaryKey}
+
+	var keys []*secboot.KeyData
+	for i := 0; i < 2; i++ {
+		k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
+		c.Assert(err, IsNil)
+
+		_, _, err = k.RecoverKeys()
+		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+
+		keys = append(keys, k)
+	}
+
+	c.Check(UpdateKeyDataPCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), false, keys...), IsNil)
+
+	for _, k := range keys {
+		_, _, err := k.RecoverKeys()
+		c.Check(err, IsNil)
+	}
+
+	_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
+	c.Check(err, IsNil)
+
+	for _, k := range keys {
+		_, _, err := k.RecoverKeys()
+		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+	}
+}
