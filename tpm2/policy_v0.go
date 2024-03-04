@@ -374,7 +374,7 @@ func (p *keyDataPolicy_v0) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 		return xerrors.Errorf("cannot compute base PCR policy: %w", err)
 	}
 
-	pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence+1)
+	pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence)
 
 	key, err := x509.ParsePKCS1PrivateKey(params.key)
 	if err != nil {

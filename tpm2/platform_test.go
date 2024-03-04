@@ -423,7 +423,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
 		c.Assert(err, IsNil)
 
 		// Increment NV counter
-		c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, nil, true), IsNil)
+		c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, nil, NewPCRPolicyVersion), IsNil)
 		c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), primaryKey), IsNil)
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})

@@ -31,8 +31,9 @@ import (
 
 // Export constants for testing
 const (
-	LockNVHandle      = lockNVHandle
-	SrkTemplateHandle = srkTemplateHandle
+	LockNVHandle          = lockNVHandle
+	ResetPcrPolicyVersion = resetPcrPolicyVersion
+	SrkTemplateHandle     = srkTemplateHandle
 )
 
 // Export variables and unexported functions for testing
@@ -87,6 +88,7 @@ func NewSealedObjectKeySealer(tpm *Connection) keySealer {
 	return &sealedObjectKeySealer{tpm}
 }
 
+type PcrPolicyVersionOption = pcrPolicyVersionOption
 type PolicyDataError = policyDataError
 type PolicyOrData_v0 = policyOrData_v0
 
@@ -226,7 +228,7 @@ func MockSecbootNewKeyDataWithPassphrase(fn func(*secboot.KeyWithPassphraseParam
 	}
 }
 
-func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, bool, tpm2.SessionContext) error) (restore func()) {
+func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, PcrPolicyVersionOption, tpm2.SessionContext) error) (restore func()) {
 	orig := skdbUpdatePCRProtectionPolicyNoValidate
 	skdbUpdatePCRProtectionPolicyNoValidate = fn
 	return func() {

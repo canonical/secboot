@@ -184,7 +184,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	if err := sko.updatePCRProtectionPolicyNoValidate(nil, authKey, nil, pcrProfile, false, nil); err != nil {
+	if err := sko.updatePCRProtectionPolicyNoValidate(nil, authKey, nil, pcrProfile, resetPcrPolicyVersion, nil); err != nil {
 		return nil, xerrors.Errorf("cannot create initial PCR policy: %w", err)
 	}
 
@@ -367,7 +367,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 			if pcrProfile == nil {
 				pcrProfile = NewPCRProtectionProfile()
 			}
-			if err := sko.updatePCRProtectionPolicyNoValidate(tpm.TPMContext, authKey, pcrPolicyCounterPub, pcrProfile, false, session); err != nil {
+			if err := sko.updatePCRProtectionPolicyNoValidate(tpm.TPMContext, authKey, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion, session); err != nil {
 				return nil, xerrors.Errorf("cannot create initial PCR policy: %w", err)
 			}
 		}

@@ -347,7 +347,7 @@ func (s *policyV0SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV0UpdatePCRPoli
 	}
 	s.checkPolicyOrTree(c, data.alg, digests, orTree)
 
-	c.Check(policyData.(*KeyDataPolicy_v0).PCRData.PolicySequence, Equals, data.initialSeq+1)
+	c.Check(policyData.(*KeyDataPolicy_v0).PCRData.PolicySequence, Equals, data.initialSeq)
 
 	c.Check(policyData.(*KeyDataPolicy_v0).PCRData.AuthorizedPolicy, DeepEquals, data.expectedPolicy)
 
@@ -365,7 +365,7 @@ func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicy(c *C) {
 	s.testUpdatePCRPolicy(c, &testV0UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		initialSeq:          1000,
+		initialSeq:          1001,
 		alg:                 tpm2.HashAlgorithmSHA256,
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
@@ -376,7 +376,7 @@ func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicyDepth1(c *C) {
 	s.testUpdatePCRPolicy(c, &testV0UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		initialSeq:          1000,
+		initialSeq:          1001,
 		alg:                 tpm2.HashAlgorithmSHA256,
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests: tpm2.DigestList{
@@ -392,7 +392,7 @@ func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicyDepth2(c *C) {
 	data := &testV0UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		initialSeq:          1000,
+		initialSeq:          1001,
 		alg:                 tpm2.HashAlgorithmSHA256,
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		expectedPolicy:      testutil.DecodeHexString(c, "3dbd5e8007fe9a181b38f489da1577a71c2a049fd9d540f04bee5ed760621d36")}
@@ -406,7 +406,7 @@ func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicyDifferentCounter(c *C) {
 	s.testUpdatePCRPolicy(c, &testV0UpdatePCRPolicyData{
 		policyCounterHandle: 0x0180ffff,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		initialSeq:          1000,
+		initialSeq:          1001,
 		alg:                 tpm2.HashAlgorithmSHA256,
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
@@ -417,7 +417,7 @@ func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicySHA1AuthKey(c *C) {
 	s.testUpdatePCRPolicy(c, &testV0UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA1,
-		initialSeq:          1000,
+		initialSeq:          1001,
 		alg:                 tpm2.HashAlgorithmSHA256,
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
@@ -428,7 +428,7 @@ func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicyDifferentSequence(c *C) {
 	s.testUpdatePCRPolicy(c, &testV0UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		initialSeq:          9999,
+		initialSeq:          10000,
 		alg:                 tpm2.HashAlgorithmSHA256,
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
@@ -439,7 +439,7 @@ func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicySHA1Policy(c *C) {
 	s.testUpdatePCRPolicy(c, &testV0UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		initialSeq:          1000,
+		initialSeq:          1001,
 		alg:                 tpm2.HashAlgorithmSHA1,
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA1, "1")},
@@ -450,7 +450,7 @@ func (s *policyV0SuiteNoTPM) TestUpdatePCRPolicyDifferentPCRs(c *C) {
 	s.testUpdatePCRPolicy(c, &testV0UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		initialSeq:          1000,
+		initialSeq:          1001,
 		alg:                 tpm2.HashAlgorithmSHA256,
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA1, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},

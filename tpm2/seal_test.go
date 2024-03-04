@@ -561,7 +561,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 	defer restore()
 
 	pcrPolicyInitialized := false
-	restore = MockSkdbUpdatePCRProtectionPolicyNoValidate(func(skdb *SealedKeyDataBase, tpm *tpm2.TPMContext, primaryKey secboot.PrimaryKey, counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, incrementPolicyVersion bool, session tpm2.SessionContext) error {
+	restore = MockSkdbUpdatePCRProtectionPolicyNoValidate(func(skdb *SealedKeyDataBase, tpm *tpm2.TPMContext, primaryKey secboot.PrimaryKey, counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, policyVersionOption PcrPolicyVersionOption, session tpm2.SessionContext) error {
 		c.Check(tpm, Equals, mockTpm)
 		c.Check(primaryKey, DeepEquals, s.lastAuthKey)
 		c.Check(counterPub, Equals, mockPcrPolicyCounterPub)
@@ -570,7 +570,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 			c.Check(profile, Equals, data.PCRProfile)
 		}
 		c.Check(session, Equals, mockSession)
-		c.Check(incrementPolicyVersion, testutil.IsFalse)
+		c.Check(policyVersionOption, Equals, ResetPcrPolicyVersion)
 		pcrPolicyInitialized = true
 		return nil
 	})

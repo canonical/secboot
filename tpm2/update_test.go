@@ -79,7 +79,7 @@ func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRPro
 	skd, err := NewSealedKeyData(k)
 	c.Assert(err, IsNil)
 
-	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), false), IsNil)
+	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), NoNewPCRPolicyVersion), IsNil)
 
 	_, _, err = k.RecoverKeys()
 	c.Check(err, IsNil)
@@ -122,7 +122,7 @@ func (s *updateSuite) testRevokeOldPCRProtectionPolicies(c *C, params *ProtectKe
 
 	skd, err := NewSealedKeyData(k2)
 	c.Assert(err, IsNil)
-	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, params.PCRProfile, true), IsNil)
+	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, params.PCRProfile, NewPCRPolicyVersion), IsNil)
 
 	_, _, err = k1.RecoverKeys()
 	c.Check(err, IsNil)
@@ -184,7 +184,7 @@ func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy(c *C) {
 		keys = append(keys, k)
 	}
 
-	c.Check(UpdateKeyDataPCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), false, keys...), IsNil)
+	c.Check(UpdateKeyDataPCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), NoNewPCRPolicyVersion, keys...), IsNil)
 
 	for _, k := range keys {
 		_, _, err := k.RecoverKeys()

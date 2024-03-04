@@ -147,7 +147,7 @@ func (p *keyDataPolicy_v1) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 	}
 
 	if params.policyCounterName != nil {
-		pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence+1)
+		pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence)
 	}
 
 	key, err := createECDSAPrivateKeyFromTPM(p.StaticData.AuthPublicKey, tpm2.ECCParameter(params.key))
