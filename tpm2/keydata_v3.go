@@ -41,7 +41,9 @@ type additionalData_v3 struct {
 }
 
 func (d additionalData_v3) Marshal(w io.Writer) error {
-	_, err := mu.MarshalToWriter(w, uint32(3), d.Generation, d.KDFAlg, d.AuthMode)
+	_, err := mu.MarshalToWriter(w,
+		uint32(3), // The TPM2 platform keydata version
+		d.Generation, d.KDFAlg, d.AuthMode)
 	return err
 }
 
