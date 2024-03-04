@@ -306,10 +306,10 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 // protected object.
 var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic, requireAuthValue bool) (keyDataPolicy, tpm2.Digest, error) {
 	if len(role) > 1024 {
-		// We serialize this in the TPM wire format in computeV3PcrPolicyRefFromCounterName
-		// and define the type as TPM2B_MAX_BUFFER in the SE041, and this has a maximum size
-		// of 1024 bytes, although the real ceiling for us is MaxUint16. Let's be consistent
-		// though, and 1024 bytes is more than enough.
+		// We serialize this in the TPM wire format in computeV3PcrPolicyRef and define the
+		// type as TPM2B_MAX_BUFFER in the SE041, and this has a maximum size of 1024 bytes,
+		// although the real ceiling for us is MaxUint16. Let's be consistent though, and
+		// 1024 bytes is more than enough.
 		return nil, nil, errors.New("invalid role: too large")
 	}
 
@@ -320,7 +320,7 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role str
 		pcrPolicyCounterName = pcrPolicyCounterPub.Name()
 	}
 
-	pcrPolicyRef := computeV3PcrPolicyRefFromCounterName(key.NameAlg, []byte(role), pcrPolicyCounterName)
+	pcrPolicyRef := computeV3PcrPolicyRef(key.NameAlg, []byte(role), pcrPolicyCounterName)
 
 	trial := util.ComputeAuthPolicy(alg)
 	trial.PolicyAuthorize(pcrPolicyRef, key.Name())

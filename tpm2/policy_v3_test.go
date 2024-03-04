@@ -1422,7 +1422,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 				Details: &tpm2.SigSchemeU{
 					ECDSA: &tpm2.SigSchemeECDSA{
 						HashAlg: data.StaticData.AuthPublicKey.NameAlg}}}
-			_, signature, err := util.PolicyAuthorize(key, scheme, data.PCRData.AuthorizedPolicy, ComputeV3PcrPolicyRefFromCounterName(tpm2.HashAlgorithmSHA256, []byte(""), nil))
+			_, signature, err := util.PolicyAuthorize(key, scheme, data.PCRData.AuthorizedPolicy, ComputeV3PcrPolicyRef(tpm2.HashAlgorithmSHA256, []byte(""), nil))
 			c.Assert(err, IsNil)
 			data.PCRData.AuthorizedPolicySignature = signature
 		},

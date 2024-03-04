@@ -1328,7 +1328,7 @@ func (s *keyDataSuite) TestLegacyKeyPayloadUnmarshalInvalid1(c *C) {
 }
 
 func (s *keyDataSuite) TestLegacyKeyPayloadUnmarshalInvalid2(c *C) {
-	payload := MarshalV1Keys(make(DiskUnlockKey, 32), make(PrimaryKey, 32))
+	payload := marshalV1Keys(make(DiskUnlockKey, 32), make(PrimaryKey, 32))
 	payload = append(payload, 0xff)
 
 	key, auxKey, err := UnmarshalV1KeyPayload(payload)

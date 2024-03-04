@@ -39,14 +39,14 @@ import (
 	internal_crypto "github.com/snapcore/secboot/internal/crypto"
 )
 
-// computeV3PcrPolicyRefFromCounterName computes the reference used for authorization of signed
-// PCR policies from the supplied role and PCR policy counter name. If name is empty, then the
-// name of the null handle is assumed. The policy ref serves 2 purposes:
+// computeV3PcrPolicyRef computes the reference used for authorization of signed PCR policies
+// from the supplied role and PCR policy counter name. If name is empty, then the name of the
+// null handle is assumed. The policy ref serves 2 purposes:
 //  1. It limits the scope of the signed policy to just PCR policies for keys with the same role
 //     (the key may be able to sign different types of policy in the future, for example, to permit
 //     recovery with a signed assertion).
 //  2. It binds the name of the PCR policy counter to the static authorization policy.
-func computeV3PcrPolicyRefFromCounterName(alg tpm2.HashAlgorithmId, role []byte, name tpm2.Name) tpm2.Nonce {
+func computeV3PcrPolicyRef(alg tpm2.HashAlgorithmId, role []byte, counterName tpm2.Name) tpm2.Nonce {
 	if len(role) > math.MaxUint16 {
 		// This avoids a panic in MustMarshalToWriter. We check
 		// the length of this is valid during key creation in
@@ -55,8 +55,8 @@ func computeV3PcrPolicyRefFromCounterName(alg tpm2.HashAlgorithmId, role []byte,
 		// generate the wrong policy ref.
 		role = role[:math.MaxUint16]
 	}
-	if len(name) == 0 {
-		name = tpm2.Name(mu.MustMarshalToBytes(tpm2.HandleNull))
+	if len(counterName) == 0 {
+		counterName = tpm2.Name(mu.MustMarshalToBytes(tpm2.HandleNull))
 	}
 
 	// Hash the role and PCR policy counter name
@@ -64,7 +64,7 @@ func computeV3PcrPolicyRefFromCounterName(alg tpm2.HashAlgorithmId, role []byte,
 	//  to bind it to the PCR policy counter as an alternative to hashing
 	//  its name here.
 	h := alg.NewHash()
-	mu.MustMarshalToWriter(h, role, name)
+	mu.MustMarshalToWriter(h, role, counterName)
 	digest := h.Sum(nil)
 
 	// Hash again with a string literal prefix
@@ -83,7 +83,7 @@ func computeV3PcrPolicyRefFromCounterContext(alg tpm2.HashAlgorithmId, role []by
 		name = context.Name()
 	}
 
-	return computeV3PcrPolicyRefFromCounterName(alg, role, name)
+	return computeV3PcrPolicyRef(alg, role, name)
 }
 
 // computeV3PcrPolicyCounterAuthPolicies computes the authorization policy digests passed to

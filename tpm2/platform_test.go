@@ -467,7 +467,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 			indexName = pcrPolicyCounterPub.Name()
 		}
 
-		pcrPolicyRef := ComputeV3PcrPolicyRefFromCounterName(key.NameAlg, []byte(role), indexName)
+		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
 
 		trial := util.ComputeAuthPolicy(alg)
 		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
@@ -544,7 +544,7 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 			indexName = pcrPolicyCounterPub.Name()
 		}
 
-		pcrPolicyRef := ComputeV3PcrPolicyRefFromCounterName(key.NameAlg, []byte(role), indexName)
+		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
 
 		trial := util.ComputeAuthPolicy(alg)
 		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
@@ -616,7 +616,7 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 			indexName = pcrPolicyCounterPub.Name()
 		}
 
-		pcrPolicyRef := ComputeV3PcrPolicyRefFromCounterName(key.NameAlg, []byte(role), indexName)
+		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
 
 		trial := util.ComputeAuthPolicy(alg)
 		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
