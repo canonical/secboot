@@ -182,6 +182,8 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 		return nil, nil, nil, xerrors.Errorf("cannot create new unlock key: %w", err)
 	}
 
+	// Serialize the AAD. Note that we don't protect the role parameter directly because it's
+	// already bound to the sealed object via its authorization policy.
 	aad, err := mu.MarshalToBytes(&additionalData_v3{
 		Generation: uint32(secboot.KeyDataGeneration),
 		KDFAlg:     tpm2.HashAlgorithmSHA256,
