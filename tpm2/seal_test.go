@@ -31,6 +31,8 @@ import (
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/templates"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 
 	. "gopkg.in/check.v1"
 
@@ -40,6 +42,29 @@ import (
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
+
+type protectedKeys struct {
+	Primary secboot.PrimaryKey
+	Unique  []byte
+}
+
+func unmarshalProtectedKeys(data []byte) (*protectedKeys, error) {
+	s := cryptobyte.String(data)
+	if !s.ReadASN1(&s, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("malformed input")
+	}
+
+	pk := new(protectedKeys)
+
+	if !s.ReadASN1Bytes((*[]byte)(&pk.Primary), cryptobyte_asn1.OCTET_STRING) {
+		return nil, errors.New("malformed primary key")
+	}
+	if !s.ReadASN1Bytes(&pk.Unique, cryptobyte_asn1.OCTET_STRING) {
+		return nil, errors.New("malformed unique key")
+	}
+
+	return pk, nil
+}
 
 type sealSuite struct {
 	tpm2test.TPMTest
@@ -630,7 +655,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 	payload, err = aead.Open(nil, skd.Data().Private()[32:], s.lastKeyParams.EncryptedPayload, aad)
 	c.Assert(err, IsNil)
 
-	keys, err := UnmarshalProtectedKeys(payload)
+	keys, err := unmarshalProtectedKeys(payload)
 	c.Check(err, IsNil)
 
 	c.Check(keys.Primary, DeepEquals, primaryKey)
