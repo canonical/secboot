@@ -69,11 +69,7 @@ type PassphraseProtectKeyParams struct {
 
 type keyDataConstructor func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error)
 
-func (fn keyDataConstructor) NewKeyData(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
-	return fn(skd, role, encryptedPayload, kdfAlg)
-}
-
-var makeKeyDataNoAuth keyDataConstructor = func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
+func makeKeyDataNoAuth(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
 	return secbootNewKeyData(&secboot.KeyParams{
 		Handle:           skd,
 		Role:             role,
@@ -206,7 +202,7 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	ciphertext := aead.Seal(nil, symKey[32:], payload, aad)
 
 	// Construct the secboot.KeyData object
-	kd, err := constructor.NewKeyData(skd, params.Role, ciphertext, kdfAlg)
+	kd, err := constructor(skd, params.Role, ciphertext, kdfAlg)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create key data object: %w", err)
 	}
