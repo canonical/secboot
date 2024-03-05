@@ -66,13 +66,18 @@ func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	// Create a mock PCR policy counter
 	var pcrPolicyCounterPub *tpm2.NVPublic
-	// var policyCount uint64
 	var policyCounterName tpm2.Name
+	var policyCount uint64
 	if pcrPolicyCounterHandle != tpm2.HandleNull {
 		var err error
 		pcrPolicyCounterPub, err = EnsurePcrPolicyCounter(s.TPM().TPMContext, pcrPolicyCounterHandle, authPublicKey, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
 		policyCounterName = pcrPolicyCounterPub.Name()
+
+		context, err := tpm2.NewNVIndexResourceContextFromPub(pcrPolicyCounterPub)
+		c.Assert(err, IsNil)
+		policyCount, err = s.TPM().NVReadCounter(context, context, nil)
+		c.Assert(err, IsNil)
 	}
 
 	// Create sealed object
@@ -87,7 +92,7 @@ func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	template.AuthPolicy = policyDigest
 
 	policyData.(*KeyDataPolicy_v3).PCRData = &PcrPolicyData_v3{
-		PolicySequence:   policyData.PCRPolicySequence(),
+		PolicySequence:   policyCount,
 		AuthorizedPolicy: make(tpm2.Digest, 32),
 		AuthorizedPolicySignature: &tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgECDSA,
@@ -129,7 +134,7 @@ func (s *keyDataV3Suite) newMockImportableKeyData(c *C, role string, requireAuth
 	policyData.(*KeyDataPolicy_v3).PCRData = &PcrPolicyData_v3{
 		Selection:        tpm2.PCRSelectionList{},
 		OrData:           PolicyOrData_v0{},
-		PolicySequence:   policyData.PCRPolicySequence(),
+		PolicySequence:   0,
 		AuthorizedPolicy: make(tpm2.Digest, 32),
 		AuthorizedPolicySignature: &tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgECDSA,
