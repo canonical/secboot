@@ -50,7 +50,8 @@ var (
 
 // BenchmarkParams defines the parameters for benchmarking the Argon2 algorithm
 type BenchmarkParams struct {
-	// MaxMemoryCostKiB sets the upper memory usage limit in KiB.
+	// MaxMemoryCostKiB sets the upper memory usage limit in KiB. The actual
+	// upper limit is capped at 4GiB or half of the available memory.
 	MaxMemoryCostKiB uint32
 
 	// TargetDuration sets the target time for which the benchmark will
@@ -59,7 +60,7 @@ type BenchmarkParams struct {
 
 	// Threads is the number of parallel threads that will be used
 	// for the key derivation. Set this to zero to derive it from
-	// the number of CPUs.
+	// the number of CPUs. The upper limit is capped at 4.
 	Threads uint8
 }
 
@@ -324,6 +325,8 @@ func Benchmark(params *BenchmarkParams, keyFn KeyDurationFunc) (*CostParams, err
 //
 // By design, this function consumes a lot of memory depending on the supplied parameters.
 // It may be desirable to execute it in a short-lived utility process.
+//
+// This will panic if the time or threads cost parameter are zero.
 func Key(passphrase string, salt []byte, params *CostParams, keyLen uint32) []byte {
 	return argon2.Key([]byte(passphrase), salt, params.Time, params.MemoryKiB, params.Threads, keyLen)
 }

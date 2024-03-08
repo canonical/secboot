@@ -80,6 +80,12 @@ func (s *argon2Suite) checkParams(c *C, opts *Argon2Options, ncpus uint8, params
 			expectedMem = 1 * 1024 * 1024
 		}
 		c.Check(params.MemoryKiB, Equals, expectedMem)
+
+		expectedThreads := opts.Parallel
+		if expectedThreads == 0 {
+			expectedThreads = ncpus
+		}
+		c.Check(params.Threads, Equals, expectedThreads)
 	} else {
 		targetDuration := opts.TargetDuration
 		if targetDuration == 0 {
@@ -97,16 +103,16 @@ func (s *argon2Suite) checkParams(c *C, opts *Argon2Options, ncpus uint8, params
 			maxMem = s.halfTotalRamKiB
 		}
 		c.Check(int(params.MemoryKiB), snapd_testutil.IntLessEqual, int(maxMem))
-	}
 
-	expectedThreads := opts.Parallel
-	if expectedThreads == 0 {
-		expectedThreads = ncpus
+		expectedThreads := opts.Parallel
+		if expectedThreads == 0 {
+			expectedThreads = ncpus
+		}
+		if expectedThreads > 4 {
+			expectedThreads = 4
+		}
+		c.Check(params.Threads, Equals, expectedThreads)
 	}
-	if expectedThreads > 4 {
-		expectedThreads = 4
-	}
-	c.Check(params.Threads, Equals, expectedThreads)
 }
 
 var _ = Suite(&argon2Suite{})
@@ -185,6 +191,19 @@ func (s *argon2Suite) TestDeriveCostParamsForceThreads(c *C) {
 	c.Assert(err, IsNil)
 
 	s.checkParams(c, &opts, 1, params)
+}
+
+func (s *argon2Suite) TestDeriveCostParamsForceThreadsGreatherThanCPUNum(c *C) {
+	restore := MockRuntimeNumCPU(2)
+	defer restore()
+
+	var opts Argon2Options
+	opts.ForceIterations = 3
+	opts.Parallel = 8
+	params, err := opts.DeriveCostParams(0)
+	c.Assert(err, IsNil)
+
+	s.checkParams(c, &opts, 8, params)
 }
 
 type argon2SuiteExpensive struct{}
