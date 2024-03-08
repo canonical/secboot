@@ -28,7 +28,6 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot/internal/argon2"
-	"github.com/snapcore/secboot/internal/luks2"
 )
 
 var (
@@ -58,14 +57,6 @@ type KDFOptions struct {
 	// KDF (up to 4). This will be adjusted downwards based on the
 	// actual number of CPUs.
 	Parallel int
-}
-
-func (o *KDFOptions) luksOpts() luks2.KDFOptions {
-	return luks2.KDFOptions{
-		TargetDuration:  o.TargetDuration,
-		MemoryKiB:       o.MemoryKiB,
-		ForceIterations: o.ForceIterations,
-		Parallel:        o.Parallel}
 }
 
 func (o *KDFOptions) deriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {

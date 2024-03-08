@@ -121,6 +121,9 @@ func DetectCryptsetupFeatures() Features {
 
 // KDFOptions specifies parameters for the Argon2 KDF.
 type KDFOptions struct {
+	// Type is the KDF type.
+	Type KDFType
+
 	// TargetDuration specifies the target time for benchmarking of the
 	// time and memory cost parameters. If it is zero then the cryptsetup
 	// default is used. If ForceIterations is not zero then this is ignored.
@@ -128,42 +131,89 @@ type KDFOptions struct {
 
 	// MemoryKiB specifies the maximum memory cost in KiB when ForceIterations
 	// is zero, or the actual memory cost in KiB when ForceIterations is not zero.
-	// If this is set to zero, then the cryptsetup default is used.
-	MemoryKiB int
+	// If this is set to zero, then the cryptsetup default is used. This is only
+	// relevant when Type is argon2i or argon2id.
+	MemoryKiB uint32
 
 	// ForceIterations specifies the time cost. If set to zero, the time
 	// and memory cost are determined by benchmarking the algorithm based on
 	// the specified TargetDuration. Set to a non-zero number to force the
 	// time cost to the value of this field, and the memory cost to the value
 	// of MemoryKiB, disabling benchmarking.
-	ForceIterations int
+	ForceIterations uint32
 
 	// Parallel sets the maximum number of parallel threads. Cryptsetup may
 	// choose a lower value based on its own maximum and the number of available
-	// CPU cores.
-	Parallel int
+	// CPU cores. This is only relevant when Type is argon2i or argon2id.
+	Parallel uint8
+
+	// Hash is the digest algorithm for the KDF. If set to zero then the cryptsetup
+	// default is used. This is only relevant when Type is pbkdf2.
+	Hash Hash
+}
+
+func (options *KDFOptions) validate() error {
+	switch {
+	case options.ForceIterations != 0 && options.TargetDuration != 0:
+		return errors.New("cannot use both ForceIterations and TargetDuration")
+	}
+
+	switch options.Type {
+	case KDFTypePBKDF2:
+		switch {
+		case options.MemoryKiB != 0 || options.Parallel != 0:
+			return errors.New("cannot use argon2 options with pbkdf2")
+		case options.ForceIterations != 0 && options.ForceIterations < 1000:
+			return fmt.Errorf("cannot set pbkdf2 ForceIterations to %d", options.ForceIterations)
+		}
+		switch options.Hash {
+		case HashSHA1, HashSHA224, HashSHA256, HashSHA384, HashSHA512, "":
+			// ok
+		default:
+			return fmt.Errorf("cannot set pbkdf2 hash to %v", options.Hash)
+		}
+	case KDFTypeArgon2i, KDFTypeArgon2id:
+		switch {
+		case options.MemoryKiB != 0 && (options.MemoryKiB < 32 || options.MemoryKiB > 4*1024*1024):
+			return fmt.Errorf("cannot set argon2 MemoryKiB to %d", options.MemoryKiB)
+		case options.ForceIterations != 0 && options.ForceIterations < 4:
+			return fmt.Errorf("cannot set argon2 ForceIterations to %d", options.ForceIterations)
+		case options.Parallel > 4:
+			return fmt.Errorf("cannot set argon2 Parallel to %d", options.Parallel)
+		case options.Hash != "":
+			return errors.New("cannot use pbkdf2 options with argon2")
+		}
+	case "":
+		if options.MemoryKiB != 0 || options.ForceIterations != 0 || options.Parallel != 0 || options.Hash != "" {
+			return errors.New("cannot set options without selecting a type")
+		}
+	default:
+		return fmt.Errorf("cannot set type to %v", options.Type)
+	}
+
+	return nil
 }
 
 func (options *KDFOptions) appendArguments(args []string) []string {
-	// use argon2i as the KDF
-	args = append(args, "--pbkdf", "argon2i")
-
-	switch {
-	case options.ForceIterations != 0:
-		// Disable benchmarking by forcing the time cost
-		args = append(args,
-			"--pbkdf-force-iterations", strconv.Itoa(options.ForceIterations))
-	case options.TargetDuration != 0:
+	if options.Type != "" {
+		args = append(args, "--pbkdf", string(options.Type))
+	}
+	if options.TargetDuration != 0 {
 		args = append(args,
 			"--iter-time", strconv.FormatInt(int64(options.TargetDuration/time.Millisecond), 10))
 	}
-
 	if options.MemoryKiB != 0 {
-		args = append(args, "--pbkdf-memory", strconv.Itoa(options.MemoryKiB))
+		args = append(args, "--pbkdf-memory", strconv.FormatUint(uint64(options.MemoryKiB), 10))
 	}
-
+	if options.ForceIterations != 0 {
+		args = append(args,
+			"--pbkdf-force-iterations", strconv.FormatUint(uint64(options.ForceIterations), 10))
+	}
 	if options.Parallel != 0 {
-		args = append(args, "--pbkdf-parallel", strconv.Itoa(options.Parallel))
+		args = append(args, "--pbkdf-parallel", strconv.FormatUint(uint64(options.Parallel), 10))
+	}
+	if options.Hash != "" {
+		args = append(args, "--hash", string(options.Hash))
 	}
 
 	return args
@@ -176,12 +226,12 @@ type FormatOptions struct {
 	// the remaining space for the JSON area. Set to zero to use
 	// the cryptsetup default. Must be any power of 2 between
 	// 16KiB and 4MiB.
-	MetadataKiBSize int
+	MetadataKiBSize uint32
 
 	// KeyslotsAreaKiBSize sets the size of the binary keyslots
 	// area in KiB. Set to zero to use the cryptsetup default.
 	// Must be a multiple of 4KiB.
-	KeyslotsAreaKiBSize int
+	KeyslotsAreaKiBSize uint32
 
 	// KDFOptions describes the KDF options for the initial
 	// key slot.
@@ -200,8 +250,8 @@ func (options *FormatOptions) validate(cipher string) error {
 	if options.MetadataKiBSize != 0 {
 		// Verify that the size is a power of 2 between 16KiB and 4MiB.
 		found := false
-		for sz := uint(16); sz <= uint(4*1024); sz <<= 1 {
-			if uint(options.MetadataKiBSize) == sz {
+		for sz := uint32(16); sz <= uint32(4*1024); sz <<= 1 {
+			if options.MetadataKiBSize == sz {
 				found = true
 				break
 			}
@@ -214,13 +264,13 @@ func (options *FormatOptions) validate(cipher string) error {
 	if options.KeyslotsAreaKiBSize != 0 {
 		// Verify that the size is sufficient for a single keyslot, not more than 128MiB
 		// and a multiple of 4KiB.
-		if options.KeyslotsAreaKiBSize < (keySize(cipher)*4000)/1024 ||
+		if options.KeyslotsAreaKiBSize < uint32((keySize(cipher)*4000)/1024) ||
 			options.KeyslotsAreaKiBSize > 128*1024 || options.KeyslotsAreaKiBSize%4 != 0 {
 			return fmt.Errorf("cannot set keyslots area size to %v KiB", options.KeyslotsAreaKiBSize)
 		}
 	}
 
-	return nil
+	return options.KDFOptions.validate()
 }
 
 func (options *FormatOptions) appendArguments(args []string) []string {
@@ -233,6 +283,10 @@ func (options *FormatOptions) appendArguments(args []string) []string {
 	if options.KeyslotsAreaKiBSize != 0 {
 		// override the default keyslots area size if specified
 		args = append(args, "--luks2-keyslots-size", fmt.Sprintf("%dk", options.KeyslotsAreaKiBSize))
+	}
+	if options.InlineCryptoEngine {
+		// use inline crypto engine
+		args = append(args, "--inline-crypto-engine")
 	}
 
 	return args
@@ -311,10 +365,6 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 
 	// apply options
 	args = opts.appendArguments(args)
-	if opts.InlineCryptoEngine {
-		// use inline crypto engine
-		args = append(args, "--inline-crypto-engine")
-	}
 
 	args = append(args,
 		// device to format
@@ -342,6 +392,9 @@ type AddKeyOptions struct {
 func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) error {
 	if options == nil {
 		options = &AddKeyOptions{Slot: AnySlot}
+	}
+	if err := options.KDFOptions.validate(); err != nil {
+		return err
 	}
 
 	args := []string{

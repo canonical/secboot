@@ -115,7 +115,7 @@ func (s *tokenSuite) TestDecodeRecoveryToken(c *C) {
 
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4}}
+	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{Type: luks2.KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Check(luks2.Format(path, "", make([]byte, 32), &options), IsNil)
 
 	createToken := &RecoveryToken{
@@ -139,7 +139,7 @@ func (s *tokenSuite) TestDecodeOrphanedRecoveryToken(c *C) {
 
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4}}
+	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{Type: luks2.KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Check(luks2.Format(path, "", make([]byte, 32), &options), IsNil)
 
 	createToken := &RecoveryToken{
@@ -166,7 +166,7 @@ func (s *tokenSuite) TestDecodeInvalidRecoveryToken(c *C) {
 
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4}}
+	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{Type: luks2.KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Check(luks2.Format(path, "", make([]byte, 32), &options), IsNil)
 
 	createToken := &RecoveryToken{
@@ -270,7 +270,7 @@ func (s *tokenSuite) TestDecodeKeyDataToken(c *C) {
 
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4}}
+	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{Type: luks2.KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Check(luks2.Format(path, "", make([]byte, 32), &options), IsNil)
 
 	createToken := &KeyDataToken{
@@ -296,7 +296,7 @@ func (s *tokenSuite) TestDecodeOrphanedKeyDataToken(c *C) {
 
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4}}
+	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{Type: luks2.KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Check(luks2.Format(path, "", make([]byte, 32), &options), IsNil)
 
 	createToken := &KeyDataToken{
@@ -323,7 +323,7 @@ func (s *tokenSuite) TestDecodeInvalidKeyDataToken(c *C) {
 
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4}}
+	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{Type: luks2.KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Check(luks2.Format(path, "", make([]byte, 32), &options), IsNil)
 
 	createToken := &KeyDataToken{
