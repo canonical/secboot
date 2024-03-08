@@ -2184,6 +2184,18 @@ func (s *cryptSuite) TestInitializeLUKS2ContainerWithCustomKDFIterations(c *C) {
 	})
 }
 
+func (s *cryptSuite) TestInitializeLUKS2ContainerInlineCryptoEngine(c *C) {
+	s.testInitializeLUKS2Container(c, &testInitializeLUKS2ContainerData{
+		devicePath: "/dev/sda1",
+		label:      "data",
+		key:        s.newPrimaryKey(c, 32),
+		opts: &InitializeLUKS2ContainerOptions{
+			InlineCryptoEngine: true,
+		},
+		fmtOpts: &luks2.FormatOptions{InlineCryptoEngine: true, KDFOptions: luks2.KDFOptions{ForceIterations: 4, MemoryKiB: 32}},
+	})
+}
+
 func (s *cryptSuite) TestInitializeLUKS2ContainerInvalidKeySize(c *C) {
 	c.Check(InitializeLUKS2Container("/dev/sda1", "data", ([]byte)(s.newPrimaryKey(c, 16)), nil), ErrorMatches, "expected a key length of at least 256-bits \\(got 128\\)")
 }
@@ -3322,12 +3334,6 @@ func (s *cryptSuiteUnmockedExpensive) TestInitializeLUKS2ContainerWithCustomKDFM
 func (s *cryptSuiteUnmocked) TestInitializeLUKS2ContainerWithCustomKDFIterations(c *C) {
 	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
 		KDFOptions: &KDFOptions{MemoryKiB: 32, ForceIterations: 8}})
-}
-
-func (s *cryptSuiteUnmocked) TestInitializeLUKS2ContainerInlineCryptoEngine(c *C) {
-	s.testInitializeLUKS2Container(c, &InitializeLUKS2ContainerOptions{
-		InlineCryptoEngine: true,
-	})
 }
 
 type testAddLUKS2ContainerUnlockKeyUnmockedData struct {
