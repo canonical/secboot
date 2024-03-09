@@ -50,16 +50,16 @@ type (
 	ProtectedKeys = protectedKeys
 )
 
-func KDFOptionsKdfParams(o KDFOptions, keyLen uint32) (*KdfParams, error) {
-	return o.kdfParams(keyLen)
+func KDFOptionsKdfParams(opts KDFOptions, defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
+	return opts.kdfParams(defaultTargetDuration, keyLen)
 }
 
-func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
-	return o.kdfParams(keyLen)
+func (o *Argon2Options) KdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
+	return o.kdfParams(defaultTargetDuration, keyLen)
 }
 
-func (o *PBKDF2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
-	return o.kdfParams(keyLen)
+func (o *PBKDF2Options) KdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
+	return o.kdfParams(defaultTargetDuration, keyLen)
 }
 
 func MockArgon2OutOfProcessHandlerSystemLockPath(path string) (restore func()) {
