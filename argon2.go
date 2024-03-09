@@ -120,7 +120,7 @@ type Argon2Options struct {
 	Parallel uint8
 }
 
-func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
+func (o *Argon2Options) kdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*kdfParams, error) {
 	switch o.Mode {
 	case Argon2Default, Argon2i, Argon2id:
 		// ok
@@ -173,7 +173,7 @@ func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 		// use in order to obtain the desired execution time.
 		benchmarkParams := &argon2.BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024, // the default maximum memory cost is 1GiB.
-			TargetDuration:   2 * time.Second, // the default target duration is 2s.
+			TargetDuration:   defaultTargetDuration,
 		}
 
 		if o.MemoryKiB != 0 {
@@ -203,7 +203,7 @@ func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 			MemoryKiB:       params.MemoryKiB,
 			ForceIterations: params.Time,
 			Parallel:        params.Threads}
-		return o.kdfParams(keyLen)
+		return o.kdfParams(defaultTargetDuration, keyLen)
 	}
 }
 
