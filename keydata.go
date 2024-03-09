@@ -38,7 +38,6 @@ import (
 )
 
 const (
-	kdfType                            = "argon2i"
 	nilHash                    hashAlg = 0
 	passphraseKeyLen                   = 32
 	passphraseEncryptionKeyLen         = 32
@@ -275,14 +274,18 @@ func (a hashAlg) marshalASN1(b *cryptobyte.Builder) {
 	})
 }
 
-// kdfData corresponds to the arguments to a KDF and matches the
-// corresponding object in the LUKS2 specification.
-type kdfData struct {
+type kdfParams struct {
 	Type   string `json:"type"`
-	Salt   []byte `json:"salt"`
 	Time   int    `json:"time"`
 	Memory int    `json:"memory"`
 	CPUs   int    `json:"cpus"`
+}
+
+// kdfData corresponds to the arguments to a KDF and matches the
+// corresponding object in the LUKS2 specification.
+type kdfData struct {
+	Salt []byte `json:"salt"`
+	kdfParams
 }
 
 // passphraseParams contains parameters for passphrase authentication.
@@ -370,10 +373,6 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 	}
 
 	params := d.data.PassphraseParams
-	if params.KDF.Type != kdfType {
-		// Only Argon2i is supported
-		return nil, nil, nil, fmt.Errorf("unexpected intermediate KDF type \"%s\"", params.KDF.Type)
-	}
 	if params.DerivedKeySize < 0 {
 		return nil, nil, nil, fmt.Errorf("invalid derived key size (%d bytes)", params.DerivedKeySize)
 	}
@@ -406,16 +405,24 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 		return nil, nil, nil, xerrors.Errorf("cannot serialize salt: %w", err)
 	}
 
-	costParams := &Argon2CostParams{
-		Time:      uint32(params.KDF.Time),
-		MemoryKiB: uint32(params.KDF.Memory),
-		Threads:   uint8(params.KDF.CPUs)}
-	derived, err := argon2KDF().Derive(passphrase, salt, costParams, uint32(params.DerivedKeySize))
-	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot derive key from passphrase: %w", err)
-	}
-	if len(derived) != params.DerivedKeySize {
-		return nil, nil, nil, errors.New("KDF returned unexpected key length")
+	var derived []byte
+
+	switch params.KDF.Type {
+	case string(Argon2i), string(Argon2id):
+		mode := Argon2Mode(params.KDF.Type)
+		costParams := &Argon2CostParams{
+			Time:      uint32(params.KDF.Time),
+			MemoryKiB: uint32(params.KDF.Memory),
+			Threads:   uint8(params.KDF.CPUs)}
+		derived, err = argon2KDF().Derive(passphrase, salt, mode, costParams, uint32(params.DerivedKeySize))
+		if err != nil {
+			return nil, nil, nil, xerrors.Errorf("cannot derive key from passphrase: %w", err)
+		}
+		if len(derived) != params.DerivedKeySize {
+			return nil, nil, nil, errors.New("KDF returned unexpected key length")
+		}
+	default:
+		return nil, nil, nil, fmt.Errorf("unexpected intermediate KDF type \"%s\"", params.KDF.Type)
 	}
 
 	key = make([]byte, params.EncryptionKeySize)
@@ -743,7 +750,7 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 		kdfOptions = &defaultOptions
 	}
 
-	costParams, err := kdfOptions.deriveCostParams(passphraseEncryptionKeyLen + aes.BlockSize)
+	kdfParams, err := kdfOptions.kdfParams(passphraseKeyLen)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot derive KDF cost parameters: %w", err)
 	}
@@ -755,11 +762,8 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 
 	kd.data.PassphraseParams = &passphraseParams{
 		KDF: kdfData{
-			Type:   kdfType,
-			Salt:   salt[:],
-			Time:   int(costParams.Time),
-			Memory: int(costParams.MemoryKiB),
-			CPUs:   int(costParams.Threads),
+			Salt:      salt[:],
+			kdfParams: *kdfParams,
 		},
 		Encryption:        passphraseEncryption,
 		DerivedKeySize:    passphraseKeyLen,

@@ -435,7 +435,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 		kdfOpts = &def
 	}
 
-	costParams, err := kdfOpts.DeriveCostParams(0)
+	kdfParams, err := kdfOpts.KdfParams(0)
 	c.Assert(err, IsNil)
 
 	s.checkKeyDataJSONCommon(c, j, &creationParams.KeyParams, nmodels)
@@ -464,7 +464,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 
 	str, ok := k["type"].(string)
 	c.Check(ok, testutil.IsTrue)
-	c.Check(str, Equals, "argon2i")
+	c.Check(str, Equals, "argon2id")
 
 	str, ok = k["salt"].(string)
 	c.Check(ok, testutil.IsTrue)
@@ -473,15 +473,15 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 
 	time, ok := k["time"].(float64)
 	c.Check(ok, testutil.IsTrue)
-	c.Check(time, Equals, float64(costParams.Time))
+	c.Check(time, Equals, float64(kdfParams.Time))
 
 	memory, ok := k["memory"].(float64)
 	c.Check(ok, testutil.IsTrue)
-	c.Check(memory, Equals, float64(costParams.MemoryKiB))
+	c.Check(memory, Equals, float64(kdfParams.Memory))
 
 	cpus, ok := k["cpus"].(float64)
 	c.Check(ok, testutil.IsTrue)
-	c.Check(cpus, Equals, float64(costParams.Threads))
+	c.Check(cpus, Equals, float64(kdfParams.CPUs))
 
 	str, ok = j["encrypted_payload"].(string)
 	c.Check(ok, testutil.IsTrue)
@@ -511,7 +511,12 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	c.Assert(err, IsNil)
 
 	var kdf testutil.MockArgon2KDF
-	derived, _ := kdf.Derive(passphrase, asnsalt, costParams, uint32(derivedKeySize))
+	costParams := &Argon2CostParams{
+		Time:      uint32(kdfParams.Time),
+		MemoryKiB: uint32(kdfParams.Memory),
+		Threads:   uint8(kdfParams.CPUs),
+	}
+	derived, _ := kdf.Derive(passphrase, asnsalt, Argon2Mode(kdfParams.Type), costParams, uint32(derivedKeySize))
 
 	key := make([]byte, int(encryptionKeySize))
 
@@ -1626,12 +1631,10 @@ func (s *keyDataSuite) TestKeyDataDerivePassphraseKeysExpectedInfoFields(c *C) {
 			`"digest":"8sVvLZOkRD6RWjLFSp/pOPrKoibsr+VWyGhv4M2aph8="},` +
 			`"hmacs":null}}
 `)
-	expectedKey, err := base64.StdEncoding.DecodeString("C058QWvAAc5sp6Ef2NeQwk0mJk8OS4wrcceYEruHXno=")
-	c.Check(err, IsNil)
-	expectedIV, err := base64.StdEncoding.DecodeString("x78OL7OTqRQfONsOb8yaPQ==")
-	c.Check(err, IsNil)
-	expectedAuth, err := base64.StdEncoding.DecodeString("+AdPOck2Ek8CyCVfSOV3eYClrQMiNqAri0Ra4Ldbohc=")
-	c.Check(err, IsNil)
+
+	expectedKey := testutil.DecodeHexString(c, "89e97e7c427f54805a25c2bd1224865218aa5a985e5ac4c44fbc2c53b4bdfae2")
+	expectedIV := testutil.DecodeHexString(c, "b5835d62838a8bef63f37389ae782308")
+	expectedAuth := testutil.DecodeHexString(c, "2e46344ee30895da0d8e11cbb86bb67aeeccca0f6c6489009619593cca00722e")
 
 	kd, err := ReadKeyData(&mockKeyDataReader{"foo", bytes.NewReader(j)})
 	c.Assert(err, IsNil)
