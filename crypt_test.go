@@ -409,9 +409,11 @@ func (s *cryptSuite) SetUpTest(c *C) {
 		activated: make(map[string]string)}
 
 	s.AddCleanup(s.luks2.enableMocks())
+}
 
-	origKdf := SetArgon2KDF(&testutil.MockArgon2KDF{})
-	s.AddCleanup(func() { SetArgon2KDF(origKdf) })
+func (s *cryptSuite) TearDownTest(c *C) {
+	s.keyDataTestBase.TearDownTest(c)
+	s.KeyringTestBase.TearDownTest(c)
 }
 
 func (s *cryptSuite) addMockToken(path string, token luks2.Token) int {

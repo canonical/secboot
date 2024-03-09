@@ -23,6 +23,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"time"
 
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
@@ -95,6 +96,21 @@ func (s *argon2Suite) TestKDFParamsExplicitMode(c *C) {
 		Type:   "argon2i",
 		Time:   4,
 		Memory: 1024063,
+		CPUs:   s.cpusAuto,
+	})
+}
+
+func (s *argon2Suite) TestKDFParamsTargetDuration(c *C) {
+	var opts Argon2Options
+	opts.TargetDuration = 1 * time.Second
+	params, err := opts.KdfParams(32)
+	c.Assert(err, IsNil)
+	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
+
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   4,
+		Memory: 512031,
 		CPUs:   s.cpusAuto,
 	})
 }

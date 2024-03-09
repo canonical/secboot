@@ -109,6 +109,27 @@ func (s *platformSuite) TestRecoverKeysWithPassphraseIntegrated(c *C) {
 	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
 }
 
+func (s *platformSuite) TestRecoverKeysWithPassphraseIntegratedPBKDF2(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
+
+	passphraseParams := &PassphraseProtectKeyParams{
+		ProtectKeyParams: *params,
+		KDFOptions:       new(secboot.PBKDF2Options),
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
+	c.Assert(err, IsNil)
+
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
+	c.Check(err, IsNil)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+}
+
 func (s *platformSuite) TestRecoverKeysWithBadPassphraseIntegrated(c *C) {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
