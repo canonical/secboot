@@ -32,6 +32,7 @@ import (
 const (
 	// Dummy password for benchmarking (same value used by cryptsetup)
 	benchmarkPassword = "foo"
+	benchmarkKeyLen   = 32
 
 	initialTargetDuration = 250 * time.Millisecond
 
@@ -79,7 +80,6 @@ type CostParams struct {
 }
 
 type benchmarkContext struct {
-	keyLen           uint32          // desired key length
 	keyFn            KeyDurationFunc // callback for running an individual measurement
 	maxMemoryCostKiB uint32          // maximum memory cost
 	cost             CostParams      // current computed cost parameters
@@ -272,15 +272,14 @@ func (c *benchmarkContext) run(params *BenchmarkParams, keyFn KeyDurationFunc, s
 	return &c.cost, nil
 }
 
-// KeyDuration runs a key derivation with the built-in benchmarking values and
-// the specified cost parameters and length, and then returns the amount of time
-// taken to execute.
+// KeyDuration runs the key derivation with the built-in benchmarking values for the
+// supplied set of cost parameters, and then returns the amount of time taken to execute.
 //
-// By design, this function consumes a lot of memory depending on the supplied parameters.
-// It may be desirable to execute it in a short-lived utility process.
-func KeyDuration(params *CostParams, keyLen uint32) time.Duration {
+// By design, this function consumes a lot of memory depending on the supplied
+// parameters. It may be desirable to execute it in a short-lived utility process.
+func KeyDuration(params *CostParams) time.Duration {
 	start := time.Now()
-	Key(benchmarkPassword, benchmarkSalt, params, keyLen)
+	Key(benchmarkPassword, benchmarkSalt, params, benchmarkKeyLen)
 	return time.Now().Sub(start)
 }
 

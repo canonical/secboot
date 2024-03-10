@@ -23,7 +23,6 @@ import (
 	"crypto"
 	_ "crypto/sha256"
 	"encoding/binary"
-	"errors"
 	"time"
 
 	kdf "github.com/canonical/go-sp800.108-kdf"
@@ -34,9 +33,6 @@ import (
 // MockKDF provides a mock implementation of secboot.KDF that isn't
 // memory intensive.
 type MockKDF struct {
-	// BenchmarkKeyLen is the key length that Time was called with. Set this
-	// to zero before running a mock benchmark.
-	BenchmarkKeyLen uint32
 }
 
 // Derive implements secboot.KDF.Derive and derives a key from the supplied
@@ -54,12 +50,7 @@ func (_ *MockKDF) Derive(passphrase string, salt []byte, params *secboot.KDFCost
 
 // Time implements secboot.KDF.Time and returns a time that is linearly
 // related to the specified cost parameters, suitable for mocking benchmarking.
-func (k *MockKDF) Time(params *secboot.KDFCostParams, keyLen uint32) (time.Duration, error) {
-	if k.BenchmarkKeyLen != 0 && k.BenchmarkKeyLen != keyLen {
-		return 0, errors.New("unexpected key length")
-	}
-	k.BenchmarkKeyLen = keyLen
-
+func (_ *MockKDF) Time(params *secboot.KDFCostParams) (time.Duration, error) {
 	const memBandwidthKiBPerMs = 2048
 	duration := (time.Duration(float64(params.MemoryKiB)/float64(memBandwidthKiBPerMs)) * time.Duration(params.Time)) * time.Millisecond
 	return duration, nil

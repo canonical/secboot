@@ -431,22 +431,22 @@ func (s *argon2SuiteExpensive) TestKey6(c *C) {
 }
 
 func (s *argon2SuiteExpensive) TestKeyDuration(c *C) {
-	time1 := KeyDuration(&CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4}, 32)
+	time1 := KeyDuration(&CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4})
 	runtime.GC()
 
-	time2 := KeyDuration(&CostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4}, 32)
-	runtime.GC()
-	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
-	// types of int64 kind
-	c.Check(time2 > time1, testutil.IsTrue)
-
-	time2 = KeyDuration(&CostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4}, 32)
+	time2 := KeyDuration(&CostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4})
 	runtime.GC()
 	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
 	// types of int64 kind
 	c.Check(time2 > time1, testutil.IsTrue)
 
-	time2 = KeyDuration(&CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1}, 32)
+	time2 = KeyDuration(&CostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4})
+	runtime.GC()
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	time2 = KeyDuration(&CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1})
 	runtime.GC()
 	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
 	// types of int64 kind
