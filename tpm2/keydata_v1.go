@@ -27,6 +27,7 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
+	"github.com/snapcore/secboot"
 
 	"golang.org/x/xerrors"
 )
@@ -67,7 +68,11 @@ func (_ *keyData_v1) Imported(_ tpm2.Private) {
 	panic("not supported")
 }
 
-func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+	if len(role) > 0 {
+		return nil, errors.New("unexpected role")
+	}
+
 	// Validate the type and scheme of the dynamic authorization policy signing key.
 	authPublicKey := d.PolicyData.StaticData.AuthPublicKey
 	authKeyName, err := authPublicKey.ComputeName()
@@ -125,4 +130,8 @@ func (d *keyData_v1) Write(w io.Writer) error {
 
 func (d *keyData_v1) Policy() keyDataPolicy {
 	return d.PolicyData
+}
+
+func (d *keyData_v1) Decrypt(key, payload []byte, generation uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
+	return nil, errors.New("not supported")
 }

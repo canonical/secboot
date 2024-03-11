@@ -76,13 +76,17 @@ type keyData interface {
 	// ValidateData performs consistency checks on the key data,
 	// returning a validated context for the PCR policy counter, if
 	// one is defined.
-	ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error)
+	ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error)
 
 	// Write serializes the key data to w
 	Write(w io.Writer) error
 
 	// Policy corresponds to the authorization policy for this key data.
 	Policy() keyDataPolicy
+
+	// Decrypt performs authenticated decryption of the encrypted payload and the associated data.
+	// This is relevant only for keydata versions 3 and later.
+	Decrypt(key, payload []byte, generation uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error)
 }
 
 func readKeyData(r io.Reader, version uint32) (keyData, error) {
@@ -157,7 +161,7 @@ func (k *sealedKeyDataBase) load(tpm *tpm2.TPMContext, parent tpm2.ResourceConte
 }
 
 // validateData performs correctness checks on this object.
-func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
+func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
 	sealedKeyTemplate := makeImportableSealedKeyTemplate()
 
 	// Perform some initial checks on the sealed data object's public area to
@@ -186,7 +190,7 @@ func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, session tpm2.Sess
 	tpm.FlushContext(keyContext)
 
 	// Version specific validation.
-	pcrPolicyCounter, err := k.data.ValidateData(tpm, session)
+	pcrPolicyCounter, err := k.data.ValidateData(tpm, []byte(role), session)
 	if err != nil {
 		return nil, err
 	}

@@ -1,16 +1,29 @@
 package secboot_test
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
+	"encoding/binary"
 	"hash"
 	"math/rand"
 
 	. "github.com/snapcore/secboot"
 	. "gopkg.in/check.v1"
 )
+
+// marshalV1Keys serializes the supplied disk unlock key and auxiliary key in
+// the v1 format that is ready to be encrypted by a platform's secure device.
+func marshalV1Keys(key DiskUnlockKey, auxKey PrimaryKey) []byte {
+	w := new(bytes.Buffer)
+	binary.Write(w, binary.BigEndian, uint16(len(key)))
+	w.Write(key)
+	binary.Write(w, binary.BigEndian, uint16(len(auxKey)))
+	w.Write(auxKey)
+	return w.Bytes()
+}
 
 type keyDataLegacyTestBase struct {
 	keyDataTestBase
@@ -42,7 +55,7 @@ func (s *keyDataLegacyTestBase) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKe
 }
 
 func (s *keyDataLegacyTestBase) mockProtectKeys(c *C, key DiskUnlockKey, auxKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams) {
-	payload := MarshalKeys(key, auxKey)
+	payload := marshalV1Keys(key, auxKey)
 
 	k := make([]byte, 48)
 	_, err := rand.Read(k)
@@ -83,7 +96,7 @@ type testLegacyKeyPayloadData struct {
 }
 
 func (s *keyDataLegacySuite) testKeyPayload(c *C, data *testLegacyKeyPayloadData) {
-	payload := MarshalKeys(data.key, data.auxKey)
+	payload := marshalV1Keys(data.key, data.auxKey)
 
 	key, auxKey, err := UnmarshalV1KeyPayload(payload)
 	c.Check(err, IsNil)
@@ -127,7 +140,7 @@ func (s *keyDataLegacySuite) TestLegacyKeyPayloadUnmarshalInvalid1(c *C) {
 }
 
 func (s *keyDataLegacySuite) TestLegacyKeyPayloadUnmarshalInvalid2(c *C) {
-	payload := MarshalKeys(make(DiskUnlockKey, 32), make(PrimaryKey, 32))
+	payload := marshalV1Keys(make(DiskUnlockKey, 32), make(PrimaryKey, 32))
 	payload = append(payload, 0xff)
 
 	key, auxKey, err := UnmarshalV1KeyPayload(payload)

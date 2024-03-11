@@ -256,5 +256,5 @@ func (s *updateLegacySuite) TestUpdateKeyPCRProtectionPolicyMultipleUnrelated2(c
 	}
 
 	err = UpdateKeyPCRProtectionPolicyMultiple(s.TPM(), keys, authKey, nil)
-	c.Check(err, ErrorMatches, "invalid key data: key data at index 1 is not related to the primary key data")
+	c.Check(err, ErrorMatches, "cannot update key at index 1: cannot validate auth key: dynamic authorization policy signing private key doesn't match public key")
 }

@@ -25,6 +25,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/snapcore/secboot"
 )
 
 // keyData_v2 represents version 2 of keyData.
@@ -88,11 +89,11 @@ func (d *keyData_v2) Imported(priv tpm2.Private) {
 	d.KeyImportSymSeed = nil
 }
 
-func (d *keyData_v2) ValidateData(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v2) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	if d.KeyImportSymSeed != nil {
 		return nil, errors.New("cannot validate importable key data")
 	}
-	return d.AsV1().ValidateData(tpm, session)
+	return d.AsV1().ValidateData(tpm, role, session)
 }
 
 func (d *keyData_v2) Write(w io.Writer) error {
@@ -109,4 +110,8 @@ func (d *keyData_v2) Write(w io.Writer) error {
 
 func (d *keyData_v2) Policy() keyDataPolicy {
 	return d.PolicyData
+}
+
+func (d *keyData_v2) Decrypt(key, payload []byte, baseVersion uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
+	return nil, errors.New("not supported")
 }

@@ -20,6 +20,7 @@
 package tpm2
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -60,7 +61,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 		return InvalidKeyDataError{"invalid metadata versions"}
 	}
 
-	return updateKeyPCRProtectionPoliciesCommon(tpm.TPMContext, []*sealedKeyDataBase{&k.sealedKeyDataBase}, policyUpdateData.AuthKey, pcrProfile, tpm.HmacSession())
+	return k.updatePCRProtectionPolicy(tpm.TPMContext, policyUpdateData.AuthKey, "", pcrProfile, incrementPcrPolicyVersion, tpm.HmacSession())
 }
 
 // RevokeOldPCRProtectionPoliciesV0 revokes old PCR protection policies associated with this sealed key. It does
@@ -93,7 +94,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 		return InvalidKeyDataError{"invalid metadata version"}
 	}
 
-	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, policyUpdateData.AuthKey, tpm.HmacSession())
+	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, policyUpdateData.AuthKey, "", tpm.HmacSession())
 }
 
 // UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
@@ -107,7 +108,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 // On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
 // from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
 func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.PrimaryKey, pcrProfile *PCRProtectionProfile) error {
-	return updateKeyPCRProtectionPoliciesCommon(tpm.TPMContext, []*sealedKeyDataBase{&k.sealedKeyDataBase}, authKey, pcrProfile, tpm.HmacSession())
+	return k.updatePCRProtectionPolicy(tpm.TPMContext, authKey, "", pcrProfile, incrementPcrPolicyVersion, tpm.HmacSession())
 }
 
 // RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. It does
@@ -125,7 +126,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey sec
 //
 // If validation of the key data fails, a InvalidKeyDataError error will be returned.
 func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.PrimaryKey) error {
-	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey, tpm.HmacSession())
+	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, authKey, "", tpm.HmacSession())
 }
 
 // UpdateKeyPCRProtectionPolicyMultiple updates the PCR protection policy for the supplied sealed key objects to the
@@ -144,10 +145,37 @@ func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObje
 		return errors.New("no sealed keys supplied")
 	}
 
-	var keysCommon []*sealedKeyDataBase
-	for _, key := range keys {
-		keysCommon = append(keysCommon, &key.sealedKeyDataBase)
+	for i, key := range keys {
+		if err := key.UpdatePCRProtectionPolicy(tpm, authKey, pcrProfile); err != nil {
+			return xerrors.Errorf("cannot update key at index %d: %w", i, err)
+		}
 	}
 
-	return updateKeyPCRProtectionPoliciesCommon(tpm.TPMContext, keysCommon, authKey, pcrProfile, tpm.HmacSession())
+	// Validate secondary key objects and make sure they are related
+	primaryKey := keys[0]
+	session := tpm.HmacSession()
+	for i, k := range keys[1:] {
+		if k.data.Version() != primaryKey.data.Version() {
+			return fmt.Errorf("key data at index %d has a different metadata version compared to the primary key data", i+1)
+		}
+
+		if _, err := k.validateData(tpm.TPMContext, "", session); err != nil {
+			if isKeyDataError(err) {
+				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i+1)}
+			}
+			return xerrors.Errorf("cannot validate related key data: %w", err)
+		}
+		// The metadata is valid and consistent with the object's static authorization policy.
+		// Verify that it also has the same static authorization policy as the first key object passed
+		// to this function. This policy digest includes a cryptographic record of the PCR policy counter
+		// and dynamic authorization policy signing key, so this is the only check required to determine
+		// if 2 keys are related.
+		if !bytes.Equal(k.data.Public().AuthPolicy, primaryKey.data.Public().AuthPolicy) {
+			return InvalidKeyDataError{fmt.Sprintf("key data at index %d is not related to the primary key data", i+1)}
+		}
+
+		k.data.Policy().SetPCRPolicyFrom(primaryKey.data.Policy())
+	}
+
+	return nil
 }

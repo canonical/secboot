@@ -252,15 +252,12 @@ type pcrPolicyData_v0 struct {
 	AuthorizedPolicySignature *tpm2.Signature
 }
 
-func (d *pcrPolicyData_v0) new(params *pcrPolicyParams) *pcrPolicyData_v0 {
-	return &pcrPolicyData_v0{
-		Selection:      params.pcrs,
-		PolicySequence: d.PolicySequence + 1}
-}
-
-func (d *pcrPolicyData_v0) addPcrAssertions(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, digests tpm2.DigestList) error {
+func (d *pcrPolicyData_v0) addPcrAssertions(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, pcrs tpm2.PCRSelectionList, digests tpm2.DigestList) error {
 	// Compute the policy digest that would result from a TPM2_PolicyPCR assertion for each condition
 	var orDigests tpm2.DigestList
+
+	d.Selection = pcrs
+
 	for _, digest := range digests {
 		trial2 := util.ComputeAuthPolicy(alg)
 		trial2.SetDigest(trial.GetDigest())
@@ -276,10 +273,11 @@ func (d *pcrPolicyData_v0) addPcrAssertions(alg tpm2.HashAlgorithmId, trial *uti
 	return nil
 }
 
-func (d *pcrPolicyData_v0) addRevocationCheck(trial *util.TrialAuthPolicy, policyCounterName tpm2.Name) {
+func (d *pcrPolicyData_v0) addRevocationCheck(trial *util.TrialAuthPolicy, policyCounterName tpm2.Name, policySequence uint64) {
 	operandB := make([]byte, 8)
-	binary.BigEndian.PutUint64(operandB, d.PolicySequence)
+	binary.BigEndian.PutUint64(operandB, policySequence)
 	trial.PolicyNV(policyCounterName, operandB, 0, tpm2.OpUnsignedLE)
+	d.PolicySequence = policySequence
 }
 
 func (d *pcrPolicyData_v0) authorizePolicy(key crypto.PrivateKey, scheme *tpm2.SigScheme, approvedPolicy tpm2.Digest, policyRef tpm2.Nonce) error {
@@ -369,14 +367,14 @@ func (p *keyDataPolicy_v0) PCRPolicySequence() uint64 {
 // validated during execution before executing the corresponding PolicyAuthorize assertion as part of the
 // static policy.
 func (p *keyDataPolicy_v0) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcrPolicyParams) error {
-	pcrData := p.PCRData.new(params)
+	pcrData := new(pcrPolicyData_v0)
 
 	trial := util.ComputeAuthPolicy(alg)
-	if err := pcrData.addPcrAssertions(alg, trial, params.pcrDigests); err != nil {
+	if err := pcrData.addPcrAssertions(alg, trial, params.pcrs, params.pcrDigests); err != nil {
 		return xerrors.Errorf("cannot compute base PCR policy: %w", err)
 	}
 
-	pcrData.addRevocationCheck(trial, params.policyCounterName)
+	pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence)
 
 	key, err := x509.ParsePKCS1PrivateKey(params.key)
 	if err != nil {
