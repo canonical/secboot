@@ -32,20 +32,31 @@ import (
 
 var skdbUpdatePCRProtectionPolicyNoValidate = (*sealedKeyDataBase).updatePCRProtectionPolicyNoValidate
 
-// pcrPolicyVersionOption describes how to determine the version of a new PCR policy.
+// pcrPolicyVersionOption is used to tell sealedKeyDataBase.updatePCRProtectionPolicyNoValidate
+// how to determine the version of a new PCR policy.
 type pcrPolicyVersionOption int
 
 const (
 	// resetPcrPolicyVersion indicates that the new policy version should be set
-	// to the current counter value.
+	// to the current counter value. This is used for the initial policy when creating
+	// any key, and is also used when updating a policy for existing keys with the
+	// new SealedKeyData API when called with NoNewPCRPolicyVersion.
 	resetPcrPolicyVersion pcrPolicyVersionOption = iota
 
 	// newPcrPolicyVersion indicates that the new policy version should be the current
-	// counter value plus 1.
+	// counter value plus 1. This is used when updating a policy for existing keys
+	// with the new SealedKeyData API when called with NewPCRPolicyVersion. A subsequent
+	// counter increment to the new policy version will revoke all policies created with
+	// resetPcrPolicyVersion since the previous revocation.
 	newPcrPolicyVersion
 
 	// incrementPolicyVersion indicates that the new policy version should be the
-	// previous policy version plus 1.
+	// current policy version plus 1, and is used to maintain the behaviour of
+	// policy updates when using the previous SealedKeyObject API, which incremented
+	// the policy version with every update.  A subsequent counter increment to the
+	// new policy version will revoke all policies created since the previous
+	// revocation, but this may require multiple counter increments (one per created
+	// policy).
 	incrementPcrPolicyVersion
 )
 
