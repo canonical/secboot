@@ -165,7 +165,7 @@ func (s *cryptsetupSuite) TestFormatOptionsValidateGood(c *C) {
 		{KeyslotsAreaKiBSize: 4096},
 		{KeyslotsAreaKiBSize: 128 * 1024},
 	} {
-		opts.KDFOptions = KDFOptions{ForceIterations: 4, MemoryKiB: 32}
+		opts.KDFOptions = KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}
 		c.Check(Format(devicePath, "", make([]byte, 32), &opts), IsNil, Commentf("opts: %#v", opts))
 	}
 }
@@ -182,7 +182,7 @@ func (s *cryptsetupSuite) TestFormatOptionsValidateBadMetadataSize(c *C) {
 }
 
 func (s *cryptsetupSuite) TestFormatOptionsValidateBadKeyslotsAreaSize(c *C) {
-	var minSize int
+	var minSize uint32
 	switch KeySize(SelectCipher()) {
 	case 32:
 		minSize = 124
@@ -206,6 +206,119 @@ func (s *cryptsetupSuite) TestFormatOptionsValidateBadKeyslotsAreaSize(c *C) {
 	}
 }
 
+func (s *cryptsetupSuite) TestFormatKDFOptionsValidateGood(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []KDFOptions{
+		{Type: KDFTypePBKDF2, ForceIterations: 2000},
+		{Type: KDFTypePBKDF2, ForceIterations: 2000, Hash: HashSHA512},
+		{Type: KDFTypeArgon2i, ForceIterations: 4, MemoryKiB: 32 * 1024},
+	} {
+		c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: opts}), IsNil, Commentf("opts: %#v", opts))
+	}
+}
+
+func (s *cryptsetupSuite) TestFormatKDFOptionsValidateBadForcedIterWithBenchmark(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+	c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypeArgon2i, TargetDuration: 100 * time.Millisecond, ForceIterations: 4}}),
+		ErrorMatches, `cannot use both ForceIterations and TargetDuration`)
+}
+
+func (s *cryptsetupSuite) TestFormatKDFOptionsValidateBadPBKDF2Options(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []KDFOptions{
+		{Type: KDFTypePBKDF2, MemoryKiB: 64 * 1024},
+		{Type: KDFTypePBKDF2, Parallel: 1},
+	} {
+		c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: opts}),
+			ErrorMatches, `cannot use argon2 options with pbkdf2`, Commentf("opts: %#v", opts))
+	}
+}
+
+func (s *cryptsetupSuite) TestFormatKDFOptionsValidateBadPBKDF2ForceIterations(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []KDFOptions{
+		{Type: KDFTypePBKDF2, ForceIterations: 999},
+		{Type: KDFTypePBKDF2, ForceIterations: 500},
+	} {
+		c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: opts}),
+			ErrorMatches, fmt.Sprintf("cannot set pbkdf2 ForceIterations to %d", opts.ForceIterations), Commentf("opts: %#v", opts))
+	}
+}
+
+func (s *cryptsetupSuite) TestFormatKDFOptionsValidateBadArgon2ForceIterations(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []KDFOptions{
+		{Type: KDFTypeArgon2i, ForceIterations: 3},
+		{Type: KDFTypeArgon2i, ForceIterations: 1},
+	} {
+		c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: opts}),
+			ErrorMatches, fmt.Sprintf("cannot set argon2 ForceIterations to %d", opts.ForceIterations), Commentf("opts: %#v", opts))
+	}
+}
+
+func (s *cryptsetupSuite) TestFormatKDFOptionsValidateBadArgon2Parallel(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []KDFOptions{
+		{Type: KDFTypeArgon2i, Parallel: 5},
+		{Type: KDFTypeArgon2i, Parallel: 8},
+	} {
+		c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: opts}),
+			ErrorMatches, fmt.Sprintf("cannot set argon2 Parallel to %d", opts.Parallel), Commentf("opts: %#v", opts))
+	}
+}
+
+func (s *cryptsetupSuite) TestFormatKDFOptionsValidateBadOptionsWithNoType(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []KDFOptions{
+		{MemoryKiB: 32 * 1024},
+		{ForceIterations: 1000},
+		{Parallel: 4},
+		{Hash: HashSHA256},
+	} {
+		c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: opts}),
+			ErrorMatches, `cannot set options without selecting a type`, Commentf("opts: %#v", opts))
+	}
+}
+
+func (s *cryptsetupSuite) TestFormatKDFOptionsValidateBadArgon2Memory(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []KDFOptions{
+		{Type: KDFTypeArgon2i, MemoryKiB: 31},
+		{Type: KDFTypeArgon2i, MemoryKiB: 5 * 1024 * 1024},
+	} {
+		c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: opts}),
+			ErrorMatches, fmt.Sprintf("cannot set argon2 MemoryKiB to %d", opts.MemoryKiB), Commentf("opts: %#v", opts))
+	}
+}
+
+func (s *cryptsetupSuiteExpensive) TestFormatKDFOptionsValidateGood(c *C) {
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+
+	for _, opts := range []KDFOptions{
+		{},
+		{TargetDuration: 100 * time.Millisecond},
+		{Type: KDFTypePBKDF2},
+		{Type: KDFTypePBKDF2, TargetDuration: 100 * time.Millisecond},
+		{Type: KDFTypePBKDF2, Hash: HashSHA512},
+		{Type: KDFTypePBKDF2, TargetDuration: 100 * time.Millisecond, Hash: HashSHA512},
+		{Type: KDFTypeArgon2i},
+		{Type: KDFTypeArgon2i, TargetDuration: 100 * time.Millisecond},
+		{Type: KDFTypeArgon2i, MemoryKiB: 64 * 1024},
+		{Type: KDFTypeArgon2i, ForceIterations: 4},
+		{Type: KDFTypeArgon2i, Parallel: 1},
+		{Type: KDFTypeArgon2i, TargetDuration: 100 * time.Millisecond, MemoryKiB: 64 * 1024},
+	} {
+		c.Check(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: opts}), IsNil, Commentf("opts: %#v", opts))
+	}
+}
+
 type testFormatData struct {
 	label   string
 	key     []byte
@@ -223,7 +336,7 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 	keysize := KeySize(cipher)
 	cmd := []string{"cryptsetup", "--batch-mode", "luksFormat", "--type", "luks2",
 		"--key-file", "-", "--cipher", cipher, "--key-size", strconv.Itoa(keysize * 8),
-		"--label", data.label, "--pbkdf", "argon2i"}
+		"--label", data.label}
 	cmd = append(cmd, data.extraArgs...)
 	cmd = append(cmd, devicePath)
 	c.Check(s.cryptsetup.Calls(), DeepEquals, [][]string{cmd})
@@ -241,10 +354,42 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
 	keyslot, ok := info.Metadata.Keyslots[0]
 	c.Assert(ok, Equals, true)
+
+	// Handle any default in cryptsetup - we only test keyslot.KDF.Type
+	// when the test is explicit about the value.
+	expectedKDFType := keyslot.KDF.Type
+	if options.KDFOptions.Type != "" {
+		expectedKDFType = options.KDFOptions.Type
+	}
+
 	c.Check(keyslot.KeySize, Equals, keysize)
 	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 	c.Assert(keyslot.KDF, NotNil)
-	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
+	c.Check(keyslot.KDF.Type, Equals, expectedKDFType)
+
+	switch expectedKDFType {
+	case KDFTypeArgon2i, KDFTypeArgon2id:
+		expectedMemoryKiB := 1 * 1024 * 1024
+		if options.KDFOptions.MemoryKiB > 0 {
+			expectedMemoryKiB = int(options.KDFOptions.MemoryKiB)
+		}
+
+		if options.KDFOptions.ForceIterations > 0 {
+			c.Check(keyslot.KDF.Time, Equals, int(options.KDFOptions.ForceIterations))
+			c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
+		} else {
+			c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
+		}
+		c.Check(keyslot.KDF.Iterations, Equals, 0)
+	case KDFTypePBKDF2:
+		if options.KDFOptions.ForceIterations > 0 {
+			c.Check(keyslot.KDF.Iterations, Equals, int(options.KDFOptions.ForceIterations))
+		}
+		if options.KDFOptions.Hash != "" {
+			c.Check(keyslot.KDF.Hash, Equals, options.KDFOptions.Hash)
+		}
+		c.Check(keyslot.KDF.Time, Equals, 0)
+	}
 
 	c.Check(info.Metadata.Segments, HasLen, 1)
 	segment, ok := info.Metadata.Segments[0]
@@ -265,22 +410,10 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 	c.Check(info.Metadata.Config.JSONSize, Equals, expectedMetadataSize-uint64(4*1024))
 	c.Check(info.Metadata.Config.KeyslotsSize, Equals, expectedKeyslotsSize)
 
-	expectedMemoryKiB := 1 * 1024 * 1024
-	if options.KDFOptions.MemoryKiB > 0 {
-		expectedMemoryKiB = options.KDFOptions.MemoryKiB
-	}
-
-	if options.KDFOptions.ForceIterations > 0 {
-		c.Check(keyslot.KDF.Time, Equals, options.KDFOptions.ForceIterations)
-		c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
-	} else {
-		c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
-
-		// We used to time this to make sure we are supplying the correct parameters to
-		// cryptsetup, but that was unreliable. For now, we rely on the command line
-		// parameters that were tested earlier, and trust that those are correct.
-		luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
-	}
+	// We used to time this to make sure we are supplying the correct parameters to
+	// cryptsetup, but that was unreliable. For now, we rely on the command line
+	// parameters that were tested earlier, and trust that those are correct.
+	luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
 }
 
 func (s *cryptsetupSuiteExpensive) TestFormatDefaults(c *C) {
@@ -289,7 +422,8 @@ func (s *cryptsetupSuiteExpensive) TestFormatDefaults(c *C) {
 	s.testFormat(c, &testFormatData{
 		label:   "test",
 		key:     key,
-		options: &FormatOptions{}})
+		options: &FormatOptions{},
+	})
 }
 
 func (s *cryptsetupSuiteExpensive) TestFormatNilOptions(c *C) {
@@ -300,6 +434,28 @@ func (s *cryptsetupSuiteExpensive) TestFormatNilOptions(c *C) {
 		key:   key})
 }
 
+func (s *cryptsetupSuiteExpensive) TestFormatWithArgon2i(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	s.testFormat(c, &testFormatData{
+		label:     "test",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypeArgon2i}},
+		extraArgs: []string{"--pbkdf", "argon2i"},
+	})
+}
+
+func (s *cryptsetupSuiteExpensive) TestFormatWithArgon2id(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	s.testFormat(c, &testFormatData{
+		label:     "test",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypeArgon2id}},
+		extraArgs: []string{"--pbkdf", "argon2id"},
+	})
+}
+
 func (s *cryptsetupSuiteExpensive) TestFormatWithCustomKDFTime(c *C) {
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -307,7 +463,8 @@ func (s *cryptsetupSuiteExpensive) TestFormatWithCustomKDFTime(c *C) {
 		label:     "test",
 		key:       key,
 		options:   &FormatOptions{KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond}},
-		extraArgs: []string{"--iter-time", "100"}})
+		extraArgs: []string{"--iter-time", "100"},
+	})
 }
 
 func (s *cryptsetupSuiteExpensive) TestFormatWithCustomKDFMemory(c *C) {
@@ -316,8 +473,9 @@ func (s *cryptsetupSuiteExpensive) TestFormatWithCustomKDFMemory(c *C) {
 	s.testFormat(c, &testFormatData{
 		label:     "data",
 		key:       key,
-		options:   &FormatOptions{KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond, MemoryKiB: 32 * 1024}},
-		extraArgs: []string{"--iter-time", "100", "--pbkdf-memory", "32768"}})
+		options:   &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypeArgon2id, TargetDuration: 100 * time.Millisecond, MemoryKiB: 32 * 1024}},
+		extraArgs: []string{"--pbkdf", "argon2id", "--iter-time", "100", "--pbkdf-memory", "32768"},
+	})
 }
 
 func (s *cryptsetupSuite) TestFormatWithForceIterations(c *C) {
@@ -326,8 +484,42 @@ func (s *cryptsetupSuite) TestFormatWithForceIterations(c *C) {
 	s.testFormat(c, &testFormatData{
 		label:     "data",
 		key:       key,
-		options:   &FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}},
-		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768"}})
+		options:   &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypeArgon2id, MemoryKiB: 32 * 1024, ForceIterations: 4}},
+		extraArgs: []string{"--pbkdf", "argon2id", "--pbkdf-memory", "32768", "--pbkdf-force-iterations", "4"},
+	})
+}
+
+func (s *cryptsetupSuiteExpensive) TestFormatWithPBKDF2(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	s.testFormat(c, &testFormatData{
+		label:     "test",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypePBKDF2}},
+		extraArgs: []string{"--pbkdf", "pbkdf2"},
+	})
+}
+
+func (s *cryptsetupSuite) TestFormatWithPBKDF2ForceIterations(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	s.testFormat(c, &testFormatData{
+		label:     "test",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}},
+		extraArgs: []string{"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000"},
+	})
+}
+
+func (s *cryptsetupSuite) TestFormatWithPBKDF2CustomHash(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	s.testFormat(c, &testFormatData{
+		label:     "test",
+		key:       key,
+		options:   &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000, Hash: HashSHA512}},
+		extraArgs: []string{"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000", "--hash", "sha512"},
+	})
 }
 
 func (s *cryptsetupSuite) TestFormatWithDifferentLabel(c *C) {
@@ -336,8 +528,9 @@ func (s *cryptsetupSuite) TestFormatWithDifferentLabel(c *C) {
 	s.testFormat(c, &testFormatData{
 		label:     "data",
 		key:       key,
-		options:   &FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}},
-		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768"}})
+		options:   &FormatOptions{KDFOptions: KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}},
+		extraArgs: []string{"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000"},
+	})
 }
 
 func (s *cryptsetupSuite) TestFormatWithCustomMetadataSize(c *C) {
@@ -352,9 +545,10 @@ func (s *cryptsetupSuite) TestFormatWithCustomMetadataSize(c *C) {
 		label: "test",
 		key:   key,
 		options: &FormatOptions{
-			KDFOptions:      KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
+			KDFOptions:      KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000},
 			MetadataKiBSize: 2 * 1024},
-		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768", "--luks2-metadata-size", "2048k"}})
+		extraArgs: []string{"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000", "--luks2-metadata-size", "2048k"},
+	})
 }
 
 func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSize(c *C) {
@@ -369,9 +563,10 @@ func (s *cryptsetupSuite) TestFormatWithCustomKeyslotsAreaSize(c *C) {
 		label: "test",
 		key:   key,
 		options: &FormatOptions{
-			KDFOptions:          KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
+			KDFOptions:          KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000},
 			KeyslotsAreaKiBSize: 2 * 1024},
-		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768", "--luks2-keyslots-size", "2048k"}})
+		extraArgs: []string{"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000", "--luks2-keyslots-size", "2048k"},
+	})
 }
 
 func (s *cryptsetupSuite) TestFormatWithCustomMetadataSizeUnsupported(c *C) {
@@ -410,7 +605,7 @@ func (s *cryptsetupSuite) TestFormatWithInlineCryptoEngine(c *C) {
 	rand.Read(key)
 	options := &FormatOptions{
 		KDFOptions: KDFOptions{
-			MemoryKiB: 32 * 1024, ForceIterations: 4},
+			Type: KDFTypePBKDF2, ForceIterations: 1000},
 		KeyslotsAreaKiBSize: 2 * 1024,
 		InlineCryptoEngine:  true}
 	err := Format("some-path", "test", key, options)
@@ -433,7 +628,7 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	rand.Read(primaryKey)
 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
-	fmtOpts := FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}
+	fmtOpts := FormatOptions{KDFOptions: KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Assert(Format(devicePath, "", primaryKey, &fmtOpts), IsNil)
 
 	s.cryptsetup.ForgetCalls()
@@ -444,12 +639,12 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	c.Check(AddKey(devicePath, primaryKey, data.key, data.options), IsNil)
 
 	c.Assert(s.cryptsetup.Calls(), HasLen, 1)
-	c.Assert(s.cryptsetup.Calls()[0], HasLen, 13+len(data.extraArgs))
-	c.Check(s.cryptsetup.Calls()[0][0:11], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file", "-", "--keyfile-size", strconv.Itoa(len(primaryKey)), "--batch-mode", "--pbkdf", "argon2i"})
+	c.Assert(s.cryptsetup.Calls()[0], HasLen, 11+len(data.extraArgs))
+	c.Check(s.cryptsetup.Calls()[0][0:9], DeepEquals, []string{"cryptsetup", "luksAddKey", "--type", "luks2", "--key-file", "-", "--keyfile-size", strconv.Itoa(len(primaryKey)), "--batch-mode"})
 	if len(data.extraArgs) > 0 {
-		c.Check(s.cryptsetup.Calls()[0][11:11+len(data.extraArgs)], DeepEquals, data.extraArgs)
+		c.Check(s.cryptsetup.Calls()[0][9:9+len(data.extraArgs)], DeepEquals, data.extraArgs)
 	}
-	c.Check(s.cryptsetup.Calls()[0][11+len(data.extraArgs):], DeepEquals, []string{devicePath, "-"})
+	c.Check(s.cryptsetup.Calls()[0][9+len(data.extraArgs):], DeepEquals, []string{devicePath, "-"})
 
 	endInfo, err := ReadHeader(devicePath, LockModeBlocking)
 	c.Assert(err, IsNil)
@@ -475,28 +670,48 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	c.Check(endInfo.Metadata.Keyslots, HasLen, 2)
 	keyslot, ok := endInfo.Metadata.Keyslots[newSlotId]
 	c.Assert(ok, Equals, true)
+
+	// Handle any default in cryptsetup - we only test keyslot.KDF.Type
+	// when the test is explicit about the value.
+	expectedKDFType := keyslot.KDF.Type
+	if options.KDFOptions.Type != "" {
+		expectedKDFType = options.KDFOptions.Type
+	}
+
 	cipher := SelectCipher()
 	c.Check(keyslot.KeySize, Equals, KeySize(cipher))
 	c.Check(keyslot.Priority, Equals, SlotPriorityNormal)
 	c.Assert(keyslot.KDF, NotNil)
-	c.Check(keyslot.KDF.Type, Equals, KDFTypeArgon2i)
+	c.Check(keyslot.KDF.Type, Equals, expectedKDFType)
 
-	expectedMemoryKiB := 1 * 1024 * 1024
-	if options.KDFOptions.MemoryKiB > 0 {
-		expectedMemoryKiB = options.KDFOptions.MemoryKiB
+	switch expectedKDFType {
+	case KDFTypeArgon2i, KDFTypeArgon2id:
+		expectedMemoryKiB := 1 * 1024 * 1024
+		if options.KDFOptions.MemoryKiB > 0 {
+			expectedMemoryKiB = int(options.KDFOptions.MemoryKiB)
+		}
+
+		if options.KDFOptions.ForceIterations > 0 {
+			c.Check(keyslot.KDF.Time, Equals, int(options.KDFOptions.ForceIterations))
+			c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
+		} else {
+			c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
+		}
+		c.Check(keyslot.KDF.Iterations, Equals, 0)
+	case KDFTypePBKDF2:
+		if options.KDFOptions.ForceIterations > 0 {
+			c.Check(keyslot.KDF.Iterations, Equals, int(options.KDFOptions.ForceIterations))
+		}
+		if options.KDFOptions.Hash != "" {
+			c.Check(keyslot.KDF.Hash, Equals, options.KDFOptions.Hash)
+		}
+		c.Check(keyslot.KDF.Time, Equals, 0)
 	}
 
-	if options.KDFOptions.ForceIterations > 0 {
-		c.Check(keyslot.KDF.Time, Equals, options.KDFOptions.ForceIterations)
-		c.Check(keyslot.KDF.Memory, Equals, expectedMemoryKiB)
-	} else {
-		c.Check(keyslot.KDF.Memory, snapd_testutil.IntLessEqual, expectedMemoryKiB)
-
-		// We used to time this to make sure we are supplying the correct parameters to
-		// cryptsetup, but that was unreliable. For now, we rely on the command line
-		// parameters that were tested earlier, and trust that those are correct.
-		luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
-	}
+	// We used to time this to make sure we are supplying the correct parameters to
+	// cryptsetup, but that was unreliable. For now, we rely on the command line
+	// parameters that were tested earlier, and trust that those are correct.
+	luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
 }
 
 func (s *cryptsetupSuiteExpensive) TestAddKeyDefaults(c *C) {
@@ -513,6 +728,28 @@ func (s *cryptsetupSuiteExpensive) TestAddKeyNilOptions(c *C) {
 	rand.Read(key)
 
 	s.testAddKey(c, &testAddKeyData{key: key})
+}
+
+func (s *cryptsetupSuiteExpensive) TestAddKeyWithArgon2(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	s.testAddKey(c, &testAddKeyData{
+		key:       key,
+		options:   &AddKeyOptions{Slot: AnySlot, KDFOptions: KDFOptions{Type: KDFTypeArgon2i}},
+		extraArgs: []string{"--pbkdf", "argon2i"},
+	})
+}
+
+func (s *cryptsetupSuiteExpensive) TestAddKeyWithArgon2id(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	s.testAddKey(c, &testAddKeyData{
+		key:       key,
+		options:   &AddKeyOptions{Slot: AnySlot, KDFOptions: KDFOptions{Type: KDFTypeArgon2id}},
+		extraArgs: []string{"--pbkdf", "argon2id"},
+	})
 }
 
 func (s *cryptsetupSuiteExpensive) TestAddKeyWithCustomKDFTime(c *C) {
@@ -534,9 +771,9 @@ func (s *cryptsetupSuiteExpensive) TestAddKeyWithCustomKDFMemory(c *C) {
 	s.testAddKey(c, &testAddKeyData{
 		key: key,
 		options: &AddKeyOptions{
-			KDFOptions: KDFOptions{TargetDuration: 100 * time.Millisecond, MemoryKiB: 32 * 1024},
+			KDFOptions: KDFOptions{Type: KDFTypeArgon2id, TargetDuration: 100 * time.Millisecond, MemoryKiB: 32 * 1024},
 			Slot:       AnySlot},
-		extraArgs: []string{"--iter-time", "100", "--pbkdf-memory", "32768"}})
+		extraArgs: []string{"--pbkdf", "argon2id", "--iter-time", "100", "--pbkdf-memory", "32768"}})
 }
 
 func (s *cryptsetupSuite) TestAddKeyWithForceIterations(c *C) {
@@ -546,9 +783,53 @@ func (s *cryptsetupSuite) TestAddKeyWithForceIterations(c *C) {
 	s.testAddKey(c, &testAddKeyData{
 		key: key,
 		options: &AddKeyOptions{
-			KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
+			KDFOptions: KDFOptions{Type: KDFTypeArgon2id, MemoryKiB: 32 * 1024, ForceIterations: 4},
 			Slot:       AnySlot},
-		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768"}})
+		extraArgs: []string{"--pbkdf", "argon2id", "--pbkdf-memory", "32768", "--pbkdf-force-iterations", "4"}})
+}
+
+func (s *cryptsetupSuiteExpensive) TestAddKeyWithPBKDF2(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	s.testAddKey(c, &testAddKeyData{
+		key:       key,
+		options:   &AddKeyOptions{Slot: AnySlot, KDFOptions: KDFOptions{Type: KDFTypePBKDF2}},
+		extraArgs: []string{"--pbkdf", "pbkdf2"},
+	})
+}
+
+func (s *cryptsetupSuite) TestAddKeyWithPBKDF2ForceIterations(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	s.testAddKey(c, &testAddKeyData{
+		key: key,
+		options: &AddKeyOptions{
+			KDFOptions: KDFOptions{
+				Type:            KDFTypePBKDF2,
+				ForceIterations: 1000,
+			},
+			Slot: AnySlot},
+		extraArgs: []string{"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000"},
+	})
+}
+
+func (s *cryptsetupSuite) TestAddKeyWithPBKDF2CustomHash(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	s.testAddKey(c, &testAddKeyData{
+		key: key,
+		options: &AddKeyOptions{
+			KDFOptions: KDFOptions{
+				Type:            KDFTypePBKDF2,
+				ForceIterations: 1000,
+				Hash:            HashSHA512,
+			},
+			Slot: AnySlot},
+		extraArgs: []string{"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000", "--hash", "sha512"},
+	})
 }
 
 func (s *cryptsetupSuite) TestAddKeyWithSpecificKeyslot(c *C) {
@@ -558,9 +839,12 @@ func (s *cryptsetupSuite) TestAddKeyWithSpecificKeyslot(c *C) {
 	s.testAddKey(c, &testAddKeyData{
 		key: key,
 		options: &AddKeyOptions{
-			KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4},
-			Slot:       8},
-		extraArgs: []string{"--pbkdf-force-iterations", "4", "--pbkdf-memory", "32768", "--key-slot", "8"}})
+			KDFOptions: KDFOptions{
+				Type:            KDFTypePBKDF2,
+				ForceIterations: 1000,
+			},
+			Slot: 8},
+		extraArgs: []string{"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000", "--key-slot", "8"}})
 }
 
 func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
@@ -569,7 +853,7 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}
+	options := FormatOptions{KDFOptions: KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Assert(Format(devicePath, "", primaryKey, &options), IsNil)
 
 	c.Check(AddKey(devicePath, make([]byte, 32), []byte("foo"), nil), ErrorMatches, "cryptsetup failed with: No key available with this passphrase.")
@@ -600,7 +884,7 @@ func (s *cryptsetupSuite) testImportToken(c *C, data *testImportTokenData) {
 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	kdfOptions := KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
@@ -727,7 +1011,7 @@ func (s *cryptsetupSuite) TestImportToken5(c *C) {
 func (s *cryptsetupSuite) TestImportTokenUnsupported(c *C) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	kdfOptions := KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 
 	_, reset := s.mockCryptsetupFeatures(c, 0)
@@ -746,7 +1030,7 @@ func (s *cryptsetupSuite) TestReplaceToken(c *C) {
 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	kdfOptions := KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
@@ -828,7 +1112,7 @@ func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	kdfOptions := KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}, nil), IsNil)
@@ -870,7 +1154,7 @@ func (s *cryptsetupSuite) TestRemoveNonExistantToken(c *C) {
 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}
+	options := FormatOptions{KDFOptions: KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &options), IsNil)
 	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}, nil), IsNil)
 
@@ -893,7 +1177,7 @@ type testKillSlotData struct {
 func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	kdfOptions := KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}
 	c.Assert(Format(devicePath, "", data.key1, &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, data.key1, data.key2, &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
@@ -951,7 +1235,7 @@ func (s *cryptsetupSuite) TestKillNonExistantSlot(c *C) {
 	rand.Read(key)
 
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
-	options := FormatOptions{KDFOptions: KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}}
+	options := FormatOptions{KDFOptions: KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Assert(Format(devicePath, "", key, &options), IsNil)
 
 	c.Check(KillSlot(devicePath, 8), ErrorMatches, "cryptsetup failed with: Keyslot 8 is not active.")
@@ -967,7 +1251,7 @@ type testSetSlotPriorityData struct {
 func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityData) {
 	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
 
-	kdfOptions := KDFOptions{MemoryKiB: 32 * 1024, ForceIterations: 4}
+	kdfOptions := KDFOptions{Type: KDFTypePBKDF2, ForceIterations: 1000}
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
