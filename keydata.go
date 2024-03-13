@@ -160,7 +160,7 @@ type KeyParams struct {
 // implementation.
 type KeyWithPassphraseParams struct {
 	KeyParams
-	KDFOptions *KDFOptions // The passphrase KDF options
+	KDFOptions *Argon2Options // The passphrase KDF options
 
 	// AuthKeySize is the size of key to derive from the passphrase for
 	// use by the platform implementation.
@@ -364,7 +364,7 @@ type KeyData struct {
 	data         keyData
 }
 
-func (d *KeyData) derivePassphraseKeys(passphrase string, kdf KDF) (key, iv, auth []byte, err error) {
+func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte, err error) {
 	if d.data.PassphraseParams == nil {
 		return nil, nil, nil, errors.New("no passphrase params")
 	}
@@ -406,11 +406,11 @@ func (d *KeyData) derivePassphraseKeys(passphrase string, kdf KDF) (key, iv, aut
 		return nil, nil, nil, xerrors.Errorf("cannot serialize salt: %w", err)
 	}
 
-	costParams := &KDFCostParams{
+	costParams := &Argon2CostParams{
 		Time:      uint32(params.KDF.Time),
 		MemoryKiB: uint32(params.KDF.Memory),
 		Threads:   uint8(params.KDF.CPUs)}
-	derived, err := kdf.Derive(passphrase, salt, costParams, uint32(params.DerivedKeySize))
+	derived, err := argon2KDF().Derive(passphrase, salt, costParams, uint32(params.DerivedKeySize))
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot derive key from passphrase: %w", err)
 	}
@@ -439,13 +439,13 @@ func (d *KeyData) derivePassphraseKeys(passphrase string, kdf KDF) (key, iv, aut
 	return key, iv, auth, nil
 }
 
-func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string, kdf KDF) error {
+func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string) error {
 	handler := handlers[d.data.PlatformName]
 	if handler == nil {
 		return ErrNoPlatformHandlerRegistered
 	}
 
-	key, iv, authKey, err := d.derivePassphraseKeys(passphrase, kdf)
+	key, iv, authKey, err := d.derivePassphraseKeys(passphrase)
 	if err != nil {
 		return err
 	}
@@ -474,8 +474,8 @@ func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string
 	return nil
 }
 
-func (d *KeyData) openWithPassphrase(passphrase string, kdf KDF) (payload []byte, authKey []byte, err error) {
-	key, iv, authKey, err := d.derivePassphraseKeys(passphrase, kdf)
+func (d *KeyData) openWithPassphrase(passphrase string) (payload []byte, authKey []byte, err error) {
+	key, iv, authKey, err := d.derivePassphraseKeys(passphrase)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -632,7 +632,7 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, PrimaryKey, error) {
 	return d.recoverKeysCommon(c)
 }
 
-func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnlockKey, PrimaryKey, error) {
+func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, PrimaryKey, error) {
 	if d.AuthMode() != AuthModePassphrase {
 		return nil, nil, errors.New("cannot recover key with passphrase")
 	}
@@ -642,7 +642,7 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnl
 		return nil, nil, ErrNoPlatformHandlerRegistered
 	}
 
-	payload, key, err := d.openWithPassphrase(passphrase, kdf)
+	payload, key, err := d.openWithPassphrase(passphrase)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -660,22 +660,17 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string, kdf KDF) (DiskUnl
 // has been set previously (KeyData.AuthMode returns AuthModePassphrase).
 //
 // The current passphrase must be supplied via the oldPassphrase argument.
-//
-// The kdfOptions argument configures the Argon2 KDF settings. The kdf argument
-// provides the Argon2 KDF implementation that will be used - this should ultimately
-// execute the implementation returned by the Argon2iKDF function, but the caller
-// can choose to execute this in a short-lived utility process.
-func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string, kdf KDF) error {
+func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string) error {
 	if d.AuthMode()&AuthModePassphrase == 0 {
 		return errors.New("cannot change passphrase without setting an initial passphrase")
 	}
 
-	payload, oldKey, err := d.openWithPassphrase(oldPassphrase, kdf)
+	payload, oldKey, err := d.openWithPassphrase(oldPassphrase)
 	if err != nil {
 		return err
 	}
 
-	if err := d.updatePassphrase(payload, oldKey, newPassphrase, kdf); err != nil {
+	if err := d.updatePassphrase(payload, oldKey, newPassphrase); err != nil {
 		return processPlatformHandlerError(err)
 	}
 
@@ -736,7 +731,7 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 // by a passphrase, which is passed as an extra argument. The supplied KeyWithPassphraseParams include
 // in addition to the KeyParams fields, the KDFOptions and AuthKeySize fields which are used in the key
 // derivation process.
-func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string, kdf KDF) (*KeyData, error) {
+func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string) (*KeyData, error) {
 	kd, err := NewKeyData(&params.KeyParams)
 	if err != nil {
 		return nil, err
@@ -744,11 +739,11 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 
 	kdfOptions := params.KDFOptions
 	if kdfOptions == nil {
-		var defaultOptions KDFOptions
+		var defaultOptions Argon2Options
 		kdfOptions = &defaultOptions
 	}
 
-	costParams, err := kdfOptions.deriveCostParams(passphraseEncryptionKeyLen+aes.BlockSize, kdf)
+	costParams, err := kdfOptions.deriveCostParams(passphraseEncryptionKeyLen + aes.BlockSize)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot derive KDF cost parameters: %w", err)
 	}
@@ -772,7 +767,7 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 		AuthKeySize:       params.AuthKeySize,
 	}
 
-	if err := kd.updatePassphrase(kd.data.EncryptedPayload, make([]byte, params.AuthKeySize), passphrase, kdf); err != nil {
+	if err := kd.updatePassphrase(kd.data.EncryptedPayload, make([]byte, params.AuthKeySize), passphrase); err != nil {
 		return nil, xerrors.Errorf("cannot set passphrase: %w", err)
 	}
 

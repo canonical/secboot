@@ -132,7 +132,6 @@ type activateWithKeyDataState struct {
 	keyringPrefix    string
 
 	authRequestor   AuthRequestor
-	kdf             KDF
 	passphraseTries int
 
 	keys []*keyCandidate
@@ -199,7 +198,7 @@ func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData, slot int) 
 }
 
 func (s *activateWithKeyDataState) tryKeyDataAuthModePassphrase(k *KeyData, slot int, passphrase string) error {
-	key, auxKey, err := k.RecoverKeysWithPassphrase(passphrase, s.kdf)
+	key, auxKey, err := k.RecoverKeysWithPassphrase(passphrase)
 	if err != nil {
 		return xerrors.Errorf("cannot recover key: %w", err)
 	}
@@ -275,14 +274,13 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 	return false, passphraseErr
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*keyCandidate, authRequestor AuthRequestor, kdf KDF, passphraseTries int) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*keyCandidate, authRequestor AuthRequestor, passphraseTries int) *activateWithKeyDataState {
 	return &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
 		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix),
 		model:            model,
 		authRequestor:    authRequestor,
-		kdf:              kdf,
 		passphraseTries:  passphraseTries,
 		keys:             keys}
 }
@@ -437,7 +435,7 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // If activation with one of the KeyData objects succeeds (ie, no error is
 // returned), then the supplied SnapModel is authorized to access the data on
 // this volume.
-func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequestor AuthRequestor, kdf KDF, options *ActivateVolumeOptions, keys ...*KeyData) error {
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequestor AuthRequestor, options *ActivateVolumeOptions, keys ...*KeyData) error {
 	if options.PassphraseTries < 0 {
 		return errors.New("invalid PassphraseTries")
 	}
@@ -446,9 +444,6 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 	}
 	if (options.PassphraseTries > 0 || options.RecoveryKeyTries > 0) && authRequestor == nil {
 		return errors.New("nil authRequestor")
-	}
-	if options.PassphraseTries > 0 && kdf == nil {
-		return errors.New("nil kdf")
 	}
 
 	var candidates []*keyCandidate
@@ -480,7 +475,7 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 		}
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, candidates, authRequestor, kdf, options.PassphraseTries)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, candidates, authRequestor, options.PassphraseTries)
 	success, err := s.run()
 	switch {
 	case success:
