@@ -198,6 +198,10 @@ func (a HashAlg) New() hash.Hash {
 	return crypto.Hash(a).New()
 }
 
+func (a HashAlg) HashFunc() crypto.Hash {
+	return crypto.Hash(a)
+}
+
 func (a HashAlg) Size() int {
 	return crypto.Hash(a).Size()
 }
