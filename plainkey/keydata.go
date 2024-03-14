@@ -170,16 +170,24 @@ func (d additionalData) MarshalASN1(b *cryptobyte.Builder) {
 	})
 }
 
+// platformKeyId is a HMAC created by the platform key used to protect
+// a plainkey key blob. It is used to iedntify the loaded platform key
+// to use for key recovery.
 type platformKeyId struct {
-	Alg    hashAlg `json:"alg"`
-	Salt   []byte  `json:"salt"`
-	Digest []byte  `json:"digest"`
+	Alg    hashAlg `json:"alg"`    // the digest algorithm
+	Salt   []byte  `json:"salt"`   // the salt, used as data to the HMAC
+	Digest []byte  `json:"digest"` // the resulting HMAC.
 }
 
 type keyData struct {
-	Version int    `json:"version"`
-	Nonce   []byte `json:"nonce"`
+	Version int `json:"version"`
 
+	// Nonce has a dual purpose - it provides a salt that is used to derive
+	// an encryption key from the platform key, and it provides the GCM nonce.
+	Nonce []byte `json:"nonce"`
+
+	// PlatformKeyID is used to identify the loaded platform key to
+	// use for key recovery.
 	PlatformKeyID platformKeyId `json:"platform-key-id"`
 }
 
