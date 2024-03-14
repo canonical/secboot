@@ -196,6 +196,13 @@ type keyData struct {
 // after unlocking that container.
 //
 // If primaryKey isn't supplied, then one will be generated.
+//
+// This function requires some cryptographically strong randomness, obtained from the rand
+// argument. Whilst this will normally be from [rand.Reader], it can be provided from other
+// secure sources or mocked during tests. Note that the underlying implementation of this
+// platform uses GCM, so rand must be cryptographically secure in order to prevent nonce
+// reuse problems. Calling this function more than once in production with the same platform
+// key and the same sequence of random bytes is a bug.
 func NewProtectedKey(rand io.Reader, platformKey []byte, primaryKey secboot.PrimaryKey) (protectedKey *secboot.KeyData, primaryKeyOut secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
 	if len(primaryKey) == 0 {
 		primaryKey = make(secboot.PrimaryKey, 32)
