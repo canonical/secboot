@@ -185,7 +185,7 @@ type KeyDataReader interface {
 	ReadableName() string
 }
 
-// HashAlg corresponds to a digest algorithm.
+// HashAlg provides an abstraction for crypto.Hash that can be serialized to JSON and DER.
 type HashAlg crypto.Hash
 
 var hashAlgAvailable = (*HashAlg).Available
