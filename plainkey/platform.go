@@ -58,15 +58,6 @@ func SetPlatformKeys(keys ...[]byte) {
 	platformKeysMu.Unlock()
 }
 
-// AddPlatformKeys adds keys that will be used by this platform to recover other
-// keys. These are typically stored in and loaded from an encrypted container that is
-// unlocked via some other mechanism.
-func AddPlatformKeys(keys ...[]byte) {
-	platformKeysMu.Lock()
-	platformKeys = append(platformKeys, keys...)
-	platformKeysMu.Unlock()
-}
-
 func getPlatformKey(id *platformKeyId) ([]byte, error) {
 	if !id.Alg.Available() {
 		return nil, errors.New("digest algorithm unavailable")

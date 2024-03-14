@@ -186,7 +186,7 @@ type keyData struct {
 // NewProtectedKey creates a new key that is protected by this platform with the supplied
 // platform key. The platform key is typically stored inside of an encrypted container that
 // is unlocked via another mechanism, such as a TPM, and then loaded via [SetPlatformKeys]
-// or [AddPlatformKeys] after unlocking that container.
+// after unlocking that container.
 //
 // If primaryKey isn't supplied, then one will be generated.
 func NewProtectedKey(rand io.Reader, platformKey []byte, primaryKey secboot.PrimaryKey) (protectedKey *secboot.KeyData, primaryKeyOut secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
