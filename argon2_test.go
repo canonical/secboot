@@ -68,7 +68,7 @@ func (s *argon2Suite) checkParams(c *C, opts *KDFOptions, ncpus int, params *KDF
 			targetDuration = 2 * time.Second
 		}
 		var kdf testutil.MockKDF
-		duration, _ := kdf.Time(params, 0)
+		duration, _ := kdf.Time(params)
 		c.Check(duration, Equals, targetDuration)
 
 		maxMem := uint64(opts.MemoryKiB)
@@ -97,9 +97,8 @@ func (s *argon2Suite) TestDeriveCostParamsDefault(c *C) {
 	var kdf testutil.MockKDF
 
 	var opts KDFOptions
-	params, err := opts.DeriveCostParams(48, &kdf)
+	params, err := opts.DeriveCostParams(0, &kdf)
 	c.Assert(err, IsNil)
-	c.Check(kdf.BenchmarkKeyLen, Equals, uint32(48))
 
 	s.checkParams(c, &opts, s.cpus, params)
 }
@@ -109,9 +108,8 @@ func (s *argon2Suite) TestDeriveCostParamsMemoryLimit(c *C) {
 
 	var opts KDFOptions
 	opts.MemoryKiB = 32 * 1024
-	params, err := opts.DeriveCostParams(48, &kdf)
+	params, err := opts.DeriveCostParams(0, &kdf)
 	c.Assert(err, IsNil)
-	c.Check(kdf.BenchmarkKeyLen, Equals, uint32(48))
 
 	s.checkParams(c, &opts, s.cpus, params)
 }
@@ -121,20 +119,8 @@ func (s *argon2Suite) TestDeriveCostParamsForceBenchmarkedThreads(c *C) {
 
 	var opts KDFOptions
 	opts.Parallel = 1
-	params, err := opts.DeriveCostParams(48, &kdf)
+	params, err := opts.DeriveCostParams(0, &kdf)
 	c.Assert(err, IsNil)
-	c.Check(kdf.BenchmarkKeyLen, Equals, uint32(48))
-
-	s.checkParams(c, &opts, s.cpus, params)
-}
-
-func (s *argon2Suite) TestDeriveCostParamsDifferentKeyLen(c *C) {
-	var kdf testutil.MockKDF
-
-	var opts KDFOptions
-	params, err := opts.DeriveCostParams(32, &kdf)
-	c.Assert(err, IsNil)
-	c.Check(kdf.BenchmarkKeyLen, Equals, uint32(32))
 
 	s.checkParams(c, &opts, s.cpus, params)
 }
@@ -147,9 +133,8 @@ func (s *argon2Suite) TestDeriveCostParamsForceIterations(c *C) {
 
 	var opts KDFOptions
 	opts.ForceIterations = 3
-	params, err := opts.DeriveCostParams(48, &kdf)
+	params, err := opts.DeriveCostParams(0, &kdf)
 	c.Assert(err, IsNil)
-	c.Check(kdf.BenchmarkKeyLen, Equals, uint32(0))
 
 	s.checkParams(c, &opts, 2, params)
 }
@@ -163,9 +148,8 @@ func (s *argon2Suite) TestDeriveCostParamsForceMemory(c *C) {
 	var opts KDFOptions
 	opts.ForceIterations = 3
 	opts.MemoryKiB = 32 * 1024
-	params, err := opts.DeriveCostParams(48, &kdf)
+	params, err := opts.DeriveCostParams(0, &kdf)
 	c.Assert(err, IsNil)
-	c.Check(kdf.BenchmarkKeyLen, Equals, uint32(0))
 
 	s.checkParams(c, &opts, 2, params)
 }
@@ -178,9 +162,8 @@ func (s *argon2Suite) TestDeriveCostParamsForceIterationsDifferentCPUNum(c *C) {
 
 	var opts KDFOptions
 	opts.ForceIterations = 3
-	params, err := opts.DeriveCostParams(48, &kdf)
+	params, err := opts.DeriveCostParams(0, &kdf)
 	c.Assert(err, IsNil)
-	c.Check(kdf.BenchmarkKeyLen, Equals, uint32(0))
 
 	s.checkParams(c, &opts, 4, params)
 }
@@ -194,9 +177,8 @@ func (s *argon2Suite) TestDeriveCostParamsForceThreads(c *C) {
 	var opts KDFOptions
 	opts.ForceIterations = 3
 	opts.Parallel = 1
-	params, err := opts.DeriveCostParams(48, &kdf)
+	params, err := opts.DeriveCostParams(0, &kdf)
 	c.Assert(err, IsNil)
-	c.Check(kdf.BenchmarkKeyLen, Equals, uint32(0))
 
 	s.checkParams(c, &opts, 1, params)
 }
@@ -304,25 +286,25 @@ func (s *argon2SuiteExpensive) TestArgon2iKDFTime(c *C) {
 	kdf := Argon2iKDF()
 	c.Assert(kdf, NotNil)
 
-	time1, err := kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4}, 32)
+	time1, err := kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4})
 	runtime.GC()
 	c.Check(err, IsNil)
 
-	time2, err := kdf.Time(&KDFCostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4}, 32)
-	runtime.GC()
-	c.Check(err, IsNil)
-	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
-	// types of int64 kind
-	c.Check(time2 > time1, testutil.IsTrue)
-
-	time2, err = kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4}, 32)
+	time2, err := kdf.Time(&KDFCostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4})
 	runtime.GC()
 	c.Check(err, IsNil)
 	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
 	// types of int64 kind
 	c.Check(time2 > time1, testutil.IsTrue)
 
-	time2, err = kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1}, 32)
+	time2, err = kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4})
+	runtime.GC()
+	c.Check(err, IsNil)
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	time2, err = kdf.Time(&KDFCostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1})
 	runtime.GC()
 	c.Check(err, IsNil)
 	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
