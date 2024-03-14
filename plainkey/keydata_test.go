@@ -45,6 +45,7 @@ type testNewProtectedKeyParams struct {
 
 	expectedPrimaryKey        secboot.PrimaryKey
 	expectedUnlockKey         secboot.DiskUnlockKey
+	expectedSalt              []byte
 	expectedNonce             []byte
 	expectedPlatformKeyIdSalt []byte
 	expectedPlatformKeyId     []byte
@@ -63,6 +64,7 @@ func (s *keydataSuite) testNewProtectedKey(c *C, params *testNewProtectedKeyPara
 
 		kd := keyParams.Handle.(*KeyData)
 		c.Check(kd.Version, Equals, 1)
+		c.Check(kd.Salt, DeepEquals, params.expectedSalt)
 		c.Assert(kd.Nonce, DeepEquals, params.expectedNonce)
 		c.Check(crypto.Hash(kd.PlatformKeyID.Alg), Equals, crypto.SHA256)
 		c.Check(kd.PlatformKeyID.Salt, DeepEquals, params.expectedPlatformKeyIdSalt)
@@ -76,7 +78,7 @@ func (s *keydataSuite) testNewProtectedKey(c *C, params *testNewProtectedKeyPara
 		expectedHandle, err = json.Marshal(kd)
 		c.Assert(err, IsNil)
 
-		b, err := aes.NewCipher(DeriveAESKey(params.platformKey, kd.Nonce[:32]))
+		b, err := aes.NewCipher(DeriveAESKey(params.platformKey, kd.Salt))
 		c.Assert(err, IsNil)
 
 		aead, err := cipher.NewGCM(b)
@@ -93,7 +95,7 @@ func (s *keydataSuite) testNewProtectedKey(c *C, params *testNewProtectedKeyPara
 		aadBytes, err := builder.Bytes()
 		c.Check(err, IsNil)
 
-		payload, err := aead.Open(nil, kd.Nonce[32:], keyParams.EncryptedPayload, aadBytes)
+		payload, err := aead.Open(nil, kd.Nonce, keyParams.EncryptedPayload, aadBytes)
 		c.Check(err, IsNil)
 		c.Check(payload, DeepEquals, params.expectedPlaintext)
 
@@ -118,7 +120,8 @@ func (s *keydataSuite) TestNewProtectedKey(c *C) {
 		primaryKey:                testutil.DecodeHexString(c, "707fe314e4a9024db85cdd78c26932c75a9f1265a0f51a31e17db268061fa373"),
 		expectedPrimaryKey:        testutil.DecodeHexString(c, "707fe314e4a9024db85cdd78c26932c75a9f1265a0f51a31e17db268061fa373"),
 		expectedUnlockKey:         testutil.DecodeHexString(c, "f1cffa65c76b15ac7e21dfd0894f21c5ce8986103bfb4916c4ff435513865980"),
-		expectedNonce:             testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb078535cc101b9d12d9b8f40e"),
+		expectedSalt:              testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
+		expectedNonce:             testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
 		expectedPlatformKeyIdSalt: testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 		expectedPlatformKeyId:     testutil.DecodeHexString(c, "119812533946d04cd3fe72626f61cf364877a8f1a6663ce8f0604da52cf0b8f3"),
 		expectedCiphertext:        testutil.DecodeHexString(c, "d3ee9e1c228a7436f33377239701059b801dd5167dde322e557edda7a42405f345d534e9728c9158c854a0eb8b11399bcd36a299a40e5258c230f61d5e0b948138fe54718b238f4f6063b782ac2b613a58fc1fdc6d49"),
@@ -133,7 +136,8 @@ func (s *keydataSuite) TestNewProtectedKeyDifferentRand(c *C) {
 		primaryKey:                testutil.DecodeHexString(c, "707fe314e4a9024db85cdd78c26932c75a9f1265a0f51a31e17db268061fa373"),
 		expectedPrimaryKey:        testutil.DecodeHexString(c, "707fe314e4a9024db85cdd78c26932c75a9f1265a0f51a31e17db268061fa373"),
 		expectedUnlockKey:         testutil.DecodeHexString(c, "0187af22705f098123812aa31032ce003f24bd69649d260153604fb7c0293925"),
-		expectedNonce:             testutil.DecodeHexString(c, "dab12d7fa9c4dfb05bcc70bbd3d56ff87d5658c2f42e9e94e6273173a9d0931689b9b05919c41170f32cb001"),
+		expectedSalt:              testutil.DecodeHexString(c, "dab12d7fa9c4dfb05bcc70bbd3d56ff87d5658c2f42e9e94e6273173a9d09316"),
+		expectedNonce:             testutil.DecodeHexString(c, "89b9b05919c41170f32cb001"),
 		expectedPlatformKeyIdSalt: testutil.DecodeHexString(c, "32b030249e7b9c614d160be5985a031654c9bba87842c40e8d1b7f8adf0b277e"),
 		expectedPlatformKeyId:     testutil.DecodeHexString(c, "777cae054f1c5103149f5e30152fad0b197b3f0bb4b801327307aca50a02acff"),
 		expectedCiphertext:        testutil.DecodeHexString(c, "b268bb69cafa29a490511819e12f0da25454bf724a76fc9a17b6f72019353371d6c8c13c26251e9e3169936146aa725da7000f39cebdc873adbb6bc6d02c64a6069e71b0c3116657ff8498164a7ab5e6488f552ccc88"),
@@ -148,7 +152,8 @@ func (s *keydataSuite) TestNewProtectedKeyDifferentPlatformKey(c *C) {
 		primaryKey:                testutil.DecodeHexString(c, "707fe314e4a9024db85cdd78c26932c75a9f1265a0f51a31e17db268061fa373"),
 		expectedPrimaryKey:        testutil.DecodeHexString(c, "707fe314e4a9024db85cdd78c26932c75a9f1265a0f51a31e17db268061fa373"),
 		expectedUnlockKey:         testutil.DecodeHexString(c, "f1cffa65c76b15ac7e21dfd0894f21c5ce8986103bfb4916c4ff435513865980"),
-		expectedNonce:             testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb078535cc101b9d12d9b8f40e"),
+		expectedSalt:              testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
+		expectedNonce:             testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
 		expectedPlatformKeyIdSalt: testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 		expectedPlatformKeyId:     testutil.DecodeHexString(c, "a7d200c3951659d5132db221a376cfd937d65e6e991e651b62fbed48855efeaf"),
 		expectedCiphertext:        testutil.DecodeHexString(c, "ad5f76499f91a47a04b1a1e26625cb4e18f6ac38e888b0a2882853d23bfdd6a3d8f1feecf0956cf3667817009c2c3023331e2601dc94f5aad80a1996dcc691b3f9b430ddc7a5cad10566ee530311a3bf267bff9a81b8"),
@@ -163,7 +168,8 @@ func (s *keydataSuite) TestNewProtectedKeyDifferentPrimaryKey(c *C) {
 		primaryKey:                testutil.DecodeHexString(c, "6e5eb7de5a75ec77bbec2f0927f6503bc7d0e2a6ebcb971d7dbe7a77e0d924a7"),
 		expectedPrimaryKey:        testutil.DecodeHexString(c, "6e5eb7de5a75ec77bbec2f0927f6503bc7d0e2a6ebcb971d7dbe7a77e0d924a7"),
 		expectedUnlockKey:         testutil.DecodeHexString(c, "0685e55582e4465ba2336e95304166eaa839d1a645dec1c0629a63f9748fb182"),
-		expectedNonce:             testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb078535cc101b9d12d9b8f40e"),
+		expectedSalt:              testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
+		expectedNonce:             testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
 		expectedPlatformKeyIdSalt: testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 		expectedPlatformKeyId:     testutil.DecodeHexString(c, "119812533946d04cd3fe72626f61cf364877a8f1a6663ce8f0604da52cf0b8f3"),
 		expectedCiphertext:        testutil.DecodeHexString(c, "d3ee9e1c3cab20fc4def991994b1f7ea6582b7eae091c2ed1e40508b38e7cdeca313b33d728c9158c854a0eb8b11399bcd36a299a40e5258c230f61d5e0b948138fe54718b23778d5679118961498d551cacecf81ee9"),
@@ -177,7 +183,8 @@ func (s *keydataSuite) TestNewProtectedKeyGeneratePrimaryKey(c *C) {
 		platformKey:               testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1"),
 		expectedPrimaryKey:        testutil.DecodeHexString(c, "707fe314e4a9024db85cdd78c26932c75a9f1265a0f51a31e17db268061fa373"),
 		expectedUnlockKey:         testutil.DecodeHexString(c, "f1cffa65c76b15ac7e21dfd0894f21c5ce8986103bfb4916c4ff435513865980"),
-		expectedNonce:             testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb078535cc101b9d12d9b8f40e"),
+		expectedSalt:              testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
+		expectedNonce:             testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
 		expectedPlatformKeyIdSalt: testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 		expectedPlatformKeyId:     testutil.DecodeHexString(c, "119812533946d04cd3fe72626f61cf364877a8f1a6663ce8f0604da52cf0b8f3"),
 		expectedCiphertext:        testutil.DecodeHexString(c, "d3ee9e1c228a7436f33377239701059b801dd5167dde322e557edda7a42405f345d534e9728c9158c854a0eb8b11399bcd36a299a40e5258c230f61d5e0b948138fe54718b238f4f6063b782ac2b613a58fc1fdc6d49"),
@@ -188,7 +195,8 @@ func (s *keydataSuite) TestNewProtectedKeyGeneratePrimaryKey(c *C) {
 func (s *keydataSuite) TestKeyDataMarshalAndUnmarshal(c *C) {
 	orig := &KeyData{
 		Version: 1,
-		Nonce:   testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb078535cc101b9d12d9b8f40e"),
+		Salt:    testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
+		Nonce:   testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
 		PlatformKeyID: PlatformKeyId{
 			Alg:    HashAlg(crypto.SHA256),
 			Salt:   testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
@@ -198,7 +206,8 @@ func (s *keydataSuite) TestKeyDataMarshalAndUnmarshal(c *C) {
 
 	b, err := json.Marshal(orig)
 	c.Check(err, IsNil)
-	c.Check(b, DeepEquals, []byte(`{"version":1,"nonce":"1LC2+izu+rryH4jqQs+441ODWtnBkEScwBpdJ13chMsHhTXMEBudEtm49A4=","platform-key-id":{"alg":"sha256","salt":"2tqBZOoNYvf8ItCcw0vUNARVS7X/xRk31UbJqX1o4v4=","digest":"EZgSUzlG0EzT/nJib2HPNkh3qPGmZjzo8GBNpSzwuPM="}}`))
+	c.Check(b, DeepEquals, []byte(`{"version":1,"salt":"1LC2+izu+rryH4jqQs+441ODWtnBkEScwBpdJ13chMs=","nonce":"B4U1zBAbnRLZuPQO","platform-key-id":{"alg":"sha256","salt":"2tqBZOoNYvf8ItCcw0vUNARVS7X/xRk31UbJqX1o4v4=","digest":"EZgSUzlG0EzT/nJib2HPNkh3qPGmZjzo8GBNpSzwuPM="}}`))
+	c.Logf("%s", string(b))
 
 	var unmarshalled *KeyData
 	c.Assert(json.Unmarshal(b, &unmarshalled), IsNil)

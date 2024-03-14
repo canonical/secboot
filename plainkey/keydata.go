@@ -182,9 +182,8 @@ type platformKeyId struct {
 type keyData struct {
 	Version int `json:"version"`
 
-	// Nonce has a dual purpose - it provides a salt that is used to derive
-	// an encryption key from the platform key, and it provides the GCM nonce.
-	Nonce []byte `json:"nonce"`
+	Salt  []byte `json:"salt"`  // Used to derive the symmetric key from the platform key
+	Nonce []byte `json:"nonce"` // the GCM nonce
 
 	// PlatformKeyID is used to identify the loaded platform key to
 	// use for key recovery.
@@ -212,11 +211,18 @@ func NewProtectedKey(rand io.Reader, platformKey []byte, primaryKey secboot.Prim
 		return nil, nil, nil, fmt.Errorf("cannot create new unlock key: %w", err)
 	}
 
-	// The nonce contains a 32 byte salt and 12 byte GCM nonce
-	nonce := make([]byte, symKeySaltSize+nonceSize)
-	if _, err := io.ReadFull(rand, nonce); err != nil {
-		return nil, nil, nil, fmt.Errorf("cannot obtain nonce: %w", err)
+	idAlg := crypto.SHA256
+
+	// Obtain a 32-byte salt for deriving the symmetric key, a 12-byte GCM nonce and
+	// a 32-byte salt for the platform key ID.
+	randBytes := make([]byte, symKeySaltSize+nonceSize+idAlg.Size())
+	if _, err := io.ReadFull(rand, randBytes); err != nil {
+		return nil, nil, nil, fmt.Errorf("cannot obtain required random bytes: %w", err)
 	}
+
+	salt := randBytes[:symKeySaltSize]
+	nonce := randBytes[symKeySaltSize : symKeySaltSize+nonceSize]
+	idSalt := randBytes[symKeySaltSize+nonceSize:]
 
 	aad := additionalData{
 		Version:    1,
@@ -231,20 +237,15 @@ func NewProtectedKey(rand io.Reader, platformKey []byte, primaryKey secboot.Prim
 		return nil, nil, nil, fmt.Errorf("cannot serialize AAD: %w", err)
 	}
 
-	idAlg := crypto.SHA256
-	salt := make([]byte, idAlg.Size())
-	if _, err := io.ReadFull(rand, salt); err != nil {
-		return nil, nil, nil, fmt.Errorf("cannot obtain salt for platform key ID: %w", err)
-	}
 	id := platformKeyId{
 		Alg:  hashAlg(idAlg),
-		Salt: salt,
+		Salt: idSalt,
 	}
 	h := hmac.New(id.Alg.New, platformKey)
 	h.Write(id.Salt)
 	id.Digest = h.Sum(nil)
 
-	b, err := aes.NewCipher(deriveAESKey(platformKey, nonce[:symKeySaltSize]))
+	b, err := aes.NewCipher(deriveAESKey(platformKey, salt))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("cannot create cipher: %w", err)
 	}
@@ -252,11 +253,12 @@ func NewProtectedKey(rand io.Reader, platformKey []byte, primaryKey secboot.Prim
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("cannot create AEAD: %w", err)
 	}
-	ciphertext := aead.Seal(nil, nonce[symKeySaltSize:], payload, aadBytes)
+	ciphertext := aead.Seal(nil, nonce, payload, aadBytes)
 
 	kd, err := secbootNewKeyData(&secboot.KeyParams{
 		Handle: &keyData{
 			Version:       1,
+			Salt:          salt,
 			Nonce:         nonce,
 			PlatformKeyID: id,
 		},

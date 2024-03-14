@@ -87,12 +87,6 @@ func (*platformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData, encryp
 			Err:  err,
 		}
 	}
-	if len(kd.Nonce) < symKeySaltSize {
-		return nil, &secboot.PlatformHandlerError{
-			Type: secboot.PlatformHandlerErrorInvalidData,
-			Err:  errors.New("invalid nonce size"),
-		}
-	}
 
 	aad := additionalData{
 		Version:    kd.Version,
@@ -118,18 +112,17 @@ func (*platformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData, encryp
 		}
 	}
 
-	b, err := aes.NewCipher(deriveAESKey(key, kd.Nonce[:symKeySaltSize]))
+	b, err := aes.NewCipher(deriveAESKey(key, kd.Salt))
 	if err != nil {
 		return nil, fmt.Errorf("cannot create cipher: %w", err)
 	}
 
-	nonce := kd.Nonce[symKeySaltSize:]
-	aead, err := cipher.NewGCMWithNonceSize(b, len(nonce))
+	aead, err := cipher.NewGCMWithNonceSize(b, len(kd.Nonce))
 	if err != nil {
 		return nil, fmt.Errorf("cannot create AEAD: %w", err)
 	}
 
-	payload, err := aead.Open(nil, nonce, encryptedPayload, aadBytes)
+	payload, err := aead.Open(nil, kd.Nonce, encryptedPayload, aadBytes)
 	if err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
