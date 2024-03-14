@@ -30,8 +30,6 @@ import (
 
 	"github.com/snapcore/snapd/asserts"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
@@ -253,13 +251,13 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 				continue
 			}
 
-			if k.err != nil && !xerrors.Is(k.err, ErrInvalidPassphrase) {
+			if k.err != nil && !errors.Is(k.err, ErrInvalidPassphrase) {
 				// Skip keys that failed for anything other than an invalid passphrase.
 				continue
 			}
 
 			if err := s.tryKeyDataAuthModePassphrase(k.KeyData, k.slot, passphrase); err != nil {
-				if !xerrors.Is(err, ErrInvalidPassphrase) {
+				if !errors.Is(err, ErrInvalidPassphrase) {
 					numPassphraseKeys -= 1
 				}
 				k.err = err

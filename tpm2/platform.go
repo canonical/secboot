@@ -28,8 +28,6 @@ import (
 
 	"github.com/canonical/go-tpm2"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 )
@@ -82,7 +80,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 	if err != nil {
 		var e InvalidKeyDataError
 		switch {
-		case xerrors.As(err, &e):
+		case errors.As(err, &e):
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  errors.New(e.msg)}

@@ -34,7 +34,6 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/hkdf"
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -345,7 +344,7 @@ type keyData struct {
 
 func processPlatformHandlerError(err error) error {
 	var pe *PlatformHandlerError
-	if xerrors.As(err, &pe) {
+	if errors.As(err, &pe) {
 		switch pe.Type {
 		case PlatformHandlerErrorInvalidData:
 			return &InvalidKeyDataError{pe.Err}

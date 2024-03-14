@@ -29,8 +29,6 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 )
@@ -49,7 +47,7 @@ func (e keyDataError) Unwrap() error {
 
 func isKeyDataError(err error) bool {
 	var e keyDataError
-	return xerrors.As(err, &e)
+	return errors.As(err, &e)
 }
 
 // keyData represents the actual data for a SealedKeyData or legacy SealedKeyObject.

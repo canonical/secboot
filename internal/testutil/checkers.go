@@ -20,9 +20,9 @@
 package testutil
 
 import (
+	"errors"
 	"reflect"
 
-	"golang.org/x/xerrors"
 	. "gopkg.in/check.v1"
 )
 
@@ -162,7 +162,7 @@ type errorIsChecker struct {
 }
 
 // ErrorIs determines whether any error in a chain has a specific
-// value, using xerrors.Is
+// value, using errors.Is
 //
 // For example:
 //
@@ -181,5 +181,5 @@ func (checker *errorIsChecker) Check(params []interface{}, names []string) (resu
 		return false, "expected is not an error"
 	}
 
-	return xerrors.Is(err, expected), ""
+	return errors.Is(err, expected), ""
 }

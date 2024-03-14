@@ -24,8 +24,6 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
-
-	"golang.org/x/xerrors"
 )
 
 var (
@@ -89,7 +87,7 @@ func (e EKCertVerificationError) Error() string {
 
 func isEKCertVerificationError(err error) bool {
 	var e EKCertVerificationError
-	return xerrors.As(err, &e)
+	return errors.As(err, &e)
 }
 
 // TPMVerificationError is returned from SecureConnectToDefaultTPM if the TPM cannot prove it is the device for which the verified
@@ -104,7 +102,7 @@ func (e TPMVerificationError) Error() string {
 
 func isTPMVerificationError(err error) bool {
 	var e TPMVerificationError
-	return xerrors.As(err, &e)
+	return errors.As(err, &e)
 }
 
 // InvalidKeyDataError indicates that the provided key data file is invalid. This error may also be returned in some
@@ -120,5 +118,5 @@ func (e InvalidKeyDataError) Error() string {
 
 func isInvalidKeyDataError(err error) bool {
 	var e InvalidKeyDataError
-	return xerrors.As(err, &e)
+	return errors.As(err, &e)
 }

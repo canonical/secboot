@@ -42,8 +42,6 @@ import (
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/tcti"
 	"github.com/snapcore/secboot/internal/truststore"
@@ -843,7 +841,7 @@ func ConnectToDefaultTPM() (*Connection, error) {
 
 	if err := t.init(); err != nil {
 		var verifyErr verificationError
-		if !tpm2.IsResourceUnavailableError(err, tpm2.AnyHandle) && !xerrors.As(err, &verifyErr) {
+		if !tpm2.IsResourceUnavailableError(err, tpm2.AnyHandle) && !errors.As(err, &verifyErr) {
 			return nil, fmt.Errorf("cannot initialize TPM connection: %w", err)
 		}
 	}
@@ -929,7 +927,7 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 			return nil, ErrTPMProvisioning
 		}
 		var verifyErr verificationError
-		if xerrors.As(err, &verifyErr) {
+		if errors.As(err, &verifyErr) {
 			return nil, TPMVerificationError{err.Error()}
 		}
 		return nil, fmt.Errorf("cannot initialize TPM connection: %w", err)

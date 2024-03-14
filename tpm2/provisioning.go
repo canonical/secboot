@@ -27,8 +27,6 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot/internal/tcg"
 )
 
@@ -217,7 +215,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 	// This will have a symmetric algorithm for parameter encryption during HierarchyChangeAuth.
 	if err := t.init(); err != nil {
 		var verifyErr verificationError
-		if xerrors.As(err, &verifyErr) {
+		if errors.As(err, &verifyErr) {
 			return TPMVerificationError{fmt.Sprintf("cannot reinitialize TPM connection after provisioning endorsement key: %v", err)}
 		}
 		return fmt.Errorf("cannot reinitialize TPM connection after provisioning endorsement key: %w", err)

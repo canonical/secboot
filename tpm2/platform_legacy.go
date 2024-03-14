@@ -29,7 +29,6 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
-	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
 )
@@ -74,7 +73,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 	k, err := ReadSealedKeyObject(bytes.NewReader(handle))
 	if err != nil {
 		var e InvalidKeyDataError
-		if xerrors.As(err, &e) {
+		if errors.As(err, &e) {
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  err}
@@ -86,7 +85,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 	if err != nil {
 		var e InvalidKeyDataError
 		switch {
-		case xerrors.As(err, &e):
+		case errors.As(err, &e):
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  errors.New(e.msg)}

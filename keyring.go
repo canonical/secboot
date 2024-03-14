@@ -26,8 +26,6 @@ import (
 	"syscall"
 
 	"github.com/snapcore/secboot/internal/keyring"
-
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -56,7 +54,7 @@ func GetDiskUnlockKeyFromKernel(prefix, devicePath string, remove bool) (DiskUnl
 	key, err := keyring.GetKeyFromUserKeyring(devicePath, keyringPurposeDiskUnlock, keyringPrefixOrDefault(prefix))
 	if err != nil {
 		var e syscall.Errno
-		if xerrors.As(err, &e) && e == syscall.ENOKEY {
+		if errors.As(err, &e) && e == syscall.ENOKEY {
 			return nil, ErrKernelKeyNotFound
 		}
 		return nil, err
@@ -85,7 +83,7 @@ func GetPrimaryKeyFromKernel(prefix, devicePath string, remove bool) (PrimaryKey
 	key, err := keyring.GetKeyFromUserKeyring(devicePath, keyringPurposeAuxiliary, keyringPrefixOrDefault(prefix))
 	if err != nil {
 		var e syscall.Errno
-		if xerrors.As(err, &e) && e == syscall.ENOKEY {
+		if errors.As(err, &e) && e == syscall.ENOKEY {
 			return nil, ErrKernelKeyNotFound
 		}
 		return nil, err

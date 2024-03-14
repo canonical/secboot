@@ -20,6 +20,7 @@
 package keyring_test
 
 import (
+	"errors"
 	"math/rand"
 	"syscall"
 	"testing"
@@ -28,7 +29,6 @@ import (
 	"github.com/snapcore/secboot/internal/testutil"
 
 	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 )
@@ -143,7 +143,7 @@ func (s *keyringSuite) TestGetKeyFromUserKeyringNoKey(c *C) {
 	c.Check(err, ErrorMatches, "cannot find key: required key not available")
 
 	var e syscall.Errno
-	c.Check(xerrors.As(err, &e), testutil.IsTrue)
+	c.Check(errors.As(err, &e), testutil.IsTrue)
 	c.Check(e, Equals, syscall.ENOKEY)
 }
 
@@ -180,6 +180,6 @@ func (s *keyringSuite) TestRemoveKeyFromUserKeyringNoKey(c *C) {
 	c.Check(err, ErrorMatches, "cannot find key: required key not available")
 
 	var e syscall.Errno
-	c.Check(xerrors.As(err, &e), testutil.IsTrue)
+	c.Check(errors.As(err, &e), testutil.IsTrue)
 	c.Check(e, Equals, syscall.ENOKEY)
 }

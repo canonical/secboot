@@ -29,7 +29,6 @@ import (
 	"strconv"
 
 	efi "github.com/canonical/go-efilib"
-	"golang.org/x/xerrors"
 
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
@@ -225,7 +224,7 @@ SignatureLoop:
 
 		c, err := efi.ReadWinCertificate(certReader)
 		switch {
-		case xerrors.Is(err, io.EOF):
+		case errors.Is(err, io.EOF):
 			break SignatureLoop
 		case err != nil:
 			return nil, fmt.Errorf("cannot decode WIN_CERTIFICATE from security directory entry %d: %w", i, err)
