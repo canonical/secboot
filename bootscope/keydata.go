@@ -41,7 +41,7 @@ import (
 )
 
 const (
-	nilHash hashAlg = 0
+	nilHash secboot.HashAlg = 0
 )
 
 var (
@@ -52,101 +52,15 @@ var (
 	sha512Oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
 )
 
-// hashAlg corresponds to a digest algorithm.
-type hashAlg crypto.Hash
-
-func (a hashAlg) Available() bool {
-	return crypto.Hash(a).Available()
-}
-
-func (a hashAlg) New() hash.Hash {
-	return crypto.Hash(a).New()
-}
-
-func (a hashAlg) HashFunc() crypto.Hash {
-	return crypto.Hash(a)
-}
-
-func (a hashAlg) MarshalJSON() ([]byte, error) {
-	var s string
-
-	switch crypto.Hash(a) {
-	case crypto.SHA1:
-		s = "sha1"
-	case crypto.SHA224:
-		s = "sha224"
-	case crypto.SHA256:
-		s = "sha256"
-	case crypto.SHA384:
-		s = "sha384"
-	case crypto.SHA512:
-		s = "sha512"
-	default:
-		return nil, fmt.Errorf("unknown hash algorithm: %v", crypto.Hash(a))
-	}
-
-	return json.Marshal(s)
-}
-
-func (a *hashAlg) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-
-	switch s {
-	case "sha1":
-		*a = hashAlg(crypto.SHA1)
-	case "sha224":
-		*a = hashAlg(crypto.SHA224)
-	case "sha256":
-		*a = hashAlg(crypto.SHA256)
-	case "sha384":
-		*a = hashAlg(crypto.SHA384)
-	case "sha512":
-		*a = hashAlg(crypto.SHA512)
-	default:
-		// be permissive here and allow everything to be
-		// unmarshalled.
-		*a = nilHash
-	}
-
-	return nil
-}
-
-func (a hashAlg) marshalASN1(b *cryptobyte.Builder) {
-	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // AlgorithmIdentifier ::= SEQUENCE {
-		var oid asn1.ObjectIdentifier
-
-		switch crypto.Hash(a) {
-		case crypto.SHA1:
-			oid = sha1Oid
-		case crypto.SHA224:
-			oid = sha224Oid
-		case crypto.SHA256:
-			oid = sha256Oid
-		case crypto.SHA384:
-			oid = sha384Oid
-		case crypto.SHA512:
-			oid = sha512Oid
-		default:
-			b.SetError(fmt.Errorf("unknown hash algorithm: %v", crypto.Hash(a)))
-			return
-		}
-		b.AddASN1ObjectIdentifier(oid) // algorithm OBJECT IDENTIFIER
-		b.AddASN1NULL()                // parameters ANY DEFINED BY algorithm OPTIONAL
-	})
-}
-
 // digestList corresponds to a list of digests.
 type digestList struct {
-	Alg     hashAlg  `json:"alg"`     // The digest algorithm
-	Digests [][]byte `json:"digests"` // The list of digests
+	Alg     secboot.HashAlg `json:"alg"`     // The digest algorithm
+	Digests [][]byte        `json:"digests"` // The list of digests
 }
 
 func (l *digestList) marshalASN1WithTag(tag cryptobyte_asn1.Tag, b *cryptobyte.Builder) {
 	b.AddASN1(tag, func(b *cryptobyte.Builder) { // DigestList ::= SEQUENCE {
-		l.Alg.marshalASN1(b)                                         // algorithm AlgorithmIdentifier
+		l.Alg.MarshalASN1(b)                                         // algorithm AlgorithmIdentifier
 		b.AddASN1(cryptobyte_asn1.SET, func(b *cryptobyte.Builder) { // digests Digests
 			for _, digest := range l.Digests {
 				b.AddASN1OctetString(digest)
@@ -213,8 +127,8 @@ type keyDataScope struct {
 	Signature []byte         `json:"signature"`
 	PublicKey ecdsaPublicKey `json:"pubkey"`
 
-	KDFAlg hashAlg `json:"kdf_alg"`
-	MDAlg  hashAlg `json:"md_alg"`
+	KDFAlg secboot.HashAlg `json:"kdf_alg"`
+	MDAlg  secboot.HashAlg `json:"md_alg"`
 }
 
 type additionalData struct {
@@ -222,9 +136,9 @@ type additionalData struct {
 	Version int
 	// Generation corresponds to the generation field of the keyData object
 	Generation       int
-	KdfAlg           hashAlg
+	KdfAlg           secboot.HashAlg
 	AuthMode         secboot.AuthMode
-	KeyIdentifierAlg hashAlg
+	KeyIdentifierAlg secboot.HashAlg
 	KeyIdentifier    []byte
 }
 
@@ -232,9 +146,9 @@ func (d *additionalData) marshalASN1(b *cryptobyte.Builder) {
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // SEQUENCE {
 		b.AddASN1Int64(int64(d.Version))      // version INTEGER
 		b.AddASN1Int64(int64(d.Generation))   // generation INTEGER
-		d.KdfAlg.marshalASN1(b)               // kdfAlg AlgorithmIdentifier
+		d.KdfAlg.MarshalASN1(b)               // kdfAlg AlgorithmIdentifier
 		b.AddASN1Enum(int64(d.AuthMode))      // authMode ENUMERATED
-		d.KeyIdentifierAlg.marshalASN1(b)     // keyIdentifierAlg AlgorithmIdentifier
+		d.KeyIdentifierAlg.MarshalASN1(b)     // keyIdentifierAlg AlgorithmIdentifier
 		b.AddASN1OctetString(d.KeyIdentifier) // keyIdentifier OCTET STRING
 	})
 }
@@ -293,11 +207,11 @@ func NewKeyDataScope(params *KeyDataScopeParams) (*KeyDataScope, error) {
 	out := &KeyDataScope{
 		data: keyDataScope{
 			Version: 1,
-			KDFAlg:  hashAlg(params.KDFAlg),
-			MDAlg:   hashAlg(params.MDAlg),
+			KDFAlg:  secboot.HashAlg(params.KDFAlg),
+			MDAlg:   secboot.HashAlg(params.MDAlg),
 			Params: scopeParams{
 				ModelDigests: digestList{
-					Alg: hashAlg(params.ModelAlg),
+					Alg: secboot.HashAlg(params.ModelAlg),
 				},
 			},
 		},
@@ -514,7 +428,7 @@ func (d *KeyDataScope) MakeAEADAdditionalData(generation int, kdfAlg crypto.Hash
 	aad := &additionalData{
 		Version:          d.data.Version,
 		Generation:       generation,
-		KdfAlg:           hashAlg(kdfAlg),
+		KdfAlg:           secboot.HashAlg(kdfAlg),
 		AuthMode:         authMode,
 		KeyIdentifierAlg: alg,
 		KeyIdentifier:    h.Sum(nil),
