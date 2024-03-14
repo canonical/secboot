@@ -17,6 +17,12 @@
  *
  */
 
+// Package plainkey is a platform for recovering keys that are protected by a key that
+// is protected by some other mechanism.
+//
+// This is typically used to unlock storage containers after unlocking an initial
+// storage container with a key that is hardware protected, if access to that storage
+// container implies access to others.
 package plainkey
 
 import (
