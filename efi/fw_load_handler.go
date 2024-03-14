@@ -27,7 +27,6 @@ import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -47,7 +46,7 @@ var newFwLoadHandler = func(log *tcglog.Log) imageLoadHandler {
 func (h *fwLoadHandler) readAndMeasureSignatureDb(ctx pcrBranchContext, name efi.VariableDescriptor) ([]byte, error) {
 	db, _, err := ctx.Vars().ReadVar(name.Name, name.GUID)
 	if err != nil && err != efi.ErrVarNotExist {
-		return nil, xerrors.Errorf("cannot read current variable: %w", err)
+		return nil, fmt.Errorf("cannot read current variable: %w", err)
 	}
 
 	ctx.MeasureVariable(secureBootPCR, name.GUID, name.Name, db)
@@ -62,7 +61,7 @@ func (h *fwLoadHandler) measureAuthorizedSignatureDb(ctx pcrBranchContext) error
 
 	db, err := efi.ReadSignatureDatabase(bytes.NewReader(data))
 	if err != nil {
-		return xerrors.Errorf("cannot decode signatures: %w", err)
+		return fmt.Errorf("cannot decode signatures: %w", err)
 	}
 	ctx.FwContext().Db = &secureBootDB{Name: Db, Contents: db}
 	return nil
@@ -76,16 +75,16 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// measure events in the correct order.
 	ctx.MeasureVariable(secureBootPCR, efi.GlobalVariable, sbStateName, []byte{1})
 	if _, err := h.readAndMeasureSignatureDb(ctx, PK); err != nil {
-		return xerrors.Errorf("cannot measure PK: %w", err)
+		return fmt.Errorf("cannot measure PK: %w", err)
 	}
 	if _, err := h.readAndMeasureSignatureDb(ctx, KEK); err != nil {
-		return xerrors.Errorf("cannot measure KEK: %w", err)
+		return fmt.Errorf("cannot measure KEK: %w", err)
 	}
 	if err := h.measureAuthorizedSignatureDb(ctx); err != nil {
-		return xerrors.Errorf("cannot measure db: %w", err)
+		return fmt.Errorf("cannot measure db: %w", err)
 	}
 	if _, err := h.readAndMeasureSignatureDb(ctx, Dbx); err != nil {
-		return xerrors.Errorf("cannot measure dbx: %w", err)
+		return fmt.Errorf("cannot measure dbx: %w", err)
 	}
 	// TODO: Support optional dbt/dbr databases
 
@@ -191,7 +190,7 @@ func (h *fwLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 
 	if ctx.Flags()&secureBootPolicyProfile > 0 {
 		if err := h.measureSecureBootPolicyPreOS(ctx); err != nil {
-			return xerrors.Errorf("cannot measure secure boot policy: %w", err)
+			return fmt.Errorf("cannot measure secure boot policy: %w", err)
 		}
 	}
 	if ctx.Flags()&bootManagerCodeProfile > 0 {
@@ -205,7 +204,7 @@ func (h *fwLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 func (h *fwLoadHandler) MeasureImageLoad(ctx pcrBranchContext, image peImageHandle) (imageLoadHandler, error) {
 	m := newFwImageLoadMeasurer(ctx, image)
 	if err := m.measure(); err != nil {
-		return nil, xerrors.Errorf("cannot measure image: %w", err)
+		return nil, fmt.Errorf("cannot measure image: %w", err)
 	}
 	return lookupImageLoadHandler(ctx, image)
 }
@@ -231,7 +230,7 @@ func (m *fwImageLoadMeasurer) measureVerification() error {
 	// Firmware always measures the entire EFI_SIGNATURE_DATA including the SignatureOwner
 	varData := new(bytes.Buffer)
 	if err := authority.Signature.Write(varData); err != nil {
-		return xerrors.Errorf("cannot encode authority EFI_SIGNATURE_DATA: %w", err)
+		return fmt.Errorf("cannot encode authority EFI_SIGNATURE_DATA: %w", err)
 	}
 
 	digest := tcglog.ComputeEFIVariableDataDigest(
@@ -252,7 +251,7 @@ func (m *fwImageLoadMeasurer) measureVerification() error {
 func (m *fwImageLoadMeasurer) measurePEImageDigest() error {
 	digest, err := m.image.ImageDigest(m.PCRAlg().GetHash())
 	if err != nil {
-		return xerrors.Errorf("cannot compute PE digest: %w", err)
+		return fmt.Errorf("cannot compute PE digest: %w", err)
 	}
 	m.ExtendPCR(bootManagerCodePCR, digest)
 	return nil
@@ -261,13 +260,13 @@ func (m *fwImageLoadMeasurer) measurePEImageDigest() error {
 func (m *fwImageLoadMeasurer) measure() error {
 	if m.Flags()&secureBootPolicyProfile > 0 {
 		if err := m.measureVerification(); err != nil {
-			return xerrors.Errorf("cannot measure secure boot event: %w", err)
+			return fmt.Errorf("cannot measure secure boot event: %w", err)
 		}
 	}
 
 	if m.Flags()&bootManagerCodeProfile > 0 {
 		if err := m.measurePEImageDigest(); err != nil {
-			return xerrors.Errorf("cannot measure boot manager code event: %w", err)
+			return fmt.Errorf("cannot measure boot manager code event: %w", err)
 		}
 	}
 

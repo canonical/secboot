@@ -60,7 +60,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 			Type: secboot.PlatformHandlerErrorUnavailable,
 			Err:  err}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+		return nil, fmt.Errorf("cannot connect to TPM: %w", err)
 	}
 	defer tpm.Close()
 
@@ -79,7 +79,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  err}
 		}
-		return nil, xerrors.Errorf("cannot read key object: %w", err)
+		return nil, fmt.Errorf("cannot read key object: %w", err)
 	}
 
 	key, authKey, err := k.UnsealFromTPM(tpm)
@@ -99,7 +99,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 				Type: secboot.PlatformHandlerErrorUnavailable,
 				Err:  err}
 		}
-		return nil, xerrors.Errorf("cannot unseal key: %w", err)
+		return nil, fmt.Errorf("cannot unseal key: %w", err)
 	}
 
 	keys := &legacyProtectedKeys{

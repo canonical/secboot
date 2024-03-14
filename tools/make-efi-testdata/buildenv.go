@@ -3,14 +3,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
-
-	"golang.org/x/xerrors"
 
 	"gopkg.in/yaml.v2"
 )
@@ -65,17 +64,17 @@ func addPackageAndDependenciesRecursively(env *buildEnv, name string) error {
 
 	version, err := getCurrentPackageVersion(name)
 	if err != nil {
-		return xerrors.Errorf("cannot determine version: %w", err)
+		return fmt.Errorf("cannot determine version: %w", err)
 	}
 	env.Packages[name] = version
 
 	depends, err := getPackageDependencies(name)
 	if err != nil {
-		return xerrors.Errorf("cannot determine dependencies: %w", err)
+		return fmt.Errorf("cannot determine dependencies: %w", err)
 	}
 	for _, depend := range depends {
 		if err := addPackageAndDependenciesRecursively(env, depend); err != nil {
-			return xerrors.Errorf("cannot add package %s and its dependencies: %w", depend, err)
+			return fmt.Errorf("cannot add package %s and its dependencies: %w", depend, err)
 		}
 	}
 
@@ -92,7 +91,7 @@ func addEssentialPackages(env *buildEnv) error {
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 	for scanner.Scan() {
 		if err := addPackageAndDependenciesRecursively(env, scanner.Text()); err != nil {
-			return xerrors.Errorf("cannot add package %s: %w", scanner.Text(), err)
+			return fmt.Errorf("cannot add package %s: %w", scanner.Text(), err)
 		}
 	}
 
@@ -122,15 +121,15 @@ func makeBuildEnvFromCurrent() (*buildEnv, error) {
 		env.OsRelease[s[0]] = s[1]
 	}
 	if scanner.Err() != nil {
-		return nil, xerrors.Errorf("cannot scan /etc/os-release: %w", err)
+		return nil, fmt.Errorf("cannot scan /etc/os-release: %w", err)
 	}
 
 	if err := addEssentialPackages(env); err != nil {
-		return nil, xerrors.Errorf("cannot add essential packages: %w", err)
+		return nil, fmt.Errorf("cannot add essential packages: %w", err)
 	}
 	for _, dep := range packageDeps {
 		if err := addPackageAndDependenciesRecursively(env, dep); err != nil {
-			return nil, xerrors.Errorf("cannot add package %s: %w", dep, err)
+			return nil, fmt.Errorf("cannot add package %s: %w", dep, err)
 		}
 	}
 

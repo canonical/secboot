@@ -31,7 +31,6 @@ import (
 
 	drbg "github.com/canonical/go-sp800.90a-drbg"
 	"golang.org/x/crypto/hkdf"
-	"golang.org/x/xerrors"
 )
 
 var (
@@ -190,12 +189,12 @@ func (d *KeyData) snapModelHMACKeyLegacy(key PrimaryKey) ([]byte, error) {
 
 	rng, err := drbg.NewCTRWithExternalEntropy(32, key, nil, snapModelHMACKDFLabel, nil)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot instantiate DRBG: %w", err)
+		return nil, fmt.Errorf("cannot instantiate DRBG: %w", err)
 	}
 
 	hmacKey := make([]byte, alg.Size())
 	if _, err := rng.Read(hmacKey); err != nil {
-		return nil, xerrors.Errorf("cannot derive key: %w", err)
+		return nil, fmt.Errorf("cannot derive key: %w", err)
 	}
 
 	return hmacKey, nil
@@ -243,7 +242,7 @@ func (d *KeyData) IsSnapModelAuthorized(key PrimaryKey, model SnapModel) (bool, 
 	case 1:
 		hmacKey, err := d.snapModelHMACKey(key)
 		if err != nil {
-			return false, xerrors.Errorf("cannot obtain auth key: %w", err)
+			return false, fmt.Errorf("cannot obtain auth key: %w", err)
 		}
 
 		alg := d.data.AuthorizedSnapModels.alg
@@ -253,7 +252,7 @@ func (d *KeyData) IsSnapModelAuthorized(key PrimaryKey, model SnapModel) (bool, 
 
 		h, err := computeSnapModelHMAC(crypto.Hash(alg), hmacKey, model)
 		if err != nil {
-			return false, xerrors.Errorf("cannot compute HMAC of model: %w", err)
+			return false, fmt.Errorf("cannot compute HMAC of model: %w", err)
 		}
 
 		return d.data.AuthorizedSnapModels.hmacs.contains(h), nil
@@ -280,7 +279,7 @@ func (d *KeyData) SetAuthorizedSnapModels(key PrimaryKey, models ...SnapModel) (
 	case 1:
 		hmacKey, err := d.snapModelHMACKey(key)
 		if err != nil {
-			return xerrors.Errorf("cannot obtain auth key: %w", err)
+			return fmt.Errorf("cannot obtain auth key: %w", err)
 		}
 
 		alg := d.data.AuthorizedSnapModels.keyDigest.Alg
@@ -305,7 +304,7 @@ func (d *KeyData) SetAuthorizedSnapModels(key PrimaryKey, models ...SnapModel) (
 		for _, model := range models {
 			h, err := computeSnapModelHMAC(crypto.Hash(alg), hmacKey, model)
 			if err != nil {
-				return xerrors.Errorf("cannot compute HMAC of model: %w", err)
+				return fmt.Errorf("cannot compute HMAC of model: %w", err)
 			}
 
 			modelHMACs = append(modelHMACs, h)

@@ -29,8 +29,6 @@ import (
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot"
 )
 
@@ -143,7 +141,7 @@ func (p *keyDataPolicy_v1) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 
 	trial := util.ComputeAuthPolicy(alg)
 	if err := pcrData.addPcrAssertions(alg, trial, params.pcrs, params.pcrDigests); err != nil {
-		return xerrors.Errorf("cannot compute base PCR policy: %w", err)
+		return fmt.Errorf("cannot compute base PCR policy: %w", err)
 	}
 
 	if params.policyCounterName != nil {
@@ -152,7 +150,7 @@ func (p *keyDataPolicy_v1) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 
 	key, err := createECDSAPrivateKeyFromTPM(p.StaticData.AuthPublicKey, tpm2.ECCParameter(params.key))
 	if err != nil {
-		return xerrors.Errorf("cannot create auth key: %w", err)
+		return fmt.Errorf("cannot create auth key: %w", err)
 	}
 
 	scheme := &tpm2.SigScheme{
@@ -161,7 +159,7 @@ func (p *keyDataPolicy_v1) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 			ECDSA: &tpm2.SigSchemeECDSA{
 				HashAlg: p.StaticData.AuthPublicKey.NameAlg}}}
 	if err := pcrData.authorizePolicy(key, scheme, trial.GetDigest(), computeV1PcrPolicyRefFromCounterName(params.policyCounterName)); err != nil {
-		return xerrors.Errorf("cannot authorize policy: %w", err)
+		return fmt.Errorf("cannot authorize policy: %w", err)
 	}
 
 	p.PCRData = pcrData
@@ -174,7 +172,7 @@ func (p *keyDataPolicy_v1) SetPCRPolicyFrom(src keyDataPolicy) {
 
 func (p *keyDataPolicy_v1) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession, hmacSession tpm2.SessionContext) error {
 	if err := p.PCRData.executePcrAssertions(tpm, policySession); err != nil {
-		return xerrors.Errorf("cannot execute PCR assertions: %w", err)
+		return fmt.Errorf("cannot execute PCR assertions: %w", err)
 	}
 
 	pcrPolicyCounterHandle := p.StaticData.PCRPolicyCounterHandle
@@ -204,7 +202,7 @@ func (p *keyDataPolicy_v1) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
 			// StaticData.AuthPublicKey is invalid
-			return policyDataError{xerrors.Errorf("public area of dynamic authorization policy signing key is invalid: %w", err)}
+			return policyDataError{fmt.Errorf("public area of dynamic authorization policy signing key is invalid: %w", err)}
 		}
 		return err
 	}
@@ -214,14 +212,14 @@ func (p *keyDataPolicy_v1) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 
 	pcrPolicyDigest, err := util.ComputePolicyAuthorizeDigest(authPublicKey.NameAlg, p.PCRData.AuthorizedPolicy, pcrPolicyRef)
 	if err != nil {
-		return policyDataError{xerrors.Errorf("cannot compute PCR policy digest: %w", err)}
+		return policyDataError{fmt.Errorf("cannot compute PCR policy digest: %w", err)}
 	}
 
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, pcrPolicyDigest, p.PCRData.AuthorizedPolicySignature)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
 			// PCRData.AuthorizedPolicySignature is invalid.
-			return policyDataError{xerrors.Errorf("cannot verify PCR policy signature: %w", err)}
+			return policyDataError{fmt.Errorf("cannot verify PCR policy signature: %w", err)}
 		}
 		return err
 	}
@@ -261,7 +259,7 @@ func (c *pcrPolicyCounterContext_v1) Get() (uint64, error) {
 func (c *pcrPolicyCounterContext_v1) Increment(key secboot.PrimaryKey) error {
 	ecdsaKey, err := createECDSAPrivateKeyFromTPM(c.updateKey, tpm2.ECCParameter(key))
 	if err != nil {
-		return xerrors.Errorf("cannot create auth key: %w", err)
+		return fmt.Errorf("cannot create auth key: %w", err)
 	}
 
 	// Begin a policy session to increment the index.
@@ -288,7 +286,7 @@ func (c *pcrPolicyCounterContext_v1) Increment(key secboot.PrimaryKey) error {
 				HashAlg: c.updateKey.NameAlg}}}
 	signature, err := util.SignPolicyAuthorization(ecdsaKey, &scheme, policySession.NonceTPM(), nil, nil, 0)
 	if err != nil {
-		return xerrors.Errorf("cannot sign authorization: %w", err)
+		return fmt.Errorf("cannot sign authorization: %w", err)
 	}
 
 	if _, _, err := c.tpm.PolicySigned(keyLoaded, policySession, true, nil, nil, 0, signature); err != nil {
@@ -310,7 +308,7 @@ func (p *keyDataPolicy_v1) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 
 	index, err := tpm2.CreateNVIndexResourceContextFromPublic(pub)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create context for NV index: %w", err)
+		return nil, fmt.Errorf("cannot create context for NV index: %w", err)
 	}
 
 	return &pcrPolicyCounterContext_v1{

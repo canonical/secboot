@@ -175,16 +175,16 @@ func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string, sess
 
 	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
+		return nil, fmt.Errorf("cannot create context for SRK: %w", err)
 	}
 
 	// Load the sealed data object in to the TPM for integrity checking
 	keyContext, err := k.load(tpm, srk, session)
 	switch {
 	case isLoadInvalidParamError(err) || isImportInvalidParamError(err):
-		return nil, keyDataError{xerrors.Errorf("cannot load sealed key object into TPM (sealed key object is bad or TPM owner has changed): %w", err)}
+		return nil, keyDataError{fmt.Errorf("cannot load sealed key object into TPM (sealed key object is bad or TPM owner has changed): %w", err)}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot load sealed key object into TPM: %w", err)
+		return nil, fmt.Errorf("cannot load sealed key object into TPM: %w", err)
 	}
 	// It's loaded ok, so we know that the private and public parts are consistent.
 	tpm.FlushContext(keyContext)
@@ -202,7 +202,7 @@ func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string, sess
 	// Read the public area of the PCR policy counter.
 	pcrPolicyCounterPub, name, err := tpm.NVReadPublic(pcrPolicyCounter)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read public area of PCR policy counter: %w", err)
+		return nil, fmt.Errorf("cannot read public area of PCR policy counter: %w", err)
 	}
 	if !bytes.Equal(name, pcrPolicyCounter.Name()) {
 		return nil, errors.New("invalid PCR policy counter public area")

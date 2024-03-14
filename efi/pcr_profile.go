@@ -21,11 +21,11 @@ package efi
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
-	"golang.org/x/xerrors"
 )
 
 // PCRProfileOption is an option for AddPCRProfile
@@ -206,7 +206,7 @@ func (g *pcrProfileGenerator) addPCRProfile(branch *secboot_tpm2.PCRProtectionPr
 
 	log, err := g.env.ReadEventLog()
 	if err != nil {
-		return xerrors.Errorf("cannot read TCG event log: %w", err)
+		return fmt.Errorf("cannot read TCG event log: %w", err)
 	}
 	g.log = log
 
@@ -217,7 +217,7 @@ func (g *pcrProfileGenerator) addPCRProfile(branch *secboot_tpm2.PCRProtectionPr
 	// Collect the starting EFI variable states from the supplied options
 	for i, mod := range g.varModifiers {
 		if err := mod(collector); err != nil {
-			return xerrors.Errorf("cannot process host variable modifier %d: %w", i, err)
+			return fmt.Errorf("cannot process host variable modifier %d: %w", i, err)
 		}
 	}
 
@@ -249,7 +249,7 @@ func (g *pcrProfileGenerator) addOnePCRProfileBranch(bp *secboot_tpm2.PCRProtect
 
 	handler := newFwLoadHandler(g.log)
 	if err := handler.MeasureImageStart(rootBranch); err != nil {
-		return xerrors.Errorf("cannot measure pre-OS: %w", err)
+		return fmt.Errorf("cannot measure pre-OS: %w", err)
 	}
 
 	todo := []*pcrImagesMeasurer{newPcrImagesMeasurer(rootBranch, handler, g.loadSequences.images...)}

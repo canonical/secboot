@@ -22,8 +22,7 @@ package secboot
 import (
 	"bytes"
 	"errors"
-
-	"golang.org/x/xerrors"
+	"fmt"
 
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
@@ -42,7 +41,7 @@ type LUKS2KeyDataReader struct {
 func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error) {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot obtain LUKS2 header view: %w", err)
+		return nil, fmt.Errorf("cannot obtain LUKS2 header view: %w", err)
 	}
 
 	token, _, exists := view.TokenByName(name)
@@ -103,7 +102,7 @@ type LUKS2KeyDataWriter struct {
 func NewLUKS2KeyDataWriter(devicePath, name string) (*LUKS2KeyDataWriter, error) {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot obtain LUKS2 header view: %w", err)
+		return nil, fmt.Errorf("cannot obtain LUKS2 header view: %w", err)
 	}
 
 	token, id, exists := view.TokenByName(name)

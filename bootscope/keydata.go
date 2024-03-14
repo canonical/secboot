@@ -37,7 +37,6 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/hkdf"
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -254,7 +253,7 @@ func (d *KeyDataScope) authorize(key secboot.PrimaryKey, role string) error {
 	d.data.Params.marshalASN1(builder)
 	scope, err := builder.Bytes()
 	if err != nil {
-		return xerrors.Errorf("cannot serialize scope: %w", err)
+		return fmt.Errorf("cannot serialize scope: %w", err)
 	}
 
 	alg := d.data.MDAlg
@@ -419,7 +418,7 @@ func (d *KeyDataScope) MakeAEADAdditionalData(generation int, kdfAlg crypto.Hash
 
 	der, err := x509.MarshalPKIXPublicKey(d.data.PublicKey.PublicKey)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot marshal public key: %w", err)
+		return nil, fmt.Errorf("cannot marshal public key: %w", err)
 	}
 
 	h := alg.New()

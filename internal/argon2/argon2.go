@@ -21,12 +21,12 @@ package argon2
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"time"
 
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -312,7 +312,7 @@ type KeyDurationFunc func(params *CostParams) (time.Duration, error)
 func Benchmark(params *BenchmarkParams, keyFn KeyDurationFunc) (*CostParams, error) {
 	var sysInfo unix.Sysinfo_t
 	if err := unixSysinfo(&sysInfo); err != nil {
-		return nil, xerrors.Errorf("cannot determine available memory: %w", err)
+		return nil, fmt.Errorf("cannot determine available memory: %w", err)
 	}
 
 	context := new(benchmarkContext)

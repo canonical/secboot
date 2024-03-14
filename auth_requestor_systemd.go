@@ -22,13 +22,12 @@ package secboot
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/template"
-
-	"golang.org/x/xerrors"
 )
 
 type askPasswordMsgParams struct {
@@ -53,7 +52,7 @@ func (r *systemdAuthRequestor) askPassword(sourceDevicePath, msg string) (string
 	cmd.Stdout = out
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		return "", xerrors.Errorf("cannot execute systemd-ask-password: %v", err)
+		return "", fmt.Errorf("cannot execute systemd-ask-password: %v", err)
 	}
 	result, err := out.ReadString('\n')
 	if err != nil {
@@ -70,7 +69,7 @@ func (r *systemdAuthRequestor) RequestPassphrase(volumeName, sourceDevicePath st
 
 	msg := new(bytes.Buffer)
 	if err := r.passphraseTmpl.Execute(msg, params); err != nil {
-		return "", xerrors.Errorf("cannot execute message template: %w", err)
+		return "", fmt.Errorf("cannot execute message template: %w", err)
 	}
 
 	return r.askPassword(sourceDevicePath, msg.String())
@@ -83,7 +82,7 @@ func (r *systemdAuthRequestor) RequestRecoveryKey(volumeName, sourceDevicePath s
 
 	msg := new(bytes.Buffer)
 	if err := r.recoveryKeyTmpl.Execute(msg, params); err != nil {
-		return RecoveryKey{}, xerrors.Errorf("cannot execute message template: %w", err)
+		return RecoveryKey{}, fmt.Errorf("cannot execute message template: %w", err)
 	}
 
 	passphrase, err := r.askPassword(sourceDevicePath, msg.String())
@@ -93,7 +92,7 @@ func (r *systemdAuthRequestor) RequestRecoveryKey(volumeName, sourceDevicePath s
 
 	key, err := ParseRecoveryKey(passphrase)
 	if err != nil {
-		return RecoveryKey{}, xerrors.Errorf("cannot parse recovery key: %w", err)
+		return RecoveryKey{}, fmt.Errorf("cannot parse recovery key: %w", err)
 	}
 
 	return key, nil
@@ -108,12 +107,12 @@ func (r *systemdAuthRequestor) RequestRecoveryKey(volumeName, sourceDevicePath s
 func NewSystemdAuthRequestor(passphraseTmpl, recoveryKeyTmpl string) (AuthRequestor, error) {
 	pt, err := template.New("passphraseMsg").Parse(passphraseTmpl)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot parse passphrase message template: %w", err)
+		return nil, fmt.Errorf("cannot parse passphrase message template: %w", err)
 	}
 
 	rkt, err := template.New("recoveryKeyMsg").Parse(recoveryKeyTmpl)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot parse recovery key message template: %w", err)
+		return nil, fmt.Errorf("cannot parse recovery key message template: %w", err)
 	}
 
 	return &systemdAuthRequestor{

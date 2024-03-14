@@ -13,8 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/xerrors"
 )
 
 type certData struct {
@@ -191,7 +189,7 @@ func makeCertificate(srcDir string, certs map[string][]byte, data *certData) err
 			for _, data := range certDatas {
 				if data.name == data.issuer {
 					if err := makeCertificate(srcDir, certs, &data); err != nil {
-						return xerrors.Errorf("cannot create issuer %s: %w", data.issuer, err)
+						return fmt.Errorf("cannot create issuer %s: %w", data.issuer, err)
 					}
 					issuerBytes = certs[data.issuer]
 					break
@@ -207,7 +205,7 @@ func makeCertificate(srcDir string, certs map[string][]byte, data *certData) err
 
 	key, err := readRSAPrivateKey(filepath.Join(srcDir, "keys", data.name+".key"))
 	if err != nil {
-		return xerrors.Errorf("cannot read key: %w", err)
+		return fmt.Errorf("cannot read key: %w", err)
 	}
 	pubKey := &key.PublicKey
 
@@ -215,7 +213,7 @@ func makeCertificate(srcDir string, certs map[string][]byte, data *certData) err
 		var err error
 		key, err = readRSAPrivateKey(filepath.Join(srcDir, "keys", data.issuer+".key"))
 		if err != nil {
-			return xerrors.Errorf("cannot read key: %w", err)
+			return fmt.Errorf("cannot read key: %w", err)
 		}
 	}
 
@@ -242,7 +240,7 @@ func makeCertificates(srcDir string) (out map[string][]byte, err error) {
 
 	for _, data := range certDatas {
 		if err := makeCertificate(srcDir, out, &data); err != nil {
-			return nil, xerrors.Errorf("cannot make certificate: %s: %w", data.name, err)
+			return nil, fmt.Errorf("cannot make certificate: %s: %w", data.name, err)
 		}
 	}
 	return out, nil
@@ -256,10 +254,10 @@ func writeCertificates(srcDir, dstDir string) error {
 			continue
 		}
 		if err := makeCertificate(srcDir, out, &data); err != nil {
-			return xerrors.Errorf("cannot make certificate %s: %w", data.name, err)
+			return fmt.Errorf("cannot make certificate %s: %w", data.name, err)
 		}
 		if err := ioutil.WriteFile(filepath.Join(dstDir, data.name+".cer"), out[data.name], 0644); err != nil {
-			return xerrors.Errorf("cannot write certificate %s: %w", data.name, err)
+			return fmt.Errorf("cannot write certificate %s: %w", data.name, err)
 		}
 	}
 
@@ -271,7 +269,7 @@ func readSrcCertificates(srcDir string, certs map[string][]byte) error {
 	for _, p := range paths {
 		data, err := decodePEM(p, "CERTIFICATE")
 		if err != nil {
-			return xerrors.Errorf("cannot decode %s: %w", p, err)
+			return fmt.Errorf("cannot decode %s: %w", p, err)
 		}
 
 		name := filepath.Base(strings.TrimSuffix(p, filepath.Ext(p)))

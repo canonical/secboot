@@ -22,6 +22,7 @@ package luksview
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"golang.org/x/xerrors"
@@ -110,7 +111,7 @@ func (k *tokenKeyslots) UnmarshalJSON(data []byte) error {
 	for _, v := range rawslots {
 		slot, err := v.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid keyslot ID: %w", err)
+			return fmt.Errorf("invalid keyslot ID: %w", err)
 		}
 		keyslots = append(keyslots, slot)
 	}

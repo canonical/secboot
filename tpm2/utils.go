@@ -110,7 +110,7 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 		if xerrors.As(err, &he) && he.Code == tpm2.ErrorHandle {
 			return false, nil
 		}
-		return false, xerrors.Errorf("cannot read public area of object: %w", err)
+		return false, fmt.Errorf("cannot read public area of object: %w", err)
 	}
 
 	pub.Unique = template.Unique

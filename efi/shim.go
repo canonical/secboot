@@ -34,7 +34,6 @@ import (
 	efi "github.com/canonical/go-efilib"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -127,7 +126,7 @@ func newestSbatLevel(levels ...[]byte) ([]byte, error) {
 	for i, level := range levels {
 		record, err := csv.NewReader(bytes.NewReader(level)).Read()
 		if err != nil {
-			return nil, xerrors.Errorf("cannot parse SBAT level %d: %w", i, err)
+			return nil, fmt.Errorf("cannot parse SBAT level %d: %w", i, err)
 		}
 		if len(record) < 3 {
 			return nil, fmt.Errorf("invalid SBAT level at %d", i)
@@ -205,7 +204,7 @@ func parseShimVersionDataIdent(r io.Reader) (shimVersion, error) {
 		}
 	}
 	if scanner.Err() != nil {
-		return shimVersion{}, xerrors.Errorf("cannot decode .data.ident section contents: %w", scanner.Err())
+		return shimVersion{}, fmt.Errorf("cannot decode .data.ident section contents: %w", scanner.Err())
 	}
 	return shimVersion{}, errors.New("cannot determine version - missing from .data.ident section")
 }
@@ -313,7 +312,7 @@ func (h *shimImageHandleImpl) ReadVendorDB() (efi.SignatureDatabase, shimVendorC
 	// shim source)
 	var table shimVendorCertTable
 	if err := binary.Read(section, binary.LittleEndian, &table); err != nil {
-		return nil, 0, xerrors.Errorf("cannot read vendor certs table: %w", err)
+		return nil, 0, fmt.Errorf("cannot read vendor certs table: %w", err)
 	}
 
 	// A size of zero is valid
@@ -324,7 +323,7 @@ func (h *shimImageHandleImpl) ReadVendorDB() (efi.SignatureDatabase, shimVendorC
 	sr := io.NewSectionReader(section, int64(table.DbOffset), int64(table.DbSize))
 	dbData, err := ioutil.ReadAll(sr)
 	if err != nil {
-		return nil, 0, xerrors.Errorf("cannot read vendor db data: %w", err)
+		return nil, 0, fmt.Errorf("cannot read vendor db data: %w", err)
 	}
 
 	elem := cryptobyte.String(dbData)
@@ -365,7 +364,7 @@ func (h *shimImageHandleImpl) ReadSbatLevel() (shimSbatLevel, error) {
 	// containing 2 offsets to each/ NULL terminated SBAT revocation policy.
 	var version uint32
 	if err := binary.Read(section, binary.LittleEndian, &version); err != nil {
-		return shimSbatLevel{}, xerrors.Errorf("cannot read .sbatlevel version: %w", err)
+		return shimSbatLevel{}, fmt.Errorf("cannot read .sbatlevel version: %w", err)
 	}
 	if version != 0 {
 		return shimSbatLevel{}, errors.New("invalid .sbatlevel version")
@@ -375,7 +374,7 @@ func (h *shimImageHandleImpl) ReadSbatLevel() (shimSbatLevel, error) {
 
 	var table shimSbatLevelTable
 	if err := binary.Read(io.NewSectionReader(sr, 0, int64(binary.Size(table))), binary.LittleEndian, &table); err != nil {
-		return shimSbatLevel{}, xerrors.Errorf("cannot read .sbatlevel table: %w", err)
+		return shimSbatLevel{}, fmt.Errorf("cannot read .sbatlevel table: %w", err)
 	}
 
 	var out shimSbatLevel

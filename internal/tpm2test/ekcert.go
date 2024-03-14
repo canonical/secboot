@@ -25,13 +25,12 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"fmt"
 	"math/big"
 	"math/rand"
 	"time"
 
 	"github.com/canonical/go-tpm2"
-
-	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
@@ -44,12 +43,12 @@ func CreateTestCA() ([]byte, crypto.PrivateKey, error) {
 
 	keyId := make([]byte, 32)
 	if _, err := rand.Read(keyId); err != nil {
-		return nil, nil, xerrors.Errorf("cannot obtain random key ID: %w", err)
+		return nil, nil, fmt.Errorf("cannot obtain random key ID: %w", err)
 	}
 
 	key, err := rsa.GenerateKey(testutil.RandReader, 768)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot generate RSA key: %w", err)
+		return nil, nil, fmt.Errorf("cannot generate RSA key: %w", err)
 	}
 
 	t := time.Now()
@@ -70,7 +69,7 @@ func CreateTestCA() ([]byte, crypto.PrivateKey, error) {
 
 	cert, err := x509.CreateCertificate(testutil.RandReader, &template, &template, &key.PublicKey, key)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot create certificate: %w", err)
+		return nil, nil, fmt.Errorf("cannot create certificate: %w", err)
 	}
 
 	return cert, key, nil
@@ -80,7 +79,7 @@ func CreateTestCA() ([]byte, crypto.PrivateKey, error) {
 func CreateTestEKCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateKey) ([]byte, error) {
 	ek, pub, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil, tcg.EKTemplate, nil, nil, nil)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create EK: %w", err)
+		return nil, fmt.Errorf("cannot create EK: %w", err)
 	}
 	defer tpm.FlushContext(ek)
 
@@ -92,7 +91,7 @@ func CreateTestEKCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 
 	keyId := make([]byte, 32)
 	if _, err := rand.Read(keyId); err != nil {
-		return nil, xerrors.Errorf("cannot obtain random key ID for EK cert: %w", err)
+		return nil, fmt.Errorf("cannot obtain random key ID for EK cert: %w", err)
 	}
 
 	t := time.Now()
@@ -104,12 +103,12 @@ func CreateTestEKCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 			pkix.AttributeTypeAndValue{Type: tcg.OIDTcgAttributeTpmVersion, Value: "id:00010002"}}}
 	tpmDeviceAttrData, err := asn1.Marshal(tpmDeviceAttrValues)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot marshal SAN value: %2", err)
+		return nil, fmt.Errorf("cannot marshal SAN value: %2", err)
 	}
 	sanData, err := asn1.Marshal([]asn1.RawValue{
 		asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: tcg.SANDirectoryNameTag, IsCompound: true, Bytes: tpmDeviceAttrData}})
 	if err != nil {
-		return nil, xerrors.Errorf("cannot marshal SAN value: %w", err)
+		return nil, fmt.Errorf("cannot marshal SAN value: %w", err)
 	}
 	sanExtension := pkix.Extension{
 		Id:       tcg.OIDExtensionSubjectAltName,
@@ -130,12 +129,12 @@ func CreateTestEKCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 
 	root, err := x509.ParseCertificate(caCert)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot parse CA certificate: %w", err)
+		return nil, fmt.Errorf("cannot parse CA certificate: %w", err)
 	}
 
 	cert, err := x509.CreateCertificate(testutil.RandReader, &template, root, &key, caKey)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create EK certificate: %w", err)
+		return nil, fmt.Errorf("cannot create EK certificate: %w", err)
 	}
 
 	return cert, nil
@@ -150,10 +149,10 @@ func CertifyTPM(tpm *tpm2.TPMContext, ekCert []byte) error {
 		Size:    uint16(len(ekCert))}
 	index, err := tpm.NVDefineSpace(tpm.PlatformHandleContext(), nil, &nvPub, nil)
 	if err != nil {
-		return xerrors.Errorf("cannot define NV index for EK certificate: %w", err)
+		return fmt.Errorf("cannot define NV index for EK certificate: %w", err)
 	}
 	if err := tpm.NVWrite(tpm.PlatformHandleContext(), index, tpm2.MaxNVBuffer(ekCert), 0, nil); err != nil {
-		return xerrors.Errorf("cannot write EK certificate to NV index: %w", err)
+		return fmt.Errorf("cannot write EK certificate to NV index: %w", err)
 	}
 	return nil
 }

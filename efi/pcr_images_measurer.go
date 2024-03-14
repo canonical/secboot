@@ -19,9 +19,7 @@
 
 package efi
 
-import (
-	"golang.org/x/xerrors"
-)
+import "fmt"
 
 // pcrImagesMeasurer binds a branch context, load handler and a set of images
 // that can be loaded.
@@ -55,7 +53,7 @@ func (m *pcrImagesMeasurer) measureOneImage(bp *pcrBranchPointCtx, image ImageLo
 
 	handle, err := openPeImage(image.source())
 	if err != nil {
-		return xerrors.Errorf("cannot open image: %w", err)
+		return fmt.Errorf("cannot open image: %w", err)
 	}
 	defer handle.Close()
 
@@ -66,12 +64,12 @@ func (m *pcrImagesMeasurer) measureOneImage(bp *pcrBranchPointCtx, image ImageLo
 		// Measure the verification and loading if the new image with the previous image's handler.
 		handler, err := m.loadHandler.MeasureImageLoad(context, handle)
 		if err != nil {
-			return xerrors.Errorf("cannot measure image load: %w", err)
+			return fmt.Errorf("cannot measure image load: %w", err)
 		}
 
 		// Measure the execution of the new image using its own handler.
 		if err := handler.MeasureImageStart(context); err != nil {
-			return xerrors.Errorf("cannot measure image start for params %#v: %w", p, err)
+			return fmt.Errorf("cannot measure image start for params %#v: %w", p, err)
 		}
 
 		next := image.next()
@@ -89,7 +87,7 @@ func (m *pcrImagesMeasurer) Measure() ([]*pcrImagesMeasurer, error) {
 
 	for _, image := range m.images {
 		if err := m.measureOneImage(bp, image); err != nil {
-			return nil, xerrors.Errorf("cannot measure image %v: %w", image.source(), err)
+			return nil, fmt.Errorf("cannot measure image %v: %w", image.source(), err)
 		}
 	}
 

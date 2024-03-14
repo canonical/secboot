@@ -34,8 +34,6 @@ import (
 	"github.com/canonical/go-tpm2/mssim"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
-	"golang.org/x/xerrors"
-
 	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot/internal/tpm2test"
@@ -108,14 +106,14 @@ func TestMain(m *testing.M) {
 			if err := func() error {
 				tcti, err := mssim.OpenConnection("", tpm2_testutil.MssimPort)
 				if err != nil {
-					return xerrors.Errorf("cannot open connection: %w", err)
+					return fmt.Errorf("cannot open connection: %w", err)
 				}
 				tpm := tpm2.NewTPMContext(tcti)
 				defer tpm.Close()
 
 				testEkCert, err = tpm2test.CreateTestEKCert(tpm, testCACert, caKey)
 				if err != nil {
-					return xerrors.Errorf("cannot create test EK certificate: %w", err)
+					return fmt.Errorf("cannot create test EK certificate: %w", err)
 				}
 				return tpm2test.CertifyTPM(tpm, testEkCert)
 			}(); err != nil {

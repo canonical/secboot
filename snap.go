@@ -26,11 +26,10 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"hash"
 
 	"github.com/snapcore/snapd/asserts"
-
-	"golang.org/x/xerrors"
 )
 
 var sha3_384oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 9}
@@ -57,12 +56,12 @@ func computeSnapModelHMAC(alg crypto.Hash, key []byte, model SnapModel) (snapMod
 	// changes to one with a different length.
 	signKeyHashAlg, err := asn1.Marshal(sha3_384oid)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot marshal sign key hash algorithm: %w", err)
+		return nil, fmt.Errorf("cannot marshal sign key hash algorithm: %w", err)
 	}
 
 	signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
 	if err != nil {
-		return nil, xerrors.Errorf("cannot decode signing key ID: %w", err)
+		return nil, fmt.Errorf("cannot decode signing key ID: %w", err)
 	}
 
 	h := hmac.New(func() hash.Hash { return alg.New() }, key)

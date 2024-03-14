@@ -87,7 +87,7 @@ func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2
 	   	}
 
 	   	if err := secboot_efi.AddSecureBootPolicyProfile(profile, &sbpParams); err != nil {
-	   		return nil, xerrors.Errorf("cannot add secureboot policy profile: %w", err)
+	   		return nil, fmt.Errorf("cannot add secureboot policy profile: %w", err)
 	   	}
 
 	   	sdefisParams := secboot_efi.SystemdStubProfileParams{
@@ -100,19 +100,19 @@ func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2
 	   	}
 
 	   	if err := secboot_efi.AddSystemdStubProfile(profile.RootBranch(), &sdefisParams); err != nil {
-	   		return nil, xerrors.Errorf("cannot add systemd EFI stub profile: %w", err)
+	   		return nil, fmt.Errorf("cannot add systemd EFI stub profile: %w", err)
 	   	}
 
 	   modelData, err := ioutil.ReadFile("tools/gen-compattest-data/data/fake-model")
 
 	   	if err != nil {
-	   		return nil, xerrors.Errorf("cannot read model assertion: %w", err)
+	   		return nil, fmt.Errorf("cannot read model assertion: %w", err)
 	   	}
 
 	   model, err := asserts.Decode(modelData)
 
 	   	if err != nil {
-	   		return nil, xerrors.Errorf("cannot decode model assertion: %w", err)
+	   		return nil, fmt.Errorf("cannot decode model assertion: %w", err)
 	   	}
 
 	   	smParams := secboot_tpm2.SnapModelProfileParams{
@@ -122,7 +122,7 @@ func computePCRProtectionProfile(env secboot_efi.HostEnvironment) (*secboot_tpm2
 	   	}
 
 	   	if err := secboot_tpm2.AddSnapModelProfile(profile.RootBranch(), &smParams); err != nil {
-	   		return nil, xerrors.Errorf("cannot add snap model profile: %w", err)
+	   		return nil, fmt.Errorf("cannot add snap model profile: %w", err)
 	   	}
 
 	   return profile, nil

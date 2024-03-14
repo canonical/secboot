@@ -74,7 +74,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 			Type: secboot.PlatformHandlerErrorUnavailable,
 			Err:  err}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+		return nil, fmt.Errorf("cannot connect to TPM: %w", err)
 	}
 	defer tpm.Close()
 
@@ -99,14 +99,14 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 				Type: secboot.PlatformHandlerErrorInvalidAuthKey,
 				Err:  err}
 		}
-		return nil, xerrors.Errorf("cannot unseal key: %w", err)
+		return nil, fmt.Errorf("cannot unseal key: %w", err)
 	}
 
 	payload, err := k.data.Decrypt(symKey, encryptedPayload, uint32(data.Generation), kdfAlg, data.AuthMode)
 	if err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
-			Err:  xerrors.Errorf("cannot recover encrypted payload: %w", err)}
+			Err:  fmt.Errorf("cannot recover encrypted payload: %w", err)}
 	}
 
 	return payload, nil
@@ -128,7 +128,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 			Type: secboot.PlatformHandlerErrorUnavailable,
 			Err:  err}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+		return nil, fmt.Errorf("cannot connect to TPM: %w", err)
 	}
 	defer tpm.Close()
 
@@ -155,7 +155,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 			Type: secboot.PlatformHandlerErrorInvalidData,
 			Err:  err}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot validate key data: %w", err)
+		return nil, fmt.Errorf("cannot validate key data: %w", err)
 	}
 
 	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
@@ -165,7 +165,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 			Type: secboot.PlatformHandlerErrorUninitialized,
 			Err:  ErrTPMProvisioning}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
+		return nil, fmt.Errorf("cannot create context for SRK: %w", err)
 	}
 
 	keyObject, err := k.load(tpm.TPMContext, srk, tpm.HmacSession())
@@ -174,7 +174,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 		// The supplied key data is invalid or is not protected by the supplied SRK.
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
-			Err:  xerrors.Errorf("cannot load sealed key object into TPM: %w", err)}
+			Err:  fmt.Errorf("cannot load sealed key object into TPM: %w", err)}
 	case isLoadInvalidParentError(err) || isImportInvalidParentError(err):
 		// The supplied SRK is not a valid storage parent.
 		return nil, &secboot.PlatformHandlerError{
@@ -182,7 +182,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 			Err:  ErrTPMProvisioning}
 	case err != nil:
 		// This is an unexpected error
-		return nil, xerrors.Errorf("cannot load sealed key object into TPM: %w", err)
+		return nil, fmt.Errorf("cannot load sealed key object into TPM: %w", err)
 	}
 	defer tpm.FlushContext(keyObject)
 
@@ -202,7 +202,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	// Validate the modified key. There's no reason for this to fail, but do it anyway. We haven't made
 	// any persistent changes yet and still have an opportunity to back out.
 	if _, err = k.validateData(tpm.TPMContext, data.Role, tpm.HmacSession()); err != nil {
-		return nil, xerrors.Errorf("cannot validate key data after auth value change: %w", err)
+		return nil, fmt.Errorf("cannot validate key data after auth value change: %w", err)
 	}
 
 	newHandle, err := json.Marshal(k)

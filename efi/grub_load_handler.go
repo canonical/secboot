@@ -19,9 +19,7 @@
 
 package efi
 
-import (
-	"golang.org/x/xerrors"
-)
+import "fmt"
 
 type grubFlags int
 
@@ -64,7 +62,7 @@ func (h *grubLoadHandler) MeasureImageLoad(ctx pcrBranchContext, image peImageHa
 		err = m.measure()
 	}
 	if err != nil {
-		return nil, xerrors.Errorf("cannot measure image: %w", err)
+		return nil, fmt.Errorf("cannot measure image: %w", err)
 	}
 
 	return lookupImageLoadHandler(ctx, image)
