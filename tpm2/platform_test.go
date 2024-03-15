@@ -67,6 +67,8 @@ func (s *platformSuite) SetUpTest(c *C) {
 		s.lastEncryptedPayload = params.EncryptedPayload
 		return secboot.NewKeyData(params)
 	}))
+	origKdf := secboot.SetArgon2KDF(&testutil.MockArgon2KDF{})
+	s.AddCleanup(func() { secboot.SetArgon2KDF(origKdf) })
 }
 
 var _ = Suite(&platformSuite{})
@@ -98,11 +100,10 @@ func (s *platformSuite) TestRecoverKeysWithPassphraseIntegrated(c *C) {
 		ProtectKeyParams: *params,
 	}
 
-	var kdf testutil.MockKDF
-	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase", &kdf)
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
-	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase", &kdf)
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
 	c.Check(err, IsNil)
 	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
 	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
@@ -122,11 +123,10 @@ func (s *platformSuite) TestRecoverKeysWithBadPassphraseIntegrated(c *C) {
 		ProtectKeyParams: *params,
 	}
 
-	var kdf testutil.MockKDF
-	k, _, _, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase", &kdf)
+	k, _, _, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
-	_, _, err = k.RecoverKeysWithPassphrase("1234", &kdf)
+	_, _, err = k.RecoverKeysWithPassphrase("1234")
 	c.Check(err, Equals, secboot.ErrInvalidPassphrase)
 }
 
@@ -141,13 +141,12 @@ func (s *platformSuite) TestChangePassphraseIntegrated(c *C) {
 		ProtectKeyParams: *params,
 	}
 
-	var kdf testutil.MockKDF
-	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase", &kdf)
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
-	c.Check(k.ChangePassphrase("passphrase", "1234", &kdf), IsNil)
+	c.Check(k.ChangePassphrase("passphrase", "1234"), IsNil)
 
-	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("1234", &kdf)
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("1234")
 	c.Check(err, IsNil)
 	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
 	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
@@ -164,13 +163,12 @@ func (s *platformSuite) TestChangePassphraseWithBadPassphraseIntegrated(c *C) {
 		ProtectKeyParams: *params,
 	}
 
-	var kdf testutil.MockKDF
-	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase", &kdf)
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
-	c.Check(k.ChangePassphrase("1234", "1234", &kdf), Equals, secboot.ErrInvalidPassphrase)
+	c.Check(k.ChangePassphrase("1234", "1234"), Equals, secboot.ErrInvalidPassphrase)
 
-	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase", &kdf)
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
 	c.Check(err, IsNil)
 	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
 	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)

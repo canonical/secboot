@@ -204,7 +204,7 @@ func (s *keyDataLegacySuite) TestRecoverKeysWithPassphraseAuthModeNone(c *C) {
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
-	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeysWithPassphrase("", nil)
+	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeysWithPassphrase("")
 	c.Check(err, ErrorMatches, "cannot recover key with passphrase")
 	c.Check(recoveredKey, IsNil)
 	c.Check(recoveredAuxKey, IsNil)

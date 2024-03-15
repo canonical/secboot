@@ -216,7 +216,7 @@ func MockSecbootNewKeyData(fn func(*secboot.KeyParams) (*secboot.KeyData, error)
 	}
 }
 
-func MockSecbootNewKeyDataWithPassphrase(fn func(*secboot.KeyWithPassphraseParams, string, secboot.KDF) (*secboot.KeyData, error)) (restore func()) {
+func MockSecbootNewKeyDataWithPassphrase(fn func(*secboot.KeyWithPassphraseParams, string) (*secboot.KeyData, error)) (restore func()) {
 	orig := secbootNewKeyDataWithPassphrase
 	secbootNewKeyDataWithPassphrase = fn
 	return func() {

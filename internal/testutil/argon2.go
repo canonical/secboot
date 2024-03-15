@@ -30,15 +30,14 @@ import (
 	"github.com/snapcore/secboot"
 )
 
-// MockKDF provides a mock implementation of secboot.KDF that isn't
+// MockArgon2KDF provides a mock implementation of secboot.Argon2KDF that isn't
 // memory intensive.
-type MockKDF struct {
-}
+type MockArgon2KDF struct{}
 
 // Derive implements secboot.KDF.Derive and derives a key from the supplied
 // passphrase and parameters. This is only intended for testing and is not
 // meant to be secure in any way.
-func (_ *MockKDF) Derive(passphrase string, salt []byte, params *secboot.KDFCostParams, keyLen uint32) ([]byte, error) {
+func (_ *MockArgon2KDF) Derive(passphrase string, salt []byte, params *secboot.Argon2CostParams, keyLen uint32) ([]byte, error) {
 	context := make([]byte, len(salt)+9)
 	copy(context, salt)
 	binary.LittleEndian.PutUint32(context[len(salt):], params.Time)
@@ -50,7 +49,7 @@ func (_ *MockKDF) Derive(passphrase string, salt []byte, params *secboot.KDFCost
 
 // Time implements secboot.KDF.Time and returns a time that is linearly
 // related to the specified cost parameters, suitable for mocking benchmarking.
-func (_ *MockKDF) Time(params *secboot.KDFCostParams) (time.Duration, error) {
+func (_ *MockArgon2KDF) Time(params *secboot.Argon2CostParams) (time.Duration, error) {
 	const memBandwidthKiBPerMs = 2048
 	duration := (time.Duration(float64(params.MemoryKiB)/float64(memBandwidthKiBPerMs)) * time.Duration(params.Time)) * time.Millisecond
 	return duration, nil

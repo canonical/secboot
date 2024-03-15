@@ -64,7 +64,7 @@ type ProtectKeyParams struct {
 type PassphraseProtectKeyParams struct {
 	ProtectKeyParams
 
-	KDFOptions *secboot.KDFOptions
+	KDFOptions *secboot.Argon2Options
 }
 
 type keyDataConstructor func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error)
@@ -79,7 +79,7 @@ func makeKeyDataNoAuth(skd *SealedKeyData, role string, encryptedPayload []byte,
 	})
 }
 
-func makeKeyDataWithPassphraseConstructor(kdfOptions *secboot.KDFOptions, passphrase string, kdf secboot.KDF) keyDataConstructor {
+func makeKeyDataWithPassphraseConstructor(kdfOptions *secboot.Argon2Options, passphrase string) keyDataConstructor {
 	return func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
 		return secbootNewKeyDataWithPassphrase(&secboot.KeyWithPassphraseParams{
 			KeyParams: secboot.KeyParams{
@@ -91,7 +91,7 @@ func makeKeyDataWithPassphraseConstructor(kdfOptions *secboot.KDFOptions, passph
 			},
 			KDFOptions:  kdfOptions,
 			AuthKeySize: skd.data.Public().NameAlg.Size(),
-		}, passphrase, kdf)
+		}, passphrase)
 	}
 }
 
@@ -284,7 +284,7 @@ func NewTPMProtectedKey(tpm *Connection, params *ProtectKeyParams) (protectedKey
 	}, sealer, makeKeyDataNoAuth, tpm.HmacSession())
 }
 
-func NewTPMPassphraseProtectedKey(tpm *Connection, params *PassphraseProtectKeyParams, passphrase string, kdf secboot.KDF) (protectedKey *secboot.KeyData, primaryKey secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
+func NewTPMPassphraseProtectedKey(tpm *Connection, params *PassphraseProtectKeyParams, passphrase string) (protectedKey *secboot.KeyData, primaryKey secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, nil, nil, errors.New("no PassphraseProtectKeyParams provided")
@@ -298,5 +298,5 @@ func NewTPMPassphraseProtectedKey(tpm *Connection, params *PassphraseProtectKeyP
 		AuthMode:               secboot.AuthModePassphrase,
 		Role:                   params.Role,
 		PcrProfile:             params.PCRProfile,
-	}, sealer, makeKeyDataWithPassphraseConstructor(params.KDFOptions, passphrase, kdf), tpm.HmacSession())
+	}, sealer, makeKeyDataWithPassphraseConstructor(params.KDFOptions, passphrase), tpm.HmacSession())
 }

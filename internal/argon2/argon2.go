@@ -275,8 +275,8 @@ func (c *benchmarkContext) run(params *BenchmarkParams, keyFn KeyDurationFunc, s
 // KeyDuration runs the key derivation with the built-in benchmarking values for the
 // supplied set of cost parameters, and then returns the amount of time taken to execute.
 //
-// By design, this function consumes a lot of memory depending on the supplied
-// parameters. It may be desirable to execute it in a short-lived utility process.
+// By design, this function consumes a lot of memory depending on the supplied parameters.
+// It may be desirable to execute it in a short-lived utility process.
 func KeyDuration(params *CostParams) time.Duration {
 	start := time.Now()
 	Key(benchmarkPassword, benchmarkSalt, params, benchmarkKeyLen)
