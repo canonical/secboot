@@ -329,6 +329,36 @@ func (s *argon2Suite) TestBenchmarkNoProgress(c *C) {
 	c.Check(err, ErrorMatches, "not making sufficient progress")
 }
 
+func (s *argon2Suite) TestKeyDurationNilParams(c *C) {
+	_, err := KeyDuration(ModeID, nil)
+	c.Check(err, ErrorMatches, `nil params`)
+}
+
+func (s *argon2Suite) TestKeyDurationInvalidTime(c *C) {
+	_, err := KeyDuration(ModeID, &CostParams{Threads: 1})
+	c.Check(err, ErrorMatches, `invalid time cost`)
+}
+
+func (s *argon2Suite) TestKeyDurationInvalidThreads(c *C) {
+	_, err := KeyDuration(ModeID, &CostParams{Time: 1})
+	c.Check(err, ErrorMatches, `invalid number of threads`)
+}
+
+func (s *argon2Suite) TestKeyNilParams(c *C) {
+	_, err := Key("foo", nil, ModeID, nil, 32)
+	c.Check(err, ErrorMatches, `nil params`)
+}
+
+func (s *argon2Suite) TestKeyInvalidTime(c *C) {
+	_, err := Key("foo", nil, ModeID, &CostParams{Threads: 1}, 32)
+	c.Check(err, ErrorMatches, `invalid time cost`)
+}
+
+func (s *argon2Suite) TestKeyInvalidThreads(c *C) {
+	_, err := Key("foo", nil, ModeID, &CostParams{Time: 1}, 32)
+	c.Check(err, ErrorMatches, `invalid number of threads`)
+}
+
 type argon2SuiteExpensive struct{}
 
 var _ = Suite(&argon2SuiteExpensive{})
@@ -360,7 +390,8 @@ func (s *argon2SuiteExpensive) testKey(c *C, data *testKeyData) {
 		data.params.Threads = maxThreads
 	}
 
-	key := Key(data.passphrase, salt, data.mode, data.params, data.keyLen)
+	key, err := Key(data.passphrase, salt, data.mode, data.params, data.keyLen)
+	c.Check(err, IsNil)
 
 	var expectedKey []byte
 	switch data.mode {
@@ -456,23 +487,39 @@ func (s *argon2SuiteExpensive) TestKey7(c *C) {
 		keyLen: 32})
 }
 
+func (s *argon2SuiteExpensive) TestKey8(c *C) {
+	s.testKey(c, &testKeyData{
+		mode:       ModeI,
+		passphrase: "ubuntu",
+		saltLen:    16,
+		params: &CostParams{
+			Time:      4,
+			MemoryKiB: 0,
+			Threads:   4},
+		keyLen: 32})
+}
+
 func (s *argon2SuiteExpensive) TestKeyDuration(c *C) {
-	time1 := KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4})
+	time1, err := KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4})
+	c.Check(err, IsNil)
 	runtime.GC()
 
-	time2 := KeyDuration(ModeID, &CostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4})
-	runtime.GC()
-	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
-	// types of int64 kind
-	c.Check(time2 > time1, testutil.IsTrue)
-
-	time2 = KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4})
+	time2, err := KeyDuration(ModeID, &CostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4})
+	c.Check(err, IsNil)
 	runtime.GC()
 	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
 	// types of int64 kind
 	c.Check(time2 > time1, testutil.IsTrue)
 
-	time2 = KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1})
+	time2, err = KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4})
+	c.Check(err, IsNil)
+	runtime.GC()
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	time2, err = KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1})
+	c.Check(err, IsNil)
 	runtime.GC()
 	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
 	// types of int64 kind
