@@ -51,7 +51,7 @@ func (m *pcrImagesMeasurer) measureOneImage(bp *pcrBranchPointCtx, image ImageLo
 	// Build a list of parameters based on the parameters attached
 	// to the supplied image and inheriting from the parameters
 	// associated with the current branch context.
-	params := image.params().Resolve(&m.context.params)
+	params := image.params().Resolve(m.context.params)
 
 	handle, err := openPeImage(image.source())
 	if err != nil {
@@ -61,7 +61,7 @@ func (m *pcrImagesMeasurer) measureOneImage(bp *pcrBranchPointCtx, image ImageLo
 
 	// Create a new descendent branch for each parameter combination.
 	for _, p := range params {
-		context := bp.AddBranch(&p)
+		context := bp.AddBranch(p)
 
 		// Measure the verification and loading if the new image with the previous image's handler.
 		handler, err := m.loadHandler.MeasureImageLoad(context, handle)

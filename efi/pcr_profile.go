@@ -286,10 +286,10 @@ func (g *pcrProfileGenerator) addPCRProfile(branch *secboot_tpm2.PCRProtectionPr
 
 func (g *pcrProfileGenerator) addPCRProfileBranchForVars(bp *secboot_tpm2.PCRProtectionProfileBranchPoint, rootVars *varBranch) error {
 	// Build a list of parameters
-	params := g.loadSequences.params.Resolve(new(loadParams))
+	params := g.loadSequences.params.Resolve(loadParams{})
 
 	for _, p := range params {
-		if err := g.addOnePCRProfileBranch(bp, rootVars, &p); err != nil {
+		if err := g.addOnePCRProfileBranch(bp, rootVars, p); err != nil {
 			return err
 		}
 	}
@@ -297,7 +297,7 @@ func (g *pcrProfileGenerator) addPCRProfileBranchForVars(bp *secboot_tpm2.PCRPro
 	return nil
 }
 
-func (g *pcrProfileGenerator) addOnePCRProfileBranch(bp *secboot_tpm2.PCRProtectionProfileBranchPoint, rootVars *varBranch, params *loadParams) error {
+func (g *pcrProfileGenerator) addOnePCRProfileBranch(bp *secboot_tpm2.PCRProtectionProfileBranchPoint, rootVars *varBranch, params loadParams) error {
 	rootBranch := newRootPcrBranchCtx(g, bp.AddBranch(), params, rootVars)
 
 	handler := newFwLoadHandler(g.log)

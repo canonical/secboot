@@ -46,32 +46,30 @@ type pcrBranchContextSuite struct{}
 var _ = Suite(&pcrBranchContextSuite{})
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxProfileContext(c *C) {
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	c.Check(bc.PCRAlg(), Equals, tpm2.HashAlgorithmSHA256)
 }
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxParams(c *C) {
-	params := &LoadParams{KernelCommandline: "foo"}
+	params := LoadParams{"foo": "bar"}
 	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, params, new(VarBranch))
 	c.Assert(bc, NotNil)
 
-	c.Assert(bc.Params(), NotNil)
 	c.Check(bc.Params(), DeepEquals, params)
 }
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxParamsSubBranch(c *C) {
-	params1 := &LoadParams{KernelCommandline: "foo"}
+	params1 := LoadParams{"foo": "bar"}
 	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), params1, new(VarBranch))
 	c.Assert(bc, NotNil)
 
-	params2 := &LoadParams{KernelCommandline: "bar"}
+	params2 := LoadParams{"foo": "baz"}
 	subBc := bc.AddBranchPoint().AddBranch(params2)
 	c.Assert(subBc, NotNil)
 
 	c.Check(bc.Params(), DeepEquals, params1)
-	c.Assert(subBc.Params(), NotNil)
 	c.Check(subBc.Params(), DeepEquals, params2)
 }
 
@@ -79,7 +77,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxVars(c *C) {
 	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), vars)
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, LoadParams{}, vars)
 	c.Assert(bc, NotNil)
 
 	c.Assert(bc.Vars(), NotNil)
@@ -99,10 +97,10 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxVarsSubBranch(c *C) {
 	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), new(LoadParams), vars)
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), LoadParams{}, vars)
 	c.Assert(bc, NotNil)
 
-	subBc := bc.AddBranchPoint().AddBranch(new(LoadParams))
+	subBc := bc.AddBranchPoint().AddBranch(LoadParams{})
 	c.Assert(subBc, NotNil)
 
 	c.Assert(subBc.Vars(), NotNil)
@@ -119,7 +117,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxVarsSubBranch(c *C) {
 }
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxFwContext(c *C) {
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	c.Assert(bc.FwContext(), NotNil)
@@ -128,7 +126,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxFwContext(c *C) {
 	io.WriteString(h, "foo")
 	bc.FwContext().AppendVerificationEvent(h.Sum(nil))
 
-	subBc := bc.AddBranchPoint().AddBranch(new(LoadParams))
+	subBc := bc.AddBranchPoint().AddBranch(LoadParams{})
 	c.Assert(subBc, NotNil)
 
 	c.Assert(subBc.FwContext(), NotNil)
@@ -145,7 +143,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxFwContext(c *C) {
 }
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxShimContext(c *C) {
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	c.Assert(bc.ShimContext(), NotNil)
@@ -154,7 +152,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxShimContext(c *C) {
 	io.WriteString(h, "foo")
 	bc.ShimContext().AppendVerificationEvent(h.Sum(nil))
 
-	subBc := bc.AddBranchPoint().AddBranch(new(LoadParams))
+	subBc := bc.AddBranchPoint().AddBranch(LoadParams{})
 	c.Assert(subBc, NotNil)
 
 	c.Assert(subBc.ShimContext(), NotNil)
@@ -172,7 +170,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxShimContext(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxResetPCR(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bc.ResetPCR(0)
@@ -186,7 +184,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxResetPCR(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxResetPCRSHA1(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bc.ResetPCR(0)
@@ -200,7 +198,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxResetPCRSHA1(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCR(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	h := crypto.SHA256.New()
@@ -216,7 +214,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCR(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRDifferentDigest(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	h := crypto.SHA256.New()
@@ -232,7 +230,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRDifferentDigest(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRDifferentPCR(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	h := crypto.SHA256.New()
@@ -248,7 +246,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRDifferentPCR(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRSHA1(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	h := crypto.SHA1.New()
@@ -264,7 +262,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRSHA1(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariable(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid1, "foo", []byte{0})
@@ -278,7 +276,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariable(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentGUID(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid2, "foo", []byte{0})
@@ -292,7 +290,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentGUID(c *
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentName(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid1, "bar", []byte{0})
@@ -306,7 +304,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentName(c *
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentData(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid1, "foo", []byte{1})
@@ -320,7 +318,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentData(c *
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentPCR(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(1, testGuid1, "foo", []byte{0})
@@ -334,7 +332,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableDifferentPCR(c *C
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableSHA1(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA1}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bc.MeasureVariable(0, testGuid1, "foo", []byte{0})
@@ -348,18 +346,18 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxMeasureVariableSHA1(c *C) {
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxExtendPCRSubBranches(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
-	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), new(LoadParams), new(VarBranch))
+	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, profile.RootBranch(), LoadParams{}, new(VarBranch))
 	c.Assert(bc, NotNil)
 
 	bp := bc.AddBranchPoint()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
-	bp.AddBranch(new(LoadParams)).ExtendPCR(0, h.Sum(nil))
+	bp.AddBranch(LoadParams{}).ExtendPCR(0, h.Sum(nil))
 
 	h = crypto.SHA256.New()
 	io.WriteString(h, "bar")
-	bp.AddBranch(new(LoadParams)).ExtendPCR(0, h.Sum(nil))
+	bp.AddBranch(LoadParams{}).ExtendPCR(0, h.Sum(nil))
 
 	pcrs, pcrDigests, err := profile.ComputePCRDigests(nil, tpm2.HashAlgorithmSHA256)
 	c.Check(err, IsNil)

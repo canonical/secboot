@@ -44,8 +44,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureOneLeaf(c *C) {
 	// Simple case of measuring a single leaf application
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -57,7 +57,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureOneLeaf(c *C) {
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1),
 		images[1]: newMockLoadHandler().withExtendPCROnImageStart(1, digest2),
 	}
 	pc := &mockPcrProfileContext{
@@ -93,8 +93,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoLeaf(c *C) {
 	// up in separate branches.
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -106,7 +106,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoLeaf(c *C) {
 
 	images := []*mockImage{newMockImage(), newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest2),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1, digest2),
 		images[1]: newMockLoadHandler(),
 		images[2]: newMockLoadHandler(),
 	}
@@ -145,8 +145,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerNonLeaf(c *C) {
 	// Ensure that measuring a non-leaf application returns a new measurer instance
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -158,8 +158,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerNonLeaf(c *C) {
 
 	images := []*mockImage{newMockImage(), newMockImage(), newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
-		images[1]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest2),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1),
+		images[1]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest2),
 		images[2]: newMockLoadHandler(),
 	}
 	pc := &mockPcrProfileContext{
@@ -202,8 +202,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoNonLeaf(c *C) {
 	// Ensure that measuring a 2 non-leaf application returns 2 new measurer instances
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo1")
@@ -219,9 +219,9 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoNonLeaf(c *C) {
 
 	images := []*mockImage{newMockImage(), newMockImage(), newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest2),
-		images[1]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest3),
-		images[2]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest3),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1, digest2),
+		images[1]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest3),
+		images[2]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest3),
 		images[3]: newMockLoadHandler(),
 	}
 	pc := &mockPcrProfileContext{
@@ -278,8 +278,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 	// Ensure that measrung an application creates a branch for each parameter set
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -291,10 +291,10 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest2),
-		images[1]: newMockLoadHandler().withCheckParamsOnImageStarts(c,
-			&LoadParams{KernelCommandline: "foo"},
-			&LoadParams{KernelCommandline: "bar"},
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1, digest2),
+		images[1]: newMockLoadHandler().withCheckParamsOnImageStartMulti(c,
+			LoadParams{KernelCommandlineParamKey: "foo"},
+			LoadParams{KernelCommandlineParamKey: "bar"},
 		),
 	}
 	pc := &mockPcrProfileContext{
@@ -330,18 +330,10 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 
 func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithInheritedParams(c *C) {
 	// Ensure that parameters are inherited.
-	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-		"authority-id": "fake-brand",
-		"series":       "16",
-		"brand-id":     "fake-brand",
-		"model":        "fake-model",
-		"grade":        "secured",
-	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
-
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := &LoadParams{SnapModel: model}
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{"foo": "bar"}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -353,10 +345,10 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithInheritedParams
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest2),
-		images[1]: newMockLoadHandler().withCheckParamsOnImageStarts(c,
-			&LoadParams{KernelCommandline: "foo", SnapModel: model},
-			&LoadParams{KernelCommandline: "bar", SnapModel: model},
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1, digest2),
+		images[1]: newMockLoadHandler().withCheckParamsOnImageStartMulti(c,
+			LoadParams{KernelCommandlineParamKey: "foo", "foo": "bar"},
+			LoadParams{KernelCommandlineParamKey: "bar", "foo": "bar"},
 		),
 	}
 	pc := &mockPcrProfileContext{
@@ -394,7 +386,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithVars(c *C) {
 	// Ensure that variables are inherited correctly
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
+	params := LoadParams{}
 	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
@@ -409,10 +401,10 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithVars(c *C) {
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1),
 		images[1]: newMockLoadHandler().
 			withExtendPCROnImageStart(1, digest2).
-			withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}),
+			withCheckVarOnImageStartMulti(c, "foo", testGuid1, []byte{1}),
 	}
 	pc := &mockPcrProfileContext{
 		alg:      tpm2.HashAlgorithmSHA256,
@@ -446,7 +438,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureVarsAreCopied
 	// Ensure that variables associated with sibling nodes are copied
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
+	params := LoadParams{}
 	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
@@ -461,10 +453,10 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureVarsAreCopied
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest1),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1, digest1),
 		images[1]: newMockLoadHandler().
 			withExtendPCROnImageStart(1, digest2).
-			withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{1}).
+			withCheckVarOnImageStartMulti(c, "foo", testGuid1, []byte{1}, []byte{1}).
 			withSetVarOnImageStart("foo", testGuid1, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{0}),
 	}
 	pc := &mockPcrProfileContext{
@@ -503,8 +495,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 	// Ensure that fwContext is inherited correctly
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -516,7 +508,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1),
 		images[1]: newMockLoadHandler().
 			withExtendPCROnImageStart(1, digest2).
 			withCheckFwHasVerificationEventOnImageStart(c, digest1, true),
@@ -554,8 +546,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 	// Ensure that fwContexts associated with sibling nodes are copied
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -567,7 +559,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest1),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1, digest1),
 		images[1]: newMockLoadHandler().
 			withExtendPCROnImageStart(1, digest2).
 			withCheckFwHasVerificationEventOnImageStart(c, digest1, true).
@@ -611,8 +603,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 	// Ensure that shimContext is inherited correctly
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -624,7 +616,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1),
 		images[1]: newMockLoadHandler().
 			withExtendPCROnImageStart(1, digest2).
 			withCheckShimHasVerificationEventOnImageStart(c, digest1, true),
@@ -662,8 +654,8 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 	// Ensure that shimContexts associated with sibling nodes are copied
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
-	params := new(LoadParams)
-	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil)).Next()
+	params := LoadParams{}
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -675,7 +667,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 
 	images := []*mockImage{newMockImage(), newMockImage()}
 	handlers := mockImageLoadHandlerMap{
-		images[0]: newMockLoadHandler().withExtendPCROnImageLoads(0, digest1, digest1),
+		images[0]: newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digest1, digest1),
 		images[1]: newMockLoadHandler().
 			withExtendPCROnImageStart(1, digest2).
 			withCheckShimHasVerificationEventOnImageStart(c, digest1, true).

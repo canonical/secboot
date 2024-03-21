@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/tpm2"
 )
 
@@ -42,9 +43,9 @@ func (h *ubuntuCoreUKILoadHandler) MeasureImageStart(ctx pcrBranchContext) error
 
 	if ctx.PCRs().Contains(kernelConfigPCR) {
 		// the stub doesn't measure anything if the commandline is empty
-		if ctx.Params().KernelCommandline != "" {
+		if cmdline, ok := ctx.Params()[kernelCommandlineParamKey]; ok {
 			ctx.ExtendPCR(kernelConfigPCR,
-				tcglog.ComputeSystemdEFIStubCommandlineDigest(ctx.PCRAlg().GetHash(), ctx.Params().KernelCommandline))
+				tcglog.ComputeSystemdEFIStubCommandlineDigest(ctx.PCRAlg().GetHash(), cmdline.(string)))
 		}
 
 		// TODO: handle credentials, confexts and commandline addons if we need
@@ -54,11 +55,11 @@ func (h *ubuntuCoreUKILoadHandler) MeasureImageStart(ctx pcrBranchContext) error
 	// TODO: handle sysexts if we need them in the future, which go to the sysext PCR (13).
 
 	if ctx.PCRs().Contains(kernelConfigPCR) {
-		if ctx.Params().SnapModel == nil {
+		if _, ok := ctx.Params()[snapModelParamKey]; !ok {
 			return errors.New("snap model must be set using SnapModelParams")
 		}
 		ctx.ExtendPCR(kernelConfigPCR, tpm2.ComputeSnapSystemEpochDigest(ctx.PCRAlg(), 0))
-		modelDigest, err := tpm2.ComputeSnapModelDigest(ctx.PCRAlg(), ctx.Params().SnapModel)
+		modelDigest, err := tpm2.ComputeSnapModelDigest(ctx.PCRAlg(), ctx.Params()[snapModelParamKey].(secboot.SnapModel))
 		if err != nil {
 			return fmt.Errorf("cannot compute model digest: %w", err)
 		}

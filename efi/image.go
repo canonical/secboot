@@ -103,11 +103,23 @@ func (p FileImage) Open() (ImageReader, error) {
 	return &fileImageReader{File: f, size: fi.Size()}, nil
 }
 
+type loadParamsKey string
+
+const (
+	kernelCommandlineParamKey loadParamsKey = "kernel_commandline"
+	snapModelParamKey         loadParamsKey = "snap_model"
+)
+
 // loadParams correspond to a set of parameters that apply to a single branch
 // in a PCR profile.
-type loadParams struct {
-	KernelCommandline string
-	SnapModel         secboot.SnapModel
+type loadParams map[loadParamsKey]any
+
+func (p loadParams) clone() loadParams {
+	out := make(loadParams)
+	for k, v := range p {
+		out[k] = v
+	}
+	return out
 }
 
 // ImageLoadParams provides one or more values for an external parameter that
@@ -131,12 +143,14 @@ func KernelCommandlineParams(commandlines ...string) ImageLoadParams {
 func (p kernelCommandlineParams) applyTo(params ...loadParams) []loadParams {
 	var out []loadParams
 	for _, cmdline := range []string(p) {
-		p := make([]loadParams, len(params))
-		copy(p, params)
-		for i := range p {
-			p[i].KernelCommandline = cmdline
+		var newParams []loadParams
+		for _, p := range params {
+			newParams = append(newParams, p.clone())
 		}
-		out = append(out, p...)
+		for _, p := range newParams {
+			p[kernelCommandlineParamKey] = cmdline
+		}
+		out = append(out, newParams...)
 	}
 	return out
 }
@@ -151,20 +165,22 @@ func SnapModelParams(models ...secboot.SnapModel) ImageLoadParams {
 func (p snapModelParams) applyTo(params ...loadParams) []loadParams {
 	var out []loadParams
 	for _, model := range []secboot.SnapModel(p) {
-		p := make([]loadParams, len(params))
-		copy(p, params)
-		for i := range p {
-			p[i].SnapModel = model
+		var newParams []loadParams
+		for _, p := range params {
+			newParams = append(newParams, p.clone())
 		}
-		out = append(out, p...)
+		for _, p := range newParams {
+			p[snapModelParamKey] = model
+		}
+		out = append(out, newParams...)
 	}
 	return out
 }
 
 type imageLoadParamsSet []ImageLoadParams
 
-func (s imageLoadParamsSet) Resolve(initial *loadParams) []loadParams {
-	params := []loadParams{*initial}
+func (s imageLoadParamsSet) Resolve(initial loadParams) []loadParams {
+	params := []loadParams{initial}
 	for _, p := range s {
 		params = p.applyTo(params...)
 	}

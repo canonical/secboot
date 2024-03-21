@@ -102,8 +102,8 @@ func newMockPcrBranchContext(pc PcrProfileContext, params *LoadParams, vars VarR
 	}
 }
 
-func (c *mockPcrBranchContext) Params() *LoadParams {
-	return &c.params
+func (c *mockPcrBranchContext) Params() LoadParams {
+	return c.params
 }
 
 func (c *mockPcrBranchContext) Vars() VarReadWriter {
@@ -548,7 +548,7 @@ func (h *mockLoadHandler) withMeasureVariableOnImageStart(pcr tpm2.Handle, guid 
 	return h
 }
 
-func (h *mockLoadHandler) withCheckParamsOnImageStarts(c *C, params ...*LoadParams) *mockLoadHandler {
+func (h *mockLoadHandler) withCheckParamsOnImageStartMulti(c *C, params ...LoadParams) *mockLoadHandler {
 	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
 		c.Assert(params, Not(HasLen), 0)
 		c.Check(ctx.Params(), DeepEquals, params[0])
@@ -558,7 +558,7 @@ func (h *mockLoadHandler) withCheckParamsOnImageStarts(c *C, params ...*LoadPara
 	return h
 }
 
-func (h *mockLoadHandler) withCheckVarOnImageStarts(c *C, name string, guid efi.GUID, data ...[]byte) *mockLoadHandler {
+func (h *mockLoadHandler) withCheckVarOnImageStartMulti(c *C, name string, guid efi.GUID, data ...[]byte) *mockLoadHandler {
 	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
 		c.Assert(data, Not(HasLen), 0)
 		d, _, err := ctx.Vars().ReadVar(name, guid)
@@ -621,7 +621,7 @@ func (h *mockLoadHandler) withAppendShimVerificationEventOnImageStart(c *C, dige
 	return h
 }
 
-func (h *mockLoadHandler) withExtendPCROnImageLoads(pcr tpm2.Handle, digests ...tpm2.Digest) *mockLoadHandler {
+func (h *mockLoadHandler) withExtendPCROnImageLoadMulti(pcr tpm2.Handle, digests ...tpm2.Digest) *mockLoadHandler {
 	h.loadActions = append(h.loadActions, func(ctx PcrBranchContext) error {
 		if len(digests) == 0 {
 			return errors.New("no digests")
