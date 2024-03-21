@@ -108,7 +108,6 @@ func (p FileImage) Open() (ImageReader, error) {
 type loadParams struct {
 	KernelCommandline string
 	SnapModel         secboot.SnapModel
-	Source            ImageLoadEventSource // XXX: This is temporary until efi/secureboot_policy.go has been ported to the new code
 }
 
 // ImageLoadParams provides one or more values for an external parameter that
@@ -158,32 +157,6 @@ func (p snapModelParams) applyTo(params ...loadParams) []loadParams {
 			p[i].SnapModel = model
 		}
 		out = append(out, p...)
-	}
-	return out
-}
-
-// ImageLoadEventSource corresponds to the source of a ImageLoadActivity.
-// XXX: This exists temporarily until efi/secureboot_policy.go has been ported to the new
-// profile generation implementation.
-type ImageLoadEventSource int
-
-const (
-	// Firmware indicates that the source of a ImageLoadActivity was platform firmware, via the EFI_BOOT_SERVICES.LoadImage()
-	// and EFI_BOOT_SERVICES.StartImage() functions, with the subsequently executed image being verified against the signatures
-	// in the EFI authorized signature database.
-	Firmware ImageLoadEventSource = iota
-
-	// Shim indicates that the source of a ImageLoadActivity was shim, without relying on EFI boot services for loading, verifying
-	// and executing the subsequently executed image. The image is verified by shim against the signatures in the EFI authorized
-	// signature database, the MOK database or shim's built-in vendor certificate before being executed directly.
-	Shim
-)
-
-func (s ImageLoadEventSource) applyTo(params ...loadParams) []loadParams {
-	var out []loadParams
-	for _, param := range params {
-		param.Source = s
-		out = append(out, param)
 	}
 	return out
 }
