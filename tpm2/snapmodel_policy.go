@@ -35,7 +35,16 @@ import (
 
 const zeroSnapSystemEpoch uint32 = 0
 
-func computeSnapSystemEpochDigest(alg tpm2.HashAlgorithmId, epoch uint32) tpm2.Digest {
+// ComputeSnapSystemEpoch computes a measurement digest for the supplied epoch, as
+// measured by snap-bootstrap, and is used to provide a useful escape hatch for potential
+// vulnerabilities in snap-bootstrap.
+//
+// The digest is computed as: (where H is the supplied digest algorithm):
+//
+//	digest = H(uint32(epoch))
+//
+// The current epoch as measured by [MeasureSnapSystemEpochToTPM] is 0.
+func ComputeSnapSystemEpochDigest(alg tpm2.HashAlgorithmId, epoch uint32) tpm2.Digest {
 	h := alg.NewHash()
 	binary.Write(h, binary.LittleEndian, epoch)
 	return h.Sum(nil)
@@ -119,6 +128,30 @@ func computeSnapModelDigest(newHash func() (snapModelHasher, error), model secbo
 	return h.Complete()
 }
 
+// ComputeSnapModelDigest computes a measurement digest for the supplied snap model.
+//
+// The digest is computed as follows (where H is the supplied digest algorithm):
+//
+//	digest1 = H(tpm2.HashAlgorithmSHA384 || sign-key-sha3-384 || brand-id)
+//	digest2 = H(digest1 || model)
+//	digest = H(digest2 || series || grade)
+//
+// The signing key digest algorithm is encoded in little-endian format, and the sign-key-sha3-384
+// field is hashed in decoded (binary) form. The brand-id, model and series fields are hashed
+// without null terminators. The grade field is encoded as the 32 bits from [github.com/snapcore/snapd/asserts.ModelGrade.Code]
+// in little-endian format. If the model is a classic one, the grade is bitwise-ORd with [secboot.ClassicModelGradeMask]
+//
+// The current implementation incorrectly encodes the public key digest algorithm as SHA-384
+// when it should be SHA3-384, although the algorithm identifier is really there as a length
+// prefix, so this is ok.
+//
+// Separate extend operations are used because brand-id, model and series are variable length.
+func ComputeSnapModelDigest(alg tpm2.HashAlgorithmId, model secboot.SnapModel) (tpm2.Digest, error) {
+	return computeSnapModelDigest(func() (snapModelHasher, error) {
+		return &goSnapModelHasher{alg.NewHash()}, nil
+	}, model)
+}
+
 // SnapModelProfileParams provides the parameters to AddSnapModelProfile.
 type SnapModelProfileParams struct {
 	// PCRAlgorithm is the algorithm for which to compute PCR digests for. TPMs compliant with the "TCG PC Client Platform TPM Profile
@@ -163,6 +196,9 @@ type SnapModelProfileParams struct {
 // The PCR index that snap-bootstrap measures the model to can be specified via the PCRIndex field of params.
 //
 // The set of models to add to the PCRProtectionProfile is specified via the Models field of params.
+//
+// Deprecated: use [github.com/snapcore/secboot/efi.AddPCRProfile] with the [github.com/snapcore/secboot/efi.WithKernelConfigProfile]
+// option.
 func AddSnapModelProfile(branch *PCRProtectionProfileBranch, params *SnapModelProfileParams) error {
 	if params.PCRIndex < 0 {
 		return errors.New("invalid PCR index")
@@ -171,7 +207,7 @@ func AddSnapModelProfile(branch *PCRProtectionProfileBranch, params *SnapModelPr
 		return errors.New("no models provided")
 	}
 
-	branch.ExtendPCR(params.PCRAlgorithm, params.PCRIndex, computeSnapSystemEpochDigest(params.PCRAlgorithm, zeroSnapSystemEpoch))
+	branch.ExtendPCR(params.PCRAlgorithm, params.PCRIndex, ComputeSnapSystemEpochDigest(params.PCRAlgorithm, zeroSnapSystemEpoch))
 
 	bp := branch.AddBranchPoint()
 	for _, model := range params.Models {
@@ -194,7 +230,7 @@ func AddSnapModelProfile(branch *PCRProtectionProfileBranch, params *SnapModelPr
 }
 
 // MeasureSnapSystemEpochToTPM measures a digest of uint32(0) to the specified PCR for all
-// supported PCR banks. See the documentation for AddSnapModelProfile for more details.
+// supported PCR banks. See the documentation for [ComputeSnapSystemEpoch] for more details.
 func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
 	seq, err := tpm.HashSequenceStart(nil, tpm2.HashAlgorithmNull)
 	if err != nil {
@@ -214,7 +250,7 @@ func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
 }
 
 // MeasureSnapModelToTPM measures a digest of the supplied model assertion to the specified PCR
-// for all supported PCR banks. See the documentation for AddSnapModelProfile for details of
+// for all supported PCR banks. See the documentation for [ComputeSnapModelDigest] for details of
 // how the digest of the model is computed.
 func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapModel) error {
 	pcrSelection, err := tpm.GetCapabilityPCRs(tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit))

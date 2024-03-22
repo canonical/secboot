@@ -53,7 +53,7 @@ func (s *fwLoadHandlerSuite) testMeasureImageStart(c *C, data *testFwMeasureImag
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(data.vars, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:   data.alg,
-		flags: data.flags}, collector.Next())
+		flags: data.flags}, nil, collector.Next())
 
 	handler := NewFwLoadHandler(efitest.NewLog(c, data.logOptions))
 	c.Check(handler.MeasureImageStart(ctx), IsNil)
@@ -211,7 +211,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog1(c *C) {
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile}, collector.Next())
+		flags: SecureBootPolicyProfile}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
@@ -234,7 +234,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog2(c *C) {
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile}, collector.Next())
+		flags: SecureBootPolicyProfile}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
@@ -260,7 +260,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog3(c *C) {
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile}, collector.Next())
+		flags: SecureBootPolicyProfile}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
@@ -286,7 +286,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog4(c *C) {
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile}, collector.Next())
+		flags: SecureBootPolicyProfile}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
@@ -323,7 +323,7 @@ func (s *fwLoadHandlerSuite) testMeasureImageLoad(c *C, data *testFwMeasureImage
 		alg:      data.alg,
 		flags:    data.flags,
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	if data.fc != nil {
 		ctx.fc = data.fc
 	}

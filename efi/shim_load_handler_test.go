@@ -241,7 +241,7 @@ type testShimMeasureImageStartData struct {
 
 func (s *shimLoadHandlerSuite) testMeasureImageStart(c *C, data *testShimMeasureImageStartData) (PcrBranchContext, *RootVarsCollector) {
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(data.vars, nil))
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{alg: data.alg, flags: data.flags}, collector.Next())
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{alg: data.alg, flags: data.flags}, nil, collector.Next())
 
 	handler := &ShimLoadHandler{
 		Flags:     data.shimFlags,
@@ -458,7 +458,7 @@ func (s *shimLoadHandlerSuite) testMeasureImageLoad(c *C, data *testShimMeasureI
 		alg:      data.alg,
 		flags:    data.flags,
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: data.db,

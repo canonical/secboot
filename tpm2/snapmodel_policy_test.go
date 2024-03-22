@@ -458,9 +458,7 @@ func (s *snapModelMeasureSuite) testMeasureSnapModelToTPMTest(c *C, data *testMe
 	c.Assert(err, IsNil)
 
 	for _, s := range pcrSelection {
-		snapModelDigest, err := ComputeSnapModelDigest(func() (SnapModelHasher, error) {
-			return &GoSnapModelHasher{s.Hash.NewHash()}, nil
-		}, data.model)
+		snapModelDigest, err := ComputeSnapModelDigest(s.Hash, data.model)
 		c.Assert(err, IsNil)
 
 		h := s.Hash.NewHash()

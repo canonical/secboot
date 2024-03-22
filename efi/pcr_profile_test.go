@@ -668,10 +668,18 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20(c *C) {
 			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
-		loadSequences: NewImageLoadSequences().Append(
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
 			NewImageLoadActivity(shim).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(runKernel),
 					),
 					NewImageLoadActivity(recoverKernel),
@@ -681,18 +689,20 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20(c *C) {
 		expected: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 		},
-	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile())
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile())
 	c.Check(err, IsNil)
 }
 
@@ -710,10 +720,18 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20WithTryKernel(c *C) {
 			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
-		loadSequences: NewImageLoadSequences().Append(
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
 			NewImageLoadActivity(shim).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(runKernel1),
 						NewImageLoadActivity(runKernel2),
 					),
@@ -724,24 +742,27 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20WithTryKernel(c *C) {
 		expected: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "407f697575347ec33bd66d5a6311e994de513abc28bebe8e4cfae5c20fe67e38"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "407f697575347ec33bd66d5a6311e994de513abc28bebe8e4cfae5c20fe67e38"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 		},
-	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile())
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile())
 	c.Check(err, IsNil)
 }
 
@@ -762,18 +783,26 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20ShimUpdate(c *C) {
 			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
-		loadSequences: NewImageLoadSequences().Append(
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
 			NewImageLoadActivity(shim1).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(runKernel),
 					),
 					NewImageLoadActivity(recoverKernel),
 				),
 			),
 			NewImageLoadActivity(shim2).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(runKernel),
 					),
 					NewImageLoadActivity(recoverKernel),
@@ -784,45 +813,51 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20ShimUpdate(c *C) {
 			// Shim 15.4 branches
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "d196042b85e14fd009817abda16522e1fb32b19617e68d4688d0d435b24b5d02"),
-					7: testutil.DecodeHexString(c, "98f515726b235c9226a5c0d4cc2d421e6ce22f35b6652b2fbf9005fc12202d66"),
+					4:  testutil.DecodeHexString(c, "d196042b85e14fd009817abda16522e1fb32b19617e68d4688d0d435b24b5d02"),
+					7:  testutil.DecodeHexString(c, "98f515726b235c9226a5c0d4cc2d421e6ce22f35b6652b2fbf9005fc12202d66"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "96c0ede7bb07853e327c4eaf64ec4341d4eeaa833c80ae1ed865fba4cde43ba7"),
-					7: testutil.DecodeHexString(c, "98f515726b235c9226a5c0d4cc2d421e6ce22f35b6652b2fbf9005fc12202d66"),
+					4:  testutil.DecodeHexString(c, "96c0ede7bb07853e327c4eaf64ec4341d4eeaa833c80ae1ed865fba4cde43ba7"),
+					7:  testutil.DecodeHexString(c, "98f515726b235c9226a5c0d4cc2d421e6ce22f35b6652b2fbf9005fc12202d66"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 			// Shim 15.7 branches
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 			// Shim 15.4 branches after applying SBAT update from shim 15.7 - note that PCR4 values are identical but
 			// PCR7 is updated because the value of SbatLevel changes. These branches facilitate potential A/B updating shim
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "d196042b85e14fd009817abda16522e1fb32b19617e68d4688d0d435b24b5d02"),
-					7: testutil.DecodeHexString(c, "6fc916d63dbb2efa1d6179fc105ae48451ad5d09218312157762eced9d1bdfbb"),
+					4:  testutil.DecodeHexString(c, "d196042b85e14fd009817abda16522e1fb32b19617e68d4688d0d435b24b5d02"),
+					7:  testutil.DecodeHexString(c, "6fc916d63dbb2efa1d6179fc105ae48451ad5d09218312157762eced9d1bdfbb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "96c0ede7bb07853e327c4eaf64ec4341d4eeaa833c80ae1ed865fba4cde43ba7"),
-					7: testutil.DecodeHexString(c, "6fc916d63dbb2efa1d6179fc105ae48451ad5d09218312157762eced9d1bdfbb"),
+					4:  testutil.DecodeHexString(c, "96c0ede7bb07853e327c4eaf64ec4341d4eeaa833c80ae1ed865fba4cde43ba7"),
+					7:  testutil.DecodeHexString(c, "6fc916d63dbb2efa1d6179fc105ae48451ad5d09218312157762eced9d1bdfbb"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 		},
-	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile())
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile())
 	c.Check(err, IsNil)
 }
 
@@ -841,18 +876,26 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20ShimUpdateFromPreSbat(c *C) {
 			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
-		loadSequences: NewImageLoadSequences().Append(
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
 			NewImageLoadActivity(shim1).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(runKernel),
 					),
 					NewImageLoadActivity(recoverKernel),
 				),
 			),
 			NewImageLoadActivity(shim2).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(runKernel),
 					),
 					NewImageLoadActivity(recoverKernel),
@@ -863,31 +906,35 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20ShimUpdateFromPreSbat(c *C) {
 			// Shim 15
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "68e3d6ce7f8bf9f647629bd926486a0309b28efcb2e74c2bb517ee45dd0081ca"),
-					7: testutil.DecodeHexString(c, "65df349cba09824e925f4563877f2e0b145ce929db0cc1d8a665014857e9e7e9"),
+					4:  testutil.DecodeHexString(c, "68e3d6ce7f8bf9f647629bd926486a0309b28efcb2e74c2bb517ee45dd0081ca"),
+					7:  testutil.DecodeHexString(c, "65df349cba09824e925f4563877f2e0b145ce929db0cc1d8a665014857e9e7e9"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "42eeb4127f3732e54119df9a6c0383b63fbca39bc715edefc4bebdc62bbe0f7b"),
-					7: testutil.DecodeHexString(c, "65df349cba09824e925f4563877f2e0b145ce929db0cc1d8a665014857e9e7e9"),
+					4:  testutil.DecodeHexString(c, "42eeb4127f3732e54119df9a6c0383b63fbca39bc715edefc4bebdc62bbe0f7b"),
+					7:  testutil.DecodeHexString(c, "65df349cba09824e925f4563877f2e0b145ce929db0cc1d8a665014857e9e7e9"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 			// Shim 15.4 branches
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "d196042b85e14fd009817abda16522e1fb32b19617e68d4688d0d435b24b5d02"),
-					7: testutil.DecodeHexString(c, "98f515726b235c9226a5c0d4cc2d421e6ce22f35b6652b2fbf9005fc12202d66"),
+					4:  testutil.DecodeHexString(c, "d196042b85e14fd009817abda16522e1fb32b19617e68d4688d0d435b24b5d02"),
+					7:  testutil.DecodeHexString(c, "98f515726b235c9226a5c0d4cc2d421e6ce22f35b6652b2fbf9005fc12202d66"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "96c0ede7bb07853e327c4eaf64ec4341d4eeaa833c80ae1ed865fba4cde43ba7"),
-					7: testutil.DecodeHexString(c, "98f515726b235c9226a5c0d4cc2d421e6ce22f35b6652b2fbf9005fc12202d66"),
+					4:  testutil.DecodeHexString(c, "96c0ede7bb07853e327c4eaf64ec4341d4eeaa833c80ae1ed865fba4cde43ba7"),
+					7:  testutil.DecodeHexString(c, "98f515726b235c9226a5c0d4cc2d421e6ce22f35b6652b2fbf9005fc12202d66"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 		},
-	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile())
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile())
 	c.Check(err, IsNil)
 }
 
@@ -905,10 +952,18 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20SbatPolicyLatest(c *C) {
 			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
-		loadSequences: NewImageLoadSequences().Append(
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
 			NewImageLoadActivity(shim).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(runKernel),
 					),
 					NewImageLoadActivity(recoverKernel),
@@ -919,31 +974,35 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20SbatPolicyLatest(c *C) {
 			// Branches with current SbatLevel
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 			// Branches with updated SbatLevel
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
-					7: testutil.DecodeHexString(c, "ecb8e9facbb7f23594b887e3df384cf998d800400bae4acb1efe5b7e7e2a0029"),
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "ecb8e9facbb7f23594b887e3df384cf998d800400bae4acb1efe5b7e7e2a0029"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
-					7: testutil.DecodeHexString(c, "ecb8e9facbb7f23594b887e3df384cf998d800400bae4acb1efe5b7e7e2a0029"),
+					4:  testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
+					7:  testutil.DecodeHexString(c, "ecb8e9facbb7f23594b887e3df384cf998d800400bae4acb1efe5b7e7e2a0029"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 		},
-	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithShimSbatPolicyLatest())
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile(), WithShimSbatPolicyLatest())
 	c.Check(err, IsNil)
 }
 
@@ -959,10 +1018,18 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20PreSbat(c *C) {
 			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
-		loadSequences: NewImageLoadSequences().Append(
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
 			NewImageLoadActivity(shim).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(kernel),
 					),
 					NewImageLoadActivity(kernel),
@@ -972,18 +1039,20 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20PreSbat(c *C) {
 		expected: []tpm2.PCRValues{
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "39edc30b02bd577c7b36fe3d52953894ad3781611428082df5af0a9c04421398"),
-					7: testutil.DecodeHexString(c, "65df349cba09824e925f4563877f2e0b145ce929db0cc1d8a665014857e9e7e9"),
+					4:  testutil.DecodeHexString(c, "39edc30b02bd577c7b36fe3d52953894ad3781611428082df5af0a9c04421398"),
+					7:  testutil.DecodeHexString(c, "65df349cba09824e925f4563877f2e0b145ce929db0cc1d8a665014857e9e7e9"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "c9daf36f478b0636bee66330ccb5c5878db5f41fa3a94df796b88e3c2744bac9"),
-					7: testutil.DecodeHexString(c, "65df349cba09824e925f4563877f2e0b145ce929db0cc1d8a665014857e9e7e9"),
+					4:  testutil.DecodeHexString(c, "c9daf36f478b0636bee66330ccb5c5878db5f41fa3a94df796b88e3c2744bac9"),
+					7:  testutil.DecodeHexString(c, "65df349cba09824e925f4563877f2e0b145ce929db0cc1d8a665014857e9e7e9"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 		},
-	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile())
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile())
 	c.Check(err, IsNil)
 }
 
@@ -1000,10 +1069,18 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20WithDbxUpdate(c *C) {
 			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
-		loadSequences: NewImageLoadSequences().Append(
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
 			NewImageLoadActivity(shim).Loads(
-				NewImageLoadActivity(grub).Loads(
-					NewImageLoadActivity(grub).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
 						NewImageLoadActivity(runKernel),
 					),
 					NewImageLoadActivity(recoverKernel),
@@ -1014,31 +1091,35 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20WithDbxUpdate(c *C) {
 			// Pre-dbx update branches:
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
-					7: testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					4:  testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 			// Post-dbx update branches:
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
-					7: testutil.DecodeHexString(c, "51d90abb35648752a0b4866f8b4eb0e5b53113abea015b7576f8b5d373c62dae"),
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "51d90abb35648752a0b4866f8b4eb0e5b53113abea015b7576f8b5d373c62dae"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
 				},
 			},
 			{
 				tpm2.HashAlgorithmSHA256: {
-					4: testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
-					7: testutil.DecodeHexString(c, "51d90abb35648752a0b4866f8b4eb0e5b53113abea015b7576f8b5d373c62dae"),
+					4:  testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
+					7:  testutil.DecodeHexString(c, "51d90abb35648752a0b4866f8b4eb0e5b53113abea015b7576f8b5d373c62dae"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
 				},
 			},
 		},
-	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithSignatureDBUpdates(&SignatureDBUpdate{Name: Dbx, Data: msDbxUpdate2}))
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile(), WithSignatureDBUpdates(&SignatureDBUpdate{Name: Dbx, Data: msDbxUpdate2}))
 	c.Check(err, IsNil)
 }
 
@@ -1053,7 +1134,15 @@ func (s *pcrProfileSuite) TestAddPCRProfileLoadFailsFromLeafImage(c *C) {
 			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
-		loadSequences: NewImageLoadSequences().Append(
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
 			NewImageLoadActivity(shim).Loads(
 				NewImageLoadActivity(grub).Loads(
 					NewImageLoadActivity(grub).Loads(
@@ -1064,6 +1153,6 @@ func (s *pcrProfileSuite) TestAddPCRProfileLoadFailsFromLeafImage(c *C) {
 				),
 			),
 		),
-	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile())
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile())
 	c.Check(err, ErrorMatches, `cannot measure image 0x[[:xdigit:]]{10}: cannot measure image load: kernel is a leaf image`)
 }
