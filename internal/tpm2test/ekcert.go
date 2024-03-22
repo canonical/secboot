@@ -103,7 +103,7 @@ func CreateTestEKCert(tpm *tpm2.TPMContext, caCert []byte, caKey crypto.PrivateK
 			pkix.AttributeTypeAndValue{Type: tcg.OIDTcgAttributeTpmVersion, Value: "id:00010002"}}}
 	tpmDeviceAttrData, err := asn1.Marshal(tpmDeviceAttrValues)
 	if err != nil {
-		return nil, fmt.Errorf("cannot marshal SAN value: %2", err)
+		return nil, fmt.Errorf("cannot marshal SAN value: %w", err)
 	}
 	sanData, err := asn1.Marshal([]asn1.RawValue{
 		asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: tcg.SANDirectoryNameTag, IsCompound: true, Bytes: tpmDeviceAttrData}})
