@@ -434,7 +434,12 @@ func (d *KeyDataScope) SetAuthorizedBootModes(key secboot.PrimaryKey, role strin
 }
 
 // IsBootEnvironmentAuthorized checks if the current boot environment (model and boot mode) is
-// matches the key data's scope authorized models and boot modes.
+// compatible with the bound authorized models and boot modes.
+//
+// This must be called from within an environment where the integrity is protected by
+// some other mechanism, such as verified boot, or where the platform device has some way
+// of authenticating the current environment, and it must be called before the authenticated
+// boot environment parameters are processed and used.
 func (d *KeyDataScope) IsBootEnvironmentAuthorized() error {
 	ok, err := d.isAuthorized()
 	if err != nil {

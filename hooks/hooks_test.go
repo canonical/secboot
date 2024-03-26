@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2024 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -17,33 +17,17 @@
  *
  */
 
-package testutil
+package hooks_test
 
 import (
-	"encoding/hex"
+	"os"
 	"testing"
 
 	. "gopkg.in/check.v1"
 )
 
-func DecodeHexString(c *C, s string) []byte {
-	b, err := hex.DecodeString(s)
-	c.Assert(err, IsNil)
-	return b
+func TestMain(m *testing.M) {
+	os.Exit(m.Run())
 }
 
-func DecodeHexStringT(t *testing.T, s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		t.Fatalf("DecodeHexString failed: %v", err)
-	}
-	return b
-}
-
-func MustDecodeHexString(s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
-	}
-	return b
-}
+func Test(t *testing.T) { TestingT(t) }
