@@ -615,7 +615,7 @@ func (s *keyDataPlatformSuite) TestHashAlgMarshalJSON(c *C) {
 		{crypto.SHA384, "\"sha384\""},
 		{crypto.SHA512, "\"sha512\""},
 	} {
-		hashAlg := NewHashAlg(t.alg)
+		hashAlg := HashAlg(t.alg)
 		hashAlgJSON, err := hashAlg.MarshalJSON()
 		c.Assert(err, IsNil)
 		c.Check(string(hashAlgJSON), Equals, t.nameAlg)
@@ -641,7 +641,7 @@ func (s *keyDataPlatformSuite) TestHashAlgMarshalJSONInvalid(c *C) {
 	}
 
 	for _, alg := range unsupportedAlgorithms {
-		hashAlg := NewHashAlg(alg)
+		hashAlg := HashAlg(alg)
 		hashAlgJSON, err := hashAlg.MarshalJSON()
 		c.Assert(string(hashAlgJSON), Equals, "")
 		c.Check(err.Error(), Equals, fmt.Sprintf("unknown hash algorithm: %v", crypto.Hash(alg)))
@@ -660,7 +660,7 @@ func (s *keyDataPlatformSuite) TestHashAlgUnmarshalJSON(c *C) {
 		{crypto.SHA512, "\"sha512\""},
 		{0, "\"foo\""},
 	} {
-		hashAlg := NewHashAlg(crypto.SHA256)
+		hashAlg := HashAlg(crypto.SHA256)
 		err := hashAlg.UnmarshalJSON([]byte(t.nameAlg))
 		c.Assert(err, IsNil)
 		c.Check(crypto.Hash(hashAlg), Equals, t.alg)
@@ -668,7 +668,7 @@ func (s *keyDataPlatformSuite) TestHashAlgUnmarshalJSON(c *C) {
 }
 
 func (s *keyDataPlatformSuite) TestHashAlgUnmarshalJSONInvalid(c *C) {
-	hashAlg := NewHashAlg(crypto.SHA256)
+	hashAlg := HashAlg(crypto.SHA256)
 	err := hashAlg.UnmarshalJSON([]byte("}"))
 
 	e, ok := err.(*json.SyntaxError)

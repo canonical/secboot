@@ -39,7 +39,7 @@ import (
 
 const (
 	kdfType                            = "argon2i"
-	nilHash                    hashAlg = 0
+	nilHash                    HashAlg = 0
 	passphraseKeyLen                   = 32
 	passphraseEncryptionKeyLen         = 32
 	passphraseEncryption               = "aes-cfb"
@@ -185,24 +185,28 @@ type KeyDataReader interface {
 	ReadableName() string
 }
 
-// hashAlg corresponds to a digest algorithm.
-type hashAlg crypto.Hash
+// HashAlg provides an abstraction for crypto.Hash that can be serialized to JSON and DER.
+type HashAlg crypto.Hash
 
-var hashAlgAvailable = (*hashAlg).Available
+var hashAlgAvailable = (*HashAlg).Available
 
-func (a hashAlg) Available() bool {
+func (a HashAlg) Available() bool {
 	return crypto.Hash(a).Available()
 }
 
-func (a hashAlg) New() hash.Hash {
+func (a HashAlg) New() hash.Hash {
 	return crypto.Hash(a).New()
 }
 
-func (a hashAlg) Size() int {
+func (a HashAlg) HashFunc() crypto.Hash {
+	return crypto.Hash(a)
+}
+
+func (a HashAlg) Size() int {
 	return crypto.Hash(a).Size()
 }
 
-func (a hashAlg) MarshalJSON() ([]byte, error) {
+func (a HashAlg) MarshalJSON() ([]byte, error) {
 	var s string
 
 	switch crypto.Hash(a) {
@@ -225,7 +229,7 @@ func (a hashAlg) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s)
 }
 
-func (a *hashAlg) UnmarshalJSON(b []byte) error {
+func (a *HashAlg) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -233,15 +237,15 @@ func (a *hashAlg) UnmarshalJSON(b []byte) error {
 
 	switch s {
 	case "sha1":
-		*a = hashAlg(crypto.SHA1)
+		*a = HashAlg(crypto.SHA1)
 	case "sha224":
-		*a = hashAlg(crypto.SHA224)
+		*a = HashAlg(crypto.SHA224)
 	case "sha256":
-		*a = hashAlg(crypto.SHA256)
+		*a = HashAlg(crypto.SHA256)
 	case "sha384":
-		*a = hashAlg(crypto.SHA384)
+		*a = HashAlg(crypto.SHA384)
 	case "sha512":
-		*a = hashAlg(crypto.SHA512)
+		*a = HashAlg(crypto.SHA512)
 	default:
 		// be permissive here and allow everything to be
 		// unmarshalled.
@@ -251,7 +255,7 @@ func (a *hashAlg) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a hashAlg) marshalASN1(b *cryptobyte.Builder) {
+func (a HashAlg) MarshalASN1(b *cryptobyte.Builder) {
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // AlgorithmIdentifier ::= SEQUENCE {
 		var oid asn1.ObjectIdentifier
 
@@ -325,7 +329,7 @@ type keyData struct {
 	// KDFAlg is the algorithm that is used to derive the unlock key from a primary key.
 	// It is also used to derive additional keys from the passphrase derived key in
 	// derivePassphraseKeys.
-	KDFAlg hashAlg `json:"kdf_alg,omitempty"`
+	KDFAlg HashAlg `json:"kdf_alg,omitempty"`
 
 	// EncryptedPayload is the platform protected key payload.
 	EncryptedPayload []byte `json:"encrypted_payload"`
@@ -394,7 +398,7 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 	builder := cryptobyte.NewBuilder(nil)
 	builder.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // SEQUENCE {
 		b.AddASN1OctetString(params.KDF.Salt)                               // salt OCTET STRING
-		kdfAlg.marshalASN1(b)                                               // kdfAlgorithm AlgorithmIdentifier
+		kdfAlg.MarshalASN1(b)                                               // kdfAlgorithm AlgorithmIdentifier
 		b.AddASN1(cryptobyte_asn1.UTF8String, func(b *cryptobyte.Builder) { // encryption UTF8String
 			b.AddBytes([]byte(params.Encryption))
 		})
@@ -719,7 +723,7 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 			PlatformName:     params.PlatformName,
 			Role:             params.Role,
 			PlatformHandle:   json.RawMessage(encodedHandle),
-			KDFAlg:           hashAlg(params.KDFAlg),
+			KDFAlg:           HashAlg(params.KDFAlg),
 			EncryptedPayload: params.EncryptedPayload,
 		},
 	}
