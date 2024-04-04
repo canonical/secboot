@@ -24,8 +24,6 @@ import (
 
 	"github.com/canonical/go-tpm2"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot/internal/tcg"
 )
 
@@ -60,7 +58,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 				continue
 			} else if err != nil {
 				// This is an unexpected error
-				return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
+				return nil, fmt.Errorf("cannot create context for SRK: %w", err)
 			}
 		} else {
 			var err error
@@ -71,7 +69,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 				continue
 			} else if err != nil {
 				// This is an unexpected error
-				return nil, xerrors.Errorf("cannot create transient SRK: %w", err)
+				return nil, fmt.Errorf("cannot create transient SRK: %w", err)
 			}
 			defer tpm.FlushContext(srk)
 		}
@@ -89,7 +87,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 			continue
 		} else if err != nil {
 			// This is an unexpected error
-			return nil, xerrors.Errorf("cannot load sealed key object into TPM: %w", err)
+			return nil, fmt.Errorf("cannot load sealed key object into TPM: %w", err)
 		}
 
 		return keyObject, nil
@@ -103,7 +101,7 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot fetch properties from TPM: %w", err)
+		return nil, fmt.Errorf("cannot fetch properties from TPM: %w", err)
 	}
 
 	if tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrInLockout > 0 {
@@ -121,12 +119,12 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []
 	// Begin and execute policy session
 	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, k.data.Public().NameAlg)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot start policy session: %w", err)
+		return nil, fmt.Errorf("cannot start policy session: %w", err)
 	}
 	defer tpm.FlushContext(policySession)
 
 	if err := k.data.Policy().ExecutePCRPolicy(tpm, policySession, hmacSession); err != nil {
-		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
+		err = fmt.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
 		case isPolicyDataError(err):
 			return nil, InvalidKeyDataError{err.Error()}
@@ -142,7 +140,7 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
 		return nil, InvalidKeyDataError{"the authorization policy check failed during unsealing"}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot unseal key: %w", err)
+		return nil, fmt.Errorf("cannot unseal key: %w", err)
 	}
 
 	return data, nil

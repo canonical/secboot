@@ -23,11 +23,11 @@ import (
 	"crypto"
 	"encoding/asn1"
 	"encoding/base64"
+	"fmt"
 
 	"github.com/snapcore/secboot"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
-	"golang.org/x/xerrors"
 )
 
 var sha3_384oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 9}
@@ -35,7 +35,7 @@ var sha3_384oid = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 9}
 func computeSnapModelHash(alg crypto.Hash, model secboot.SnapModel) ([]byte, error) {
 	signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
 	if err != nil {
-		return nil, xerrors.Errorf("cannot decode signing key ID: %w", err)
+		return nil, fmt.Errorf("cannot decode signing key ID: %w", err)
 	}
 
 	builder := cryptobyte.NewBuilder(nil)
@@ -62,9 +62,8 @@ func computeSnapModelHash(alg crypto.Hash, model secboot.SnapModel) ([]byte, err
 
 	b, err := builder.Bytes()
 	if err != nil {
-		return nil, xerrors.Errorf("cannot serialize model properties: %w", err)
+		return nil, fmt.Errorf("cannot serialize model properties: %w", err)
 	}
-
 	h := alg.New()
 	h.Write(b)
 	return h.Sum(nil), nil

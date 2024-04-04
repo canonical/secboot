@@ -2,8 +2,6 @@ github.com/bsiegert/ranges v0.0.0-20111221115336-19303dc7aa63/go.mod h1:8z71/aZj
 github.com/canonical/go-efilib v0.0.0-20210909101908-41435fa545d4/go.mod h1:9Sr9kd7IhQPYqaU5nut8Ky97/CtlhHDzQncQnrULgDM=
 github.com/canonical/go-efilib v0.3.0/go.mod h1:9b2PNAuPcZsB76x75/uwH99D8CyH/A2y4rq1/+bvplg=
 github.com/canonical/go-efilib v0.3.1-0.20220314143719-95d50e8afc82/go.mod h1:9b2PNAuPcZsB76x75/uwH99D8CyH/A2y4rq1/+bvplg=
-github.com/canonical/go-efilib v0.9.4 h1:cD6oNSWeQSgeSeJZMCxhGEW4GoLSxFhIJ12Hg3vFCtU=
-github.com/canonical/go-efilib v0.9.4/go.mod h1:tHjv3Mni7hEpNSUNd1KJEV/AZJsFSH6LX/EQ0I75AZE=
 github.com/canonical/go-efilib v0.9.5 h1:zRpWG4z61GiYsEmFYvXYuj+8xV2eJ200YY5Ht9EjrRU=
 github.com/canonical/go-efilib v0.9.5/go.mod h1:tHjv3Mni7hEpNSUNd1KJEV/AZJsFSH6LX/EQ0I75AZE=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=
@@ -13,10 +11,6 @@ github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3 h1:oe6
 github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3/go.mod h1:qdP0gaj0QtgX2RUZhnlVrceJ+Qln8aSlDyJwelLLFeM=
 github.com/canonical/go-tpm2 v0.0.0-20210827151749-f80ff5afff61/go.mod h1:vG41hdbBjV4+/fkubTT1ENBBqSkLwLr7mCeW9Y6kpZY=
 github.com/canonical/go-tpm2 v0.1.0/go.mod h1:vG41hdbBjV4+/fkubTT1ENBBqSkLwLr7mCeW9Y6kpZY=
-github.com/canonical/go-tpm2 v1.0.2 h1:2HNCI/UKghbVaR8Ix1BEcK6G/GzKlkOoBSXNc7R7mLw=
-github.com/canonical/go-tpm2 v1.0.2/go.mod h1:FD6TavnteNqLZv1m3meU0QighLDmfyEq5+ShiN2Ik64=
-github.com/canonical/go-tpm2 v1.1.0 h1:i3YeiYTWciamtbUpKZC9FIGhCP9rWSu1AZpYnWUO9HE=
-github.com/canonical/go-tpm2 v1.1.0/go.mod h1:kLkR1//7ocrPDl6LZfijTKEoPGxRIZSbb8GuWaO1JM8=
 github.com/canonical/go-tpm2 v1.3.0 h1:+xc2++IM4kaMCJruFzlgtYgQyV5Q0EReaP++z8VTqJk=
 github.com/canonical/go-tpm2 v1.3.0/go.mod h1:kLkR1//7ocrPDl6LZfijTKEoPGxRIZSbb8GuWaO1JM8=
 github.com/canonical/tcglog-parser v0.0.0-20210824131805-69fa1e9f0ad2/go.mod h1:QoW2apR2tBl6T/4czdND/EHjL1Ia9cCmQnIj9Xe0Kt8=

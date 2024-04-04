@@ -21,14 +21,13 @@ package secboot
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
-
-	"golang.org/x/xerrors"
 )
 
 // FileKeyDataReader provides a mechanism to read a KeyData from a file.
@@ -45,13 +44,13 @@ func (r *FileKeyDataReader) ReadableName() string {
 func NewFileKeyDataReader(path string) (*FileKeyDataReader, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot open file: %w", err)
+		return nil, fmt.Errorf("cannot open file: %w", err)
 	}
 	defer f.Close()
 
 	d, err := ioutil.ReadAll(f)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read file: %w", err)
+		return nil, fmt.Errorf("cannot read file: %w", err)
 	}
 
 	return &FileKeyDataReader{path, bytes.NewReader(d)}, nil
@@ -66,16 +65,16 @@ type FileKeyDataWriter struct {
 func (w *FileKeyDataWriter) Commit() error {
 	f, err := osutil.NewAtomicFile(w.path, 0600, 0, sys.UserID(osutil.NoChown), sys.GroupID(osutil.NoChown))
 	if err != nil {
-		return xerrors.Errorf("cannot create new atomic file: %w", err)
+		return fmt.Errorf("cannot create new atomic file: %w", err)
 	}
 	defer f.Cancel()
 
 	if _, err := io.Copy(f, w); err != nil {
-		return xerrors.Errorf("cannot write file key data: %w", err)
+		return fmt.Errorf("cannot write file key data: %w", err)
 	}
 
 	if err := f.Commit(); err != nil {
-		return xerrors.Errorf("cannot commit update: %w", err)
+		return fmt.Errorf("cannot commit update: %w", err)
 	}
 
 	return nil

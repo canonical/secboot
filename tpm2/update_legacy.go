@@ -25,8 +25,6 @@ import (
 	"fmt"
 	"os"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot"
 )
 
@@ -49,7 +47,7 @@ import (
 func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpdatePath string, pcrProfile *PCRProtectionProfile) error {
 	policyUpdateFile, err := os.Open(policyUpdatePath)
 	if err != nil {
-		return xerrors.Errorf("cannot open private data file: %w", err)
+		return fmt.Errorf("cannot open private data file: %w", err)
 	}
 	defer policyUpdateFile.Close()
 
@@ -82,7 +80,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, policyUpdatePath string) error {
 	policyUpdateFile, err := os.Open(policyUpdatePath)
 	if err != nil {
-		return xerrors.Errorf("cannot open private data file: %w", err)
+		return fmt.Errorf("cannot open private data file: %w", err)
 	}
 	defer policyUpdateFile.Close()
 
@@ -147,7 +145,7 @@ func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObje
 
 	for i, key := range keys {
 		if err := key.UpdatePCRProtectionPolicy(tpm, authKey, pcrProfile); err != nil {
-			return xerrors.Errorf("cannot update key at index %d: %w", i, err)
+			return fmt.Errorf("cannot update key at index %d: %w", i, err)
 		}
 	}
 
@@ -163,7 +161,7 @@ func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObje
 			if isKeyDataError(err) {
 				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i+1)}
 			}
-			return xerrors.Errorf("cannot validate related key data: %w", err)
+			return fmt.Errorf("cannot validate related key data: %w", err)
 		}
 		// The metadata is valid and consistent with the object's static authorization policy.
 		// Verify that it also has the same static authorization policy as the first key object passed

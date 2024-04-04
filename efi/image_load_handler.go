@@ -21,8 +21,7 @@ package efi
 
 import (
 	"errors"
-
-	"golang.org/x/xerrors"
+	"fmt"
 )
 
 // imageLoadHandler is an abstraction for measuring boot events
@@ -82,7 +81,7 @@ func (m *imageLoadHandlerLazyMap) LookupHandler(image peImageHandle) (imageLoadH
 		case err == errNoHandler:
 			// skip
 		case err != nil:
-			return nil, xerrors.Errorf("cannot create image load handler using %v: %w", c, err)
+			return nil, fmt.Errorf("cannot create image load handler using %v: %w", c, err)
 		default:
 			m.handlers[image.Source()] = handler
 			return handler, nil

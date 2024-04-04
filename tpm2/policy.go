@@ -24,12 +24,11 @@ import (
 	"crypto"
 	_ "crypto/sha256"
 	"errors"
+	"fmt"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/templates"
 	"github.com/canonical/go-tpm2/util"
-
-	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
 )
@@ -461,7 +460,7 @@ func (e policyDataError) Unwrap() error {
 
 func isPolicyDataError(err error) bool {
 	var e policyDataError
-	return xerrors.As(err, &e)
+	return errors.As(err, &e)
 }
 
 var errSessionDigestNotFound = errors.New("current session digest not found in policy data")
@@ -522,10 +521,10 @@ func BlockPCRProtectionPolicies(tpm *Connection, pcrs []int) error {
 	for _, pcr := range pcrs {
 		seq, err := tpm.HashSequenceStart(nil, tpm2.HashAlgorithmNull)
 		if err != nil {
-			return xerrors.Errorf("cannot being hash sequence: %w", err)
+			return fmt.Errorf("cannot being hash sequence: %w", err)
 		}
 		if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcr), seq, fence, session, nil); err != nil {
-			return xerrors.Errorf("cannot execute hash sequence: %w", err)
+			return fmt.Errorf("cannot execute hash sequence: %w", err)
 		}
 	}
 

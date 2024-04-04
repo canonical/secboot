@@ -20,11 +20,11 @@
 package tpm2
 
 import (
+	"fmt"
+
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/templates"
 	"github.com/canonical/go-tpm2/util"
-
-	"golang.org/x/xerrors"
 )
 
 // keySealer is an abstraction for creating a sealed key object
@@ -57,7 +57,7 @@ func (s *sealedObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.Has
 		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
 			return nil, nil, nil, AuthFailError{tpm2.HandleOwner}
 		case err != nil:
-			return nil, nil, nil, xerrors.Errorf("cannot provision storage root key: %w", err)
+			return nil, nil, nil, fmt.Errorf("cannot provision storage root key: %w", err)
 		}
 	}
 
@@ -76,7 +76,7 @@ func (s *sealedObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.Has
 	priv, pub, _, _, _, err := s.tpm.Create(srk, &sensitive, template, nil, nil,
 		s.tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create sealed object: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create sealed object: %w", err)
 	}
 	return priv, pub, nil, err
 }
@@ -98,7 +98,7 @@ func (s *importableObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2
 	// Now create the importable sealed key object (duplication object).
 	_, priv, importSymSeed, err := util.CreateDuplicationObject(sensitive, pub, s.tpmKey, nil, nil)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create duplication object: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create duplication object: %w", err)
 	}
 	return priv, pub, importSymSeed, nil
 }

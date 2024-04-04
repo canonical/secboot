@@ -22,9 +22,9 @@ package efi
 import (
 	"bytes"
 	"crypto/x509"
+	"fmt"
 
 	"github.com/snapcore/snapd/snapdenv"
-	"golang.org/x/xerrors"
 )
 
 var (
@@ -159,7 +159,7 @@ func (r *secureBootNamespaceRules) NewImageLoadHandler(image peImageHandle) (ima
 	sigs, err := image.SecureBootSignatures()
 	if err != nil {
 		// Reject any image with a badly formed security directory entry
-		return nil, xerrors.Errorf("cannot obtain secure boot signatures: %w", err)
+		return nil, fmt.Errorf("cannot obtain secure boot signatures: %w", err)
 	}
 
 	for _, authority := range r.authorities {
@@ -183,7 +183,7 @@ func (r *secureBootNamespaceRules) NewImageLoadHandler(image peImageHandle) (ima
 			if v, ok := handler.(vendorAuthorityGetter); ok {
 				certs, err := v.VendorAuthorities()
 				if err != nil {
-					return nil, xerrors.Errorf("cannot obtain vendor authorities: %w", err)
+					return nil, fmt.Errorf("cannot obtain vendor authorities: %w", err)
 				}
 				r.AddAuthorities(certs...)
 			}

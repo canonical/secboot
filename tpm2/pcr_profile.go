@@ -34,8 +34,6 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
-
-	"golang.org/x/xerrors"
 )
 
 // maxPCR is the maximum PCR index representable by a selection. A selection is a
@@ -1099,7 +1097,7 @@ func (p *PCRProtectionProfile) ComputePCRValues(tpm *tpm2.TPMContext) ([]tpm2.PC
 		var err error
 		_, tpmValues, err = tpm.PCRRead(p.pcrsToReadFromTPM)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot read current PCR values from TPM: %w", err)
+			return nil, fmt.Errorf("cannot read current PCR values from TPM: %w", err)
 		}
 	}
 	context := &pcrProtectionProfileComputer{
@@ -1126,7 +1124,7 @@ func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 	// Compute the PCR selection for this profile from the first branch.
 	pcrs, err := values[0].SelectionList()
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot compute selection list: %w", err)
+		return nil, nil, fmt.Errorf("cannot compute selection list: %w", err)
 	}
 
 	// Compute the PCR digests for all branches, making sure that they all contain values for the same sets of PCRs.
@@ -1134,7 +1132,7 @@ func (p *PCRProtectionProfile) ComputePCRDigests(tpm *tpm2.TPMContext, alg tpm2.
 	for _, v := range values {
 		p, digest, err := util.ComputePCRDigestFromAllValues(alg, v)
 		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot compute PCR digest from values: %w", err)
+			return nil, nil, fmt.Errorf("cannot compute PCR digest from values: %w", err)
 		}
 		if !mu.DeepEqual(p, pcrs) {
 			return nil, nil, errors.New("not all branches contain values for the same sets of PCRs")

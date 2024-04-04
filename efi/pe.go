@@ -29,7 +29,6 @@ import (
 	"strconv"
 
 	efi "github.com/canonical/go-efilib"
-	"golang.org/x/xerrors"
 
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
@@ -92,13 +91,13 @@ type peImageHandleImpl struct {
 var openPeImage = func(image Image) (peImageHandle, error) {
 	r, err := image.Open()
 	if err != nil {
-		return nil, xerrors.Errorf("cannot open image: %w", err)
+		return nil, fmt.Errorf("cannot open image: %w", err)
 	}
 
 	pefile, err := pe.NewFile(r)
 	if err != nil {
 		r.Close()
-		return nil, xerrors.Errorf("cannot decode image: %w", err)
+		return nil, fmt.Errorf("cannot decode image: %w", err)
 	}
 
 	return &peImageHandleImpl{source: image, pefile: pefile, r: r}, nil
@@ -151,12 +150,12 @@ func (h *peImageHandleImpl) SbatComponents() ([]sbatComponent, error) {
 			break
 		}
 		if err != nil {
-			return nil, xerrors.Errorf("invalid SBAT record: %w", err)
+			return nil, fmt.Errorf("invalid SBAT record: %w", err)
 		}
 
 		gen, err := strconv.Atoi(record[1])
 		if err != nil {
-			return nil, xerrors.Errorf("invalid SBAT component generation: %w", err)
+			return nil, fmt.Errorf("invalid SBAT component generation: %w", err)
 		}
 		component := sbatComponent{
 			Name:              record[0],
@@ -168,7 +167,7 @@ func (h *peImageHandleImpl) SbatComponents() ([]sbatComponent, error) {
 
 		if component.Name == "sbat" {
 			if component.Generation != 1 {
-				return nil, xerrors.Errorf("invalid .sbat section version")
+				return nil, fmt.Errorf("invalid .sbat section version")
 			}
 			continue
 		}
@@ -225,10 +224,10 @@ SignatureLoop:
 
 		c, err := efi.ReadWinCertificate(certReader)
 		switch {
-		case xerrors.Is(err, io.EOF):
+		case errors.Is(err, io.EOF):
 			break SignatureLoop
 		case err != nil:
-			return nil, xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry %d: %w", i, err)
+			return nil, fmt.Errorf("cannot decode WIN_CERTIFICATE from security directory entry %d: %w", i, err)
 		}
 
 		sig, ok := c.(*efi.WinCertificateAuthenticode)

@@ -33,7 +33,6 @@ import (
 	"fmt"
 	"hash"
 
-	"golang.org/x/xerrors"
 	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot"
@@ -897,7 +896,7 @@ func (h *mockPlatformKeyDataHandler) checkState() error {
 func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mockPlatformKeyDataHandle, error) {
 	var handle mockPlatformKeyDataHandle
 	if err := json.Unmarshal(data.EncodedHandle, &handle); err != nil {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: xerrors.Errorf("JSON decode error: %w", err)}
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: fmt.Errorf("JSON decode error: %w", err)}
 	}
 	return &handle, nil
 }
@@ -929,7 +928,7 @@ func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHand
 
 	b, err := aes.NewCipher(handle.Key)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create cipher: %w", err)
+		return nil, fmt.Errorf("cannot create cipher: %w", err)
 	}
 
 	s := cipher.NewCFBDecrypter(b, handle.IV)

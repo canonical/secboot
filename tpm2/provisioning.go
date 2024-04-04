@@ -27,8 +27,6 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot/internal/tcg"
 )
 
@@ -74,25 +72,25 @@ func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, t
 	switch {
 	case err != nil && !tpm2.IsResourceUnavailableError(err, handle):
 		// Unexpected error
-		return nil, xerrors.Errorf("cannot create context to determine if persistent handle is already occupied: %w", err)
+		return nil, fmt.Errorf("cannot create context to determine if persistent handle is already occupied: %w", err)
 	case tpm2.IsResourceUnavailableError(err, handle):
 		// No existing object to evict
 	default:
 		// Evict the current object
 		if _, err := tpm.EvictControl(tpm.OwnerHandleContext(), obj, handle, session); err != nil {
-			return nil, xerrors.Errorf("cannot evict existing object at persistent handle: %w", err)
+			return nil, fmt.Errorf("cannot evict existing object at persistent handle: %w", err)
 		}
 	}
 
 	transientObj, _, _, _, _, err := tpm.CreatePrimary(hierarchy, nil, template, nil, nil, session)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create key: %w", err)
+		return nil, fmt.Errorf("cannot create key: %w", err)
 	}
 	defer tpm.FlushContext(transientObj)
 
 	obj, err = tpm.EvictControl(tpm.OwnerHandleContext(), transientObj, handle, session)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot make key persistent: %w", err)
+		return nil, fmt.Errorf("cannot make key persistent: %w", err)
 	}
 
 	return obj, nil
@@ -133,7 +131,7 @@ func provisionStoragePrimaryKey(tpm *tpm2.TPMContext, session tpm2.SessionContex
 func storeSrkTemplate(tpm *tpm2.TPMContext, template *tpm2.Public, session tpm2.SessionContext) error {
 	tmplB, err := mu.MarshalToBytes(template)
 	if err != nil {
-		return xerrors.Errorf("cannot marshal template: %w", err)
+		return fmt.Errorf("cannot marshal template: %w", err)
 	}
 
 	nvPub := tpm2.NVPublic{
@@ -143,15 +141,15 @@ func storeSrkTemplate(tpm *tpm2.TPMContext, template *tpm2.Public, session tpm2.
 		Size:    uint16(len(tmplB))}
 	nv, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, &nvPub, session)
 	if err != nil {
-		return xerrors.Errorf("cannot define NV index: %w", err)
+		return fmt.Errorf("cannot define NV index: %w", err)
 	}
 
 	if err := tpm.NVWrite(nv, nv, tmplB, 0, session); err != nil {
-		return xerrors.Errorf("cannot write NV index: %w", err)
+		return fmt.Errorf("cannot write NV index: %w", err)
 	}
 
 	if err := tpm.NVWriteLock(nv, nv, session); err != nil {
-		return xerrors.Errorf("cannot write lock NV index: %w", err)
+		return fmt.Errorf("cannot write lock NV index: %w", err)
 	}
 
 	return nil
@@ -162,14 +160,14 @@ func removeStoredSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) 
 	switch {
 	case err != nil && !tpm2.IsResourceUnavailableError(err, srkTemplateHandle):
 		// Unexpected error
-		return xerrors.Errorf("cannot create resource context: %w", err)
+		return fmt.Errorf("cannot create resource context: %w", err)
 	case tpm2.IsResourceUnavailableError(err, srkTemplateHandle):
 		// Ok, nothing to do
 		return nil
 	}
 
 	if err := tpm.NVUndefineSpace(tpm.OwnerHandleContext(), nv, session); err != nil {
-		return xerrors.Errorf("cannot undefine index: %w", err)
+		return fmt.Errorf("cannot undefine index: %w", err)
 	}
 
 	return nil
@@ -180,7 +178,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 
 	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		return xerrors.Errorf("cannot fetch permanent properties: %w", err)
+		return fmt.Errorf("cannot fetch permanent properties: %w", err)
 	}
 	if props[0].Property != tpm2.PropertyPermanent {
 		return errors.New("TPM returned value for the wrong property")
@@ -197,7 +195,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 			case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandClear):
 				return ErrTPMLockout
 			}
-			return xerrors.Errorf("cannot clear the TPM: %w", err)
+			return fmt.Errorf("cannot clear the TPM: %w", err)
 		}
 	}
 
@@ -209,7 +207,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
 			return AuthFailError{tpm2.HandleEndorsement}
 		default:
-			return xerrors.Errorf("cannot provision endorsement key: %w", err)
+			return fmt.Errorf("cannot provision endorsement key: %w", err)
 		}
 	}
 
@@ -217,10 +215,10 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 	// This will have a symmetric algorithm for parameter encryption during HierarchyChangeAuth.
 	if err := t.init(); err != nil {
 		var verifyErr verificationError
-		if xerrors.As(err, &verifyErr) {
+		if errors.As(err, &verifyErr) {
 			return TPMVerificationError{fmt.Sprintf("cannot reinitialize TPM connection after provisioning endorsement key: %v", err)}
 		}
-		return xerrors.Errorf("cannot reinitialize TPM connection after provisioning endorsement key: %w", err)
+		return fmt.Errorf("cannot reinitialize TPM connection after provisioning endorsement key: %w", err)
 	}
 	session = t.HmacSession()
 
@@ -230,13 +228,13 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 		// need to do this if mode == ProvisionModeClear because it will have already
 		// been removed.
 		if err := removeStoredSrkTemplate(t.TPMContext, session); err != nil {
-			return xerrors.Errorf("cannot remove stored custom SRK template: %w", err)
+			return fmt.Errorf("cannot remove stored custom SRK template: %w", err)
 		}
 	}
 	if srkTemplate != nil {
 		// Persist the new custom template
 		if err := storeSrkTemplate(t.TPMContext, srkTemplate, session); err != nil {
-			return xerrors.Errorf("cannot store custom SRK template: %w", err)
+			return fmt.Errorf("cannot store custom SRK template: %w", err)
 		}
 	}
 
@@ -246,7 +244,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
 			return AuthFailError{tpm2.HandleOwner}
 		default:
-			return xerrors.Errorf("cannot provision storage root key: %w", err)
+			return fmt.Errorf("cannot provision storage root key: %w", err)
 		}
 	}
 	t.provisionedSrk = srk
@@ -254,7 +252,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 	if mode == ProvisionModeWithoutLockout {
 		props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1, session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
-			return xerrors.Errorf("cannot fetch permanent properties to determine if lockout hierarchy is required: %w", err)
+			return fmt.Errorf("cannot fetch permanent properties to determine if lockout hierarchy is required: %w", err)
 		}
 		if props[0].Property != tpm2.PropertyPermanent {
 			return errors.New("TPM returned value for the wrong property")
@@ -266,7 +264,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 
 		props, err = t.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3, session.IncludeAttrs(tpm2.AttrAudit))
 		if err != nil {
-			return xerrors.Errorf("cannot fetch DA parameters to determine if lockout hierarchy is required: %w", err)
+			return fmt.Errorf("cannot fetch DA parameters to determine if lockout hierarchy is required: %w", err)
 		}
 		if props[0].Property != tpm2.PropertyMaxAuthFail || props[1].Property != tpm2.PropertyLockoutInterval || props[2].Property != tpm2.PropertyLockoutRecovery {
 			return errors.New("TPM returned values for the wrong properties")
@@ -288,18 +286,18 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandDictionaryAttackParameters):
 			return ErrTPMLockout
 		}
-		return xerrors.Errorf("cannot configure dictionary attack parameters: %w", err)
+		return fmt.Errorf("cannot configure dictionary attack parameters: %w", err)
 	}
 
 	// Disable owner clear
 	if err := t.ClearControl(t.LockoutHandleContext(), true, session); err != nil {
 		// Lockout auth failure or lockout mode would have been caught by DictionaryAttackParameters
-		return xerrors.Errorf("cannot disable owner clear: %w", err)
+		return fmt.Errorf("cannot disable owner clear: %w", err)
 	}
 
 	// Set the lockout hierarchy authorization.
 	if err := t.HierarchyChangeAuth(t.LockoutHandleContext(), newLockoutAuth, session.IncludeAttrs(tpm2.AttrCommandEncrypt)); err != nil {
-		return xerrors.Errorf("cannot set the lockout hierarchy authorization value: %w", err)
+		return fmt.Errorf("cannot set the lockout hierarchy authorization value: %w", err)
 	}
 
 	return nil
@@ -419,12 +417,12 @@ func (t *Connection) EnsureProvisioned(mode ProvisionMode, newLockoutAuth []byte
 func RequestTPMClearUsingPPI() error {
 	f, err := os.OpenFile(ppiPath, os.O_WRONLY, 0)
 	if err != nil {
-		return xerrors.Errorf("cannot open request handle: %w", err)
+		return fmt.Errorf("cannot open request handle: %w", err)
 	}
 	defer f.Close()
 
 	if _, err := f.WriteString(clearPPIRequest); err != nil {
-		return xerrors.Errorf("cannot submit request: %w", err)
+		return fmt.Errorf("cannot submit request: %w", err)
 	}
 
 	return nil

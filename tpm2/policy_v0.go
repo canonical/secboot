@@ -30,8 +30,6 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/util"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot"
 )
 
@@ -267,7 +265,7 @@ func (d *pcrPolicyData_v0) addPcrAssertions(alg tpm2.HashAlgorithmId, trial *uti
 
 	orTree, err := newPolicyOrTree(alg, trial, orDigests)
 	if err != nil {
-		return xerrors.Errorf("cannot create tree for PolicyOR digests: %w", err)
+		return fmt.Errorf("cannot create tree for PolicyOR digests: %w", err)
 	}
 	d.OrData = newPolicyOrDataV0(orTree)
 	return nil
@@ -301,15 +299,15 @@ func (d *pcrPolicyData_v0) executePcrAssertions(tpm *tpm2.TPMContext, session tp
 
 	tree, err := d.OrData.resolve()
 	if err != nil {
-		return policyDataError{xerrors.Errorf("cannot resolve PolicyOR tree: %w", err)}
+		return policyDataError{fmt.Errorf("cannot resolve PolicyOR tree: %w", err)}
 	}
 	if err := tree.executeAssertions(tpm, session); err != nil {
-		err = xerrors.Errorf("cannot execute PolicyOR assertions: %w", err)
+		err = fmt.Errorf("cannot execute PolicyOR assertions: %w", err)
 		switch {
 		case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1):
 			// A digest list in the tree is invalid.
 			return policyDataError{errors.New("cannot execute PolicyOR assertions: invalid data")}
-		case xerrors.Is(err, errSessionDigestNotFound):
+		case errors.Is(err, errSessionDigestNotFound):
 			// Current session digest does not appear in any leaf node.
 			return policyDataError{err}
 		default:
@@ -333,7 +331,7 @@ func (d *pcrPolicyData_v0) executeRevocationCheck(tpm *tpm2.TPMContext, counter 
 			// Either StaticData.PCRPolicyCounterAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
 			return policyDataError{errors.New("invalid PCR policy counter or associated authorization policy metadata")}
 		}
-		return xerrors.Errorf("cannot complete PCR policy revocation check: %w", err)
+		return fmt.Errorf("cannot complete PCR policy revocation check: %w", err)
 	}
 
 	return nil
@@ -371,14 +369,14 @@ func (p *keyDataPolicy_v0) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 
 	trial := util.ComputeAuthPolicy(alg)
 	if err := pcrData.addPcrAssertions(alg, trial, params.pcrs, params.pcrDigests); err != nil {
-		return xerrors.Errorf("cannot compute base PCR policy: %w", err)
+		return fmt.Errorf("cannot compute base PCR policy: %w", err)
 	}
 
 	pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence)
 
 	key, err := x509.ParsePKCS1PrivateKey(params.key)
 	if err != nil {
-		return xerrors.Errorf("cannot parse auth key: %w", err)
+		return fmt.Errorf("cannot parse auth key: %w", err)
 	}
 
 	scheme := &tpm2.SigScheme{
@@ -387,7 +385,7 @@ func (p *keyDataPolicy_v0) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 			RSAPSS: &tpm2.SigSchemeRSAPSS{
 				HashAlg: p.StaticData.AuthPublicKey.NameAlg}}}
 	if err := pcrData.authorizePolicy(key, scheme, trial.GetDigest(), nil); err != nil {
-		return xerrors.Errorf("cannot authorize policy: %w", err)
+		return fmt.Errorf("cannot authorize policy: %w", err)
 	}
 
 	p.PCRData = pcrData
@@ -400,7 +398,7 @@ func (p *keyDataPolicy_v0) SetPCRPolicyFrom(src keyDataPolicy) {
 
 func (p *keyDataPolicy_v0) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession, hmacSession tpm2.SessionContext) error {
 	if err := p.PCRData.executePcrAssertions(tpm, policySession); err != nil {
-		return xerrors.Errorf("cannot execute PCR assertions: %w", err)
+		return fmt.Errorf("cannot execute PCR assertions: %w", err)
 	}
 
 	pcrPolicyCounterHandle := p.StaticData.PCRPolicyCounterHandle
@@ -436,14 +434,14 @@ func (p *keyDataPolicy_v0) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	// for the v0 NV index. Because the v0 NV index was also used for the PIN, it needed an authorization policy to
 	// permit using the counter value in an assertion without knowing the authorization value of the index.
 	if err := tpm.PolicyCommandCode(revocationCheckSession, tpm2.CommandPolicyNV); err != nil {
-		return xerrors.Errorf("cannot execute assertion for PCR policy revocation check: %w", err)
+		return fmt.Errorf("cannot execute assertion for PCR policy revocation check: %w", err)
 	}
 	if err := tpm.PolicyOR(revocationCheckSession, p.StaticData.PCRPolicyCounterAuthPolicies); err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1) {
 			// StaticData.PCRPolicyCounterAuthPolicies is invalid.
 			return policyDataError{errors.New("authorization policy metadata for PCR policy counter is invalid")}
 		}
-		return xerrors.Errorf("cannot execute assertion for PCR policy revocation check: %w", err)
+		return fmt.Errorf("cannot execute assertion for PCR policy revocation check: %w", err)
 	}
 
 	if err := p.PCRData.executeRevocationCheck(tpm, pcrPolicyCounter, policySession, revocationCheckSession); err != nil {
@@ -455,7 +453,7 @@ func (p *keyDataPolicy_v0) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
 			// StaticData.AuthPublicKey is invalid
-			return policyDataError{xerrors.Errorf("public area of dynamic authorization policy signing key is invalid: %w", err)}
+			return policyDataError{fmt.Errorf("public area of dynamic authorization policy signing key is invalid: %w", err)}
 		}
 		return err
 	}
@@ -463,14 +461,14 @@ func (p *keyDataPolicy_v0) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 
 	pcrPolicyDigest, err := util.ComputePolicyAuthorizeDigest(authPublicKey.NameAlg, p.PCRData.AuthorizedPolicy, nil)
 	if err != nil {
-		return policyDataError{xerrors.Errorf("cannot compute PCR policy digest: %w", err)}
+		return policyDataError{fmt.Errorf("cannot compute PCR policy digest: %w", err)}
 	}
 
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, pcrPolicyDigest, p.PCRData.AuthorizedPolicySignature)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
 			// PCRData.AuthorizedPolicySignature is invalid.
-			return policyDataError{xerrors.Errorf("cannot verify PCR policy signature: %w", err)}
+			return policyDataError{fmt.Errorf("cannot verify PCR policy signature: %w", err)}
 		}
 		return err
 	}
@@ -503,7 +501,7 @@ func (p *keyDataPolicy_v0) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 		return err
 	}
 	if err := tpm.PolicyNV(lockIndex, lockIndex, policySession, nil, 0, tpm2.OpEq, nil); err != nil {
-		return xerrors.Errorf("policy lock check failed: %w", err)
+		return fmt.Errorf("policy lock check failed: %w", err)
 	}
 
 	return nil
@@ -540,7 +538,7 @@ func (c *pcrPolicyCounterContext_v0) Get() (uint64, error) {
 func (c *pcrPolicyCounterContext_v0) Increment(key secboot.PrimaryKey) error {
 	rsaKey, err := x509.ParsePKCS1PrivateKey(key)
 	if err != nil {
-		return xerrors.Errorf("cannot parse auth key: %w", err)
+		return fmt.Errorf("cannot parse auth key: %w", err)
 	}
 
 	// Begin a policy session to increment the index.
@@ -567,7 +565,7 @@ func (c *pcrPolicyCounterContext_v0) Increment(key secboot.PrimaryKey) error {
 				HashAlg: c.updateKey.NameAlg}}}
 	signature, err := util.SignPolicyAuthorization(rsaKey, &scheme, policySession.NonceTPM(), nil, nil, 0)
 	if err != nil {
-		return xerrors.Errorf("cannot sign authorization: %w", err)
+		return fmt.Errorf("cannot sign authorization: %w", err)
 	}
 
 	// See the comment for computeV0PinNVIndexPostInitAuthPolicies for a description of the authorization policy
@@ -596,7 +594,7 @@ func (p *keyDataPolicy_v0) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 
 	index, err := tpm2.CreateNVIndexResourceContextFromPublic(pub)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create context for NV index: %w", err)
+		return nil, fmt.Errorf("cannot create context for NV index: %w", err)
 	}
 
 	return &pcrPolicyCounterContext_v0{
@@ -610,7 +608,7 @@ func (p *keyDataPolicy_v0) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 func (p *keyDataPolicy_v0) ValidateAuthKey(key secboot.PrimaryKey) error {
 	rsaKey, err := x509.ParsePKCS1PrivateKey(key)
 	if err != nil {
-		return xerrors.Errorf("cannot parse auth key: %w", err)
+		return fmt.Errorf("cannot parse auth key: %w", err)
 	}
 
 	pub, ok := p.StaticData.AuthPublicKey.Public().(*rsa.PublicKey)

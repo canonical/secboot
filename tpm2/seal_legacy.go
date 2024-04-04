@@ -32,8 +32,6 @@ import (
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot"
 )
 
@@ -123,7 +121,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 	} else {
 		goAuthKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
+			return nil, fmt.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
 		}
 	}
 	authPublicKey := createTPMPublicAreaForECDSAKey(&goAuthKey.PublicKey)
@@ -134,7 +132,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 	// Create the initial policy data
 	policyData, authPolicy, err := newKeyDataPolicyLegacy(pub.NameAlg, authPublicKey, nil, 0)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create initial policy data: %w", err)
+		return nil, fmt.Errorf("cannot create initial policy data: %w", err)
 	}
 
 	pub.AuthPolicy = authPolicy
@@ -154,7 +152,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 		SeedValue: make(tpm2.Digest, pub.NameAlg.Size()),
 		Sensitive: &tpm2.SensitiveCompositeU{Bits: sealedData}}
 	if _, err := io.ReadFull(rand.Reader, sensitive.SeedValue); err != nil {
-		return nil, xerrors.Errorf("cannot create seed value: %w", err)
+		return nil, fmt.Errorf("cannot create seed value: %w", err)
 	}
 
 	// Compute the public ID
@@ -166,14 +164,14 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 	// Now create the importable sealed key object (duplication object).
 	_, priv, importSymSeed, err := util.CreateDuplicationObject(&sensitive, pub, tpmKey, nil, nil)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create duplication object: %w", err)
+		return nil, fmt.Errorf("cannot create duplication object: %w", err)
 	}
 
 	w := NewFileSealedKeyObjectWriter(keyPath)
 
 	data, err := newKeyData(priv, pub, importSymSeed, policyData)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create key data: %w", err)
+		return nil, fmt.Errorf("cannot create key data: %w", err)
 	}
 
 	// Marshal the entire object (sealed key object and auxiliary data) to disk
@@ -185,11 +183,11 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 		pcrProfile = NewPCRProtectionProfile()
 	}
 	if err := sko.updatePCRProtectionPolicyNoValidate(nil, authKey, nil, pcrProfile, resetPcrPolicyVersion, nil); err != nil {
-		return nil, xerrors.Errorf("cannot create initial PCR policy: %w", err)
+		return nil, fmt.Errorf("cannot create initial PCR policy: %w", err)
 	}
 
 	if err := sko.WriteAtomic(w); err != nil {
-		return nil, xerrors.Errorf("cannot write key data file: %w", err)
+		return nil, fmt.Errorf("cannot write key data file: %w", err)
 	}
 
 	return authKey, nil
@@ -263,7 +261,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		case isAuthFailError(err, tpm2.AnyCommandCode, 1):
 			return nil, AuthFailError{tpm2.HandleOwner}
 		case err != nil:
-			return nil, xerrors.Errorf("cannot provision storage root key: %w", err)
+			return nil, fmt.Errorf("cannot provision storage root key: %w", err)
 		}
 	}
 
@@ -281,7 +279,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 	} else {
 		goAuthKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
+			return nil, fmt.Errorf("cannot generate key for signing dynamic authorization policies: %w", err)
 		}
 	}
 	authPublicKey := createTPMPublicAreaForECDSAKey(&goAuthKey.PublicKey)
@@ -298,7 +296,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		case isAuthFailError(err, tpm2.CommandNVDefineSpace, 1):
 			return nil, AuthFailError{tpm2.HandleOwner}
 		case err != nil:
-			return nil, xerrors.Errorf("cannot create new dynamic authorization policy counter: %w", err)
+			return nil, fmt.Errorf("cannot create new dynamic authorization policy counter: %w", err)
 		}
 		defer func() {
 			if succeeded {
@@ -317,7 +315,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 	// Create the initial policy data
 	policyData, authPolicy, err := newKeyDataPolicyLegacy(template.NameAlg, authPublicKey, pcrPolicyCounterPub, pcrPolicyCount)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create initial policy data: %w", err)
+		return nil, fmt.Errorf("cannot create initial policy data: %w", err)
 	}
 
 	// Define the template for the sealed key object, using the computed policy digest
@@ -347,14 +345,14 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		// command will fail. We take advantage of parameter encryption here too.
 		priv, pub, _, _, _, err := tpm.Create(srk, &sensitive, template, nil, nil, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
 		if err != nil {
-			return nil, xerrors.Errorf("cannot create sealed data object for key: %w", err)
+			return nil, fmt.Errorf("cannot create sealed data object for key: %w", err)
 		}
 
 		w := NewFileSealedKeyObjectWriter(key.Path)
 
 		data, err := newKeyData(priv, pub, nil, policyData)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot create key data: %w", err)
+			return nil, fmt.Errorf("cannot create key data: %w", err)
 		}
 
 		// Marshal the entire object (sealed key object and auxiliary data) to disk
@@ -368,12 +366,12 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 				pcrProfile = NewPCRProtectionProfile()
 			}
 			if err := sko.updatePCRProtectionPolicyNoValidate(tpm.TPMContext, authKey, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion, session); err != nil {
-				return nil, xerrors.Errorf("cannot create initial PCR policy: %w", err)
+				return nil, fmt.Errorf("cannot create initial PCR policy: %w", err)
 			}
 		}
 
 		if err := sko.WriteAtomic(w); err != nil {
-			return nil, xerrors.Errorf("cannot write key data file: %w", err)
+			return nil, fmt.Errorf("cannot write key data file: %w", err)
 		}
 	}
 

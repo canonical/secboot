@@ -23,12 +23,11 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash"
 	"io"
 
 	"github.com/canonical/go-tpm2"
-
-	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
 )
@@ -83,7 +82,7 @@ func (h *tpmSnapModelHasher) Abort() {
 func computeSnapModelDigest(newHash func() (snapModelHasher, error), model secboot.SnapModel) (digest tpm2.Digest, err error) {
 	signKeyId, err := base64.RawURLEncoding.DecodeString(model.SignKeyID())
 	if err != nil {
-		return nil, xerrors.Errorf("cannot decode signing key ID: %w", err)
+		return nil, fmt.Errorf("cannot decode signing key ID: %w", err)
 	}
 
 	h, err := newHash()
@@ -198,7 +197,7 @@ func AddSnapModelProfile(branch *PCRProtectionProfileBranch, params *SnapModelPr
 func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
 	seq, err := tpm.HashSequenceStart(nil, tpm2.HashAlgorithmNull)
 	if err != nil {
-		return xerrors.Errorf("cannot begin event sequence: %w", err)
+		return fmt.Errorf("cannot begin event sequence: %w", err)
 	}
 
 	var epoch [4]byte
@@ -207,7 +206,7 @@ func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
 	binary.LittleEndian.PutUint32(epoch[:], zeroSnapSystemEpoch)
 
 	if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcrIndex), seq, epoch[:], tpm.HmacSession(), nil); err != nil {
-		return xerrors.Errorf("cannot execute event sequence: %w", err)
+		return fmt.Errorf("cannot execute event sequence: %w", err)
 	}
 
 	return nil
@@ -219,7 +218,7 @@ func MeasureSnapSystemEpochToTPM(tpm *Connection, pcrIndex int) error {
 func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapModel) error {
 	pcrSelection, err := tpm.GetCapabilityPCRs(tpm.HmacSession().IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		return xerrors.Errorf("cannot determine supported PCR banks: %w", err)
+		return fmt.Errorf("cannot determine supported PCR banks: %w", err)
 	}
 
 	var digests tpm2.TaggedHashList
@@ -232,7 +231,7 @@ func MeasureSnapModelToTPM(tpm *Connection, pcrIndex int, model secboot.SnapMode
 			return &tpmSnapModelHasher{tpm: tpm, seq: seq}, nil
 		}, model)
 		if err != nil {
-			return xerrors.Errorf("cannot compute digest for algorithm %v: %w", s.Hash, err)
+			return fmt.Errorf("cannot compute digest for algorithm %v: %w", s.Hash, err)
 		}
 
 		digests = append(digests, tpm2.MakeTaggedHash(s.Hash, digest))

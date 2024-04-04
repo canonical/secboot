@@ -30,8 +30,6 @@ import (
 
 	"github.com/snapcore/snapd/asserts"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
@@ -87,7 +85,7 @@ func ParseRecoveryKey(s string) (out RecoveryKey, err error) {
 		}
 		x, err := strconv.ParseUint(s[0:5], 10, 16)
 		if err != nil {
-			return RecoveryKey{}, xerrors.Errorf("incorrectly formatted: %w", err)
+			return RecoveryKey{}, fmt.Errorf("incorrectly formatted: %w", err)
 		}
 		binary.LittleEndian.PutUint16(out[i*2:], uint16(x))
 
@@ -167,14 +165,14 @@ func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey
 		authorized, err := keyData.IsSnapModelAuthorized(auxKey, model)
 		switch {
 		case err != nil:
-			return xerrors.Errorf("cannot check if snap model is authorized: %w", err)
+			return fmt.Errorf("cannot check if snap model is authorized: %w", err)
 		case !authorized:
 			return errors.New("snap model is not authorized")
 		}
 	}
 
 	if err := luks2Activate(s.volumeName, s.sourceDevicePath, key, slot); err != nil {
-		return xerrors.Errorf("cannot activate volume: %w", err)
+		return fmt.Errorf("cannot activate volume: %w", err)
 	}
 
 	if err := keyring.AddKeyToUserKeyring(key, s.sourceDevicePath, keyringPurposeDiskUnlock, s.keyringPrefix); err != nil {
@@ -191,7 +189,7 @@ func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey
 func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData, slot int) error {
 	key, auxKey, err := k.RecoverKeys()
 	if err != nil {
-		return xerrors.Errorf("cannot recover key: %w", err)
+		return fmt.Errorf("cannot recover key: %w", err)
 	}
 
 	return s.tryActivateWithRecoveredKey(key, slot, k, auxKey)
@@ -200,7 +198,7 @@ func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData, slot int) 
 func (s *activateWithKeyDataState) tryKeyDataAuthModePassphrase(k *KeyData, slot int, passphrase string) error {
 	key, auxKey, err := k.RecoverKeysWithPassphrase(passphrase)
 	if err != nil {
-		return xerrors.Errorf("cannot recover key: %w", err)
+		return fmt.Errorf("cannot recover key: %w", err)
 	}
 
 	return s.tryActivateWithRecoveredKey(key, slot, k, auxKey)
@@ -244,7 +242,7 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 		// ubuntu-data).
 		passphrase, err := s.authRequestor.RequestPassphrase(s.volumeName, s.sourceDevicePath)
 		if err != nil {
-			passphraseErr = xerrors.Errorf("cannot obtain passphrase: %w", err)
+			passphraseErr = fmt.Errorf("cannot obtain passphrase: %w", err)
 			continue
 		}
 
@@ -253,13 +251,13 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 				continue
 			}
 
-			if k.err != nil && !xerrors.Is(k.err, ErrInvalidPassphrase) {
+			if k.err != nil && !errors.Is(k.err, ErrInvalidPassphrase) {
 				// Skip keys that failed for anything other than an invalid passphrase.
 				continue
 			}
 
 			if err := s.tryKeyDataAuthModePassphrase(k.KeyData, k.slot, passphrase); err != nil {
-				if !xerrors.Is(err, ErrInvalidPassphrase) {
+				if !errors.Is(err, ErrInvalidPassphrase) {
 					numPassphraseKeys -= 1
 				}
 				k.err = err
@@ -297,12 +295,12 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor 
 
 		key, err := authRequestor.RequestRecoveryKey(volumeName, sourceDevicePath)
 		if err != nil {
-			lastErr = xerrors.Errorf("cannot obtain recovery key: %w", err)
+			lastErr = fmt.Errorf("cannot obtain recovery key: %w", err)
 			continue
 		}
 
 		if err := luks2Activate(volumeName, sourceDevicePath, key[:], luks2.AnySlot); err != nil {
-			lastErr = xerrors.Errorf("cannot activate volume: %w", err)
+			lastErr = fmt.Errorf("cannot activate volume: %w", err)
 			continue
 		}
 
@@ -629,7 +627,7 @@ func InitializeLUKS2Container(devicePath, label string, key DiskUnlockKey, optio
 	}
 
 	if err := luks2Format(devicePath, label, key, options.formatOpts()); err != nil {
-		return xerrors.Errorf("cannot format: %w", err)
+		return fmt.Errorf("cannot format: %w", err)
 	}
 
 	token := luksview.KeyDataToken{
@@ -637,11 +635,11 @@ func InitializeLUKS2Container(devicePath, label string, key DiskUnlockKey, optio
 			TokenKeyslot: 0,
 			TokenName:    initialKeyslotName}}
 	if err := luks2ImportToken(devicePath, &token, nil); err != nil {
-		return xerrors.Errorf("cannot import token: %w", err)
+		return fmt.Errorf("cannot import token: %w", err)
 	}
 
 	if err := luks2SetSlotPriority(devicePath, 0, luks2.SlotPriorityHigh); err != nil {
-		return xerrors.Errorf("cannot change keyslot priority: %w", err)
+		return fmt.Errorf("cannot change keyslot priority: %w", err)
 	}
 
 	return nil
@@ -657,7 +655,7 @@ func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey Di
 	newToken func(base *luksview.TokenBase) luks2.Token, priority luks2.SlotPriority) error {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
-		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+		return fmt.Errorf("cannot obtain LUKS header view: %w", err)
 	}
 
 	if _, _, exists := view.TokenByName(keyslotName); exists {
@@ -675,7 +673,7 @@ func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey Di
 	}
 
 	if err := luks2AddKey(devicePath, existingKey, newKey, &luks2.AddKeyOptions{KDFOptions: *options, Slot: freeSlot}); err != nil {
-		return xerrors.Errorf("cannot add key: %w", err)
+		return fmt.Errorf("cannot add key: %w", err)
 	}
 
 	// XXX: If we fail between AddKey and ImportToken, then we end up with a
@@ -713,11 +711,11 @@ func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey Di
 		TokenName:    keyslotName,
 		TokenKeyslot: freeSlot}
 	if err := luks2ImportToken(devicePath, newToken(&tokenBase), nil); err != nil {
-		return xerrors.Errorf("cannot import token: %w", err)
+		return fmt.Errorf("cannot import token: %w", err)
 	}
 
 	if err := luks2SetSlotPriority(devicePath, freeSlot, priority); err != nil {
-		return xerrors.Errorf("cannot change keyslot priority: %w", err)
+		return fmt.Errorf("cannot change keyslot priority: %w", err)
 	}
 
 	return nil
@@ -726,7 +724,7 @@ func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey Di
 func listLUKS2ContainerKeyNames(devicePath string, tokenType luks2.TokenType) ([]string, error) {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+		return nil, fmt.Errorf("cannot obtain LUKS header view: %w", err)
 	}
 
 	var names []string
@@ -844,7 +842,7 @@ func ListLUKS2ContainerRecoveryKeyNames(devicePath string) ([]string, error) {
 func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
-		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+		return fmt.Errorf("cannot obtain LUKS header view: %w", err)
 	}
 
 	token, id, exists := view.TokenByName(keyslotName)
@@ -864,7 +862,7 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 
 	slot := token.Keyslots()[0]
 	if err := luks2KillSlot(devicePath, slot); err != nil {
-		return xerrors.Errorf("cannot kill existing slot %d: %w", slot, err)
+		return fmt.Errorf("cannot kill existing slot %d: %w", slot, err)
 	}
 
 	// KillSlot will clear the keyslot field from the associated token so
@@ -872,7 +870,7 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 	// the future if we are interrupted between KillSlot and RemoveToken.
 
 	if err := luks2RemoveToken(devicePath, id); err != nil {
-		return xerrors.Errorf("cannot remove existing token %d: %w", id, err)
+		return fmt.Errorf("cannot remove existing token %d: %w", id, err)
 	}
 
 	return nil
@@ -883,7 +881,7 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
-		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+		return fmt.Errorf("cannot obtain LUKS header view: %w", err)
 	}
 
 	removeOrphanedTokens(devicePath, view)
@@ -917,7 +915,7 @@ func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
 	}
 
 	if err := luks2ImportToken(devicePath, newToken, &luks2.ImportTokenOptions{Id: id, Replace: true}); err != nil {
-		return xerrors.Errorf("cannot import new token: %w", err)
+		return fmt.Errorf("cannot import new token: %w", err)
 	}
 
 	return nil

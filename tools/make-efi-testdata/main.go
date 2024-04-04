@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 
 	drbg "github.com/canonical/go-sp800.90a-drbg"
-
-	"golang.org/x/xerrors"
 )
 
 var rngSeed = []byte{0x45, 0xef, 0xa4, 0xe4, 0x6a, 0xb7, 0x55, 0x14, 0xcd, 0xce, 0xc2, 0x17, 0x59, 0x77, 0x1a, 0x95,
@@ -32,28 +30,28 @@ func run() error {
 
 	srcDir, err := filepath.Abs(srcDir)
 	if err != nil {
-		return xerrors.Errorf("cannot determine absolute srcdir: %w", err)
+		return fmt.Errorf("cannot determine absolute srcdir: %w", err)
 	}
 
 	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return xerrors.Errorf("cannot create destination directory: %w", err)
+		return fmt.Errorf("cannot create destination directory: %w", err)
 	}
 
 	// Avoid the host environment influencing the creation of the test data.
 	if err := cleanEnv(); err != nil {
-		return xerrors.Errorf("cannot clean environment: %w", err)
+		return fmt.Errorf("cannot clean environment: %w", err)
 	}
 
 	if err := makeMockApps(srcDir, dstDir); err != nil {
-		return xerrors.Errorf("cannot create mock EFI apps: %w", err)
+		return fmt.Errorf("cannot create mock EFI apps: %w", err)
 	}
 
 	if err := writeCertificates(srcDir, dstDir); err != nil {
-		return xerrors.Errorf("cannot write certificates: %w", err)
+		return fmt.Errorf("cannot write certificates: %w", err)
 	}
 
 	if err := recordBuildEnv(dstDir); err != nil {
-		return xerrors.Errorf("cannot record build environment: %w", err)
+		return fmt.Errorf("cannot record build environment: %w", err)
 	}
 
 	return nil

@@ -29,8 +29,6 @@ import (
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
 	"github.com/snapcore/secboot"
-
-	"golang.org/x/xerrors"
 )
 
 const keyPolicyUpdateDataHeader uint32 = 0x55534b50
@@ -48,7 +46,7 @@ func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData_v0, error) {
 	var header uint32
 	var version uint32
 	if _, err := mu.UnmarshalFromReader(r, &header, &version); err != nil {
-		return nil, xerrors.Errorf("cannot unmarshal header: %w", err)
+		return nil, fmt.Errorf("cannot unmarshal header: %w", err)
 	}
 	if header != keyPolicyUpdateDataHeader {
 		return nil, fmt.Errorf("unexpected header (%d)", header)
@@ -59,7 +57,7 @@ func decodeKeyPolicyUpdateData(r io.Reader) (*keyPolicyUpdateData_v0, error) {
 
 	var d keyPolicyUpdateData_v0
 	if _, err := mu.UnmarshalFromReader(r, &d); err != nil {
-		return nil, xerrors.Errorf("cannot unmarshal data: %w", err)
+		return nil, fmt.Errorf("cannot unmarshal data: %w", err)
 	}
 
 	return &d, nil
@@ -112,23 +110,23 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 		if tpm2.IsResourceUnavailableError(err, lockNVHandle) {
 			return nil, keyDataError{errors.New("lock NV index is unavailable")}
 		}
-		return nil, xerrors.Errorf("cannot create context for lock NV index: %w", err)
+		return nil, fmt.Errorf("cannot create context for lock NV index: %w", err)
 	}
 	lockNVPub, _, err := tpm.NVReadPublic(lockNV, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read public area of lock NV index: %w", err)
+		return nil, fmt.Errorf("cannot read public area of lock NV index: %w", err)
 	}
 	lockNVPub.Attrs &^= tpm2.AttrNVReadLocked
 	lockNVName, err := lockNVPub.ComputeName()
 	if err != nil {
-		return nil, xerrors.Errorf("cannot compute name of lock NV index: %w", err)
+		return nil, fmt.Errorf("cannot compute name of lock NV index: %w", err)
 	}
 
 	// Validate the type and scheme of the dynamic authorization policy signing key.
 	authPublicKey := d.PolicyData.StaticData.AuthPublicKey
 	authKeyName, err := authPublicKey.ComputeName()
 	if err != nil {
-		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
+		return nil, keyDataError{fmt.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}
 	if authPublicKey.Type != tpm2.ObjectTypeRSA {
 		return nil, keyDataError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
@@ -153,7 +151,7 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 		if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
 			return nil, keyDataError{errors.New("PCR policy counter is unavailable")}
 		}
-		return nil, xerrors.Errorf("cannot create context for PCR policy counter: %w", err)
+		return nil, fmt.Errorf("cannot create context for PCR policy counter: %w", err)
 	}
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
@@ -172,7 +170,7 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 	// Validate that the OR policy digests for the PCR policy counter match the public area of the index.
 	pcrPolicyCounterPub, _, err := tpm.NVReadPublic(pcrPolicyCounter, session.IncludeAttrs(tpm2.AttrAudit))
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read public area of PCR policy counter: %w", err)
+		return nil, fmt.Errorf("cannot read public area of PCR policy counter: %w", err)
 	}
 	if !pcrPolicyCounterPub.NameAlg.Available() {
 		return nil, keyDataError{errors.New("cannot determine if PCR policy counter has a valid authorization policy: algorithm unavailable")}

@@ -23,8 +23,6 @@ import (
 	"bytes"
 	"crypto"
 	"fmt"
-
-	"golang.org/x/xerrors"
 )
 
 type (
@@ -110,12 +108,12 @@ func (r *imageRules) NewImageLoadHandler(image peImageHandle) (imageLoadHandler,
 	for _, rule := range r.rules {
 		matches, err := rule.match.Matches(image)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot run \"%s\" image rule: %w", rule.name, err)
+			return nil, fmt.Errorf("cannot run \"%s\" image rule: %w", rule.name, err)
 		}
 		if matches {
 			handler, err := rule.create(image)
 			if err != nil {
-				return nil, xerrors.Errorf("cannot create using \"%s\" image rule: %w", rule.name, err)
+				return nil, fmt.Errorf("cannot create using \"%s\" image rule: %w", rule.name, err)
 			}
 			return handler, nil
 		}
@@ -218,7 +216,7 @@ func (p *shimVersionPredicate) Matches(image peImageHandle) (bool, error) {
 	shim := newShimImageHandle(image)
 	x, err := shim.Version()
 	if err != nil {
-		return false, xerrors.Errorf("cannot obtain shim version: %w", err)
+		return false, fmt.Errorf("cannot obtain shim version: %w", err)
 	}
 
 	y := mustParseShimVersion(p.version)

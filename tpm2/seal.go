@@ -25,11 +25,10 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
+	"fmt"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-
-	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
 )
@@ -109,14 +108,14 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	if primaryKey == nil {
 		primaryKey = make(secboot.PrimaryKey, 32)
 		if _, err := rand.Read(primaryKey); err != nil {
-			return nil, nil, nil, xerrors.Errorf("cannot create primary key: %w", err)
+			return nil, nil, nil, fmt.Errorf("cannot create primary key: %w", err)
 		}
 	}
 
 	// Create the key for authorizing PCR policy updates.
 	authPublicKey, err := newPolicyAuthPublicKey(primaryKey)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot derive public area of key for signing dynamic authorization policies: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot derive public area of key for signing dynamic authorization policies: %w", err)
 	}
 
 	// Create PCR policy counter, if requested and if one doesn't already exist.
@@ -134,7 +133,7 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 		case isAuthFailError(err, tpm2.CommandNVDefineSpace, 1):
 			return nil, nil, nil, AuthFailError{tpm2.HandleOwner}
 		case err != nil:
-			return nil, nil, nil, xerrors.Errorf("cannot create new PCR policy counter: %w", err)
+			return nil, nil, nil, fmt.Errorf("cannot create new PCR policy counter: %w", err)
 		}
 	}
 
@@ -144,13 +143,13 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 
 	policyData, authPolicyDigest, err := newKeyDataPolicy(nameAlg, authPublicKey, params.Role, pcrPolicyCounterPub, requireAuthValue)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create initial policy data: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create initial policy data: %w", err)
 	}
 
 	// Create a 32 byte symmetric key and 12 byte nonce.
 	var symKey [32 + 12]byte
 	if _, err := rand.Read(symKey[:]); err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create symmetric key: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create symmetric key: %w", err)
 	}
 
 	// Seal the symmetric key and nonce.
@@ -162,7 +161,7 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	// Create a new SealedKeyData.
 	data, err := newKeyData(priv, pub, importSymSeed, policyData)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create key data: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create key data: %w", err)
 	}
 	skd := &SealedKeyData{sealedKeyDataBase: sealedKeyDataBase{data: data}}
 
@@ -172,14 +171,14 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 		pcrProfile = NewPCRProtectionProfile()
 	}
 	if err := skdbUpdatePCRProtectionPolicyNoValidate(&skd.sealedKeyDataBase, tpm, primaryKey, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion, session); err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot set initial PCR policy: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot set initial PCR policy: %w", err)
 	}
 
 	// Create the GCM encrypted payload. Use the name algorithm as the KDF algorithm here.
 	kdfAlg := crypto.SHA256
 	unlockKey, payload, err := secboot.MakeDiskUnlockKey(rand.Reader, kdfAlg, primaryKey)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create new unlock key: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create new unlock key: %w", err)
 	}
 
 	// Serialize the AAD. Note that we don't protect the role parameter directly because it's
@@ -190,23 +189,23 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 		AuthMode:   params.AuthMode,
 	})
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create AAD: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create AAD: %w", err)
 	}
 
 	b, err := aes.NewCipher(symKey[:32])
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create new cipher: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create new cipher: %w", err)
 	}
 	aead, err := cipher.NewGCM(b)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create AEAD cipher: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create AEAD cipher: %w", err)
 	}
 	ciphertext := aead.Seal(nil, symKey[32:], payload, aad)
 
 	// Construct the secboot.KeyData object
 	kd, err := constructor(skd, params.Role, ciphertext, kdfAlg)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot create key data object: %w", err)
+		return nil, nil, nil, fmt.Errorf("cannot create key data object: %w", err)
 	}
 
 	return kd, primaryKey, unlockKey, nil

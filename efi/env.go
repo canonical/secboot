@@ -24,12 +24,12 @@ import (
 	"crypto"
 	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"sort"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
-	"golang.org/x/xerrors"
 )
 
 // HostEnvironment is an interface that abstracts out an EFI environment, so that
@@ -261,7 +261,7 @@ func newRootVarsCollector(vars varReader) *rootVarsCollector {
 func (c *rootVarsCollector) registerUpdatesFor(initial *rootVarReader, updates *varUpdate) error {
 	newRoot := initial.Copy()
 	if err := newRoot.ApplyUpdates(updates); err != nil {
-		return xerrors.Errorf("cannot compute updated starting state: %w", err)
+		return fmt.Errorf("cannot compute updated starting state: %w", err)
 	}
 
 	key := newRoot.Key()

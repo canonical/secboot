@@ -23,10 +23,10 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+	"fmt"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
-	"golang.org/x/xerrors"
 )
 
 // shimLoadHandler is an implementation of imageLoadHandler for shim.
@@ -67,7 +67,7 @@ func (c *shimLoadHandlerConstructor) New(image peImageHandle) (imageLoadHandler,
 		var err error
 		ver, err = shim.Version()
 		if err != nil {
-			return nil, xerrors.Errorf("cannot obtain shim version: %w", err)
+			return nil, fmt.Errorf("cannot obtain shim version: %w", err)
 		}
 	}
 
@@ -95,7 +95,7 @@ func (c *shimLoadHandlerConstructor) New(image peImageHandle) (imageLoadHandler,
 	// Read the built in vendor cert
 	vendorDb, format, err := shim.ReadVendorDB()
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read vendor DB: %w", err)
+		return nil, fmt.Errorf("cannot read vendor DB: %w", err)
 	}
 	vendorDbName := efi.VariableDescriptor{Name: shimName, GUID: shimGuid}
 
@@ -133,7 +133,7 @@ func (c *shimLoadHandlerConstructor) New(image peImageHandle) (imageLoadHandler,
 	} else if shim.HasSbatLevelSection() {
 		sbatLevel, err = shim.ReadSbatLevel()
 		if err != nil {
-			return nil, xerrors.Errorf("cannot read SbatLevel from shim: %w", err)
+			return nil, fmt.Errorf("cannot read SbatLevel from shim: %w", err)
 		}
 	}
 
@@ -163,7 +163,7 @@ func (h *shimLoadHandler) VendorAuthorities() ([]*x509.Certificate, error) {
 
 		cert, err := x509.ParseCertificate(esl.Signatures[0].Data)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot parse vendor cert at %d: %w", i, err)
+			return nil, fmt.Errorf("cannot parse vendor cert at %d: %w", i, err)
 		}
 		vendorCerts = append(vendorCerts, cert)
 	}
@@ -199,7 +199,7 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 		policy, err = readShimSbatPolicy(ctx.Vars())
 		switch {
 		case err != nil:
-			return xerrors.Errorf("cannot read shim SbatPolicy: %w", err)
+			return fmt.Errorf("cannot read shim SbatPolicy: %w", err)
 		case policy == shimSbatPolicyReset:
 			return errors.New("cannot handle SbatPolicy == reset")
 		}
@@ -210,7 +210,7 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 				shimSbatPolicyName, shimGuid,
 				efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess,
 				[]byte{uint8(shimSbatPolicyPrevious)}); err != nil {
-				return xerrors.Errorf("cannot clear SbatPolicy: %w", err)
+				return fmt.Errorf("cannot clear SbatPolicy: %w", err)
 			}
 		}
 	}
@@ -224,12 +224,12 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 		// shim will program and measure one of its built in values.
 		sbatLevel = h.SbatLevel.ForPolicy(policy)
 	case err != nil:
-		return xerrors.Errorf("cannot obtain current SbatLevel: %w", err)
+		return fmt.Errorf("cannot obtain current SbatLevel: %w", err)
 	default:
 		// Determine which is the newest
 		sbatLevel, err = newestSbatLevel(hostSbatLevel, h.SbatLevel.ForPolicy(policy))
 		if err != nil {
-			return xerrors.Errorf("cannot determine newest SbatLevel payload: %w", err)
+			return fmt.Errorf("cannot determine newest SbatLevel payload: %w", err)
 		}
 	}
 
@@ -242,7 +242,7 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 			shimSbatLevelRTName, shimGuid,
 			efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess,
 			sbatLevel); err != nil {
-			return xerrors.Errorf("cannot update SbatLevel: %w", err)
+			return fmt.Errorf("cannot update SbatLevel: %w", err)
 		}
 	}
 
@@ -253,7 +253,7 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 func (h *shimLoadHandler) MeasureImageLoad(ctx pcrBranchContext, image peImageHandle) (imageLoadHandler, error) {
 	m := newShimImageLoadMeasurer(ctx, image)
 	if err := m.measure(); err != nil {
-		return nil, xerrors.Errorf("cannot measure image: %w", err)
+		return nil, fmt.Errorf("cannot measure image: %w", err)
 	}
 	return lookupImageLoadHandler(ctx, image)
 }
@@ -273,7 +273,7 @@ func newShimImageLoadMeasurer(bc pcrBranchContext, image peImageHandle) *shimIma
 func (m *shimImageLoadMeasurer) measurePEImageDigest() error {
 	digest, err := m.image.ImageDigest(m.PCRAlg().GetHash())
 	if err != nil {
-		return xerrors.Errorf("cannot compute PE digest: %w", err)
+		return fmt.Errorf("cannot compute PE digest: %w", err)
 	}
 	m.ExtendPCR(bootManagerCodePCR, digest)
 	return nil
@@ -303,7 +303,7 @@ func (m *shimImageLoadMeasurer) measureVerification() error {
 	} else {
 		data = new(bytes.Buffer)
 		if err := authority.Signature.Write(data); err != nil {
-			return xerrors.Errorf("cannot encode authority EFI_SIGNATURE_DATA: %w", err)
+			return fmt.Errorf("cannot encode authority EFI_SIGNATURE_DATA: %w", err)
 		}
 	}
 
@@ -325,13 +325,13 @@ func (m *shimImageLoadMeasurer) measureVerification() error {
 func (m *shimImageLoadMeasurer) measure() error {
 	if m.Flags()&secureBootPolicyProfile > 0 {
 		if err := m.measureVerification(); err != nil {
-			return xerrors.Errorf("cannot measure secure boot event: %w", err)
+			return fmt.Errorf("cannot measure secure boot event: %w", err)
 		}
 	}
 
 	if m.Flags()&bootManagerCodeProfile > 0 {
 		if err := m.measurePEImageDigest(); err != nil {
-			return xerrors.Errorf("cannot measure boot manager code event: %w", err)
+			return fmt.Errorf("cannot measure boot manager code event: %w", err)
 		}
 	}
 

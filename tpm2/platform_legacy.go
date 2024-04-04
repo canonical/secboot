@@ -29,7 +29,6 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
-	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
 )
@@ -60,7 +59,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 			Type: secboot.PlatformHandlerErrorUnavailable,
 			Err:  err}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+		return nil, fmt.Errorf("cannot connect to TPM: %w", err)
 	}
 	defer tpm.Close()
 
@@ -74,19 +73,19 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 	k, err := ReadSealedKeyObject(bytes.NewReader(handle))
 	if err != nil {
 		var e InvalidKeyDataError
-		if xerrors.As(err, &e) {
+		if errors.As(err, &e) {
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  err}
 		}
-		return nil, xerrors.Errorf("cannot read key object: %w", err)
+		return nil, fmt.Errorf("cannot read key object: %w", err)
 	}
 
 	key, authKey, err := k.UnsealFromTPM(tpm)
 	if err != nil {
 		var e InvalidKeyDataError
 		switch {
-		case xerrors.As(err, &e):
+		case errors.As(err, &e):
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  errors.New(e.msg)}
@@ -99,7 +98,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 				Type: secboot.PlatformHandlerErrorUnavailable,
 				Err:  err}
 		}
-		return nil, xerrors.Errorf("cannot unseal key: %w", err)
+		return nil, fmt.Errorf("cannot unseal key: %w", err)
 	}
 
 	keys := &legacyProtectedKeys{

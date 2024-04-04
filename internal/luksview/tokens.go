@@ -22,9 +22,8 @@ package luksview
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
-
-	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot/internal/luks2"
 )
@@ -43,13 +42,13 @@ func fallbackDecodeTokenHelper(data []byte, origErr error) (luks2.Token, error) 
 	switch {
 	case origErr == nil:
 		panic("asked to decode fallback token without an error")
-	case xerrors.Is(origErr, errOrphanedNamedToken):
+	case errors.Is(origErr, errOrphanedNamedToken):
 		var token *orphanedToken
 		if err := json.Unmarshal(data, &token); err != nil {
 			return nil, err
 		}
 		return token, nil
-	case xerrors.Is(origErr, errInvalidNamedToken):
+	case errors.Is(origErr, errInvalidNamedToken):
 		var token *luks2.GenericToken
 		if err := json.Unmarshal(data, &token); err != nil {
 			return nil, err
@@ -110,7 +109,7 @@ func (k *tokenKeyslots) UnmarshalJSON(data []byte) error {
 	for _, v := range rawslots {
 		slot, err := v.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid keyslot ID: %w", err)
+			return fmt.Errorf("invalid keyslot ID: %w", err)
 		}
 		keyslots = append(keyslots, slot)
 	}

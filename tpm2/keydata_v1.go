@@ -22,14 +22,13 @@ package tpm2
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
 	"github.com/snapcore/secboot"
-
-	"golang.org/x/xerrors"
 )
 
 // keyData_v1 represents version 1 of keyData.
@@ -77,7 +76,7 @@ func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 	authPublicKey := d.PolicyData.StaticData.AuthPublicKey
 	authKeyName, err := authPublicKey.ComputeName()
 	if err != nil {
-		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
+		return nil, keyDataError{fmt.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
 	}
 	if authPublicKey.Type != tpm2.ObjectTypeECC {
 		return nil, keyDataError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
@@ -104,7 +103,7 @@ func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 			if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
 				return nil, keyDataError{errors.New("PCR policy counter is unavailable")}
 			}
-			return nil, xerrors.Errorf("cannot create context for PCR policy counter: %w", err)
+			return nil, fmt.Errorf("cannot create context for PCR policy counter: %w", err)
 		}
 	}
 

@@ -20,8 +20,9 @@
 package keyring
 
 import (
+	"fmt"
+
 	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -41,17 +42,17 @@ func AddKeyToUserKeyring(key []byte, devicePath, purpose, prefix string) error {
 func GetKeyFromUserKeyring(devicePath, purpose, prefix string) ([]byte, error) {
 	id, err := unix.KeyctlSearch(userKeyring, userKeyType, formatDesc(devicePath, purpose, prefix), 0)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot find key: %w", err)
+		return nil, fmt.Errorf("cannot find key: %w", err)
 	}
 
 	sz, err := unix.KeyctlBuffer(unix.KEYCTL_READ, id, nil, 0)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot determine size of key payload: %w", err)
+		return nil, fmt.Errorf("cannot determine size of key payload: %w", err)
 	}
 
 	key := make([]byte, sz)
 	if _, err = unix.KeyctlBuffer(unix.KEYCTL_READ, id, key, 0); err != nil {
-		return nil, xerrors.Errorf("cannot read key payload: %w", err)
+		return nil, fmt.Errorf("cannot read key payload: %w", err)
 	}
 
 	return key, nil
@@ -60,7 +61,7 @@ func GetKeyFromUserKeyring(devicePath, purpose, prefix string) ([]byte, error) {
 func RemoveKeyFromUserKeyring(devicePath, purpose, prefix string) error {
 	id, err := unix.KeyctlSearch(userKeyring, userKeyType, formatDesc(devicePath, purpose, prefix), 0)
 	if err != nil {
-		return xerrors.Errorf("cannot find key: %w", err)
+		return fmt.Errorf("cannot find key: %w", err)
 	}
 
 	_, err = unix.KeyctlInt(unix.KEYCTL_UNLINK, id, userKeyring, 0, 0)

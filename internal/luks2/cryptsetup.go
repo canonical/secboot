@@ -32,8 +32,6 @@ import (
 	"time"
 
 	"github.com/snapcore/snapd/osutil"
-
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -467,7 +465,7 @@ func ImportToken(devicePath string, token Token, options *ImportTokenOptions) er
 
 	tokenJSON, err := json.Marshal(token)
 	if err != nil {
-		return xerrors.Errorf("cannot serialize token: %w", err)
+		return fmt.Errorf("cannot serialize token: %w", err)
 	}
 
 	args := []string{"token", "import"}

@@ -31,13 +31,11 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-
-	"golang.org/x/xerrors"
 )
 
 func isPathError(err error) bool {
 	var e *os.PathError
-	return xerrors.As(err, &e)
+	return errors.As(err, &e)
 }
 
 // isAuthFailError indicates whether the specified error is a TPM authorization check failure, with or without DA implications.
@@ -88,7 +86,7 @@ func (e *tpmErrorWithHandle) Unwrap() error {
 // isTpmErrorWithHandle indicates whether the specified error is a *tpmErrorWithHandle.
 func isTpmErrorWithHandle(err error) bool {
 	var e *tpmErrorWithHandle
-	return xerrors.As(err, &e)
+	return errors.As(err, &e)
 }
 
 // isObjectPrimaryKeyWithTemplate checks whether the object associated with context is primary key in the specified hierarchy with
@@ -107,10 +105,10 @@ func isObjectPrimaryKeyWithTemplate(tpm *tpm2.TPMContext, hierarchy, object tpm2
 	pub, _, qualifiedName, err := tpm.ReadPublic(object, session)
 	if err != nil {
 		var he *tpm2.TPMHandleError
-		if xerrors.As(err, &he) && he.Code == tpm2.ErrorHandle {
+		if errors.As(err, &he) && he.Code == tpm2.ErrorHandle {
 			return false, nil
 		}
-		return false, xerrors.Errorf("cannot read public area of object: %w", err)
+		return false, fmt.Errorf("cannot read public area of object: %w", err)
 	}
 
 	pub.Unique = template.Unique

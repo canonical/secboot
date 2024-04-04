@@ -42,8 +42,6 @@ import (
 	"github.com/snapcore/snapd/osutil"
 	"github.com/snapcore/snapd/osutil/sys"
 
-	"golang.org/x/xerrors"
-
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/tcti"
 	"github.com/snapcore/secboot/internal/truststore"
@@ -131,7 +129,7 @@ func (t *Connection) Close() error {
 func createTransientEk(tpm *tpm2.TPMContext) (tpm2.ResourceContext, error) {
 	session, err := tpm.StartAuthSession(nil, tpm.EndorsementHandleContext(), tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot start auth session: %w", err)
+		return nil, fmt.Errorf("cannot start auth session: %w", err)
 	}
 	defer tpm.FlushContext(session)
 
@@ -225,7 +223,7 @@ func (t *Connection) init() error {
 	}()
 	if err != nil {
 		// A lack of EK should be fatal in this context
-		return xerrors.Errorf("cannot obtain context for EK: %w", err)
+		return fmt.Errorf("cannot obtain context for EK: %w", err)
 	}
 
 	ekIsPersistent := func() bool {
@@ -263,7 +261,7 @@ func (t *Connection) init() error {
 			return nil, err
 		}()
 		if err != nil {
-			return verificationError{xerrors.Errorf("cannot verify public area of endorsement key read from the TPM: %w", err)}
+			return verificationError{fmt.Errorf("cannot verify public area of endorsement key read from the TPM: %w", err)}
 		}
 		if rc != nil {
 			// The persistent EK was bad, and we created and verified a transient EK instead
@@ -273,7 +271,7 @@ func (t *Connection) init() error {
 		// If we don't have a verified EK certificate and ek is a persistent object, just do a sanity check that the public area returned
 		// from the TPM has the expected properties. If it doesn't, then don't use it, as TPM2_StartAuthSession might fail.
 		if ok, err := isObjectPrimaryKeyWithTemplate(t.TPMContext, t.EndorsementHandleContext(), ek, tcg.EKTemplate, nil); err != nil {
-			return xerrors.Errorf("cannot determine if object is a primary key in the endorsement hierarchy: %w", err)
+			return fmt.Errorf("cannot determine if object is a primary key in the endorsement hierarchy: %w", err)
 		} else if !ok {
 			ek = nil
 		}
@@ -289,7 +287,7 @@ func (t *Connection) init() error {
 		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB}}
 	session, err := t.StartAuthSession(ek, nil, tpm2.SessionTypeHMAC, &symmetric, defaultSessionHashAlgorithm, nil)
 	if err != nil {
-		return xerrors.Errorf("cannot create HMAC session: %w", err)
+		return fmt.Errorf("cannot create HMAC session: %w", err)
 	}
 	succeeded := false
 	defer func() {
@@ -305,7 +303,7 @@ func (t *Connection) init() error {
 			if isAuthFailError(err, tpm2.CommandGetRandom, 1) {
 				return verificationError{errors.New("endorsement key proof of ownership check failed")}
 			}
-			return xerrors.Errorf("cannot execute command to complete EK proof of ownership check: %w", err)
+			return fmt.Errorf("cannot execute command to complete EK proof of ownership check: %w", err)
 		}
 	}
 
@@ -323,17 +321,17 @@ func (t *Connection) init() error {
 func readEkCertFromTPM(tpm *tpm2.TPMContext) ([]byte, error) {
 	ekCertIndex, err := tpm.CreateResourceContextFromTPM(tcg.EKCertHandle)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create context: %w", err)
+		return nil, fmt.Errorf("cannot create context: %w", err)
 	}
 
 	ekCertPub, _, err := tpm.NVReadPublic(ekCertIndex)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read public area of index: %w", err)
+		return nil, fmt.Errorf("cannot read public area of index: %w", err)
 	}
 
 	cert, err := tpm.NVRead(ekCertIndex, ekCertIndex, ekCertPub.Size, 0, nil)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot read index: %w", err)
+		return nil, fmt.Errorf("cannot read index: %w", err)
 	}
 
 	return cert, nil
@@ -346,7 +344,7 @@ func connectToDefaultTPM() (*tpm2.TPMContext, error) {
 		if isPathError(err) {
 			return nil, ErrNoTPM2Device
 		}
-		return nil, xerrors.Errorf("cannot open TPM device: %w", err)
+		return nil, fmt.Errorf("cannot open TPM device: %w", err)
 	}
 
 	tpm := tpm2.NewTPMContext(tcti)
@@ -547,7 +545,7 @@ func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *DeviceAttribut
 	// Parse EK cert
 	cert, err := x509.ParseCertificate(data.Cert)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot parse endorsement key certificate: %w", err)
+		return nil, nil, fmt.Errorf("cannot parse endorsement key certificate: %w", err)
 	}
 
 	// Parse other certs, building root and intermediates store
@@ -556,7 +554,7 @@ func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *DeviceAttribut
 	for _, d := range data.Parents {
 		c, err := x509.ParseCertificate(d)
 		if err != nil {
-			return nil, nil, xerrors.Errorf("cannot parse certificate: %w", err)
+			return nil, nil, fmt.Errorf("cannot parse certificate: %w", err)
 		}
 		if isCertificateTrustedCA(c) {
 			roots.AddCert(c)
@@ -586,7 +584,7 @@ func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *DeviceAttribut
 			attrs, attrsRDN, err = parseDeviceAttributesFromSAN(e.Value)
 			// SubjectAltName MUST include TPM manufacturer, model and firmware version
 			if err != nil {
-				return nil, nil, xerrors.Errorf("cannot parse TPM device attributes: %w", err)
+				return nil, nil, fmt.Errorf("cannot parse TPM device attributes: %w", err)
 			}
 			if len(cert.Subject.Names) == 0 {
 				// If subject is empty, fill the Subject field with the TPM device attributes so that String() returns something useful
@@ -624,7 +622,7 @@ func verifyEkCertificate(data *ekCertData) ([]*x509.Certificate, *DeviceAttribut
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}
 	candidates, err := cert.Verify(opts)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("certificate verification failed: %w", err)
+		return nil, nil, fmt.Errorf("certificate verification failed: %w", err)
 	}
 
 	// Extended Key Usage MUST contain tcg-kp-EKCertificate (and also require that the usage is nested)
@@ -672,16 +670,16 @@ func fetchParentCertificates(cert *x509.Certificate) ([][]byte, error) {
 			if p, e := func(url string) (*x509.Certificate, error) {
 				resp, err := client.Get(url)
 				if err != nil {
-					return nil, xerrors.Errorf("GET request failed: %w", err)
+					return nil, fmt.Errorf("GET request failed: %w", err)
 				}
 				body, err := ioutil.ReadAll(resp.Body)
 				resp.Body.Close()
 				if err != nil {
-					return nil, xerrors.Errorf("cannot read body: %w", err)
+					return nil, fmt.Errorf("cannot read body: %w", err)
 				}
 				cert, err := x509.ParseCertificate(body)
 				if err != nil {
-					return nil, xerrors.Errorf("cannot parse certificate: %w", err)
+					return nil, fmt.Errorf("cannot parse certificate: %w", err)
 				}
 				return cert, nil
 			}(issuerUrl); e == nil {
@@ -689,12 +687,12 @@ func fetchParentCertificates(cert *x509.Certificate) ([][]byte, error) {
 				err = nil
 				break
 			} else {
-				err = xerrors.Errorf("download from %s failed: %w", issuerUrl, e)
+				err = fmt.Errorf("download from %s failed: %w", issuerUrl, e)
 			}
 		}
 
 		if err != nil {
-			return nil, xerrors.Errorf("cannot download parent certificate of %v: %w", cert.Subject, err)
+			return nil, fmt.Errorf("cannot download parent certificate of %v: %w", cert.Subject, err)
 		}
 
 		out = append(out, parent.Raw)
@@ -711,7 +709,7 @@ func fetchEkCertificateChain(tpm *tpm2.TPMContext, parentsOnly bool) (*ekCertDat
 	var data ekCertData
 
 	if cert, err := readEkCertFromTPM(tpm); err != nil {
-		return nil, xerrors.Errorf("cannot obtain endorsement key certificate from TPM: %w", err)
+		return nil, fmt.Errorf("cannot obtain endorsement key certificate from TPM: %w", err)
 	} else {
 		if !parentsOnly {
 			data.Cert = cert
@@ -719,12 +717,12 @@ func fetchEkCertificateChain(tpm *tpm2.TPMContext, parentsOnly bool) (*ekCertDat
 
 		c, err := x509.ParseCertificate(cert)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot parse endorsement key certificate: %w", err)
+			return nil, fmt.Errorf("cannot parse endorsement key certificate: %w", err)
 		}
 
 		parents, err := fetchParentCertificates(c)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot obtain parent certificates for %s: %w", c.Subject, err)
+			return nil, fmt.Errorf("cannot obtain parent certificates for %s: %w", c.Subject, err)
 		}
 		data.Parents = parents
 	}
@@ -737,16 +735,16 @@ func fetchEkCertificateChain(tpm *tpm2.TPMContext, parentsOnly bool) (*ekCertDat
 func saveEkCertificateChain(data *ekCertData, dest string) error {
 	f, err := osutil.NewAtomicFile(dest, 0600, 0, sys.UserID(osutil.NoChown), sys.GroupID(osutil.NoChown))
 	if err != nil {
-		return xerrors.Errorf("cannot create new atomic file: %w", err)
+		return fmt.Errorf("cannot create new atomic file: %w", err)
 	}
 	defer f.Cancel()
 
 	if _, err := mu.MarshalToWriter(f, data); err != nil {
-		return xerrors.Errorf("cannot marshal cert chain: %w", err)
+		return fmt.Errorf("cannot marshal cert chain: %w", err)
 	}
 
 	if err := f.Commit(); err != nil {
-		return xerrors.Errorf("cannot atomically replace file: %w", err)
+		return fmt.Errorf("cannot atomically replace file: %w", err)
 	}
 
 	return nil
@@ -813,7 +811,7 @@ func EncodeEKCertificateChain(ekCert *x509.Certificate, parents []*x509.Certific
 	}
 
 	if _, err := mu.MarshalToWriter(w, &data); err != nil {
-		return xerrors.Errorf("cannot marshal cert chain: %w", err)
+		return fmt.Errorf("cannot marshal cert chain: %w", err)
 	}
 
 	return nil
@@ -843,8 +841,8 @@ func ConnectToDefaultTPM() (*Connection, error) {
 
 	if err := t.init(); err != nil {
 		var verifyErr verificationError
-		if !tpm2.IsResourceUnavailableError(err, tpm2.AnyHandle) && !xerrors.As(err, &verifyErr) {
-			return nil, xerrors.Errorf("cannot initialize TPM connection: %w", err)
+		if !tpm2.IsResourceUnavailableError(err, tpm2.AnyHandle) && !errors.As(err, &verifyErr) {
+			return nil, fmt.Errorf("cannot initialize TPM connection: %w", err)
 		}
 	}
 
@@ -929,10 +927,10 @@ func SecureConnectToDefaultTPM(ekCertDataReader io.Reader, endorsementAuth []byt
 			return nil, ErrTPMProvisioning
 		}
 		var verifyErr verificationError
-		if xerrors.As(err, &verifyErr) {
+		if errors.As(err, &verifyErr) {
 			return nil, TPMVerificationError{err.Error()}
 		}
-		return nil, xerrors.Errorf("cannot initialize TPM connection: %w", err)
+		return nil, fmt.Errorf("cannot initialize TPM connection: %w", err)
 	}
 
 	succeeded = true

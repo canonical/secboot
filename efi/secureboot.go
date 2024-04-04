@@ -23,10 +23,10 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/ioutil"
 
 	efi "github.com/canonical/go-efilib"
-	"golang.org/x/xerrors"
 )
 
 var (
@@ -63,7 +63,7 @@ func (u signatureDBUpdatesOption) applyOptionTo(gen *pcrProfileGenerator) {
 				// This creates a root variable instance for each intermediate state.
 				for i, update := range u {
 					if err := applySignatureDBUpdate(&branch, update, quirk); err != nil {
-						return xerrors.Errorf("cannot compute signature database update %d: %w", i, err)
+						return fmt.Errorf("cannot compute signature database update %d: %w", i, err)
 					}
 				}
 			}
@@ -116,7 +116,7 @@ type secureBootPolicyMixin struct{}
 func (m secureBootPolicyMixin) DetermineAuthority(dbs []*secureBootDB, image peImageHandle) (*secureBootAuthority, error) {
 	sigs, err := image.SecureBootSignatures()
 	if err != nil {
-		return nil, xerrors.Errorf("cannot obtain secure boot signatures: %w", err)
+		return nil, fmt.Errorf("cannot obtain secure boot signatures: %w", err)
 	}
 
 	if len(sigs) == 0 {
@@ -183,7 +183,7 @@ func applySignatureDBUpdate(vars varReadWriter, update *SignatureDBUpdate, quirk
 	// Skip over authentication header
 	_, err := efi.ReadTimeBasedVariableAuthentication(updateReader)
 	if err != nil {
-		return xerrors.Errorf("cannot decode EFI_VARIABLE_AUTHENTICATION_2 structure of update: %w", err)
+		return fmt.Errorf("cannot decode EFI_VARIABLE_AUTHENTICATION_2 structure of update: %w", err)
 	}
 
 	if update.Name != PK {
@@ -194,19 +194,19 @@ func applySignatureDBUpdate(vars varReadWriter, update *SignatureDBUpdate, quirk
 		case err == efi.ErrVarNotExist:
 			// nothing to do
 		case err != nil:
-			return xerrors.Errorf("cannot read original signature database: %w", err)
+			return fmt.Errorf("cannot read original signature database: %w", err)
 		}
 
 		base := bytes.NewReader(data)
 
 		baseDb, err := efi.ReadSignatureDatabase(base)
 		if err != nil {
-			return xerrors.Errorf("cannot decode base signature database: %w", err)
+			return fmt.Errorf("cannot decode base signature database: %w", err)
 		}
 
 		updateDb, err := efi.ReadSignatureDatabase(updateReader)
 		if err != nil {
-			return xerrors.Errorf("cannot decode signature database update: %w", err)
+			return fmt.Errorf("cannot decode signature database update: %w", err)
 		}
 
 		var filtered efi.SignatureDatabase
@@ -261,7 +261,7 @@ func applySignatureDBUpdate(vars varReadWriter, update *SignatureDBUpdate, quirk
 		// Serialize the filtered list of ESLs
 		var buf bytes.Buffer
 		if err := filtered.Write(&buf); err != nil {
-			return xerrors.Errorf("cannot encode filtered signature database update: %w", err)
+			return fmt.Errorf("cannot encode filtered signature database update: %w", err)
 		}
 		updateData = buf.Bytes()
 	} else {

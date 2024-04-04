@@ -40,7 +40,6 @@ import (
 	"github.com/snapcore/secboot/internal/paths"
 
 	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
 )
 
 var (
@@ -81,7 +80,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 	// Initially open the device or file for reading
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot open device: %w", err)
+		return nil, fmt.Errorf("cannot open device: %w", err)
 	}
 	defer f.Close()
 
@@ -93,7 +92,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 	// Obtain information about the opened device or file
 	fi, err := f.Stat()
 	if err != nil {
-		return nil, xerrors.Errorf("cannot obtain file info: %w", err)
+		return nil, fmt.Errorf("cannot obtain file info: %w", err)
 	}
 
 	var lockPath string
@@ -106,14 +105,13 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 
 		// Don't assume that the lock directory exists.
 		if err := os.Mkdir(cryptsetupLockDir(), 0700); err != nil && !os.IsExist(err) {
-			return nil, xerrors.Errorf("cannot create lock directory: %w", err)
+			return nil, fmt.Errorf("cannot create lock directory: %w", err)
 		}
-
 		// Obtain information about the opened block device using the fstat syscall,
 		// where we get more information.
 		var st unix.Stat_t
 		if err := dataDeviceFstat(int(f.Fd()), &st); err != nil {
-			return nil, xerrors.Errorf("cannot obtain device info: %w", err)
+			return nil, fmt.Errorf("cannot obtain device info: %w", err)
 		}
 		lockPath = filepath.Join(cryptsetupLockDir(), fmt.Sprintf("L_%d:%d", unix.Major(st.Rdev), unix.Minor(st.Rdev)))
 		openFlags = os.O_RDWR | os.O_CREATE
@@ -208,19 +206,19 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		// Attempt to open the lock file for writing.
 		lockFile, err = os.OpenFile(lockPath, openFlags, 0600)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot open lock file for writing: %w", err)
+			return nil, fmt.Errorf("cannot open lock file for writing: %w", err)
 		}
 
 		// Obtain and save information about the opened lock file.
 		if err := unix.Fstat(int(lockFile.Fd()), &origSt); err != nil {
 			lockFile.Close()
-			return nil, xerrors.Errorf("cannot obtain lock file info: %w", err)
+			return nil, fmt.Errorf("cannot obtain lock file info: %w", err)
 		}
 
 		// Attempt to acquire the requested lock.
 		if err := unix.Flock(int(lockFile.Fd()), how); err != nil {
 			release()
-			return nil, xerrors.Errorf("cannot obtain lock: %w", err)
+			return nil, fmt.Errorf("cannot obtain lock: %w", err)
 		}
 
 		if isBlockDevice(fi.Mode()) {
@@ -384,13 +382,13 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		Requirements: d.Requirements}
 	jsonSize, err := d.JSONSize.Uint64()
 	if err != nil {
-		return xerrors.Errorf("invalid json_size value: %w", err)
+		return fmt.Errorf("invalid json_size value: %w", err)
 	}
 	c.JSONSize = jsonSize
 
 	keyslotsSize, err := d.KeyslotsSize.Uint64()
 	if err != nil {
-		return xerrors.Errorf("invalid keyslots_size value: %w", err)
+		return fmt.Errorf("invalid keyslots_size value: %w", err)
 	}
 	c.KeyslotsSize = keyslotsSize
 
@@ -475,7 +473,7 @@ func (t *GenericToken) UnmarshalJSON(data []byte) error {
 	for _, v := range d.Keyslots {
 		s, err := v.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid keyslot id: %w", err)
+			return fmt.Errorf("invalid keyslot id: %w", err)
 		}
 		t.TokenKeyslots = append(t.TokenKeyslots, s)
 	}
@@ -527,7 +525,7 @@ func (d *Digest) UnmarshalJSON(data []byte) error {
 	for _, v := range t.Keyslots {
 		s, err := v.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid keyslot id: %w", err)
+			return fmt.Errorf("invalid keyslot id: %w", err)
 		}
 		d.Keyslots = append(d.Keyslots, s)
 	}
@@ -535,7 +533,7 @@ func (d *Digest) UnmarshalJSON(data []byte) error {
 	for _, v := range t.Segments {
 		s, err := v.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid segment id: %w", err)
+			return fmt.Errorf("invalid segment id: %w", err)
 		}
 		d.Segments = append(d.Segments, s)
 	}
@@ -589,7 +587,7 @@ func (s *Segment) UnmarshalJSON(data []byte) error {
 
 	offset, err := d.Offset.Uint64()
 	if err != nil {
-		return xerrors.Errorf("invalid offset value: %w", err)
+		return fmt.Errorf("invalid offset value: %w", err)
 	}
 	s.Offset = offset
 
@@ -599,14 +597,14 @@ func (s *Segment) UnmarshalJSON(data []byte) error {
 	default:
 		sz, err := d.Size.Uint64()
 		if err != nil {
-			return xerrors.Errorf("invalid size value: %w", err)
+			return fmt.Errorf("invalid size value: %w", err)
 		}
 		s.Size = sz
 	}
 
 	ivTweak, err := d.IVTweak.Uint64()
 	if err != nil {
-		return xerrors.Errorf("invalid iv_tweak value: %w", err)
+		return fmt.Errorf("invalid iv_tweak value: %w", err)
 	}
 	s.IVTweak = ivTweak
 
@@ -643,13 +641,13 @@ func (a *Area) UnmarshalJSON(data []byte) error {
 
 	offset, err := d.Offset.Uint64()
 	if err != nil {
-		return xerrors.Errorf("invalid offset value: %w", err)
+		return fmt.Errorf("invalid offset value: %w", err)
 	}
 	a.Offset = offset
 
 	sz, err := d.Size.Uint64()
 	if err != nil {
-		return xerrors.Errorf("invalid size value: %w", err)
+		return fmt.Errorf("invalid size value: %w", err)
 	}
 	a.Size = sz
 
@@ -739,7 +737,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	for k, v := range d.Keyslots {
 		id, err := k.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid keyslot index: %w", err)
+			return fmt.Errorf("invalid keyslot index: %w", err)
 		}
 		m.Keyslots[id] = v
 	}
@@ -748,7 +746,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	for k, v := range d.Segments {
 		id, err := k.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid segment index: %w", err)
+			return fmt.Errorf("invalid segment index: %w", err)
 		}
 		m.Segments[id] = v
 	}
@@ -757,7 +755,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	for k, v := range d.Digests {
 		id, err := k.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid digest index: %w", err)
+			return fmt.Errorf("invalid digest index: %w", err)
 		}
 		m.Digests[id] = v
 	}
@@ -766,7 +764,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	for k, v := range d.Tokens {
 		id, err := k.Int()
 		if err != nil {
-			return xerrors.Errorf("invalid token index: %w", err)
+			return fmt.Errorf("invalid token index: %w", err)
 		}
 		var token Token
 		if decoder, ok := tokenDecoders[v.typ]; ok {
@@ -802,7 +800,7 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 
 	var hdr binaryHdr
 	if err := binary.Read(r, binary.BigEndian, &hdr); err != nil {
-		return nil, nil, xerrors.Errorf("cannot read header: %w", err)
+		return nil, nil, fmt.Errorf("cannot read header: %w", err)
 	}
 	switch {
 	case primary && bytes.Equal(hdr.Magic[:], []byte("LUKS\xba\xbe")):
@@ -835,14 +833,14 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 	hdrTmp := hdr
 	hdrTmp.Csum = [64]byte{}
 	if err := binary.Write(h, binary.BigEndian, &hdrTmp); err != nil {
-		return nil, nil, xerrors.Errorf("cannot calculate checksum, error serializing header: %w", err)
+		return nil, nil, fmt.Errorf("cannot calculate checksum, error serializing header: %w", err)
 	}
 
 	// Hash the JSON metadata area, keeping a copy of the hashed metadata in memory
 	jsonBuffer := new(bytes.Buffer)
 	tr := io.TeeReader(r, jsonBuffer)
 	if _, err := io.CopyN(h, tr, int64(hdr.HdrSize)-int64(binary.Size(hdr))); err != nil {
-		return nil, nil, xerrors.Errorf("cannot calculate checksum, error reading JSON metadata: %w", err)
+		return nil, nil, fmt.Errorf("cannot calculate checksum, error reading JSON metadata: %w", err)
 	}
 
 	if !bytes.Equal(h.Sum(nil), hdr.Csum[0:csumHash.Size()]) {
@@ -882,7 +880,7 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 	releaseLock, err := acquireSharedLock(path, lockMode)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot acquire shared lock: %w", err)
+		return nil, fmt.Errorf("cannot acquire shared lock: %w", err)
 	}
 	defer releaseLock()
 
@@ -897,7 +895,7 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 	var primaryMetadata Metadata
 	if primaryErr == nil {
 		if err := json.NewDecoder(primaryJSONData).Decode(&primaryMetadata); err != nil {
-			primaryErr = xerrors.Errorf("cannot decode JSON metadata area: %w", err)
+			primaryErr = fmt.Errorf("cannot decode JSON metadata area: %w", err)
 		}
 	}
 
@@ -921,7 +919,7 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 	var secondaryMetadata Metadata
 	if secondaryErr == nil {
 		if err := json.NewDecoder(secondaryJSONData).Decode(&secondaryMetadata); err != nil {
-			secondaryErr = xerrors.Errorf("cannot decode JSON metadata area: %w", err)
+			secondaryErr = fmt.Errorf("cannot decode JSON metadata area: %w", err)
 		}
 	}
 
@@ -956,7 +954,7 @@ func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
 		fmt.Fprintf(stderr, "luks2.ReadHeader: primary header for %s is invalid: %v\n", path, primaryErr)
 	default:
 		// No valid headers :(
-		return nil, xerrors.Errorf("no valid header found, error from decoding primary header: %w", primaryErr)
+		return nil, fmt.Errorf("no valid header found, error from decoding primary header: %w", primaryErr)
 	}
 
 	return &HeaderInfo{

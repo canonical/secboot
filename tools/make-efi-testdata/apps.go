@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"golang.org/x/xerrors"
-
 	efi "github.com/canonical/go-efilib"
 	"github.com/snapcore/secboot/internal/testutil"
 )
@@ -157,7 +155,7 @@ func newMockAppDataAMD64(srcDir, vendorCertDir string, certs map[string][]byte) 
 func makeOneMockApp(tmpDir, dstDir string, data *mockAppData, arch string) error {
 	dir, err := ioutil.TempDir(tmpDir, "mockapp.")
 	if err != nil {
-		return xerrors.Errorf("cannot create build directory: %w", err)
+		return fmt.Errorf("cannot create build directory: %w", err)
 	}
 
 	efiName := data.name + ".efi"
@@ -188,19 +186,19 @@ func makeOneMockApp(tmpDir, dstDir string, data *mockAppData, arch string) error
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return xerrors.Errorf("make failed: %w", err)
+		return fmt.Errorf("make failed: %w", err)
 	}
 
 	for i, key := range data.signKeys {
 		cert, err := ioutil.TempFile(tmpDir, "cert.")
 		if err != nil {
-			return xerrors.Errorf("cannot create cert: %w", err)
+			return fmt.Errorf("cannot create cert: %w", err)
 		}
 		defer cert.Close()
 
 		b := pem.Block{Type: "CERTIFICATE", Bytes: data.signCerts[i]}
 		if _, err := cert.Write(pem.EncodeToMemory(&b)); err != nil {
-			return xerrors.Errorf("cannot write cert: %w", err)
+			return fmt.Errorf("cannot write cert: %w", err)
 		}
 		cert.Close()
 
@@ -210,7 +208,7 @@ func makeOneMockApp(tmpDir, dstDir string, data *mockAppData, arch string) error
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			return xerrors.Errorf("cannot sign app: %w", err)
+			return fmt.Errorf("cannot sign app: %w", err)
 		}
 	}
 
@@ -224,7 +222,7 @@ func makeOneMockApp(tmpDir, dstDir string, data *mockAppData, arch string) error
 func writeShimVendorCertificates(certs map[string][]byte, dir string) error {
 	for _, c := range []string{"TestShimVendorCA"} {
 		if err := ioutil.WriteFile(filepath.Join(dir, c+".cer"), certs[c], 0644); err != nil {
-			return xerrors.Errorf("cannot write %s: %w", c, err)
+			return fmt.Errorf("cannot write %s: %w", c, err)
 		}
 	}
 
@@ -244,7 +242,7 @@ func writeShimVendorCertificates(certs map[string][]byte, dir string) error {
 	db.Write(buf)
 
 	if err := ioutil.WriteFile(filepath.Join(dir, "TestShimVendorCA.esl"), buf.Bytes(), 0644); err != nil {
-		return xerrors.Errorf("cannot write TestShimVendorCA.esl: %w", err)
+		return fmt.Errorf("cannot write TestShimVendorCA.esl: %w", err)
 	}
 
 	return nil
@@ -263,21 +261,21 @@ func makeMockApps(srcDir, dstDir string) error {
 
 	certs, err := makeCertificates(srcDir)
 	if err != nil {
-		return xerrors.Errorf("cannot make certificates: %w", err)
+		return fmt.Errorf("cannot make certificates: %w", err)
 	}
 
 	if err := writeShimVendorCertificates(certs, tmpDir); err != nil {
-		return xerrors.Errorf("cannot write certificates to tmpdir: %w", err)
+		return fmt.Errorf("cannot write certificates to tmpdir: %w", err)
 	}
 
 	for _, data := range newMockAppDataAMD64(srcDir, tmpDir, certs) {
 		if err := makeOneMockApp(tmpDir, dstDir, &data, "amd64"); err != nil {
-			return xerrors.Errorf("cannot create %s: %w", data.name, err)
+			return fmt.Errorf("cannot create %s: %w", data.name, err)
 		}
 	}
 	for _, data := range newMockAppData386(srcDir, tmpDir, certs) {
 		if err := makeOneMockApp(tmpDir, dstDir, &data, "386"); err != nil {
-			return xerrors.Errorf("cannot create %s: %w", data.name, err)
+			return fmt.Errorf("cannot create %s: %w", data.name, err)
 		}
 	}
 
