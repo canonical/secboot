@@ -1271,7 +1271,13 @@ func AddSecureBootPolicyProfile(profile *secboot_tpm2.PCRProtectionProfile, para
 	// XXX: Work around the lack of support for handling SBAT revocations by just generating
 	// a profile for the current values under the MS UEFI CA (minus the latest, which requires
 	// an explicit opt-in via SbatPolicy).
-	for _, level := range [][]byte{[]byte("sbat,1,2021030218\n"), []byte("sbat,1,2022052400\ngrub,2\n")} {
+	for _, level := range [][]byte{
+		[]byte("sbat,1,2021030218\n"),
+		[]byte("sbat,1,2022052400\ngrub,2\n"),
+		[]byte("sbat,1,2023012900\nshim,2\ngrub,3\ngrub.debian,4\n"),
+		[]byte("sbat,1,2024010900\nshim,4\ngrub,3\ngrub.debian,4\n"),
+		[]byte("sbat,1,2024040900\nshim,4\ngrub,4\ngrub.peimage,2\n"),
+	} {
 		profile1 := secboot_tpm2.NewPCRProtectionProfile()
 		if err := gen.run(profile1, sigDbUpdateQuirkModeNone, level); err != nil {
 			return xerrors.Errorf("cannot compute secure boot policy profile: %w", err)
