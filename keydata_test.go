@@ -45,7 +45,6 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/hkdf"
-	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 )
@@ -84,7 +83,7 @@ func (h *mockPlatformKeyDataHandler) checkState() error {
 func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mockPlatformKeyDataHandle, error) {
 	var handle mockPlatformKeyDataHandle
 	if err := json.Unmarshal(data.EncodedHandle, &handle); err != nil {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: xerrors.Errorf("JSON decode error: %w", err)}
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: fmt.Errorf("JSON decode error: %w", err)}
 	}
 
 	if data.Generation != handle.ExpectedGeneration {
@@ -117,7 +116,7 @@ func (h *mockPlatformKeyDataHandler) checkKey(handle *mockPlatformKeyDataHandle,
 func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHandle, payload []byte) ([]byte, error) {
 	b, err := aes.NewCipher(handle.Key)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot create cipher: %w", err)
+		return nil, fmt.Errorf("cannot create cipher: %w", err)
 	}
 
 	s := cipher.NewCFBDecrypter(b, handle.IV)
@@ -489,7 +488,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	c.Check(err, IsNil)
 
 	// TODO properly unmarshal from field
-	// and expose hashAlg helpers
+	// and expose HashAlg helpers
 	kdfAlg := crypto.SHA256
 	sha256Oid := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 
@@ -1631,7 +1630,6 @@ func (s *keyDataSuite) TestKeyDataDerivePassphraseKeysExpectedInfoFields(c *C) {
 			`"digest":"8sVvLZOkRD6RWjLFSp/pOPrKoibsr+VWyGhv4M2aph8="},` +
 			`"hmacs":null}}
 `)
-
 	expectedKey := testutil.DecodeHexString(c, "89e97e7c427f54805a25c2bd1224865218aa5a985e5ac4c44fbc2c53b4bdfae2")
 	expectedIV := testutil.DecodeHexString(c, "b5835d62838a8bef63f37389ae782308")
 	expectedAuth := testutil.DecodeHexString(c, "2e46344ee30895da0d8e11cbb86bb67aeeccca0f6c6489009619593cca00722e")

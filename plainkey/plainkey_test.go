@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2023 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -17,10 +17,17 @@
  *
  */
 
-package efi
+package plainkey_test
 
-const (
-	bootManagerCodePCR = 4 // Boot Manager Code and Boot Attempts PCR
-	secureBootPCR      = 7 // Secure Boot Policy Measurements PCR
-	kernelConfigPCR    = 12
+import (
+	"os"
+	"testing"
+
+	. "gopkg.in/check.v1"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(m.Run())
+}
+
+func Test(t *testing.T) { TestingT(t) }

@@ -197,6 +197,9 @@ func (h *fwLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 	if ctx.Flags()&bootManagerCodeProfile > 0 {
 		h.measureBootManagerCodePreOS(ctx)
 	}
+	if ctx.Flags()&kernelConfigProfile > 0 {
+		ctx.ResetPCR(kernelConfigPCR)
+	}
 
 	return nil
 }

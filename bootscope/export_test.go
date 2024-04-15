@@ -59,10 +59,6 @@ func (d *KeyDataScope) DeriveSigner(key secboot.PrimaryKey, role string) (crypto
 	return d.deriveSigner(key, role)
 }
 
-func NewHashAlg(alg crypto.Hash) hashAlg {
-	return hashAlg(alg)
-}
-
 func NewEcdsaPublicKey(rand []byte) (ecdsaPublicKey, error) {
 	var pk ecdsaPublicKey
 

@@ -77,22 +77,29 @@ type mockPcrBranchEvent struct {
 
 type mockPcrBranchContext struct {
 	PcrProfileContext
+	params LoadParams
 	vars   VarReadWriter
 	fc     *FwContext
 	sc     *ShimContext
 	events []*mockPcrBranchEvent
 }
 
-func newMockPcrBranchContext(pc PcrProfileContext, vars VarReadWriter) *mockPcrBranchContext {
+func newMockPcrBranchContext(pc PcrProfileContext, params *LoadParams, vars VarReadWriter) *mockPcrBranchContext {
+	if params == nil {
+		params = new(LoadParams)
+	}
 	return &mockPcrBranchContext{
 		PcrProfileContext: pc,
+		params:            *params,
 		vars:              vars,
 		fc:                new(FwContext),
 		sc:                new(ShimContext),
 	}
 }
 
-func (*mockPcrBranchContext) Params() *LoadParams { return nil }
+func (c *mockPcrBranchContext) Params() *LoadParams {
+	return &c.params
+}
 
 func (c *mockPcrBranchContext) Vars() VarReadWriter {
 	return c.vars

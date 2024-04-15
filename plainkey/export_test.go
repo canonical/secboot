@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2023 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -17,10 +17,30 @@
  *
  */
 
-package efi
+package plainkey
+
+import "github.com/snapcore/secboot"
 
 const (
-	bootManagerCodePCR = 4 // Boot Manager Code and Boot Attempts PCR
-	secureBootPCR      = 7 // Secure Boot Policy Measurements PCR
-	kernelConfigPCR    = 12
+	PlatformName = platformName
 )
+
+type (
+	AdditionalData         = additionalData
+	HashAlg                = hashAlg
+	KeyData                = keyData
+	PlatformKeyDataHandler = platformKeyDataHandler
+	PlatformKeyId          = platformKeyId
+)
+
+var (
+	DeriveAESKey = deriveAESKey
+)
+
+func MockSecbootNewKeyData(fn func(*secboot.KeyParams) (*secboot.KeyData, error)) (restore func()) {
+	orig := secbootNewKeyData
+	secbootNewKeyData = fn
+	return func() {
+		secbootNewKeyData = orig
+	}
+}

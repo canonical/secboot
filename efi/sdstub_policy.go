@@ -49,6 +49,8 @@ type SystemdStubProfileParams struct {
 // The PCR index that the EFI stub measures the kernel commandline too can be specified via the PCRIndex field of params.
 //
 // The set of kernel commandlines to add to the PCRProtectionProfile is specified via the KernelCmdlines field of params.
+//
+// Deprecated: use [AddPCRProfile] with the [WithKernelConfigProfile] option.
 func AddSystemdStubProfile(branch *secboot_tpm2.PCRProtectionProfileBranch, params *SystemdStubProfileParams) error {
 	if params.PCRIndex < 0 {
 		return errors.New("invalid PCR index")

@@ -28,6 +28,7 @@ import (
 const (
 	BootManagerCodeProfile                     = bootManagerCodeProfile
 	GrubChainloaderUsesShimProtocol            = grubChainloaderUsesShimProtocol
+	KernelConfigProfile                        = kernelConfigProfile
 	SecureBootPolicyProfile                    = secureBootPolicyProfile
 	ShimFixVariableAuthorityEventsMatchSpec    = shimFixVariableAuthorityEventsMatchSpec
 	ShimHasSbatRevocationManagement            = shimHasSbatRevocationManagement
