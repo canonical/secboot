@@ -44,7 +44,7 @@ func (s *grubLoadHandlerSuite) TestMeasureImageLoadUbuntuUsesShim15_7(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		flags:    SecureBootPolicyProfile,
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: msDb(c),
@@ -73,7 +73,7 @@ func (s *grubLoadHandlerSuite) TestMeasureImageLoadUbuntuUsesShim15_6(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		flags:    SecureBootPolicyProfile,
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: msDb(c),
@@ -102,7 +102,7 @@ func (s *grubLoadHandlerSuite) TestMeasureImageLoadNoShim(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		flags:    SecureBootPolicyProfile,
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: append(msDb(c), efitest.NewSignatureListX509(c, canonicalCACert, testOwnerGuid)),
@@ -131,7 +131,7 @@ func (s *grubLoadHandlerSuite) TestMeasureImageLoadNoShimError(c *C) {
 		alg:      tpm2.HashAlgorithmSHA256,
 		flags:    SecureBootPolicyProfile,
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: msDb(c),

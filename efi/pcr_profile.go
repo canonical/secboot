@@ -135,6 +135,17 @@ func WithBootManagerCodeProfile() PCRProfileOption {
 	return pcrProfileSetFlagsOption(bootManagerCodeProfile)
 }
 
+// WithKernelConfigProfile adds the kernel config profile. This binds a policy to a
+// set of externally supplied commandlines. On Ubuntu Core, this also binds a policy
+// to a set of model assertions and the initrd phase of the boot.
+//
+// Kernel commandlines can be injected into the profile with [KernelCommandlineParams].
+// Snap models can be injected into the profile with [SnapModelParams]. Note that a model
+// assertion is mandatory for profiles that include a UKI for Ubuntu Core.
+func WithKernelConfigProfile() PCRProfileOption {
+	return pcrProfileSetFlagsOption(kernelConfigProfile)
+}
+
 // AddPCRProfile adds a profile defined by the supplied options to the supplied
 // secboot_tpm2.PCRProtectionProfileBranch, using the specified digest algorithm
 // for the PCR digest. The generated profile is defined by the supplied load
@@ -154,6 +165,7 @@ type pcrProfileFlags int
 const (
 	secureBootPolicyProfile pcrProfileFlags = 1 << iota
 	bootManagerCodeProfile
+	kernelConfigProfile
 )
 
 type pcrProfileGenerator struct {
