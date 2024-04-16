@@ -66,7 +66,7 @@ func argon2KDF() Argon2KDF {
 }
 
 // Argon2Mode describes the Argon2 mode to use.
-type Argon2Mode string
+type Argon2Mode = argon2.Mode
 
 const (
 	// Argon2Default is used by Argon2Options to select the default
@@ -74,10 +74,10 @@ const (
 	Argon2Default Argon2Mode = ""
 
 	// Argon2i is the data-independent mode of Argon2.
-	Argon2i Argon2Mode = "argon2i"
+	Argon2i = argon2.ModeI
 
 	// Argon2id is the hybrid mode of Argon2.
-	Argon2id Argon2Mode = "argon2id"
+	Argon2id = argon2.ModeID
 )
 
 // Argon2Options specifies parameters for the Argon2 KDF used for passphrase support.

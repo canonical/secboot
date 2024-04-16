@@ -289,11 +289,6 @@ func (s *argon2Suite) TestInProcessKDFTimeInvalidThreads(c *C) {
 	c.Check(err, ErrorMatches, `invalid number of threads`)
 }
 
-func (s *argon2Suite) TestModeConstants(c *C) {
-	c.Check(Argon2i, Equals, Argon2Mode(argon2.ModeI))
-	c.Check(Argon2id, Equals, Argon2Mode(argon2.ModeID))
-}
-
 type argon2SuiteExpensive struct{}
 
 func (s *argon2SuiteExpensive) SetUpSuite(c *C) {
