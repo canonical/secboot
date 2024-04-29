@@ -31,10 +31,13 @@ var (
 	UnmarshalProtectedKeys = unmarshalProtectedKeys
 )
 
-type ProtectedKeys = protectedKeys
+type (
+	KdfParams     = kdfParams
+	ProtectedKeys = protectedKeys
+)
 
-func (o *Argon2Options) DeriveCostParams(keyLen int) (*Argon2CostParams, error) {
-	return o.deriveCostParams(keyLen)
+func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
+	return o.kdfParams(keyLen)
 }
 
 func MockLUKS2Activate(fn func(string, string, []byte, int) error) (restore func()) {
