@@ -58,6 +58,9 @@ func (s *fwLoadHandlerSuite) testMeasureImageStart(c *C, data *testFwMeasureImag
 	handler := NewFwLoadHandler(efitest.NewLog(c, data.logOptions))
 	c.Check(handler.MeasureImageStart(ctx), IsNil)
 	c.Check(ctx.events, DeepEquals, data.expectedEvents)
+	for _, event := range ctx.events {
+		c.Logf("pcr:%d, type:%v, digest:%#x", event.pcr, event.eventType, event.digest)
+	}
 	c.Check(collector.More(), testutil.IsFalse)
 	return ctx.FwContext()
 }
@@ -193,6 +196,9 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyAndBootManager
 		alg:        tpm2.HashAlgorithmSHA256,
 		flags:      BootManagerCodeProfile | SecureBootPolicyProfile,
 		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 4, eventType: mockPcrBranchResetEvent},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
 			{pcr: 7, eventType: mockPcrBranchResetEvent},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
@@ -200,9 +206,46 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyAndBootManager
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
 			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
-			{pcr: 4, eventType: mockPcrBranchResetEvent},
-			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba")},
-			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartPlatformFirmwareProfile(c *C) {
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}},
+		alg:        tpm2.HashAlgorithmSHA256,
+		flags:      PlatformFirmwareProfile,
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 0, eventType: mockPcrBranchResetEvent},
+			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6")},
+			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "aef237d4703e8936530141636186a9f249fa39e194f02f668cd328bd5902cf03")},
+			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "8b0eec99d3cccc081edb98c3a2aa74b99a02b785bd74513e1cf7401e99121e80")},
+			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartDriversAndAppsProfile(c *C) {
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}},
+		alg:        tpm2.HashAlgorithmSHA256,
+		flags:      DriversAndAppsProfile,
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 2, eventType: mockPcrBranchResetEvent},
+			{pcr: 2, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartDriversAndAppsProfile2(c *C) {
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}, IncludeDriverLaunch: true},
+		alg:        tpm2.HashAlgorithmSHA256,
+		flags:      DriversAndAppsProfile,
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 2, eventType: mockPcrBranchResetEvent},
+			{pcr: 2, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6")},
+			{pcr: 2, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
 		},
 	})
 }

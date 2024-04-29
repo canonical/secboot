@@ -20,7 +20,9 @@
 package efi
 
 const (
-	bootManagerCodePCR = 4 // Boot Manager Code and Boot Attempts PCR
-	secureBootPCR      = 7 // Secure Boot Policy Measurements PCR
-	kernelConfigPCR    = 12
+	platformFirmwarePCR = 0 // SRTM, POST BIOS, and Embedded Drivers
+	driversAndAppsPCR   = 2 // UEFI Drivers and UEFI Applications
+	bootManagerCodePCR  = 4 // Boot Manager Code and Boot Attempts PCR
+	secureBootPCR       = 7 // Secure Boot Policy Measurements PCR
+	kernelConfigPCR     = 12
 )

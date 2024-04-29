@@ -706,6 +706,61 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20(c *C) {
 	c.Check(err, IsNil)
 }
 
+func (s *pcrProfileSuite) TestAddPCRProfileUC20WithExtraProfiles(c *C) {
+	// Test with a standard UC20 profile
+	shim := newMockUbuntuShimImage15_7(c)
+	grub := newMockUbuntuGrubImage3(c)
+	recoverKernel := newMockUbuntuKernelImage2(c)
+	runKernel := newMockUbuntuKernelImage3(c)
+
+	err := s.testAddPCRProfile(c, &testAddPCRProfileData{
+		vars: makeMockVars(c, withMsSecureBootConfig(), withSbatLevel([]byte("sbat,1,2022052400\ngrub,2\n"))),
+		log: efitest.NewLog(c, &efitest.LogOptions{
+			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+		}),
+		alg: tpm2.HashAlgorithmSHA256,
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
+			NewImageLoadActivity(shim).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
+						NewImageLoadActivity(runKernel),
+					),
+					NewImageLoadActivity(recoverKernel),
+				),
+			),
+		),
+		expected: []tpm2.PCRValues{
+			{
+				tpm2.HashAlgorithmSHA256: {
+					0:  testutil.DecodeHexString(c, "3d2b11b4c5cb623acbde6d14205217e47ebd368eab861e4fed782bb99be4598a"),
+					2:  testutil.DecodeHexString(c, "3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969"),
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
+				},
+			},
+			{
+				tpm2.HashAlgorithmSHA256: {
+					0:  testutil.DecodeHexString(c, "3d2b11b4c5cb623acbde6d14205217e47ebd368eab861e4fed782bb99be4598a"),
+					2:  testutil.DecodeHexString(c, "3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969"),
+					4:  testutil.DecodeHexString(c, "c731a39b7fc6475c7d8a9264e704902157c7cee40c22f59fa1690ea99ff70c67"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "5b354c57a61bb9f71fcf596d7e9ef9e2e0d6f4ad8151c9f358e6f0aaa7823756"),
+				},
+			},
+		},
+	}, WithPlatformFirmwareProfile(), WithDriversAndAppsProfile(), WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile())
+	c.Check(err, IsNil)
+}
+
 func (s *pcrProfileSuite) TestAddPCRProfileUC20WithTryKernel(c *C) {
 	// Test with a standard UC20 profile that includes a try kernel
 	shim := newMockUbuntuShimImage15_7(c)
