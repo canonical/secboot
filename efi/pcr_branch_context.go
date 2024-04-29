@@ -37,6 +37,7 @@ type pcrBranchContext interface {
 	ShimContext() *shimContext // access the shim state for this branch
 
 	ResetPCR(pcr int)                                                 // reset the specified PCR for this branch
+	ResetCRTMPCR(locality uint8)                                      // reset the S-CRTM PCR (0) from the specified locality
 	ExtendPCR(pcr int, digest tpm2.Digest)                            // extend the specified PCR for this branch
 	MeasureVariable(pcr int, guid efi.GUID, name string, data []byte) // measure the specified variable for this branch
 }
@@ -90,7 +91,13 @@ func (c *pcrBranchCtx) ShimContext() *shimContext {
 }
 
 func (c *pcrBranchCtx) ResetPCR(pcr int) {
-	c.branch.AddPCRValue(c.PCRAlg(), pcr, make(tpm2.Digest, c.PCRAlg().Size()))
+	c.branch.AddPCRValue(c.PCRAlg(), pcr, make([]byte, c.PCRAlg().Size()))
+}
+
+func (c *pcrBranchCtx) ResetCRTMPCR(locality uint8) {
+	value := make([]byte, c.PCRAlg().Size())
+	value[len(value)-1] = locality
+	c.branch.AddPCRValue(c.PCRAlg(), platformFirmwarePCR, value)
 }
 
 func (c *pcrBranchCtx) ExtendPCR(pcr int, digest tpm2.Digest) {

@@ -39,6 +39,24 @@ func (o pcrProfileSetFlagsOption) applyOptionTo(gen *pcrProfileGenerator) {
 	gen.flags |= pcrProfileFlags(o)
 }
 
+// WithPlatformFirmwareProfile adds the SRTM, POST BIOS and Embedded Drivers
+// profile (measured to PCR0). This is copied directly from the current host
+// environment configuration.
+//
+// It is suitable in environments where platform firmware is measured by a
+// hardware root of trust as opposed to being verified as authentic and prevented
+// from running otherwise.
+func WithPlatformFirmwareProfile() PCRProfileOption {
+	return pcrProfileSetFlagsOption(platformFirmwareProfile)
+}
+
+// WithDriversAndAppsProfile adds the UEFI Drivers and UEFI Applications profile
+// (measured to PCR2). This is copied directly from the current host environment
+// configiguration.
+func WithDriversAndAppsProfile() PCRProfileOption {
+	return pcrProfileSetFlagsOption(driversAndAppsProfile)
+}
+
 // WithSecureBootPolicyProfile requests that the UEFI secure boot policy profile is
 // added, which restricts access to a resource based on a set of secure boot policies
 // measured to PCR7. The secure boot policy that is measured to PCR7 is defined in
@@ -163,8 +181,10 @@ func AddPCRProfile(pcrAlg tpm2.HashAlgorithmId, branch *secboot_tpm2.PCRProtecti
 type pcrProfileFlags int
 
 const (
-	secureBootPolicyProfile pcrProfileFlags = 1 << iota
+	platformFirmwareProfile pcrProfileFlags = 1 << iota
+	driversAndAppsProfile
 	bootManagerCodeProfile
+	secureBootPolicyProfile
 	kernelConfigProfile
 )
 
