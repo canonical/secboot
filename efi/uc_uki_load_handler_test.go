@@ -33,14 +33,14 @@ var _ = Suite(&ucUkiLoadHandlerSuite{})
 
 type testUCUKIMeasureImageStartParams struct {
 	alg    tpm2.HashAlgorithmId
-	flags  PcrProfileFlags
+	pcrs   PcrFlags
 	params LoadParams
 
 	expectedEvents []*mockPcrBranchEvent
 }
 
 func (s *ucUkiLoadHandlerSuite) testMeasureImageStart(c *C, params *testUCUKIMeasureImageStartParams) {
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{alg: params.alg, flags: params.flags}, &params.params, nil)
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{alg: params.alg, pcrs: params.pcrs}, &params.params, nil)
 
 	var handler UbuntuCoreUKILoadHandler
 	c.Check(handler.MeasureImageStart(ctx), IsNil)
@@ -49,8 +49,8 @@ func (s *ucUkiLoadHandlerSuite) testMeasureImageStart(c *C, params *testUCUKIMea
 
 func (s *ucUkiLoadHandlerSuite) TestMeasureImageStart(c *C) {
 	s.testMeasureImageStart(c, &testUCUKIMeasureImageStartParams{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: KernelConfigProfile,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
 			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
 			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
@@ -71,8 +71,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStart(c *C) {
 
 func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartDifferentCommandline(c *C) {
 	s.testMeasureImageStart(c, &testUCUKIMeasureImageStartParams{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: KernelConfigProfile,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
 			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover",
 			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
@@ -93,8 +93,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartDifferentCommandline(c *C) 
 
 func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartDifferentModel(c *C) {
 	s.testMeasureImageStart(c, &testUCUKIMeasureImageStartParams{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: KernelConfigProfile,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
 			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
 			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
@@ -131,8 +131,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartNoKernelConfig(c *C) {
 
 func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartSHA1(c *C) {
 	s.testMeasureImageStart(c, &testUCUKIMeasureImageStartParams{
-		alg:   tpm2.HashAlgorithmSHA1,
-		flags: KernelConfigProfile,
+		alg:  tpm2.HashAlgorithmSHA1,
+		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
 			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
 			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
@@ -153,8 +153,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartSHA1(c *C) {
 
 func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartNoCommandline(c *C) {
 	s.testMeasureImageStart(c, &testUCUKIMeasureImageStartParams{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: KernelConfigProfile,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
 			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 				"authority-id": "fake-brand",
@@ -172,7 +172,7 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartNoCommandline(c *C) {
 }
 
 func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartNoSnapModel(c *C) {
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256, flags: KernelConfigProfile}, nil, nil)
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256, pcrs: MakePcrFlags(KernelConfigPCR)}, nil, nil)
 
 	var handler UbuntuCoreUKILoadHandler
 	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `snap model must be set using SnapModelParams`)

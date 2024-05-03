@@ -231,7 +231,7 @@ func (s *shimLoadHandlerSuite) TestNewShimLoadHandlerWithVendorDb15_6(c *C) {
 
 type testShimMeasureImageStartData struct {
 	alg            tpm2.HashAlgorithmId
-	flags          PcrProfileFlags
+	pcrs           PcrFlags
 	vars           efitest.MockVars
 	shimFlags      ShimFlags
 	vendorDb       *SecureBootDB
@@ -241,7 +241,7 @@ type testShimMeasureImageStartData struct {
 
 func (s *shimLoadHandlerSuite) testMeasureImageStart(c *C, data *testShimMeasureImageStartData) (PcrBranchContext, *RootVarsCollector) {
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(data.vars, nil))
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{alg: data.alg, flags: data.flags}, nil, collector.Next())
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{alg: data.alg, pcrs: data.pcrs}, nil, collector.Next())
 
 	handler := &ShimLoadHandler{
 		Flags:     data.shimFlags,
@@ -259,7 +259,7 @@ func (s *shimLoadHandlerSuite) testMeasureImageStart(c *C, data *testShimMeasure
 func (s *shimLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfile15_6(c *C) {
 	_, collector := s.testMeasureImageStart(c, &testShimMeasureImageStartData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		vars:      makeMockVars(c, withMsSecureBootConfig(), withSbatLevel([]byte("sbat,1,2021030218\n"))),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -280,7 +280,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileApply
 	// the profile with.
 	ctx, collector := s.testMeasureImageStart(c, &testShimMeasureImageStartData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		vars:      makeMockVars(c, withMsSecureBootConfig(), withSbatLevel([]byte("sbat,1,2021030218\n")), withSbatPolicy(ShimSbatPolicyLatest)),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -330,7 +330,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileUpgra
 	// and verify that we get new sets of initial variables to rerun the profile with.
 	ctx, collector := s.testMeasureImageStart(c, &testShimMeasureImageStartData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		vars:      makeMockVars(c, withMsSecureBootConfig(), withSbatLevel([]byte("sbat,1,2021030218\n"))),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimVendorCertContainsDb | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -364,7 +364,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfile15_7T
 	// current SbatLevel.
 	_, collector := s.testMeasureImageStart(c, &testShimMeasureImageStartData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		vars:      makeMockVars(c, withMsSecureBootConfig(), withSbatLevel([]byte("sbat,1,2022052400\ngrub,2\n"))),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec,
 		vendorDb: &SecureBootDB{
@@ -382,9 +382,9 @@ func (s *shimLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfile15_7T
 func (s *shimLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfile15_2(c *C) {
 	// Test MeasureImageStart on a pre-SBAT shim
 	_, collector := s.testMeasureImageStart(c, &testShimMeasureImageStartData{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile,
-		vars:  makeMockVars(c, withMsSecureBootConfig()),
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(SecureBootPolicyPCR),
+		vars: makeMockVars(c, withMsSecureBootConfig()),
 		vendorDb: &SecureBootDB{
 			Name:     efi.VariableDescriptor{Name: "Shim", GUID: ShimGuid},
 			Contents: efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})},
@@ -398,7 +398,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfile15_2T
 	// and verify we get new sets of initial variables to rerun the profile with.
 	ctx, collector := s.testMeasureImageStart(c, &testShimMeasureImageStartData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		vars:      makeMockVars(c, withMsSecureBootConfig()),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -430,7 +430,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfile15_2T
 func (s *shimLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfile(c *C) {
 	_, collector := s.testMeasureImageStart(c, &testShimMeasureImageStartData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     BootManagerCodeProfile,
+		pcrs:      MakePcrFlags(BootManagerCodePCR),
 		vars:      makeMockVars(c, withMsSecureBootConfig()),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -444,7 +444,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfile(c *C)
 
 type testShimMeasureImageLoadData struct {
 	alg                tpm2.HashAlgorithmId
-	flags              PcrProfileFlags
+	pcrs               PcrFlags
 	db                 efi.SignatureDatabase
 	shimFlags          ShimFlags
 	vendorDb           *SecureBootDB
@@ -456,7 +456,7 @@ type testShimMeasureImageLoadData struct {
 func (s *shimLoadHandlerSuite) testMeasureImageLoad(c *C, data *testShimMeasureImageLoadData) {
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:      data.alg,
-		flags:    data.flags,
+		pcrs:     data.pcrs,
 		handlers: s,
 	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
@@ -486,7 +486,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfile15_7(c
 
 	s.testMeasureImageLoad(c, &testShimMeasureImageLoadData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		db:        msDb(c),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimVendorCertContainsDb | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -506,7 +506,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfile15_6(c
 
 	s.testMeasureImageLoad(c, &testShimMeasureImageLoadData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		db:        msDb(c),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -526,7 +526,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfileVendor
 
 	s.testMeasureImageLoad(c, &testShimMeasureImageLoadData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		db:        msDb(c),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimVendorCertContainsDb | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -546,7 +546,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfileVerify
 
 	s.testMeasureImageLoad(c, &testShimMeasureImageLoadData{
 		alg:       tpm2.HashAlgorithmSHA256,
-		flags:     SecureBootPolicyProfile,
+		pcrs:      MakePcrFlags(SecureBootPolicyPCR),
 		db:        msDb(c),
 		shimFlags: ShimHasSbatVerification | ShimFixVariableAuthorityEventsMatchSpec | ShimHasSbatRevocationManagement,
 		vendorDb: &SecureBootDB{
@@ -565,9 +565,9 @@ func (s *shimLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfileVerify
 	verificationDigest := testutil.DecodeHexString(c, "533f27695c8a3bdf2994bdca61291ae5edf781da051f592649270e82d7c95dc1")
 
 	s.testMeasureImageLoad(c, &testShimMeasureImageLoadData{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile,
-		db:    msDb(c),
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(SecureBootPolicyPCR),
+		db:   msDb(c),
 		vendorDb: &SecureBootDB{
 			Name:     efi.VariableDescriptor{Name: "Shim", GUID: ShimGuid},
 			Contents: efi.SignatureDatabase{efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{})},
@@ -583,7 +583,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfileVerify
 func (s *shimLoadHandlerSuite) TestMeasureImageLoadBootManagerCodeProfile1(c *C) {
 	s.testMeasureImageLoad(c, &testShimMeasureImageLoadData{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: BootManagerCodeProfile,
+		pcrs:  MakePcrFlags(BootManagerCodePCR),
 		image: newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig3)),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3709c5a882490fa5b9b7a471f3466341da4267060419491954324d3bfb6aa0c6")},
@@ -594,7 +594,7 @@ func (s *shimLoadHandlerSuite) TestMeasureImageLoadBootManagerCodeProfile1(c *C)
 func (s *shimLoadHandlerSuite) TestMeasureImageLoadBootManagerCodeProfile2(c *C) {
 	s.testMeasureImageLoad(c, &testShimMeasureImageLoadData{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: BootManagerCodeProfile,
+		pcrs:  MakePcrFlags(BootManagerCodePCR),
 		image: newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig2)),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "6f007fb8b3a8397bbbe5aa4d64ad2624c2cfb7cd5fa18d51bfbb0f27d1d62b89")},

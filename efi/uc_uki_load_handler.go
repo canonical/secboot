@@ -40,7 +40,7 @@ func (h *ubuntuCoreUKILoadHandler) MeasureImageStart(ctx pcrBranchContext) error
 	// less interesting for us. Note that this would require some additional work
 	// because the systemd-pcrphase is disabled at the moment.
 
-	if ctx.Flags()&kernelConfigProfile > 0 {
+	if ctx.PCRs().Contains(kernelConfigPCR) {
 		// the stub doesn't measure anything if the commandline is empty
 		if ctx.Params().KernelCommandline != "" {
 			ctx.ExtendPCR(kernelConfigPCR,
@@ -53,7 +53,7 @@ func (h *ubuntuCoreUKILoadHandler) MeasureImageStart(ctx pcrBranchContext) error
 
 	// TODO: handle sysexts if we need them in the future, which go to the sysext PCR (13).
 
-	if ctx.Flags()&kernelConfigProfile > 0 {
+	if ctx.PCRs().Contains(kernelConfigPCR) {
 		if ctx.Params().SnapModel == nil {
 			return errors.New("snap model must be set using SnapModelParams")
 		}

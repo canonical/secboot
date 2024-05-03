@@ -86,12 +86,12 @@ func (s *pcrProfileMockedSuite) TestPcrProfileGeneratorPCRAlgSHA1(c *C) {
 
 func (s *pcrProfileMockedSuite) TestWithSecureBootPolicyProfile(c *C) {
 	gen := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences(), WithSecureBootPolicyProfile())
-	c.Check(gen.Flags(), Equals, SecureBootPolicyProfile)
+	c.Check(gen.PCRs(), Equals, PcrFlags(1<<SecureBootPolicyPCR))
 }
 
 func (s *pcrProfileMockedSuite) TestWithBootManagerCodeProfile(c *C) {
 	gen := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences(), WithBootManagerCodeProfile())
-	c.Check(gen.Flags(), Equals, BootManagerCodeProfile)
+	c.Check(gen.PCRs(), Equals, PcrFlags(1<<BootManagerCodePCR))
 }
 
 func (s *pcrProfileMockedSuite) TestPcrProfileGeneratorImageLoadHandlers(c *C) {
