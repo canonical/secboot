@@ -26,12 +26,12 @@ import (
 
 // Export constants for testing
 const (
-	BootManagerCodeProfile                     = bootManagerCodeProfile
-	DriversAndAppsProfile                      = driversAndAppsProfile
+	BootManagerCodePCR                         = bootManagerCodePCR
+	DriversAndAppsPCR                          = driversAndAppsPCR
 	GrubChainloaderUsesShimProtocol            = grubChainloaderUsesShimProtocol
-	KernelConfigProfile                        = kernelConfigProfile
-	PlatformFirmwareProfile                    = platformFirmwareProfile
-	SecureBootPolicyProfile                    = secureBootPolicyProfile
+	KernelConfigPCR                            = kernelConfigPCR
+	PlatformFirmwarePCR                        = platformFirmwarePCR
+	SecureBootPolicyPCR                        = secureBootPolicyPCR
 	ShimFixVariableAuthorityEventsMatchSpec    = shimFixVariableAuthorityEventsMatchSpec
 	ShimHasSbatRevocationManagement            = shimHasSbatRevocationManagement
 	ShimHasSbatVerification                    = shimHasSbatVerification
@@ -59,6 +59,7 @@ var (
 	MakeImageLoadHandlerMap                     = makeImageLoadHandlerMap
 	MakeMicrosoftUEFICASecureBootNamespaceRules = makeMicrosoftUEFICASecureBootNamespaceRules
 	MustParseShimVersion                        = mustParseShimVersion
+	MakePcrFlags                                = makePcrFlags
 	NewestSbatLevel                             = newestSbatLevel
 	NewFwLoadHandler                            = newFwLoadHandler
 	NewGrubImageHandle                          = newGrubImageHandle
@@ -102,9 +103,9 @@ type ImageSignedByOrganization = imageSignedByOrganization
 type LoadParams = loadParams
 type NullLoadHandler = nullLoadHandler
 type PcrBranchContext = pcrBranchContext
+type PcrFlags = pcrFlags
 type PcrImagesMeasurer = pcrImagesMeasurer
 type PcrProfileContext = pcrProfileContext
-type PcrProfileFlags = pcrProfileFlags
 type PeImageHandle = peImageHandle
 type RootVarReaderKey = rootVarReaderKey
 type RootVarsCollector = rootVarsCollector

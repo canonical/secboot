@@ -176,7 +176,7 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 	ctx.ShimContext().Flags = h.Flags
 	ctx.ShimContext().VendorDb = h.VendorDb
 
-	if ctx.Flags()&secureBootPolicyProfile == 0 {
+	if !ctx.PCRs().Contains(secureBootPolicyPCR) {
 		// We're not generating secure boot policy
 		return nil
 	}
@@ -234,7 +234,7 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 	}
 
 	// Measure SbatLevel
-	ctx.MeasureVariable(secureBootPCR, shimGuid, shimSbatLevelName, sbatLevel)
+	ctx.MeasureVariable(secureBootPolicyPCR, shimGuid, shimSbatLevelName, sbatLevel)
 
 	if !bytes.Equal(sbatLevel, hostSbatLevel) {
 		// This branch applies a new SBAT update
@@ -318,18 +318,18 @@ func (m *shimImageLoadMeasurer) measureVerification() error {
 		return nil
 	}
 	sc.AppendVerificationEvent(digest)
-	m.ExtendPCR(secureBootPCR, digest)
+	m.ExtendPCR(secureBootPolicyPCR, digest)
 	return nil
 }
 
 func (m *shimImageLoadMeasurer) measure() error {
-	if m.Flags()&secureBootPolicyProfile > 0 {
+	if m.PCRs().Contains(secureBootPolicyPCR) {
 		if err := m.measureVerification(); err != nil {
 			return xerrors.Errorf("cannot measure secure boot event: %w", err)
 		}
 	}
 
-	if m.Flags()&bootManagerCodeProfile > 0 {
+	if m.PCRs().Contains(bootManagerCodePCR) {
 		if err := m.measurePEImageDigest(); err != nil {
 			return xerrors.Errorf("cannot measure boot manager code event: %w", err)
 		}

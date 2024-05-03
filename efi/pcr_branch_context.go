@@ -36,9 +36,9 @@ type pcrBranchContext interface {
 	FwContext() *fwContext     // access the platform firmware state for this branch
 	ShimContext() *shimContext // access the shim state for this branch
 
-	ResetPCR(pcr int)                                                 // reset the specified PCR for this branch
-	ExtendPCR(pcr int, digest tpm2.Digest)                            // extend the specified PCR for this branch
-	MeasureVariable(pcr int, guid efi.GUID, name string, data []byte) // measure the specified variable for this branch
+	ResetPCR(pcr tpm2.Handle)                                                 // reset the specified PCR for this branch
+	ExtendPCR(pcr tpm2.Handle, digest tpm2.Digest)                            // extend the specified PCR for this branch
+	MeasureVariable(pcr tpm2.Handle, guid efi.GUID, name string, data []byte) // measure the specified variable for this branch
 }
 
 type pcrBranchCtx struct {
@@ -89,18 +89,18 @@ func (c *pcrBranchCtx) ShimContext() *shimContext {
 	return &c.sc
 }
 
-func (c *pcrBranchCtx) ResetPCR(pcr int) {
-	c.branch.AddPCRValue(c.PCRAlg(), pcr, make(tpm2.Digest, c.PCRAlg().Size()))
+func (c *pcrBranchCtx) ResetPCR(pcr tpm2.Handle) {
+	c.branch.AddPCRValue(c.PCRAlg(), int(pcr), make(tpm2.Digest, c.PCRAlg().Size()))
 }
 
-func (c *pcrBranchCtx) ExtendPCR(pcr int, digest tpm2.Digest) {
-	c.branch.ExtendPCR(c.PCRAlg(), pcr, digest)
+func (c *pcrBranchCtx) ExtendPCR(pcr tpm2.Handle, digest tpm2.Digest) {
+	c.branch.ExtendPCR(c.PCRAlg(), int(pcr), digest)
 }
 
-func (c *pcrBranchCtx) MeasureVariable(pcr int, guid efi.GUID, name string, data []byte) {
+func (c *pcrBranchCtx) MeasureVariable(pcr tpm2.Handle, guid efi.GUID, name string, data []byte) {
 	c.branch.ExtendPCR(
 		c.PCRAlg(),
-		pcr,
+		int(pcr),
 		tcglog.ComputeEFIVariableDataDigest(c.PCRAlg().GetHash(), name, guid, data))
 }
 
