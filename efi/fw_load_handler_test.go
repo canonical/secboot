@@ -48,15 +48,15 @@ type testFwMeasureImageStartData struct {
 	vars           efitest.MockVars
 	logOptions     *efitest.LogOptions
 	alg            tpm2.HashAlgorithmId
-	flags          PcrProfileFlags
+	pcrs           PcrFlags
 	expectedEvents []*mockPcrBranchEvent
 }
 
 func (s *fwLoadHandlerSuite) testMeasureImageStart(c *C, data *testFwMeasureImageStartData) *FwContext {
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(data.vars, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:   data.alg,
-		flags: data.flags}, nil, collector.Next())
+		alg:  data.alg,
+		pcrs: data.pcrs}, nil, collector.Next())
 
 	handler := NewFwLoadHandler(efitest.NewLog(c, data.logOptions))
 	c.Check(handler.MeasureImageStart(ctx), IsNil)
@@ -74,7 +74,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfile(c *C) 
 		vars:       vars,
 		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}},
 		alg:        tpm2.HashAlgorithmSHA256,
-		flags:      SecureBootPolicyProfile,
+		pcrs:       MakePcrFlags(SecureBootPolicyPCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 7, eventType: mockPcrBranchResetEvent},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
@@ -97,8 +97,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileSecureB
 			Algorithms:         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 			SecureBootDisabled: true,
 		},
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(SecureBootPolicyPCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 7, eventType: mockPcrBranchResetEvent},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
@@ -121,8 +121,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileInclude
 			Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 			IncludeDriverLaunch: true,
 		},
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(SecureBootPolicyPCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 7, eventType: mockPcrBranchResetEvent},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
@@ -143,7 +143,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfile(c *C) {
 		vars:       vars,
 		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}},
 		alg:        tpm2.HashAlgorithmSHA256,
-		flags:      BootManagerCodeProfile,
+		pcrs:       MakePcrFlags(BootManagerCodePCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 4, eventType: mockPcrBranchResetEvent},
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba")},
@@ -162,8 +162,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileWithoutC
 			Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 			NoCallingEFIApplicationEvent: true,
 		},
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: BootManagerCodeProfile,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(BootManagerCodePCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 4, eventType: mockPcrBranchResetEvent},
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
@@ -180,8 +180,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileIncludeS
 			Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
 			IncludeSysPrepAppLaunch: true,
 		},
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: BootManagerCodeProfile,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(BootManagerCodePCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 4, eventType: mockPcrBranchResetEvent},
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4")},
@@ -197,12 +197,12 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyAndBootManager
 		vars:       vars,
 		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}},
 		alg:        tpm2.HashAlgorithmSHA256,
-		flags:      BootManagerCodeProfile | SecureBootPolicyProfile,
+		pcrs:       MakePcrFlags(BootManagerCodePCR, SecureBootPolicyPCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 4, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba")},
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
-			{pcr: 7, eventType: mockPcrBranchResetEvent},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
@@ -217,7 +217,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartPlatformFirmwareProfile(c *C) 
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}},
 		alg:        tpm2.HashAlgorithmSHA256,
-		flags:      PlatformFirmwareProfile,
+		pcrs:       MakePcrFlags(PlatformFirmwarePCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 0, eventType: mockPcrBranchResetEvent},
 			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6")},
@@ -232,7 +232,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartPlatformFirmwareProfileSL3(c *
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}, StartupLocality: 3},
 		alg:        tpm2.HashAlgorithmSHA256,
-		flags:      PlatformFirmwareProfile,
+		pcrs:       MakePcrFlags(PlatformFirmwarePCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 0, eventType: mockPcrBranchResetCRTMPCREvent, locality: 3},
 			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6")},
@@ -247,7 +247,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartDriversAndAppsProfile(c *C) {
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}},
 		alg:        tpm2.HashAlgorithmSHA256,
-		flags:      DriversAndAppsProfile,
+		pcrs:       MakePcrFlags(DriversAndAppsPCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 2, eventType: mockPcrBranchResetEvent},
 			{pcr: 2, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
@@ -259,7 +259,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartDriversAndAppsProfile2(c *C) {
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}, IncludeDriverLaunch: true},
 		alg:        tpm2.HashAlgorithmSHA256,
-		flags:      DriversAndAppsProfile,
+		pcrs:       MakePcrFlags(DriversAndAppsPCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 2, eventType: mockPcrBranchResetEvent},
 			{pcr: 2, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6")},
@@ -272,8 +272,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog1(c *C) {
 	// Insert a second EV_SEPARATOR event into PCR7
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile}, nil, collector.Next())
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(SecureBootPolicyPCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
@@ -296,8 +296,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog2(c *C) {
 	// Prepend a verification event into PCR7 before the EV_SEPARATOR
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile}, nil, collector.Next())
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(SecureBootPolicyPCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
@@ -323,8 +323,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog3(c *C) {
 	// Append a configuration event into PCR7 after the EV_SEPARATOR
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile}, nil, collector.Next())
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(SecureBootPolicyPCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
@@ -350,8 +350,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog4(c *C) {
 	// Insert an unexpected event type into PCR7
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile}, nil, collector.Next())
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(SecureBootPolicyPCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
@@ -377,8 +377,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog5(c *C) {
 	// Insert an invalid StartupLocality event data into the log
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: PlatformFirmwareProfile}, nil, collector.Next())
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(PlatformFirmwarePCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
@@ -402,8 +402,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog6(c *C) {
 	// Insert an extra StartupLocality event data into the log
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:   tpm2.HashAlgorithmSHA256,
-		flags: PlatformFirmwareProfile}, nil, collector.Next())
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(PlatformFirmwarePCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
@@ -429,7 +429,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog6(c *C) {
 
 type testFwMeasureImageLoadData struct {
 	alg                tpm2.HashAlgorithmId
-	flags              PcrProfileFlags
+	pcrs               PcrFlags
 	db                 efi.SignatureDatabase
 	fc                 *FwContext
 	image              *mockImage
@@ -440,7 +440,7 @@ type testFwMeasureImageLoadData struct {
 func (s *fwLoadHandlerSuite) testMeasureImageLoad(c *C, data *testFwMeasureImageLoadData) {
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:      data.alg,
-		flags:    data.flags,
+		pcrs:     data.pcrs,
 		handlers: s,
 	}, nil, nil)
 	if data.fc != nil {
@@ -468,7 +468,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfile(c *C) {
 
 	s.testMeasureImageLoad(c, &testFwMeasureImageLoadData{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile,
+		pcrs:  MakePcrFlags(SecureBootPolicyPCR),
 		db:    msDb(c),
 		image: newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4)),
 		expectedEvents: []*mockPcrBranchEvent{
@@ -486,7 +486,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfileExisting
 
 	s.testMeasureImageLoad(c, &testFwMeasureImageLoadData{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: SecureBootPolicyProfile,
+		pcrs:  MakePcrFlags(SecureBootPolicyPCR),
 		db:    msDb(c),
 		fc:    fc,
 		image: newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4)),
@@ -496,7 +496,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfileExisting
 func (s *fwLoadHandlerSuite) TestMeasureImageLoadBootManagerCodeProfile1(c *C) {
 	s.testMeasureImageLoad(c, &testFwMeasureImageLoadData{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: BootManagerCodeProfile,
+		pcrs:  MakePcrFlags(BootManagerCodePCR),
 		image: newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4)),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "bf6b6dfdb1f6435a81e4808db7f846d86d170566e4753d4384fdab6504be4fb9")},
@@ -507,7 +507,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageLoadBootManagerCodeProfile1(c *C) {
 func (s *fwLoadHandlerSuite) TestMeasureImageLoadBootManagerCodeProfile2(c *C) {
 	s.testMeasureImageLoad(c, &testFwMeasureImageLoadData{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: BootManagerCodeProfile,
+		pcrs:  MakePcrFlags(BootManagerCodePCR),
 		image: newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig3)),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "dbffd70a2c43fd2c1931f18b8f8c08c5181db15f996f747dfed34def52fad036")},
@@ -520,7 +520,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyAndBootManagerC
 
 	s.testMeasureImageLoad(c, &testFwMeasureImageLoadData{
 		alg:   tpm2.HashAlgorithmSHA256,
-		flags: BootManagerCodeProfile | SecureBootPolicyProfile,
+		pcrs:  MakePcrFlags(BootManagerCodePCR, SecureBootPolicyPCR),
 		db:    msDb(c),
 		image: newMockImage().appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4)),
 		expectedEvents: []*mockPcrBranchEvent{
