@@ -235,22 +235,62 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 	// OS-present environment as a separator event measured to PCRs 0-7, but EDK2 measures a separator to
 	// PCR7 as soon as the secure boot policy is measured and system preparation applications are considered
 	// part of the pre-OS environment - they are measured to PCR4 before the pre-OS to OS-present transition
-	// is signalled by measuring separators to the remaining PCRs. This seems sensible, but newer Dell
-	// devices load an agent from firmware before shim is executed and measure this to PCR4 as part of the
-	// OS-present environment, which seems wrong. The approach here assumes that the EDK2 behaviour is
-	// correct.
-	for _, event := range h.log.Events {
+	// is signalled by measuring separators to the remaining PCRs. The UEFI specification says that system
+	// preparation applications are executed before the ready to boot signal, which is when the transition
+	// from pre-OS to OS-present occurs, so I think we can be confident that we're correct here.
+	events := h.log.Events
+	measuredSeparator := false
+	for len(events) > 0 {
+		event := events[0]
+		events = events[1:]
+
 		if event.PCRIndex != tcglog.PCRIndex(bootManagerCodePCR) {
 			continue
 		}
 
 		if event.EventType == tcglog.EventTypeSeparator {
-			return h.measureSeparator(ctx, bootManagerCodePCR, event)
+			if err := h.measureSeparator(ctx, bootManagerCodePCR, event); err != nil {
+				return err
+			}
+			measuredSeparator = true
+			break
 		}
 		ctx.ExtendPCR(bootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
 	}
 
-	return errors.New("missing separator")
+	if !measuredSeparator {
+		return errors.New("missing separator")
+	}
+
+	// Some newer laptops including those from Dell load an agent from firmware before shim is executed and
+	// measure this to PCR4 as part of the OS-present environment, which seems wrong. Retain any launch events
+	// that are loaded from flash during the OS-present phase before anything that's not loaded from flash.
+	for len(events) > 0 {
+		event := events[0]
+		events = events[1:]
+
+		if event.PCRIndex != tcglog.PCRIndex(bootManagerCodePCR) {
+			continue
+		}
+		if event.EventType != tcglog.EventTypeEFIBootServicesApplication {
+			return fmt.Errorf("unexpected OS-present event type: %v", event.EventType)
+		}
+
+		data, ok := event.Data.(*tcglog.EFIImageLoadEvent)
+		if !ok {
+			return fmt.Errorf("invalid event data: %w", event.Data.(error))
+		}
+		if len(data.DevicePath) == 0 {
+			return errors.New("invalid device path for image load event")
+		}
+		if _, isFv := data.DevicePath[0].(efi.MediaFvDevicePathNode); !isFv {
+			// Not loaded from flash
+			break
+		}
+		ctx.ExtendPCR(bootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+	}
+
+	return nil
 }
 
 // MeasureImageStart implements imageLoadHandler.MeasureImageStart.

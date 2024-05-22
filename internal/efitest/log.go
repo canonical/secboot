@@ -95,6 +95,7 @@ type LogOptions struct {
 	SecureBootDisabled           bool
 	IncludeDriverLaunch          bool  // include a driver launch in the log
 	IncludeSysPrepAppLaunch      bool  // include a system-preparation app launch in the log
+	IncludeFirmwareVARAppLaunch  bool  // include a flash based value-added-retailer agent launch in the log as part of the OS-present phase
 	NoCallingEFIApplicationEvent bool  // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
 	NoSBAT                       bool  // omit the SbatLevel measurement.
 	StartupLocality              uint8 // specify a startup locality other than 0
@@ -251,6 +252,8 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeEFIBootServicesDriver,
 			data:      data})
 	}
+
+	// Mock sysprep app launch
 	if opts.IncludeSysPrepAppLaunch {
 		if !opts.SecureBootDisabled && !opts.IncludeDriverLaunch {
 			esd := &efi.SignatureData{
@@ -296,8 +299,6 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeEFIBootServicesApplication,
 			data:      data})
 	}
-
-	// Mock sysprep app launch
 
 	// Mock boot config measurements
 	{
@@ -371,6 +372,21 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  pcr,
 			eventType: tcglog.EventTypeSeparator,
+			data:      data})
+	}
+
+	// Mock VAR application launch
+	if opts.IncludeFirmwareVARAppLaunch {
+		pe := bytesHashData("mock VAR agent")
+		data := &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0xa7b34ff7,
+			LengthInMemory:   56410,
+			DevicePath: efi.DevicePath{
+				efi.MediaFvDevicePathNode(efi.MakeGUID(0x983cc241, 0xb4f6, 0x4a85, 0x9733, [...]uint8{0x4c, 0x15, 0x4b, 0x3a, 0xa3, 0x27})),
+				efi.MediaFvFileDevicePathNode(efi.MakeGUID(0x467b2992, 0xa118, 0x4456, 0xbc45, [...]uint8{0xfa, 0x4c, 0x7f, 0xfd, 0x92, 0x91}))}}
+		builder.hashLogExtendEvent(c, pe, &logEvent{
+			pcrIndex:  4,
+			eventType: tcglog.EventTypeEFIBootServicesApplication,
 			data:      data})
 	}
 
