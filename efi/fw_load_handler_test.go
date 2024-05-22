@@ -20,6 +20,7 @@
 package efi_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -268,7 +269,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartDriversAndAppsProfile2(c *C) {
 	})
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog1(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_1(c *C) {
 	// Insert a second EV_SEPARATOR event into PCR7
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
@@ -292,7 +293,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog1(c *C) {
 	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected separator`)
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog2(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_2(c *C) {
 	// Prepend a verification event into PCR7 before the EV_SEPARATOR
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
@@ -319,7 +320,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog2(c *C) {
 	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected verification event`)
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog3(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_3(c *C) {
 	// Append a configuration event into PCR7 after the EV_SEPARATOR
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
@@ -346,7 +347,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog3(c *C) {
 	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected configuration event`)
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog4(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_4(c *C) {
 	// Insert an unexpected event type into PCR7
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
@@ -373,7 +374,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog4(c *C) {
 	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected event type \(EV_EFI_BOOT_SERVICES_APPLICATION\) found in log`)
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog5(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR0_1(c *C) {
 	// Insert an invalid StartupLocality event data into the log
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
@@ -395,10 +396,10 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog5(c *C) {
 	}
 
 	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure platform firmware policy: cannot decode EV_NO_ACTION event data: cannot decode StartupLocality data: EOF`)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure platform firmware: cannot decode EV_NO_ACTION event data: cannot decode StartupLocality data: EOF`)
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog6(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR0_2(c *C) {
 	// Insert an extra StartupLocality event data into the log
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
@@ -424,7 +425,133 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLog6(c *C) {
 	}
 
 	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure platform firmware policy: log for PCR0 has an unexpected StartupLocality event`)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure platform firmware: log for PCR0 has an unexpected StartupLocality event`)
+}
+
+func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogSeparatorError(c *C, pcr tpm2.Handle) error {
+	// Insert an invalid error separator event into the log for the specified pcr
+	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(pcr)}, nil, collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
+	for i, event := range log.Events {
+		if event.PCRIndex == tcglog.PCRIndex(pcr) && event.EventType == tcglog.EventTypeSeparator {
+			// Overwrite the event data with a mock error event
+			log.Events[i].Data = tcglog.NewErrorSeparatorEventData([]byte{0x50, 0x10, 0x00, 0x00})
+			break
+		}
+	}
+
+	handler := NewFwLoadHandler(log)
+	return handler.MeasureImageStart(ctx)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogSeparatorErrorPCR0(c *C) {
+	err := s.testMeasureImageStartErrBadLogSeparatorError(c, 0)
+	c.Check(err, ErrorMatches, `cannot measure platform firmware: separator indicates that an error occurred \(error code from log: 4176\)`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogSeparatorErrorPCR2(c *C) {
+	err := s.testMeasureImageStartErrBadLogSeparatorError(c, 2)
+	c.Check(err, ErrorMatches, `cannot measure drivers and apps: separator indicates that an error occurred \(error code from log: 4176\)`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogSeparatorErrorPCR4(c *C) {
+	err := s.testMeasureImageStartErrBadLogSeparatorError(c, 4)
+	c.Check(err, ErrorMatches, `cannot measure boot manager code: separator indicates that an error occurred \(error code from log: 4176\)`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogSeparatorErrorPCR7(c *C) {
+	err := s.testMeasureImageStartErrBadLogSeparatorError(c, 7)
+	c.Check(err, ErrorMatches, `cannot measure secure boot policy: separator indicates that an error occurred \(error code from log: 4176\)`)
+}
+
+func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogInvalidSeparator(c *C, pcr tpm2.Handle) error {
+	// Insert an invalid separator event into the log for the specified PCR
+	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(pcr)}, nil, collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
+	for i, event := range log.Events {
+		if event.PCRIndex == tcglog.PCRIndex(pcr) && event.EventType == tcglog.EventTypeSeparator {
+			// Overwrite the event data with a mock error event
+			log.Events[i].Data = &mockErrLogData{errors.New("data is the wrong size")}
+			break
+		}
+	}
+
+	handler := NewFwLoadHandler(log)
+	return handler.MeasureImageStart(ctx)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogInvalidSeparatorPCR0(c *C) {
+	err := s.testMeasureImageStartErrBadLogInvalidSeparator(c, 0)
+	c.Check(err, ErrorMatches, `cannot measure platform firmware: cannot measure invalid separator event: data is the wrong size`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogInvalidSeparatorPCR2(c *C) {
+	err := s.testMeasureImageStartErrBadLogInvalidSeparator(c, 2)
+	c.Check(err, ErrorMatches, `cannot measure drivers and apps: cannot measure invalid separator event: data is the wrong size`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogInvalidSeparatorPCR4(c *C) {
+	err := s.testMeasureImageStartErrBadLogInvalidSeparator(c, 4)
+	c.Check(err, ErrorMatches, `cannot measure boot manager code: cannot measure invalid separator event: data is the wrong size`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogInvalidSeparatorPCR7(c *C) {
+	err := s.testMeasureImageStartErrBadLogInvalidSeparator(c, 7)
+	c.Check(err, ErrorMatches, `cannot measure secure boot policy: cannot measure invalid separator event: data is the wrong size`)
+}
+
+func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogMissingSeparator(c *C, pcr tpm2.Handle) error {
+	// Remove the separator from the specified PCR
+	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(pcr)}, nil, collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
+	for i, event := range log.Events {
+		if event.PCRIndex == tcglog.PCRIndex(pcr) && event.EventType == tcglog.EventTypeSeparator {
+			events := log.Events[:i]
+			if len(log.Events) > i+1 {
+				events = append(events, log.Events[i+1:]...)
+			}
+			log.Events = events
+			break
+		}
+	}
+
+	handler := NewFwLoadHandler(log)
+	return handler.MeasureImageStart(ctx)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogMissingSeparatorPCR0(c *C) {
+	err := s.testMeasureImageStartErrBadLogMissingSeparator(c, 0)
+	c.Check(err, ErrorMatches, `cannot measure platform firmware: missing separator`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogMissingSeparatorPCR2(c *C) {
+	err := s.testMeasureImageStartErrBadLogMissingSeparator(c, 2)
+	c.Check(err, ErrorMatches, `cannot measure drivers and apps: missing separator`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogMissingSeparatorPCR4(c *C) {
+	err := s.testMeasureImageStartErrBadLogMissingSeparator(c, 4)
+	c.Check(err, ErrorMatches, `cannot measure boot manager code: missing separator`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogMissingSeparatorPCR7(c *C) {
+	err := s.testMeasureImageStartErrBadLogMissingSeparator(c, 7)
+	c.Check(err, ErrorMatches, `cannot measure secure boot policy: unexpected verification event`)
 }
 
 type testFwMeasureImageLoadData struct {
