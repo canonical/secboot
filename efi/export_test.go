@@ -194,14 +194,6 @@ func MockOpenPeImage(fn func(Image) (peImageHandle, error)) (restore func()) {
 	}
 }
 
-func MockReadVar(fn func(string, efi.GUID) ([]byte, efi.VariableAttributes, error)) (restore func()) {
-	origReadVar := readVar
-	readVar = fn
-	return func() {
-		readVar = origReadVar
-	}
-}
-
 func MockSnapdenvTesting(testing bool) (restore func()) {
 	orig := snapdenvTesting
 	snapdenvTesting = func() bool { return testing }

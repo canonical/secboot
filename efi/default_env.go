@@ -28,13 +28,12 @@ import (
 
 var (
 	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
-	readVar      = efi.ReadVariable
 )
 
 type defaultEnvImpl struct{}
 
 func (e defaultEnvImpl) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
-	return readVar(name, guid)
+	return efi.ReadVariable(name, guid)
 }
 
 func (e defaultEnvImpl) ReadEventLog() (*tcglog.Log, error) {

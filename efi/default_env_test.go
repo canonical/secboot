@@ -20,6 +20,7 @@
 package efi_test
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -33,6 +34,27 @@ import (
 	. "gopkg.in/check.v1"
 )
 
+// TODO: make efitest.MockVars implement efi.VarsBackend in a future PR.
+type mockVarsBackend struct {
+	vars efitest.MockVars
+}
+
+func (v *mockVarsBackend) Get(name string, guid efi.GUID) (efi.VariableAttributes, []byte, error) {
+	entry, exists := v.vars[efi.VariableDescriptor{Name: name, GUID: guid}]
+	if !exists {
+		return 0, nil, efi.ErrVarNotExist
+	}
+	return entry.Attrs, entry.Payload, nil
+}
+
+func (v *mockVarsBackend) Set(name string, guid efi.GUID, attrs efi.VariableAttributes, data []byte) error {
+	return errors.New("not implemented")
+}
+
+func (v *mockVarsBackend) List() ([]efi.VariableDescriptor, error) {
+	return nil, errors.New("not implemented")
+}
+
 type defaultEnvSuite struct{}
 
 var _ = Suite(&defaultEnvSuite{})
@@ -44,13 +66,7 @@ type testReadVarData struct {
 
 func (s *defaultEnvSuite) testReadVar(c *C, data *testReadVarData) {
 	vars := makeMockVars(c, withMsSecureBootConfig())
-	restore := MockReadVar(func(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
-		entry, exists := vars[efi.VariableDescriptor{Name: name, GUID: guid}]
-		if !exists {
-			return nil, 0, efi.ErrVarNotExist
-		}
-		return entry.Payload, entry.Attrs, nil
-	})
+	restore := efi.MockVarsBackend(&mockVarsBackend{vars: vars})
 	defer restore()
 
 	payload, attrs, err := DefaultEnv.ReadVar(data.name, data.guid)
