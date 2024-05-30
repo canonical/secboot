@@ -140,6 +140,56 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	return nil
 }
 
+func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
+	donePcrReset := false
+
+	for _, event := range h.log.Events {
+		if event.PCRIndex != platformFirmwarePCR {
+			continue
+		}
+		if event.EventType == tcglog.EventTypeNoAction {
+			if err, isErr := event.Data.(error); isErr {
+				return fmt.Errorf("cannot decode EV_NO_ACTION event data: %w", err)
+			}
+			if loc, isLoc := event.Data.(*tcglog.StartupLocalityEventData); isLoc {
+				if donePcrReset {
+					return errors.New("log for PCR0 has an unexpected StartupLocality event")
+				}
+				ctx.ResetCRTMPCR(loc.StartupLocality)
+				donePcrReset = true
+			}
+			continue
+		}
+
+		if !donePcrReset {
+			ctx.ResetPCR(platformFirmwarePCR)
+			donePcrReset = true
+		}
+
+		ctx.ExtendPCR(platformFirmwarePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		if event.EventType == tcglog.EventTypeSeparator {
+			break
+		}
+	}
+
+	return nil
+}
+
+func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) {
+	ctx.ResetPCR(driversAndAppsPCR)
+
+	for _, event := range h.log.Events {
+		if event.PCRIndex != driversAndAppsPCR {
+			continue
+		}
+
+		ctx.ExtendPCR(driversAndAppsPCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		if event.EventType == tcglog.EventTypeSeparator {
+			break
+		}
+	}
+}
+
 func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) {
 	ctx.ResetPCR(bootManagerCodePCR)
 
@@ -189,13 +239,21 @@ func (h *fwLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 		return errors.New("the TCG event log does not have the requested algorithm")
 	}
 
+	if ctx.Flags()&platformFirmwareProfile > 0 {
+		if err := h.measurePlatformFirmware(ctx); err != nil {
+			return fmt.Errorf("cannot measure platform firmware policy: %w", err)
+		}
+	}
+	if ctx.Flags()&driversAndAppsProfile > 0 {
+		h.measureDriversAndApps(ctx)
+	}
+	if ctx.Flags()&bootManagerCodeProfile > 0 {
+		h.measureBootManagerCodePreOS(ctx)
+	}
 	if ctx.Flags()&secureBootPolicyProfile > 0 {
 		if err := h.measureSecureBootPolicyPreOS(ctx); err != nil {
 			return xerrors.Errorf("cannot measure secure boot policy: %w", err)
 		}
-	}
-	if ctx.Flags()&bootManagerCodeProfile > 0 {
-		h.measureBootManagerCodePreOS(ctx)
 	}
 	if ctx.Flags()&kernelConfigProfile > 0 {
 		ctx.ResetPCR(kernelConfigPCR)

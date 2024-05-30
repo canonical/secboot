@@ -61,6 +61,7 @@ type mockPcrBranchEventType int
 
 const (
 	mockPcrBranchResetEvent mockPcrBranchEventType = iota
+	mockPcrBranchResetCRTMPCREvent
 	mockPcrBranchExtendEvent
 	mockPcrBranchMeasureVariableEvent
 )
@@ -68,6 +69,8 @@ const (
 type mockPcrBranchEvent struct {
 	pcr       int
 	eventType mockPcrBranchEventType
+
+	locality uint8
 
 	digest tpm2.Digest
 
@@ -117,6 +120,14 @@ func (c *mockPcrBranchContext) ResetPCR(pcr int) {
 	c.events = append(c.events, &mockPcrBranchEvent{
 		pcr:       pcr,
 		eventType: mockPcrBranchResetEvent,
+	})
+}
+
+func (c *mockPcrBranchContext) ResetCRTMPCR(locality uint8) {
+	c.events = append(c.events, &mockPcrBranchEvent{
+		pcr:       0,
+		eventType: mockPcrBranchResetCRTMPCREvent,
+		locality:  locality,
 	})
 }
 
@@ -651,4 +662,28 @@ func (s *mockSecureBootNamespaceRules) AddAuthorities(certs ...*x509.Certificate
 
 func (mockSecureBootNamespaceRules) NewImageLoadHandler(image PeImageHandle) (ImageLoadHandler, error) {
 	return nil, errors.New("not implemented")
+}
+
+type mockErrLogData struct {
+	err error
+}
+
+func (d *mockErrLogData) String() string {
+	return fmt.Sprintf("Invalid event data: %v", d.err)
+}
+
+func (d *mockErrLogData) Bytes() []byte {
+	panic("not implemented")
+}
+
+func (d *mockErrLogData) Write(w io.Writer) error {
+	panic("not implemented")
+}
+
+func (d *mockErrLogData) Error() string {
+	return d.err.Error()
+}
+
+func (d *mockErrLogData) Unwrap() error {
+	return d.err
 }

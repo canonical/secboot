@@ -27,8 +27,10 @@ import (
 // Export constants for testing
 const (
 	BootManagerCodeProfile                     = bootManagerCodeProfile
+	DriversAndAppsProfile                      = driversAndAppsProfile
 	GrubChainloaderUsesShimProtocol            = grubChainloaderUsesShimProtocol
 	KernelConfigProfile                        = kernelConfigProfile
+	PlatformFirmwareProfile                    = platformFirmwareProfile
 	SecureBootPolicyProfile                    = secureBootPolicyProfile
 	ShimFixVariableAuthorityEventsMatchSpec    = shimFixVariableAuthorityEventsMatchSpec
 	ShimHasSbatRevocationManagement            = shimHasSbatRevocationManagement

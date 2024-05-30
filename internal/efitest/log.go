@@ -93,10 +93,11 @@ type LogOptions struct {
 	Algorithms []tpm2.HashAlgorithmId // the digest algorithms to include
 
 	SecureBootDisabled           bool
-	IncludeDriverLaunch          bool // include a driver launch in the log
-	IncludeSysPrepAppLaunch      bool // include a system-preparation app launch in the log
-	NoCallingEFIApplicationEvent bool // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
-	NoSBAT                       bool // omit the SbatLevel measurement.
+	IncludeDriverLaunch          bool  // include a driver launch in the log
+	IncludeSysPrepAppLaunch      bool  // include a system-preparation app launch in the log
+	NoCallingEFIApplicationEvent bool  // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
+	NoSBAT                       bool  // omit the SbatLevel measurement.
+	StartupLocality              uint8 // specify a startup locality other than 0
 }
 
 // NewLog creates a mock TCG log for testing. The log will look like a standard
@@ -126,6 +127,18 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 				DigestSizes:      digestSizes,
 			},
 		},
+	}
+	if opts.StartupLocality > 0 {
+		ev := &tcglog.Event{
+			PCRIndex:  0,
+			EventType: tcglog.EventTypeNoAction,
+			Digests:   make(tcglog.DigestMap),
+			Data:      &tcglog.StartupLocalityEventData{StartupLocality: opts.StartupLocality},
+		}
+		for _, alg := range opts.Algorithms {
+			ev.Digests[alg] = make(tcglog.Digest, alg.Size())
+		}
+		builder.events = append(builder.events, ev)
 	}
 
 	// Mock S-CRTM measurements
