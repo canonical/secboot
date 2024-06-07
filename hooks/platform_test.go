@@ -21,8 +21,10 @@ package hooks_test
 
 import (
 	"crypto"
+	"crypto/rand"
 	_ "crypto/sha256"
 	"encoding/json"
+	"errors"
 
 	. "gopkg.in/check.v1"
 
@@ -459,4 +461,106 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysWithParamsDifferentRole(c *C) {
 		ciphertext:        testutil.DecodeHexString(c, "c9f3f5cb299a115d8bdd77a800ac348f4992f2bb2df5b343729201ad9ce3f79ea2cc46927c7ef3bd809603d12521991229bcb7deaac249d568afc62390c99ddccaf759e17f523c5c96bc534986143866987aaa0e2e0a"),
 		expectedPlaintext: testutil.DecodeHexString(c, "30440420f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa0420e51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc396"),
 	})
+}
+
+type platformSuiteIntegrated struct{}
+
+var _ = Suite(&platformSuiteIntegrated{})
+
+func (s *platformSuiteIntegrated) SetUpSuite(c *C) {
+	SetKeyProtector(makeMockKeyProtector(mockHooksProtector), 0)
+	SetKeyRevealer(makeMockKeyRevealer(mockHooksRevealer))
+}
+
+func (s *platformSuiteIntegrated) TearDownSuite(c *C) {
+	SetKeyProtector(nil, 0)
+	SetKeyRevealer(nil)
+}
+
+func (s *platformSuiteIntegrated) TestRecoverKeys(c *C) {
+	params := &KeyParams{
+		Role: "run",
+		AuthorizedSnapModels: []secboot.SnapModel{
+			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		},
+		AuthorizedBootModes: []string{"run"},
+	}
+	kd, expectedPrimaryKey, expectedUnlockKey, err := NewProtectedKey(rand.Reader, params)
+	c.Assert(err, IsNil)
+
+	bootscope.SetModel(params.AuthorizedSnapModels[0])
+	bootscope.SetBootMode(params.AuthorizedBootModes[0])
+
+	unlockKey, primaryKey, err := kd.RecoverKeys()
+	c.Check(err, IsNil)
+	c.Check(unlockKey, DeepEquals, expectedUnlockKey)
+	c.Check(primaryKey, DeepEquals, expectedPrimaryKey)
+}
+
+func (s *platformSuiteIntegrated) TestRecoverKeysInvalidModel(c *C) {
+	params := &KeyParams{
+		Role: "run",
+		AuthorizedSnapModels: []secboot.SnapModel{
+			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		},
+		AuthorizedBootModes: []string{"run"},
+	}
+	kd, _, _, err := NewProtectedKey(rand.Reader, params)
+	c.Assert(err, IsNil)
+
+	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "other-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	bootscope.SetModel(model)
+	bootscope.SetBootMode(params.AuthorizedBootModes[0])
+
+	_, _, err = kd.RecoverKeys()
+	c.Check(err, ErrorMatches, `invalid key data: cannot authorize boot environment: unauthorized model`)
+
+	var e *secboot.InvalidKeyDataError
+	c.Check(errors.As(err, &e), testutil.IsTrue)
+}
+
+func (s *platformSuiteIntegrated) TestRecoverKeysInvalidBootMode(c *C) {
+	params := &KeyParams{
+		Role: "run",
+		AuthorizedSnapModels: []secboot.SnapModel{
+			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		},
+		AuthorizedBootModes: []string{"run"},
+	}
+	kd, _, _, err := NewProtectedKey(rand.Reader, params)
+	c.Assert(err, IsNil)
+
+	bootscope.SetModel(params.AuthorizedSnapModels[0])
+	bootscope.SetBootMode("recover")
+
+	_, _, err = kd.RecoverKeys()
+	c.Check(err, ErrorMatches, `invalid key data: cannot authorize boot environment: unauthorized boot mode`)
+
+	var e *secboot.InvalidKeyDataError
+	c.Check(errors.As(err, &e), testutil.IsTrue)
 }
