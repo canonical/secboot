@@ -197,7 +197,7 @@ func NewProtectedKey(rand io.Reader, params *KeyParams) (protectedKey *secboot.K
 		var encryptedKey []byte
 		encryptedKey, handle, err = keyProtector.ProtectKey(rand, symKey, nil)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("cannot protect symmetric key for AEAD compat: %w", err)
+			return nil, nil, nil, fmt.Errorf("cannot protect symmetric key for AEAD compat using hook: %w", err)
 		}
 
 		aeadCompat = &aeadCompatData{
@@ -207,7 +207,7 @@ func NewProtectedKey(rand io.Reader, params *KeyParams) (protectedKey *secboot.K
 	default:
 		ciphertext, handle, err = keyProtector.ProtectKey(rand, payload, aad)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("cannot protect key: %w", err)
+			return nil, nil, nil, fmt.Errorf("cannot protect key using hook: %w", err)
 		}
 	}
 

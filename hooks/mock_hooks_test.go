@@ -196,3 +196,9 @@ func mockHooksRevealerNoAEAD(handle, ciphertext, _ []byte) (cleartext []byte, er
 
 	return cleartext, nil
 }
+
+func makeFaultyMockHooksProtector(err error) KeyProtector {
+	return makeMockKeyProtector(func(_ io.Reader, _, _ []byte) ([]byte, []byte, error) {
+		return nil, nil, err
+	})
+}

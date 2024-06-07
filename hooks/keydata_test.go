@@ -24,7 +24,9 @@ import (
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/json"
+	"errors"
 
 	. "gopkg.in/check.v1"
 
@@ -537,4 +539,24 @@ func (s *keydataNoAEADSuite) TestNewProtectedKeyWithAuthorizedParamsiDifferentRo
 		model:              model,
 		bootMode:           "run",
 	})
+}
+
+type keydataHookErrSuite struct{}
+
+var _ = Suite(&keydataHookErrSuite{})
+
+func (s *keydataHookErrSuite) TestKeyProtectorErr(c *C) {
+	SetKeyProtector(makeFaultyMockHooksProtector(errors.New("some error")), 0)
+	defer SetKeyProtector(nil, 0)
+
+	_, _, _, err := NewProtectedKey(rand.Reader, nil)
+	c.Assert(err, ErrorMatches, `cannot protect key using hook: some error`)
+}
+
+func (s *keydataHookErrSuite) TestKeyProtectorNoAEADErr(c *C) {
+	SetKeyProtector(makeFaultyMockHooksProtector(errors.New("some error")), KeyProtectorNoAEAD)
+	defer SetKeyProtector(nil, 0)
+
+	_, _, _, err := NewProtectedKey(rand.Reader, nil)
+	c.Assert(err, ErrorMatches, `cannot protect symmetric key for AEAD compat using hook: some error`)
 }
