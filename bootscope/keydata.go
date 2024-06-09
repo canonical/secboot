@@ -24,13 +24,13 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 
 	"github.com/snapcore/secboot"
 	internal_crypto "github.com/snapcore/secboot/internal/crypto"
@@ -284,7 +284,7 @@ func (d *KeyDataScope) UnmarshalJSON(data []byte) error {
 // payload containing model digests and boot modes (which are now considered as
 // authorized for the scope). Initially that payload is empty.
 // The produced signature is stored in the scope object.
-func NewKeyDataScope(params *KeyDataScopeParams) (*KeyDataScope, error) {
+func NewKeyDataScope(rand io.Reader, params *KeyDataScopeParams) (*KeyDataScope, error) {
 
 	if params.ModelAlg == 0 {
 		return nil, errors.New("No model digest algorithm specified")
@@ -309,7 +309,7 @@ func NewKeyDataScope(params *KeyDataScopeParams) (*KeyDataScope, error) {
 	}
 	out.data.PublicKey.PublicKey = signer.Public().(*ecdsa.PublicKey)
 
-	if err := out.authorize(params.PrimaryKey, params.Role); err != nil {
+	if err := out.authorize(rand, params.PrimaryKey, params.Role); err != nil {
 		return nil, err
 	}
 
@@ -326,7 +326,7 @@ func (d *KeyDataScope) deriveSigner(key secboot.PrimaryKey, role string) (crypto
 	return internal_crypto.GenerateECDSAKey(elliptic.P256(), r)
 }
 
-func (d *KeyDataScope) authorize(key secboot.PrimaryKey, role string) error {
+func (d *KeyDataScope) authorize(rand io.Reader, key secboot.PrimaryKey, role string) error {
 	signer, err := d.deriveSigner(key, role)
 	if err != nil {
 		return fmt.Errorf("cannot derive signing key: %w", err)
@@ -350,7 +350,7 @@ func (d *KeyDataScope) authorize(key secboot.PrimaryKey, role string) error {
 
 	h := alg.New()
 	h.Write(scope)
-	sig, err := signer.Sign(rand.Reader, h.Sum(nil), alg)
+	sig, err := signer.Sign(rand, h.Sum(nil), alg)
 	if err != nil {
 		return err
 	}
@@ -385,7 +385,7 @@ func (d *KeyDataScope) isAuthorized() (bool, error) {
 // MDAlg) of a DER encoded payload containing the already authorized boot modes and the
 // new models' digest list.
 // On error the scope's already authorized model digests remain unchanged.
-func (d *KeyDataScope) SetAuthorizedSnapModels(key secboot.PrimaryKey, role string, models ...secboot.SnapModel) (err error) {
+func (d *KeyDataScope) SetAuthorizedSnapModels(rand io.Reader, key secboot.PrimaryKey, role string, models ...secboot.SnapModel) (err error) {
 	alg := d.data.Params.ModelDigests.Alg
 	if !alg.Available() {
 		return
@@ -410,7 +410,7 @@ func (d *KeyDataScope) SetAuthorizedSnapModels(key secboot.PrimaryKey, role stri
 		d.data.Params.ModelDigests.Digests = currentModelDigests
 	}()
 
-	return d.authorize(key, role)
+	return d.authorize(rand, key, role)
 }
 
 // SetAuthorizedBootModes is used to set new authorized boot modes for existing key data scope.
@@ -419,7 +419,7 @@ func (d *KeyDataScope) SetAuthorizedSnapModels(key secboot.PrimaryKey, role stri
 // used to sign a hash (using scope's MDAlg) of a DER encoded payload containing the already
 // authorized model digests and the new boot modes.
 // On error the scope's already authorized boot modes remain unchanged.
-func (d *KeyDataScope) SetAuthorizedBootModes(key secboot.PrimaryKey, role string, modes ...string) (err error) {
+func (d *KeyDataScope) SetAuthorizedBootModes(rand io.Reader, key secboot.PrimaryKey, role string, modes ...string) (err error) {
 	currentModes := d.data.Params.Modes
 	d.data.Params.Modes = modes
 
@@ -430,7 +430,7 @@ func (d *KeyDataScope) SetAuthorizedBootModes(key secboot.PrimaryKey, role strin
 		d.data.Params.Modes = currentModes
 	}()
 
-	return d.authorize(key, role)
+	return d.authorize(rand, key, role)
 }
 
 // IsBootEnvironmentAuthorized checks if the current boot environment (model and boot mode) is

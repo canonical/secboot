@@ -142,7 +142,7 @@ func NewProtectedKey(rand io.Reader, params *KeyParams) (protectedKey *secboot.K
 		return nil, nil, nil, fmt.Errorf("cannot create new unlock key: %w", err)
 	}
 
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
+	scope, err := bootscope.NewKeyDataScope(rand, &bootscope.KeyDataScopeParams{
 		PrimaryKey: primaryKey,
 		Role:       params.Role,
 		KDFAlg:     crypto.SHA256,
@@ -153,11 +153,15 @@ func NewProtectedKey(rand io.Reader, params *KeyParams) (protectedKey *secboot.K
 		return nil, nil, nil, fmt.Errorf("cannot create boot environment scope: %w", err)
 	}
 
-	if err := scope.SetAuthorizedSnapModels(primaryKey, params.Role, params.AuthorizedSnapModels...); err != nil {
-		return nil, nil, nil, fmt.Errorf("cannot set authorized snap models: %w", err)
+	if len(params.AuthorizedSnapModels) > 0 {
+		if err := scope.SetAuthorizedSnapModels(rand, primaryKey, params.Role, params.AuthorizedSnapModels...); err != nil {
+			return nil, nil, nil, fmt.Errorf("cannot set authorized snap models: %w", err)
+		}
 	}
-	if err := scope.SetAuthorizedBootModes(primaryKey, params.Role, params.AuthorizedBootModes...); err != nil {
-		return nil, nil, nil, fmt.Errorf("cannot set authorized boot modes: %w", err)
+	if len(params.AuthorizedBootModes) > 0 {
+		if err := scope.SetAuthorizedBootModes(rand, primaryKey, params.Role, params.AuthorizedBootModes...); err != nil {
+			return nil, nil, nil, fmt.Errorf("cannot set authorized boot modes: %w", err)
+		}
 	}
 
 	aad, err := scope.MakeAEADAdditionalData(secboot.KeyDataGeneration, kdfAlg, secboot.AuthModeNone)
@@ -263,8 +267,8 @@ func (d *KeyData) UnmarshalJSON(data []byte) error {
 //
 // On success, this will automatically update the corresponding *[secboot.KeyData]
 // that this key data was created from using [NewKeyData].
-func (d *KeyData) SetAuthorizedSnapModels(key secboot.PrimaryKey, models ...secboot.SnapModel) error {
-	if err := d.data.Scope.SetAuthorizedSnapModels(key, d.k.Role(), models...); err != nil {
+func (d *KeyData) SetAuthorizedSnapModels(rand io.Reader, key secboot.PrimaryKey, models ...secboot.SnapModel) error {
+	if err := d.data.Scope.SetAuthorizedSnapModels(rand, key, d.k.Role(), models...); err != nil {
 		return err
 	}
 	return d.k.MarshalAndUpdatePlatformHandle(d)
@@ -276,8 +280,8 @@ func (d *KeyData) SetAuthorizedSnapModels(key secboot.PrimaryKey, models ...secb
 //
 // On success, this will automatically update the corresponding *[secboot.KeyData]
 // that this key data was created from using [NewKeyData].
-func (d *KeyData) SetAuthorizedBootModes(key secboot.PrimaryKey, modes ...string) error {
-	if err := d.data.Scope.SetAuthorizedBootModes(key, d.k.Role(), modes...); err != nil {
+func (d *KeyData) SetAuthorizedBootModes(rand io.Reader, key secboot.PrimaryKey, modes ...string) error {
+	if err := d.data.Scope.SetAuthorizedBootModes(rand, key, d.k.Role(), modes...); err != nil {
 		return err
 	}
 	return d.k.MarshalAndUpdatePlatformHandle(d)

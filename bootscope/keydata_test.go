@@ -80,7 +80,7 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeSuccess(c *C) {
 		ModelAlg:   modelAlg,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 	c.Check(kds, NotNil)
 
@@ -109,7 +109,7 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingKDF(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	_, err = NewKeyDataScope(params)
+	_, err = NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, ErrorMatches, "KDF algorithm unavailable")
 }
 
@@ -124,7 +124,7 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingMD(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	_, err = NewKeyDataScope(params)
+	_, err = NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, ErrorMatches, "MD algorithm unavailable")
 }
 
@@ -139,7 +139,7 @@ func (s *keyDataPlatformSuite) TestNewKeyDataScopeErrorMissingModelAlg(c *C) {
 		MDAlg:      crypto.SHA256,
 	}
 
-	_, err = NewKeyDataScope(params)
+	_, err = NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, ErrorMatches, "No model digest algorithm specified")
 }
 
@@ -166,7 +166,7 @@ func (s *keyDataPlatformSuite) testMakeAEADAdditionalData(c *C, data *testMakeAE
 		ModelAlg:   crypto.SHA256,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 
 	if data.keyDataScopeVersion != 0 {
@@ -233,14 +233,14 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthStateErrors(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 
 	authModels := []SnapModel{
 		s.makeMockModelAssertion(c, "fake-model"),
 	}
 
-	c.Check(kds.SetAuthorizedSnapModels(primaryKey, params.Role, authModels...), IsNil)
+	c.Check(kds.SetAuthorizedSnapModels(rand.Reader, primaryKey, params.Role, authModels...), IsNil)
 
 	err = kds.IsBootEnvironmentAuthorized()
 	c.Check(err, ErrorMatches, "SetModel hasn't been called yet")
@@ -251,7 +251,7 @@ func (s *keyDataPlatformSuite) TestBootEnvAuthStateErrors(c *C) {
 		"modeFoo",
 	}
 
-	c.Check(kds.SetAuthorizedBootModes(primaryKey, params.Role, authModes...), IsNil)
+	c.Check(kds.SetAuthorizedBootModes(rand.Reader, primaryKey, params.Role, authModes...), IsNil)
 	err = kds.IsBootEnvironmentAuthorized()
 	c.Check(err, ErrorMatches, "SetBootMode hasn't been called yet")
 }
@@ -277,10 +277,10 @@ func (s *keyDataPlatformSuite) testSetAuthorizedSnapModels(c *C, data *testSetAu
 		ModelAlg:   data.modelAlg,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 
-	err = kds.SetAuthorizedSnapModels(primaryKey, data.role, data.validModels...)
+	err = kds.SetAuthorizedSnapModels(rand.Reader, primaryKey, data.role, data.validModels...)
 
 	if err == nil {
 		kdsData := kds.Data()
@@ -351,12 +351,12 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedSnapModelsWrongKey(c *C) {
 		ModelAlg:   modelAlg,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 
 	wrongKey, err := NewPrimaryKey(32)
 	c.Assert(err, IsNil)
-	err = kds.SetAuthorizedSnapModels(wrongKey, "different", validModels...)
+	err = kds.SetAuthorizedSnapModels(rand.Reader, wrongKey, "different", validModels...)
 	c.Check(err, ErrorMatches, "incorrect key supplied")
 }
 
@@ -381,10 +381,10 @@ func (s *keyDataPlatformSuite) testSetAuthorizedBootModes(c *C, data *testSetAut
 		ModelAlg:   data.modelAlg,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 
-	err = kds.SetAuthorizedBootModes(primaryKey, data.role, data.validModes...)
+	err = kds.SetAuthorizedBootModes(rand.Reader, primaryKey, data.role, data.validModes...)
 
 	if err == nil {
 		kdsData := kds.Data()
@@ -459,12 +459,12 @@ func (s *keyDataPlatformSuite) TestSetAuthorizedBootModesWrongKey(c *C) {
 		ModelAlg:   data.modelAlg,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 
 	wrongKey, err := NewPrimaryKey(32)
 	c.Assert(err, IsNil)
-	err = kds.SetAuthorizedBootModes(wrongKey, data.role, data.validModes...)
+	err = kds.SetAuthorizedBootModes(rand.Reader, wrongKey, data.role, data.validModes...)
 	c.Check(err, ErrorMatches, "incorrect key supplied")
 }
 
@@ -492,15 +492,15 @@ func (s *keyDataPlatformSuite) testBootEnvAuth(c *C, data *testBootEnvAuthData) 
 		ModelAlg:   data.modelAlg,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 
-	err = kds.SetAuthorizedSnapModels(primaryKey, data.role, data.validModels...)
+	err = kds.SetAuthorizedSnapModels(rand.Reader, primaryKey, data.role, data.validModels...)
 	if err != nil {
 		return err
 	}
 
-	err = kds.SetAuthorizedBootModes(primaryKey, data.role, data.validModes...)
+	err = kds.SetAuthorizedBootModes(rand.Reader, primaryKey, data.role, data.validModes...)
 	if err != nil {
 		return err
 	}
@@ -725,7 +725,7 @@ func (s *keyDataPlatformSuite) TestKeyDataScopeMarshalJSONAndUnmarshalJSON(c *C)
 		ModelAlg:   crypto.SHA256,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 	c.Check(kds, NotNil)
 
@@ -754,7 +754,7 @@ func (s *keyDataPlatformSuite) TestDeriveSigner(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 	c.Check(kds, NotNil)
 
@@ -789,7 +789,7 @@ func (s *keyDataPlatformSuite) TestDeriveSignerFixedKey1(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 	c.Check(kds, NotNil)
 
@@ -815,7 +815,7 @@ func (s *keyDataPlatformSuite) TestDeriveSignerFixedKey2(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 	c.Check(kds, NotNil)
 
@@ -841,7 +841,7 @@ func (s *keyDataPlatformSuite) TestDeriveSignerDifferentRoleMismatch(c *C) {
 		ModelAlg:   crypto.SHA256,
 	}
 
-	kds, err := NewKeyDataScope(params)
+	kds, err := NewKeyDataScope(rand.Reader, params)
 	c.Assert(err, IsNil)
 	c.Check(kds, NotNil)
 

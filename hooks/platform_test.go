@@ -84,13 +84,10 @@ func (s *platformSuite) testRecoverKeys(c *C, params *testRecoverKeysParams) err
 }
 
 func (s *platformSuite) TestRecoverKeys(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataSuite.TestNewProtectedKey
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext.
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951447a50716f707a2b763530355065747542736e78764d462b4664786777645145315a6d6f58573551364c5a41496745794d6a6e6239426e6452366c364b55614c7a676e4d446f4b39383643785a342f6366494f454c6d5953733d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -114,13 +111,10 @@ func (s *platformSuite) TestRecoverKeys(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysDifferentKey(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "a2c13845528f207216587b52f904fe8c322530d23f10ac47b04e1be6f06c3c04"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataSuite.TestNewProtectedKeyDifferentRand
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951443272315468347874777a6a6a3870394c51774c4966393851504f6c4d626d4344764b3244564149437147774967564b6f36744e706a6366486967754c4c416350665446324b457067576f7a576878535270446e364973654d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a304441516344516741457a667a47326e5043556275456b66646f4379686771437130692f4e5a47736531537969674a3957624e666942557750386f507038356c3438707133616743375350324a456c704f424564715a2b3453584163566e57513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -144,28 +138,20 @@ func (s *platformSuite) TestRecoverKeysDifferentKey(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysWithParams(c *C) {
-	primaryKey := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa")
-	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-		"authority-id": "fake-brand",
-		"series":       "16",
-		"brand-id":     "fake-brand",
-		"model":        "fake-model",
-		"grade":        "secured",
-	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
-
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: primaryKey,
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataSuite.TestNewProtectedKeyWithAuthorizedParams
+	// Load scope with a single authorized model, the "run" boot mode authorized, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a5b224f647444314f7a2b4c56473441373752546b45314a614b6f704438702f41786355517361394d2f505072553d225d7d2c226d6f646573223a5b2272756e225d7d2c227369676e6174757265223a224d45514349413139534555416869474d704670427a5a5955666943336947433957336e39473244667a746a4e614f525241694270582f367a485255433658465363582b3076616a704d5964677270636b586d6c4f34696d795944727643773d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
-	c.Check(scope.SetAuthorizedSnapModels(primaryKey, "foo", model), IsNil)
-	c.Check(scope.SetAuthorizedBootModes(primaryKey, "foo", "run"), IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
-		model:      model,
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 		bootMode:   "run",
 		generation: 2,
 		keyData: MakeKeyData(&PrivateKeyData{
@@ -178,38 +164,23 @@ func (s *platformSuite) TestRecoverKeysWithParams(c *C) {
 	c.Check(err, IsNil)
 }
 
-func (s *platformSuite) TestRecoverKeysWithDiffererntParams(c *C) {
-	primaryKey := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa")
-	models := []secboot.SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+func (s *platformSuite) TestRecoverKeysWithDifferentParams(c *C) {
+	// Values based on keydataSuite.TestNewProtectedKeyWithOtherAuthorizedParams
+	// Load scope with a 2 authorized models (the first of which matches the environment),
+	// the "run" and "recover" boot modes authorized, the role "foo", and signed with the
+	// primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a5b224f647444314f7a2b4c56473441373752546b45314a614b6f704438702f41786355517361394d2f505072553d222c225a5349706a6368354c425936415038583959644b4371416d6237527478572b725345653148503945566e553d225d7d2c226d6f646573223a5b2272756e222c227265636f766572225d7d2c227369676e6174757265223a224d4551434947524b70336158624e796e327649625a432f63413635466372684747614f77674e7332536e724b595a4a36416941424e614573314a44424344697456473954643638502f44384873615373384b6c4b4c57497038474e612f773d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
+	c.Assert(err, IsNil)
+
+	err = s.testRecoverKeys(c, &testRecoverKeysParams{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "other-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-	}
-
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: primaryKey,
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
-	c.Assert(err, IsNil)
-	c.Check(scope.SetAuthorizedSnapModels(primaryKey, "foo", models...), IsNil)
-	c.Check(scope.SetAuthorizedBootModes(primaryKey, "foo", "run", "recover"), IsNil)
-
-	err = s.testRecoverKeys(c, &testRecoverKeysParams{
-		model:      models[0],
 		bootMode:   "run",
 		generation: 2,
 		keyData: MakeKeyData(&PrivateKeyData{
@@ -223,28 +194,20 @@ func (s *platformSuite) TestRecoverKeysWithDiffererntParams(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysWithParamsDifferentRole(c *C) {
-	primaryKey := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa")
-	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-		"authority-id": "fake-brand",
-		"series":       "16",
-		"brand-id":     "fake-brand",
-		"model":        "fake-model",
-		"grade":        "secured",
-	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
-
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "bar",
-		PrimaryKey: primaryKey,
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataSuite.TestNewProtectedKeyWithAuthorizedParamsDifferentRole
+	// Load scope with a single authorized model, the "run" boot mode authorized, the role "bar", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a5b224f647444314f7a2b4c56473441373752546b45314a614b6f704438702f41786355517361394d2f505072553d225d7d2c226d6f646573223a5b2272756e225d7d2c227369676e6174757265223a224d4559434951446247754f7a2b31434a4f50757a58464a746338374f6a4835647537725063504f363659344e3379707950514968414d6c4d564d6379584c674178475672684d654d704e4c75562b784265556f2b506a7131657a74336d366932222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a304441516344516741456d7568366873393237632f56552b74662f544154696c6362626b462f714e327746686658747477785859376b4c5559764e393430654338575641643149364e6c4a49346c7262616570327a743133474931654d7030413d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
-	c.Check(scope.SetAuthorizedSnapModels(primaryKey, "bar", model), IsNil)
-	c.Check(scope.SetAuthorizedBootModes(primaryKey, "bar", "run"), IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
-		model:      model,
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 		bootMode:   "run",
 		generation: 2,
 		keyData: MakeKeyData(&PrivateKeyData{
@@ -282,24 +245,11 @@ func (s *platformSuite) TestRecoverKeysInvalidHandle(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysInvalidBootEnvironment(c *C) {
-	primaryKey := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa")
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: primaryKey,
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataSuite.TestNewProtectedKey
+	// Load scope with a single authorized model which differs from the environment, the "run" boot mode authorized, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a5b224f647444314f7a2b4c56473441373752546b45314a614b6f704438702f41786355517361394d2f505072553d225d7d2c226d6f646573223a5b2272756e225d7d2c227369676e6174757265223a224d45514349413139534555416869474d704670427a5a5955666943336947433957336e39473244667a746a4e614f525241694270582f367a485255433658465363582b3076616a704d5964677270636b586d6c4f34696d795944727643773d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
-
-	authModel := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-		"authority-id": "fake-brand",
-		"series":       "16",
-		"brand-id":     "fake-brand",
-		"model":        "fake-model",
-		"grade":        "secured",
-	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
-	c.Check(scope.SetAuthorizedSnapModels(primaryKey, "foo", authModel), IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
 		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
@@ -325,13 +275,10 @@ func (s *platformSuite) TestRecoverKeysInvalidBootEnvironment(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysMakeAADError(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataSuite.TestNewProtectedKey.
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951447a50716f707a2b763530355065747542736e78764d462b4664786777645145315a6d6f58573551364c5a41496745794d6a6e6239426e6452366c364b55614c7a676e4d446f4b39383643785a342f6366494f454c6d5953733d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -359,13 +306,10 @@ func (s *platformSuite) TestRecoverKeysMakeAADError(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysKeyRevealerError(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataSuite.TestNewProtectedKey.
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951447a50716f707a2b763530355065747542736e78764d462b4664786777645145315a6d6f58573551364c5a41496745794d6a6e6239426e6452366c364b55614c7a676e4d446f4b39383643785a342f6366494f454c6d5953733d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -378,6 +322,36 @@ func (s *platformSuite) TestRecoverKeysKeyRevealerError(c *C) {
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 		bootMode:   "run",
 		generation: 3, // change the AAD to make the hook RevealKey return an error
+		keyData: MakeKeyData(&PrivateKeyData{
+			Handle: testutil.DecodeHexString(c, "7b2273616c74223a22766474325972454d4c6d706c665345664933417069584d58752b6a6231656462716c356864575a354435593d222c226e6f6e6365223a226c436747646250496a2f64564c2f5263227d"),
+			Scope:  *scope,
+		}),
+		ciphertext: testutil.DecodeHexString(c, "6244724fe5649c7ed7610c82774eea6dff2c32bad54c08549fe31124d63b7173887346112a0662331fb14e2645f872da5808f703b9bb779496e7afe33412a4e21f7157b5f59cf7b30f2689ca11b1750c65cb0e0d52a0"),
+	})
+	c.Check(err, ErrorMatches, `cannot recover key: cipher: message authentication failed`)
+
+	var phe *secboot.PlatformHandlerError
+	c.Assert(errors.As(err, &phe), testutil.IsTrue)
+	c.Check(phe.Type, Equals, secboot.PlatformHandlerErrorInvalidData)
+}
+
+func (s *platformSuite) TestRecoverKeyMismatchedScopeError(c *C) {
+	// Values based on keydataSuite.TestNewProtectedKey with the scope from keydataSuite.TestNewProtectedKeyDifferentRand
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951443272315468347874777a6a6a3870394c51774c4966393851504f6c4d626d4344764b3244564149437147774967564b6f36744e706a6366486967754c4c416350665446324b457067576f7a576878535270446e364973654d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a304441516344516741457a667a47326e5043556275456b66646f4379686771437130692f4e5a47736531537969674a3957624e666942557750386f507038356c3438707133616743375350324a456c704f424564715a2b3453584163566e57513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
+	c.Assert(err, IsNil)
+
+	err = s.testRecoverKeys(c, &testRecoverKeysParams{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:   "run",
+		generation: 2, // change the AAD to make the hook RevealKey return an error
 		keyData: MakeKeyData(&PrivateKeyData{
 			Handle: testutil.DecodeHexString(c, "7b2273616c74223a22766474325972454d4c6d706c665345664933417069584d58752b6a6231656462716c356864575a354435593d222c226e6f6e6365223a226c436747646250496a2f64564c2f5263227d"),
 			Scope:  *scope,
@@ -425,13 +399,10 @@ func (s *platformSuiteNoAEAD) testRecoverKeys(c *C, params *testRecoverKeysParam
 }
 
 func (s *platformSuiteNoAEAD) TestRecoverKeys(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataNoAEADSuite.TestNewProtectedKey.
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951447a50716f707a2b763530355065747542736e78764d462b4664786777645145315a6d6f58573551364c5a41496745794d6a6e6239426e6452366c364b55614c7a676e4d446f4b39383643785a342f6366494f454c6d5953733d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -459,13 +430,10 @@ func (s *platformSuiteNoAEAD) TestRecoverKeys(c *C) {
 }
 
 func (s *platformSuiteNoAEAD) TestRecoverKeysDifferentKey(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "a2c13845528f207216587b52f904fe8c322530d23f10ac47b04e1be6f06c3c04"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataNoAEADSuite.TestNewProtectedKeyDifferentRand
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951443272315468347874777a6a6a3870394c51774c4966393851504f6c4d626d4344764b3244564149437147774967564b6f36744e706a6366486967754c4c416350665446324b457067576f7a576878535270446e364973654d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a304441516344516741457a667a47326e5043556275456b66646f4379686771437130692f4e5a47736531537969674a3957624e666942557750386f507038356c3438707133616743375350324a456c704f424564715a2b3453584163566e57513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -493,28 +461,20 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysDifferentKey(c *C) {
 }
 
 func (s *platformSuiteNoAEAD) TestRecoverKeysWithParams(c *C) {
-	primaryKey := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa")
-	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-		"authority-id": "fake-brand",
-		"series":       "16",
-		"brand-id":     "fake-brand",
-		"model":        "fake-model",
-		"grade":        "secured",
-	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
-
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: primaryKey,
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataNoAEADSuite.TestNewProtectedKeyWithAuthorizedParams
+	// Load scope with a single authorized model, the "run" boot mode authorized, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a5b224f647444314f7a2b4c56473441373752546b45314a614b6f704438702f41786355517361394d2f505072553d225d7d2c226d6f646573223a5b2272756e225d7d2c227369676e6174757265223a224d45514349413139534555416869474d704670427a5a5955666943336947433957336e39473244667a746a4e614f525241694270582f367a485255433658465363582b3076616a704d5964677270636b586d6c4f34696d795944727643773d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
-	c.Check(scope.SetAuthorizedSnapModels(primaryKey, "foo", model), IsNil)
-	c.Check(scope.SetAuthorizedBootModes(primaryKey, "foo", "run"), IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
-		model:      model,
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 		bootMode:   "run",
 		generation: 2,
 		keyData: MakeKeyData(&PrivateKeyData{
@@ -531,38 +491,23 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysWithParams(c *C) {
 	c.Check(err, IsNil)
 }
 
-func (s *platformSuiteNoAEAD) TestRecoverKeysWithDiffererentParams(c *C) {
-	primaryKey := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa")
-	models := []secboot.SnapModel{
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+func (s *platformSuiteNoAEAD) TestRecoverKeysWithDifferentParams(c *C) {
+	// Values based on keydataNoAEADSuite.TestNewProtectedKeyWithOtherAuthorizedParams
+	// Load scope with a 2 authorized models (the first of which matches the environment),
+	// the "run" and "recover" boot modes authorized, the role "foo", and signed with the
+	// primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a5b224f647444314f7a2b4c56473441373752546b45314a614b6f704438702f41786355517361394d2f505072553d222c225a5349706a6368354c425936415038583959644b4371416d6237527478572b725345653148503945566e553d225d7d2c226d6f646573223a5b2272756e222c227265636f766572225d7d2c227369676e6174757265223a224d4551434947524b70336158624e796e327649625a432f63413635466372684747614f77674e7332536e724b595a4a36416941424e614573314a44424344697456473954643638502f44384873615373384b6c4b4c57497038474e612f773d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
+	c.Assert(err, IsNil)
+
+	err = s.testRecoverKeys(c, &testRecoverKeysParams{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 			"authority-id": "fake-brand",
 			"series":       "16",
 			"brand-id":     "fake-brand",
 			"model":        "fake-model",
 			"grade":        "secured",
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-			"authority-id": "fake-brand",
-			"series":       "16",
-			"brand-id":     "fake-brand",
-			"model":        "other-model",
-			"grade":        "secured",
-		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
-	}
-
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: primaryKey,
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
-	c.Assert(err, IsNil)
-	c.Check(scope.SetAuthorizedSnapModels(primaryKey, "foo", models...), IsNil)
-	c.Check(scope.SetAuthorizedBootModes(primaryKey, "foo", "run", "recover"), IsNil)
-
-	err = s.testRecoverKeys(c, &testRecoverKeysParams{
-		model:      models[0],
 		bootMode:   "run",
 		generation: 2,
 		keyData: MakeKeyData(&PrivateKeyData{
@@ -580,28 +525,20 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysWithDiffererentParams(c *C) {
 }
 
 func (s *platformSuiteNoAEAD) TestRecoverKeysWithParamsDifferentRole(c *C) {
-	primaryKey := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa")
-	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-		"authority-id": "fake-brand",
-		"series":       "16",
-		"brand-id":     "fake-brand",
-		"model":        "fake-model",
-		"grade":        "secured",
-	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
-
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "bar",
-		PrimaryKey: primaryKey,
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataNoAEADSuite.TestNewProtectedKeyWithAuthorizedParamsDifferentRole
+	// Load scope with a single authorized model, the "run" boot mode authorized, the role "bar", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a5b224f647444314f7a2b4c56473441373752546b45314a614b6f704438702f41786355517361394d2f505072553d225d7d2c226d6f646573223a5b2272756e225d7d2c227369676e6174757265223a224d4559434951446247754f7a2b31434a4f50757a58464a746338374f6a4835647537725063504f363659344e3379707950514968414d6c4d564d6379584c674178475672684d654d704e4c75562b784265556f2b506a7131657a74336d366932222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a304441516344516741456d7568366873393237632f56552b74662f544154696c6362626b462f714e327746686658747477785859376b4c5559764e393430654338575641643149364e6c4a49346c7262616570327a743133474931654d7030413d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
-	c.Check(scope.SetAuthorizedSnapModels(primaryKey, "bar", model), IsNil)
-	c.Check(scope.SetAuthorizedBootModes(primaryKey, "bar", "run"), IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
-		model:      model,
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 		bootMode:   "run",
 		generation: 2,
 		keyData: MakeKeyData(&PrivateKeyData{
@@ -619,13 +556,10 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysWithParamsDifferentRole(c *C) {
 }
 
 func (s *platformSuiteNoAEAD) TestRecoverKeysKeyRevealerError(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataNoAEADSuite.TestNewProtectedKey.
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951447a50716f707a2b763530355065747542736e78764d462b4664786777645145315a6d6f58573551364c5a41496745794d6a6e6239426e6452366c364b55614c7a676e4d446f4b39383643785a342f6366494f454c6d5953733d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	// Decode the same hook handle that's used in other tests and then trim a byte off the IV
@@ -664,13 +598,10 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysKeyRevealerError(c *C) {
 }
 
 func (s *platformSuiteNoAEAD) TestRecoverKeysNewCipherError(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataNoAEADSuite.TestNewProtectedKey.
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951447a50716f707a2b763530355065747542736e78764d462b4664786777645145315a6d6f58573551364c5a41496745794d6a6e6239426e6452366c364b55614c7a676e4d446f4b39383643785a342f6366494f454c6d5953733d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -701,13 +632,10 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysNewCipherError(c *C) {
 }
 
 func (s *platformSuiteNoAEAD) TestRecoverKeysNewGCMError(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataNoAEADSuite.TestNewProtectedKey.
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951447a50716f707a2b763530355065747542736e78764d462b4664786777645145315a6d6f58573551364c5a41496745794d6a6e6239426e6452366c364b55614c7a676e4d446f4b39383643785a342f6366494f454c6d5953733d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -738,13 +666,10 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysNewGCMError(c *C) {
 }
 
 func (s *platformSuiteNoAEAD) TestRecoverKeyOpenError(c *C) {
-	scope, err := bootscope.NewKeyDataScope(&bootscope.KeyDataScopeParams{
-		Role:       "foo",
-		PrimaryKey: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa"),
-		KDFAlg:     crypto.SHA256,
-		MDAlg:      crypto.SHA256,
-		ModelAlg:   crypto.SHA256,
-	})
+	// Values based on keydataNoAEADSuite.TestNewProtectedKey.
+	// Load scope with no authorized values, the role "foo", and signed with the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951447a50716f707a2b763530355065747542736e78764d462b4664786777645145315a6d6f58573551364c5a41496745794d6a6e6239426e6452366c364b55614c7a676e4d446f4b39383643785a342f6366494f454c6d5953733d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a3044415163445167414537344969424f51656739546654336a61566f5670356a6370634d56766d4c376f444f554667736d775261675a7934704d3870456e2f77466c545a534239424253516345506266785439436f7634393645374f566a2b513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
 	c.Assert(err, IsNil)
 
 	err = s.testRecoverKeys(c, &testRecoverKeysParams{
@@ -757,6 +682,40 @@ func (s *platformSuiteNoAEAD) TestRecoverKeyOpenError(c *C) {
 		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
 		bootMode:   "run",
 		generation: 3, // invalidate the AAD so that Open fails
+		keyData: MakeKeyData(&PrivateKeyData{
+			Handle: testutil.DecodeHexString(c, "7b2273616c74223a2265375a4764613939322b4c757a476f6d2b71754c6978634d653556656e76336d755045556d4173795749553d222c226976223a2261487a414e5352713578764f6e7662485674706a77673d3d227d"),
+			Scope:  *scope,
+			AEADCompat: &AeadCompatData{
+				Nonce:        testutil.DecodeHexString(c, "94280675b3c88ff7552ff45c"),
+				EncryptedKey: testutil.DecodeHexString(c, "6363b7da2f0ab6b895fb626092d5671c7db35ebe3b965da5bbc31f7e9287076e"),
+			},
+		}),
+		ciphertext: testutil.DecodeHexString(c, "c9f3f5cb299a115d8bdd77a800ac348f4992f2bb2df5b343729201ad9ce3f79ea2cc46927c7ef3bd809603d12521991229bcb7deaac249d568afc62390c99ddccaf759e17f52ed0c03e313494304d479a96f7d409cc0"),
+	})
+	c.Check(err, ErrorMatches, `cannot recover key: cipher: message authentication failed`)
+
+	var phe *secboot.PlatformHandlerError
+	c.Assert(errors.As(err, &phe), testutil.IsTrue)
+	c.Check(phe.Type, Equals, secboot.PlatformHandlerErrorInvalidData)
+}
+
+func (s *platformSuiteNoAEAD) TestRecoverKeyMismatchedScopeError(c *C) {
+	// Values based on keydataNoAEADSuite.TestNewProtectedKey with the scope from keydataNoAEADSuite.TestNewProtectedKeyDifferentRand
+	// Load scope with no authorized values, the role "foo", and signed with a key that doesn't match the primary key associated with the ciphertext
+	var scope *bootscope.KeyDataScope
+	err := json.Unmarshal(testutil.DecodeHexString(c, "7b2276657273696f6e223a312c22706172616d73223a7b226d6f64656c5f64696765737473223a7b22616c67223a22736861323536222c2264696765737473223a6e756c6c7d7d2c227369676e6174757265223a224d4555434951443272315468347874777a6a6a3870394c51774c4966393851504f6c4d626d4344764b3244564149437147774967564b6f36744e706a6366486967754c4c416350665446324b457067576f7a576878535270446e364973654d3d222c227075626b6579223a224d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a304441516344516741457a667a47326e5043556275456b66646f4379686771437130692f4e5a47736531537969674a3957624e666942557750386f507038356c3438707133616743375350324a456c704f424564715a2b3453584163566e57513d3d222c226b64665f616c67223a22736861323536222c226d645f616c67223a22736861323536227d"), &scope)
+	c.Assert(err, IsNil)
+
+	err = s.testRecoverKeys(c, &testRecoverKeysParams{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:   "run",
+		generation: 2,
 		keyData: MakeKeyData(&PrivateKeyData{
 			Handle: testutil.DecodeHexString(c, "7b2273616c74223a2265375a4764613939322b4c757a476f6d2b71754c6978634d653556656e76336d755045556d4173795749553d222c226976223a2261487a414e5352713578764f6e7662485674706a77673d3d227d"),
 			Scope:  *scope,
