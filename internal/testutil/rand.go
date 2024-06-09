@@ -20,9 +20,10 @@
 package testutil
 
 import (
-	"fmt"
 	"io"
 	"math/rand"
+
+	"gopkg.in/check.v1"
 )
 
 type testRng struct{}
@@ -34,6 +35,8 @@ func (r *testRng) Read(p []byte) (int, error) {
 var RandReader = &testRng{}
 
 type maybeReadByteBypasser struct {
+	c *check.C
+
 	bypassAll     bool
 	bypassOffsets []int64
 
@@ -69,21 +72,25 @@ func (r *maybeReadByteBypasser) Read(data []byte) (int, error) {
 			// Treat all single byte reads as coming from randutil.MaybeReadByte
 			return 1, nil
 		}
-		if len(r.bypassOffsets) > 0 {
+	Outer:
+		for len(r.bypassOffsets) > 0 {
 			// We were given a set of offsets at which to ignore single byte reads,
 			// and there are still some left.
 			nextBoundary := r.bypassOffsets[0]
 			switch {
 			case r.offset > nextBoundary:
-				// The last read overshot the next boundary. Make this an error
-				// so that the calling test fail.s
-				return 0, fmt.Errorf("randutil.MaybeReadByte boundary misalignment - the previous read overshot the next boundary (current offset: %d, next expected MaybeReadByte offset: %d", r.offset, nextBoundary)
+				// We've passed this boundary - pop it and try the next one
+				r.bypassOffsets = r.bypassOffsets[1:]
 			case r.offset == nextBoundary:
-				// Treat this single byte read as coming from randutil.MaybeReadByte,
-				// pop the offset from the top of the slice and return the appropriate
-				// value.
+				// We have a hit - treat this single byte read as coming from
+				// randutil.MaybeReadByte, pop this boundary from the top of the
+				// slice and return the appropriate value.
 				r.bypassOffsets = r.bypassOffsets[1:]
 				return 1, nil
+			case r.offset < nextBoundary:
+				// We haven't reached the next boundary, so break from the loop
+				// and perform a normal read from the underlying io.Reader.
+				break Outer
 			}
 		}
 	}
