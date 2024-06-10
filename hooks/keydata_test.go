@@ -24,9 +24,7 @@ import (
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"encoding/json"
-	"errors"
 
 	. "gopkg.in/check.v1"
 
@@ -288,6 +286,13 @@ func (s *keydataSuite) TestNewProtectedKeyWithAuthorizedParamsDifferentRole(c *C
 		model:              model,
 		bootMode:           "run",
 	})
+}
+
+func (s *keydataSuite) TestNewProtectedKeyKeyProtectorError(c *C) {
+	// Provide a single byte too little so that reading the nonce inside the hook fails
+	rand := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abafbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff4")
+	_, _, _, err := NewProtectedKey(testutil.BypassMaybeReadByte(bytes.NewReader(rand), false, 64), nil)
+	c.Check(err, ErrorMatches, `cannot protect key using hook: unexpected EOF`)
 }
 
 type keydataNoAEADSuite struct{}
@@ -564,22 +569,9 @@ func (s *keydataNoAEADSuite) TestNewProtectedKeyWithAuthorizedParamsiDifferentRo
 	})
 }
 
-type keydataHookErrSuite struct{}
-
-var _ = Suite(&keydataHookErrSuite{})
-
-func (s *keydataHookErrSuite) TestKeyProtectorErr(c *C) {
-	SetKeyProtector(makeFaultyMockHooksProtector(errors.New("some error")), 0)
-	defer SetKeyProtector(nil, 0)
-
-	_, _, _, err := NewProtectedKey(rand.Reader, nil)
-	c.Assert(err, ErrorMatches, `cannot protect key using hook: some error`)
-}
-
-func (s *keydataHookErrSuite) TestKeyProtectorNoAEADErr(c *C) {
-	SetKeyProtector(makeFaultyMockHooksProtector(errors.New("some error")), KeyProtectorNoAEAD)
-	defer SetKeyProtector(nil, 0)
-
-	_, _, _, err := NewProtectedKey(rand.Reader, nil)
-	c.Assert(err, ErrorMatches, `cannot protect symmetric key for AEAD compat using hook: some error`)
+func (s *keydataNoAEADSuite) TestNewProtectedKeyKeyProtectorError(c *C) {
+	// Provide a single byte too little so that reading the IV inside the hook fails
+	rand := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abafbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff45c7bb64675af7ddbe2eecc6a26faab8b8b170c7b955e9efde6b8f114980b325885687cc035246ae71bce9ef6c756da63")
+	_, _, _, err := NewProtectedKey(testutil.BypassMaybeReadByte(bytes.NewReader(rand), false, 64), nil)
+	c.Check(err, ErrorMatches, `cannot protect symmetric key for AEAD compat using hook: unexpected EOF`)
 }
