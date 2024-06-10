@@ -40,10 +40,12 @@ var _ = Suite(&keydataSuite{})
 
 func (*keydataSuite) SetUpSuite(c *C) {
 	SetKeyProtector(makeMockKeyProtector(mockHooksProtector), 0)
+	SetKeyRevealer(makeMockKeyRevealer(mockHooksRevealer))
 }
 
 func (*keydataSuite) TearDownSuite(c *C) {
 	SetKeyProtector(nil, 0)
+	SetKeyRevealer(nil)
 }
 
 type testNewProtectedKeyParams struct {
@@ -295,16 +297,186 @@ func (s *keydataSuite) TestNewProtectedKeyKeyProtectorError(c *C) {
 	c.Check(err, ErrorMatches, `cannot protect key using hook: unexpected EOF`)
 }
 
+type testMarshalKeyDataParams struct {
+	rand   []byte
+	params *KeyParams
+
+	expected []byte
+}
+
+func (s *keydataSuite) testMarshalKeyData(c *C, params *testMarshalKeyDataParams) {
+	skd, _, _, err := NewProtectedKey(testutil.BypassMaybeReadByte(bytes.NewReader(params.rand), true), params.params)
+	c.Assert(err, IsNil)
+
+	kd, err := NewKeyData(skd)
+	c.Assert(err, IsNil)
+
+	data, err := json.Marshal(kd)
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, params.expected)
+}
+
+func (s *keydataSuite) TestMarshalKeyData(c *C) {
+	s.testMarshalKeyData(c, &testMarshalKeyDataParams{
+		rand:     testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abafbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff45c"),
+		params:   &KeyParams{Role: "foo"},
+		expected: []byte(`{"handle":{"salt":"vdt2YrEMLmplfSEfI3ApiXMXu+jb1edbql5hdWZ5D5Y=","nonce":"lCgGdbPIj/dVL/Rc"},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":null}},"signature":"MEUCIQDzPqopz+v505PetuBsnxvMF+FdxgwdQE1ZmoXW5Q6LZAIgEyMjnb9BndR6l6KUaLzgnMDoK986CxZ4/cfIOELmYSs=","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"}}`),
+	})
+}
+
+func (s *keydataSuite) TestMarshalKeyDataDifferentKey(c *C) {
+	s.testMarshalKeyData(c, &testMarshalKeyDataParams{
+		rand:     testutil.DecodeHexString(c, "a2c13845528f207216587b52f904fe8c322530d23f10ac47b04e1be6f06c3c045f0fa7ff8a2fac95a921a812ae84175990cc93ae9df65ceaf5916cefba237a57a48c18e42222a6cb544c600b6b931768e38efff5d7a3cad929a28074994d977220aa298568cef92c23210b9c66f1f11ca85c0176939a5bc68c6ca412e1a1305cde80c714f6d3e02b2975becf"),
+		params:   &KeyParams{Role: "foo"},
+		expected: []byte(`{"handle":{"salt":"IKophWjO+SwjIQucZvHxHKhcAXaTmlvGjGykEuGhMFw=","nonce":"3oDHFPbT4Cspdb7P"},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":null}},"signature":"MEUCIQD2r1Th4xtwzjj8p9LQwLIf98QPOlMbmCDvK2DVAICqGwIgVKo6tNpjcfHiguLLAcPfTF2KEpgWozWhxSRpDn6IseM=","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzfzG2nPCUbuEkfdoCyhgqCq0i/NZGse1SyigJ9WbNfiBUwP8oPp85l48pq3agC7SP2JElpOBEdqZ+4SXAcVnWQ==","kdf_alg":"sha256","md_alg":"sha256"}}`),
+	})
+}
+
+func (s *keydataSuite) TestMarshalKeyDataWithParams(c *C) {
+	s.testMarshalKeyData(c, &testMarshalKeyDataParams{
+		rand: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abaf84f48f671b2a4bf0074821013ead8b3b83b5781cd88a8d265c05ed6e8bdd7ef7736bf590d0a91b9072ba8216d653a632ff9386f6550afe8683ef88c941e8d89fbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff45c"),
+		params: &KeyParams{
+			Role: "foo",
+			AuthorizedSnapModels: []secboot.SnapModel{testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")},
+			AuthorizedBootModes: []string{"run"},
+		},
+		expected: []byte(`{"handle":{"salt":"vdt2YrEMLmplfSEfI3ApiXMXu+jb1edbql5hdWZ5D5Y=","nonce":"lCgGdbPIj/dVL/Rc"},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":["OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU="]},"modes":["run"]},"signature":"MEQCIA19SEUAhiGMpFpBzZYUfiC3iGC9W3n9G2DfztjNaORRAiBpX/6zHRUC6XFScX+0vajpMYdgrpckXmlO4imyYDrvCw==","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"}}`),
+	})
+}
+
+func (s *keydataSuite) TestMarshalKeyDataWithOtherParams(c *C) {
+	s.testMarshalKeyData(c, &testMarshalKeyDataParams{
+		rand: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abaf84f48f671b2a4bf0074821013ead8b3b83b5781cd88a8d265c05ed6e8bdd7ef7736bf590d0a91b9072ba8216d653a632ff9386f6550afe8683ef88c941e8d89fbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff45c"),
+		params: &KeyParams{
+			Role: "foo",
+			AuthorizedSnapModels: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+					"authority-id": "fake-brand",
+					"series":       "16",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"grade":        "secured",
+				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+					"authority-id": "fake-brand",
+					"series":       "16",
+					"brand-id":     "fake-brand",
+					"model":        "other-model",
+					"grade":        "secured",
+				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+			},
+			AuthorizedBootModes: []string{"run", "recover"},
+		},
+		expected: []byte(`{"handle":{"salt":"vdt2YrEMLmplfSEfI3ApiXMXu+jb1edbql5hdWZ5D5Y=","nonce":"lCgGdbPIj/dVL/Rc"},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":["OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU=","ZSIpjch5LBY6AP8X9YdKCqAmb7RtxW+rSEe1HP9EVnU="]},"modes":["run","recover"]},"signature":"MEQCIGRKp3aXbNyn2vIbZC/cA65FcrhGGaOwgNs2SnrKYZJ6AiABNaEs1JDBCDitVG9Td68P/D8HsaSs8KlKLWIp8GNa/w==","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"}}`),
+	})
+}
+
+type testUnmarshalKeyDataParams struct {
+	data       []byte
+	model      secboot.SnapModel
+	bootMode   string
+	ciphertext []byte
+
+	expectedPlaintext []byte
+}
+
+func (s *keydataSuite) testUnmarshalKeyData(c *C, params *testUnmarshalKeyDataParams) {
+	bootscope.SetModel(params.model)
+	bootscope.SetBootMode(params.bootMode)
+
+	var platform HooksPlatform
+	plaintext, err := platform.RecoverKeys(&secboot.PlatformKeyData{
+		Generation:    2,
+		EncodedHandle: params.data,
+		KDFAlg:        crypto.SHA256,
+		AuthMode:      secboot.AuthModeNone,
+	}, params.ciphertext)
+	c.Check(err, IsNil)
+	c.Check(plaintext, DeepEquals, params.expectedPlaintext)
+}
+
+func (s *keydataSuite) TestUnmarshalKeyData(c *C) {
+	s.testUnmarshalKeyData(c, &testUnmarshalKeyDataParams{
+		data: []byte(`{"handle":{"salt":"vdt2YrEMLmplfSEfI3ApiXMXu+jb1edbql5hdWZ5D5Y=","nonce":"lCgGdbPIj/dVL/Rc"},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":null}},"signature":"MEUCIQDzPqopz+v505PetuBsnxvMF+FdxgwdQE1ZmoXW5Q6LZAIgEyMjnb9BndR6l6KUaLzgnMDoK986CxZ4/cfIOELmYSs=","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"}}`),
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:          "run",
+		ciphertext:        testutil.DecodeHexString(c, "6244724fe5649c7ed7610c82774eea6dff2c32bad54c08549fe31124d63b7173887346112a0662331fb14e2645f872da5808f703b9bb779496e7afe33412a4e21f7157b5f59cf7b30f2689ca11b1750c65cb0e0d52a0"),
+		expectedPlaintext: testutil.DecodeHexString(c, "30440420f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa0420e51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc396"),
+	})
+}
+
+func (s *keydataSuite) TestUnmarshalKeyDataDifferentKey(c *C) {
+	s.testUnmarshalKeyData(c, &testUnmarshalKeyDataParams{
+		data: []byte(`{"handle":{"salt":"IKophWjO+SwjIQucZvHxHKhcAXaTmlvGjGykEuGhMFw=","nonce":"3oDHFPbT4Cspdb7P"},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":null}},"signature":"MEUCIQD2r1Th4xtwzjj8p9LQwLIf98QPOlMbmCDvK2DVAICqGwIgVKo6tNpjcfHiguLLAcPfTF2KEpgWozWhxSRpDn6IseM=","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzfzG2nPCUbuEkfdoCyhgqCq0i/NZGse1SyigJ9WbNfiBUwP8oPp85l48pq3agC7SP2JElpOBEdqZ+4SXAcVnWQ==","kdf_alg":"sha256","md_alg":"sha256"}}`),
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:          "run",
+		ciphertext:        testutil.DecodeHexString(c, "5771906fbc10156461de5ad0005a3043d58250adf5af92fcc93b265aa5a49ef93f9392b08e91f23390a9e270d87d8413f609dbf80ae08f207f0cbb7bc57957e0b866255b26bc728a8fc515a8f7f92785aaed6e6cc23f"),
+		expectedPlaintext: testutil.DecodeHexString(c, "30440420a2c13845528f207216587b52f904fe8c322530d23f10ac47b04e1be6f06c3c0404205f0fa7ff8a2fac95a921a812ae84175990cc93ae9df65ceaf5916cefba237a57"),
+	})
+}
+
+func (s *keydataSuite) TestUnmarshalKeyDataWithParams(c *C) {
+	s.testUnmarshalKeyData(c, &testUnmarshalKeyDataParams{
+		data: []byte(`{"handle":{"salt":"vdt2YrEMLmplfSEfI3ApiXMXu+jb1edbql5hdWZ5D5Y=","nonce":"lCgGdbPIj/dVL/Rc"},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":["OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU="]},"modes":["run"]},"signature":"MEQCIA19SEUAhiGMpFpBzZYUfiC3iGC9W3n9G2DfztjNaORRAiBpX/6zHRUC6XFScX+0vajpMYdgrpckXmlO4imyYDrvCw==","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"}}`),
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:          "run",
+		ciphertext:        testutil.DecodeHexString(c, "6244724fe5649c7ed7610c82774eea6dff2c32bad54c08549fe31124d63b7173887346112a0662331fb14e2645f872da5808f703b9bb779496e7afe33412a4e21f7157b5f59cf7b30f2689ca11b1750c65cb0e0d52a0"),
+		expectedPlaintext: testutil.DecodeHexString(c, "30440420f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa0420e51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc396"),
+	})
+}
+
+func (s *keydataSuite) TestUnmarshalKeyDataWithOtherParams(c *C) {
+	s.testUnmarshalKeyData(c, &testUnmarshalKeyDataParams{
+		data: []byte(`{"handle":{"salt":"vdt2YrEMLmplfSEfI3ApiXMXu+jb1edbql5hdWZ5D5Y=","nonce":"lCgGdbPIj/dVL/Rc"},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":["OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU=","ZSIpjch5LBY6AP8X9YdKCqAmb7RtxW+rSEe1HP9EVnU="]},"modes":["run","recover"]},"signature":"MEQCIGRKp3aXbNyn2vIbZC/cA65FcrhGGaOwgNs2SnrKYZJ6AiABNaEs1JDBCDitVG9Td68P/D8HsaSs8KlKLWIp8GNa/w==","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"}}`),
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:          "recover",
+		ciphertext:        testutil.DecodeHexString(c, "6244724fe5649c7ed7610c82774eea6dff2c32bad54c08549fe31124d63b7173887346112a0662331fb14e2645f872da5808f703b9bb779496e7afe33412a4e21f7157b5f59cf7b30f2689ca11b1750c65cb0e0d52a0"),
+		expectedPlaintext: testutil.DecodeHexString(c, "30440420f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa0420e51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc396"),
+	})
+}
+
 type keydataNoAEADSuite struct{}
 
 var _ = Suite(&keydataNoAEADSuite{})
 
 func (*keydataNoAEADSuite) SetUpSuite(c *C) {
 	SetKeyProtector(makeMockKeyProtector(mockHooksProtectorNoAEAD), KeyProtectorNoAEAD)
+	SetKeyRevealer(makeMockKeyRevealer(mockHooksRevealerNoAEAD))
 }
 
 func (*keydataNoAEADSuite) TearDownSuite(c *C) {
 	SetKeyProtector(nil, 0)
+	SetKeyRevealer(nil)
 }
 
 func (s *keydataNoAEADSuite) testNewProtectedKey(c *C, params *testNewProtectedKeyParams) {
@@ -574,4 +746,157 @@ func (s *keydataNoAEADSuite) TestNewProtectedKeyKeyProtectorError(c *C) {
 	rand := testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abafbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff45c7bb64675af7ddbe2eecc6a26faab8b8b170c7b955e9efde6b8f114980b325885687cc035246ae71bce9ef6c756da63")
 	_, _, _, err := NewProtectedKey(testutil.BypassMaybeReadByte(bytes.NewReader(rand), false, 64), nil)
 	c.Check(err, ErrorMatches, `cannot protect symmetric key for AEAD compat using hook: unexpected EOF`)
+}
+
+func (s *keydataNoAEADSuite) testMarshalKeyData(c *C, params *testMarshalKeyDataParams) {
+	skd, _, _, err := NewProtectedKey(testutil.BypassMaybeReadByte(bytes.NewReader(params.rand), true), params.params)
+	c.Assert(err, IsNil)
+
+	kd, err := NewKeyData(skd)
+	c.Assert(err, IsNil)
+
+	data, err := json.Marshal(kd)
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, params.expected)
+	c.Logf("%s", string(data))
+}
+
+func (s *keydataNoAEADSuite) TestMarshalKeyData(c *C) {
+	s.testMarshalKeyData(c, &testMarshalKeyDataParams{
+		rand:     testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abafbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff45c7bb64675af7ddbe2eecc6a26faab8b8b170c7b955e9efde6b8f114980b325885687cc035246ae71bce9ef6c756da63c2"),
+		params:   &KeyParams{Role: "foo"},
+		expected: []byte(`{"handle":{"salt":"e7ZGda992+LuzGom+quLixcMe5Venv3muPEUmAsyWIU=","iv":"aHzANSRq5xvOnvbHVtpjwg=="},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":null}},"signature":"MEUCIQDzPqopz+v505PetuBsnxvMF+FdxgwdQE1ZmoXW5Q6LZAIgEyMjnb9BndR6l6KUaLzgnMDoK986CxZ4/cfIOELmYSs=","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"},"aead_compat":{"nonce":"lCgGdbPIj/dVL/Rc","encrypted_key":"Y2O32i8KtriV+2JgktVnHH2zXr47ll2lu8MffpKHB24="}}`),
+	})
+}
+
+func (s *keydataNoAEADSuite) TestMarshalKeyDataDifferentKey(c *C) {
+	s.testMarshalKeyData(c, &testMarshalKeyDataParams{
+		rand:     testutil.DecodeHexString(c, "a2c13845528f207216587b52f904fe8c322530d23f10ac47b04e1be6f06c3c045f0fa7ff8a2fac95a921a812ae84175990cc93ae9df65ceaf5916cefba237a57a48c18e42222a6cb544c600b6b931768e38efff5d7a3cad929a28074994d977220aa298568cef92c23210b9c66f1f11ca85c0176939a5bc68c6ca412e1a1305cde80c714f6d3e02b2975becf7e9ddc56820fafdcad918ea9accbdd2fb8e951a323b13e9dc66985bf2e68eb9a4e4bfe6ff01c7646a19f691a6ae61182"),
+		params:   &KeyParams{Role: "foo"},
+		expected: []byte(`{"handle":{"salt":"fp3cVoIPr9ytkY6prMvdL7jpUaMjsT6dxmmFvy5o65o=","iv":"Tkv+b/Acdkahn2kaauYRgg=="},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":null}},"signature":"MEUCIQD2r1Th4xtwzjj8p9LQwLIf98QPOlMbmCDvK2DVAICqGwIgVKo6tNpjcfHiguLLAcPfTF2KEpgWozWhxSRpDn6IseM=","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzfzG2nPCUbuEkfdoCyhgqCq0i/NZGse1SyigJ9WbNfiBUwP8oPp85l48pq3agC7SP2JElpOBEdqZ+4SXAcVnWQ==","kdf_alg":"sha256","md_alg":"sha256"},"aead_compat":{"nonce":"3oDHFPbT4Cspdb7P","encrypted_key":"48HJy8SgFjlmL3eQUllsNA2cAxp7NvP0Z2MJh2I9PAk="}}`),
+	})
+}
+
+func (s *keydataNoAEADSuite) TestMarshalKeyDataWithParams(c *C) {
+	s.testMarshalKeyData(c, &testMarshalKeyDataParams{
+		rand: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abaf84f48f671b2a4bf0074821013ead8b3b83b5781cd88a8d265c05ed6e8bdd7ef7736bf590d0a91b9072ba8216d653a632ff9386f6550afe8683ef88c941e8d89fbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff45c7bb64675af7ddbe2eecc6a26faab8b8b170c7b955e9efde6b8f114980b325885687cc035246ae71bce9ef6c756da63c2"),
+		params: &KeyParams{
+			Role: "foo",
+			AuthorizedSnapModels: []secboot.SnapModel{testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")},
+			AuthorizedBootModes: []string{"run"},
+		},
+		expected: []byte(`{"handle":{"salt":"e7ZGda992+LuzGom+quLixcMe5Venv3muPEUmAsyWIU=","iv":"aHzANSRq5xvOnvbHVtpjwg=="},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":["OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU="]},"modes":["run"]},"signature":"MEQCIA19SEUAhiGMpFpBzZYUfiC3iGC9W3n9G2DfztjNaORRAiBpX/6zHRUC6XFScX+0vajpMYdgrpckXmlO4imyYDrvCw==","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"},"aead_compat":{"nonce":"lCgGdbPIj/dVL/Rc","encrypted_key":"Y2O32i8KtriV+2JgktVnHH2zXr47ll2lu8MffpKHB24="}}`),
+	})
+}
+
+func (s *keydataNoAEADSuite) TestMarshalKeyDataWithOtherParams(c *C) {
+	s.testMarshalKeyData(c, &testMarshalKeyDataParams{
+		rand: testutil.DecodeHexString(c, "f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fae51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc3965d423006828c06b1bb2340acefdab22eeeb42903a39feff752d2b93e3eb5abaf84f48f671b2a4bf0074821013ead8b3b83b5781cd88a8d265c05ed6e8bdd7ef7736bf590d0a91b9072ba8216d653a632ff9386f6550afe8683ef88c941e8d89fbddb7662b10c2e6a657d211f237029897317bbe8dbd5e75baa5e617566790f9694280675b3c88ff7552ff45c7bb64675af7ddbe2eecc6a26faab8b8b170c7b955e9efde6b8f114980b325885687cc035246ae71bce9ef6c756da63c2"),
+		params: &KeyParams{
+			Role: "foo",
+			AuthorizedSnapModels: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+					"authority-id": "fake-brand",
+					"series":       "16",
+					"brand-id":     "fake-brand",
+					"model":        "fake-model",
+					"grade":        "secured",
+				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+					"authority-id": "fake-brand",
+					"series":       "16",
+					"brand-id":     "fake-brand",
+					"model":        "other-model",
+					"grade":        "secured",
+				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+			},
+			AuthorizedBootModes: []string{"run", "recover"},
+		},
+		expected: []byte(`{"handle":{"salt":"e7ZGda992+LuzGom+quLixcMe5Venv3muPEUmAsyWIU=","iv":"aHzANSRq5xvOnvbHVtpjwg=="},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":["OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU=","ZSIpjch5LBY6AP8X9YdKCqAmb7RtxW+rSEe1HP9EVnU="]},"modes":["run","recover"]},"signature":"MEQCIGRKp3aXbNyn2vIbZC/cA65FcrhGGaOwgNs2SnrKYZJ6AiABNaEs1JDBCDitVG9Td68P/D8HsaSs8KlKLWIp8GNa/w==","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"},"aead_compat":{"nonce":"lCgGdbPIj/dVL/Rc","encrypted_key":"Y2O32i8KtriV+2JgktVnHH2zXr47ll2lu8MffpKHB24="}}`),
+	})
+}
+
+func (s *keydataNoAEADSuite) testUnmarshalKeyData(c *C, params *testUnmarshalKeyDataParams) {
+	bootscope.SetModel(params.model)
+	bootscope.SetBootMode(params.bootMode)
+
+	var platform HooksPlatform
+	plaintext, err := platform.RecoverKeys(&secboot.PlatformKeyData{
+		Generation:    2,
+		EncodedHandle: params.data,
+		KDFAlg:        crypto.SHA256,
+		AuthMode:      secboot.AuthModeNone,
+	}, params.ciphertext)
+	c.Check(err, IsNil)
+	c.Check(plaintext, DeepEquals, params.expectedPlaintext)
+}
+
+func (s *keydataNoAEADSuite) TestUnmarshalKeyData(c *C) {
+	s.testUnmarshalKeyData(c, &testUnmarshalKeyDataParams{
+		data: []byte(`{"handle":{"salt":"e7ZGda992+LuzGom+quLixcMe5Venv3muPEUmAsyWIU=","iv":"aHzANSRq5xvOnvbHVtpjwg=="},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":null}},"signature":"MEUCIQDzPqopz+v505PetuBsnxvMF+FdxgwdQE1ZmoXW5Q6LZAIgEyMjnb9BndR6l6KUaLzgnMDoK986CxZ4/cfIOELmYSs=","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"},"aead_compat":{"nonce":"lCgGdbPIj/dVL/Rc","encrypted_key":"Y2O32i8KtriV+2JgktVnHH2zXr47ll2lu8MffpKHB24="}}`),
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:          "run",
+		ciphertext:        testutil.DecodeHexString(c, "c9f3f5cb299a115d8bdd77a800ac348f4992f2bb2df5b343729201ad9ce3f79ea2cc46927c7ef3bd809603d12521991229bcb7deaac249d568afc62390c99ddccaf759e17f52ed0c03e313494304d479a96f7d409cc0"),
+		expectedPlaintext: testutil.DecodeHexString(c, "30440420f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa0420e51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc396"),
+	})
+}
+
+func (s *keydataNoAEADSuite) TestUnmarshalKeyDataDifferentKey(c *C) {
+	s.testUnmarshalKeyData(c, &testUnmarshalKeyDataParams{
+		data: []byte(`{"handle":{"salt":"fp3cVoIPr9ytkY6prMvdL7jpUaMjsT6dxmmFvy5o65o=","iv":"Tkv+b/Acdkahn2kaauYRgg=="},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":null}},"signature":"MEUCIQD2r1Th4xtwzjj8p9LQwLIf98QPOlMbmCDvK2DVAICqGwIgVKo6tNpjcfHiguLLAcPfTF2KEpgWozWhxSRpDn6IseM=","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzfzG2nPCUbuEkfdoCyhgqCq0i/NZGse1SyigJ9WbNfiBUwP8oPp85l48pq3agC7SP2JElpOBEdqZ+4SXAcVnWQ==","kdf_alg":"sha256","md_alg":"sha256"},"aead_compat":{"nonce":"3oDHFPbT4Cspdb7P","encrypted_key":"48HJy8SgFjlmL3eQUllsNA2cAxp7NvP0Z2MJh2I9PAk="}}`),
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:          "run",
+		ciphertext:        testutil.DecodeHexString(c, "beb0415d20f9a4982be7c4151217e6861cf895376e89848295a539ad25548901acd67741fe26f52a48a541a7c8e359e2c6515190433c163806239e685b8cb3c83870c6aae38e43123f704ca037d194088193e869043e"),
+		expectedPlaintext: testutil.DecodeHexString(c, "30440420a2c13845528f207216587b52f904fe8c322530d23f10ac47b04e1be6f06c3c0404205f0fa7ff8a2fac95a921a812ae84175990cc93ae9df65ceaf5916cefba237a57"),
+	})
+}
+
+func (s *keydataNoAEADSuite) TestUnmarshalKeyDataWithParams(c *C) {
+	s.testUnmarshalKeyData(c, &testUnmarshalKeyDataParams{
+		data: []byte(`{"handle":{"salt":"e7ZGda992+LuzGom+quLixcMe5Venv3muPEUmAsyWIU=","iv":"aHzANSRq5xvOnvbHVtpjwg=="},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":["OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU="]},"modes":["run"]},"signature":"MEQCIA19SEUAhiGMpFpBzZYUfiC3iGC9W3n9G2DfztjNaORRAiBpX/6zHRUC6XFScX+0vajpMYdgrpckXmlO4imyYDrvCw==","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"},"aead_compat":{"nonce":"lCgGdbPIj/dVL/Rc","encrypted_key":"Y2O32i8KtriV+2JgktVnHH2zXr47ll2lu8MffpKHB24="}}`),
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:          "run",
+		ciphertext:        testutil.DecodeHexString(c, "c9f3f5cb299a115d8bdd77a800ac348f4992f2bb2df5b343729201ad9ce3f79ea2cc46927c7ef3bd809603d12521991229bcb7deaac249d568afc62390c99ddccaf759e17f52ed0c03e313494304d479a96f7d409cc0"),
+		expectedPlaintext: testutil.DecodeHexString(c, "30440420f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa0420e51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc396"),
+	})
+}
+
+func (s *keydataNoAEADSuite) TestUnmarshalKeyDataWithOtherParams(c *C) {
+	s.testUnmarshalKeyData(c, &testUnmarshalKeyDataParams{
+		data: []byte(`{"handle":{"salt":"e7ZGda992+LuzGom+quLixcMe5Venv3muPEUmAsyWIU=","iv":"aHzANSRq5xvOnvbHVtpjwg=="},"scope":{"version":1,"params":{"model_digests":{"alg":"sha256","digests":["OdtD1Oz+LVG4A77RTkE1JaKopD8p/AxcUQsa9M/PPrU=","ZSIpjch5LBY6AP8X9YdKCqAmb7RtxW+rSEe1HP9EVnU="]},"modes":["run","recover"]},"signature":"MEQCIGRKp3aXbNyn2vIbZC/cA65FcrhGGaOwgNs2SnrKYZJ6AiABNaEs1JDBCDitVG9Td68P/D8HsaSs8KlKLWIp8GNa/w==","pubkey":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE74IiBOQeg9TfT3jaVoVp5jcpcMVvmL7oDOUFgsmwRagZy4pM8pEn/wFlTZSB9BBSQcEPbfxT9Cov496E7OVj+Q==","kdf_alg":"sha256","md_alg":"sha256"},"aead_compat":{"nonce":"lCgGdbPIj/dVL/Rc","encrypted_key":"Y2O32i8KtriV+2JgktVnHH2zXr47ll2lu8MffpKHB24="}}`),
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode:          "recover",
+		ciphertext:        testutil.DecodeHexString(c, "c9f3f5cb299a115d8bdd77a800ac348f4992f2bb2df5b343729201ad9ce3f79ea2cc46927c7ef3bd809603d12521991229bcb7deaac249d568afc62390c99ddccaf759e17f52ed0c03e313494304d479a96f7d409cc0"),
+		expectedPlaintext: testutil.DecodeHexString(c, "30440420f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa0420e51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc396"),
+	})
 }
