@@ -41,7 +41,7 @@ func Test(t *testing.T) { TestingT(t) }
 
 type mockPcrProfileContext struct {
 	alg      tpm2.HashAlgorithmId
-	flags    PcrProfileFlags
+	pcrs     PcrFlags
 	handlers ImageLoadHandlerMap
 }
 
@@ -49,8 +49,8 @@ func (c *mockPcrProfileContext) PCRAlg() tpm2.HashAlgorithmId {
 	return c.alg
 }
 
-func (c *mockPcrProfileContext) Flags() PcrProfileFlags {
-	return c.flags
+func (c *mockPcrProfileContext) PCRs() PcrFlags {
+	return c.pcrs
 }
 
 func (c *mockPcrProfileContext) ImageLoadHandlerMap() ImageLoadHandlerMap {
@@ -67,7 +67,7 @@ const (
 )
 
 type mockPcrBranchEvent struct {
-	pcr       int
+	pcr       tpm2.Handle
 	eventType mockPcrBranchEventType
 
 	locality uint8
@@ -116,7 +116,7 @@ func (c *mockPcrBranchContext) ShimContext() *ShimContext {
 	return c.sc
 }
 
-func (c *mockPcrBranchContext) ResetPCR(pcr int) {
+func (c *mockPcrBranchContext) ResetPCR(pcr tpm2.Handle) {
 	c.events = append(c.events, &mockPcrBranchEvent{
 		pcr:       pcr,
 		eventType: mockPcrBranchResetEvent,
@@ -131,7 +131,7 @@ func (c *mockPcrBranchContext) ResetCRTMPCR(locality uint8) {
 	})
 }
 
-func (c *mockPcrBranchContext) ExtendPCR(pcr int, digest tpm2.Digest) {
+func (c *mockPcrBranchContext) ExtendPCR(pcr tpm2.Handle, digest tpm2.Digest) {
 	c.events = append(c.events, &mockPcrBranchEvent{
 		pcr:       pcr,
 		eventType: mockPcrBranchExtendEvent,
@@ -139,7 +139,7 @@ func (c *mockPcrBranchContext) ExtendPCR(pcr int, digest tpm2.Digest) {
 	})
 }
 
-func (c *mockPcrBranchContext) MeasureVariable(pcr int, guid efi.GUID, name string, data []byte) {
+func (c *mockPcrBranchContext) MeasureVariable(pcr tpm2.Handle, guid efi.GUID, name string, data []byte) {
 	c.events = append(c.events, &mockPcrBranchEvent{
 		pcr:       pcr,
 		eventType: mockPcrBranchMeasureVariableEvent,
@@ -524,7 +524,7 @@ func newMockLoadHandler(actions ...mockLoadHandlerAction) *mockLoadHandler {
 	return out
 }
 
-func (h *mockLoadHandler) withExtendPCROnImageStart(pcr int, digest tpm2.Digest) *mockLoadHandler {
+func (h *mockLoadHandler) withExtendPCROnImageStart(pcr tpm2.Handle, digest tpm2.Digest) *mockLoadHandler {
 	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
 		ctx.ExtendPCR(pcr, digest)
 		return nil
@@ -532,7 +532,7 @@ func (h *mockLoadHandler) withExtendPCROnImageStart(pcr int, digest tpm2.Digest)
 	return h
 }
 
-func (h *mockLoadHandler) withMeasureVariableOnImageStart(pcr int, guid efi.GUID, name string) *mockLoadHandler {
+func (h *mockLoadHandler) withMeasureVariableOnImageStart(pcr tpm2.Handle, guid efi.GUID, name string) *mockLoadHandler {
 	h.startActions = append(h.startActions, func(ctx PcrBranchContext) error {
 		data, _, err := ctx.Vars().ReadVar(name, guid)
 		switch {
@@ -619,7 +619,7 @@ func (h *mockLoadHandler) withAppendShimVerificationEventOnImageStart(c *C, dige
 	return h
 }
 
-func (h *mockLoadHandler) withExtendPCROnImageLoads(pcr int, digests ...tpm2.Digest) *mockLoadHandler {
+func (h *mockLoadHandler) withExtendPCROnImageLoads(pcr tpm2.Handle, digests ...tpm2.Digest) *mockLoadHandler {
 	h.loadActions = append(h.loadActions, func(ctx PcrBranchContext) error {
 		if len(digests) == 0 {
 			return errors.New("no digests")
@@ -686,4 +686,68 @@ func (d *mockErrLogData) Error() string {
 
 func (d *mockErrLogData) Unwrap() error {
 	return d.err
+}
+
+type efiSuite struct{}
+
+var _ = Suite(&efiSuite{})
+
+func (s *efiSuite) TestMakePcrFlags1(c *C) {
+	flags := MakePcrFlags(SecureBootPolicyPCR)
+	c.Check(flags, Equals, PcrFlags(1<<SecureBootPolicyPCR))
+}
+
+func (s *efiSuite) TestMakePcrFlags2(c *C) {
+	flags := MakePcrFlags(BootManagerCodePCR)
+	c.Check(flags, Equals, PcrFlags(1<<BootManagerCodePCR))
+}
+
+func (s *efiSuite) TestMakePcrFlags3(c *C) {
+	flags := MakePcrFlags(BootManagerCodePCR, SecureBootPolicyPCR)
+	c.Check(flags, Equals, PcrFlags(1<<BootManagerCodePCR|1<<SecureBootPolicyPCR))
+}
+
+func (e *efiSuite) TestPcrFlagsPCRs1(c *C) {
+	flags := PcrFlags(1 << SecureBootPolicyPCR)
+	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{SecureBootPolicyPCR})
+}
+
+func (e *efiSuite) TestPcrFlagsPCRs2(c *C) {
+	flags := PcrFlags(1 << BootManagerCodePCR)
+	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{BootManagerCodePCR})
+}
+
+func (e *efiSuite) TestPcrFlagsPCRs3(c *C) {
+	flags := PcrFlags((1 << BootManagerCodePCR) | (1 << SecureBootPolicyPCR))
+	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{BootManagerCodePCR, SecureBootPolicyPCR})
+}
+
+func (e *efiSuite) TestPcrFlagsContains1(c *C) {
+	flags := PcrFlags(1 << SecureBootPolicyPCR)
+	c.Check(flags.Contains(SecureBootPolicyPCR), testutil.IsTrue)
+}
+
+func (e *efiSuite) TestPcrFlagsContains2(c *C) {
+	flags := PcrFlags(1 << BootManagerCodePCR)
+	c.Check(flags.Contains(BootManagerCodePCR), testutil.IsTrue)
+}
+
+func (e *efiSuite) TestPcrFlagsContains3(c *C) {
+	flags := PcrFlags((1 << BootManagerCodePCR) | (1 << SecureBootPolicyPCR))
+	c.Check(flags.Contains(BootManagerCodePCR, SecureBootPolicyPCR), testutil.IsTrue)
+}
+
+func (e *efiSuite) TestPcrFlagsContains4(c *C) {
+	flags := PcrFlags((1 << BootManagerCodePCR) | (1 << SecureBootPolicyPCR))
+	c.Check(flags.Contains(SecureBootPolicyPCR), testutil.IsTrue)
+}
+
+func (e *efiSuite) TestPcrFlagsDoesNotContain1(c *C) {
+	flags := PcrFlags(1 << SecureBootPolicyPCR)
+	c.Check(flags.Contains(PlatformFirmwarePCR), testutil.IsFalse)
+}
+
+func (e *efiSuite) TestPcrFlagsDoesNotContain2(c *C) {
+	flags := PcrFlags(1 << SecureBootPolicyPCR)
+	c.Check(flags.Contains(PlatformFirmwarePCR, SecureBootPolicyPCR), testutil.IsFalse)
 }
