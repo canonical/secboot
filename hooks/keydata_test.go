@@ -24,6 +24,7 @@ import (
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/json"
 
 	. "gopkg.in/check.v1"
@@ -463,6 +464,189 @@ func (s *keydataSuite) TestUnmarshalKeyDataWithOtherParams(c *C) {
 		ciphertext:        testutil.DecodeHexString(c, "6244724fe5649c7ed7610c82774eea6dff2c32bad54c08549fe31124d63b7173887346112a0662331fb14e2645f872da5808f703b9bb779496e7afe33412a4e21f7157b5f59cf7b30f2689ca11b1750c65cb0e0d52a0"),
 		expectedPlaintext: testutil.DecodeHexString(c, "30440420f51ad3cfef16e7076153d3a994f1fe09cc82c2ae4186d5322ffaae2f6e2b58fa0420e51f16354d289d1fcf0f66a4f69841fb3bbb9917932ab439a2250a50d45cc396"),
 	})
+}
+
+type testSetAuthorizedSnapModelsParams struct {
+	model    secboot.SnapModel
+	bootMode string
+
+	params *KeyParams
+
+	authorizedModels []secboot.SnapModel
+}
+
+func (s *keydataSuite) testSetAuthorizedSnapModels(c *C, params *testSetAuthorizedSnapModelsParams) {
+	bootscope.SetModel(params.model)
+	bootscope.SetBootMode(params.bootMode)
+
+	// Create an initial key that isn't authorized
+	kd, primaryKey, _, err := NewProtectedKey(rand.Reader, params.params)
+	c.Assert(err, IsNil)
+
+	keyData, err := NewKeyData(kd)
+	c.Assert(err, IsNil)
+	c.Check(keyData.Data().Scope.IsBootEnvironmentAuthorized(), NotNil)
+
+	c.Check(keyData.SetAuthorizedSnapModels(rand.Reader, primaryKey, params.authorizedModels...), IsNil)
+
+	// Make sure that SetAuthorizedSnapModels updated the secboot.KeyData by decoding the handle again
+	keyData, err = NewKeyData(kd)
+	c.Assert(err, IsNil)
+
+	c.Check(keyData.Data().Scope.IsBootEnvironmentAuthorized(), IsNil)
+}
+
+func (s *keydataSuite) TestSetAuthorizedSnapModelsGood1(c *C) {
+	model := testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")
+
+	s.testSetAuthorizedSnapModels(c, &testSetAuthorizedSnapModelsParams{
+		model:    model,
+		bootMode: "run",
+		params: &KeyParams{
+			Role: "foo",
+			AuthorizedSnapModels: []secboot.SnapModel{
+				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+					"authority-id": "fake-brand",
+					"series":       "16",
+					"brand-id":     "fake-brand",
+					"model":        "other-model",
+					"grade":        "secured",
+				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+			},
+		},
+		authorizedModels: []secboot.SnapModel{model},
+	})
+}
+
+func (s *keydataSuite) TestSetAuthorizedSnapModelsGood2(c *C) {
+	models := []secboot.SnapModel{
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "other-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+	}
+
+	s.testSetAuthorizedSnapModels(c, &testSetAuthorizedSnapModelsParams{
+		model:    models[1],
+		bootMode: "run",
+		params: &KeyParams{
+			Role: "foo",
+			AuthorizedSnapModels: []secboot.SnapModel{testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "other-model2",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")},
+		},
+		authorizedModels: models,
+	})
+}
+
+func (s *keydataSuite) TestSetAuthorizedSnapModelsInvalidPrimaryKey(c *C) {
+	kd, primaryKey, _, err := NewProtectedKey(rand.Reader, nil)
+	c.Assert(err, IsNil)
+
+	keyData, err := NewKeyData(kd)
+	c.Assert(err, IsNil)
+
+	primaryKey[0] ^= 0xff
+
+	c.Check(keyData.SetAuthorizedSnapModels(rand.Reader, primaryKey), ErrorMatches, `incorrect key supplied`)
+}
+
+type testSetAuthorizedBootModesParams struct {
+	model    secboot.SnapModel
+	bootMode string
+
+	params *KeyParams
+
+	authorizedBootModes []string
+}
+
+func (s *keydataSuite) testSetAuthorizedBootModes(c *C, params *testSetAuthorizedBootModesParams) {
+	bootscope.SetModel(params.model)
+	bootscope.SetBootMode(params.bootMode)
+
+	// Create an initial key that isn't authorized
+	kd, primaryKey, _, err := NewProtectedKey(rand.Reader, params.params)
+	c.Assert(err, IsNil)
+
+	keyData, err := NewKeyData(kd)
+	c.Assert(err, IsNil)
+	c.Check(keyData.Data().Scope.IsBootEnvironmentAuthorized(), NotNil)
+
+	c.Check(keyData.SetAuthorizedBootModes(rand.Reader, primaryKey, params.authorizedBootModes...), IsNil)
+
+	// Make sure that SetAuthorizedBootModes updated the secboot.KeyData by decoding the handle again
+	keyData, err = NewKeyData(kd)
+	c.Assert(err, IsNil)
+
+	c.Check(keyData.Data().Scope.IsBootEnvironmentAuthorized(), IsNil)
+}
+
+func (s *keydataSuite) TestSetAuthorizedBootModesGood1(c *C) {
+	s.testSetAuthorizedBootModes(c, &testSetAuthorizedBootModesParams{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode: "run",
+		params: &KeyParams{
+			Role:                "foo",
+			AuthorizedBootModes: []string{"recover"},
+		},
+		authorizedBootModes: []string{"run"},
+	})
+}
+
+func (s *keydataSuite) TestSetAuthorizedBootModesGood2(c *C) {
+	s.testSetAuthorizedBootModes(c, &testSetAuthorizedBootModesParams{
+		model: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			"authority-id": "fake-brand",
+			"series":       "16",
+			"brand-id":     "fake-brand",
+			"model":        "fake-model",
+			"grade":        "secured",
+		}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"),
+		bootMode: "recover",
+		params: &KeyParams{
+			Role:                "foo",
+			AuthorizedBootModes: []string{"factory-reset"},
+		},
+		authorizedBootModes: []string{"run", "recover"},
+	})
+}
+
+func (s *keydataSuite) TestSetAuthorizedBootModesInvalidPrimaryKey(c *C) {
+	kd, primaryKey, _, err := NewProtectedKey(rand.Reader, nil)
+	c.Assert(err, IsNil)
+
+	keyData, err := NewKeyData(kd)
+	c.Assert(err, IsNil)
+
+	primaryKey[0] ^= 0xff
+
+	c.Check(keyData.SetAuthorizedBootModes(rand.Reader, primaryKey), ErrorMatches, `incorrect key supplied`)
 }
 
 type keydataNoAEADSuite struct{}
