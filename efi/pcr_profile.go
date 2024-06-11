@@ -28,15 +28,15 @@ import (
 	"golang.org/x/xerrors"
 )
 
+// PCRProfileOption is an option for AddPCRProfile
+type PCRProfileOption interface {
+	applyOptionTo(gen *pcrProfileGenerator)
+}
+
 // PCRProfileEnablePCRsOption is an option for AddPCRProfile that adds one or more PCRs.
 type PCRProfileEnablePCRsOption interface {
 	PCRProfileOption
 	PCRs() tpm2.HandleList
-}
-
-// PCRProfileOption is an option for AddPCRProfile
-type PCRProfileOption interface {
-	applyOptionTo(gen *pcrProfileGenerator)
 }
 
 type pcrProfileSetPcrsOption struct {
