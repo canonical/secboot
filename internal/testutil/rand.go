@@ -22,8 +22,6 @@ package testutil
 import (
 	"io"
 	"math/rand"
-
-	"gopkg.in/check.v1"
 )
 
 type testRng struct{}
@@ -35,8 +33,6 @@ func (r *testRng) Read(p []byte) (int, error) {
 var RandReader = &testRng{}
 
 type maybeReadByteBypasser struct {
-	c *check.C
-
 	bypassAll     bool
 	bypassOffsets []int64
 
