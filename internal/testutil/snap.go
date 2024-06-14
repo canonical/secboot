@@ -29,7 +29,7 @@ import (
 	"github.com/snapcore/secboot"
 )
 
-func MakeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) secboot.SnapModel {
+func makeMockCore20ModelAssertion(headers map[string]interface{}, signKeyHash string) (asserts.Assertion, error) {
 	template := map[string]interface{}{
 		"type":              "model",
 		"architecture":      "amd64",
@@ -53,7 +53,19 @@ func MakeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyH
 		template[k] = v
 	}
 
-	assertion, err := asserts.Assemble(template, nil, nil, []byte("AXNpZw=="))
+	return asserts.Assemble(template, nil, nil, []byte("AXNpZw=="))
+}
+
+func MakeMockCore20ModelAssertion(c *C, headers map[string]interface{}, signKeyHash string) secboot.SnapModel {
+	assertion, err := makeMockCore20ModelAssertion(headers, signKeyHash)
 	c.Assert(err, IsNil)
+	return assertion.(secboot.SnapModel)
+}
+
+func MustMakeMockCore20ModelAssertion(headers map[string]interface{}, signKeyHash string) secboot.SnapModel {
+	assertion, err := makeMockCore20ModelAssertion(headers, signKeyHash)
+	if err != nil {
+		panic(err)
+	}
 	return assertion.(secboot.SnapModel)
 }
