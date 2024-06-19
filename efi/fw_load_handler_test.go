@@ -234,6 +234,27 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileIncludeA
 	})
 }
 
+func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileIgnoreUnknownFirmwareAgentLaunch(c *C) {
+	// Verify that the profile ignores any firmware application launch that isn't "AbsoluteAbtInstaller" or
+	// "AbsoluteComputraceInstaller". This will generate an invalid profile, but will be detected by the
+	// pre-install checks.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0xee993080, 0x5197, 0x4d4e, 0xb63c, [...]byte{0xf1, 0xf7, 0x41, 0x3e, 0x33, 0xce}),
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(BootManagerCodePCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 4, eventType: mockPcrBranchResetEvent},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+}
+
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyAndBootManagerCodeProfile(c *C) {
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
@@ -492,28 +513,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_1(c *C) {
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_2(c *C) {
-	// Insert invalid event data in the OS-present phase
-	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:  tpm2.HashAlgorithmSHA256,
-		pcrs: MakePcrFlags(BootManagerCodePCR)}, nil, collector.Next())
-
-	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d})})
-	for i, event := range log.Events {
-		if event.PCRIndex == 4 && event.EventType == tcglog.EventTypeEFIBootServicesApplication {
-			log.Events[i].Data = &mockErrLogData{io.ErrUnexpectedEOF}
-			break
-		}
-	}
-
-	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure boot manager code: invalid event data for OS-present event: unexpected EOF`)
-}
-
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_3(c *C) {
-	// Delete the device path for the first OS-present application launch
+	// Insert invalid event data in the OS-present phase so that internal.IsAbsoluteAgentLaunch returns an error
 	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:  tpm2.HashAlgorithmSHA256,
@@ -533,85 +533,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_3(c *C) {
 	}
 
 	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure boot manager code: invalid device path for first OS-present image load event: device path is empty`)
-}
-
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_4(c *C) {
-	// Delete the FvFile component of the device path for the first OS-present application launch
-	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:  tpm2.HashAlgorithmSHA256,
-		pcrs: MakePcrFlags(BootManagerCodePCR)}, nil, collector.Next())
-
-	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d})})
-	for i, event := range log.Events {
-		if event.PCRIndex == 4 && event.EventType == tcglog.EventTypeEFIBootServicesApplication {
-			data, ok := event.Data.(*tcglog.EFIImageLoadEvent)
-			c.Assert(ok, testutil.IsTrue)
-			data.DevicePath = data.DevicePath[:1]
-			log.Events[i].Data = data
-			break
-		}
-	}
-
-	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure boot manager code: invalid firmware volume device path \(\\Fv\(983cc241-b4f6-4a85-9733-4c154b3aa327\)\) for OS-present image load: invalid length`)
-}
-
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_5(c *C) {
-	// Replace the FvFile component of the device path for the first OS-present application launch with something else
-	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:  tpm2.HashAlgorithmSHA256,
-		pcrs: MakePcrFlags(BootManagerCodePCR)}, nil, collector.Next())
-
-	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d})})
-	for i, event := range log.Events {
-		if event.PCRIndex == 4 && event.EventType == tcglog.EventTypeEFIBootServicesApplication {
-			data, ok := event.Data.(*tcglog.EFIImageLoadEvent)
-			c.Assert(ok, testutil.IsTrue)
-			data.DevicePath[1] = efi.FilePathDevicePathNode("/foo")
-			log.Events[i].Data = data
-			break
-		}
-	}
-
-	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure boot manager code: invalid firmware volume device path \(\\Fv\(983cc241-b4f6-4a85-9733-4c154b3aa327\)\\\/foo\) for OS-present image load: doesn't terminate with FvFile`)
-}
-
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_6(c *C) {
-	// Have an unknown component load from firmware as part of the OS-present environment
-	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:  tpm2.HashAlgorithmSHA256,
-		pcrs: MakePcrFlags(BootManagerCodePCR)}, nil, collector.Next())
-
-	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0xa52f647a, 0x2554, 0x4721, 0x80e5, [...]byte{0x61, 0x7e, 0x4c, 0x50, 0xf2, 0xd8})})
-
-	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure boot manager code: unknown image loaded from firmware volume during OS-present: \\Fv\(983cc241-b4f6-4a85-9733-4c154b3aa327\)\\FvFile\(a52f647a-2554-4721-80e5-617e4c50f2d8\)`)
-}
-
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_7(c *C) {
-	// Have an unexpected component load from firmware as part of the OS-present environment
-	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(nil, nil))
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:  tpm2.HashAlgorithmSHA256,
-		pcrs: MakePcrFlags(BootManagerCodePCR)}, nil, collector.Next())
-
-	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x8218965d, 0x20c0, 0x4dd6, 0x81a0, [...]byte{0x84, 0x5c, 0x52, 0x27, 0x07, 0x43})})
-
-	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure boot manager code: unexpected image loaded from firmware volume during OS-present: \\Fv\(983cc241-b4f6-4a85-9733-4c154b3aa327\)\\FvFile\(LenovoSetupDateTimeDxe\)`)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure boot manager code: encountered an error determining whether an OS-present launch is related to Absolute: EV_EFI_BOOT_SERVICES_APPLICATION event has empty device path`)
 }
 
 func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogSeparatorError(c *C, pcr tpm2.Handle) error {
