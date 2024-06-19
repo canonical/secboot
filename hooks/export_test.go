@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2024 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -17,33 +17,36 @@
  *
  */
 
-package testutil
+package hooks
 
-import (
-	"encoding/hex"
-	"testing"
+import "github.com/snapcore/secboot"
 
-	. "gopkg.in/check.v1"
+type (
+	AeadCompatData = aeadCompatData
+	HooksPlatform  = hooksPlatform
+	PrivateKeyData = keyData
 )
 
-func DecodeHexString(c *C, s string) []byte {
-	b, err := hex.DecodeString(s)
-	c.Assert(err, IsNil)
-	return b
+const (
+	PlatformName = platformName
+)
+
+func (d *KeyData) Data() *keyData {
+	return &d.data
 }
 
-func DecodeHexStringT(t *testing.T, s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		t.Fatalf("DecodeHexString failed: %v", err)
-	}
-	return b
+func (d *KeyData) K() *secboot.KeyData {
+	return d.k
 }
 
-func MustDecodeHexString(s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
+func MakeKeyData(d *keyData) *KeyData {
+	return &KeyData{data: *d}
+}
+
+func MockSecbootNewKeyData(fn func(*secboot.KeyParams) (*secboot.KeyData, error)) (restore func()) {
+	orig := secbootNewKeyData
+	secbootNewKeyData = fn
+	return func() {
+		secbootNewKeyData = orig
 	}
-	return b
 }
