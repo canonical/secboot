@@ -21,43 +21,46 @@ package efi
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot/efi/internal"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 	"golang.org/x/xerrors"
 )
 
 // PCRProfileOption is an option for AddPCRProfile
 type PCRProfileOption interface {
-	applyOptionTo(gen *pcrProfileGenerator)
+	ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error
 }
 
 // PCRProfileEnablePCRsOption is an option for AddPCRProfile that adds one or more PCRs.
 type PCRProfileEnablePCRsOption interface {
 	PCRProfileOption
-	PCRs() tpm2.HandleList
+	PCRs() (tpm2.HandleList, error)
 }
 
-type pcrProfileSetPcrsOption struct {
+type pcrProfileSetPcrOption struct {
 	PCRProfileOption
-	pcrs pcrFlags
+	pcr tpm2.Handle
 }
 
-func newPcrProfileSetPcrsOption(pcrs pcrFlags) *pcrProfileSetPcrsOption {
-	out := &pcrProfileSetPcrsOption{
-		pcrs: pcrs,
+func newPcrProfileSetPcrOption(pcr tpm2.Handle) *pcrProfileSetPcrOption {
+	out := &pcrProfileSetPcrOption{
+		pcr: pcr,
 	}
 	out.PCRProfileOption = out
 	return out
 }
 
-func (o *pcrProfileSetPcrsOption) applyOptionTo(gen *pcrProfileGenerator) {
-	gen.pcrs |= o.pcrs
+func (o *pcrProfileSetPcrOption) ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error {
+	visitor.AddPCRs(o.pcr)
+	return nil
 }
 
-func (o *pcrProfileSetPcrsOption) PCRs() tpm2.HandleList {
-	return o.pcrs.PCRs()
+func (o *pcrProfileSetPcrOption) PCRs() (tpm2.HandleList, error) {
+	return tpm2.HandleList{o.pcr}, nil
 }
 
 // WithPlatformFirmwareProfile adds the SRTM, POST BIOS and Embedded Drivers
@@ -68,14 +71,14 @@ func (o *pcrProfileSetPcrsOption) PCRs() tpm2.HandleList {
 // hardware root of trust as opposed to being verified as authentic and prevented
 // from running otherwise.
 func WithPlatformFirmwareProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrsOption(makePcrFlags(platformFirmwarePCR))
+	return newPcrProfileSetPcrOption(internal.PlatformFirmwarePCR)
 }
 
 // WithDriversAndAppsProfile adds the UEFI Drivers and UEFI Applications profile
 // (measured to PCR2). This is copied directly from the current host environment
 // configiguration.
 func WithDriversAndAppsProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrsOption(makePcrFlags(driversAndAppsPCR))
+	return newPcrProfileSetPcrOption(internal.DriversAndAppsPCR)
 }
 
 // WithSecureBootPolicyProfile requests that the UEFI secure boot policy profile is
@@ -135,7 +138,7 @@ func WithDriversAndAppsProfile() PCRProfileEnablePCRsOption {
 // of these makes a policy inherently fragile because it is not possible to pre-generate
 // policy to accomodate updates of these components.
 func WithSecureBootPolicyProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrsOption(makePcrFlags(secureBootPolicyPCR))
+	return newPcrProfileSetPcrOption(internal.SecureBootPolicyPCR)
 }
 
 // WithBootManagerCodeProfile requests that the UEFI boot manager code and boot attempts
@@ -171,7 +174,7 @@ func WithSecureBootPolicyProfile() PCRProfileEnablePCRsOption {
 // fail before performing a successful attempt, even if the images associated with the
 // successful attempt are included in this policy.
 func WithBootManagerCodeProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrsOption(makePcrFlags(bootManagerCodePCR))
+	return newPcrProfileSetPcrOption(internal.BootManagerCodePCR)
 }
 
 // WithKernelConfigProfile adds the kernel config profile. This binds a policy to a
@@ -182,7 +185,7 @@ func WithBootManagerCodeProfile() PCRProfileEnablePCRsOption {
 // Snap models can be injected into the profile with [SnapModelParams]. Note that a model
 // assertion is mandatory for profiles that include a UKI for Ubuntu Core.
 func WithKernelConfigProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrsOption(makePcrFlags(kernelConfigPCR))
+	return newPcrProfileSetPcrOption(kernelConfigPCR)
 }
 
 // AddPCRProfile adds a profile defined by the supplied options to the supplied
@@ -190,7 +193,10 @@ func WithKernelConfigProfile() PCRProfileEnablePCRsOption {
 // for the PCR digest. The generated profile is defined by the supplied load
 // sequences and options.
 func AddPCRProfile(pcrAlg tpm2.HashAlgorithmId, branch *secboot_tpm2.PCRProtectionProfileBranch, loadSequences *ImageLoadSequences, options ...PCRProfileOption) error {
-	gen := newPcrProfileGenerator(pcrAlg, loadSequences, options...)
+	gen, err := newPcrProfileGenerator(pcrAlg, loadSequences, options...)
+	if err != nil {
+		return err
+	}
 
 	if gen.pcrs == 0 {
 		return errors.New("must specify a profile to add")
@@ -224,23 +230,25 @@ type pcrProfileGenerator struct {
 	// of every possible EFI variable starting state, and is used for generating
 	// profiles that incorporate signature database updates and changest to
 	// SbatPolicy.
-	varModifiers []rootVarsModifier
+	varModifiers []internal.InitialVariablesModifier
 
 	// log is the host TCG log, which is read from the associated env.
 	log *tcglog.Log
 }
 
-func newPcrProfileGenerator(pcrAlg tpm2.HashAlgorithmId, loadSequences *ImageLoadSequences, options ...PCRProfileOption) *pcrProfileGenerator {
+func newPcrProfileGenerator(pcrAlg tpm2.HashAlgorithmId, loadSequences *ImageLoadSequences, options ...PCRProfileOption) (*pcrProfileGenerator, error) {
 	gen := &pcrProfileGenerator{
 		pcrAlg:        pcrAlg,
 		loadSequences: loadSequences,
-		env:           defaultEnv,
+		env:           internal.DefaultEnv,
 		handlers:      makeImageLoadHandlerMap(),
 	}
 	for _, opt := range options {
-		opt.applyOptionTo(gen)
+		if err := opt.ApplyOptionTo(gen); err != nil {
+			return nil, err
+		}
 	}
-	return gen
+	return gen, nil
 }
 
 func (g *pcrProfileGenerator) addPCRProfile(branch *secboot_tpm2.PCRProtectionProfileBranch) error {
@@ -255,12 +263,14 @@ func (g *pcrProfileGenerator) addPCRProfile(branch *secboot_tpm2.PCRProtectionPr
 
 	// Collect all of the starting EFI variable states that we need to
 	// generate branches for.
-	collector := newRootVarsCollector(g.env)
+	collector := newVariableSetCollector(g.env)
 
 	// Collect the starting EFI variable states from the supplied options
 	for i, mod := range g.varModifiers {
-		if err := mod(collector); err != nil {
-			return xerrors.Errorf("cannot process host variable modifier %d: %w", i, err)
+		for j, branch := range collector.PeekAll() {
+			if err := mod(branch); err != nil {
+				return fmt.Errorf("cannot process host variable modifier %d for initial branch %d: %w", i, j, err)
+			}
 		}
 	}
 
@@ -309,6 +319,20 @@ func (g *pcrProfileGenerator) addOnePCRProfileBranch(bp *secboot_tpm2.PCRProtect
 	}
 
 	return nil
+}
+
+// AddPCRs implements [internal.PCRProfileOptionVisitor.AddPCRs]
+func (g *pcrProfileGenerator) AddPCRs(pcrs ...tpm2.Handle) {
+	g.pcrs |= makePcrFlags(pcrs...)
+}
+
+// SetEnvironment implements [internal.PCRProfileOptionVisitor.SetEnvironment]
+func (g *pcrProfileGenerator) SetEnvironment(env internal.HostEnvironment) {
+	g.env = env
+}
+
+func (g *pcrProfileGenerator) AddInitialVariablesModifier(fn internal.InitialVariablesModifier) {
+	g.varModifiers = append(g.varModifiers, fn)
 }
 
 // PCRAlg implements pcrProfileContext.PCRAlg.

@@ -392,3 +392,75 @@ func (s *shimSuite) TestShimImageHandleHasSbatLevelSectionFalse(c *C) {
 	shimImage := NewShimImageHandle(image)
 	c.Check(shimImage.HasSbatLevelSection(), Not(testutil.IsTrue))
 }
+
+func (s *shimSuite) TestShimSbatPolicyLatestUnset(c *C) {
+	visitor := new(mockPcrProfileOptionVisitor)
+	opt := WithShimSbatPolicyLatest()
+	c.Check(opt.ApplyOptionTo(visitor), IsNil)
+
+	c.Assert(visitor.varModifiers, HasLen, 1)
+
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil))
+	c.Check(visitor.varModifiers[0](collector.PeekAll()[0]), IsNil)
+
+	c.Assert(collector.More(), testutil.IsTrue)
+	vars := collector.Next()
+	_, _, err := vars.ReadVar("SbatPolicy", ShimGuid)
+	c.Check(err, Equals, efi.ErrVarNotExist)
+
+	c.Assert(collector.More(), testutil.IsTrue)
+	vars = collector.Next()
+	data, attrs, err := vars.ReadVar("SbatPolicy", ShimGuid)
+	c.Check(err, IsNil)
+	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess)
+	c.Check(data, DeepEquals, []byte{0x1})
+
+	c.Check(collector.More(), testutil.IsFalse)
+}
+
+func (s *shimSuite) TestShimSbatPolicyLatestFromPrevious(c *C) {
+	visitor := new(mockPcrProfileOptionVisitor)
+	opt := WithShimSbatPolicyLatest()
+	c.Check(opt.ApplyOptionTo(visitor), IsNil)
+
+	c.Assert(visitor.varModifiers, HasLen, 1)
+
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MakeMockVars().Set("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{0x2}), nil))
+	c.Check(visitor.varModifiers[0](collector.PeekAll()[0]), IsNil)
+
+	c.Assert(collector.More(), testutil.IsTrue)
+	vars := collector.Next()
+	data, attrs, err := vars.ReadVar("SbatPolicy", ShimGuid)
+	c.Check(err, IsNil)
+	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess)
+	c.Check(data, DeepEquals, []byte{0x2})
+
+	c.Assert(collector.More(), testutil.IsTrue)
+	vars = collector.Next()
+	data, attrs, err = vars.ReadVar("SbatPolicy", ShimGuid)
+	c.Check(err, IsNil)
+	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess)
+	c.Check(data, DeepEquals, []byte{0x1})
+
+	c.Check(collector.More(), testutil.IsFalse)
+}
+
+func (s *shimSuite) TestShimSbatPolicyLatestFromLatest(c *C) {
+	visitor := new(mockPcrProfileOptionVisitor)
+	opt := WithShimSbatPolicyLatest()
+	c.Check(opt.ApplyOptionTo(visitor), IsNil)
+
+	c.Assert(visitor.varModifiers, HasLen, 1)
+
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MakeMockVars().Set("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{0x1}), nil))
+	c.Check(visitor.varModifiers[0](collector.PeekAll()[0]), IsNil)
+
+	c.Assert(collector.More(), testutil.IsTrue)
+	vars := collector.Next()
+	data, attrs, err := vars.ReadVar("SbatPolicy", ShimGuid)
+	c.Check(err, IsNil)
+	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess)
+	c.Check(data, DeepEquals, []byte{0x1})
+
+	c.Check(collector.More(), testutil.IsFalse)
+}

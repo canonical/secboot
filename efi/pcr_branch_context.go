@@ -24,6 +24,7 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 
+	"github.com/snapcore/secboot/efi/internal"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -97,7 +98,7 @@ func (c *pcrBranchCtx) ResetPCR(pcr tpm2.Handle) {
 func (c *pcrBranchCtx) ResetCRTMPCR(locality uint8) {
 	value := make([]byte, c.PCRAlg().Size())
 	value[len(value)-1] = locality
-	c.branch.AddPCRValue(c.PCRAlg(), int(platformFirmwarePCR), value)
+	c.branch.AddPCRValue(c.PCRAlg(), int(internal.PlatformFirmwarePCR), value)
 }
 
 func (c *pcrBranchCtx) ExtendPCR(pcr tpm2.Handle, digest tpm2.Digest) {

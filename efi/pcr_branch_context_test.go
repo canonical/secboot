@@ -76,7 +76,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxParamsSubBranch(c *C) {
 }
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxVars(c *C) {
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
 	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, nil, new(LoadParams), vars)
@@ -96,7 +96,7 @@ func (s *pcrBranchContextSuite) TestPcrBranchCtxVars(c *C) {
 }
 
 func (s *pcrBranchContextSuite) TestPcrBranchCtxVarsSubBranch(c *C) {
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
 	bc := NewRootPcrBranchCtx(&mockPcrProfileContext{alg: tpm2.HashAlgorithmSHA256}, secboot_tpm2.NewPCRProtectionProfile().RootBranch(), new(LoadParams), vars)

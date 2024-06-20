@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"crypto/x509"
 
+	"github.com/snapcore/secboot/efi/internal"
 	"github.com/snapcore/snapd/snapdenv"
 	"golang.org/x/xerrors"
 )
@@ -44,24 +45,16 @@ type vendorAuthorityGetter interface {
 
 // secureBootAuthorityIdentity corresponds to the identify of a secure boot
 // authority. A secure boot namespace has one or more of these.
-type secureBootAuthorityIdentity struct {
-	subject            []byte
-	subjectKeyId       []byte
-	publicKeyAlgorithm x509.PublicKeyAlgorithm
-
-	issuer             []byte
-	authorityKeyId     []byte
-	signatureAlgorithm x509.SignatureAlgorithm
-}
+type secureBootAuthorityIdentity = internal.SecureBootAuthorityIdentity
 
 // withAuthority adds the specified secure boot authority to a secureBootNamespaceRules.
 // Note that this won't match if the specified authority directly signs things.
 func withAuthority(subject, subjectKeyId []byte, publicKeyAlgorithm x509.PublicKeyAlgorithm) secureBootNamespaceOption {
 	return func(ns *secureBootNamespaceRules) {
 		ns.authorities = append(ns.authorities, &secureBootAuthorityIdentity{
-			subject:            subject,
-			subjectKeyId:       subjectKeyId,
-			publicKeyAlgorithm: publicKeyAlgorithm})
+			Subject:            subject,
+			SubjectKeyId:       subjectKeyId,
+			PublicKeyAlgorithm: publicKeyAlgorithm})
 	}
 }
 
@@ -76,12 +69,12 @@ func withSelfSignedSignerOnlyForTesting(subject, subjectKeyId []byte, publicKeyA
 	}
 	return func(ns *secureBootNamespaceRules) {
 		ns.authorities = append(ns.authorities, &secureBootAuthorityIdentity{
-			subject:            subject,
-			subjectKeyId:       subjectKeyId,
-			publicKeyAlgorithm: publicKeyAlgorithm,
-			issuer:             subject,
-			authorityKeyId:     subjectKeyId,
-			signatureAlgorithm: signatureAlgorithm})
+			Subject:            subject,
+			SubjectKeyId:       subjectKeyId,
+			PublicKeyAlgorithm: publicKeyAlgorithm,
+			Issuer:             subject,
+			AuthorityKeyId:     subjectKeyId,
+			SignatureAlgorithm: signatureAlgorithm})
 	}
 }
 
@@ -130,24 +123,24 @@ func (r *secureBootNamespaceRules) AddAuthorities(certs ...*x509.Certificate) {
 		// have a minimal set of fields populated and we don't try to handle that case.
 		found := false
 		for _, authority := range r.authorities {
-			if bytes.Equal(authority.subject, cert.RawSubject) &&
-				bytes.Equal(authority.subjectKeyId, cert.SubjectKeyId) &&
-				authority.publicKeyAlgorithm == cert.PublicKeyAlgorithm &&
-				bytes.Equal(authority.issuer, cert.RawIssuer) &&
-				bytes.Equal(authority.authorityKeyId, cert.AuthorityKeyId) &&
-				authority.signatureAlgorithm == cert.SignatureAlgorithm {
+			if bytes.Equal(authority.Subject, cert.RawSubject) &&
+				bytes.Equal(authority.SubjectKeyId, cert.SubjectKeyId) &&
+				authority.PublicKeyAlgorithm == cert.PublicKeyAlgorithm &&
+				bytes.Equal(authority.Issuer, cert.RawIssuer) &&
+				bytes.Equal(authority.AuthorityKeyId, cert.AuthorityKeyId) &&
+				authority.SignatureAlgorithm == cert.SignatureAlgorithm {
 				found = true
 				break
 			}
 		}
 		if !found {
 			r.authorities = append(r.authorities, &secureBootAuthorityIdentity{
-				subject:            cert.RawSubject,
-				subjectKeyId:       cert.SubjectKeyId,
-				publicKeyAlgorithm: cert.PublicKeyAlgorithm,
-				issuer:             cert.RawIssuer,
-				authorityKeyId:     cert.AuthorityKeyId,
-				signatureAlgorithm: cert.SignatureAlgorithm,
+				Subject:            cert.RawSubject,
+				SubjectKeyId:       cert.SubjectKeyId,
+				PublicKeyAlgorithm: cert.PublicKeyAlgorithm,
+				Issuer:             cert.RawIssuer,
+				AuthorityKeyId:     cert.AuthorityKeyId,
+				SignatureAlgorithm: cert.SignatureAlgorithm,
 			})
 		}
 	}
@@ -164,12 +157,12 @@ func (r *secureBootNamespaceRules) NewImageLoadHandler(image peImageHandle) (ima
 
 	for _, authority := range r.authorities {
 		cert := &x509.Certificate{
-			RawSubject:         authority.subject,
-			SubjectKeyId:       authority.subjectKeyId,
-			PublicKeyAlgorithm: authority.publicKeyAlgorithm,
-			RawIssuer:          authority.issuer,
-			AuthorityKeyId:     authority.authorityKeyId,
-			SignatureAlgorithm: authority.signatureAlgorithm}
+			RawSubject:         authority.Subject,
+			SubjectKeyId:       authority.SubjectKeyId,
+			PublicKeyAlgorithm: authority.PublicKeyAlgorithm,
+			RawIssuer:          authority.Issuer,
+			AuthorityKeyId:     authority.AuthorityKeyId,
+			SignatureAlgorithm: authority.SignatureAlgorithm}
 		for _, sig := range sigs {
 			if !sig.CertLikelyTrustAnchor(cert) {
 				continue

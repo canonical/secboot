@@ -45,7 +45,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureOneLeaf(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -94,7 +94,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoLeaf(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -146,7 +146,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerNonLeaf(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -203,7 +203,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerTwoNonLeaf(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo1")
@@ -279,7 +279,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithParams(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -341,7 +341,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithInheritedParams
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := &LoadParams{SnapModel: model}
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -395,7 +395,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithVars(c *C) {
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
 
@@ -447,7 +447,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureVarsAreCopied
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)).Next()
 
@@ -504,7 +504,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithFwContext(c *C)
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -555,7 +555,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureFwContextIsCo
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -612,7 +612,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureWithShimContext(c *
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")
@@ -663,7 +663,7 @@ func (s *pcrImagesMeasurerSuite) TestPcrImagesMeasurerMeasureEnsureShimContextIs
 	profile := secboot_tpm2.NewPCRProtectionProfile()
 
 	params := new(LoadParams)
-	vars := NewRootVarsCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
+	vars := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)).Next()
 
 	h := crypto.SHA256.New()
 	io.WriteString(h, "foo")

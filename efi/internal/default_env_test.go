@@ -17,9 +17,10 @@
  *
  */
 
-package efi_test
+package internal_test
 
 import (
+	_ "embed"
 	"io"
 	"os"
 	"path/filepath"
@@ -27,11 +28,23 @@ import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	. "github.com/snapcore/secboot/efi"
+	. "github.com/snapcore/secboot/efi/internal"
 	"github.com/snapcore/secboot/internal/efitest"
+	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
 )
+
+var (
+	//go:embed MicrosoftKEK.crt
+	msKEKCertPEM []byte
+
+	msKEKCert []byte
+)
+
+func init() {
+	msKEKCert = testutil.MustDecodePEMType("CERTIFICATE", msKEKCertPEM)
+}
 
 type defaultEnvSuite struct{}
 
@@ -43,7 +56,22 @@ type testReadVarData struct {
 }
 
 func (s *defaultEnvSuite) testReadVar(c *C, data *testReadVarData) {
-	vars := makeMockVars(c, withMsSecureBootConfig())
+	ownerGuid := efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b})
+	kek := &efi.SignatureList{
+		Type: efi.CertX509Guid,
+		Signatures: []*efi.SignatureData{
+			{
+				Owner: ownerGuid,
+				Data:  msKEKCert,
+			},
+		},
+	}
+	dbx := efitest.NewSignatureListNullSHA256(ownerGuid)
+	vars := efitest.MakeMockVars()
+	vars.SetSecureBoot(true)
+	vars.SetKEK(c, efi.SignatureDatabase{kek})
+	vars.SetDbx(c, efi.SignatureDatabase{dbx})
+
 	restore := MockReadVar(func(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
 		entry, exists := vars[efi.VariableDescriptor{Name: name, GUID: guid}]
 		if !exists {
@@ -73,7 +101,7 @@ func (s *defaultEnvSuite) TestReadVar1(c *C) {
 
 func (s *defaultEnvSuite) TestReadVar2(c *C) {
 	s.testReadVar(c, &testReadVarData{
-		name: "PK",
+		name: "KEK",
 		guid: efi.GlobalVariable})
 }
 
