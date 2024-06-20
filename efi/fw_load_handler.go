@@ -28,6 +28,7 @@ import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot/efi/internal"
 	"golang.org/x/xerrors"
 )
 
@@ -227,31 +228,82 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 	// we've enabled follow section 8.2.4 when they measure the first EV_EFI_ACTION event (which is
 	// optional - firmware should measure a EV_OMIT_BOOT_DEVICE_EVENTS event if they are not measured,
 	// although some implementations don't do this either). I've not seen any implementations use the
-	// EV_ACTION events, and these would probably require explicit support here.
+	// mentioned EV_ACTION events, and these look like they are only relevant to BIOS boot anyway.
+	//
+	// The TCG PFP 1.06 r49 cleans this up a bit - it removes reference to the EV_ACTION events, and
+	// corrects the "Method for measurement" subsection of section 3.3.4.5 to describe that things work
+	// how we previously assumed. It does introduce a new EV_EFI_ACTION event ("Booting to <Boot####> Option")
+	// which will require explicit support in this package so it is currently rejected by the
+	// preinstall.RunChecks logic.
 	//
 	// This also retains measurements associated with the launch of any system preparation applications,
 	// although note that the inclusion of these make a profile inherently fragile. The TCG PC Client PFP
 	// spec v1.05r23 doesn't specify whether these are launched as part of the pre-OS environment or as
 	// part of the OS-present environment. It defines the boundary between the pre-OS environment and
 	// OS-present environment as a separator event measured to PCRs 0-7, but EDK2 measures a separator to
-	// PCR7 as soon as the secure boot policy is measured and system preparation applications are considered
-	// part of the pre-OS environment - they are measured to PCR4 before the pre-OS to OS-present transition
-	// is signalled by measuring separators to the remaining PCRs. This seems sensible, but newer Dell
-	// devices load an agent from firmware before shim is executed and measure this to PCR4 as part of the
-	// OS-present environment, which seems wrong. The approach here assumes that the EDK2 behaviour is
-	// correct.
-	for _, event := range h.log.Events {
+	// PCR7 as soon as the secure boot configuration is measured and system preparation applications are
+	// considered part of the pre-OS environment - they are measured to PCR4 before the pre-OS to OS-present
+	// transition is signalled by measuring separators to the remaining PCRs. The UEFI specification says that
+	// system preparation applications are executed before the ready to boot signal, which is when the transition
+	// from pre-OS to OS-present occurs, so I think we can be confident that we're correct here.
+	events := h.log.Events
+	measuredSeparator := false
+	for len(events) > 0 {
+		event := events[0]
+		events = events[1:]
+
 		if event.PCRIndex != tcglog.PCRIndex(bootManagerCodePCR) {
 			continue
 		}
 
 		if event.EventType == tcglog.EventTypeSeparator {
-			return h.measureSeparator(ctx, bootManagerCodePCR, event)
+			if err := h.measureSeparator(ctx, bootManagerCodePCR, event); err != nil {
+				return err
+			}
+			measuredSeparator = true
+			break
 		}
 		ctx.ExtendPCR(bootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
 	}
 
-	return errors.New("missing separator")
+	if !measuredSeparator {
+		return errors.New("missing separator")
+	}
+
+	// Some newer laptops including those from Dell and Lenovo execute code from a firmware volume as part
+	// of the OS-present environment, before shim runs, and using the LoadImage API which results in an
+	// additional measurement to PCR4. Copy this into the profile if it's part of a well-known endpoint
+	// management application known as "Absolute" (formerly "Computrace"). Discard anything else which
+	// will result in an invalid profile but will be picked up by the preinstall.RunChecks API anyway.
+	for len(events) > 0 {
+		event := events[0]
+		events = events[1:]
+
+		if event.PCRIndex != tcglog.PCRIndex(bootManagerCodePCR) {
+			continue
+		}
+		if event.EventType != tcglog.EventTypeEFIBootServicesApplication {
+			return fmt.Errorf("unexpected OS-present event type: %v", event.EventType)
+		}
+
+		// once we encounter the first EV_EFI_BOOT_SERVICES_APPLICATION event in PCR4, this loop alway
+		// breaks or returns an error.
+
+		isAbsolute, err := internal.IsAbsoluteAgentLaunch(event)
+		if err != nil {
+			return fmt.Errorf("encountered an error determining whether an OS-present launch is related to Absolute: %w", err)
+		}
+		if isAbsolute {
+			// copy the digest to the policy
+			ctx.ExtendPCR(bootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		}
+		// If it's not Absolute, we assume it's related to the OS launch which we will predict
+		// later on. If it's something else, discarding it here creates an invalid policy but this is
+		// picked up by the preinstall.RunChecks API anyway.
+		break
+	}
+
+	return nil
 }
 
 // MeasureImageStart implements imageLoadHandler.MeasureImageStart.

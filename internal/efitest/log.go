@@ -92,12 +92,13 @@ func (b *logBuilder) hashLogExtendEvent(c *C, data logHashData, event *logEvent)
 type LogOptions struct {
 	Algorithms []tpm2.HashAlgorithmId // the digest algorithms to include
 
-	SecureBootDisabled           bool
-	IncludeDriverLaunch          bool  // include a driver launch in the log
-	IncludeSysPrepAppLaunch      bool  // include a system-preparation app launch in the log
-	NoCallingEFIApplicationEvent bool  // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
-	NoSBAT                       bool  // omit the SbatLevel measurement.
-	StartupLocality              uint8 // specify a startup locality other than 0
+	SecureBootDisabled                bool
+	IncludeDriverLaunch               bool     // include a driver launch in the log
+	IncludeSysPrepAppLaunch           bool     // include a system-preparation app launch in the log
+	IncludeOSPresentFirmwareAppLaunch efi.GUID // include a flash based application launch in the log as part of the OS-present phase
+	NoCallingEFIApplicationEvent      bool     // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
+	NoSBAT                            bool     // omit the SbatLevel measurement.
+	StartupLocality                   uint8    // specify a startup locality other than 0
 }
 
 // NewLog creates a mock TCG log for testing. The log will look like a standard
@@ -251,6 +252,8 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeEFIBootServicesDriver,
 			data:      data})
 	}
+
+	// Mock sysprep app launch
 	if opts.IncludeSysPrepAppLaunch {
 		if !opts.SecureBootDisabled && !opts.IncludeDriverLaunch {
 			esd := &efi.SignatureData{
@@ -296,8 +299,6 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeEFIBootServicesApplication,
 			data:      data})
 	}
-
-	// Mock sysprep app launch
 
 	// Mock boot config measurements
 	{
@@ -371,6 +372,22 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  pcr,
 			eventType: tcglog.EventTypeSeparator,
+			data:      data})
+	}
+
+	// Mock firmware application launch
+	var zeroGuid efi.GUID
+	if opts.IncludeOSPresentFirmwareAppLaunch != zeroGuid {
+		pe := bytesHashData(opts.IncludeOSPresentFirmwareAppLaunch[:])
+		data := &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0xa7b34ff7,
+			LengthInMemory:   56410,
+			DevicePath: efi.DevicePath{
+				efi.MediaFvDevicePathNode(efi.MakeGUID(0x983cc241, 0xb4f6, 0x4a85, 0x9733, [...]uint8{0x4c, 0x15, 0x4b, 0x3a, 0xa3, 0x27})),
+				efi.MediaFvFileDevicePathNode(opts.IncludeOSPresentFirmwareAppLaunch)}}
+		builder.hashLogExtendEvent(c, pe, &logEvent{
+			pcrIndex:  4,
+			eventType: tcglog.EventTypeEFIBootServicesApplication,
 			data:      data})
 	}
 
