@@ -19,20 +19,10 @@
 
 package internal
 
-import efi "github.com/canonical/go-efilib"
-
 func MockEventLogPath(path string) (restore func()) {
 	origPath := eventLogPath
 	eventLogPath = path
 	return func() {
 		eventLogPath = origPath
-	}
-}
-
-func MockReadVar(fn func(string, efi.GUID) ([]byte, efi.VariableAttributes, error)) (restore func()) {
-	origReadVar := readVar
-	readVar = fn
-	return func() {
-		readVar = origReadVar
 	}
 }

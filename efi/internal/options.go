@@ -22,7 +22,6 @@ package internal
 import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/tcglog-parser"
 )
 
 type InitialVariablesModifier func(VariableSet) error
@@ -37,17 +36,6 @@ type PCRProfileOptionVisitor interface {
 	// AddInitialVariablesModifier adds a function that will be called to allow
 	// the initial variable set for profile generation to be modified.
 	AddInitialVariablesModifier(fn InitialVariablesModifier)
-}
-
-// HostEnvironment is an interface that abstracts out an EFI environment, so that
-// consumers of the API can provide a custom mechanism to read EFI variables or parse
-// the TCG event log. This needs to be kept in sync with [efi.HostEnvironment].
-type HostEnvironment interface {
-	// ReadVar reads the specified EFI variable
-	ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error)
-
-	// ReadEventLog reads the TCG event log
-	ReadEventLog() (*tcglog.Log, error)
 }
 
 // VariableSet corresponds to a set of EFI variables.

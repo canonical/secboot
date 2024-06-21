@@ -39,7 +39,7 @@ func (s *shimSuite) testReadShimSbatPolicy(c *C, data []byte, expected ShimSbatP
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "SbatPolicy", GUID: ShimGuid}: {Payload: data, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
 	}, nil)
-	policy, err := ReadShimSbatPolicy(env)
+	policy, err := ReadShimSbatPolicy(newMockVarReader(env))
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func (s *shimSuite) TestReadShimSbatPolicyLatest(c *C) {
 
 func (s *shimSuite) TestReadShimSbatPolicyNotExist(c *C) {
 	env := efitest.NewMockHostEnvironment(nil, nil)
-	policy, err := ReadShimSbatPolicy(env)
+	policy, err := ReadShimSbatPolicy(newMockVarReader(env))
 	c.Check(err, IsNil)
 	c.Check(policy, Equals, ShimSbatPolicyPrevious)
 }
@@ -425,7 +425,7 @@ func (s *shimSuite) TestShimSbatPolicyLatestFromPrevious(c *C) {
 
 	c.Assert(visitor.varModifiers, HasLen, 1)
 
-	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MakeMockVars().Set("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{0x2}), nil))
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MakeMockVars().AddVar("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{0x2}), nil))
 	c.Check(visitor.varModifiers[0](collector.PeekAll()[0]), IsNil)
 
 	c.Assert(collector.More(), testutil.IsTrue)
@@ -452,7 +452,7 @@ func (s *shimSuite) TestShimSbatPolicyLatestFromLatest(c *C) {
 
 	c.Assert(visitor.varModifiers, HasLen, 1)
 
-	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MakeMockVars().Set("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{0x1}), nil))
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MakeMockVars().AddVar("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{0x1}), nil))
 	c.Check(visitor.varModifiers[0](collector.PeekAll()[0]), IsNil)
 
 	c.Assert(collector.More(), testutil.IsTrue)

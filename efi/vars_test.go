@@ -126,13 +126,13 @@ func withTestSecureBootConfig() mockVarsConfig {
 
 func withSbatLevel(level []byte) mockVarsConfig {
 	return func(c *C, vars efitest.MockVars) {
-		vars.Set("SbatLevelRT", ShimGuid, efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, level)
+		vars.AddVar("SbatLevelRT", ShimGuid, efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, level)
 	}
 }
 
 func withSbatPolicy(policy ShimSbatPolicy) mockVarsConfig {
 	return func(c *C, vars efitest.MockVars) {
-		vars.Set("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{uint8(policy)})
+		vars.AddVar("SbatPolicy", ShimGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{uint8(policy)})
 	}
 }
 

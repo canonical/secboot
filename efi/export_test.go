@@ -192,7 +192,7 @@ func MockSnapdenvTesting(testing bool) (restore func()) {
 
 func NewInitialVarReader(host HostEnvironment) *initialVarReader {
 	return &initialVarReader{
-		host:      host,
+		varsCtx:   host.VarContext(),
 		overrides: make(map[efi.VariableDescriptor]varContents)}
 }
 

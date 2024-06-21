@@ -10,6 +10,8 @@ github.com/canonical/go-efilib v0.9.9 h1:MAVp6SOrAIsymEfUpYKOyQfu2hIm8dQ46zaG+8F
 github.com/canonical/go-efilib v0.9.9/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
 github.com/canonical/go-efilib v0.9.10-0.20240618094320-cc6dd01c07dc h1:U2xZoSBOhzYtWFJ6MhSSbIlrG8wAcqSqZhejLEimJMg=
 github.com/canonical/go-efilib v0.9.10-0.20240618094320-cc6dd01c07dc/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
+github.com/canonical/go-efilib v1.0.0 h1:da3shbdfbJgIUzq4qspkNdWccV5lNMi0ZeYksVCoCvg=
+github.com/canonical/go-efilib v1.0.0/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0 h1:ZE2XMRFHcwlib3uU9is37+pKkkMloVoEPWmgQ6GK1yo=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=

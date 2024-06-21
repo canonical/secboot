@@ -154,7 +154,10 @@ func run() int {
 
 	// TODO: This data was deleted in https://github.com/snapcore/secboot/pull/156 and
 	//  https://github.com/snapcore/secboot/pull/274.
-	env := &mockEFIEnvironment{"efi/testdata/efivars2", "efi/testdata/eventlog1.bin"}
+	// The env is only used in computePCRProtectionProfile, which currently just returns
+	// an error.
+	//env := &mockEFIEnvironment{"efi/testdata/efivars2", "efi/testdata/eventlog1.bin"}
+	var env secboot_efi.HostEnvironment
 
 	tpm, err := secboot_tpm2.ConnectToDefaultTPM()
 	if err != nil {
