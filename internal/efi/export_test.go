@@ -19,10 +19,44 @@
 
 package efi
 
+import (
+	"github.com/canonical/go-tpm2/linux"
+	. "gopkg.in/check.v1"
+)
+
 func MockEventLogPath(path string) (restore func()) {
 	origPath := eventLogPath
 	eventLogPath = path
 	return func() {
 		eventLogPath = origPath
+	}
+}
+
+func MockLinuxDefaultTPM2Device(dev *linux.RawDevice, err error) (restore func()) {
+	orig := linuxDefaultTPM2Device
+	linuxDefaultTPM2Device = func() (*linux.RawDevice, error) {
+		return dev, err
+	}
+	return func() {
+		linuxDefaultTPM2Device = orig
+	}
+}
+
+func MockLinuxRawDeviceResourceManagedDevice(c *C, expectedDev *linux.RawDevice, dev *linux.RMDevice, err error) (restore func()) {
+	orig := linuxRawDeviceResourceManagedDevice
+	linuxRawDeviceResourceManagedDevice = func(device *linux.RawDevice) (*linux.RMDevice, error) {
+		c.Check(device, Equals, expectedDev)
+		return dev, err
+	}
+	return func() {
+		linuxRawDeviceResourceManagedDevice = orig
+	}
+}
+
+func MockSysfsPath(path string) (restore func()) {
+	orig := sysfsPath
+	sysfsPath = path
+	return func() {
+		sysfsPath = orig
 	}
 }

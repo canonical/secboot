@@ -539,7 +539,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR4_2(c *C) {
 
 func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogSeparatorError(c *C, pcr tpm2.Handle) error {
 	// Insert an invalid error separator event into the log for the specified pcr
-	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil))
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(pcr)}, nil, collector.Next())
@@ -580,7 +580,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogSeparatorErrorPCR7(c 
 
 func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogInvalidSeparator(c *C, pcr tpm2.Handle) error {
 	// Insert an invalid separator event into the log for the specified PCR
-	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil))
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(pcr)}, nil, collector.Next())
@@ -621,7 +621,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogInvalidSeparatorPCR7(
 
 func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogMissingSeparator(c *C, pcr tpm2.Handle) error {
 	// Remove the separator from the specified PCR
-	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil))
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(pcr)}, nil, collector.Next())

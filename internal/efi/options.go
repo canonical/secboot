@@ -31,7 +31,7 @@ type PCRProfileOptionVisitor interface {
 	AddPCRs(pcrs ...tpm2.Handle)
 
 	// SetEnvironment overrides the host environment to the supplied environment.
-	SetEnvironment(env HostEnvironment)
+	SetEnvironment(env HostEnvironmentEFI)
 
 	// AddInitialVariablesModifier adds a function that will be called to allow
 	// the initial variable set for profile generation to be modified.
