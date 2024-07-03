@@ -32,6 +32,7 @@ import (
 	"strconv"
 
 	efi "github.com/canonical/go-efilib"
+	"github.com/snapcore/secboot/efi/internal"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/xerrors"
@@ -102,18 +103,17 @@ func WithShimSbatPolicyLatest() PCRProfileOption {
 	return shimSbatPolicyLatestOption{}
 }
 
-func (shimSbatPolicyLatestOption) applyOptionTo(gen *pcrProfileGenerator) {
-	gen.varModifiers = append(gen.varModifiers, func(rootVars *rootVarsCollector) error {
-		for _, root := range rootVars.PeekAll() {
-			if err := root.WriteVar(
-				shimSbatPolicyName, shimGuid,
-				efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess,
-				[]byte{uint8(shimSbatPolicyLatest)}); err != nil {
-				return err
-			}
+func (shimSbatPolicyLatestOption) ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error {
+	visitor.AddInitialVariablesModifier(func(vars internal.VariableSet) error {
+		if err := vars.WriteVar(
+			shimSbatPolicyName, shimGuid,
+			efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess,
+			[]byte{uint8(shimSbatPolicyLatest)}); err != nil {
+			return err
 		}
 		return nil
 	})
+	return nil
 }
 
 // newestSbatLevel returns the newest SBAT revocation level from one or

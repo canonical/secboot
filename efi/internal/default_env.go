@@ -17,7 +17,7 @@
  *
  */
 
-package efi
+package internal
 
 import (
 	"os"
@@ -47,4 +47,6 @@ func (e defaultEnvImpl) ReadEventLog() (*tcglog.Log, error) {
 	return tcglog.ReadLog(f, &tcglog.LogOptions{})
 }
 
-var defaultEnv = defaultEnvImpl{}
+// DefaultEnv corresponds to the environment associated with the host
+// machine.
+var DefaultEnv = defaultEnvImpl{}

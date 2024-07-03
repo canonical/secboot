@@ -34,6 +34,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi"
+	"github.com/snapcore/secboot/efi/internal"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
@@ -75,27 +76,27 @@ func (s *pcrProfileMockedSuite) TearDownSuite(c *C) {
 var _ = Suite(&pcrProfileMockedSuite{})
 
 func (s *pcrProfileMockedSuite) TestPcrProfileGeneratorPCRAlg(c *C) {
-	gen := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences())
+	gen, _ := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences())
 	c.Check(gen.PCRAlg(), Equals, tpm2.HashAlgorithmSHA256)
 }
 
 func (s *pcrProfileMockedSuite) TestPcrProfileGeneratorPCRAlgSHA1(c *C) {
-	gen := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA1, NewImageLoadSequences())
+	gen, _ := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA1, NewImageLoadSequences())
 	c.Check(gen.PCRAlg(), Equals, tpm2.HashAlgorithmSHA1)
 }
 
 func (s *pcrProfileMockedSuite) TestWithSecureBootPolicyProfile(c *C) {
-	gen := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences(), WithSecureBootPolicyProfile())
-	c.Check(gen.PCRs(), Equals, PcrFlags(1<<SecureBootPolicyPCR))
+	gen, _ := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences(), WithSecureBootPolicyProfile())
+	c.Check(gen.PCRs(), Equals, PcrFlags(1<<internal.SecureBootPolicyPCR))
 }
 
 func (s *pcrProfileMockedSuite) TestWithBootManagerCodeProfile(c *C) {
-	gen := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences(), WithBootManagerCodeProfile())
-	c.Check(gen.PCRs(), Equals, PcrFlags(1<<BootManagerCodePCR))
+	gen, _ := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences(), WithBootManagerCodeProfile())
+	c.Check(gen.PCRs(), Equals, PcrFlags(1<<internal.BootManagerCodePCR))
 }
 
 func (s *pcrProfileMockedSuite) TestPcrProfileGeneratorImageLoadHandlers(c *C) {
-	gen := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences())
+	gen, _ := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences())
 	c.Check(gen.ImageLoadHandlerMap(), Equals, s)
 }
 
@@ -520,16 +521,20 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifier(c *C) {
 			),
 		),
 	)
+
+	initialVarSets := 0
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
 		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{
 			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
-		WithMockRootVarsModifierOption(func(vars *RootVarsCollector) error {
-			c.Check(vars.PeekAll()[0].WriteVar("foo", testGuid1, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2}), IsNil)
+		WithMockInitialVariablesModifierOption(func(vars internal.VariableSet) error {
+			c.Check(vars.WriteVar("foo", testGuid1, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2}), IsNil)
+			initialVarSets += 1
 			return nil
 		}),
 	), IsNil)
+	c.Check(initialVarSets, Equals, 1)
 
 	c.Check(profile.String(), Equals, fmt.Sprintf(`
  BranchPoint(
@@ -576,10 +581,10 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifierErr(c *C) {
 			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
-		WithMockRootVarsModifierOption(func(vars *RootVarsCollector) error {
+		WithMockInitialVariablesModifierOption(func(vars internal.VariableSet) error {
 			return errors.New("some error")
 		}),
-	), ErrorMatches, `cannot process host variable modifier 0: some error`)
+	), ErrorMatches, `cannot process host variable modifier 0 for initial branch 0: some error`)
 }
 
 type pcrProfileSuite struct {

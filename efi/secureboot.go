@@ -23,9 +23,11 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/ioutil"
 
 	efi "github.com/canonical/go-efilib"
+	"github.com/snapcore/secboot/efi/internal"
 	"golang.org/x/xerrors"
 )
 
@@ -51,25 +53,25 @@ type SignatureDBUpdate struct {
 
 type signatureDBUpdatesOption []*SignatureDBUpdate
 
-func (u signatureDBUpdatesOption) applyOptionTo(gen *pcrProfileGenerator) {
-	gen.varModifiers = append(gen.varModifiers, func(rootVars *rootVarsCollector) error {
-		for _, root := range rootVars.PeekAll() {
-			for _, quirk := range []signatureDBUpdateFirmwareQuirk{
-				signatureDBUpdateNoFirmwareQuirk,
-				signatureDBUpdateFirmwareDedupIgnoresOwner} {
-				// create a branch per quirk by copying the root varBranch
-				branch := *root
+func (u signatureDBUpdatesOption) ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error {
+	visitor.AddInitialVariablesModifier(func(vars internal.VariableSet) error {
+		for _, quirk := range []signatureDBUpdateFirmwareQuirk{
+			signatureDBUpdateNoFirmwareQuirk,
+			signatureDBUpdateFirmwareDedupIgnoresOwner} {
 
-				// This creates a root variable instance for each intermediate state.
-				for i, update := range u {
-					if err := applySignatureDBUpdate(&branch, update, quirk); err != nil {
-						return xerrors.Errorf("cannot compute signature database update %d: %w", i, err)
-					}
+			// Create a branch in the variable set
+			branch := vars.Clone()
+
+			// This creates an initial variable set for each intermediate state.
+			for i, update := range u {
+				if err := applySignatureDBUpdate(branch, update, quirk); err != nil {
+					return fmt.Errorf("cannot compute signature database update %d: %w", i, err)
 				}
 			}
 		}
 		return nil
 	})
+	return nil
 }
 
 // WithSignatureDBUpdates can be supplied to AddPCRProfile to compute the profile

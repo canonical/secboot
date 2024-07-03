@@ -33,12 +33,12 @@ type envSuite struct{}
 
 var _ = Suite(&envSuite{})
 
-func (s *envSuite) TestRootVarReaderReadVar(c *C) {
+func (s *envSuite) TestInitialVarReaderReadVar(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "SecureBoot", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
+	reader := NewInitialVarReader(env)
 
 	data, attrs, err := reader.ReadVar("SecureBoot", efi.GlobalVariable)
 	c.Check(err, IsNil)
@@ -46,12 +46,12 @@ func (s *envSuite) TestRootVarReaderReadVar(c *C) {
 	c.Check(attrs, Equals, efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess)
 }
 
-func (s *envSuite) TestRootVarReaderApplyOneUpdate(c *C) {
+func (s *envSuite) TestInitialVarReaderApplyOneUpdate(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
+	reader := NewInitialVarReader(env)
 	reader.ApplyUpdates(NewVarUpdate(nil, efi.VariableDescriptor{Name: "foo", GUID: testGuid1}, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2}))
 
 	data, attrs, err := reader.ReadVar("foo", testGuid1)
@@ -60,12 +60,12 @@ func (s *envSuite) TestRootVarReaderApplyOneUpdate(c *C) {
 	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess)
 }
 
-func (s *envSuite) TestRootVarReaderApplyMultipleUpdates(c *C) {
+func (s *envSuite) TestInitialVarReaderApplyMultipleUpdates(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
+	reader := NewInitialVarReader(env)
 	reader.ApplyUpdates(
 		NewVarUpdate(
 			NewVarUpdate(nil, efi.VariableDescriptor{Name: "bar", GUID: testGuid1}, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{5}),
@@ -82,12 +82,12 @@ func (s *envSuite) TestRootVarReaderApplyMultipleUpdates(c *C) {
 	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess)
 }
 
-func (s *envSuite) TestRootVarReaderApplyUpdatesOrdering(c *C) {
+func (s *envSuite) TestInitialVarReaderApplyUpdatesOrdering(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
+	reader := NewInitialVarReader(env)
 	reader.ApplyUpdates(
 		NewVarUpdate(
 			NewVarUpdate(nil, efi.VariableDescriptor{Name: "foo", GUID: testGuid1}, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2}),
@@ -99,61 +99,61 @@ func (s *envSuite) TestRootVarReaderApplyUpdatesOrdering(c *C) {
 	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess)
 }
 
-func (s *envSuite) TestRootVarReaderKey(c *C) {
+func (s *envSuite) TestInitialVarReaderKey(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
-	c.Check(reader.Key(), DeepEquals, RootVarReaderKey{})
+	reader := NewInitialVarReader(env)
+	c.Check(reader.Key(), DeepEquals, InitialVarReaderKey{})
 }
 
-func (s *envSuite) TestRootVarReaderKeyWithOneUpdate(c *C) {
+func (s *envSuite) TestInitialVarReaderKeyWithOneUpdate(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
+	reader := NewInitialVarReader(env)
 	reader.ApplyUpdates(NewVarUpdate(nil, efi.VariableDescriptor{Name: "foo", GUID: testGuid1}, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2}))
 
-	var expected RootVarReaderKey
+	var expected InitialVarReaderKey
 	copy(expected[:], testutil.DecodeHexString(c, "af83642902c9f89dc8f761bb03a29bae54cc648e"))
 	c.Check(reader.Key(), DeepEquals, expected)
 }
 
-func (s *envSuite) TestRootVarReaderKeyWithMultipleUpdates(c *C) {
+func (s *envSuite) TestInitialVarReaderKeyWithMultipleUpdates(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
+	reader := NewInitialVarReader(env)
 	reader.ApplyUpdates(
 		NewVarUpdate(
 			NewVarUpdate(nil, efi.VariableDescriptor{Name: "bar", GUID: testGuid1}, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{5}),
 			efi.VariableDescriptor{Name: "foo", GUID: testGuid1}, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2}))
 
-	var expected RootVarReaderKey
+	var expected InitialVarReaderKey
 	copy(expected[:], testutil.DecodeHexString(c, "d9d3425d3e48666ff1ffc66d211b4bbe2dc654ae"))
 	c.Check(reader.Key(), DeepEquals, expected)
 }
 
-func (s *envSuite) TestRootVarReaderKeyOmitsUnchanged(c *C) {
+func (s *envSuite) TestInitialVarReaderKeyOmitsUnchanged(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
+	reader := NewInitialVarReader(env)
 	reader.ApplyUpdates(NewVarUpdate(nil, efi.VariableDescriptor{Name: "foo", GUID: testGuid1}, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{1}))
 
-	c.Check(reader.Key(), DeepEquals, RootVarReaderKey{})
+	c.Check(reader.Key(), DeepEquals, InitialVarReaderKey{})
 }
 
-func (s *envSuite) TestRootVarReaderCopy(c *C) {
+func (s *envSuite) TestInitialVarReaderCopy(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{
 		{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 	}, nil)
 
-	reader := NewRootVarReader(env)
+	reader := NewInitialVarReader(env)
 	reader.ApplyUpdates(
 		NewVarUpdate(
 			NewVarUpdate(nil, efi.VariableDescriptor{Name: "bar", GUID: testGuid1}, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{5}),
@@ -195,7 +195,7 @@ type testRootVarsCollectorData struct {
 }
 
 func (s *envSuite) testRootVarsCollector(c *C, data *testRootVarsCollectorData) {
-	collector := NewRootVarsCollector(data.env)
+	collector := NewVariableSetCollector(data.env)
 	c.Assert(collector, NotNil)
 
 	for i, expected := range data.expected {
@@ -531,7 +531,7 @@ func (s *envSuite) TestRootVarsCollectorPeekAll(c *C) {
 		{Name: "SecureBoot", GUID: efi.GlobalVariable}: {Payload: []byte{1}, Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess},
 	}, nil)
 
-	collector := NewRootVarsCollector(env)
+	collector := NewVariableSetCollector(env)
 	c.Assert(collector, NotNil)
 
 	roots := collector.PeekAll()
@@ -559,7 +559,7 @@ func (s *envSuite) TestRootVarsCollectorPeekAll(c *C) {
 func (s *envSuite) TestVarBranchReadsUpdate(c *C) {
 	env := efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)
 
-	collector := NewRootVarsCollector(env)
+	collector := NewVariableSetCollector(env)
 	root := collector.Next()
 
 	c.Check(root.WriteVar("foo", testGuid1, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{1}), IsNil)

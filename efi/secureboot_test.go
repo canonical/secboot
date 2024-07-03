@@ -193,7 +193,7 @@ type testApplySignatureDBUpdateData struct {
 }
 
 func (s *securebootSuite) testApplySignatureDBUpdate(c *C, data *testApplySignatureDBUpdateData) {
-	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(data.vars, nil))
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(data.vars, nil))
 	vars := collector.Next()
 
 	orig, origAttrs, err := vars.ReadVar(data.update.Name.Name, data.update.Name.GUID)
@@ -412,7 +412,7 @@ func (s *securebootSuite) TestApplySignatureDBUpdatePK(c *C) {
 
 	update := &SignatureDBUpdate{Name: PK, Data: pkAuth}
 
-	collector := NewRootVarsCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	vars := collector.Next()
 
 	c.Assert(ApplySignatureDBUpdate(vars, update, SignatureDBUpdateNoFirmwareQuirk), IsNil)
@@ -425,4 +425,219 @@ func (s *securebootSuite) TestApplySignatureDBUpdatePK(c *C) {
 	c.Check(attrs, Equals, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess)
 
 	c.Check(data, DeepEquals, efitest.MakeVarPayload(c, pk))
+}
+
+type expectedSignatureDBSet struct {
+	pkSha1  []byte
+	kekSha1 []byte
+	dbSha1  []byte
+	dbxSha1 []byte
+}
+
+type testWithSignatureDBUpdatesParams struct {
+	env      HostEnvironment
+	updates  []*SignatureDBUpdate
+	expected []expectedSignatureDBSet
+}
+
+func (s *securebootSuite) testWithSignatureDBUpdates(c *C, params *testWithSignatureDBUpdatesParams) {
+	visitor := new(mockPcrProfileOptionVisitor)
+	opt := WithSignatureDBUpdates(params.updates...)
+	c.Check(opt.ApplyOptionTo(visitor), IsNil)
+
+	c.Assert(visitor.varModifiers, HasLen, 1)
+
+	collector := NewVariableSetCollector(params.env)
+	c.Check(visitor.varModifiers[0](collector.PeekAll()[0]), IsNil)
+
+	logDetails := func(desc efi.VariableDescriptor, data []byte, sha1 []byte) {
+		c.Logf("Variable: %v", desc)
+		db, err := efi.ReadSignatureDatabase(bytes.NewReader(data))
+		c.Assert(err, IsNil)
+		c.Logf("Database: %v", db)
+		c.Logf("SHA1: %#x", sha1)
+	}
+
+	expectedSets := params.expected
+	for collector.More() {
+		c.Assert(expectedSets, Not(HasLen), 0)
+		expected := expectedSets[0]
+		expectedSets = expectedSets[1:]
+
+		vars := collector.Next()
+
+		data, _, err := vars.ReadVar(PK.Name, PK.GUID)
+		c.Check(err, IsNil)
+		h := crypto.SHA1.New()
+		h.Write(data)
+		c.Check(h.Sum(nil), DeepEquals, expected.pkSha1)
+		logDetails(PK, data, h.Sum(nil))
+
+		data, _, err = vars.ReadVar(KEK.Name, KEK.GUID)
+		c.Check(err, IsNil)
+		h = crypto.SHA1.New()
+		h.Write(data)
+		c.Check(h.Sum(nil), DeepEquals, expected.kekSha1)
+		logDetails(KEK, data, h.Sum(nil))
+
+		data, _, err = vars.ReadVar(Db.Name, Db.GUID)
+		c.Check(err, IsNil)
+		h = crypto.SHA1.New()
+		h.Write(data)
+		c.Check(h.Sum(nil), DeepEquals, expected.dbSha1)
+		logDetails(Db, data, h.Sum(nil))
+
+		data, _, err = vars.ReadVar(Dbx.Name, Dbx.GUID)
+		c.Check(err, IsNil)
+		h = crypto.SHA1.New()
+		h.Write(data)
+		c.Check(h.Sum(nil), DeepEquals, expected.dbxSha1)
+		logDetails(Dbx, data, h.Sum(nil))
+	}
+	c.Check(expectedSets, HasLen, 0)
+}
+
+func (s *securebootSuite) TestWithSignatureDBUpdatesMsDbxUpdate1(c *C) {
+	s.testWithSignatureDBUpdates(c, &testWithSignatureDBUpdatesParams{
+		env:     efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil),
+		updates: []*SignatureDBUpdate{{Name: Dbx, Data: msDbxUpdate1}},
+		expected: []expectedSignatureDBSet{
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "0c7071d32c1a385cca9e07d9252dfc97f21c5ce3"),
+				dbSha1:  testutil.DecodeHexString(c, "0eb693bfd2699c09a4d6e96828d332a79de404bb"),
+				dbxSha1: testutil.DecodeHexString(c, "a922e52bfc71da51714c3765eda70886c3966503"),
+			},
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "0c7071d32c1a385cca9e07d9252dfc97f21c5ce3"),
+				dbSha1:  testutil.DecodeHexString(c, "0eb693bfd2699c09a4d6e96828d332a79de404bb"),
+				dbxSha1: testutil.DecodeHexString(c, "45cd62f8fc2a45e835ce76db192c6db382c83286"),
+			},
+		},
+	})
+}
+
+func (s *securebootSuite) TestWithSignatureDBUpdatesMsDbxUpdate2(c *C) {
+	s.testWithSignatureDBUpdates(c, &testWithSignatureDBUpdatesParams{
+		env:     efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil),
+		updates: []*SignatureDBUpdate{{Name: Dbx, Data: msDbxUpdate2}},
+		expected: []expectedSignatureDBSet{
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "0c7071d32c1a385cca9e07d9252dfc97f21c5ce3"),
+				dbSha1:  testutil.DecodeHexString(c, "0eb693bfd2699c09a4d6e96828d332a79de404bb"),
+				dbxSha1: testutil.DecodeHexString(c, "a922e52bfc71da51714c3765eda70886c3966503"),
+			},
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "0c7071d32c1a385cca9e07d9252dfc97f21c5ce3"),
+				dbSha1:  testutil.DecodeHexString(c, "0eb693bfd2699c09a4d6e96828d332a79de404bb"),
+				dbxSha1: testutil.DecodeHexString(c, "ba6baeecaa4cad2c2820fdc7fda08269c48afd98"),
+			},
+		},
+	})
+}
+
+func (s *securebootSuite) TestWithSignatureDBUpdatesMsDbxUpdate1And2(c *C) {
+	s.testWithSignatureDBUpdates(c, &testWithSignatureDBUpdatesParams{
+		env: efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil),
+		updates: []*SignatureDBUpdate{
+			{Name: Dbx, Data: msDbxUpdate1},
+			{Name: Dbx, Data: msDbxUpdate2},
+		},
+		expected: []expectedSignatureDBSet{
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "0c7071d32c1a385cca9e07d9252dfc97f21c5ce3"),
+				dbSha1:  testutil.DecodeHexString(c, "0eb693bfd2699c09a4d6e96828d332a79de404bb"),
+				dbxSha1: testutil.DecodeHexString(c, "a922e52bfc71da51714c3765eda70886c3966503"),
+			},
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "0c7071d32c1a385cca9e07d9252dfc97f21c5ce3"),
+				dbSha1:  testutil.DecodeHexString(c, "0eb693bfd2699c09a4d6e96828d332a79de404bb"),
+				dbxSha1: testutil.DecodeHexString(c, "45cd62f8fc2a45e835ce76db192c6db382c83286"),
+			},
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "0c7071d32c1a385cca9e07d9252dfc97f21c5ce3"),
+				dbSha1:  testutil.DecodeHexString(c, "0eb693bfd2699c09a4d6e96828d332a79de404bb"),
+				dbxSha1: testutil.DecodeHexString(c, "7be4a669cf84c785457bede35b859e4b39f6889e"),
+			},
+		},
+	})
+}
+
+func (s *securebootSuite) TestWithSignatureDBUpdatesTestQuirksBranches(c *C) {
+	// Generate an update with one genuinely new SHA-256 digest and one null SHA-256
+	// digest which exists in the original variable with a different owner, to test
+	// the quirk handling (it should produce 2 branches - one with and one without the
+	// additional null SHA-256 digest).
+	esl := efitest.NewSignatureListNullSHA256(testOwnerGuid)
+	esl.Signatures = append(esl.Signatures, &efi.SignatureData{
+		Owner: testOwnerGuid,
+		Data:  testutil.DecodeHexString(c, "fe266842b938023d45782d831e9f6b528e661790a6914e5f2cc178b20047c15f"),
+	})
+	update := efitest.GenerateSignedVariableUpdate(c,
+		testutil.ParsePKCS1PrivateKey(c, testKEKKey),
+		testutil.ParseCertificate(c, testKEKCert),
+		Dbx.Name, Dbx.GUID,
+		efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess|efi.AttributeAppendWrite,
+		time.Date(2023, 6, 2, 14, 0, 0, 0, time.UTC),
+		efitest.MakeVarPayload(c, esl))
+
+	s.testWithSignatureDBUpdates(c, &testWithSignatureDBUpdatesParams{
+		env:     efitest.NewMockHostEnvironment(makeMockVars(c, withTestSecureBootConfig()), nil),
+		updates: []*SignatureDBUpdate{{Name: Dbx, Data: update}},
+		expected: []expectedSignatureDBSet{
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "006f5be01ec85376d904359afa0d0d55341d7804"),
+				dbSha1:  testutil.DecodeHexString(c, "942f0fab1d9b3b3f23135c89e34cf592ac92e919"),
+				dbxSha1: testutil.DecodeHexString(c, "a922e52bfc71da51714c3765eda70886c3966503"),
+			},
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "006f5be01ec85376d904359afa0d0d55341d7804"),
+				dbSha1:  testutil.DecodeHexString(c, "942f0fab1d9b3b3f23135c89e34cf592ac92e919"),
+				dbxSha1: testutil.DecodeHexString(c, "d358bcaac54e20d680af75d5e576e095a28f59f9"), // contains a new null SHA-256 with a different owner
+			},
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "006f5be01ec85376d904359afa0d0d55341d7804"),
+				dbSha1:  testutil.DecodeHexString(c, "942f0fab1d9b3b3f23135c89e34cf592ac92e919"),
+				dbxSha1: testutil.DecodeHexString(c, "42d302e504898613163e5f8ac42800d83686776a"), // omits the additional null SHA-256 even though it has a different owner
+			},
+		},
+	})
+}
+
+func (s *securebootSuite) TestWithSignatureDBUpdatesAddOneCertToDb(c *C) {
+	// Test applying a single cert to db.
+	update := efitest.GenerateSignedVariableUpdate(c,
+		testutil.ParsePKCS1PrivateKey(c, testKEKKey),
+		testutil.ParseCertificate(c, testKEKCert),
+		Db.Name, Db.GUID,
+		efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess|efi.AttributeAppendWrite,
+		time.Date(2023, 6, 2, 14, 0, 0, 0, time.UTC),
+		efitest.MakeVarPayload(c, testDb2(c)))
+	s.testWithSignatureDBUpdates(c, &testWithSignatureDBUpdatesParams{
+		env:     efitest.NewMockHostEnvironment(makeMockVars(c, withTestSecureBootConfig()), nil),
+		updates: []*SignatureDBUpdate{{Name: Db, Data: update}},
+		expected: []expectedSignatureDBSet{
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "006f5be01ec85376d904359afa0d0d55341d7804"),
+				dbSha1:  testutil.DecodeHexString(c, "942f0fab1d9b3b3f23135c89e34cf592ac92e919"),
+				dbxSha1: testutil.DecodeHexString(c, "a922e52bfc71da51714c3765eda70886c3966503"),
+			},
+			{
+				pkSha1:  testutil.DecodeHexString(c, "ce1354eb31a3ff82cc5e517133b87c209e5b3a5b"),
+				kekSha1: testutil.DecodeHexString(c, "006f5be01ec85376d904359afa0d0d55341d7804"),
+				dbSha1:  testutil.DecodeHexString(c, "6f940f3c622885caa5a334fc9da3e74ea4f55400"),
+				dbxSha1: testutil.DecodeHexString(c, "a922e52bfc71da51714c3765eda70886c3966503"),
+			},
+		},
+	})
 }
