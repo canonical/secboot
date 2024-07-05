@@ -57,7 +57,7 @@ var _ = Suite(&updateSuite{})
 
 type testUpdatePCRProtectionPolicyData struct {
 	pcrPolicyCounterHandle tpm2.Handle
-	authKey                secboot.AuxiliaryKey
+	primaryKey             secboot.PrimaryKey
 }
 
 func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRProtectionPolicyData) {
@@ -68,8 +68,8 @@ func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRPro
 	params := &ProtectKeyParams{
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
 		PCRPolicyCounterHandle: data.pcrPolicyCounterHandle,
-		AuthKey:                data.authKey}
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+		PrimaryKey:             data.primaryKey}
+	k, primaryKey, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
 	_, _, err = k.RecoverKeys()
@@ -79,7 +79,7 @@ func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRPro
 	skd, err := NewSealedKeyData(k)
 	c.Assert(err, IsNil)
 
-	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), authKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23})), IsNil)
+	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), NoNewPCRPolicyVersion), IsNil)
 
 	_, _, err = k.RecoverKeys()
 	c.Check(err, IsNil)
@@ -102,19 +102,16 @@ func (s *updateSuite) TestUpdatePCRProtectionPolicyNoPCRPolicyCounter(c *C) {
 }
 
 func (s *updateSuite) TestUpdatePCRProtectionPolicyWithProvidedAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
-	rand.Read(authKey)
+	primaryKey := make(secboot.PrimaryKey, 32)
+	rand.Read(primaryKey)
 
 	s.testUpdatePCRProtectionPolicy(c, &testUpdatePCRProtectionPolicyData{
 		pcrPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		authKey:                authKey})
+		primaryKey:             primaryKey})
 }
 
 func (s *updateSuite) testRevokeOldPCRProtectionPolicies(c *C, params *ProtectKeyParams) error {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
-	k1, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k1, primaryKey, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
 	w := newMockKeyDataWriter()
@@ -125,7 +122,7 @@ func (s *updateSuite) testRevokeOldPCRProtectionPolicies(c *C, params *ProtectKe
 
 	skd, err := NewSealedKeyData(k2)
 	c.Assert(err, IsNil)
-	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), authKey, params.PCRProfile), IsNil)
+	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, params.PCRProfile, NewPCRPolicyVersion), IsNil)
 
 	_, _, err = k1.RecoverKeys()
 	c.Check(err, IsNil)
@@ -134,7 +131,7 @@ func (s *updateSuite) testRevokeOldPCRProtectionPolicies(c *C, params *ProtectKe
 
 	skd, err = NewSealedKeyData(k1)
 	c.Assert(err, IsNil)
-	c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
+	c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), primaryKey), IsNil)
 
 	_, _, err = k1.RecoverKeys()
 	c.Check(err, IsNil)
@@ -143,7 +140,7 @@ func (s *updateSuite) testRevokeOldPCRProtectionPolicies(c *C, params *ProtectKe
 
 	skd, err = NewSealedKeyData(k2)
 	c.Assert(err, IsNil)
-	c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
+	c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), primaryKey), IsNil)
 
 	_, _, err = k2.RecoverKeys()
 	c.Check(err, IsNil)
@@ -165,106 +162,41 @@ func (s *updateSuite) TestRevokeOldPCRProtectionPoliciesWithoutPCRPolicyCounter(
 	c.Check(err, IsNil)
 }
 
-func (s *updateSuite) testUpdateKeyDataPCRProtectionPolicy(c *C, n int) {
-	var keys []secboot.DiskUnlockKey
-	for i := 0; i < n; i++ {
-		key := make(secboot.DiskUnlockKey, 32)
-		rand.Read(key)
-		keys = append(keys, key)
-	}
+func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy(c *C) {
+	primaryKey := make(secboot.PrimaryKey, 32)
+	rand.Read(primaryKey)
 
-	// Protect the key with an initial PCR policy that can't be satisfied
+	// Protect the keys with an initial PCR policy that can't be satisfied
 	params := &ProtectKeyParams{
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
-		PCRPolicyCounterHandle: tpm2.HandleNull}
-	ks, authKey, err := ProtectKeysWithTPM(s.TPM(), keys, params)
-	c.Assert(err, IsNil)
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		PrimaryKey:             primaryKey}
 
-	for _, k := range ks {
+	var keys []*secboot.KeyData
+	for i := 0; i < 2; i++ {
+		k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
+		c.Assert(err, IsNil)
+
 		_, _, err = k.RecoverKeys()
 		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+
+		keys = append(keys, k)
 	}
 
-	c.Check(UpdateKeyDataPCRProtectionPolicy(s.TPM(), authKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), ks...), IsNil)
+	c.Check(UpdateKeyDataPCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), NoNewPCRPolicyVersion, keys...), IsNil)
 
-	for _, k := range ks {
-		_, _, err = k.RecoverKeys()
+	for _, k := range keys {
+		_, _, err := k.RecoverKeys()
 		c.Check(err, IsNil)
 	}
 
-	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
+	_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 	c.Check(err, IsNil)
 
-	for _, k := range ks {
-		_, _, err = k.RecoverKeys()
+	for _, k := range keys {
+		_, _, err := k.RecoverKeys()
 		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
-}
-
-func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy1(c *C) {
-	s.testUpdateKeyDataPCRProtectionPolicy(c, 1)
-}
-
-func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy2(c *C) {
-	s.testUpdateKeyDataPCRProtectionPolicy(c, 2)
-}
-
-func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy3(c *C) {
-	s.testUpdateKeyDataPCRProtectionPolicy(c, 3)
-}
-
-func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicyUnrelated1(c *C) {
-	var keys []secboot.DiskUnlockKey
-	for i := 0; i < 2; i++ {
-		key := make(secboot.DiskUnlockKey, 32)
-		rand.Read(key)
-		keys = append(keys, key)
-	}
-
-	authKey := make(secboot.AuxiliaryKey, 32)
-	rand.Read(authKey)
-
-	var ks []*secboot.KeyData
-	for i := 0; i < 2; i++ {
-		params := &ProtectKeyParams{
-			PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181ff00+tpm2.Handle(i)),
-			AuthKey:                authKey}
-		k, _, err := ProtectKeyWithTPM(s.TPM(), keys[i], params)
-		c.Assert(err, IsNil)
-		ks = append(ks, k)
-	}
-
-	err := UpdateKeyDataPCRProtectionPolicy(s.TPM(), authKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), ks...)
-	c.Check(err, ErrorMatches, "invalid key data: key data at index 1 is not related to the primary key data")
-}
-
-func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicyUnrelated2(c *C) {
-	var keys []secboot.DiskUnlockKey
-	var authKeys []secboot.AuxiliaryKey
-	for i := 0; i < 2; i++ {
-		key := make(secboot.DiskUnlockKey, 32)
-		rand.Read(key)
-		keys = append(keys, key)
-
-		authKey := make(secboot.AuxiliaryKey, 32)
-		rand.Read(authKey)
-		authKeys = append(authKeys, authKey)
-	}
-
-	var ks []*secboot.KeyData
-	for i := 0; i < 2; i++ {
-		params := &ProtectKeyParams{
-			PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
-			PCRPolicyCounterHandle: tpm2.HandleNull,
-			AuthKey:                authKeys[i]}
-		k, _, err := ProtectKeyWithTPM(s.TPM(), keys[i], params)
-		c.Assert(err, IsNil)
-		ks = append(ks, k)
-	}
-
-	err := UpdateKeyDataPCRProtectionPolicy(s.TPM(), authKeys[0], tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), ks...)
-	c.Check(err, ErrorMatches, "invalid key data: key data at index 1 is not related to the primary key data")
 }

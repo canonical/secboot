@@ -26,8 +26,18 @@ import (
 	"github.com/snapcore/secboot/internal/luksview"
 )
 
-func (o *KDFOptions) DeriveCostParams(keyLen int, kdf KDF) (*KDFCostParams, error) {
-	return o.deriveCostParams(keyLen, kdf)
+var (
+	UnmarshalV1KeyPayload  = unmarshalV1KeyPayload
+	UnmarshalProtectedKeys = unmarshalProtectedKeys
+)
+
+type (
+	KdfParams     = kdfParams
+	ProtectedKeys = protectedKeys
+)
+
+func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
+	return o.kdfParams(keyLen)
 }
 
 func MockLUKS2Activate(fn func(string, string, []byte, int) error) (restore func()) {
@@ -118,4 +128,26 @@ func MockStderr(w io.Writer) (restore func()) {
 	return func() {
 		osStderr = orig
 	}
+}
+
+func MockKeyDataGeneration(n int) (restore func()) {
+	orig := KeyDataGeneration
+	KeyDataGeneration = n
+	return func() {
+		KeyDataGeneration = orig
+	}
+}
+
+func MockHashAlgAvailable() (restore func()) {
+	orig := hashAlgAvailable
+	hashAlgAvailable = func(*HashAlg) bool {
+		return false
+	}
+	return func() {
+		hashAlgAvailable = orig
+	}
+}
+
+func (d *KeyData) DerivePassphraseKeys(passphrase string) (key, iv, auth []byte, err error) {
+	return d.derivePassphraseKeys(passphrase)
 }

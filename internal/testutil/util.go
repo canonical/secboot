@@ -39,3 +39,11 @@ func DecodeHexStringT(t *testing.T, s string) []byte {
 	}
 	return b
 }
+
+func MustDecodeHexString(s string) []byte {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}

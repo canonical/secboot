@@ -33,10 +33,49 @@ type PCRProfileOption interface {
 	applyOptionTo(gen *pcrProfileGenerator)
 }
 
-type pcrProfileSetFlagsOption pcrProfileFlags
+// PCRProfileEnablePCRsOption is an option for AddPCRProfile that adds one or more PCRs.
+type PCRProfileEnablePCRsOption interface {
+	PCRProfileOption
+	PCRs() tpm2.HandleList
+}
 
-func (o pcrProfileSetFlagsOption) applyOptionTo(gen *pcrProfileGenerator) {
-	gen.flags |= pcrProfileFlags(o)
+type pcrProfileSetPcrsOption struct {
+	PCRProfileOption
+	pcrs pcrFlags
+}
+
+func newPcrProfileSetPcrsOption(pcrs pcrFlags) *pcrProfileSetPcrsOption {
+	out := &pcrProfileSetPcrsOption{
+		pcrs: pcrs,
+	}
+	out.PCRProfileOption = out
+	return out
+}
+
+func (o *pcrProfileSetPcrsOption) applyOptionTo(gen *pcrProfileGenerator) {
+	gen.pcrs |= o.pcrs
+}
+
+func (o *pcrProfileSetPcrsOption) PCRs() tpm2.HandleList {
+	return o.pcrs.PCRs()
+}
+
+// WithPlatformFirmwareProfile adds the SRTM, POST BIOS and Embedded Drivers
+// profile (measured to PCR0). This is copied directly from the current host
+// environment configuration.
+//
+// It is suitable in environments where platform firmware is measured by a
+// hardware root of trust as opposed to being verified as authentic and prevented
+// from running otherwise.
+func WithPlatformFirmwareProfile() PCRProfileEnablePCRsOption {
+	return newPcrProfileSetPcrsOption(makePcrFlags(platformFirmwarePCR))
+}
+
+// WithDriversAndAppsProfile adds the UEFI Drivers and UEFI Applications profile
+// (measured to PCR2). This is copied directly from the current host environment
+// configiguration.
+func WithDriversAndAppsProfile() PCRProfileEnablePCRsOption {
+	return newPcrProfileSetPcrsOption(makePcrFlags(driversAndAppsPCR))
 }
 
 // WithSecureBootPolicyProfile requests that the UEFI secure boot policy profile is
@@ -95,8 +134,8 @@ func (o pcrProfileSetFlagsOption) applyOptionTo(gen *pcrProfileGenerator) {
 // (before the EV_SEPARATOR events are measured to PCRs 0-6). Note that the inclusion
 // of these makes a policy inherently fragile because it is not possible to pre-generate
 // policy to accomodate updates of these components.
-func WithSecureBootPolicyProfile() PCRProfileOption {
-	return pcrProfileSetFlagsOption(secureBootPolicyProfile)
+func WithSecureBootPolicyProfile() PCRProfileEnablePCRsOption {
+	return newPcrProfileSetPcrsOption(makePcrFlags(secureBootPolicyPCR))
 }
 
 // WithBootManagerCodeProfile requests that the UEFI boot manager code and boot attempts
@@ -131,8 +170,19 @@ func WithSecureBootPolicyProfile() PCRProfileOption {
 // will be invalid if the platform firmware performs boot attempts that subsequently
 // fail before performing a successful attempt, even if the images associated with the
 // successful attempt are included in this policy.
-func WithBootManagerCodeProfile() PCRProfileOption {
-	return pcrProfileSetFlagsOption(bootManagerCodeProfile)
+func WithBootManagerCodeProfile() PCRProfileEnablePCRsOption {
+	return newPcrProfileSetPcrsOption(makePcrFlags(bootManagerCodePCR))
+}
+
+// WithKernelConfigProfile adds the kernel config profile. This binds a policy to a
+// set of externally supplied commandlines. On Ubuntu Core, this also binds a policy
+// to a set of model assertions and the initrd phase of the boot.
+//
+// Kernel commandlines can be injected into the profile with [KernelCommandlineParams].
+// Snap models can be injected into the profile with [SnapModelParams]. Note that a model
+// assertion is mandatory for profiles that include a UKI for Ubuntu Core.
+func WithKernelConfigProfile() PCRProfileEnablePCRsOption {
+	return newPcrProfileSetPcrsOption(makePcrFlags(kernelConfigPCR))
 }
 
 // AddPCRProfile adds a profile defined by the supplied options to the supplied
@@ -142,19 +192,12 @@ func WithBootManagerCodeProfile() PCRProfileOption {
 func AddPCRProfile(pcrAlg tpm2.HashAlgorithmId, branch *secboot_tpm2.PCRProtectionProfileBranch, loadSequences *ImageLoadSequences, options ...PCRProfileOption) error {
 	gen := newPcrProfileGenerator(pcrAlg, loadSequences, options...)
 
-	if gen.flags == 0 {
+	if gen.pcrs == 0 {
 		return errors.New("must specify a profile to add")
 	}
 
 	return gen.addPCRProfile(branch)
 }
-
-type pcrProfileFlags int
-
-const (
-	secureBootPolicyProfile pcrProfileFlags = 1 << iota
-	bootManagerCodeProfile
-)
 
 type pcrProfileGenerator struct {
 	// pcrAlg is the PCR digest algorithm to add to the profile.
@@ -173,8 +216,8 @@ type pcrProfileGenerator struct {
 	// profile.
 	handlers imageLoadHandlerMap
 
-	// flags is used to specify additional options for profile generation.
-	flags pcrProfileFlags
+	// pcrs is used to specify the PCRs to generate profiles for.
+	pcrs pcrFlags
 
 	// varModifiers is a set of callbacks that can apply customizations to
 	// EFI variables supplied from the HostEnvironment. This creates a sequence
@@ -273,9 +316,9 @@ func (g *pcrProfileGenerator) PCRAlg() tpm2.HashAlgorithmId {
 	return g.pcrAlg
 }
 
-// Flags implements pcrProfileContext.Flags.
-func (g *pcrProfileGenerator) Flags() pcrProfileFlags {
-	return g.flags
+// PCRS implements pcrProfileContext.PCRs.
+func (g *pcrProfileGenerator) PCRs() pcrFlags {
+	return g.pcrs
 }
 
 func (g *pcrProfileGenerator) ImageLoadHandlerMap() imageLoadHandlerMap {
@@ -285,7 +328,7 @@ func (g *pcrProfileGenerator) ImageLoadHandlerMap() imageLoadHandlerMap {
 // pcrProfileContext corresponds to the global environment of an EFI PCR profile generation.
 type pcrProfileContext interface {
 	PCRAlg() tpm2.HashAlgorithmId // the PCR digest algorithm for the profile
-	Flags() pcrProfileFlags
+	PCRs() pcrFlags
 
 	ImageLoadHandlerMap() imageLoadHandlerMap
 }

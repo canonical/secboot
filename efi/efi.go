@@ -19,7 +19,50 @@
 
 package efi
 
+import "github.com/canonical/go-tpm2"
+
 const (
-	bootManagerCodePCR = 4 // Boot Manager Code and Boot Attempts PCR
-	secureBootPCR      = 7 // Secure Boot Policy Measurements PCR
+	platformFirmwarePCR tpm2.Handle = 0 // SRTM, POST BIOS, and Embedded Drivers
+	driversAndAppsPCR   tpm2.Handle = 2 // UEFI Drivers and UEFI Applications
+	bootManagerCodePCR  tpm2.Handle = 4 // Boot Manager Code and Boot Attempts PCR
+	secureBootPolicyPCR tpm2.Handle = 7 // Secure Boot Policy Measurements PCR
+	kernelConfigPCR     tpm2.Handle = 12
 )
+
+// pcrFlags corresponds to a set of PCRs. This can only represent actual PCRs, it
+// cannot represent extendable NV indices (handle type 0x01) if we have a use for
+// these in the future
+type pcrFlags tpm2.Handle
+
+func makePcrFlags(pcrs ...tpm2.Handle) pcrFlags {
+	var out pcrFlags
+	for _, pcr := range pcrs {
+		if pcr >= 32 {
+			panic("invalid PCR")
+		}
+		out |= 1 << pcr
+	}
+	return out
+}
+
+// PCRs returns a list of all of the PCRs represented by these flags
+func (f pcrFlags) PCRs() (out tpm2.HandleList) {
+	for n := tpm2.Handle(0); n < 32; n++ {
+		if (f & (1 << n)) > 0 {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func (f pcrFlags) Contains(pcrs ...tpm2.Handle) bool {
+	for _, pcr := range pcrs {
+		if pcr >= 32 {
+			panic("invalid PCR")
+		}
+		if f&(1<<pcr) == 0 {
+			return false
+		}
+	}
+	return true
+}

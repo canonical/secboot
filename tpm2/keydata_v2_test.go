@@ -191,14 +191,14 @@ func (s *keyDataV2Suite) TestImportImportable(c *C) {
 func (s *keyDataV2Suite) TestValidateImportable(c *C) {
 	data := s.newMockImportableKeyData(c)
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, ErrorMatches, "cannot validate importable key data")
 }
 
 func (s *keyDataV2Suite) TestValidateOK1(c *C) {
 	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
 
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter, IsNil)
 }
@@ -206,7 +206,7 @@ func (s *keyDataV2Suite) TestValidateOK1(c *C) {
 func (s *keyDataV2Suite) TestValidateOK2(c *C) {
 	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
 }
@@ -214,7 +214,7 @@ func (s *keyDataV2Suite) TestValidateOK2(c *C) {
 func (s *keyDataV2Suite) TestValidateOK3(c *C) {
 	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x0180ff00))
 
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
 }
@@ -227,7 +227,7 @@ func (s *keyDataV2Suite) TestValidateImportedOK(c *C) {
 	c.Check(err, IsNil)
 	data.Imported(priv)
 
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter, IsNil)
 }
@@ -276,4 +276,11 @@ func (s *keyDataV2Suite) TestReadNonImportableAsV2Fails(c *C) {
 		"... tpm2.keyDataPolicy_v1 field StaticData\n"+
 		"... tpm2.keyData_v2 field PolicyData\n"+
 		"=== END STACK ===\n")
+}
+
+func (s *keyDataV2Suite) TestValidateInvalidRoleSupplied(c *C) {
+	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+
+	_, err := data.ValidateData(s.TPM().TPMContext, []byte("foo"))
+	c.Check(err, ErrorMatches, "unexpected role")
 }

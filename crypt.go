@@ -132,7 +132,6 @@ type activateWithKeyDataState struct {
 	keyringPrefix    string
 
 	authRequestor   AuthRequestor
-	kdf             KDF
 	passphraseTries int
 
 	keys []*keyCandidate
@@ -148,9 +147,24 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 	return out
 }
 
-func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey, slot int, keyData *KeyData, auxKey AuxiliaryKey) error {
-	if s.model != SkipSnapModelCheck {
-		authorized, err := keyData.IsSnapModelAuthorized(auxKey, s.model)
+func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey, slot int, keyData *KeyData, auxKey PrimaryKey) error {
+	model := s.model
+	// Snap model checking is skipped for generation 2 keys regardless of the model argument.
+	// Although a gen 1 key could fake the generation field which is unprotected to also
+	// bypass the model version check, that will result in an umarshalling error later on.
+	switch keyData.Generation() {
+	case 1:
+		if model == nil {
+			return errors.New("nil Model for generation 1 key")
+		}
+	default:
+		// Model authorization checking is skipped for version 2 keys and
+		// up as it is now responsibility of the platform to verify the model.
+		model = SkipSnapModelCheck
+	}
+
+	if model != SkipSnapModelCheck {
+		authorized, err := keyData.IsSnapModelAuthorized(auxKey, model)
 		switch {
 		case err != nil:
 			return xerrors.Errorf("cannot check if snap model is authorized: %w", err)
@@ -184,7 +198,7 @@ func (s *activateWithKeyDataState) tryKeyDataAuthModeNone(k *KeyData, slot int) 
 }
 
 func (s *activateWithKeyDataState) tryKeyDataAuthModePassphrase(k *KeyData, slot int, passphrase string) error {
-	key, auxKey, err := k.RecoverKeysWithPassphrase(passphrase, s.kdf)
+	key, auxKey, err := k.RecoverKeysWithPassphrase(passphrase)
 	if err != nil {
 		return xerrors.Errorf("cannot recover key: %w", err)
 	}
@@ -260,14 +274,13 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 	return false, passphraseErr
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*keyCandidate, authRequestor AuthRequestor, kdf KDF, passphraseTries int) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*keyCandidate, authRequestor AuthRequestor, passphraseTries int) *activateWithKeyDataState {
 	return &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
 		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix),
 		model:            model,
 		authRequestor:    authRequestor,
-		kdf:              kdf,
 		passphraseTries:  passphraseTries,
 		keys:             keys}
 }
@@ -422,22 +435,15 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // If activation with one of the KeyData objects succeeds (ie, no error is
 // returned), then the supplied SnapModel is authorized to access the data on
 // this volume.
-func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequestor AuthRequestor, kdf KDF, options *ActivateVolumeOptions, keys ...*KeyData) error {
+func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequestor AuthRequestor, options *ActivateVolumeOptions, keys ...*KeyData) error {
 	if options.PassphraseTries < 0 {
 		return errors.New("invalid PassphraseTries")
 	}
 	if options.RecoveryKeyTries < 0 {
 		return errors.New("invalid RecoveryKeyTries")
 	}
-	if options.Model == nil {
-		return errors.New("nil Model")
-	}
-
 	if (options.PassphraseTries > 0 || options.RecoveryKeyTries > 0) && authRequestor == nil {
 		return errors.New("nil authRequestor")
-	}
-	if options.PassphraseTries > 0 && kdf == nil {
-		return errors.New("nil kdf")
 	}
 
 	var candidates []*keyCandidate
@@ -469,7 +475,7 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 		}
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, candidates, authRequestor, kdf, options.PassphraseTries)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, candidates, authRequestor, options.PassphraseTries)
 	success, err := s.run()
 	switch {
 	case success:
@@ -537,18 +543,13 @@ type InitializeLUKS2ContainerOptions struct {
 	// the container to be initialized with the default metadata area size.
 	// If set to a non zero value, it must be a power of 2 between 16KiB
 	// and 4MiB.
-	MetadataKiBSize int
+	MetadataKiBSize uint32
 
 	// KeyslotsAreaKiBSize sets the size of the binary keyslot area in KiB.
 	// Setting this to zero causes the container to be initialized with
 	// the default keyslots area size. If set to a non-zero value, the
 	// value must be a multiple of 4KiB up to a maximum of 128MiB.
-	KeyslotsAreaKiBSize int
-
-	// KDFOptions sets the KDF options for the initial keyslot. If this
-	// is nil then the default settings defined by this package are used
-	// (4 iterations and a memory cost of 32KiB).
-	KDFOptions *KDFOptions
+	KeyslotsAreaKiBSize uint32
 
 	// InitialKeyslotName sets the name that will be used to identify
 	// the initial keyslot. If this is empty, then the name will be
@@ -563,8 +564,25 @@ func (o *InitializeLUKS2ContainerOptions) formatOpts() *luks2.FormatOptions {
 	return &luks2.FormatOptions{
 		MetadataKiBSize:     o.MetadataKiBSize,
 		KeyslotsAreaKiBSize: o.KeyslotsAreaKiBSize,
-		KDFOptions:          o.KDFOptions.luksOpts(),
-		InlineCryptoEngine:  o.InlineCryptoEngine}
+
+		// Use a minimal KDF - this is the minimum recommended by SP800-132 and the minimum
+		// supported by cryptsetup. We have a high entropy key rather than a low-entropy
+		// passphrase - the input key has the same entropy as the derived key, so there is
+		// no security benefit to the KDF here but it does slow down unlocking. There currently
+		// isn't a way to disable it, but it would be disabled if there were. If an adversary is
+		// going to attempt to brute force unlocking, they could just target other keys with the
+		// same or lower entropy, such as:
+		// - the derived key which has the same entropy, by decrypting the keyslot and testing it
+		//   against the stored digest.
+		// - for the TPM case, the storage key's seed which is 16 bytes, by computing the sealed
+		//   object's HMAC and testing it against the stored one.
+		KDFOptions: luks2.KDFOptions{
+			Type:            luks2.KDFTypePBKDF2,
+			ForceIterations: 1000,
+			Hash:            luks2.HashSHA256,
+		},
+
+		InlineCryptoEngine: o.InlineCryptoEngine}
 }
 
 // InitializeLUKS2Container will initialize the partition at the specified devicePath
@@ -603,18 +621,6 @@ func InitializeLUKS2Container(devicePath, label string, key DiskUnlockKey, optio
 	if options == nil {
 		var defaultOptions InitializeLUKS2ContainerOptions
 		options = &defaultOptions
-	} else {
-		// copy options to avoid modification of the supplied struct
-		options = &InitializeLUKS2ContainerOptions{
-			MetadataKiBSize:     options.MetadataKiBSize,
-			KeyslotsAreaKiBSize: options.KeyslotsAreaKiBSize,
-			KDFOptions:          options.KDFOptions,
-			InitialKeyslotName:  options.InitialKeyslotName,
-			InlineCryptoEngine:  options.InlineCryptoEngine}
-	}
-
-	if options.KDFOptions == nil {
-		options.KDFOptions = &KDFOptions{MemoryKiB: 32, ForceIterations: 4}
 	}
 
 	initialKeyslotName := options.InitialKeyslotName
@@ -647,7 +653,7 @@ func removeOrphanedTokens(devicePath string, view *luksview.View) {
 	}
 }
 
-func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey DiskUnlockKey, options *KDFOptions,
+func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey DiskUnlockKey, options *luks2.KDFOptions,
 	newToken func(base *luksview.TokenBase) luks2.Token, priority luks2.SlotPriority) error {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
@@ -668,7 +674,7 @@ func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey Di
 		freeSlot++
 	}
 
-	if err := luks2AddKey(devicePath, existingKey, newKey, &luks2.AddKeyOptions{KDFOptions: options.luksOpts(), Slot: freeSlot}); err != nil {
+	if err := luks2AddKey(devicePath, existingKey, newKey, &luks2.AddKeyOptions{KDFOptions: *options, Slot: freeSlot}); err != nil {
 		return xerrors.Errorf("cannot add key: %w", err)
 	}
 
@@ -754,7 +760,7 @@ func listLUKS2ContainerKeyNames(devicePath string, tokenType luks2.TokenType) ([
 // The new key should be protected by some platform-specific mechanism in
 // order to create a KeyData object. The KeyData object can be saved to the
 // keyslot using LUKS2KeyDataWriter.
-func AddLUKS2ContainerUnlockKey(devicePath, keyslotName string, existingKey, newKey DiskUnlockKey, options *KDFOptions) error {
+func AddLUKS2ContainerUnlockKey(devicePath, keyslotName string, existingKey, newKey DiskUnlockKey) error {
 	if len(newKey) < 32 {
 		return fmt.Errorf("expected a key length of at least 256-bits (got %d)", len(newKey)*8)
 	}
@@ -763,18 +769,23 @@ func AddLUKS2ContainerUnlockKey(devicePath, keyslotName string, existingKey, new
 		keyslotName = defaultKeyslotName
 	}
 
-	// Use a reduced cost for the KDF. This is done because we have a high entropy key rather
-	// than a low entropy passphrase. Setting a higher cost provides no security benefit but
-	// does slow down unlocking. If an adversary is going to attempt to brute force this key,
-	// then they could instead turn their attention to one of the other keys involved in the
-	// protection of this key, some of which can be verified without running a KDF. For
-	// example, with a TPM sealed object, you can verify the parent storage key's seed by
-	// computing the key object's HMAC key and verifying the integrity value on the outer wrapper.
-	if options == nil {
-		options = &KDFOptions{MemoryKiB: 32, ForceIterations: 4}
+	// Use a minimal KDF - this is the minimum recommended by SP800-132 and the minimum
+	// supported by cryptsetup. We have a high entropy key rather than a low-entropy
+	// passphrase - the input key has the same entropy as the derived key, so there is
+	// no security benefit to the KDF here but it does slow down unlocking. There currently
+	// isn't a way to disable it, but it would be disabled if there were. If an adversary is
+	// going to attempt to brute force unlocking, they could just target other keys with the
+	// same or lower entropy, such as:
+	// - the derived key which has the same entropy, by decrypting the keyslot and testing it
+	//   against the stored digest.
+	// - for the TPM case, the storage key's seed which is 16 bytes, by computing the sealed
+	//   object's HMAC and testing it against the stored one.
+	options := luks2.KDFOptions{
+		Type:            luks2.KDFTypePBKDF2,
+		ForceIterations: 1000,
+		Hash:            luks2.HashSHA256,
 	}
-
-	return addLUKS2ContainerKey(devicePath, keyslotName, existingKey, newKey, options, func(base *luksview.TokenBase) luks2.Token {
+	return addLUKS2ContainerKey(devicePath, keyslotName, existingKey, newKey, &options, func(base *luksview.TokenBase) luks2.Token {
 		return &luksview.KeyDataToken{TokenBase: *base}
 	}, luks2.SlotPriorityHigh)
 }
@@ -802,16 +813,21 @@ func ListLUKS2ContainerUnlockKeyNames(devicePath string) ([]string, error) {
 // with RenameLUKS2ContainerKey.
 //
 // In order to perform this action, an existing key must be supplied.
-func AddLUKS2ContainerRecoveryKey(devicePath, keyslotName string, existingKey DiskUnlockKey, recoveryKey RecoveryKey, options *KDFOptions) error {
+func AddLUKS2ContainerRecoveryKey(devicePath, keyslotName string, existingKey DiskUnlockKey, recoveryKey RecoveryKey) error {
 	if keyslotName == "" {
 		keyslotName = defaultRecoveryKeyslotName
 	}
 
-	if options == nil {
-		options = &KDFOptions{}
+	// Use PBKDF2 with the current OWASP recommendations - 600000 iterations
+	// and SHA256. The recovery key has an entropy of 16 bytes which is strong
+	// and this is overkill really - this could be knocked down to minimal settings
+	// if we have a 32 byte recovery key.
+	options := luks2.KDFOptions{
+		Type:            luks2.KDFTypePBKDF2,
+		ForceIterations: 600000,
+		Hash:            luks2.HashSHA256,
 	}
-
-	return addLUKS2ContainerKey(devicePath, keyslotName, existingKey, recoveryKey[:], options, func(base *luksview.TokenBase) luks2.Token {
+	return addLUKS2ContainerKey(devicePath, keyslotName, existingKey, recoveryKey[:], &options, func(base *luksview.TokenBase) luks2.Token {
 		return &luksview.RecoveryToken{TokenBase: *base}
 	}, luks2.SlotPriorityNormal)
 }

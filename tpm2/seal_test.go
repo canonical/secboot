@@ -31,6 +31,8 @@ import (
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/templates"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 
 	. "gopkg.in/check.v1"
 
@@ -40,6 +42,29 @@ import (
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
+
+type protectedKeys struct {
+	Primary secboot.PrimaryKey
+	Unique  []byte
+}
+
+func unmarshalProtectedKeys(data []byte) (*protectedKeys, error) {
+	s := cryptobyte.String(data)
+	if !s.ReadASN1(&s, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("malformed input")
+	}
+
+	pk := new(protectedKeys)
+
+	if !s.ReadASN1Bytes((*[]byte)(&pk.Primary), cryptobyte_asn1.OCTET_STRING) {
+		return nil, errors.New("malformed primary key")
+	}
+	if !s.ReadASN1Bytes(&pk.Unique, cryptobyte_asn1.OCTET_STRING) {
+		return nil, errors.New("malformed unique key")
+	}
+
+	return pk, nil
+}
 
 type sealSuite struct {
 	tpm2test.TPMTest
@@ -65,30 +90,20 @@ func (s *sealSuite) SetUpTest(c *C) {
 var _ = Suite(&sealSuite{})
 
 func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
-
-	for _, model := range params.AuthorizedSnapModels {
-		ok, err := k.IsSnapModelAuthorized(authKey, model)
-		c.Check(err, IsNil)
-		c.Check(ok, testutil.IsTrue)
-	}
 
 	skd, err := NewSealedKeyData(k)
 	c.Assert(err, IsNil)
-	c.Check(skd.Validate(s.TPM().TPMContext, authKey), IsNil)
+	c.Check(skd.Validate(s.TPM().TPMContext, primaryKey), IsNil)
 
 	c.Check(skd.Version(), Equals, uint32(3))
 	c.Check(skd.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
 
-	policyAuthPublicKey, err := NewPolicyAuthPublicKey(authKey)
+	policyAuthPublicKey, err := NewPolicyAuthPublicKey(primaryKey)
 	c.Assert(err, IsNil)
 
 	var pcrPolicyCounterPub *tpm2.NVPublic
-	var pcrPolicySequence uint64
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
 		index, err := s.TPM().CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
 		c.Assert(err, IsNil)
@@ -96,25 +111,23 @@ func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
 		pcrPolicyCounterPub, _, err = s.TPM().NVReadPublic(index)
 		c.Check(err, IsNil)
 
-		pcrPolicySequence, err = s.TPM().NVReadCounter(index, index, nil)
-		c.Check(err, IsNil)
 	}
 
-	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, pcrPolicyCounterPub, pcrPolicySequence)
+	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, "", pcrPolicyCounterPub, false)
 	c.Assert(err, IsNil)
 
 	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
 	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, expectedPolicyDigest)
 	c.Check(skd.Data().Policy().(*KeyDataPolicy_v3).StaticData, tpm2_testutil.TPMValueDeepEquals, expectedPolicyData.(*KeyDataPolicy_v3).StaticData)
 
-	if params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, params.AuthKey)
+	if params.PrimaryKey != nil {
+		c.Check(primaryKey, DeepEquals, params.PrimaryKey)
 	}
 
-	keyUnsealed, authKeyUnsealed, err := k.RecoverKeys()
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeys()
 	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
 
 	if params.PCRProfile != nil {
 		// Verify that the key is sealed with the supplied PCR profile by changing
@@ -135,28 +148,14 @@ func (s *sealSuite) TestProtectKeyWithTPM(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}})
+	})
 }
 
 func (s *sealSuite) TestProtectKeyWithTPMDifferentPCRPolicyCounterHandle(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}})
+	})
 }
 
 func (s *sealSuite) TestProtectKeyWithTPMWithNewConnection(c *C) {
@@ -167,14 +166,7 @@ func (s *sealSuite) TestProtectKeyWithTPMWithNewConnection(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}})
+	})
 
 	s.validateSRK(c)
 }
@@ -190,14 +182,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingSRK(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}})
+	})
 
 	s.validateSRK(c)
 }
@@ -238,14 +223,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingCustomSRK(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}})
+	})
 
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, template)
 }
@@ -289,14 +267,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingSRKWithInvalidCustomTemplate(c *
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}})
+	})
 
 	s.validateSRK(c)
 }
@@ -310,248 +281,17 @@ func (s *sealSuite) TestProtectKeyWithTPMNoPCRPolicyCounterHandle(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull,
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}})
+	})
 }
 
-func (s *sealSuite) TestProtectKeyWithTPMWithProvidedAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
-	rand.Read(authKey)
+func (s *sealSuite) TestProtectKeyWithTPMWithProvidedPrimaryKey(c *C) {
+	primaryKey := make(secboot.PrimaryKey, 32)
+	rand.Read(primaryKey)
 
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")},
-		AuthKey: authKey})
-}
-
-type testProtectKeysWithTPMData struct {
-	n      int
-	params *ProtectKeyParams
-}
-
-func (s *sealSuite) testProtectKeysWithTPM(c *C, data *testProtectKeysWithTPMData) {
-	var keys []secboot.DiskUnlockKey
-	for i := 0; i < data.n; i++ {
-		key := make(secboot.DiskUnlockKey, 32)
-		rand.Read(key)
-
-		keys = append(keys, key)
-	}
-
-	protectedKeys, authKey, err := ProtectKeysWithTPM(s.TPM(), keys, data.params)
-	c.Check(err, IsNil)
-	c.Check(protectedKeys, HasLen, data.n)
-
-	policyAuthPublicKey, err := NewPolicyAuthPublicKey(authKey)
-	c.Assert(err, IsNil)
-
-	var pcrPolicyCounterPub *tpm2.NVPublic
-	var pcrPolicySequence uint64
-	if data.params.PCRPolicyCounterHandle != tpm2.HandleNull {
-		index, err := s.TPM().CreateResourceContextFromTPM(data.params.PCRPolicyCounterHandle)
-		c.Assert(err, IsNil)
-
-		pcrPolicyCounterPub, _, err = s.TPM().NVReadPublic(index)
-		c.Check(err, IsNil)
-
-		pcrPolicySequence, err = s.TPM().NVReadCounter(index, index, nil)
-		c.Check(err, IsNil)
-	}
-
-	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, pcrPolicyCounterPub, pcrPolicySequence)
-	c.Assert(err, IsNil)
-
-	for i, k := range protectedKeys {
-		for _, model := range data.params.AuthorizedSnapModels {
-			ok, err := k.IsSnapModelAuthorized(authKey, model)
-			c.Check(err, IsNil)
-			c.Check(ok, testutil.IsTrue)
-		}
-
-		skd, err := NewSealedKeyData(k)
-		c.Assert(err, IsNil)
-		c.Check(skd.Validate(s.TPM().TPMContext, authKey), IsNil)
-
-		c.Check(skd.Version(), Equals, uint32(3))
-		c.Check(skd.PCRPolicyCounterHandle(), Equals, data.params.PCRPolicyCounterHandle)
-
-		c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
-		c.Check(skd.Data().Public().AuthPolicy, DeepEquals, expectedPolicyDigest)
-		c.Check(skd.Data().Policy().(*KeyDataPolicy_v3).StaticData, tpm2_testutil.TPMValueDeepEquals, expectedPolicyData.(*KeyDataPolicy_v3).StaticData)
-
-		keyUnsealed, authKeyUnsealed, err := k.RecoverKeys()
-		c.Check(err, IsNil)
-		c.Check(keyUnsealed, DeepEquals, keys[i])
-		c.Check(authKeyUnsealed, DeepEquals, authKey)
-	}
-
-	if data.params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, data.params.AuthKey)
-	}
-
-	if data.params.PCRProfile != nil {
-		// Verify that the keys are sealed with the supplied PCR profile by changing
-		// the PCR values.
-		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
-		c.Check(err, IsNil)
-
-		for _, k := range protectedKeys {
-			_, _, err = k.RecoverKeys()
-			c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
-				"cannot execute PolicyOR assertions: current session digest not found in policy data")
-		}
-	}
-}
-
-func (s *sealSuite) TestProtectKeysWithTPMSingle(c *C) {
-	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
-		n: 1,
-		params: &ProtectKeyParams{
-			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-			AuthorizedSnapModels: []secboot.SnapModel{
-				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-					"authority-id": "fake-brand",
-					"series":       "16",
-					"brand-id":     "fake-brand",
-					"model":        "fake-model",
-					"grade":        "secured",
-				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}}})
-}
-
-func (s *sealSuite) TestProtectKeysWithTPM2Keys(c *C) {
-	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
-		n: 2,
-		params: &ProtectKeyParams{
-			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-			AuthorizedSnapModels: []secboot.SnapModel{
-				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-					"authority-id": "fake-brand",
-					"series":       "16",
-					"brand-id":     "fake-brand",
-					"model":        "fake-model",
-					"grade":        "secured",
-				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}}})
-}
-
-func (s *sealSuite) TestProtectKeysWithTPMDifferentPCRPolicyCounterHandle(c *C) {
-	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
-		n: 2,
-		params: &ProtectKeyParams{
-			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-			AuthorizedSnapModels: []secboot.SnapModel{
-				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-					"authority-id": "fake-brand",
-					"series":       "16",
-					"brand-id":     "fake-brand",
-					"model":        "fake-model",
-					"grade":        "secured",
-				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}}})
-}
-
-func (s *sealSuite) TestProtectKeysWithTPMWithNewConnection(c *C) {
-	// ProtectKeysWithTPM behaves slightly different if called immediately
-	// after EnsureProvisioned with the same Connection
-	s.ReinitTPMConnectionFromExisting(c)
-
-	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
-		n: 2,
-		params: &ProtectKeyParams{
-			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-			AuthorizedSnapModels: []secboot.SnapModel{
-				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-					"authority-id": "fake-brand",
-					"series":       "16",
-					"brand-id":     "fake-brand",
-					"model":        "fake-model",
-					"grade":        "secured",
-				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}}})
-}
-
-func (s *sealSuite) TestProtectKeysWithTPMMissingSRK(c *C) {
-	// Ensure that calling ProtectKeysWithTPM recreates the SRK with the standard
-	// template
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
-	c.Assert(err, IsNil)
-	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
-
-	s.ReinitTPMConnectionFromExisting(c)
-
-	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
-		n: 2,
-		params: &ProtectKeyParams{
-			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-			AuthorizedSnapModels: []secboot.SnapModel{
-				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-					"authority-id": "fake-brand",
-					"series":       "16",
-					"brand-id":     "fake-brand",
-					"model":        "fake-model",
-					"grade":        "secured",
-				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}}})
-
-	s.validateSRK(c)
-}
-
-func (s *sealSuite) TestProtectKeyWithTPMMultipeNilPCRProfileAndNoAuthorizedSnapModels(c *C) {
-	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
-		n: 2,
-		params: &ProtectKeyParams{
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)}})
-}
-
-func (s *sealSuite) TestProtectKeysWithTPMNoPCRPolicyCounterHandle(c *C) {
-	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
-		n: 2,
-		params: &ProtectKeyParams{
-			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-			PCRPolicyCounterHandle: tpm2.HandleNull,
-			AuthorizedSnapModels: []secboot.SnapModel{
-				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-					"authority-id": "fake-brand",
-					"series":       "16",
-					"brand-id":     "fake-brand",
-					"model":        "fake-model",
-					"grade":        "secured",
-				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}}})
-}
-
-func (s *sealSuite) TestProtectKeysWithTPMWithProvidedAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
-	rand.Read(authKey)
-
-	s.testProtectKeysWithTPM(c, &testProtectKeysWithTPMData{
-		n: 2,
-		params: &ProtectKeyParams{
-			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-			AuthorizedSnapModels: []secboot.SnapModel{
-				testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-					"authority-id": "fake-brand",
-					"series":       "16",
-					"brand-id":     "fake-brand",
-					"model":        "fake-model",
-					"grade":        "secured",
-				}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")},
-			AuthKey: authKey}})
+		PrimaryKey:             primaryKey})
 }
 
 func (s *sealSuite) testProtectKeyWithTPMErrorHandling(c *C, params *ProtectKeyParams) error {
@@ -568,7 +308,7 @@ func (s *sealSuite) testProtectKeyWithTPMErrorHandling(c *C, params *ProtectKeyP
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
-	_, _, sealErr := ProtectKeyWithTPM(s.TPM(), key, params)
+	_, _, _, sealErr := NewTPMProtectedKey(s.TPM(), params)
 
 	var counter tpm2.ResourceContext
 	if params != nil && params.PCRPolicyCounterHandle != tpm2.HandleNull {
@@ -580,12 +320,13 @@ func (s *sealSuite) testProtectKeyWithTPMErrorHandling(c *C, params *ProtectKeyP
 		c.Check(err, IsNil)
 	}
 
-	switch {
-	case origCounter == nil:
-		c.Check(counter, IsNil)
-	case origCounter != nil:
+	if params != nil && params.PCRPolicyCounterHandle != tpm2.HandleNull {
 		c.Assert(counter, NotNil)
-		c.Check(counter.Name(), DeepEquals, origCounter.Name())
+		if origCounter != nil {
+			c.Check(counter.Name(), DeepEquals, origCounter.Name())
+		}
+	} else {
+		c.Check(counter, IsNil)
 	}
 
 	return sealErr
@@ -605,20 +346,6 @@ func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingOwnerAuthFail(c *C) {
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
 	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleOwner)
-}
-
-func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingPCRPolicyCounterExists(c *C) {
-	public := tpm2.NVPublic{
-		Index:   s.NextAvailableHandle(c, 0x0181ffff),
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVAuthRead),
-		Size:    0}
-	s.NVDefineSpace(c, tpm2.HandleOwner, nil, &public)
-
-	err := s.testProtectKeyWithTPMErrorHandling(c, &ProtectKeyParams{
-		PCRPolicyCounterHandle: public.Index})
-	c.Assert(err, testutil.ConvertibleTo, TPMResourceExistsError{})
-	c.Check(err.(TPMResourceExistsError).Handle, Equals, public.Index)
 }
 
 func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidPCRProfile(c *C) {
@@ -650,40 +377,34 @@ func (s *sealSuite) testProtectKeyWithExternalStorageKey(c *C, params *ProtectKe
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
-	k, authKey, err := ProtectKeyWithExternalStorageKey(srkPub, key, params)
+	k, primaryKey, unlockKey, err := NewExternalTPMProtectedKey(srkPub, params)
 	c.Assert(err, IsNil)
-
-	for _, model := range params.AuthorizedSnapModels {
-		ok, err := k.IsSnapModelAuthorized(authKey, model)
-		c.Check(err, IsNil)
-		c.Check(ok, testutil.IsTrue)
-	}
 
 	skd, err := NewSealedKeyData(k)
 	c.Assert(err, IsNil)
-	c.Check(skd.Validate(s.TPM().TPMContext, authKey), IsNil)
+	c.Check(skd.Validate(s.TPM().TPMContext, primaryKey), IsNil)
 
 	c.Check(skd.Version(), Equals, uint32(3))
 	c.Check(skd.PCRPolicyCounterHandle(), Equals, tpm2.HandleNull)
 
-	policyAuthPublicKey, err := NewPolicyAuthPublicKey(authKey)
+	policyAuthPublicKey, err := NewPolicyAuthPublicKey(primaryKey)
 	c.Assert(err, IsNil)
 
-	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, nil, 0)
+	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, "", nil, false)
 	c.Assert(err, IsNil)
 
 	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
 	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, expectedPolicyDigest)
 	c.Check(skd.Data().Policy().(*KeyDataPolicy_v3).StaticData, tpm2_testutil.TPMValueDeepEquals, expectedPolicyData.(*KeyDataPolicy_v3).StaticData)
 
-	if params.AuthKey != nil {
-		c.Check(authKey, DeepEquals, params.AuthKey)
+	if params.PrimaryKey != nil {
+		c.Check(primaryKey, DeepEquals, params.PrimaryKey)
 	}
 
-	keyUnsealed, authKeyUnsealed, err := k.RecoverKeys()
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeys()
 	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
 
 	if params.PCRProfile != nil {
 		// Verify that the key is sealed with the supplied PCR profile by changing
@@ -700,14 +421,7 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKey(c *C) {
 	s.testProtectKeyWithExternalStorageKey(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewResolvedPCRProfileFromCurrentValues(c, s.TPM().TPMContext, tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull,
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")}})
+	})
 }
 
 func (s *sealSuite) TestProtectKeyWithExternalStorageKeyNilPCRProfileAndNoAuthorizedSnapModels(c *C) {
@@ -715,22 +429,14 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKeyNilPCRProfileAndNoAuthor
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 }
 
-func (s *sealSuite) TestProtectKeyWithExternalStorageKeyWithProvidedAuthKey(c *C) {
-	authKey := make(secboot.AuxiliaryKey, 32)
-	rand.Read(authKey)
+func (s *sealSuite) TestProtectKeyWithExternalStorageKeyWithProvidedPrimaryKey(c *C) {
+	primaryKey := make(secboot.PrimaryKey, 32)
+	rand.Read(primaryKey)
 
 	s.testProtectKeyWithExternalStorageKey(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewResolvedPCRProfileFromCurrentValues(c, s.TPM().TPMContext, tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull,
-		AuthorizedSnapModels: []secboot.SnapModel{
-			testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
-				"authority-id": "fake-brand",
-				"series":       "16",
-				"brand-id":     "fake-brand",
-				"model":        "fake-model",
-				"grade":        "secured",
-			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")},
-		AuthKey: authKey})
+		PrimaryKey:             primaryKey})
 }
 
 func (s *sealSuite) testProtectKeyWithExternalStorageKeyErrorHandling(c *C, params *ProtectKeyParams) error {
@@ -743,7 +449,7 @@ func (s *sealSuite) testProtectKeyWithExternalStorageKeyErrorHandling(c *C, para
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
-	_, _, sealErr := ProtectKeyWithExternalStorageKey(srkPub, key, params)
+	_, _, _, sealErr := NewExternalTPMProtectedKey(srkPub, params)
 	return sealErr
 }
 
@@ -764,13 +470,6 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKeyErrorHandlingInvalidPCRP
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size())),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, ErrorMatches, "cannot set initial PCR policy: PCR protection profile contains digests for unsupported PCRs")
-}
-
-func (s *sealSuite) TestProtectKeyWithExternalStorageKeyErrorHandlingWithPCRPolicyCounter(c *C) {
-	err := s.testProtectKeyWithExternalStorageKeyErrorHandling(c, &ProtectKeyParams{
-		PCRProfile:             tpm2test.NewResolvedPCRProfileFromCurrentValues(c, s.TPM().TPMContext, tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
-	c.Check(err, ErrorMatches, "PCR policy counter handle must be tpm2.HandleNull when creating an importable sealed key")
 }
 
 type mockKeySealer struct {
@@ -797,7 +496,7 @@ type sealSuiteNoTPM struct {
 
 	lastKeyParams *secboot.KeyParams
 
-	lastAuthKey       secboot.AuxiliaryKey
+	lastAuthKey       secboot.PrimaryKey
 	lastAuthKeyPublic *tpm2.Public
 }
 
@@ -812,151 +511,39 @@ func (s *sealSuiteNoTPM) SetUpTest(c *C) {
 
 	s.lastAuthKey = nil
 	s.lastAuthKeyPublic = nil
-	s.AddCleanup(MockNewPolicyAuthPublicKey(func(authKey secboot.AuxiliaryKey) (*tpm2.Public, error) {
-		s.lastAuthKey = authKey
+	s.AddCleanup(MockNewPolicyAuthPublicKey(func(primaryKey secboot.PrimaryKey) (*tpm2.Public, error) {
+		s.lastAuthKey = primaryKey
 
-		pub, err := NewPolicyAuthPublicKey(authKey)
+		pub, err := NewPolicyAuthPublicKey(primaryKey)
 		s.lastAuthKeyPublic = pub
 		return pub, err
 	}))
+
 }
 
 var _ = Suite(&sealSuiteNoTPM{})
 
-type testMakeKeyDataWithPolicyData struct {
-	policy *KeyDataPolicyParams
+type testMakeSealedKeyDataData struct {
+	PCRProfile             *PCRProtectionProfile
+	Role                   string
+	PCRPolicyCounterHandle tpm2.Handle
+	PrimaryKey             secboot.PrimaryKey
 }
 
-func (s *sealSuiteNoTPM) testMakeKeyDataWithPolicy(c *C, data *testMakeKeyDataWithPolicyData) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-	authKey := make(secboot.AuxiliaryKey, 32)
-	rand.Read(authKey)
-
-	var sealer mockKeySealer
-
-	kd, err := MakeKeyDataWithPolicy(key, authKey, data.policy, &sealer)
-	c.Check(err, IsNil)
-	c.Assert(kd, NotNil)
-
-	c.Assert(s.lastKeyParams, NotNil)
-	c.Check(s.lastKeyParams.PlatformName, Equals, "tpm2")
-	c.Check(s.lastKeyParams.AuxiliaryKey, DeepEquals, authKey)
-	c.Check(s.lastKeyParams.SnapModelAuthHash, Equals, crypto.SHA256)
-
-	skd, err := NewSealedKeyData(kd)
-	c.Assert(err, IsNil)
-
-	c.Check(skd.Data().Policy(), tpm2_testutil.TPMValueDeepEquals, data.policy.PolicyData)
-	c.Check(skd.Data().Public().NameAlg, Equals, data.policy.Alg)
-	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, data.policy.AuthPolicy)
-
-	payload := make(secboot.KeyPayload, len(s.lastKeyParams.EncryptedPayload))
-
-	c.Assert(skd.Data().Private(), HasLen, 48)
-	b, err := aes.NewCipher(skd.Data().Private()[:32])
-	c.Assert(err, IsNil)
-	stream := cipher.NewCFBDecrypter(b, skd.Data().Private()[32:])
-	stream.XORKeyStream(payload, s.lastKeyParams.EncryptedPayload)
-
-	recoveredKey, recoveredAuthKey, err := payload.Unmarshal()
-	c.Check(err, IsNil)
-	c.Check(recoveredKey, DeepEquals, key)
-	c.Check(recoveredAuthKey, DeepEquals, authKey)
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicy(c *C) {
-	policyData := &KeyDataPolicy_v3{
-		StaticData: &StaticPolicyData_v3{
-			AuthPublicKey:          templates.NewECCKey(tpm2.HashAlgorithmSHA256, templates.KeyUsageSign, nil, tpm2.ECCCurveNIST_P256),
-			PCRPolicyCounterHandle: tpm2.HandleNull,
-		},
-		PCRData: &PcrPolicyData_v3{
-			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgECDSA},
-		},
-	}
-
-	s.testMakeKeyDataWithPolicy(c, &testMakeKeyDataWithPolicyData{
-		policy: &KeyDataPolicyParams{
-			Alg:        tpm2.HashAlgorithmSHA256,
-			PolicyData: policyData,
-			AuthPolicy: []byte{1, 2, 3, 4}}})
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentNameAlg(c *C) {
-	policyData := &KeyDataPolicy_v3{
-		StaticData: &StaticPolicyData_v3{
-			AuthPublicKey:          templates.NewECCKey(tpm2.HashAlgorithmSHA256, templates.KeyUsageSign, nil, tpm2.ECCCurveNIST_P256),
-			PCRPolicyCounterHandle: tpm2.HandleNull,
-		},
-		PCRData: &PcrPolicyData_v3{
-			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgECDSA},
-		},
-	}
-
-	s.testMakeKeyDataWithPolicy(c, &testMakeKeyDataWithPolicyData{
-		policy: &KeyDataPolicyParams{
-			Alg:        tpm2.HashAlgorithmSHA1,
-			PolicyData: policyData,
-			AuthPolicy: []byte{1, 2, 3, 4}}})
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentPolicyDigest(c *C) {
-	policyData := &KeyDataPolicy_v3{
-		StaticData: &StaticPolicyData_v3{
-			AuthPublicKey:          templates.NewECCKey(tpm2.HashAlgorithmSHA256, templates.KeyUsageSign, nil, tpm2.ECCCurveNIST_P256),
-			PCRPolicyCounterHandle: tpm2.HandleNull,
-		},
-		PCRData: &PcrPolicyData_v3{
-			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgECDSA},
-		},
-	}
-
-	s.testMakeKeyDataWithPolicy(c, &testMakeKeyDataWithPolicyData{
-		policy: &KeyDataPolicyParams{
-			Alg:        tpm2.HashAlgorithmSHA256,
-			PolicyData: policyData,
-			AuthPolicy: []byte{5, 6, 7, 8, 9}}})
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyDifferentPolicyVersion(c *C) {
-	policyData := &KeyDataPolicy_v1{
-		StaticData: &StaticPolicyData_v1{
-			AuthPublicKey:          templates.NewECCKey(tpm2.HashAlgorithmSHA256, templates.KeyUsageSign, nil, tpm2.ECCCurveNIST_P256),
-			PCRPolicyCounterHandle: tpm2.HandleNull,
-		},
-		PCRData: &PcrPolicyData_v1{
-			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgECDSA},
-		},
-	}
-
-	s.testMakeKeyDataWithPolicy(c, &testMakeKeyDataWithPolicyData{
-		policy: &KeyDataPolicyParams{
-			Alg:        tpm2.HashAlgorithmSHA256,
-			PolicyData: policyData,
-			AuthPolicy: []byte{1, 2, 3, 4}}})
-}
-
-type testMakeKeyDataPolicyData struct {
-	pcrPolicyCounterHandle       tpm2.Handle
-	authKey                      secboot.AuxiliaryKey
-	initialPcrPolicyCounterValue uint64
-}
-
-func (s *sealSuiteNoTPM) testMakeKeyDataPolicy(c *C, data *testMakeKeyDataPolicyData) {
+func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyDataData) {
 	var mockTpm *tpm2.TPMContext
 	var mockSession tpm2.SessionContext
-	if data.pcrPolicyCounterHandle != tpm2.HandleNull {
+	if data.PCRPolicyCounterHandle != tpm2.HandleNull {
 		mockTpm = new(tpm2.TPMContext)
 		mockSession = new(mockSessionContext)
 	}
 
 	var mockPcrPolicyCounterPub *tpm2.NVPublic
-	restore := MockCreatePcrPolicyCounter(func(tpm *tpm2.TPMContext, handle tpm2.Handle, pub *tpm2.Public, session tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
+	restore := MockEnsurePcrPolicyCounter(func(tpm *tpm2.TPMContext, handle tpm2.Handle, pub *tpm2.Public, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
 		c.Assert(mockTpm, NotNil)
 
 		c.Check(tpm, Equals, mockTpm)
-		c.Check(handle, Equals, data.pcrPolicyCounterHandle)
+		c.Check(handle, Equals, data.PCRPolicyCounterHandle)
 		c.Check(pub, Equals, s.lastAuthKeyPublic)
 		c.Check(session, Equals, mockSession)
 
@@ -967,17 +554,17 @@ func (s *sealSuiteNoTPM) testMakeKeyDataPolicy(c *C, data *testMakeKeyDataPolicy
 			AuthPolicy: make([]byte, 32),
 			Size:       8}
 
-		return mockPcrPolicyCounterPub, data.initialPcrPolicyCounterValue, nil
+		return mockPcrPolicyCounterPub, nil
 	})
 	defer restore()
 
 	var mockPolicyData *KeyDataPolicy_v3
 	var mockPolicyDigest tpm2.Digest
-	restore = MockNewKeyDataPolicy(func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (KeyDataPolicy, tpm2.Digest, error) {
+	restore = MockNewKeyDataPolicy(func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic, requireAuthValue bool) (KeyDataPolicy, tpm2.Digest, error) {
 		c.Check(alg, Equals, tpm2.HashAlgorithmSHA256)
 		c.Check(key, Equals, s.lastAuthKeyPublic)
 		c.Check(pcrPolicyCounterPub, Equals, mockPcrPolicyCounterPub)
-		c.Check(pcrPolicySequence, Equals, data.initialPcrPolicyCounterValue)
+		c.Check(requireAuthValue, Equals, false)
 
 		index := tpm2.HandleNull
 		if pcrPolicyCounterPub != nil {
@@ -989,120 +576,6 @@ func (s *sealSuiteNoTPM) testMakeKeyDataPolicy(c *C, data *testMakeKeyDataPolicy
 				AuthPublicKey:          key,
 				PCRPolicyCounterHandle: index},
 			PCRData: &PcrPolicyData_v3{
-				PolicySequence:            pcrPolicySequence,
-				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}
-
-		mockPolicyDigest = make([]byte, alg.Size())
-		rand.Read(mockPolicyDigest)
-
-		return mockPolicyData, mockPolicyDigest, nil
-	})
-	defer restore()
-
-	policy, pcrPolicyCounter, authKeyOut, err := MakeKeyDataPolicy(mockTpm, data.pcrPolicyCounterHandle, data.authKey, mockSession)
-	c.Assert(err, IsNil)
-
-	c.Assert(s.lastAuthKey, NotNil)
-	c.Assert(mockPolicyData, NotNil)
-
-	c.Assert(policy, NotNil)
-	c.Check(policy.Alg, Equals, tpm2.HashAlgorithmSHA256)
-	c.Assert(policy.PolicyData, testutil.ConvertibleTo, new(KeyDataPolicy_v3))
-	c.Check(policy.PolicyData.(*KeyDataPolicy_v3), Equals, mockPolicyData)
-	c.Check(policy.AuthPolicy, DeepEquals, mockPolicyDigest)
-
-	if data.pcrPolicyCounterHandle == tpm2.HandleNull {
-		c.Check(pcrPolicyCounter, IsNil)
-	} else {
-		c.Check(pcrPolicyCounter, NotNil)
-		c.Check(pcrPolicyCounter.Pub(), Equals, mockPcrPolicyCounterPub)
-		c.Check(pcrPolicyCounter.TPM(), Equals, mockTpm)
-		c.Check(pcrPolicyCounter.Session(), Equals, mockSession)
-	}
-
-	c.Check(authKeyOut, DeepEquals, s.lastAuthKey)
-	c.Check(policy.PolicyData.ValidateAuthKey(authKeyOut), IsNil)
-	if data.authKey != nil {
-		c.Check(authKeyOut, DeepEquals, data.authKey)
-	}
-
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataPolicy(c *C) {
-	s.testMakeKeyDataPolicy(c, &testMakeKeyDataPolicyData{
-		pcrPolicyCounterHandle: tpm2.HandleNull})
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataPolicyWithPolicyCounter(c *C) {
-	s.testMakeKeyDataPolicy(c, &testMakeKeyDataPolicyData{
-		pcrPolicyCounterHandle:       0x01800001,
-		initialPcrPolicyCounterValue: 20})
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataPolicyWithPolicyCounterDifferentInitialValue(c *C) {
-	s.testMakeKeyDataPolicy(c, &testMakeKeyDataPolicyData{
-		pcrPolicyCounterHandle:       0x01800001,
-		initialPcrPolicyCounterValue: 1000})
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataPolicyWithProvidedAuthKey(c *C) {
-	s.testMakeKeyDataPolicy(c, &testMakeKeyDataPolicyData{
-		authKey: testutil.DecodeHexString(c, "fb8978601d0c2dd4129e3b9c1bb3f3116f4c5dd217c29b1017ab7cd31a882d3c")})
-}
-
-type testMakeKeyDataData struct {
-	authKey                      secboot.AuxiliaryKey
-	params                       *KeyDataParams
-	initialPcrPolicyCounterValue uint64
-}
-
-func (s *sealSuiteNoTPM) testMakeKeyData(c *C, data *testMakeKeyDataData) {
-	var mockTpm *tpm2.TPMContext
-	var mockSession tpm2.SessionContext
-	if data.params.PCRPolicyCounterHandle != tpm2.HandleNull {
-		mockTpm = new(tpm2.TPMContext)
-		mockSession = new(mockSessionContext)
-	}
-
-	var mockPcrPolicyCounterPub *tpm2.NVPublic
-	restore := MockCreatePcrPolicyCounter(func(tpm *tpm2.TPMContext, handle tpm2.Handle, pub *tpm2.Public, session tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
-		c.Assert(mockTpm, NotNil)
-
-		c.Check(tpm, Equals, mockTpm)
-		c.Check(handle, Equals, data.params.PCRPolicyCounterHandle)
-		c.Check(pub, Equals, s.lastAuthKeyPublic)
-		c.Check(session, Equals, mockSession)
-
-		mockPcrPolicyCounterPub = &tpm2.NVPublic{
-			Index:      handle,
-			NameAlg:    tpm2.HashAlgorithmSHA256,
-			Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
-			AuthPolicy: make([]byte, 32),
-			Size:       8}
-
-		return mockPcrPolicyCounterPub, data.initialPcrPolicyCounterValue, nil
-	})
-	defer restore()
-
-	var mockPolicyData *KeyDataPolicy_v3
-	var mockPolicyDigest tpm2.Digest
-	restore = MockNewKeyDataPolicy(func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (KeyDataPolicy, tpm2.Digest, error) {
-		c.Check(alg, Equals, tpm2.HashAlgorithmSHA256)
-		c.Check(key, Equals, s.lastAuthKeyPublic)
-		c.Check(pcrPolicyCounterPub, Equals, mockPcrPolicyCounterPub)
-		c.Check(pcrPolicySequence, Equals, data.initialPcrPolicyCounterValue)
-
-		index := tpm2.HandleNull
-		if pcrPolicyCounterPub != nil {
-			index = pcrPolicyCounterPub.Index
-		}
-
-		mockPolicyData = &KeyDataPolicy_v3{
-			StaticData: &StaticPolicyData_v3{
-				AuthPublicKey:          key,
-				PCRPolicyCounterHandle: index},
-			PCRData: &PcrPolicyData_v3{
-				PolicySequence:            pcrPolicySequence,
 				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}
 
 		mockPolicyDigest = make([]byte, alg.Size())
@@ -1113,14 +586,15 @@ func (s *sealSuiteNoTPM) testMakeKeyData(c *C, data *testMakeKeyDataData) {
 	defer restore()
 
 	pcrPolicyInitialized := false
-	restore = MockSkdbUpdatePCRProtectionPolicyImpl(func(skdb *SealedKeyDataBase, tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey, counterPub *tpm2.NVPublic, profile *PCRProtectionProfile) error {
+	restore = MockSkdbUpdatePCRProtectionPolicyNoValidate(func(skdb *SealedKeyDataBase, tpm *tpm2.TPMContext, primaryKey secboot.PrimaryKey, counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, policyVersionOption PcrPolicyVersionOption) error {
 		c.Check(tpm, Equals, mockTpm)
-		c.Check(authKey, DeepEquals, s.lastAuthKey)
+		c.Check(primaryKey, DeepEquals, s.lastAuthKey)
 		c.Check(counterPub, Equals, mockPcrPolicyCounterPub)
 		c.Check(profile, NotNil)
-		if data.params.PCRProfile != nil {
-			c.Check(profile, Equals, data.params.PCRProfile)
+		if data.PCRProfile != nil {
+			c.Check(profile, Equals, data.PCRProfile)
 		}
+		c.Check(policyVersionOption, Equals, ResetPcrPolicyVersion)
 		pcrPolicyInitialized = true
 		return nil
 	})
@@ -1128,10 +602,19 @@ func (s *sealSuiteNoTPM) testMakeKeyData(c *C, data *testMakeKeyDataData) {
 
 	var sealer mockKeySealer
 
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
+	primaryKey := make(secboot.PrimaryKey, 32)
+	rand.Read(primaryKey)
 
-	kd, authKeyOut, pcrPolicyCounter, err := MakeKeyData(mockTpm, key, data.authKey, data.params, &sealer, mockSession)
+	params := &SealedKeyDataParams{
+		PcrProfile:             data.PCRProfile,
+		Role:                   data.Role,
+		PcrPolicyCounterHandle: data.PCRPolicyCounterHandle,
+		PrimaryKey:             primaryKey,
+	}
+
+	constructor := MakeKeyDataNoAuth
+
+	kd, pk, _, err := MakeSealedKeyData(mockTpm, params, &sealer, constructor, mockSession)
 	c.Assert(err, IsNil)
 
 	c.Assert(s.lastAuthKey, NotNil)
@@ -1140,70 +623,57 @@ func (s *sealSuiteNoTPM) testMakeKeyData(c *C, data *testMakeKeyDataData) {
 
 	c.Assert(s.lastKeyParams, NotNil)
 	c.Check(s.lastKeyParams.PlatformName, Equals, "tpm2")
-	c.Check(s.lastKeyParams.AuxiliaryKey, DeepEquals, s.lastAuthKey)
-	c.Check(s.lastKeyParams.SnapModelAuthHash, Equals, crypto.SHA256)
+	c.Check(s.lastKeyParams.Role, Equals, data.Role)
+	c.Check(s.lastKeyParams.KDFAlg, Equals, crypto.SHA256)
 
-	skd, err := NewSealedKeyData(kd)
-	c.Assert(err, IsNil)
+	c.Check(pk, DeepEquals, primaryKey)
+	c.Check(kd.Role(), DeepEquals, data.Role)
+
+	var skd *SealedKeyData
+	c.Check(kd.UnmarshalPlatformHandle(&skd), IsNil)
 
 	c.Check(skd.Data().Policy(), tpm2_testutil.TPMValueDeepEquals, mockPolicyData)
 	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
 	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, mockPolicyDigest)
 
-	payload := make(secboot.KeyPayload, len(s.lastKeyParams.EncryptedPayload))
+	payload := make([]byte, len(s.lastKeyParams.EncryptedPayload))
 
-	c.Assert(skd.Data().Private(), HasLen, 48)
+	c.Assert(skd.Data().Private(), HasLen, 44)
 	b, err := aes.NewCipher(skd.Data().Private()[:32])
 	c.Assert(err, IsNil)
-	stream := cipher.NewCFBDecrypter(b, skd.Data().Private()[32:])
-	stream.XORKeyStream(payload, s.lastKeyParams.EncryptedPayload)
 
-	recoveredKey, recoveredAuthKey, err := payload.Unmarshal()
+	aad, err := mu.MarshalToBytes(&AdditionalData_v3{
+		Generation: uint32(kd.Generation()),
+		KDFAlg:     tpm2.HashAlgorithmSHA256,
+		AuthMode:   kd.AuthMode(),
+	})
+
+	aead, err := cipher.NewGCM(b)
+	c.Assert(err, IsNil)
+
+	payload, err = aead.Open(nil, skd.Data().Private()[32:], s.lastKeyParams.EncryptedPayload, aad)
+	c.Assert(err, IsNil)
+
+	keys, err := unmarshalProtectedKeys(payload)
 	c.Check(err, IsNil)
-	c.Check(recoveredKey, DeepEquals, key)
-	c.Check(recoveredAuthKey, DeepEquals, s.lastAuthKey)
 
-	c.Check(skd.Data().Policy().ValidateAuthKey(authKeyOut), IsNil)
-	c.Check(authKeyOut, DeepEquals, s.lastAuthKey)
-	if data.authKey != nil {
-		c.Check(authKeyOut, DeepEquals, data.authKey)
-	}
+	c.Check(keys.Primary, DeepEquals, primaryKey)
 
-	if data.params.PCRPolicyCounterHandle == tpm2.HandleNull {
-		c.Check(pcrPolicyCounter, IsNil)
-	} else {
-		c.Check(pcrPolicyCounter, NotNil)
-		c.Check(pcrPolicyCounter.Pub(), Equals, mockPcrPolicyCounterPub)
-		c.Check(pcrPolicyCounter.TPM(), Equals, mockTpm)
-		c.Check(pcrPolicyCounter.Session(), Equals, mockSession)
-	}
+	c.Check(skd.Data().Policy().ValidateAuthKey(keys.Primary), IsNil)
 }
 
-func (s *sealSuiteNoTPM) TestMakeKeyData(c *C) {
-	s.testMakeKeyData(c, &testMakeKeyDataData{
-		params: &KeyDataParams{
-			PCRPolicyCounterHandle: tpm2.HandleNull,
-			PCRProfile:             NewPCRProtectionProfile()}})
+func (s *sealSuiteNoTPM) TestMakeSealedKeyData(c *C) {
+	s.testMakeSealedKeyData(c, &testMakeSealedKeyDataData{
+		PCRProfile:             NewPCRProtectionProfile(),
+		PCRPolicyCounterHandle: 0x01800000,
+		Role:                   "",
+	})
 }
 
-func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyCounter(c *C) {
-	s.testMakeKeyData(c, &testMakeKeyDataData{
-		params: &KeyDataParams{
-			PCRPolicyCounterHandle: 0x01810000,
-			PCRProfile:             NewPCRProtectionProfile()},
-		initialPcrPolicyCounterValue: 30})
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataWithPolicyCounterDifferentInitialValue(c *C) {
-	s.testMakeKeyData(c, &testMakeKeyDataData{
-		params: &KeyDataParams{
-			PCRPolicyCounterHandle: 0x01810000,
-			PCRProfile:             NewPCRProtectionProfile()},
-		initialPcrPolicyCounterValue: 500})
-}
-
-func (s *sealSuiteNoTPM) TestMakeKeyDataNilPCRProfile(c *C) {
-	s.testMakeKeyData(c, &testMakeKeyDataData{
-		params: &KeyDataParams{
-			PCRPolicyCounterHandle: tpm2.HandleNull}})
+func (s *sealSuiteNoTPM) TestMakeSealedKeyData2(c *C) {
+	s.testMakeSealedKeyData(c, &testMakeSealedKeyDataData{
+		PCRProfile:             NewPCRProtectionProfile(),
+		PCRPolicyCounterHandle: 0x01800000,
+		Role:                   "test",
+	})
 }

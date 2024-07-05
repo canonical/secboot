@@ -340,6 +340,7 @@ func (s *argon2SuiteExpensive) SetUpSuite(c *C) {
 }
 
 type testKeyData struct {
+	mode       Mode
 	passphrase string
 	saltLen    int
 	params     *CostParams
@@ -359,13 +360,21 @@ func (s *argon2SuiteExpensive) testKey(c *C, data *testKeyData) {
 		data.params.Threads = maxThreads
 	}
 
-	key := Key(data.passphrase, salt, data.params, data.keyLen)
-	expectedKey := argon2.Key([]byte(data.passphrase), salt, data.params.Time, data.params.MemoryKiB, data.params.Threads, data.keyLen)
+	key := Key(data.passphrase, salt, data.mode, data.params, data.keyLen)
+
+	var expectedKey []byte
+	switch data.mode {
+	case ModeI:
+		expectedKey = argon2.Key([]byte(data.passphrase), salt, data.params.Time, data.params.MemoryKiB, data.params.Threads, data.keyLen)
+	case ModeID:
+		expectedKey = argon2.IDKey([]byte(data.passphrase), salt, data.params.Time, data.params.MemoryKiB, data.params.Threads, data.keyLen)
+	}
 	c.Check(key, DeepEquals, expectedKey)
 }
 
 func (s *argon2SuiteExpensive) TestKey1(c *C) {
 	s.testKey(c, &testKeyData{
+		mode:       ModeI,
 		passphrase: "ubuntu",
 		saltLen:    16,
 		params: &CostParams{
@@ -377,6 +386,7 @@ func (s *argon2SuiteExpensive) TestKey1(c *C) {
 
 func (s *argon2SuiteExpensive) TestKey2(c *C) {
 	s.testKey(c, &testKeyData{
+		mode:       ModeI,
 		passphrase: "bar",
 		saltLen:    16,
 		params: &CostParams{
@@ -388,6 +398,7 @@ func (s *argon2SuiteExpensive) TestKey2(c *C) {
 
 func (s *argon2SuiteExpensive) TestKey3(c *C) {
 	s.testKey(c, &testKeyData{
+		mode:       ModeI,
 		passphrase: "ubuntu",
 		saltLen:    16,
 		params: &CostParams{
@@ -399,6 +410,7 @@ func (s *argon2SuiteExpensive) TestKey3(c *C) {
 
 func (s *argon2SuiteExpensive) TestKey4(c *C) {
 	s.testKey(c, &testKeyData{
+		mode:       ModeI,
 		passphrase: "ubuntu",
 		saltLen:    16,
 		params: &CostParams{
@@ -410,6 +422,7 @@ func (s *argon2SuiteExpensive) TestKey4(c *C) {
 
 func (s *argon2SuiteExpensive) TestKey5(c *C) {
 	s.testKey(c, &testKeyData{
+		mode:       ModeI,
 		passphrase: "ubuntu",
 		saltLen:    16,
 		params: &CostParams{
@@ -421,6 +434,7 @@ func (s *argon2SuiteExpensive) TestKey5(c *C) {
 
 func (s *argon2SuiteExpensive) TestKey6(c *C) {
 	s.testKey(c, &testKeyData{
+		mode:       ModeI,
 		passphrase: "ubuntu",
 		saltLen:    16,
 		params: &CostParams{
@@ -430,23 +444,35 @@ func (s *argon2SuiteExpensive) TestKey6(c *C) {
 		keyLen: 32})
 }
 
+func (s *argon2SuiteExpensive) TestKey7(c *C) {
+	s.testKey(c, &testKeyData{
+		mode:       ModeID,
+		passphrase: "ubuntu",
+		saltLen:    16,
+		params: &CostParams{
+			Time:      4,
+			MemoryKiB: 32 * 1024,
+			Threads:   4},
+		keyLen: 32})
+}
+
 func (s *argon2SuiteExpensive) TestKeyDuration(c *C) {
-	time1 := KeyDuration(&CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4}, 32)
+	time1 := KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4})
 	runtime.GC()
 
-	time2 := KeyDuration(&CostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4}, 32)
-	runtime.GC()
-	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
-	// types of int64 kind
-	c.Check(time2 > time1, testutil.IsTrue)
-
-	time2 = KeyDuration(&CostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4}, 32)
+	time2 := KeyDuration(ModeID, &CostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4})
 	runtime.GC()
 	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
 	// types of int64 kind
 	c.Check(time2 > time1, testutil.IsTrue)
 
-	time2 = KeyDuration(&CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1}, 32)
+	time2 = KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4})
+	runtime.GC()
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	time2 = KeyDuration(ModeID, &CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1})
 	runtime.GC()
 	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
 	// types of int64 kind

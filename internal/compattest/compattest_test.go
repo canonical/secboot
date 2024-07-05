@@ -159,7 +159,7 @@ func (s *compatTestSuiteBase) testUnsealCommon(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(key, DeepEquals, secboot.DiskUnlockKey(expectedKey))
 
-	var expectedAuthPrivateKey secboot.AuxiliaryKey
+	var expectedAuthPrivateKey secboot.PrimaryKey
 	authKeyPath := s.absPath("authKey")
 	if _, err := os.Stat(authKeyPath); err == nil {
 		expectedAuthPrivateKey, err = ioutil.ReadFile(authKeyPath)

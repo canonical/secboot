@@ -27,6 +27,7 @@ import (
 	"errors"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mu"
 
 	"golang.org/x/xerrors"
 
@@ -34,7 +35,8 @@ import (
 )
 
 var (
-	secbootNewKeyData = secboot.NewKeyData
+	secbootNewKeyData               = secboot.NewKeyData
+	secbootNewKeyDataWithPassphrase = secboot.NewKeyDataWithPassphrase
 )
 
 // ProtectKeyParams provides arguments for the ProtectKey* APIs.
@@ -43,6 +45,8 @@ type ProtectKeyParams struct {
 	// policy for the newly created sealed key data. This can be updated later on
 	// by calling SealedKeyData.UpdatePCRProtectionPolicy.
 	PCRProfile *PCRProtectionProfile
+
+	Role string
 
 	// PCRPolicyCounterHandle is the handle at which to create a NV index for PCR
 	// authorization policy revocation support. The handle must either be tpm2.HandleNull
@@ -54,204 +58,161 @@ type ProtectKeyParams struct {
 	// owner objects (0x01800000 - 0x01bfffff).
 	PCRPolicyCounterHandle tpm2.Handle
 
-	// AuthKey is the key used to authorize changes to the newly create key,
-	// via the SealedKeyObject.UpdatePCRProtectionPolicy and
-	// secboot.KeyData.SetAuthorizedSnapModels APIs. If set, this should be a
-	// random 32-byte number.
-	// If not set, one is generated automatically.
-	AuthKey secboot.AuxiliaryKey
-
-	// AuthorizedSnapModels is a list of models initially authorized to access
-	// the data protected by the newly created key. These can be updated later
-	// on by calling secboot.KeyData.SetAuthorizedSnapModels.
-	AuthorizedSnapModels []secboot.SnapModel
+	PrimaryKey secboot.PrimaryKey
 }
 
-// makeKeyDataWithPolicy protects the supplied keys using the supplied keySealer and
-// policy data. This can be called multiple times to protect an arbitary number of
-// keys with an identical policy.
-func makeKeyDataWithPolicy(key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, policy *keyDataPolicyParams, sealer keySealer) (*secboot.KeyData, error) {
-	var symKey [32 + aes.BlockSize]byte
-	if _, err := rand.Read(symKey[:]); err != nil {
-		return nil, xerrors.Errorf("cannot create symmetric key: %w", err)
-	}
+type PassphraseProtectKeyParams struct {
+	ProtectKeyParams
 
-	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], policy.Alg, policy.AuthPolicy)
-	if err != nil {
-		return nil, err
-	}
+	KDFOptions *secboot.Argon2Options
+}
 
-	// Create a new SealedKeyObject.
-	data, err := newKeyData(priv, pub, importSymSeed, policy.PolicyData)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create key data: %w", err)
-	}
-	skd := &SealedKeyData{sealedKeyDataBase: sealedKeyDataBase{data: data}}
+type keyDataConstructor func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error)
 
-	// Create encrypted payload
-	payload := secboot.MarshalKeys(key, authKey)
-
-	b, err := aes.NewCipher(symKey[:32])
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create new cipher: %w", err)
-	}
-	stream := cipher.NewCFBEncrypter(b, symKey[32:])
-	stream.XORKeyStream(payload, payload)
-
-	kd, err := secbootNewKeyData(&secboot.KeyParams{
+func makeKeyDataNoAuth(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
+	return secbootNewKeyData(&secboot.KeyParams{
 		Handle:           skd,
-		EncryptedPayload: payload,
+		Role:             role,
+		EncryptedPayload: encryptedPayload,
 		PlatformName:     platformName,
-		AuxiliaryKey:     authKey,
-		// Hardcode SHA-256 here. We already hardcode this as the name algorithm
-		// for the sealed object and elliptic key.
-		SnapModelAuthHash: crypto.SHA256})
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create key data object: %w", err)
-	}
-
-	return kd, nil
+		KDFAlg:           kdfAlg,
+	})
 }
 
-type createdPcrPolicyCounter struct {
-	tpm     *tpm2.TPMContext
-	session tpm2.SessionContext
-	pub     *tpm2.NVPublic
+func makeKeyDataWithPassphraseConstructor(kdfOptions *secboot.Argon2Options, passphrase string) keyDataConstructor {
+	return func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
+		return secbootNewKeyDataWithPassphrase(&secboot.KeyWithPassphraseParams{
+			KeyParams: secboot.KeyParams{
+				Handle:           skd,
+				Role:             role,
+				EncryptedPayload: encryptedPayload,
+				PlatformName:     platformName,
+				KDFAlg:           kdfAlg,
+			},
+			KDFOptions:  kdfOptions,
+			AuthKeySize: skd.data.Public().NameAlg.Size(),
+		}, passphrase)
+	}
 }
 
-func (c *createdPcrPolicyCounter) Pub() *tpm2.NVPublic {
-	if c == nil {
-		return nil
-	}
-	return c.pub
+type makeSealedKeyDataParams struct {
+	PcrProfile             *PCRProtectionProfile
+	Role                   string
+	PcrPolicyCounterHandle tpm2.Handle
+	PrimaryKey             secboot.PrimaryKey
+	AuthMode               secboot.AuthMode
 }
 
-func (c *createdPcrPolicyCounter) undefineOnError(err error) {
-	if c == nil {
-		return
-	}
-
-	if err == nil {
-		return
-	}
-
-	index, err := tpm2.CreateNVIndexResourceContextFromPublic(c.pub)
-	if err != nil {
-		return
-	}
-	c.tpm.NVUndefineSpace(c.tpm.OwnerHandleContext(), index, c.session)
-}
-
-// keyDataPolicyParams corresponds to the parameters of a key's computed authorization
-// policy, consisting of the digest algorithm, the policy digest and the associated policy
-// data.
-type keyDataPolicyParams struct {
-	Alg        tpm2.HashAlgorithmId
-	PolicyData keyDataPolicy
-	AuthPolicy tpm2.Digest
-}
-
-// makeKeyDataPolicy creates the policy data required to seal a key with makeKeyDataWithPolicy
-// and creates a PCR policy counter if required.
-func makeKeyDataPolicy(tpm *tpm2.TPMContext, pcrPolicyCounterHandle tpm2.Handle, authKey secboot.AuxiliaryKey,
-	session tpm2.SessionContext) (data *keyDataPolicyParams, pcrPolicyCounterOut *createdPcrPolicyCounter,
-	authKeyOut secboot.AuxiliaryKey, err error) {
-	// Create an auth key.
-	if authKey == nil {
-		authKey = make(secboot.AuxiliaryKey, 32)
-		if _, err := rand.Read(authKey); err != nil {
-			return nil, nil, nil, xerrors.Errorf("cannot create key for signing dynamic authorization policies: %w", err)
+func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, sealer keySealer, constructor keyDataConstructor, session tpm2.SessionContext) (*secboot.KeyData, secboot.PrimaryKey, secboot.DiskUnlockKey, error) {
+	// Create a primary key, if required.
+	primaryKey := params.PrimaryKey
+	if primaryKey == nil {
+		primaryKey = make(secboot.PrimaryKey, 32)
+		if _, err := rand.Read(primaryKey); err != nil {
+			return nil, nil, nil, xerrors.Errorf("cannot create primary key: %w", err)
 		}
 	}
-	authPublicKey, err := newPolicyAuthPublicKey(authKey)
+
+	// Create the key for authorizing PCR policy updates.
+	authPublicKey, err := newPolicyAuthPublicKey(primaryKey)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot derive public area of key for signing dynamic authorization policies: %w", err)
 	}
 
-	// Create PCR policy counter, if requested.
-	var pcrPolicyCount uint64
-	var pcrPolicyCounter *createdPcrPolicyCounter
-	if pcrPolicyCounterHandle != tpm2.HandleNull {
+	// Create PCR policy counter, if requested and if one doesn't already exist.
+	var pcrPolicyCounterPub *tpm2.NVPublic
+	if params.PcrPolicyCounterHandle != tpm2.HandleNull {
 		if tpm == nil {
 			return nil, nil, nil, errors.New("cannot create a PCR policy counter without a TPM connection")
 		}
 
-		var pub *tpm2.NVPublic
-		pub, pcrPolicyCount, err = createPcrPolicyCounter(tpm, pcrPolicyCounterHandle, authPublicKey, session)
+		var err error
+		pcrPolicyCounterPub, err = ensurePcrPolicyCounter(tpm, params.PcrPolicyCounterHandle, authPublicKey, session)
 		switch {
 		case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
-			return nil, nil, nil, TPMResourceExistsError{pcrPolicyCounterHandle}
+			return nil, nil, nil, TPMResourceExistsError{params.PcrPolicyCounterHandle}
 		case isAuthFailError(err, tpm2.CommandNVDefineSpace, 1):
 			return nil, nil, nil, AuthFailError{tpm2.HandleOwner}
 		case err != nil:
 			return nil, nil, nil, xerrors.Errorf("cannot create new PCR policy counter: %w", err)
 		}
-
-		pcrPolicyCounter = &createdPcrPolicyCounter{
-			tpm:     tpm,
-			session: session,
-			pub:     pub}
-
-		defer func() { pcrPolicyCounter.undefineOnError(err) }()
 	}
 
-	alg := tpm2.HashAlgorithmSHA256
+	// Create the initial policy data.
+	nameAlg := tpm2.HashAlgorithmSHA256
+	requireAuthValue := params.AuthMode != secboot.AuthModeNone
 
-	// Create the initial policy data
-	policyData, authPolicy, err := newKeyDataPolicy(alg, authPublicKey, pcrPolicyCounter.Pub(), pcrPolicyCount)
+	policyData, authPolicyDigest, err := newKeyDataPolicy(nameAlg, authPublicKey, params.Role, pcrPolicyCounterPub, requireAuthValue)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create initial policy data: %w", err)
 	}
 
-	return &keyDataPolicyParams{
-		Alg:        alg,
-		PolicyData: policyData,
-		AuthPolicy: authPolicy}, pcrPolicyCounter, authKey, nil
-}
-
-// keyDataParams contains the parameters required to seal a new key with makeKeyData.
-type keyDataParams struct {
-	PCRPolicyCounterHandle tpm2.Handle
-	PCRProfile             *PCRProtectionProfile
-}
-
-// makeKeyData protects the supplied keys using the supplied keySealer and
-// parameters. If required, a PCR policy counter is created. The returned key
-// will have an initial PCR policy as specified via the supplied parameters.
-func makeKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboot.AuxiliaryKey, params *keyDataParams,
-	sealer keySealer, session tpm2.SessionContext) (protectedKey *secboot.KeyData, authKeyOut secboot.AuxiliaryKey,
-	pcrPolicyCounterOut *createdPcrPolicyCounter, err error) {
-	policy, pcrPolicyCounter, authKey, err := makeKeyDataPolicy(tpm, params.PCRPolicyCounterHandle, authKey, session)
-	if err != nil {
-		return nil, nil, nil, err
+	// Create a 32 byte symmetric key and 12 byte nonce.
+	var symKey [32 + 12]byte
+	if _, err := rand.Read(symKey[:]); err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot create symmetric key: %w", err)
 	}
-	defer func() { pcrPolicyCounter.undefineOnError(err) }()
 
-	protectedKey, err = makeKeyDataWithPolicy(key, authKey, policy, sealer)
+	// Seal the symmetric key and nonce.
+	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], nameAlg, authPolicyDigest)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	skd, err := NewSealedKeyData(protectedKey)
+	// Create a new SealedKeyData.
+	data, err := newKeyData(priv, pub, importSymSeed, policyData)
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot obtain SealedKeyObject from KeyData: %w", err)
+		return nil, nil, nil, xerrors.Errorf("cannot create key data: %w", err)
 	}
+	skd := &SealedKeyData{sealedKeyDataBase: sealedKeyDataBase{data: data}}
 
-	pcrProfile := params.PCRProfile
+	// Set the initial PCR policy.
+	pcrProfile := params.PcrProfile
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	if err := skdbUpdatePCRProtectionPolicyImpl(&skd.sealedKeyDataBase, tpm, authKey, pcrPolicyCounter.Pub(), pcrProfile); err != nil {
+	if err := skdbUpdatePCRProtectionPolicyNoValidate(&skd.sealedKeyDataBase, tpm, primaryKey, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion); err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot set initial PCR policy: %w", err)
 	}
-	if err := protectedKey.MarshalAndUpdatePlatformHandle(skd); err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot update platform handle: %w", err)
+
+	// Create the GCM encrypted payload. Use the name algorithm as the KDF algorithm here.
+	kdfAlg := crypto.SHA256
+	unlockKey, payload, err := secboot.MakeDiskUnlockKey(rand.Reader, kdfAlg, primaryKey)
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot create new unlock key: %w", err)
 	}
 
-	return protectedKey, authKey, pcrPolicyCounter, nil
+	// Serialize the AAD. Note that we don't protect the role parameter directly because it's
+	// already bound to the sealed object via its authorization policy.
+	aad, err := mu.MarshalToBytes(&additionalData_v3{
+		Generation: uint32(secboot.KeyDataGeneration),
+		KDFAlg:     tpm2.HashAlgorithmSHA256,
+		AuthMode:   params.AuthMode,
+	})
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot create AAD: %w", err)
+	}
+
+	b, err := aes.NewCipher(symKey[:32])
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot create new cipher: %w", err)
+	}
+	aead, err := cipher.NewGCM(b)
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot create AEAD cipher: %w", err)
+	}
+	ciphertext := aead.Seal(nil, symKey[32:], payload, aad)
+
+	// Construct the secboot.KeyData object
+	kd, err := constructor(skd, params.Role, ciphertext, kdfAlg)
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot create key data object: %w", err)
+	}
+
+	return kd, primaryKey, unlockKey, nil
 }
 
-// ProtectKeyWithExternalStorageKey seals the supplied disk encryption key to the TPM storage
+// NewExternalTPMProtectedKey seals the supplied primary key to the TPM storage
 // key asociated with the supplied public tpmKey. This creates an importable sealed key and
 // is suitable in environments that don't have access to the TPM but do have access to the
 // public part of the TPM's storage primary key.
@@ -266,143 +227,27 @@ func makeKeyData(tpm *tpm2.TPMContext, key secboot.DiskUnlockKey, authKey secboo
 // supplied via the PCRProfile field of the params argument. The PCR policy can be updated
 // later on via the SealedKeyObject.UpdatePCRProtectionPolicy API.
 //
-// The sealed key will be created with the snap models provided via the AuthorizedSnapModels
-// field of params authorized to access the data protected by this key. The set of
-// authorized models can be updated later on by calling
-// secboot.KeyData.SetAuthorizedSnapModels.
-//
-// The key used for authorizing changes to the sealed key object via the
-// SealedKeyObject.UpdatePCRProtectionPolicy and secboot.KeyData.SetAuthorizedSnapModels
-// APIs can be supplied via the AuthKey field of params. This should be cryptographically
-// strong 32-byte key. If one is not supplied, it will be created automatically.
-//
-// On success, this function returns the the sealed key object and a key used for
-// authorizing changes via the SealedKeyObject.UpdatePCRProtectionPolicy and
-// secboot.KeyData.SetAuthorizedSnapModels APIs. This key doesn't need to be
-// stored anywhere, and certainly mustn't be stored outside of the encrypted container
-// protected by the supplied key. The key is stored encrypted inside the sealed
-// key data and will be returnred from future calls to secboot.KeyData.RecoverKeys.
-func ProtectKeyWithExternalStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKey *secboot.KeyData, authKey secboot.AuxiliaryKey, err error) {
+// On success, this function returns the the sealed key object, the primary key and the
+// unique key which is used for disk unlocking.
+func NewExternalTPMProtectedKey(tpmKey *tpm2.Public, params *ProtectKeyParams) (protectedKey *secboot.KeyData, primaryKey secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
 	// params is mandatory.
 	if params == nil {
-		return nil, nil, errors.New("no ProtectKeyParams provided")
-	}
-	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
-		return nil, nil, errors.New("PCR policy counter handle must be tpm2.HandleNull when creating an importable sealed key")
+		return nil, nil, nil, errors.New("no ProtectKeyParams provided")
 	}
 
 	sealer := &importableObjectKeySealer{tpmKey: tpmKey}
 
-	protectedKey, authKey, _, err = makeKeyData(nil, key, params.AuthKey, &keyDataParams{
-		PCRPolicyCounterHandle: params.PCRPolicyCounterHandle,
-		PCRProfile:             params.PCRProfile}, sealer, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if err := protectedKey.SetAuthorizedSnapModels(authKey, params.AuthorizedSnapModels...); err != nil {
-		return nil, nil, xerrors.Errorf("cannot set authorized snap models: %w", err)
-	}
-
-	return protectedKey, authKey, nil
+	return makeSealedKeyData(nil, &makeSealedKeyDataParams{
+		PrimaryKey:             params.PrimaryKey,
+		PcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
+		AuthMode:               secboot.AuthModeNone,
+		Role:                   params.Role,
+		PcrProfile:             params.PCRProfile,
+	}, sealer, makeKeyDataNoAuth, nil)
 }
 
-// ProtectKeysWithTPM seals the supplied disk encryption keys to the storage
-// hierarchy of the TPM. The keys are specified by the keys argument.
-//
-// This function requires knowledge of the authorization value for the storage hierarchy,
-// which must be provided by calling Connection.OwnerHandleContext().SetAuthValue() prior
-// to calling this function. If the provided authorization value is incorrect, a
-// AuthFailError error will be returned.
-//
-// This function will create a NV index at the handle specified by the
-// PCRPolicyCounterHandle field of the params argument if it is not tpm2.HandleNull. If
-// the handle is already in use, a TPMResourceExistsError error will be returned. In this
-// case, the caller will need to either choose a different handle or undefine the existing
-// one. If it is not tpm2.HandleNull, then it must be a valid NV index handle (MSO == 0x01),
-// and the choice of handle should take in to consideration the reserved indices from the
-// "Registry of reserved TPM 2.0 handles and localities" specification. It is recommended
-// that the handle is in the block reserved for owner objects (0x01800000 - 0x01bfffff).
-//
-// All keys will be created with the same authorization policy, and will be protected with
-// a PCR policy computed from the PCRProtectionProfile supplied via the PCRProfile field
-// of the params argument. The PCR policy can be updated later on via the
-// UpdateKeyPCRProtectionPolicyMultiple API.
-//
-// The sealed keys will be created with the snap models provided via the AuthorizedSnapModels
-// field of params authorized to access the data protected by these keys. The set
-// of authorized models can be updated later on by calling
-// secboot.KeyData.SetAuthorizedSnapModels for each key.
-//
-// The key used for authorizing changes to the sealed key objects via the
-// UpdateKeyPCRProtectionPolicyMultiple and secboot.KeyData.SetAuthorizedSnapModels
-// APIs can be supplied via the AuthKey field of params. This should be cryptographically
-// strong 32-byte key. If one is not supplied, it will be created automatically.
-//
-// On success, this function returns the the sealed key objects and a key used for
-// authorizing changes via the UpdateKeyPCRProtectionPolicyMultiple and
-// secboot.KeyData.SetAuthorizedSnapModels APIs. This key doesn't need to be
-// stored anywhere, and certainly mustn't be stored outside of the encrypted containers
-// protected by the supplied keys. The key is stored encrypted inside the sealed
-// key data and will be returnred from future calls to secboot.KeyData.RecoverKeys.
-func ProtectKeysWithTPM(tpm *Connection, keys []secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKeys []*secboot.KeyData, authKey secboot.AuxiliaryKey, err error) {
-	// params is mandatory.
-	if params == nil {
-		return nil, nil, errors.New("no ProtectKeyParams provided")
-	}
-	if len(keys) == 0 {
-		return nil, nil, errors.New("no keys provided")
-	}
-
-	sealer := &sealedObjectKeySealer{tpm}
-
-	var protectedKey *secboot.KeyData
-	var pcrPolicyCounter *createdPcrPolicyCounter
-
-	protectedKey, authKey, pcrPolicyCounter, err = makeKeyData(tpm.TPMContext, keys[0], params.AuthKey,
-		&keyDataParams{
-			PCRPolicyCounterHandle: params.PCRPolicyCounterHandle,
-			PCRProfile:             params.PCRProfile},
-		sealer, tpm.HmacSession())
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { pcrPolicyCounter.undefineOnError(err) }()
-	protectedKeys = append(protectedKeys, protectedKey)
-
-	skd, err := NewSealedKeyData(protectedKey)
-	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot obtain SealedKeyObject from KeyData: %w", err)
-	}
-
-	policy := &keyDataPolicyParams{
-		Alg:        skd.data.Public().NameAlg,
-		AuthPolicy: skd.data.Public().AuthPolicy,
-		PolicyData: skd.data.Policy()}
-	for _, key := range keys[1:] {
-		protectedKey, err := makeKeyDataWithPolicy(key, authKey, policy, sealer)
-		if err != nil {
-			return nil, nil, err
-		}
-		protectedKeys = append(protectedKeys, protectedKey)
-	}
-
-	for _, kd := range protectedKeys {
-		if err := kd.SetAuthorizedSnapModels(authKey, params.AuthorizedSnapModels...); err != nil {
-			return nil, nil, xerrors.Errorf("cannot set authorized snap models: %w", err)
-		}
-	}
-
-	return protectedKeys, authKey, nil
-}
-
-// ProtectKeyWithTPM seals the supplied disk encryption key to the storage hierarchy of
+// NewTPMProtectedKey seals the supplied disk encryption key to the storage hierarchy of
 // the TPM.
-//
-// This function requires knowledge of the authorization value for the storage hierarchy,
-// which must be provided by calling Connection.OwnerHandleContext().SetAuthValue() prior
-// to calling this function. If the provided authorization value is incorrect, a
-// AuthFailError error will be returned.
 //
 // This function will create a NV index at the handle specified by the
 // PCRPolicyCounterHandle field of the params argument if it is not tpm2.HandleNull. If
@@ -417,34 +262,41 @@ func ProtectKeysWithTPM(tpm *Connection, keys []secboot.DiskUnlockKey, params *P
 // supplied via the PCRProfile field of the params argument. The PCR policy can be updated
 // later on via the SealedKeyObject.UpdatePCRProtectionPolicy API.
 //
-// The sealed key will be created with the snap models provided via the AuthorizedSnapModels
-// field of params authorized to access the data protected by this key. The set of
-// authorized models can be updated later on by calling
-// secboot.KeyData.SetAuthorizedSnapModels.
-//
 // The key used for authorizing changes to the sealed key object via the
-// SealedKeyObject.UpdatePCRProtectionPolicy and secboot.KeyData.SetAuthorizedSnapModels
-// APIs can be supplied via the AuthKey field of params. This should be cryptographically
-// strong 32-byte key. If one is not supplied, it will be created automatically.
+// SealedKeyObject.UpdatePCRProtectionPolicy is derived from the primary key.
 //
-// On success, this function returns the the sealed key object and a key used for
-// authorizing changes via the SealedKeyObject.UpdatePCRProtectionPolicy and
-// secboot.KeyData.SetAuthorizedSnapModels APIs. This key doesn't need to be
-// stored anywhere, and certainly mustn't be stored outside of the encrypted container
-// protected by the supplied key. The key is stored encrypted inside the sealed
-// key data and will be returnred from future calls to secboot.KeyData.RecoverKeys.
-func ProtectKeyWithTPM(tpm *Connection, key secboot.DiskUnlockKey, params *ProtectKeyParams) (protectedKey *secboot.KeyData, authKey secboot.AuxiliaryKey, err error) {
+// On success, this function returns the the sealed key object, the primary key and the
+// unique key which is used for disk unlocking.
+func NewTPMProtectedKey(tpm *Connection, params *ProtectKeyParams) (protectedKey *secboot.KeyData, primaryKey secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
 	// params is mandatory.
 	if params == nil {
-		return nil, nil, errors.New("no ProtectKeyParams provided")
+		return nil, nil, nil, errors.New("no ProtectKeyParams provided")
 	}
 
-	var protectedKeys []*secboot.KeyData
+	sealer := &sealedObjectKeySealer{tpm}
 
-	protectedKeys, authKey, err = ProtectKeysWithTPM(tpm, []secboot.DiskUnlockKey{key}, params)
-	if err != nil {
-		return nil, nil, err
+	return makeSealedKeyData(tpm.TPMContext, &makeSealedKeyDataParams{
+		PcrProfile:             params.PCRProfile,
+		Role:                   params.Role,
+		PcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
+		PrimaryKey:             params.PrimaryKey,
+		AuthMode:               secboot.AuthModeNone,
+	}, sealer, makeKeyDataNoAuth, tpm.HmacSession())
+}
+
+func NewTPMPassphraseProtectedKey(tpm *Connection, params *PassphraseProtectKeyParams, passphrase string) (protectedKey *secboot.KeyData, primaryKey secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
+	// params is mandatory.
+	if params == nil {
+		return nil, nil, nil, errors.New("no PassphraseProtectKeyParams provided")
 	}
 
-	return protectedKeys[0], authKey, nil
+	sealer := &sealedObjectKeySealer{tpm}
+
+	return makeSealedKeyData(tpm.TPMContext, &makeSealedKeyDataParams{
+		PrimaryKey:             params.PrimaryKey,
+		PcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
+		AuthMode:               secboot.AuthModePassphrase,
+		Role:                   params.Role,
+		PcrProfile:             params.PCRProfile,
+	}, sealer, makeKeyDataWithPassphraseConstructor(params.KDFOptions, passphrase), tpm.HmacSession())
 }

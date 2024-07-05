@@ -20,7 +20,6 @@
 package tpm2
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -31,9 +30,37 @@ import (
 	"github.com/snapcore/secboot"
 )
 
-var skdbUpdatePCRProtectionPolicyImpl = (*sealedKeyDataBase).updatePCRProtectionPolicyImpl
+var skdbUpdatePCRProtectionPolicyNoValidate = (*sealedKeyDataBase).updatePCRProtectionPolicyNoValidate
 
-// updatePCRProtectionPolicyImpl is a helper to update the PCR policy using the supplied
+// pcrPolicyVersionOption is used to tell sealedKeyDataBase.updatePCRProtectionPolicyNoValidate
+// how to determine the version of a new PCR policy.
+type pcrPolicyVersionOption int
+
+const (
+	// resetPcrPolicyVersion indicates that the new policy version should be set
+	// to the current counter value. This is used for the initial policy when creating
+	// any key, and is also used when updating a policy for existing keys with the
+	// new SealedKeyData API when called with NoNewPCRPolicyVersion.
+	resetPcrPolicyVersion pcrPolicyVersionOption = iota
+
+	// newPcrPolicyVersion indicates that the new policy version should be the current
+	// counter value plus 1. This is used when updating a policy for existing keys
+	// with the new SealedKeyData API when called with NewPCRPolicyVersion. A subsequent
+	// counter increment to the new policy version will revoke all policies created with
+	// resetPcrPolicyVersion since the previous revocation.
+	newPcrPolicyVersion
+
+	// incrementPolicyVersion indicates that the new policy version should be the
+	// current policy version plus 1, and is used to maintain the behaviour of
+	// policy updates when using the previous SealedKeyObject API, which incremented
+	// the policy version with every update.  A subsequent counter increment to the
+	// new policy version will revoke all policies created since the previous
+	// revocation, but this may require multiple counter increments (one per created
+	// policy).
+	incrementPcrPolicyVersion
+)
+
+// updatePCRProtectionPolicyNoValidate is a helper to update the PCR policy using the supplied
 // profile, authorized with the supplied key.
 //
 // If tpm is not nil, this function will verify that the supplied profile produces a PCR
@@ -43,13 +70,38 @@ var skdbUpdatePCRProtectionPolicyImpl = (*sealedKeyDataBase).updatePCRProtection
 //
 // If k.data.policy().pcrPolicyCounterHandle() is not tpm2.HandleNull, then counterPub
 // must be supplied, and it must correspond to the public area associated with that handle.
-func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey,
-	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile) error {
+func (k *sealedKeyDataBase) updatePCRProtectionPolicyNoValidate(tpm *tpm2.TPMContext, key secboot.PrimaryKey,
+	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, policyVersionOption pcrPolicyVersionOption) error {
 	var counterName tpm2.Name
+	var policySequence uint64
 	if counterPub != nil {
+		if tpm == nil {
+			return errors.New("TPM connection required to update PCR policy with revocation")
+		}
+
 		// Callers obtain a valid counterPub from sealedKeyDataBase.validateData, so
 		// we know that this succeeds. If it failed, we would sign an invalid policy.
 		counterName = counterPub.Name()
+
+		switch policyVersionOption {
+		case resetPcrPolicyVersion, newPcrPolicyVersion:
+			counterContext, err := k.data.Policy().PCRPolicyCounterContext(tpm, counterPub)
+			if err != nil {
+				return xerrors.Errorf("cannot obtain PCR policy counter context: %w", err)
+			}
+
+			value, err := counterContext.Get()
+			if err != nil {
+				return xerrors.Errorf("cannot obtain PCR policy counter value: %w", err)
+			}
+
+			policySequence = value
+			if policyVersionOption == newPcrPolicyVersion {
+				policySequence += 1
+			}
+		case incrementPcrPolicyVersion:
+			policySequence = k.data.Policy().PCRPolicySequence() + 1
+		}
 	}
 
 	var supportedPcrs tpm2.PCRSelectionList
@@ -105,12 +157,13 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyImpl(tpm *tpm2.TPMContext, 
 		key:               key,
 		pcrs:              pcrs,
 		pcrDigests:        pcrDigests,
-		policyCounterName: counterName}
+		policyCounterName: counterName,
+		policySequence:    policySequence}
 	return k.data.Policy().UpdatePCRPolicy(alg, params)
 }
 
-func (k *sealedKeyDataBase) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMContext, key secboot.AuxiliaryKey) error {
-	pcrPolicyCounterPub, err := k.validateData(tpm)
+func (k *sealedKeyDataBase) revokeOldPCRProtectionPolicies(tpm *tpm2.TPMContext, key secboot.PrimaryKey, role string) error {
+	pcrPolicyCounterPub, err := k.validateData(tpm, role)
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
@@ -157,89 +210,73 @@ func (k *sealedKeyDataBase) revokeOldPCRProtectionPoliciesImpl(tpm *tpm2.TPMCont
 	return nil
 }
 
-func updateKeyPCRProtectionPoliciesCommon(tpm *tpm2.TPMContext, keys []*sealedKeyDataBase, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
-	primaryKey := keys[0]
-
-	// Validate the primary key object
-	pcrPolicyCounterPub, err := primaryKey.validateData(tpm)
+func (k *sealedKeyDataBase) updatePCRProtectionPolicy(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, role string, pcrProfile *PCRProtectionProfile, policyVersionOption pcrPolicyVersionOption) error {
+	pcrPolicyCounterPub, err := k.validateData(tpm, role)
 	if err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
 		}
 		return xerrors.Errorf("cannot validate key data: %w", err)
 	}
-	if err := primaryKey.data.Policy().ValidateAuthKey(authKey); err != nil {
+	if err := k.data.Policy().ValidateAuthKey(authKey); err != nil {
 		if isKeyDataError(err) {
 			return InvalidKeyDataError{err.Error()}
 		}
 		return xerrors.Errorf("cannot validate auth key: %w", err)
 	}
 
-	// Update the PCR policy for the primary key.
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	if err := primaryKey.updatePCRProtectionPolicyImpl(tpm, authKey, pcrPolicyCounterPub, pcrProfile); err != nil {
-		return xerrors.Errorf("cannot update PCR authorization policy: %w", err)
-	}
-
-	// Validate secondary key objects and make sure they are related
-	for i, k := range keys[1:] {
-		if k.data.Version() != primaryKey.data.Version() {
-			return fmt.Errorf("key data at index %d has a different metadata version compared to the primary key data", i+1)
-		}
-
-		if _, err := k.validateData(tpm); err != nil {
-			if isKeyDataError(err) {
-				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i+1)}
-			}
-			return xerrors.Errorf("cannot validate related key data: %w", err)
-		}
-		// The metadata is valid and consistent with the object's static authorization policy.
-		// Verify that it also has the same static authorization policy as the first key object passed
-		// to this function. This policy digest includes a cryptographic record of the PCR policy counter
-		// and dynamic authorization policy signing key, so this is the only check required to determine
-		// if 2 keys are related.
-		if !bytes.Equal(k.data.Public().AuthPolicy, primaryKey.data.Public().AuthPolicy) {
-			return InvalidKeyDataError{fmt.Sprintf("key data at index %d is not related to the primary key data", i+1)}
-		}
-
-		k.data.Policy().SetPCRPolicyFrom(primaryKey.data.Policy())
-	}
-
-	return nil
+	return k.updatePCRProtectionPolicyNoValidate(tpm, authKey, pcrPolicyCounterPub, pcrProfile, policyVersionOption)
 }
 
-func updateKeyPCRProtectionPolicies(tpm *tpm2.TPMContext, keys []*SealedKeyData, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
-	var keysCommon []*sealedKeyDataBase
-	for _, key := range keys {
-		keysCommon = append(keysCommon, &key.sealedKeyDataBase)
-	}
-	if err := updateKeyPCRProtectionPoliciesCommon(tpm, keysCommon, authKey, pcrProfile); err != nil {
-		return err
-	}
+// PCRPolicyVersionOption describes how to set the version for a new PCR policy.
+type PCRPolicyVersionOption int
 
-	for _, key := range keys {
-		if err := key.k.MarshalAndUpdatePlatformHandle(key); err != nil {
-			return xerrors.Errorf("cannot update TPM platform handle on KeyData: %w", err)
-		}
-	}
+const (
+	// NoNewPCRPolicyVersion indicates that the version of an updated PCR
+	// policy will be set to the current value of the PCR policy counter.
+	NoNewPCRPolicyVersion PCRPolicyVersionOption = iota
 
-	return nil
+	// NewPCRPolicyVersion indicates that the version of an updated PCR
+	// policy will be set to the current value of the PCR policy counter
+	// plus 1. A subsequent revocation (where the counter is incremented
+	// by 1) will revoke all previous policies created with
+	// NoNewPCRPolicyVersion since the last revocation.
+	NewPCRPolicyVersion
+)
+
+func (o PCRPolicyVersionOption) internalOpt() pcrPolicyVersionOption {
+	switch o {
+	case NoNewPCRPolicyVersion:
+		return resetPcrPolicyVersion
+	case NewPCRPolicyVersion:
+		return newPcrPolicyVersion
+	default:
+		panic("unexpected option")
+	}
 }
 
 // UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
 // pcrProfile argument. In order to do this, the caller must also specify the private part of the authorization key
 // that was either returned by SealKeyToTPM or SealedKeyObject.UnsealFromTPM.
 //
-// If the sealed key was created with a PCR policy counter, then the sequence number of the new PCR policy will be
-// incremented by 1 compared with the value associated with the current PCR policy. This does not increment the NV
-// counter on the TPM - this can be done with a subsequent call to RevokeOldPCRProtectionPolicies.
+// If the sealed key was created with a PCR policy counter and policyVersionOption is set to [NoNewPCRPolicyVersion],
+// the the sequence number of the new PCR policy will be set to the value of the corresponding counter. If
+// policyVersionOption is set to [NewPCRPolicyVersion], then the sequence number will be set to 1 greater than the value
+// of the corresponding counter. A subsequent call to RevokeOldPCRProtectionPolicies will revoke previous policies.
 //
 // On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
 // from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
-func (k *SealedKeyData) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile) error {
-	return updateKeyPCRProtectionPolicies(tpm.TPMContext, []*SealedKeyData{k}, authKey, pcrProfile)
+func (k *SealedKeyData) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.PrimaryKey, pcrProfile *PCRProtectionProfile, policyVersionOption PCRPolicyVersionOption) error {
+	if err := k.updatePCRProtectionPolicy(tpm.TPMContext, authKey, k.k.Role(), pcrProfile, policyVersionOption.internalOpt()); err != nil {
+		return xerrors.Errorf("cannot update PCR protection policy: %w", err)
+	}
+	if err := k.k.MarshalAndUpdatePlatformHandle(k); err != nil {
+		return xerrors.Errorf("cannot update TPM platform handle on KeyData: %w", err)
+	}
+	return nil
 }
 
 // RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. It does
@@ -256,8 +293,8 @@ func (k *SealedKeyData) UpdatePCRProtectionPolicy(tpm *Connection, authKey secbo
 // after each call to UpdatePCRProtectionPolicy that removes some PCR policy branches.
 //
 // If validation of the key data fails, a InvalidKeyDataError error will be returned.
-func (k *SealedKeyData) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.AuxiliaryKey) error {
-	return k.revokeOldPCRProtectionPoliciesImpl(tpm.TPMContext, authKey)
+func (k *SealedKeyData) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.PrimaryKey) error {
+	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, authKey, k.k.Role())
 }
 
 // UpdateKeyPCRProtectionPolicy updates the PCR protection policy for one or more TPM protected KeyData
@@ -269,19 +306,28 @@ func (k *SealedKeyData) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey 
 // On success, each of the supplied KeyData objects will have an updated authorization policy that includes a
 // PCR policy computed from the supplied PCRProtectionProfile. They must be persisted using
 // secboot.KeyData.WriteAtomic.
-func UpdateKeyDataPCRProtectionPolicy(tpm *Connection, authKey secboot.AuxiliaryKey, pcrProfile *PCRProtectionProfile, keys ...*secboot.KeyData) error {
+func UpdateKeyDataPCRProtectionPolicy(tpm *Connection, authKey secboot.PrimaryKey, pcrProfile *PCRProtectionProfile, policyVersionOption PCRPolicyVersionOption, keys ...*secboot.KeyData) error {
 	if len(keys) == 0 {
 		return errors.New("no sealed keys supplied")
 	}
 
-	var skds []*SealedKeyData
-	for _, kd := range keys {
-		skd, err := NewSealedKeyData(kd)
-		if err != nil {
-			return err
+	role := keys[0].Role()
+	for i, key := range keys[1:] {
+		if key.Role() != role {
+			return fmt.Errorf("unexpected role for key at index %d (expected %s, got %s)", i+1, role, key.Role())
 		}
-		skds = append(skds, skd)
 	}
 
-	return updateKeyPCRProtectionPolicies(tpm.TPMContext, skds, authKey, pcrProfile)
+	for i, key := range keys {
+		skd, err := NewSealedKeyData(key)
+		if err != nil {
+			return xerrors.Errorf("cannot obtain SealedKeyData for key at index %d: %w", i, err)
+		}
+
+		if err := skd.UpdatePCRProtectionPolicy(tpm, authKey, pcrProfile, policyVersionOption); err != nil {
+			return xerrors.Errorf("cannot update key at index %d: %w", i, err)
+		}
+	}
+
+	return nil
 }

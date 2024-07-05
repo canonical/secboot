@@ -52,6 +52,7 @@ func computeV1PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyNa
 		// avoid a panic if updateKeyName is invalid. Note that this will
 		// produce invalid policies - callers should take steps to ensure that
 		// updateKeyName is valid.
+		// TODO: Use tpm2.MakeHandleName here
 		updateKeyName = tpm2.Name(mu.MustMarshalToBytes(tpm2.HandleUnassigned))
 	}
 
@@ -138,15 +139,15 @@ func (p *keyDataPolicy_v1) PCRPolicySequence() uint64 {
 // validated during execution before executing the corresponding PolicyAuthorize assertion as part of the
 // static policy.
 func (p *keyDataPolicy_v1) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcrPolicyParams) error {
-	pcrData := p.PCRData.new(params)
+	pcrData := new(pcrPolicyData_v1)
 
 	trial := util.ComputeAuthPolicy(alg)
-	if err := pcrData.addPcrAssertions(alg, trial, params.pcrDigests); err != nil {
+	if err := pcrData.addPcrAssertions(alg, trial, params.pcrs, params.pcrDigests); err != nil {
 		return xerrors.Errorf("cannot compute base PCR policy: %w", err)
 	}
 
 	if params.policyCounterName != nil {
-		pcrData.addRevocationCheck(trial, params.policyCounterName)
+		pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence)
 	}
 
 	key, err := createECDSAPrivateKeyFromTPM(p.StaticData.AuthPublicKey, tpm2.ECCParameter(params.key))
@@ -256,7 +257,7 @@ func (c *pcrPolicyCounterContext_v1) Get() (uint64, error) {
 	return c.tpm.NVReadCounter(c.index, c.index, nil)
 }
 
-func (c *pcrPolicyCounterContext_v1) Increment(key secboot.AuxiliaryKey) error {
+func (c *pcrPolicyCounterContext_v1) Increment(key secboot.PrimaryKey) error {
 	ecdsaKey, err := createECDSAPrivateKeyFromTPM(c.updateKey, tpm2.ECCParameter(key))
 	if err != nil {
 		return xerrors.Errorf("cannot create auth key: %w", err)
@@ -317,7 +318,7 @@ func (p *keyDataPolicy_v1) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 		updateKey: p.StaticData.AuthPublicKey}, nil
 }
 
-func (p *keyDataPolicy_v1) ValidateAuthKey(key secboot.AuxiliaryKey) error {
+func (p *keyDataPolicy_v1) ValidateAuthKey(key secboot.PrimaryKey) error {
 	pub, ok := p.StaticData.AuthPublicKey.Public().(*ecdsa.PublicKey)
 	if !ok {
 		return policyDataError{errors.New("unexpected dynamic authorization policy public key type")}

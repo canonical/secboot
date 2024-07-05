@@ -57,22 +57,27 @@ func (s *keyDataV3Suite) SetUpTest(c *C) {
 	s.primary = s.EvictControl(c, tpm2.HandleOwner, primary, tcg.SRKHandle)
 }
 
-func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle) (KeyData, tpm2.Name) {
+func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle, role string, requireAuthValue bool) (KeyData, tpm2.Name) {
 	// Create the auth key
-	authKey := make(secboot.AuxiliaryKey, 32)
-	rand.Read(authKey)
+	primaryKey := make(secboot.PrimaryKey, 32)
+	rand.Read(primaryKey)
 
-	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
+	authPublicKey := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, primaryKey)
 
 	// Create a mock PCR policy counter
-	var policyCounterPub *tpm2.NVPublic
-	var policyCount uint64
+	var pcrPolicyCounterPub *tpm2.NVPublic
 	var policyCounterName tpm2.Name
+	var policyCount uint64
 	if pcrPolicyCounterHandle != tpm2.HandleNull {
 		var err error
-		policyCounterPub, policyCount, err = CreatePcrPolicyCounter(s.TPM().TPMContext, pcrPolicyCounterHandle, authKeyPublic, s.TPM().HmacSession())
+		pcrPolicyCounterPub, err = EnsurePcrPolicyCounter(s.TPM().TPMContext, pcrPolicyCounterHandle, authPublicKey, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
-		policyCounterName = policyCounterPub.Name()
+		policyCounterName = pcrPolicyCounterPub.Name()
+
+		context, err := tpm2.NewNVIndexResourceContextFromPub(pcrPolicyCounterPub)
+		c.Assert(err, IsNil)
+		policyCount, err = s.TPM().NVReadCounter(context, context, nil)
+		c.Assert(err, IsNil)
 	}
 
 	// Create sealed object
@@ -80,14 +85,14 @@ func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	template := tpm2_testutil.NewSealedObjectTemplate()
 
-	policyData, policy, err := NewKeyDataPolicy(template.NameAlg, authKeyPublic, policyCounterPub, policyCount)
+	policyData, policyDigest, err := NewKeyDataPolicy(template.NameAlg, authPublicKey, role, pcrPolicyCounterPub, requireAuthValue)
 	c.Assert(err, IsNil)
 	c.Assert(policyData, testutil.ConvertibleTo, &KeyDataPolicy_v3{})
 
-	template.AuthPolicy = policy
+	template.AuthPolicy = policyDigest
 
 	policyData.(*KeyDataPolicy_v3).PCRData = &PcrPolicyData_v3{
-		PolicySequence:   policyData.PCRPolicySequence(),
+		PolicySequence:   policyCount,
 		AuthorizedPolicy: make(tpm2.Digest, 32),
 		AuthorizedPolicySignature: &tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgECDSA,
@@ -108,19 +113,19 @@ func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 		PolicyData: policyData.(*KeyDataPolicy_v3)}, policyCounterName
 }
 
-func (s *keyDataV3Suite) newMockImportableKeyData(c *C) KeyData {
+func (s *keyDataV3Suite) newMockImportableKeyData(c *C, role string, requireAuthValue bool) KeyData {
 	// Create the auth key
-	authKey := make(secboot.AuxiliaryKey, 32)
-	rand.Read(authKey)
+	primaryKey := make(secboot.PrimaryKey, 32)
+	rand.Read(primaryKey)
 
-	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
+	authPublicKey := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, primaryKey)
 
 	// Create sealed object
 	secret := []byte("secret data")
 
 	pub, sensitive := tpm2_testutil.NewExternalSealedObject(nil, secret)
 
-	policyData, policy, err := NewKeyDataPolicy(pub.NameAlg, authKeyPublic, nil, 0)
+	policyData, policy, err := NewKeyDataPolicy(pub.NameAlg, authPublicKey, role, nil, requireAuthValue)
 	c.Assert(err, IsNil)
 	c.Assert(policyData, testutil.ConvertibleTo, &KeyDataPolicy_v3{})
 
@@ -129,7 +134,7 @@ func (s *keyDataV3Suite) newMockImportableKeyData(c *C) KeyData {
 	policyData.(*KeyDataPolicy_v3).PCRData = &PcrPolicyData_v3{
 		Selection:        tpm2.PCRSelectionList{},
 		OrData:           PolicyOrData_v0{},
-		PolicySequence:   policyData.PCRPolicySequence(),
+		PolicySequence:   0,
 		AuthorizedPolicy: make(tpm2.Digest, 32),
 		AuthorizedPolicySignature: &tpm2.Signature{
 			SigAlg: tpm2.SigSchemeAlgECDSA,
@@ -155,18 +160,18 @@ func (s *keyDataV3Suite) newMockImportableKeyData(c *C) KeyData {
 var _ = Suite(&keyDataV3Suite{})
 
 func (s *keyDataV3Suite) TestVersion(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, "foo", false)
 	c.Check(data.Version(), Equals, uint32(3))
 }
 
 func (s *keyDataV3Suite) TestSealedObjectData(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, "foo", false)
 	c.Check(data.Private(), DeepEquals, data.(*KeyData_v3).KeyPrivate)
 	c.Check(data.Public(), DeepEquals, data.(*KeyData_v3).KeyPublic)
 }
 
 func (s *keyDataV3Suite) TestImportNotImportable(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, "foo", false)
 	private := data.Private()
 
 	c.Check(data.ImportSymSeed(), IsNil)
@@ -175,7 +180,7 @@ func (s *keyDataV3Suite) TestImportNotImportable(c *C) {
 }
 
 func (s *keyDataV3Suite) TestImportImportable(c *C) {
-	data := s.newMockImportableKeyData(c)
+	data := s.newMockImportableKeyData(c, "foo", false)
 	c.Check(data.ImportSymSeed(), DeepEquals, data.(*KeyData_v3).KeyImportSymSeed)
 
 	priv, err := s.TPM().Import(s.primary, nil, data.Public(), data.Private(), data.ImportSymSeed(), nil, nil)
@@ -186,141 +191,148 @@ func (s *keyDataV3Suite) TestImportImportable(c *C) {
 }
 
 func (s *keyDataV3Suite) TestValidateImportable(c *C) {
-	data := s.newMockImportableKeyData(c)
+	data := s.newMockImportableKeyData(c, "", false)
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, ErrorMatches, "cannot validate importable key data")
 }
 
 func (s *keyDataV3Suite) TestValidateOK1(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	role := "foo"
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, role, false)
 
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter, IsNil)
 }
 
 func (s *keyDataV3Suite) TestValidateOK2(c *C) {
-	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+	role := "foo"
+	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000), role, false)
 
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
 }
 
 func (s *keyDataV3Suite) TestValidateOK3(c *C) {
-	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x0180ff00))
+	role := "foo"
+	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x0180ff00), role, false)
 
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
 }
 
 func (s *keyDataV3Suite) TestValidateImportedOK(c *C) {
-	data := s.newMockImportableKeyData(c)
+	role := "foo"
+	data := s.newMockImportableKeyData(c, role, false)
 	c.Check(data.ImportSymSeed(), DeepEquals, data.(*KeyData_v3).KeyImportSymSeed)
 
 	priv, err := s.TPM().Import(s.primary, nil, data.Public(), data.Private(), data.ImportSymSeed(), nil, nil)
 	c.Check(err, IsNil)
 	data.Imported(priv)
 
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter, IsNil)
 }
 
 func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, "", false)
 
 	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.NameAlg = tpm2.HashAlgorithmNull
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "cannot compute name of dynamic authorization policy key: unsupported name algorithm or algorithm not linked into binary: TPM_ALG_NULL")
 }
 
 func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, "", false)
 
 	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.Type = tpm2.ObjectTypeRSA
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "public area of dynamic authorization policy signing key has the wrong type")
 }
 
 func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyScheme1(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, "", false)
 
 	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.Params.ECCDetail.Scheme = tpm2.ECCScheme{
 		Scheme: tpm2.ECCSchemeECDAA,
 		Details: &tpm2.AsymSchemeU{
 			ECDAA: &tpm2.SigSchemeECDAA{HashAlg: tpm2.HashAlgorithmSHA256}}}
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "dynamic authorization policy signing key has unexpected scheme")
 }
 
 func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyScheme2(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, "", false)
 
 	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey.Params.ECCDetail.Scheme = tpm2.ECCScheme{
 		Scheme: tpm2.ECCSchemeECDSA,
 		Details: &tpm2.AsymSchemeU{
 			ECDSA: &tpm2.SigSchemeECDSA{HashAlg: tpm2.HashAlgorithmSHA512}}}
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "dynamic authorization policy signing key algorithm must match name algorithm")
 }
 
 func (s *keyDataV3Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, "", false)
 
 	data.(*KeyData_v3).PolicyData.StaticData.PCRPolicyCounterHandle = 0x81000000
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "PCR policy counter handle is invalid")
 }
 
 func (s *keyDataV3Suite) TestValidateNoPolicyCounter(c *C) {
-	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000), "", false)
 
 	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 
-	_, err = data.ValidateData(s.TPM().TPMContext)
+	_, err = data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "PCR policy counter is unavailable")
 }
 
 func (s *keyDataV3Suite) TestValidateInvalidSealedObjectNameAlg(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	role := "foo"
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, role, false)
 
 	data.Public().NameAlg = tpm2.HashAlgorithmNull
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "cannot determine if static authorization policy matches sealed key object: algorithm unavailable")
 }
 
 func (s *keyDataV3Suite) TestValidateWrongAuthKey(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	role := "foo"
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, role, true)
 
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
 	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey = util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
 
-	_, err = data.ValidateData(s.TPM().TPMContext)
+	_, err = data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
 	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
 func (s *keyDataV3Suite) TestValidateWrongPolicyCounter1(c *C) {
-	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+	role := "foo"
+	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000), role, false)
 
 	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
 	handle := index.Handle()
@@ -330,27 +342,29 @@ func (s *keyDataV3Suite) TestValidateWrongPolicyCounter1(c *C) {
 	nvPub := tpm2.NVPublic{
 		Index:   handle,
 		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
+		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVAuthWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA),
 		Size:    8}
 	s.NVDefineSpace(c, tpm2.HandleOwner, nil, &nvPub)
 
-	_, err = data.ValidateData(s.TPM().TPMContext)
+	_, err = data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
+	c.Check(err, ErrorMatches, "unexpected PCR policy ref")
 }
 
 func (s *keyDataV3Suite) TestValidateWrongPolicyCounter2(c *C) {
-	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+	role := "foo"
+	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000), role, false)
 
 	data.(*KeyData_v3).PolicyData.StaticData.PCRPolicyCounterHandle = tpm2.HandleNull
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
+	c.Check(err, ErrorMatches, "unexpected PCR policy ref")
 }
 
 func (s *keyDataV3Suite) TestValidateWrongPolicyCounter3(c *C) {
-	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
+	role := "foo"
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, role, false)
 
 	nvPub := tpm2.NVPublic{
 		Index:   s.NextAvailableHandle(c, 0x01800000),
@@ -360,13 +374,13 @@ func (s *keyDataV3Suite) TestValidateWrongPolicyCounter3(c *C) {
 	s.NVDefineSpace(c, tpm2.HandleOwner, nil, &nvPub)
 	data.(*KeyData_v3).PolicyData.StaticData.PCRPolicyCounterHandle = nvPub.Index
 
-	_, err := data.ValidateData(s.TPM().TPMContext)
+	_, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
+	c.Check(err, ErrorMatches, "unexpected PCR policy ref")
 }
 
 func (s *keyDataV3Suite) TestSerialization(c *C) {
-	data1, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
+	data1, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000), "foo", false)
 
 	buf := new(bytes.Buffer)
 	c.Check(data1.Write(buf), IsNil)
@@ -374,4 +388,24 @@ func (s *keyDataV3Suite) TestSerialization(c *C) {
 	data2, err := ReadKeyDataV3(buf)
 	c.Assert(err, IsNil)
 	c.Check(data2, tpm2_testutil.TPMValueDeepEquals, data1)
+}
+
+func (s *keyDataV3Suite) TestValidateInvalidRole(c *C) {
+	authRole := "foo"
+	validationRole := "bar"
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, authRole, false)
+
+	_, err := data.ValidateData(s.TPM().TPMContext, []byte(validationRole))
+	c.Check(err, ErrorMatches, "unexpected PCR policy ref")
+}
+
+func (s *keyDataV3Suite) TestValidateWrongAuthValueRequirement(c *C) {
+	role := "foo"
+	data, _ := s.newMockKeyData(c, tpm2.HandleNull, role, true)
+
+	data.(*KeyData_v3).PolicyData.StaticData.RequireAuthValue = false
+
+	_, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
+	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }

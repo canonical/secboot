@@ -32,6 +32,7 @@ import (
 const (
 	// Dummy password for benchmarking (same value used by cryptsetup)
 	benchmarkPassword = "foo"
+	benchmarkKeyLen   = 32
 
 	initialTargetDuration = 250 * time.Millisecond
 
@@ -47,9 +48,32 @@ var (
 	benchmarkSalt = []byte("0123456789abcdefghijklmnopqrstuv")
 )
 
+// Mode describes an Argon2 mode.
+type Mode string
+
+const (
+	// ModeI is the data-independent mode of Argon2.
+	ModeI Mode = "argon2i"
+
+	// ModeID is the hybrid mode of Argon2.
+	ModeID Mode = "argon2id"
+)
+
+func (m Mode) keyFn() func([]byte, []byte, uint32, uint32, uint8, uint32) []byte {
+	switch m {
+	case ModeI:
+		return argon2.Key
+	case ModeID:
+		return argon2.IDKey
+	default:
+		panic("invalid mode")
+	}
+}
+
 // BenchmarkParams defines the parameters for benchmarking the Argon2 algorithm
 type BenchmarkParams struct {
-	// MaxMemoryCostKiB sets the upper memory usage limit in KiB.
+	// MaxMemoryCostKiB sets the upper memory usage limit in KiB. The actual
+	// upper limit is capped at 4GiB or half of the available memory.
 	MaxMemoryCostKiB uint32
 
 	// TargetDuration sets the target time for which the benchmark will
@@ -58,7 +82,7 @@ type BenchmarkParams struct {
 
 	// Threads is the number of parallel threads that will be used
 	// for the key derivation. Set this to zero to derive it from
-	// the number of CPUs.
+	// the number of CPUs. The upper limit is capped at 4.
 	Threads uint8
 }
 
@@ -79,7 +103,6 @@ type CostParams struct {
 }
 
 type benchmarkContext struct {
-	keyLen           uint32          // desired key length
 	keyFn            KeyDurationFunc // callback for running an individual measurement
 	maxMemoryCostKiB uint32          // maximum memory cost
 	cost             CostParams      // current computed cost parameters
@@ -272,15 +295,15 @@ func (c *benchmarkContext) run(params *BenchmarkParams, keyFn KeyDurationFunc, s
 	return &c.cost, nil
 }
 
-// KeyDuration runs a key derivation with the built-in benchmarking values and
-// the specified cost parameters and length, and then returns the amount of time
-// taken to execute.
+// KeyDuration runs the key derivation with the built-in benchmarking values for the
+// specified mode and supplied set of cost parameters, and then returns the amount
+// of time taken to execute.
 //
-// By design, this function consumes a lot of memory depending on the supplied parameters.
-// It may be desirable to execute it in a short-lived utility process.
-func KeyDuration(params *CostParams, keyLen uint32) time.Duration {
+// By design, this function consumes a lot of memory depending on the supplied
+// parameters. It may be desirable to execute it in a short-lived utility process.
+func KeyDuration(mode Mode, params *CostParams) time.Duration {
 	start := time.Now()
-	Key(benchmarkPassword, benchmarkSalt, params, keyLen)
+	Key(benchmarkPassword, benchmarkSalt, mode, params, benchmarkKeyLen)
 	return time.Now().Sub(start)
 }
 
@@ -321,10 +344,12 @@ func Benchmark(params *BenchmarkParams, keyFn KeyDurationFunc) (*CostParams, err
 }
 
 // Key derives a key of the desired length from the supplied passphrase and salt using the
-// Argon2i algorithm with the supplied cost parameters.
+// specified mode with the supplied cost parameters.
 //
 // By design, this function consumes a lot of memory depending on the supplied parameters.
 // It may be desirable to execute it in a short-lived utility process.
-func Key(passphrase string, salt []byte, params *CostParams, keyLen uint32) []byte {
-	return argon2.Key([]byte(passphrase), salt, params.Time, params.MemoryKiB, params.Threads, keyLen)
+//
+// This will panic if the time or threads cost parameter are zero.
+func Key(passphrase string, salt []byte, mode Mode, params *CostParams, keyLen uint32) []byte {
+	return mode.keyFn()([]byte(passphrase), salt, params.Time, params.MemoryKiB, params.Threads, keyLen)
 }

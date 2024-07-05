@@ -31,34 +31,42 @@ import (
 	"github.com/snapcore/secboot"
 )
 
-// MockKDF provides a mock implementation of secboot.KDF that isn't
+// MockArgon2KDF provides a mock implementation of secboot.Argon2KDF that isn't
 // memory intensive.
-type MockKDF struct {
-	// BenchmarkKeyLen is the key length that Time was called with. Set this
-	// to zero before running a mock benchmark.
-	BenchmarkKeyLen uint32
+type MockArgon2KDF struct {
+	// BenchmarkMode is the mode that Time was last called with. Set this
+	// to Argon2Default before running a mock benchmark.
+	BenchmarkMode secboot.Argon2Mode
 }
 
 // Derive implements secboot.KDF.Derive and derives a key from the supplied
 // passphrase and parameters. This is only intended for testing and is not
 // meant to be secure in any way.
-func (_ *MockKDF) Derive(passphrase string, salt []byte, params *secboot.KDFCostParams, keyLen uint32) ([]byte, error) {
-	context := make([]byte, len(salt)+9)
+func (_ *MockArgon2KDF) Derive(passphrase string, salt []byte, mode secboot.Argon2Mode, params *secboot.Argon2CostParams, keyLen uint32) ([]byte, error) {
+	context := make([]byte, len(salt)+10)
 	copy(context, salt)
-	binary.LittleEndian.PutUint32(context[len(salt):], params.Time)
-	binary.LittleEndian.PutUint32(context[len(salt)+4:], params.MemoryKiB)
-	context[len(salt)+8] = params.Threads
+	switch mode {
+	case secboot.Argon2i:
+		context[len(salt)] = 0
+	case secboot.Argon2id:
+		context[len(salt)] = 1
+	default:
+		return nil, errors.New("invalid mode")
+	}
+	binary.LittleEndian.PutUint32(context[len(salt)+1:], params.Time)
+	binary.LittleEndian.PutUint32(context[len(salt)+5:], params.MemoryKiB)
+	context[len(salt)+9] = params.Threads
 
 	return kdf.CounterModeKey(kdf.NewHMACPRF(crypto.SHA256), []byte(passphrase), nil, context, keyLen*8), nil
 }
 
 // Time implements secboot.KDF.Time and returns a time that is linearly
 // related to the specified cost parameters, suitable for mocking benchmarking.
-func (k *MockKDF) Time(params *secboot.KDFCostParams, keyLen uint32) (time.Duration, error) {
-	if k.BenchmarkKeyLen != 0 && k.BenchmarkKeyLen != keyLen {
-		return 0, errors.New("unexpected key length")
+func (k *MockArgon2KDF) Time(mode secboot.Argon2Mode, params *secboot.Argon2CostParams) (time.Duration, error) {
+	if k.BenchmarkMode != secboot.Argon2Default && k.BenchmarkMode != mode {
+		return 0, errors.New("unexpected mode")
 	}
-	k.BenchmarkKeyLen = keyLen
+	k.BenchmarkMode = mode
 
 	const memBandwidthKiBPerMs = 2048
 	duration := (time.Duration(float64(params.MemoryKiB)/float64(memBandwidthKiBPerMs)) * time.Duration(params.Time)) * time.Millisecond

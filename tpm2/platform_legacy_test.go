@@ -71,7 +71,7 @@ func (s *platformLegacySuite) TestRecoverKeys(c *C) {
 	recoveredKey, recoveredAuthPrivateKey, err := k.RecoverKeys()
 	c.Check(err, IsNil)
 	c.Check(recoveredKey, DeepEquals, key)
-	c.Check(recoveredAuthPrivateKey, DeepEquals, secboot.AuxiliaryKey(authPrivateKey))
+	c.Check(recoveredAuthPrivateKey, DeepEquals, secboot.PrimaryKey(authPrivateKey))
 }
 
 func (s *platformLegacySuite) TestRecoverKeysNoTPMConnection(c *C) {

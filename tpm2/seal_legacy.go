@@ -96,7 +96,7 @@ type KeyCreationParams struct {
 // AuthKey in the params argument.
 //
 // Deprecated: Use ProtectKeyWithExternalStorageKey.
-func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
+func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.PrimaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
@@ -184,7 +184,7 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	if err := sko.updatePCRProtectionPolicyImpl(nil, authKey, nil, pcrProfile); err != nil {
+	if err := sko.updatePCRProtectionPolicyNoValidate(nil, authKey, nil, pcrProfile, resetPcrPolicyVersion); err != nil {
 		return nil, xerrors.Errorf("cannot create initial PCR policy: %w", err)
 	}
 
@@ -234,7 +234,7 @@ type SealKeyRequest struct {
 // AuthKey in the params argument.
 //
 // Deprecated: Use ProtectKeysWithTPM.
-func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
+func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCreationParams) (authKey secboot.PrimaryKey, err error) {
 	// params is mandatory.
 	if params == nil {
 		return nil, errors.New("no KeyCreationParams provided")
@@ -290,7 +290,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 	var pcrPolicyCounterPub *tpm2.NVPublic
 	var pcrPolicyCount uint64
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
-		pcrPolicyCounterPub, pcrPolicyCount, err = createPcrPolicyCounter(tpm.TPMContext, params.PCRPolicyCounterHandle, authPublicKey, session)
+		pcrPolicyCounterPub, pcrPolicyCount, err = createPcrPolicyCounterLegacy(tpm.TPMContext, params.PCRPolicyCounterHandle, authPublicKey, session)
 		switch {
 		case tpm2.IsTPMError(err, tpm2.ErrorNVDefined, tpm2.CommandNVDefineSpace):
 			return nil, TPMResourceExistsError{params.PCRPolicyCounterHandle}
@@ -380,7 +380,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 			if pcrProfile == nil {
 				pcrProfile = NewPCRProtectionProfile()
 			}
-			if err := sko.updatePCRProtectionPolicyImpl(tpm.TPMContext, authKey, pcrPolicyCounterPub, pcrProfile); err != nil {
+			if err := sko.updatePCRProtectionPolicyNoValidate(tpm.TPMContext, authKey, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion); err != nil {
 				return nil, xerrors.Errorf("cannot create initial PCR policy: %w", err)
 			}
 		}
@@ -424,6 +424,6 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 // AuthKey in the params argument.
 //
 // Deprecated: Use ProtectKeyWithTPM.
-func SealKeyToTPM(tpm *Connection, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.AuxiliaryKey, err error) {
+func SealKeyToTPM(tpm *Connection, key secboot.DiskUnlockKey, keyPath string, params *KeyCreationParams) (authKey secboot.PrimaryKey, err error) {
 	return SealKeyToTPMMultiple(tpm, []*SealKeyRequest{{Key: key, Path: keyPath}}, params)
 }

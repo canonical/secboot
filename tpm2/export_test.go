@@ -27,25 +27,25 @@ import (
 
 // Export constants for testing
 const (
-	LockNVHandle      = lockNVHandle
-	SrkTemplateHandle = srkTemplateHandle
+	LockNVHandle          = lockNVHandle
+	ResetPcrPolicyVersion = resetPcrPolicyVersion
+	SrkTemplateHandle     = srkTemplateHandle
 )
 
 // Export variables and unexported functions for testing
 var (
 	ComputeV0PinNVIndexPostInitAuthPolicies = computeV0PinNVIndexPostInitAuthPolicies
-	CreatePcrPolicyCounter                  = createPcrPolicyCounter
+	CreatePcrPolicyCounter                  = createPcrPolicyCounterLegacy
+	EnsurePcrPolicyCounter                  = ensurePcrPolicyCounter
 	ComputeV1PcrPolicyRefFromCounterName    = computeV1PcrPolicyRefFromCounterName
 	ComputeV3PcrPolicyCounterAuthPolicies   = computeV3PcrPolicyCounterAuthPolicies
-	ComputeV3PcrPolicyRefFromCounterName    = computeV3PcrPolicyRefFromCounterName
-	ComputeSnapModelDigest                  = computeSnapModelDigest
-	DeriveAuthValue                         = deriveAuthValue
+	ComputeV3PcrPolicyRef                   = computeV3PcrPolicyRef
 	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
 	IsPolicyDataError                       = isPolicyDataError
-	MakeKeyData                             = makeKeyData
-	MakeKeyDataPolicy                       = makeKeyDataPolicy
-	MakeKeyDataWithPolicy                   = makeKeyDataWithPolicy
+	MakeSealedKeyData                       = makeSealedKeyData
+	MakeKeyDataNoAuth                       = makeKeyDataNoAuth
+	MakeKeyDataWithPassphraseConstructor    = makeKeyDataWithPassphraseConstructor
 	NewKeyData                              = newKeyData
 	NewKeyDataPolicy                        = newKeyDataPolicy
 	NewKeyDataPolicyLegacy                  = newKeyDataPolicyLegacy
@@ -66,10 +66,10 @@ type KeyData_v0 = keyData_v0
 type KeyData_v1 = keyData_v1
 type KeyData_v2 = keyData_v2
 type KeyData_v3 = keyData_v3
+type AdditionalData_v3 = additionalData_v3
 type KeyDataError = keyDataError
-type KeyDataParams = keyDataParams
+type SealedKeyDataParams = makeSealedKeyDataParams
 type KeyDataPolicy = keyDataPolicy
-type KeyDataPolicyParams = keyDataPolicyParams
 type KeyDataPolicy_v0 = keyDataPolicy_v0
 type KeyDataPolicy_v1 = keyDataPolicy_v1
 type KeyDataPolicy_v2 = keyDataPolicy_v2
@@ -83,6 +83,7 @@ func NewSealedObjectKeySealer(tpm *Connection) keySealer {
 	return &sealedObjectKeySealer{tpm}
 }
 
+type PcrPolicyVersionOption = pcrPolicyVersionOption
 type PolicyDataError = policyDataError
 type PolicyOrData_v0 = policyOrData_v0
 
@@ -123,12 +124,14 @@ type PcrPolicyData_v3 = pcrPolicyData_v3
 
 type PcrPolicyParams = pcrPolicyParams
 
-func NewPcrPolicyParams(key secboot.AuxiliaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name) *PcrPolicyParams {
+func NewPcrPolicyParams(key secboot.PrimaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name, policySequence uint64) *PcrPolicyParams {
 	return &PcrPolicyParams{
 		key:               key,
 		pcrs:              pcrs,
 		pcrDigests:        pcrDigests,
-		policyCounterName: policyCounterName}
+		policyCounterName: policyCounterName,
+		policySequence:    policySequence,
+	}
 }
 
 type PlatformKeyDataHandler = platformKeyDataHandler
@@ -180,15 +183,15 @@ func MakeMockPolicyPCRValuesFull(params []MockPolicyPCRParam) (out []tpm2.PCRVal
 	return
 }
 
-func MockCreatePcrPolicyCounter(fn func(*tpm2.TPMContext, tpm2.Handle, *tpm2.Public, tpm2.SessionContext) (*tpm2.NVPublic, uint64, error)) (restore func()) {
-	orig := createPcrPolicyCounter
-	createPcrPolicyCounter = fn
+func MockEnsurePcrPolicyCounter(fn func(*tpm2.TPMContext, tpm2.Handle, *tpm2.Public, tpm2.SessionContext) (*tpm2.NVPublic, error)) (restore func()) {
+	orig := ensurePcrPolicyCounter
+	ensurePcrPolicyCounter = fn
 	return func() {
-		createPcrPolicyCounter = orig
+		ensurePcrPolicyCounter = orig
 	}
 }
 
-func MockNewKeyDataPolicy(fn func(tpm2.HashAlgorithmId, *tpm2.Public, *tpm2.NVPublic, uint64) (KeyDataPolicy, tpm2.Digest, error)) (restore func()) {
+func MockNewKeyDataPolicy(fn func(tpm2.HashAlgorithmId, *tpm2.Public, string, *tpm2.NVPublic, bool) (KeyDataPolicy, tpm2.Digest, error)) (restore func()) {
 	orig := newKeyDataPolicy
 	newKeyDataPolicy = fn
 	return func() {
@@ -196,7 +199,7 @@ func MockNewKeyDataPolicy(fn func(tpm2.HashAlgorithmId, *tpm2.Public, *tpm2.NVPu
 	}
 }
 
-func MockNewPolicyAuthPublicKey(fn func(authKey secboot.AuxiliaryKey) (*tpm2.Public, error)) (restore func()) {
+func MockNewPolicyAuthPublicKey(fn func(authKey secboot.PrimaryKey) (*tpm2.Public, error)) (restore func()) {
 	orig := newPolicyAuthPublicKey
 	newPolicyAuthPublicKey = fn
 	return func() {
@@ -220,12 +223,28 @@ func MockSkdbUpdatePCRProtectionPolicyImpl(fn func(*sealedKeyDataBase, *tpm2.TPM
 	}
 }
 
+func MockSecbootNewKeyDataWithPassphrase(fn func(*secboot.KeyWithPassphraseParams, string) (*secboot.KeyData, error)) (restore func()) {
+	orig := secbootNewKeyDataWithPassphrase
+	secbootNewKeyDataWithPassphrase = fn
+	return func() {
+		secbootNewKeyDataWithPassphrase = orig
+	}
+}
+
+func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, PcrPolicyVersionOption) error) (restore func()) {
+	orig := skdbUpdatePCRProtectionPolicyNoValidate
+	skdbUpdatePCRProtectionPolicyNoValidate = fn
+	return func() {
+		skdbUpdatePCRProtectionPolicyNoValidate = orig
+	}
+}
+
 func (k *SealedKeyData) Data() KeyData {
 	return k.data
 }
 
-func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey) error {
-	if _, err := k.validateData(tpm); err != nil {
+func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey) error {
+	if _, err := k.validateData(tpm, k.k.Role()); err != nil {
 		return err
 	}
 
@@ -236,23 +255,15 @@ func (k *SealedKeyObject) Data() KeyData {
 	return k.data
 }
 
-func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.AuxiliaryKey) error {
-	if _, err := k.validateData(tpm); err != nil {
+func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey) error {
+	if _, err := k.validateData(tpm, ""); err != nil {
 		return err
 	}
 
 	return k.data.Policy().ValidateAuthKey(authKey)
 }
 
-func (c *createdPcrPolicyCounter) TPM() *tpm2.TPMContext {
-	return c.tpm
-}
-
-func (c *createdPcrPolicyCounter) Session() tpm2.SessionContext {
-	return c.session
-}
-
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.AuxiliaryKey) error {
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.PrimaryKey) error {
 	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	if err != nil {
 		return err

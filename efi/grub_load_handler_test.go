@@ -42,9 +42,9 @@ var _ = Suite(&grubLoadHandlerSuite{})
 func (s *grubLoadHandlerSuite) TestMeasureImageLoadUbuntuUsesShim15_7(c *C) {
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:      tpm2.HashAlgorithmSHA256,
-		flags:    SecureBootPolicyProfile,
+		pcrs:     MakePcrFlags(SecureBootPolicyPCR),
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: msDb(c),
@@ -71,9 +71,9 @@ func (s *grubLoadHandlerSuite) TestMeasureImageLoadUbuntuUsesShim15_7(c *C) {
 func (s *grubLoadHandlerSuite) TestMeasureImageLoadUbuntuUsesShim15_6(c *C) {
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:      tpm2.HashAlgorithmSHA256,
-		flags:    SecureBootPolicyProfile,
+		pcrs:     MakePcrFlags(SecureBootPolicyPCR),
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: msDb(c),
@@ -100,9 +100,9 @@ func (s *grubLoadHandlerSuite) TestMeasureImageLoadUbuntuUsesShim15_6(c *C) {
 func (s *grubLoadHandlerSuite) TestMeasureImageLoadNoShim(c *C) {
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:      tpm2.HashAlgorithmSHA256,
-		flags:    SecureBootPolicyProfile,
+		pcrs:     MakePcrFlags(SecureBootPolicyPCR),
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: append(msDb(c), efitest.NewSignatureListX509(c, canonicalCACert, testOwnerGuid)),
@@ -129,9 +129,9 @@ func (s *grubLoadHandlerSuite) TestMeasureImageLoadNoShim(c *C) {
 func (s *grubLoadHandlerSuite) TestMeasureImageLoadNoShimError(c *C) {
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:      tpm2.HashAlgorithmSHA256,
-		flags:    SecureBootPolicyProfile,
+		pcrs:     MakePcrFlags(SecureBootPolicyPCR),
 		handlers: s,
-	}, nil)
+	}, nil, nil)
 	ctx.FwContext().Db = &SecureBootDB{
 		Name:     Db,
 		Contents: msDb(c),

@@ -44,7 +44,8 @@ const (
 
 // pcrPolicyParams provides the parameters to keyDataPolicy.updatePcrPolicy.
 type pcrPolicyParams struct {
-	key secboot.AuxiliaryKey // Key used to authorize the generated dynamic authorization policy
+	key  secboot.PrimaryKey // Key used to authorize the generated dynamic authorization policy
+	role []byte
 
 	pcrs       tpm2.PCRSelectionList // PCR selection
 	pcrDigests tpm2.DigestList       // Approved PCR digests
@@ -53,6 +54,8 @@ type pcrPolicyParams struct {
 	// policies. The name must be associated with the handle in the keyDataPolicy,
 	// else the policy will not work.
 	policyCounterName tpm2.Name
+
+	policySequence uint64 // the PCR policy sequence
 }
 
 // policyOrNode represents a collection of up to 8 digests used in a single
@@ -92,8 +95,8 @@ type policyOrTree struct {
 
 // pcrPolicyCounterContext corresponds to a PCR policy counter.
 type pcrPolicyCounterContext interface {
-	Get() (uint64, error)                     // Return the current counter value
-	Increment(key secboot.AuxiliaryKey) error // Increment the counter value using the supplied key for authorization
+	Get() (uint64, error)                   // Return the current counter value
+	Increment(key secboot.PrimaryKey) error // Increment the counter value using the supplied key for authorization
 }
 
 // keyDataPolicy corresponds to the authorization policy for keyData.
@@ -123,21 +126,25 @@ type keyDataPolicy interface {
 
 	// ValidateAuthKey verifies that the supplied key is associated with this
 	// keyDataPolicy.
-	ValidateAuthKey(key secboot.AuxiliaryKey) error
+	ValidateAuthKey(key secboot.PrimaryKey) error
 }
 
-func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, computeAuthPolicies func(tpm2.HashAlgorithmId, tpm2.Name) tpm2.DigestList, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
+// createPcrPolicyCounterLegacy creates and initializes a NV counter that is associated with a sealed key object
+// and is used for implementing PCR policy revocation.
+//
+// The NV index will be created with attributes that allow anyone to read the index, and an authorization
+// policy that permits TPM2_NV_Increment with a signed authorization policy.
+func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (public *tpm2.NVPublic, value uint64, err error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
-	authPolicies := computeAuthPolicies(nameAlg, updateKey.Name())
+	authPolicies := computeV2PcrPolicyCounterAuthPolicies(nameAlg, updateKey.Name())
 
 	trial := util.ComputeAuthPolicy(nameAlg)
 	trial.PolicyOR(authPolicies)
 
-	// Define the NV index
-	public := &tpm2.NVPublic{
+	public = &tpm2.NVPublic{
 		Index:      handle,
-		NameAlg:    nameAlg,
+		NameAlg:    tpm2.HashAlgorithmSHA256,
 		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
 		AuthPolicy: trial.GetDigest(),
 		Size:       8}
@@ -146,20 +153,15 @@ func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, update
 	if err != nil {
 		return nil, 0, err
 	}
-
-	// NVDefineSpace was integrity protected, so we know that we have an index with the expected public area at the handle we specified
-	// at this point.
-
-	succeeded := false
 	defer func() {
-		if succeeded {
+		if err == nil {
 			return
 		}
 		tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, hmacSession)
 	}()
 
 	// Begin a session to initialize the index.
-	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, nameAlg)
+	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, public.NameAlg)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -178,40 +180,95 @@ func createPcrPolicyCounterImpl(tpm *tpm2.TPMContext, handle tpm2.Handle, update
 		return nil, 0, err
 	}
 
-	// The index has a different name now that it has been written, so update the public area we return so that it can be used
-	// to construct an authorization policy.
+	// The index has a different name now that it has been written, so update the public area
+	// we return so that it can be used to construct an authorization policy.
 	public.Attrs |= tpm2.AttrNVWritten
 
-	value, err := tpm.NVReadCounter(index, index, nil)
+	// Read the current value
+	value, err = tpm.NVReadCounter(index, index, nil)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	succeeded = true
 	return public, value, nil
 }
 
-// createPcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
+// ensurePcrPolicyCounter creates and initializes a NV counter that is associated with a sealed key object
 // and is used for implementing PCR policy revocation.
 //
 // The NV index will be created with attributes that allow anyone to read the index, and an authorization
-// policy that permits TPM2_NV_Increment with a signed authorization policy. The caller must ensure that the
-// updateKey argument is a valid public key.
-var createPcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
-	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV3PcrPolicyCounterAuthPolicies, hmacSession)
+// policy that permits TPM2_NV_Increment with a signed authorization policy.
+var ensurePcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (public *tpm2.NVPublic, err error) {
+	nameAlg := tpm2.HashAlgorithmSHA256
+
+	authPolicies := computeV3PcrPolicyCounterAuthPolicies(nameAlg, updateKey.Name())
+
+	trial := util.ComputeAuthPolicy(nameAlg)
+	trial.PolicyOR(authPolicies)
+
+	public = &tpm2.NVPublic{
+		Index:      handle,
+		NameAlg:    tpm2.HashAlgorithmSHA256,
+		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA),
+		AuthPolicy: trial.GetDigest(),
+		Size:       8}
+
+	index, err := tpm.CreateResourceContextFromTPM(handle, hmacSession.IncludeAttrs(tpm2.AttrAudit))
+	switch {
+	case tpm2.IsResourceUnavailableError(err, handle):
+		// ok, need to create
+		index, err = tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, public, hmacSession)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if err == nil {
+				return
+			}
+			tpm.NVUndefineSpace(tpm.OwnerHandleContext(), index, hmacSession)
+		}()
+
+		// Begin a session to initialize the index.
+		policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, public.NameAlg)
+		if err != nil {
+			return nil, err
+		}
+		defer tpm.FlushContext(policySession)
+
+		// Execute the policy assertions
+		if err := tpm.PolicyNvWritten(policySession, false); err != nil {
+			return nil, err
+		}
+		if err := tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
+			return nil, err
+		}
+		if err := tpm.PolicyOR(policySession, authPolicies); err != nil {
+			return nil, err
+		}
+
+		// Initialize the index
+		if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
+			return nil, err
+		}
+	case err != nil:
+		// unexpected error
+		return nil, err
+	}
+
+	// The index has a different name once it has been written, so update the public area
+	// we return so that it can be used to construct an authorization policy.
+	public.Attrs |= tpm2.AttrNVWritten
+
+	// Make sure the name matches that returned from the TPM - this catches the case
+	// where an index already exists but it has the wrong public area.
+	if !bytes.Equal(public.Name(), index.Name()) {
+		return nil, TPMResourceExistsError{handle}
+	}
+
+	return public, nil
 }
 
-// createPcrPolicyCounterLegacy creates and initializes a NV counter that is associated with a sealed key object
-// and is used for implementing PCR policy revocation.
-//
-// The NV index will be created with attributes that allow anyone to read the index, and an authorization
-// policy that permits TPM2_NV_Increment with a signed authorization policy. The caller must ensure that the
-// updateKey argument is a valid public key.
-func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (*tpm2.NVPublic, uint64, error) {
-	return createPcrPolicyCounterImpl(tpm, handle, updateKey, computeV2PcrPolicyCounterAuthPolicies, hmacSession)
-}
-
-var newPolicyAuthPublicKey = func(key secboot.AuxiliaryKey) (*tpm2.Public, error) {
+var newPolicyAuthPublicKey = func(key secboot.PrimaryKey) (*tpm2.Public, error) {
 	ecdsaKey, err := deriveV3PolicyAuthKey(crypto.SHA256, key)
 	if err != nil {
 		return nil, err
@@ -247,7 +304,15 @@ func ensureSufficientORDigests(digests tpm2.DigestList) tpm2.DigestList {
 //
 // This returns some policy metadata and a policy digest which is used as the auth policy field of the
 // protected object.
-var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolicyCounterPub *tpm2.NVPublic, pcrPolicySequence uint64) (keyDataPolicy, tpm2.Digest, error) {
+var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic, requireAuthValue bool) (keyDataPolicy, tpm2.Digest, error) {
+	if len(role) > 1024 {
+		// We serialize this in the TPM wire format in computeV3PcrPolicyRef and define the
+		// type as TPM2B_MAX_BUFFER in the SE041, and this has a maximum size of 1024 bytes,
+		// although the real ceiling for us is MaxUint16. Let's be consistent though, and
+		// 1024 bytes is more than enough.
+		return nil, nil, errors.New("invalid role: too large")
+	}
+
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	var pcrPolicyCounterName tpm2.Name
 	if pcrPolicyCounterPub != nil {
@@ -255,16 +320,21 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolic
 		pcrPolicyCounterName = pcrPolicyCounterPub.Name()
 	}
 
+	pcrPolicyRef := computeV3PcrPolicyRef(key.NameAlg, []byte(role), pcrPolicyCounterName)
+
 	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(computeV3PcrPolicyRefFromCounterName(pcrPolicyCounterName), key.Name())
-	trial.PolicyAuthValue()
+	trial.PolicyAuthorize(pcrPolicyRef, key.Name())
+	if requireAuthValue {
+		trial.PolicyAuthValue()
+	}
 
 	return &keyDataPolicy_v3{
 		StaticData: &staticPolicyData_v3{
 			AuthPublicKey:          key,
-			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
+			PCRPolicyRef:           pcrPolicyRef,
+			PCRPolicyCounterHandle: pcrPolicyCounterHandle,
+			RequireAuthValue:       requireAuthValue},
 		PCRData: &pcrPolicyData_v3{
-			PolicySequence: pcrPolicySequence,
 			// Set AuthorizedPolicySignature here because this object needs to be
 			// serializable before the initial signature is created.
 			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}, trial.GetDigest(), nil

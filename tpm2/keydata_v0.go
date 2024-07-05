@@ -28,6 +28,7 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/util"
+	"github.com/snapcore/secboot"
 
 	"golang.org/x/xerrors"
 )
@@ -100,7 +101,11 @@ func (_ *keyData_v0) Imported(_ tpm2.Private) {
 	panic("not supported")
 }
 
-func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.ResourceContext, error) {
+	if len(role) > 0 {
+		return nil, errors.New("unexpected role")
+	}
+
 	// Obtain the name of the legacy lock NV index.
 	lockNV, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
 	if err != nil {
@@ -199,4 +204,8 @@ func (d *keyData_v0) Write(w io.Writer) error {
 
 func (d *keyData_v0) Policy() keyDataPolicy {
 	return d.PolicyData
+}
+
+func (d *keyData_v0) Decrypt(key, payload []byte, generation uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
+	return nil, errors.New("not supported")
 }

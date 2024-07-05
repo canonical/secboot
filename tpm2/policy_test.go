@@ -228,7 +228,7 @@ func (s *policySuiteNoTPM) testNewKeyDataPolicy(c *C, data *testNewKeyDataPolicy
 		pcrPolicyCounterHandle = data.pcrPolicyCounterPub.Index
 	}
 
-	policy, digest, err := NewKeyDataPolicy(data.alg, authKey, data.pcrPolicyCounterPub, data.pcrPolicySequence)
+	policy, digest, err := NewKeyDataPolicy(data.alg, authKey, "", data.pcrPolicyCounterPub, false)
 	c.Assert(err, IsNil)
 	c.Assert(policy, testutil.ConvertibleTo, &KeyDataPolicy_v3{})
 	c.Check(policy.(*KeyDataPolicy_v3).StaticData.AuthPublicKey, DeepEquals, authKey)
@@ -251,8 +251,8 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 			NameAlg: tpm2.HashAlgorithmSHA256,
 			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 			Size:    8},
-		pcrPolicySequence: 10,
-		expected:          testutil.DecodeHexString(c, "61f5396bcbd2bd3ed1392edaf88314da1230f6f252962c704119659295eca112")})
+		pcrPolicySequence: 0,
+		expected:          testutil.DecodeHexString(c, "aaf8226b1df9aefc9d03533b58abaf514b0f4ab6c10af0e26ef5d9db0d8aff24")})
 }
 
 func (s *policySuiteNoTPM) TestNewKeyDataPolicySHA1(c *C) {
@@ -268,8 +268,8 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 			NameAlg: tpm2.HashAlgorithmSHA256,
 			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 			Size:    8},
-		pcrPolicySequence: 10,
-		expected:          testutil.DecodeHexString(c, "1a1afefb96937bd752a24cc23dbc16ecde3c8268")})
+		pcrPolicySequence: 0,
+		expected:          testutil.DecodeHexString(c, "9a9aeb1e55e96cbae4cba7bc798046cc82ff669f")})
 }
 
 func (s *policySuiteNoTPM) TestNewKeyDataPolicyNoPCRPolicyCounterHandle(c *C) {
@@ -280,7 +280,7 @@ func (s *policySuiteNoTPM) TestNewKeyDataPolicyNoPCRPolicyCounterHandle(c *C) {
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
 xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 -----END PUBLIC KEY-----`,
-		expected: testutil.DecodeHexString(c, "2171bcd975facbf5bf0ac504e2e9812d3cf5583c0162f96c849dd9b8154f4dc0")})
+		expected: testutil.DecodeHexString(c, "9cac9314ff38f2cdf8c876b57d344657e76996ea872925acd95abec805165c31")})
 }
 
 func (s *policySuiteNoTPM) TestNewKeyDataPolicyDifferentInitialSequence(c *C) {
@@ -296,8 +296,8 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 			NameAlg: tpm2.HashAlgorithmSHA256,
 			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 			Size:    8},
-		pcrPolicySequence: 3000,
-		expected:          testutil.DecodeHexString(c, "61f5396bcbd2bd3ed1392edaf88314da1230f6f252962c704119659295eca112")})
+		pcrPolicySequence: 0,
+		expected:          testutil.DecodeHexString(c, "aaf8226b1df9aefc9d03533b58abaf514b0f4ab6c10af0e26ef5d9db0d8aff24")})
 }
 
 type testNewKeyDataPolicyLegacyData struct {

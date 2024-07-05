@@ -173,7 +173,7 @@ func (s *viewSuite) TestNewView(c *C) {
 
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4}}
+	options := luks2.FormatOptions{KDFOptions: luks2.KDFOptions{Type: luks2.KDFTypePBKDF2, ForceIterations: 1000}}
 	c.Check(luks2.Format(path, "", make([]byte, 32), &options), IsNil)
 
 	token := &KeyDataToken{
@@ -214,7 +214,7 @@ func (s *viewSuite) TestViewReread(c *C) {
 
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
-	options := luks2.KDFOptions{MemoryKiB: 32, ForceIterations: 4}
+	options := luks2.KDFOptions{Type: luks2.KDFTypePBKDF2, ForceIterations: 1000}
 	c.Check(luks2.Format(path, "", make([]byte, 32), &luks2.FormatOptions{KDFOptions: options}), IsNil)
 
 	token := &KeyDataToken{

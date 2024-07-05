@@ -20,12 +20,19 @@
 package tpm2_test
 
 import (
+	"crypto"
 	"encoding/json"
+	gohash "hash"
+	"io"
 	"math/rand"
 	"os"
 	"syscall"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/util"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+	"golang.org/x/crypto/hkdf"
 
 	. "gopkg.in/check.v1"
 
@@ -60,75 +67,46 @@ func (s *platformSuite) SetUpTest(c *C) {
 		s.lastEncryptedPayload = params.EncryptedPayload
 		return secboot.NewKeyData(params)
 	}))
+	origKdf := secboot.SetArgon2KDF(&testutil.MockArgon2KDF{})
+	s.AddCleanup(func() { secboot.SetArgon2KDF(origKdf) })
 }
 
 var _ = Suite(&platformSuite{})
 
-func (s *platformSuite) TestDeriveAuthValue(c *C) {
-	key := testutil.DecodeHexString(c, "eb3df724b267220a2ebf1ad93ca05c7ba7ab2b321f2e7fddbc9741882b274433290973b9f9ecb6a64396da33d717f7af")
-	expected := testutil.DecodeHexString(c, "874fcd20ed7c7071f6fd1d9ccb8ebc088c902712ba6cad7a14d7db71d75673b8")
-
-	value, err := DeriveAuthValue(key, 32)
-	c.Check(err, IsNil)
-	c.Check(value, DeepEquals, expected)
-	c.Logf("%x", value)
-}
-
-func (s *platformSuite) TestDeriveAuthValueDifferentLen(c *C) {
-	key := testutil.DecodeHexString(c, "eb3df724b267220a2ebf1ad93ca05c7ba7ab2b321f2e7fddbc9741882b274433290973b9f9ecb6a64396da33d717f7af")
-	expected := testutil.DecodeHexString(c, "874fcd20ed7c7071f6fd1d9ccb8ebc088c902712")
-
-	value, err := DeriveAuthValue(key, 20)
-	c.Check(err, IsNil)
-	c.Check(value, DeepEquals, expected)
-	c.Logf("%x", value)
-}
-
-func (s *platformSuite) TestDeriveAuthValueDifferentKey(c *C) {
-	key := testutil.DecodeHexString(c, "7facbeb6f2a7f233f68059da3f1d9c9706530eced4cca76ba1e1551f0e814c40ac2a076e208880ab6d2afe31f04e096a")
-	expected := testutil.DecodeHexString(c, "fc69c90fe401ed40906698fe290e6be07b8c7b8b5b42b6166044cf9e32b8e300")
-
-	value, err := DeriveAuthValue(key, 32)
-	c.Check(err, IsNil)
-	c.Check(value, DeepEquals, expected)
-	c.Logf("%x", value)
-}
-
 func (s *platformSuite) TestRecoverKeysIntegrated(c *C) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
-	keyUnsealed, authKeyUnsealed, err := k.RecoverKeys()
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeys()
 	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
 }
 
 func (s *platformSuite) TestRecoverKeysWithPassphraseIntegrated(c *C) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	passphraseParams := &PassphraseProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
-	var kdf testutil.MockKDF
-	c.Check(k.SetPassphrase("passphrase", nil, &kdf), IsNil)
-
-	keyUnsealed, authKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase", &kdf)
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
 	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
 }
 
 func (s *platformSuite) TestRecoverKeysWithBadPassphraseIntegrated(c *C) {
@@ -137,87 +115,112 @@ func (s *platformSuite) TestRecoverKeysWithBadPassphraseIntegrated(c *C) {
 
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, _, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	passphraseParams := &PassphraseProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, _, _, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
-	var kdf testutil.MockKDF
-	c.Check(k.SetPassphrase("passphrase", nil, &kdf), IsNil)
-
-	_, _, err = k.RecoverKeysWithPassphrase("1234", &kdf)
+	_, _, err = k.RecoverKeysWithPassphrase("1234")
 	c.Check(err, Equals, secboot.ErrInvalidPassphrase)
 }
 
 func (s *platformSuite) TestChangePassphraseIntegrated(c *C) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	passphraseParams := &PassphraseProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
-	var kdf testutil.MockKDF
-	c.Check(k.SetPassphrase("passphrase", nil, &kdf), IsNil)
+	c.Check(k.ChangePassphrase("passphrase", "1234"), IsNil)
 
-	c.Check(k.ChangePassphrase("passphrase", "1234", nil, &kdf), IsNil)
-
-	keyUnsealed, authKeyUnsealed, err := k.RecoverKeysWithPassphrase("1234", &kdf)
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("1234")
 	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
 }
 
 func (s *platformSuite) TestChangePassphraseWithBadPassphraseIntegrated(c *C) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	passphraseParams := &PassphraseProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
-	var kdf testutil.MockKDF
-	c.Check(k.SetPassphrase("passphrase", nil, &kdf), IsNil)
+	c.Check(k.ChangePassphrase("1234", "1234"), Equals, secboot.ErrInvalidPassphrase)
 
-	c.Check(k.ChangePassphrase("1234", "1234", nil, &kdf), Equals, secboot.ErrInvalidPassphrase)
-
-	keyUnsealed, authKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase", &kdf)
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
 	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+}
+
+func (s *platformSuite) verifyASN1(c *C, data []byte) (primaryKey, unique []byte) {
+	d := cryptobyte.String(data)
+	c.Assert(d.ReadASN1(&d, cryptobyte_asn1.SEQUENCE), Equals, true)
+
+	primaryKey = make([]byte, 32)
+	unique = make([]byte, 32)
+
+	c.Assert(d.ReadASN1Bytes(&primaryKey, cryptobyte_asn1.OCTET_STRING), Equals, true)
+	c.Assert(d.ReadASN1Bytes(&unique, cryptobyte_asn1.OCTET_STRING), Equals, true)
+
+	return primaryKey, unique
 }
 
 func (s *platformSuite) testRecoverKeys(c *C, params *ProtectKeyParams) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
-	var handler PlatformKeyDataHandler
-	payload, err := handler.RecoverKeys(&secboot.PlatformKeyData{
-		EncodedHandle:    platformHandle,
-		EncryptedPayload: s.lastEncryptedPayload})
+	platformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
 
-	keyUnsealed, authKeyUnsealed, err := payload.Unmarshal()
-	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	var handler PlatformKeyDataHandler
+	payload, err := handler.RecoverKeys(platformKeyData, s.lastEncryptedPayload)
+	c.Assert(err, IsNil)
+
+	pk, u := s.verifyASN1(c, payload)
+	c.Check(primaryKey, DeepEquals, secboot.PrimaryKey(pk))
+
+	uk := make([]byte, len(pk))
+	r := hkdf.New(func() gohash.Hash { return crypto.SHA256.New() }, pk, u, []byte("UNLOCK"))
+	_, err = io.ReadFull(r, uk)
+	c.Assert(err, IsNil)
+	c.Check(unlockKey, DeepEquals, secboot.DiskUnlockKey(uk))
 }
 
 func (s *platformSuite) TestRecoverKeysSimplePCRProfile(c *C) {
 	s.testRecoverKeys(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)})
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	})
 }
 
 func (s *platformSuite) TestRecoverKeysNilPCRProfile(c *C) {
@@ -232,14 +235,13 @@ func (s *platformSuite) TestRecoverKeysNoPCRPolicyCounter(c *C) {
 }
 
 func (s *platformSuite) testRecoverKeysNoValidSRK(c *C, prepareSrk func()) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
 	prepareSrk()
@@ -249,13 +251,19 @@ func (s *platformSuite) testRecoverKeysNoValidSRK(c *C, prepareSrk func()) {
 
 	var handler PlatformKeyDataHandler
 	payload, err := handler.RecoverKeys(&secboot.PlatformKeyData{
-		EncodedHandle:    platformHandle,
-		EncryptedPayload: s.lastEncryptedPayload})
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256)},
+		s.lastEncryptedPayload)
 
-	keyUnsealed, authKeyUnsealed, err := payload.Unmarshal()
-	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	pk, u := s.verifyASN1(c, payload)
+	c.Check(primaryKey, DeepEquals, secboot.PrimaryKey(pk))
+
+	uk := make([]byte, len(pk))
+	r := hkdf.New(func() gohash.Hash { return crypto.SHA256.New() }, pk, u, []byte("UNLOCK"))
+	_, err = io.ReadFull(r, uk)
+	c.Assert(err, IsNil)
+	c.Check(unlockKey, DeepEquals, secboot.DiskUnlockKey(uk))
 }
 
 func (s *platformSuite) TestRecoverKeysMissingSRK(c *C) {
@@ -289,7 +297,7 @@ func (s *platformSuite) testRecoverKeysImportable(c *C, params *ProtectKeyParams
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
-	k, authKey, err := ProtectKeyWithExternalStorageKey(srkPub, key, params)
+	k, primaryKey, unlockKey, err := NewExternalTPMProtectedKey(srkPub, params)
 	c.Assert(err, IsNil)
 
 	var platformHandle json.RawMessage
@@ -297,13 +305,20 @@ func (s *platformSuite) testRecoverKeysImportable(c *C, params *ProtectKeyParams
 
 	var handler PlatformKeyDataHandler
 	payload, err := handler.RecoverKeys(&secboot.PlatformKeyData{
-		EncodedHandle:    platformHandle,
-		EncryptedPayload: s.lastEncryptedPayload})
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256)},
+		s.lastEncryptedPayload)
+	c.Assert(err, IsNil)
 
-	keyUnsealed, authKeyUnsealed, err := payload.Unmarshal()
-	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+	pk, u := s.verifyASN1(c, payload)
+	c.Check(primaryKey, DeepEquals, secboot.PrimaryKey(pk))
+
+	uk := make([]byte, len(pk))
+	r := hkdf.New(func() gohash.Hash { return crypto.SHA256.New() }, pk, u, []byte("UNLOCK"))
+	_, err = io.ReadFull(r, uk)
+	c.Assert(err, IsNil)
+	c.Check(unlockKey, DeepEquals, secboot.DiskUnlockKey(uk))
 }
 
 func (s *platformSuite) TestRecoverKeysImportableSimplePCRProfile(c *C) {
@@ -314,16 +329,19 @@ func (s *platformSuite) TestRecoverKeysImportableSimplePCRProfile(c *C) {
 
 func (s *platformSuite) TestRecoverKeysImportableNilPCRProfile(c *C) {
 	s.testRecoverKeysImportable(c, &ProtectKeyParams{
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		Role:                   ""})
 }
 
 func (s *platformSuite) TestRecoverKeysNoTPMConnection(c *C) {
 	key := make(secboot.DiskUnlockKey, 32)
 	rand.Read(key)
 
-	k, _, err := ProtectKeyWithTPM(s.TPM(), key, &ProtectKeyParams{
+	k, _, _, err := NewTPMProtectedKey(s.TPM(), &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		Role:                   "",
+	})
 	c.Check(err, IsNil)
 
 	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
@@ -336,39 +354,42 @@ func (s *platformSuite) TestRecoverKeysNoTPMConnection(c *C) {
 
 	var handler PlatformKeyDataHandler
 	_, err = handler.RecoverKeys(&secboot.PlatformKeyData{
-		EncodedHandle:    platformHandle,
-		EncryptedPayload: s.lastEncryptedPayload})
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256)},
+		s.lastEncryptedPayload)
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorUnavailable)
 	c.Check(err, testutil.ErrorIs, ErrNoTPM2Device)
 	c.Check(err, ErrorMatches, "no TPM2 device is available")
 }
 
-func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*secboot.KeyData, secboot.AuxiliaryKey)) error {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
-
+func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*secboot.KeyData, secboot.PrimaryKey)) error {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
 
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k, primaryKey, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
-	prepare(k, authKey)
+	prepare(k, primaryKey)
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
 	var handler PlatformKeyDataHandler
 	_, err = handler.RecoverKeys(&secboot.PlatformKeyData{
-		EncodedHandle:    platformHandle,
-		EncryptedPayload: s.lastEncryptedPayload})
+		Generation:    k.Generation(),
+		AuthMode:      secboot.AuthModeNone,
+		Role:          "",
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		EncodedHandle: platformHandle},
+		s.lastEncryptedPayload)
 	return err
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingLockout(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
 		// Put the TPM in DA lockout mode
 		c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 	})
@@ -379,7 +400,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingLockout(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingInvalidPCRProfile(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 	})
@@ -390,7 +411,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingInvalidPCRProfile(c *C
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(k *secboot.KeyData, authKey secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(k *secboot.KeyData, primaryKey secboot.PrimaryKey) {
 		w := newMockKeyDataWriter()
 		c.Check(k.WriteAtomic(w), IsNil)
 
@@ -399,8 +420,9 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
 		skd, err := NewSealedKeyData(k2)
 		c.Assert(err, IsNil)
 
-		c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), authKey, nil), IsNil)
-		c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
+		// Increment NV counter
+		c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, nil, NewPCRPolicyVersion), IsNil)
+		c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), primaryKey), IsNil)
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidData)
@@ -409,7 +431,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingSealedKeyAccessLocked(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
 		c.Check(BlockPCRProtectionPolicies(s.TPM(), []int{23}), IsNil)
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
@@ -419,7 +441,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingSealedKeyAccessLocked(
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingProvisioningError(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.AuxiliaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
 		srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
 		c.Assert(err, IsNil)
 		s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
@@ -432,54 +454,148 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingProvisioningError(c *C
 }
 
 func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
+
+	// Need to mock newKeyDataPolicy to force require an auth value when using NewTPMProtectedKey so that we don't
+	// have to use the passphrase APIs.
+	restore := MockNewKeyDataPolicy(func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic, requireAuthValue bool) (KeyDataPolicy, tpm2.Digest, error) {
+		index := tpm2.HandleNull
+		var indexName tpm2.Name
+		if pcrPolicyCounterPub != nil {
+			index = pcrPolicyCounterPub.Index
+			indexName = pcrPolicyCounterPub.Name()
+		}
+
+		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
+
+		trial := util.ComputeAuthPolicy(alg)
+		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
+		trial.PolicyAuthValue()
+
+		mockPolicyData := &KeyDataPolicy_v3{
+			StaticData: &StaticPolicyData_v3{
+				AuthPublicKey:          key,
+				PCRPolicyRef:           pcrPolicyRef,
+				PCRPolicyCounterHandle: index,
+				RequireAuthValue:       true},
+			PCRData: &PcrPolicyData_v3{
+				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull},
+			}}
+
+		mockPolicyDigest := trial.GetDigest()
+
+		return mockPolicyData, mockPolicyDigest, nil
+	})
+	defer restore()
 
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, authKey, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
+	platformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
+
 	var handler PlatformKeyDataHandler
-	platformHandle, err = handler.ChangeAuthKey(platformHandle, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
 	c.Check(err, IsNil)
 
-	payload, err := handler.RecoverKeysWithAuthKey(&secboot.PlatformKeyData{
-		EncodedHandle:    platformHandle,
-		EncryptedPayload: s.lastEncryptedPayload}, []byte{1, 2, 3, 4})
+	newPlatformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: newHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
 
-	keyUnsealed, authKeyUnsealed, err := payload.Unmarshal()
+	payload, err := handler.RecoverKeysWithAuthKey(newPlatformKeyData, s.lastEncryptedPayload, []byte{1, 2, 3, 4})
 	c.Check(err, IsNil)
-	c.Check(keyUnsealed, DeepEquals, key)
-	c.Check(authKeyUnsealed, DeepEquals, authKey)
+
+	pk, u := s.verifyASN1(c, payload)
+	c.Check(primaryKey, DeepEquals, secboot.PrimaryKey(pk))
+
+	uk := make([]byte, len(pk))
+	r := hkdf.New(func() gohash.Hash { return crypto.SHA256.New() }, pk, u, []byte("UNLOCK"))
+	_, err = io.ReadFull(r, uk)
+	c.Assert(err, IsNil)
+	c.Check(unlockKey, DeepEquals, secboot.DiskUnlockKey(uk))
 }
 
 func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
+
+	// Need to mock newKeyDataPolicy to force require an auth value when using NewTPMProtectedKey so that we don't
+	// have to use the passphrase APIs.
+	restore := MockNewKeyDataPolicy(func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic, requireAuthValue bool) (KeyDataPolicy, tpm2.Digest, error) {
+		index := tpm2.HandleNull
+		var indexName tpm2.Name
+		if pcrPolicyCounterPub != nil {
+			index = pcrPolicyCounterPub.Index
+			indexName = pcrPolicyCounterPub.Name()
+		}
+
+		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
+
+		trial := util.ComputeAuthPolicy(alg)
+		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
+		trial.PolicyAuthValue()
+
+		mockPolicyData := &KeyDataPolicy_v3{
+			StaticData: &StaticPolicyData_v3{
+				AuthPublicKey:          key,
+				PCRPolicyRef:           pcrPolicyRef,
+				PCRPolicyCounterHandle: index,
+				RequireAuthValue:       true},
+			PCRData: &PcrPolicyData_v3{
+				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull},
+			}}
+
+		mockPolicyDigest := trial.GetDigest()
+
+		return mockPolicyData, mockPolicyDigest, nil
+	})
+	defer restore()
 
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, _, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
+	platformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
+
 	var handler PlatformKeyDataHandler
-	platformHandle, err = handler.ChangeAuthKey(platformHandle, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
 	c.Check(err, IsNil)
 
-	_, err = handler.RecoverKeysWithAuthKey(&secboot.PlatformKeyData{
-		EncodedHandle:    platformHandle,
-		EncryptedPayload: s.lastEncryptedPayload}, []byte{5, 6, 7, 8})
+	newPlatformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: newHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		// AuthMode:      k.AuthMode(),
+		AuthMode: secboot.AuthModePassphrase,
+	}
+
+	_, err = handler.RecoverKeysWithAuthKey(newPlatformKeyData, s.lastEncryptedPayload, []byte{5, 6, 7, 8})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidAuthKey)
 	c.Check(err, ErrorMatches, "cannot unseal key: TPM returned an error for session 1 whilst executing command TPM_CC_Unseal: "+
@@ -487,24 +603,70 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 }
 
 func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
-	key := make(secboot.DiskUnlockKey, 32)
-	rand.Read(key)
+
+	// Need to mock newKeyDataPolicy to force require an auth value when using NewTPMProtectedKey so that we don't
+	// have to use the passphrase APIs.
+	restore := MockNewKeyDataPolicy(func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic, requireAuthValue bool) (KeyDataPolicy, tpm2.Digest, error) {
+		index := tpm2.HandleNull
+		var indexName tpm2.Name
+		if pcrPolicyCounterPub != nil {
+			index = pcrPolicyCounterPub.Index
+			indexName = pcrPolicyCounterPub.Name()
+		}
+
+		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
+
+		trial := util.ComputeAuthPolicy(alg)
+		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
+		trial.PolicyAuthValue()
+
+		mockPolicyData := &KeyDataPolicy_v3{
+			StaticData: &StaticPolicyData_v3{
+				AuthPublicKey:          key,
+				PCRPolicyRef:           pcrPolicyRef,
+				PCRPolicyCounterHandle: index,
+				RequireAuthValue:       true},
+			PCRData: &PcrPolicyData_v3{
+				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull},
+			}}
+
+		mockPolicyDigest := trial.GetDigest()
+
+		return mockPolicyData, mockPolicyDigest, nil
+	})
+	defer restore()
 
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
 
-	k, _, err := ProtectKeyWithTPM(s.TPM(), key, params)
+	k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
+	platformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
+
 	var handler PlatformKeyDataHandler
-	platformHandle, err = handler.ChangeAuthKey(platformHandle, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
 	c.Check(err, IsNil)
 
-	_, err = handler.ChangeAuthKey(platformHandle, nil, []byte{5, 6, 7, 8})
+	newPlatformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: newHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
+
+	_, err = handler.ChangeAuthKey(newPlatformKeyData, nil, []byte{5, 6, 7, 8})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidAuthKey)
 	c.Check(err, ErrorMatches, "TPM returned an error for session 1 whilst executing command TPM_CC_ObjectChangeAuth: "+

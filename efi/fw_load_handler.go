@@ -21,12 +21,14 @@ package efi
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot/efi/internal"
 	"golang.org/x/xerrors"
 )
 
@@ -44,13 +46,30 @@ var newFwLoadHandler = func(log *tcglog.Log) imageLoadHandler {
 	return &fwLoadHandler{log: log}
 }
 
+func (h *fwLoadHandler) measureSeparator(ctx pcrBranchContext, pcr tpm2.Handle, event *tcglog.Event) error {
+	if event.EventType != tcglog.EventTypeSeparator {
+		return fmt.Errorf("unexpected event type %v", event.EventType)
+	}
+
+	data, ok := event.Data.(*tcglog.SeparatorEventData)
+	if !ok {
+		// if decoding fails, the resulting type is guaranteed to implement error.
+		return fmt.Errorf("cannot measure invalid separator event: %w", event.Data.(error))
+	}
+	if data.IsError() {
+		return fmt.Errorf("separator indicates that a firmware error occurred (error code from log: %d)", binary.LittleEndian.Uint32(data.Bytes()))
+	}
+	ctx.ExtendPCR(pcr, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+	return nil
+}
+
 func (h *fwLoadHandler) readAndMeasureSignatureDb(ctx pcrBranchContext, name efi.VariableDescriptor) ([]byte, error) {
 	db, _, err := ctx.Vars().ReadVar(name.Name, name.GUID)
 	if err != nil && err != efi.ErrVarNotExist {
 		return nil, xerrors.Errorf("cannot read current variable: %w", err)
 	}
 
-	ctx.MeasureVariable(secureBootPCR, name.GUID, name.Name, db)
+	ctx.MeasureVariable(secureBootPolicyPCR, name.GUID, name.Name, db)
 	return db, nil
 }
 
@@ -69,12 +88,10 @@ func (h *fwLoadHandler) measureAuthorizedSignatureDb(ctx pcrBranchContext) error
 }
 
 func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error {
-	ctx.ResetPCR(secureBootPCR)
-
 	// This hard-codes a profile that will only work on devices with secure boot enabled,
 	// deployed mode on (where UEFI >= 2.5), without a UEFI debugger enabled and which
 	// measure events in the correct order.
-	ctx.MeasureVariable(secureBootPCR, efi.GlobalVariable, sbStateName, []byte{1})
+	ctx.MeasureVariable(secureBootPolicyPCR, efi.GlobalVariable, sbStateName, []byte{1})
 	if _, err := h.readAndMeasureSignatureDb(ctx, PK); err != nil {
 		return xerrors.Errorf("cannot measure PK: %w", err)
 	}
@@ -101,17 +118,19 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		events = events[1:]
 
 		switch {
-		case e.PCRIndex < secureBootPCR && e.EventType == tcglog.EventTypeSeparator:
+		case e.PCRIndex < tcglog.PCRIndex(secureBootPolicyPCR) && e.EventType == tcglog.EventTypeSeparator:
 			// pre-OS to OS-present signal
 			foundOsPresent = true
-		case e.PCRIndex == secureBootPCR && e.EventType == tcglog.EventTypeSeparator:
+		case e.PCRIndex == tcglog.PCRIndex(secureBootPolicyPCR) && e.EventType == tcglog.EventTypeSeparator:
 			// end of secure boot configuration signal
 			if foundSecureBootSeparator {
 				return errors.New("unexpected separator")
 			}
-			ctx.ExtendPCR(secureBootPCR, tpm2.Digest(e.Digests[ctx.PCRAlg()]))
+			if err := h.measureSeparator(ctx, secureBootPolicyPCR, e); err != nil {
+				return err
+			}
 			foundSecureBootSeparator = true
-		case e.PCRIndex == secureBootPCR && e.EventType == tcglog.EventTypeEFIVariableAuthority:
+		case e.PCRIndex == tcglog.PCRIndex(secureBootPolicyPCR) && e.EventType == tcglog.EventTypeEFIVariableAuthority:
 			// secure boot verification event - shouldn't see this before the end of secure
 			// boot configuration signal.
 			if !foundSecureBootSeparator {
@@ -119,14 +138,14 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			}
 			digest := tpm2.Digest(e.Digests[ctx.PCRAlg()])
 			ctx.FwContext().AppendVerificationEvent(digest)
-			ctx.ExtendPCR(secureBootPCR, digest)
-		case e.PCRIndex == secureBootPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
+			ctx.ExtendPCR(secureBootPolicyPCR, digest)
+		case e.PCRIndex == tcglog.PCRIndex(secureBootPolicyPCR) && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
 			// ignore: part of the secure boot configuration - shouldn't see this after the
 			// end of secure boot configuration signal.
 			if foundSecureBootSeparator {
 				return errors.New("unexpected configuration event")
 			}
-		case e.PCRIndex == secureBootPCR:
+		case e.PCRIndex == tcglog.PCRIndex(secureBootPolicyPCR):
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:
 			// not a secure boot event
@@ -137,12 +156,63 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		}
 	}
 
+	if !foundSecureBootSeparator {
+		return errors.New("missing separator")
+	}
 	return nil
 }
 
-func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) {
-	ctx.ResetPCR(bootManagerCodePCR)
+func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
+	donePcrReset := false
 
+	for _, event := range h.log.Events {
+		if event.PCRIndex != tcglog.PCRIndex(platformFirmwarePCR) {
+			continue
+		}
+		if event.EventType == tcglog.EventTypeNoAction {
+			if err, isErr := event.Data.(error); isErr {
+				return fmt.Errorf("cannot decode EV_NO_ACTION event data: %w", err)
+			}
+			if loc, isLoc := event.Data.(*tcglog.StartupLocalityEventData); isLoc {
+				if donePcrReset {
+					return errors.New("log for PCR0 has an unexpected StartupLocality event")
+				}
+				ctx.ResetCRTMPCR(loc.StartupLocality)
+				donePcrReset = true
+			}
+			continue
+		}
+
+		if !donePcrReset {
+			ctx.ResetPCR(platformFirmwarePCR)
+			donePcrReset = true
+		}
+
+		if event.EventType == tcglog.EventTypeSeparator {
+			return h.measureSeparator(ctx, platformFirmwarePCR, event)
+		}
+		ctx.ExtendPCR(platformFirmwarePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+	}
+
+	return errors.New("missing separator")
+}
+
+func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
+	for _, event := range h.log.Events {
+		if event.PCRIndex != tcglog.PCRIndex(driversAndAppsPCR) {
+			continue
+		}
+
+		if event.EventType == tcglog.EventTypeSeparator {
+			return h.measureSeparator(ctx, driversAndAppsPCR, event)
+		}
+		ctx.ExtendPCR(driversAndAppsPCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+	}
+
+	return errors.New("missing separator")
+}
+
+func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error {
 	// Replay the log until the transition to the OS. Different firmware implementations and
 	// configurations perform different pre-OS measurements, and these events need to be preserved
 	// in the profile.
@@ -158,29 +228,82 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) {
 	// we've enabled follow section 8.2.4 when they measure the first EV_EFI_ACTION event (which is
 	// optional - firmware should measure a EV_OMIT_BOOT_DEVICE_EVENTS event if they are not measured,
 	// although some implementations don't do this either). I've not seen any implementations use the
-	// EV_ACTION events, and these would probably require explicit support here.
+	// mentioned EV_ACTION events, and these look like they are only relevant to BIOS boot anyway.
+	//
+	// The TCG PFP 1.06 r49 cleans this up a bit - it removes reference to the EV_ACTION events, and
+	// corrects the "Method for measurement" subsection of section 3.3.4.5 to describe that things work
+	// how we previously assumed. It does introduce a new EV_EFI_ACTION event ("Booting to <Boot####> Option")
+	// which will require explicit support in this package so it is currently rejected by the
+	// preinstall.RunChecks logic.
 	//
 	// This also retains measurements associated with the launch of any system preparation applications,
 	// although note that the inclusion of these make a profile inherently fragile. The TCG PC Client PFP
 	// spec v1.05r23 doesn't specify whether these are launched as part of the pre-OS environment or as
 	// part of the OS-present environment. It defines the boundary between the pre-OS environment and
 	// OS-present environment as a separator event measured to PCRs 0-7, but EDK2 measures a separator to
-	// PCR7 as soon as the secure boot policy is measured and system preparation applications are considered
-	// part of the pre-OS environment - they are measured to PCR4 before the pre-OS to OS-present transition
-	// is signalled by measuring separators to the remaining PCRs. This seems sensible, but newer Dell
-	// devices load an agent from firmware before shim is executed and measure this to PCR4 as part of the
-	// OS-present environment, which seems wrong. The approach here assumes that the EDK2 behaviour is
-	// correct.
-	for _, event := range h.log.Events {
-		if event.PCRIndex != bootManagerCodePCR {
+	// PCR7 as soon as the secure boot configuration is measured and system preparation applications are
+	// considered part of the pre-OS environment - they are measured to PCR4 before the pre-OS to OS-present
+	// transition is signalled by measuring separators to the remaining PCRs. The UEFI specification says that
+	// system preparation applications are executed before the ready to boot signal, which is when the transition
+	// from pre-OS to OS-present occurs, so I think we can be confident that we're correct here.
+	events := h.log.Events
+	measuredSeparator := false
+	for len(events) > 0 {
+		event := events[0]
+		events = events[1:]
+
+		if event.PCRIndex != tcglog.PCRIndex(bootManagerCodePCR) {
 			continue
 		}
 
-		ctx.ExtendPCR(bootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
 		if event.EventType == tcglog.EventTypeSeparator {
+			if err := h.measureSeparator(ctx, bootManagerCodePCR, event); err != nil {
+				return err
+			}
+			measuredSeparator = true
 			break
 		}
+		ctx.ExtendPCR(bootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
 	}
+
+	if !measuredSeparator {
+		return errors.New("missing separator")
+	}
+
+	// Some newer laptops including those from Dell and Lenovo execute code from a firmware volume as part
+	// of the OS-present environment, before shim runs, and using the LoadImage API which results in an
+	// additional measurement to PCR4. Copy this into the profile if it's part of a well-known endpoint
+	// management application known as "Absolute" (formerly "Computrace"). Discard anything else which
+	// will result in an invalid profile but will be picked up by the preinstall.RunChecks API anyway.
+	for len(events) > 0 {
+		event := events[0]
+		events = events[1:]
+
+		if event.PCRIndex != tcglog.PCRIndex(bootManagerCodePCR) {
+			continue
+		}
+		if event.EventType != tcglog.EventTypeEFIBootServicesApplication {
+			return fmt.Errorf("unexpected OS-present event type: %v", event.EventType)
+		}
+
+		// once we encounter the first EV_EFI_BOOT_SERVICES_APPLICATION event in PCR4, this loop alway
+		// breaks or returns an error.
+
+		isAbsolute, err := internal.IsAbsoluteAgentLaunch(event)
+		if err != nil {
+			return fmt.Errorf("encountered an error determining whether an OS-present launch is related to Absolute: %w", err)
+		}
+		if isAbsolute {
+			// copy the digest to the policy
+			ctx.ExtendPCR(bootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		}
+		// If it's not Absolute, we assume it's related to the OS launch which we will predict
+		// later on. If it's something else, discarding it here creates an invalid policy but this is
+		// picked up by the preinstall.RunChecks API anyway.
+		break
+	}
+
+	return nil
 }
 
 // MeasureImageStart implements imageLoadHandler.MeasureImageStart.
@@ -189,13 +312,35 @@ func (h *fwLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 		return errors.New("the TCG event log does not have the requested algorithm")
 	}
 
-	if ctx.Flags()&secureBootPolicyProfile > 0 {
+	// Ensure each PCR in the policy is enabled to its reset value now in case nothing
+	// extends it later on. We ignore PCR0 here as a special case because it doesn't
+	// necessarily have a zero reset value.
+	for _, pcr := range ctx.PCRs().PCRs() {
+		if pcr == platformFirmwarePCR {
+			continue
+		}
+		ctx.ResetPCR(pcr)
+	}
+
+	if ctx.PCRs().Contains(platformFirmwarePCR) {
+		if err := h.measurePlatformFirmware(ctx); err != nil {
+			return fmt.Errorf("cannot measure platform firmware: %w", err)
+		}
+	}
+	if ctx.PCRs().Contains(driversAndAppsPCR) {
+		if err := h.measureDriversAndApps(ctx); err != nil {
+			return fmt.Errorf("cannot measure drivers and apps: %w", err)
+		}
+	}
+	if ctx.PCRs().Contains(bootManagerCodePCR) {
+		if err := h.measureBootManagerCodePreOS(ctx); err != nil {
+			return fmt.Errorf("cannot measure boot manager code: %w", err)
+		}
+	}
+	if ctx.PCRs().Contains(secureBootPolicyPCR) {
 		if err := h.measureSecureBootPolicyPreOS(ctx); err != nil {
 			return xerrors.Errorf("cannot measure secure boot policy: %w", err)
 		}
-	}
-	if ctx.Flags()&bootManagerCodeProfile > 0 {
-		h.measureBootManagerCodePreOS(ctx)
 	}
 
 	return nil
@@ -245,7 +390,7 @@ func (m *fwImageLoadMeasurer) measureVerification() error {
 		return nil
 	}
 	m.FwContext().AppendVerificationEvent(digest)
-	m.ExtendPCR(secureBootPCR, digest)
+	m.ExtendPCR(secureBootPolicyPCR, digest)
 	return nil
 }
 
@@ -259,13 +404,13 @@ func (m *fwImageLoadMeasurer) measurePEImageDigest() error {
 }
 
 func (m *fwImageLoadMeasurer) measure() error {
-	if m.Flags()&secureBootPolicyProfile > 0 {
+	if m.PCRs().Contains(secureBootPolicyPCR) {
 		if err := m.measureVerification(); err != nil {
 			return xerrors.Errorf("cannot measure secure boot event: %w", err)
 		}
 	}
 
-	if m.Flags()&bootManagerCodeProfile > 0 {
+	if m.PCRs().Contains(bootManagerCodePCR) {
 		if err := m.measurePEImageDigest(); err != nil {
 			return xerrors.Errorf("cannot measure boot manager code event: %w", err)
 		}
