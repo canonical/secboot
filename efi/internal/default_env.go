@@ -34,8 +34,8 @@ var (
 type defaultEnvImpl struct{}
 
 // VarContext implements [HostEnvironment.VarContext].
-func (e defaultEnvImpl) VarContext() context.Context {
-	return efi.DefaultVarContext
+func (e defaultEnvImpl) VarContext(parent context.Context) context.Context {
+	return efi.WithDefaultVarsBackend(parent)
 }
 
 // ReadEventLog implements [HostEnvironment.ReadEventLog].

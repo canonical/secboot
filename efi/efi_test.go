@@ -777,7 +777,7 @@ type mockVarReader struct {
 }
 
 func newMockVarReader(env HostEnvironment) *mockVarReader {
-	return &mockVarReader{ctx: env.VarContext()}
+	return &mockVarReader{ctx: env.VarContext(context.Background())}
 }
 
 func (r *mockVarReader) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {

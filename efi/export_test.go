@@ -20,6 +20,8 @@
 package efi
 
 import (
+	"context"
+
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot/efi/internal"
@@ -192,7 +194,7 @@ func MockSnapdenvTesting(testing bool) (restore func()) {
 
 func NewInitialVarReader(host HostEnvironment) *initialVarReader {
 	return &initialVarReader{
-		varsCtx:   host.VarContext(),
+		varsCtx:   host.VarContext(context.TODO()),
 		overrides: make(map[efi.VariableDescriptor]varContents)}
 }
 

@@ -20,6 +20,7 @@
 package internal_test
 
 import (
+	"context"
 	_ "embed"
 	"io"
 	"os"
@@ -39,7 +40,11 @@ type defaultEnvSuite struct{}
 var _ = Suite(&defaultEnvSuite{})
 
 func (s *defaultEnvSuite) TestVarContext(c *C) {
-	c.Check(DefaultEnv.VarContext(), Equals, efi.DefaultVarContext)
+	ctx := DefaultEnv.VarContext(context.Background())
+	c.Assert(ctx, NotNil)
+
+	expected := efi.WithDefaultVarsBackend(context.Background())
+	c.Check(ctx.Value(efi.VarsBackendKey{}), Equals, expected.Value(efi.VarsBackendKey{}))
 }
 
 func (s *defaultEnvSuite) testReadEventLog(c *C, opts *efitest.LogOptions) {

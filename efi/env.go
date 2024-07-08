@@ -40,8 +40,13 @@ import (
 type HostEnvironment interface {
 	// VarContext returns a context containing a VarsBackend, keyed by efi.VarsBackendKey,
 	// for interacting with EFI variables via go-efilib. This context can be passed to any
-	// go-efilib function that interacts with EFI variables.
-	VarContext() context.Context
+	// go-efilib function that interacts with EFI variables. Right now, go-efilib doesn't
+	// support any other uses of the context such as cancelation or deadlines. The efivarfs
+	// backend will support this eventually for variable writes because it currently implements
+	// a retry loop that has a potential to race with other processes. Cancelation and / or
+	// deadlines for sections of code that performs multiple reads using efivarfs may be useful
+	// in the future because the kernel rate-limits reads per-user.
+	VarContext(parent context.Context) context.Context
 
 	// ReadEventLog reads the TCG event log
 	ReadEventLog() (*tcglog.Log, error)
@@ -261,7 +266,17 @@ type variableSetCollector struct {
 }
 
 func newVariableSetCollector(env HostEnvironment) *variableSetCollector {
-	varsCtx := env.VarContext()
+	// We pass the TODO context here for now, as the context just essentially
+	// a container for holding the variable backend, so there's no need for
+	// the caller to override it.
+	//
+	// In the future, the efivarfs backend will make use of cancellation and / or
+	// deadlines it because it runs a retry loop that can race with other processes,
+	// although this package is doing no writing. Cancellation and / or deadlines
+	// may also still be useful in the read path especially where a section of code
+	// performs multiple reads via efivarfs - these reads are rate-limitted per-user
+	// in the kernel.
+	varsCtx := env.VarContext(context.TODO())
 	return &variableSetCollector{
 		varsCtx: varsCtx,
 		seen:    map[initialVarReaderKey]struct{}{initialVarReaderKey{}: struct{}{}}, // add the current environment
