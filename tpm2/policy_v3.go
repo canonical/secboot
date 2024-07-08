@@ -205,7 +205,7 @@ func (p *keyDataPolicy_v3) SetPCRPolicyFrom(src keyDataPolicy) {
 	p.PCRData = src.(*keyDataPolicy_v3).PCRData
 }
 
-func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession, hmacSession tpm2.SessionContext) error {
+func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession, _ tpm2.SessionContext) error {
 	if err := p.PCRData.executePcrAssertions(tpm, policySession); err != nil {
 		return xerrors.Errorf("cannot execute PCR assertions: %w", err)
 	}

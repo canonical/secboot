@@ -199,6 +199,11 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	defer tpm.FlushContext(session)
 
 	keyObject.SetAuthValue(old)
+
+	// Use a HMAC session for authentication. This avoids sending the old value in the clear.
+	// It also encrypts the new value, although this only provides protection against passive
+	// interposers as we don't verify the key that is used to salt the session is actually a
+	// TPM protected key.
 	priv, err := tpm.ObjectChangeAuth(keyObject, srk, new, tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
 		if tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandObjectChangeAuth, 1) {

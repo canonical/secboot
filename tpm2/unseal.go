@@ -47,6 +47,11 @@ const (
 //
 // If a transient SRK is created, it is flushed from the TPM before this function
 // returns.
+//
+// If session is supplied, it must be a HMAC session with the AttrContinueSession attribute
+// set, used for authenticating the use of the storage hirearchy if a transient strorage
+// primary key needs to be created, in order to avoid transmitting the cleartext authorzation
+// value.
 func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.SessionContext) (keyObject tpm2.ResourceContext, policySession tpm2.SessionContext, err error) {
 	for try := tryPersistentSRK; try <= tryMax; try++ {
 		var srk tpm2.ResourceContext
@@ -98,6 +103,11 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 		}()
 
 		// Begin policy session with parameter encryption support and salted with the SRK.
+		// Note that this only provides protection against passive interposers, as active
+		// interposers can modify session attributes supplied in the TPM2_Unseal command and
+		// then redirect the command to an adversary supplied session for which they can calculate
+		// the HMAC for. Whilst the host CPU can detect this tampering (because the response
+		// HMAC will be invalid), this happens after the TPM has already provided the unsealed data.
 		symmetric := &tpm2.SymDef{
 			Algorithm: tpm2.SymAlgorithmAES,
 			KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
@@ -114,6 +124,34 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 	return nil, nil, err
 }
 
+// unsealDataFromTPM unseals the data from this sealed object.
+//
+// Unsealing uses a policy session that is salted with the SRK that is used to protect the key
+// and uses the same session for response encryption. Note that this only provides protection
+// against passive interposer attacks. There is no effort to protection against active
+// interposer attacks (where an advesary can modify communications) for a few reasons:
+//   - An adversary can remove the encrypt attribute from the session and redirect the command
+//     to a session for which they can compute the HMAC. The host CPU will detect this because the
+//     response HMAC will be invalid, but it's too late at this point. Using TPM2_EncryptDecrypt2
+//     with both command and response parameter encryption could mitigate this attack.
+//   - An adversary can modify and spoof PCR extends earlier in the boot chain, unless all
+//     critical commands like these are integrity protected with a session that is salted with a
+//     verified TPM key. This is not the case with any firmware today.
+//   - Protecting against an active interposer would require the use of a verified key. There is
+//     one - the endorsement key, but what happens if we don't have access to and can't download
+//     intermediate certs for verification? Does the boot fail? How is this communicated securely
+//     to the TPM?
+//   - The use of go's crypto/x509 for certificate verification doesn't permit disabling validity
+//     period valdidation. Hardware certificates will generally expire during the lifetime of a
+//     device and ignoring validity periods is generally quite normal here (eg, such as in UEFI
+//     secure boot).
+//   - An adversary could go one step further and just unsolder the discrete TPM and place
+//     it into a malcious platform that spoofs a specific host.
+//
+// If a session is supplied, it should be a HMAC session with the AttrContinueSession
+// attribute set, used for authenticating use of the storage hierarchy if a transient
+// storage primary key needs to be created, in order to avoid transmitting the cleartext
+// authorization value.
 func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []byte, hmacSession tpm2.SessionContext) (data []byte, err error) {
 	// Check if the TPM is in lockout mode
 	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)

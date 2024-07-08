@@ -57,14 +57,18 @@ func (t *Connection) LockoutAuthSet() bool {
 	return tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet > 0
 }
 
-// HmacSession returns a HMAC session instance which was created in order to conduct a proof-of-ownership check of the private part
-// of the endorsement key on the TPM. It is retained in order to reduce the number of sessions that need to be created during unseal
-// operations, and is created with a symmetric algorithm so that it is suitable for parameter encryption.
-// If the connection was created with SecureConnectToDefaultTPM, the session is salted with a value protected by the public part
-// of the key associated with the verified endorsement key certificate. The session key can only be retrieved by and used on the TPM
-// for which the endorsement certificate was issued. If the connection was created with ConnectToDefaultTPM, the session may be
-// salted with a value protected by the public part of the endorsement key if one exists or one is able to be created, but as the key
-// is not associated with a verified credential, there is no guarantee that only the TPM is able to retrieve the session key.
+// HmacSession returns a HMAC session with the AttrContinueSession attribute
+// set. If an endorsement key exists, it is also salted with this and configured
+// with parameter encryption. Note that this relies on reading the public area
+// from the TPM and there is no validation of the endorsement key against the
+// supplied manufacturer certificate, so this is vulnerable to active interposer
+// type attacks where an adversary could provide a public area for a non-TPM protected
+// key to us, whilst making it look like a TPM protected key, in order to perform MITM
+// attacks. If used for parameter encryption, this only provides protection against
+// passive interposer attacks. Other types of attacks are outside of the scope of this
+// package due to limitations in the way that TPM2_Unseal works, and the fact that the
+// platform firmware doesn't integrity protect commands that are critical to measured
+// boot such as PCR extends.
 func (t *Connection) HmacSession() tpm2.SessionContext {
 	if t.hmacSession == nil {
 		return nil
