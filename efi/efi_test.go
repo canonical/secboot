@@ -34,7 +34,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 )
@@ -695,80 +695,80 @@ type efiSuite struct{}
 var _ = Suite(&efiSuite{})
 
 func (s *efiSuite) TestMakePcrFlags1(c *C) {
-	flags := MakePcrFlags(internal.SecureBootPolicyPCR)
-	c.Check(flags, Equals, PcrFlags(1<<internal.SecureBootPolicyPCR))
+	flags := MakePcrFlags(internal_efi.SecureBootPolicyPCR)
+	c.Check(flags, Equals, PcrFlags(1<<internal_efi.SecureBootPolicyPCR))
 }
 
 func (s *efiSuite) TestMakePcrFlags2(c *C) {
-	flags := MakePcrFlags(internal.BootManagerCodePCR)
-	c.Check(flags, Equals, PcrFlags(1<<internal.BootManagerCodePCR))
+	flags := MakePcrFlags(internal_efi.BootManagerCodePCR)
+	c.Check(flags, Equals, PcrFlags(1<<internal_efi.BootManagerCodePCR))
 }
 
 func (s *efiSuite) TestMakePcrFlags3(c *C) {
-	flags := MakePcrFlags(internal.BootManagerCodePCR, internal.SecureBootPolicyPCR)
-	c.Check(flags, Equals, PcrFlags(1<<internal.BootManagerCodePCR|1<<internal.SecureBootPolicyPCR))
+	flags := MakePcrFlags(internal_efi.BootManagerCodePCR, internal_efi.SecureBootPolicyPCR)
+	c.Check(flags, Equals, PcrFlags(1<<internal_efi.BootManagerCodePCR|1<<internal_efi.SecureBootPolicyPCR))
 }
 
 func (e *efiSuite) TestPcrFlagsPCRs1(c *C) {
-	flags := PcrFlags(1 << internal.SecureBootPolicyPCR)
-	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{internal.SecureBootPolicyPCR})
+	flags := PcrFlags(1 << internal_efi.SecureBootPolicyPCR)
+	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{internal_efi.SecureBootPolicyPCR})
 }
 
 func (e *efiSuite) TestPcrFlagsPCRs2(c *C) {
-	flags := PcrFlags(1 << internal.BootManagerCodePCR)
-	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{internal.BootManagerCodePCR})
+	flags := PcrFlags(1 << internal_efi.BootManagerCodePCR)
+	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{internal_efi.BootManagerCodePCR})
 }
 
 func (e *efiSuite) TestPcrFlagsPCRs3(c *C) {
-	flags := PcrFlags((1 << internal.BootManagerCodePCR) | (1 << internal.SecureBootPolicyPCR))
-	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{internal.BootManagerCodePCR, internal.SecureBootPolicyPCR})
+	flags := PcrFlags((1 << internal_efi.BootManagerCodePCR) | (1 << internal_efi.SecureBootPolicyPCR))
+	c.Check(flags.PCRs(), DeepEquals, tpm2.HandleList{internal_efi.BootManagerCodePCR, internal_efi.SecureBootPolicyPCR})
 }
 
 func (e *efiSuite) TestPcrFlagsContains1(c *C) {
-	flags := PcrFlags(1 << internal.SecureBootPolicyPCR)
-	c.Check(flags.Contains(internal.SecureBootPolicyPCR), testutil.IsTrue)
+	flags := PcrFlags(1 << internal_efi.SecureBootPolicyPCR)
+	c.Check(flags.Contains(internal_efi.SecureBootPolicyPCR), testutil.IsTrue)
 }
 
 func (e *efiSuite) TestPcrFlagsContains2(c *C) {
-	flags := PcrFlags(1 << internal.BootManagerCodePCR)
-	c.Check(flags.Contains(internal.BootManagerCodePCR), testutil.IsTrue)
+	flags := PcrFlags(1 << internal_efi.BootManagerCodePCR)
+	c.Check(flags.Contains(internal_efi.BootManagerCodePCR), testutil.IsTrue)
 }
 
 func (e *efiSuite) TestPcrFlagsContains3(c *C) {
-	flags := PcrFlags((1 << internal.BootManagerCodePCR) | (1 << internal.SecureBootPolicyPCR))
-	c.Check(flags.Contains(internal.BootManagerCodePCR, internal.SecureBootPolicyPCR), testutil.IsTrue)
+	flags := PcrFlags((1 << internal_efi.BootManagerCodePCR) | (1 << internal_efi.SecureBootPolicyPCR))
+	c.Check(flags.Contains(internal_efi.BootManagerCodePCR, internal_efi.SecureBootPolicyPCR), testutil.IsTrue)
 }
 
 func (e *efiSuite) TestPcrFlagsContains4(c *C) {
-	flags := PcrFlags((1 << internal.BootManagerCodePCR) | (1 << internal.SecureBootPolicyPCR))
-	c.Check(flags.Contains(internal.SecureBootPolicyPCR), testutil.IsTrue)
+	flags := PcrFlags((1 << internal_efi.BootManagerCodePCR) | (1 << internal_efi.SecureBootPolicyPCR))
+	c.Check(flags.Contains(internal_efi.SecureBootPolicyPCR), testutil.IsTrue)
 }
 
 func (e *efiSuite) TestPcrFlagsDoesNotContain1(c *C) {
-	flags := PcrFlags(1 << internal.SecureBootPolicyPCR)
-	c.Check(flags.Contains(internal.PlatformFirmwarePCR), testutil.IsFalse)
+	flags := PcrFlags(1 << internal_efi.SecureBootPolicyPCR)
+	c.Check(flags.Contains(internal_efi.PlatformFirmwarePCR), testutil.IsFalse)
 }
 
 func (e *efiSuite) TestPcrFlagsDoesNotContain2(c *C) {
-	flags := PcrFlags(1 << internal.SecureBootPolicyPCR)
-	c.Check(flags.Contains(internal.PlatformFirmwarePCR, internal.SecureBootPolicyPCR), testutil.IsFalse)
+	flags := PcrFlags(1 << internal_efi.SecureBootPolicyPCR)
+	c.Check(flags.Contains(internal_efi.PlatformFirmwarePCR, internal_efi.SecureBootPolicyPCR), testutil.IsFalse)
 }
 
 type mockPcrProfileOptionVisitor struct {
 	pcrs         tpm2.HandleList
 	env          HostEnvironment
-	varModifiers []internal.InitialVariablesModifier
+	varModifiers []internal_efi.InitialVariablesModifier
 }
 
 func (v *mockPcrProfileOptionVisitor) AddPCRs(pcrs ...tpm2.Handle) {
 	v.pcrs = append(v.pcrs, pcrs...)
 }
 
-func (v *mockPcrProfileOptionVisitor) SetEnvironment(env internal.HostEnvironment) {
+func (v *mockPcrProfileOptionVisitor) SetEnvironment(env internal_efi.HostEnvironment) {
 	v.env = env
 }
 
-func (v *mockPcrProfileOptionVisitor) AddInitialVariablesModifier(fn internal.InitialVariablesModifier) {
+func (v *mockPcrProfileOptionVisitor) AddInitialVariablesModifier(fn internal_efi.InitialVariablesModifier) {
 	v.varModifiers = append(v.varModifiers, fn)
 }
 

@@ -34,7 +34,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
@@ -87,12 +87,12 @@ func (s *pcrProfileMockedSuite) TestPcrProfileGeneratorPCRAlgSHA1(c *C) {
 
 func (s *pcrProfileMockedSuite) TestWithSecureBootPolicyProfile(c *C) {
 	gen, _ := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences(), WithSecureBootPolicyProfile())
-	c.Check(gen.PCRs(), Equals, PcrFlags(1<<internal.SecureBootPolicyPCR))
+	c.Check(gen.PCRs(), Equals, PcrFlags(1<<internal_efi.SecureBootPolicyPCR))
 }
 
 func (s *pcrProfileMockedSuite) TestWithBootManagerCodeProfile(c *C) {
 	gen, _ := NewPcrProfileGenerator(tpm2.HashAlgorithmSHA256, NewImageLoadSequences(), WithBootManagerCodeProfile())
-	c.Check(gen.PCRs(), Equals, PcrFlags(1<<internal.BootManagerCodePCR))
+	c.Check(gen.PCRs(), Equals, PcrFlags(1<<internal_efi.BootManagerCodePCR))
 }
 
 func (s *pcrProfileMockedSuite) TestPcrProfileGeneratorImageLoadHandlers(c *C) {
@@ -528,7 +528,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifier(c *C) {
 			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
-		WithMockInitialVariablesModifierOption(func(vars internal.VariableSet) error {
+		WithMockInitialVariablesModifierOption(func(vars internal_efi.VariableSet) error {
 			c.Check(vars.WriteVar("foo", testGuid1, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2}), IsNil)
 			initialVarSets += 1
 			return nil
@@ -581,7 +581,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifierErr(c *C) {
 			{Name: "foo", GUID: testGuid1}: {Payload: []byte{1}, Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess},
 		}, new(tcglog.Log))),
 		WithSecureBootPolicyProfile(),
-		WithMockInitialVariablesModifierOption(func(vars internal.VariableSet) error {
+		WithMockInitialVariablesModifierOption(func(vars internal_efi.VariableSet) error {
 			return errors.New("some error")
 		}),
 	), ErrorMatches, `cannot process host variable modifier 0 for initial branch 0: some error`)

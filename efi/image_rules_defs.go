@@ -23,24 +23,24 @@ import (
 	"crypto"
 	"crypto/x509"
 
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
 func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 	return newSecureBootNamespaceRules(
 		"Microsoft UEFI CA",
 		withAuthority(
-			internal.MSUefiCA2011.Subject,
-			internal.MSUefiCA2011.SubjectKeyId,
-			internal.MSUefiCA2011.PublicKeyAlgorithm,
+			internal_efi.MSUefiCA2011.Subject,
+			internal_efi.MSUefiCA2011.SubjectKeyId,
+			internal_efi.MSUefiCA2011.PublicKeyAlgorithm,
 		),
 		// TODO(chrisccoulson): add tests for this when we find something that it's
 		// been used to sign and we have a signing certificate in the wild that we
 		// can add to embeds_test.go in order to create a mock shim with it
 		withAuthority(
-			internal.MSUefiCA2023.Subject,
-			internal.MSUefiCA2023.SubjectKeyId,
-			internal.MSUefiCA2023.PublicKeyAlgorithm,
+			internal_efi.MSUefiCA2023.Subject,
+			internal_efi.MSUefiCA2023.SubjectKeyId,
+			internal_efi.MSUefiCA2023.PublicKeyAlgorithm,
 		),
 		withSelfSignedSignerOnlyForTesting(
 			// O = Snake Oil

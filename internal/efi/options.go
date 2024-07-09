@@ -17,7 +17,7 @@
  *
  */
 
-package internal
+package efi
 
 import (
 	efi "github.com/canonical/go-efilib"

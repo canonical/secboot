@@ -17,7 +17,7 @@
  *
  */
 
-package internal_test
+package efi_test
 
 import (
 	"context"
@@ -29,7 +29,7 @@ import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	. "github.com/snapcore/secboot/efi/internal"
+	. "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 

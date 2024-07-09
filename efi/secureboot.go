@@ -27,7 +27,7 @@ import (
 	"io/ioutil"
 
 	efi "github.com/canonical/go-efilib"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"golang.org/x/xerrors"
 )
 
@@ -53,8 +53,8 @@ type SignatureDBUpdate struct {
 
 type signatureDBUpdatesOption []*SignatureDBUpdate
 
-func (u signatureDBUpdatesOption) ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error {
-	visitor.AddInitialVariablesModifier(func(vars internal.VariableSet) error {
+func (u signatureDBUpdatesOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
+	visitor.AddInitialVariablesModifier(func(vars internal_efi.VariableSet) error {
 		for _, quirk := range []signatureDBUpdateFirmwareQuirk{
 			signatureDBUpdateNoFirmwareQuirk,
 			signatureDBUpdateFirmwareDedupIgnoresOwner} {

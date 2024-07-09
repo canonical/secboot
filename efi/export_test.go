@@ -24,7 +24,7 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
 // Export constants for testing
@@ -206,13 +206,13 @@ func NewVarUpdate(prev *varUpdate, name efi.VariableDescriptor, attrs efi.Variab
 		data:     data}
 }
 
-type mockInitialVariablesModifierOption internal.InitialVariablesModifier
+type mockInitialVariablesModifierOption internal_efi.InitialVariablesModifier
 
-func (o mockInitialVariablesModifierOption) ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error {
-	visitor.AddInitialVariablesModifier(internal.InitialVariablesModifier(o))
+func (o mockInitialVariablesModifierOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
+	visitor.AddInitialVariablesModifier(internal_efi.InitialVariablesModifier(o))
 	return nil
 }
 
-func WithMockInitialVariablesModifierOption(fn func(internal.VariableSet) error) PCRProfileOption {
+func WithMockInitialVariablesModifierOption(fn func(internal_efi.VariableSet) error) PCRProfileOption {
 	return mockInitialVariablesModifierOption(fn)
 }

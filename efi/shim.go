@@ -32,7 +32,7 @@ import (
 	"strconv"
 
 	efi "github.com/canonical/go-efilib"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/xerrors"
@@ -103,8 +103,8 @@ func WithShimSbatPolicyLatest() PCRProfileOption {
 	return shimSbatPolicyLatestOption{}
 }
 
-func (shimSbatPolicyLatestOption) ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error {
-	visitor.AddInitialVariablesModifier(func(vars internal.VariableSet) error {
+func (shimSbatPolicyLatestOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
+	visitor.AddInitialVariablesModifier(func(vars internal_efi.VariableSet) error {
 		if err := vars.WriteVar(
 			shimSbatPolicyName, shimGuid,
 			efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess,
