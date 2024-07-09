@@ -31,6 +31,7 @@ import (
 	"github.com/canonical/tcglog-parser"
 	. "github.com/snapcore/secboot/efi/internal"
 	"github.com/snapcore/secboot/internal/efitest"
+	"github.com/snapcore/secboot/internal/testutil"
 
 	. "gopkg.in/check.v1"
 )
@@ -39,12 +40,22 @@ type defaultEnvSuite struct{}
 
 var _ = Suite(&defaultEnvSuite{})
 
+type testKey struct{}
+
 func (s *defaultEnvSuite) TestVarContext(c *C) {
-	ctx := DefaultEnv.VarContext(context.Background())
+	ctx := DefaultEnv.VarContext(context.WithValue(context.Background(), testKey{}, int64(10)))
 	c.Assert(ctx, NotNil)
 
 	expected := efi.WithDefaultVarsBackend(context.Background())
 	c.Check(ctx.Value(efi.VarsBackendKey{}), Equals, expected.Value(efi.VarsBackendKey{}))
+
+	// Make sure that the returned context has the right parent by testing the
+	// value we attached to it.
+	testVal := ctx.Value(testKey{})
+	c.Assert(testVal, NotNil)
+	testVali64, ok := testVal.(int64)
+	c.Assert(ok, testutil.IsTrue)
+	c.Check(testVali64, Equals, int64(10))
 }
 
 func (s *defaultEnvSuite) testReadEventLog(c *C, opts *efitest.LogOptions) {
