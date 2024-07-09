@@ -122,7 +122,7 @@ type keyDataPolicy interface {
 	// PCRPolicyCounterContext returns a context for the PCR policy counter
 	// associated with this keyDataPolicy. The supplied public area must match
 	// the public area of the counter associated with this policy.
-	PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic, session tpm2.SessionContext) (pcrPolicyCounterContext, error)
+	PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic) (pcrPolicyCounterContext, error)
 
 	// ValidateAuthKey verifies that the supplied key is associated with this
 	// keyDataPolicy.
@@ -134,6 +134,9 @@ type keyDataPolicy interface {
 //
 // The NV index will be created with attributes that allow anyone to read the index, and an authorization
 // policy that permits TPM2_NV_Increment with a signed authorization policy.
+//
+// If hmacSession is supplied, it is used for authenticating with the storage hierarchy, in order to avoid
+// transmitting the cleartext auth value, and must have the AttrContinueSession attribute set
 func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (public *tpm2.NVPublic, value uint64, err error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
@@ -176,7 +179,7 @@ func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 	}
 
 	// Initialize the index
-	if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
+	if err := tpm.NVIncrement(index, index, policySession); err != nil {
 		return nil, 0, err
 	}
 
@@ -185,7 +188,7 @@ func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 	public.Attrs |= tpm2.AttrNVWritten
 
 	// Read the current value
-	value, err = tpm.NVReadCounter(index, index, hmacSession)
+	value, err = tpm.NVReadCounter(index, index, nil)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -198,6 +201,9 @@ func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 //
 // The NV index will be created with attributes that allow anyone to read the index, and an authorization
 // policy that permits TPM2_NV_Increment with a signed authorization policy.
+//
+// If hmacSession is supplied, it is used for authenticating with the storage hierarchy, in order to avoid
+// transmitting the cleartext auth value, and must have the AttrContinueSession attribute set
 var ensurePcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (public *tpm2.NVPublic, err error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
@@ -213,7 +219,7 @@ var ensurePcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 		AuthPolicy: trial.GetDigest(),
 		Size:       8}
 
-	index, err := tpm.CreateResourceContextFromTPM(handle, hmacSession.IncludeAttrs(tpm2.AttrAudit))
+	index, err := tpm.CreateResourceContextFromTPM(handle)
 	switch {
 	case tpm2.IsResourceUnavailableError(err, handle):
 		// ok, need to create
@@ -247,7 +253,7 @@ var ensurePcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 		}
 
 		// Initialize the index
-		if err := tpm.NVIncrement(index, index, policySession, hmacSession.IncludeAttrs(tpm2.AttrAudit)); err != nil {
+		if err := tpm.NVIncrement(index, index, policySession); err != nil {
 			return nil, err
 		}
 	case err != nil:
@@ -513,8 +519,6 @@ func (t *policyOrTree) executeAssertions(tpm *tpm2.TPMContext, session tpm2.Sess
 // (eg, the initramfs), and the environment in which a sealed key should not be permitted to be unsealed
 // (eg, the OS runtime).
 func BlockPCRProtectionPolicies(tpm *Connection, pcrs []int) error {
-	session := tpm.HmacSession()
-
 	// The fence is a hash of uint32(0), which is the same as EV_SEPARATOR (which can be uint32(0) or uint32(-1))
 	fence := make([]byte, 4)
 
@@ -524,7 +528,7 @@ func BlockPCRProtectionPolicies(tpm *Connection, pcrs []int) error {
 		if err != nil {
 			return xerrors.Errorf("cannot being hash sequence: %w", err)
 		}
-		if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcr), seq, fence, session, nil); err != nil {
+		if _, err := tpm.EventSequenceExecute(tpm.PCRHandleContext(pcr), seq, fence, nil, nil); err != nil {
 			return xerrors.Errorf("cannot execute hash sequence: %w", err)
 		}
 	}

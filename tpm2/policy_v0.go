@@ -512,7 +512,6 @@ func (p *keyDataPolicy_v0) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 type pcrPolicyCounterContext_v0 struct {
 	tpm          *tpm2.TPMContext
 	index        tpm2.ResourceContext
-	session      tpm2.SessionContext
 	updateKey    *tpm2.Public
 	authPolicies tpm2.DigestList
 }
@@ -534,7 +533,7 @@ func (c *pcrPolicyCounterContext_v0) Get() (uint64, error) {
 		return 0, err
 	}
 
-	return c.tpm.NVReadCounter(c.index, c.index, authSession, c.session.IncludeAttrs(tpm2.AttrAudit))
+	return c.tpm.NVReadCounter(c.index, c.index, authSession)
 }
 
 func (c *pcrPolicyCounterContext_v0) Increment(key secboot.PrimaryKey) error {
@@ -586,10 +585,10 @@ func (c *pcrPolicyCounterContext_v0) Increment(key secboot.PrimaryKey) error {
 	}
 
 	// Increment the index.
-	return c.tpm.NVIncrement(c.index, c.index, policySession, c.session.IncludeAttrs(tpm2.AttrAudit))
+	return c.tpm.NVIncrement(c.index, c.index, policySession)
 }
 
-func (p *keyDataPolicy_v0) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic, session tpm2.SessionContext) (pcrPolicyCounterContext, error) {
+func (p *keyDataPolicy_v0) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic) (pcrPolicyCounterContext, error) {
 	if pub.Index != p.StaticData.PCRPolicyCounterHandle {
 		return nil, errors.New("NV index public area is inconsistent with metadata")
 	}
@@ -602,7 +601,6 @@ func (p *keyDataPolicy_v0) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 	return &pcrPolicyCounterContext_v0{
 		tpm:          tpm,
 		index:        index,
-		session:      session,
 		updateKey:    p.StaticData.AuthPublicKey,
 		authPolicies: p.StaticData.PCRPolicyCounterAuthPolicies}, nil
 }

@@ -97,7 +97,6 @@ type testProvisionNewTPMData struct {
 }
 
 func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisionNewTPMData) {
-	origEk, _ := s.TPM().EndorsementKey()
 	origHmacSession := s.TPM().HmacSession()
 
 	c.Check(s.TPM().EnsureProvisioned(data.mode, data.lockoutAuth), IsNil)
@@ -138,11 +137,6 @@ func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisi
 	c.Check(s.TPM().HmacSession(), NotNil)
 	c.Check(s.TPM().HmacSession().Handle().Type(), Equals, tpm2.HandleTypeHMACSession)
 	c.Check(s.TPM().HmacSession(), Not(Equals), origHmacSession)
-
-	ek, err := s.TPM().EndorsementKey()
-	c.Check(err, IsNil)
-	c.Check(ek.Handle(), Equals, tcg.EKHandle)
-	c.Check(ek, Not(Equals), origEk)
 
 	// Make sure ProvisionTPM didn't leak transient objects
 	handles, err := s.TPM().GetCapabilityHandles(tpm2.HandleTypeTransient.BaseHandle(), tpm2.CapabilityMaxProperties)
@@ -301,10 +295,10 @@ func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
 		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
 	})
 
-	origEk, _ := s.TPM().EndorsementKey()
 	origHmacSession := s.TPM().HmacSession()
 
 	ek, err := s.TPM().CreateResourceContextFromTPM(tcg.EKHandle)
+	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, ek, ek.Handle())
 
 	c.Check(s.TPM().EnsureProvisioned(mode, lockoutAuth), IsNil)
@@ -316,11 +310,6 @@ func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
 	c.Check(s.TPM().HmacSession().Handle().Type(), Equals, tpm2.HandleTypeHMACSession)
 	c.Check(s.TPM().HmacSession(), Not(Equals), origHmacSession)
 	c.Check(origHmacSession.Handle(), Equals, tpm2.HandleUnassigned)
-
-	ek, err = s.TPM().EndorsementKey()
-	c.Check(err, IsNil)
-	c.Check(ek.Handle(), Equals, tcg.EKHandle)
-	c.Check(ek, Not(Equals), origEk)
 }
 
 func (s *provisioningSuite) TestRecreateEKFull(c *C) {
@@ -383,26 +372,6 @@ func (s *provisioningSuite) TestProvisionWithOwnerAuth(c *C) {
 
 	s.validateEK(c)
 	s.validateSRK(c)
-}
-
-func (s *provisioningSimulatorSuite) TestProvisionWithInvalidEkCert(c *C) {
-	ConnectToTPM = secureConnectToDefaultTPMHelper
-	defer func() { ConnectToTPM = ConnectToDefaultTPM }()
-
-	s.ReinitTPMConnectionFromExisting(c)
-
-	// Temporarily modify the public template so that ProvisionTPM generates a primary key that doesn't match the EK cert
-	ekTemplate := tcg.MakeDefaultEKTemplate()
-	ekTemplate.Unique.RSA[0] = 0xff
-	restore := tpm2test.MockEKTemplate(ekTemplate)
-	s.AddCleanup(restore)
-
-	err := s.TPM().EnsureProvisioned(ProvisionModeFull, nil)
-	c.Assert(err, testutil.ConvertibleTo, TPMVerificationError{})
-	c.Check(err, ErrorMatches, "cannot verify that the TPM is the device for which "+
-		"the supplied EK certificate was issued: cannot reinitialize TPM connection "+
-		"after provisioning endorsement key: cannot verify public area of endorsement "+
-		"key read from the TPM: public area doesn't match certificate")
 }
 
 func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, mode ProvisionMode) {

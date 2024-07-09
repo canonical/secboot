@@ -223,7 +223,7 @@ func MockSecbootNewKeyDataWithPassphrase(fn func(*secboot.KeyWithPassphraseParam
 	}
 }
 
-func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, PcrPolicyVersionOption, tpm2.SessionContext) error) (restore func()) {
+func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, PcrPolicyVersionOption) error) (restore func()) {
 	orig := skdbUpdatePCRProtectionPolicyNoValidate
 	skdbUpdatePCRProtectionPolicyNoValidate = fn
 	return func() {
@@ -235,31 +235,31 @@ func (k *SealedKeyData) Data() KeyData {
 	return k.data
 }
 
+func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey) error {
+	if _, err := k.validateData(tpm, k.k.Role()); err != nil {
+		return err
+	}
+
+	return k.data.Policy().ValidateAuthKey(authKey)
+}
+
 func (k *SealedKeyObject) Data() KeyData {
 	return k.data
 }
 
-func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
-	if _, err := k.validateData(tpm, "", session); err != nil {
+func (k *SealedKeyObject) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey) error {
+	if _, err := k.validateData(tpm, ""); err != nil {
 		return err
 	}
 
 	return k.data.Policy().ValidateAuthKey(authKey)
 }
 
-func (k *SealedKeyData) Validate(tpm *tpm2.TPMContext, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
-	if _, err := k.validateData(tpm, "", session); err != nil {
-		return err
-	}
-
-	return k.data.Policy().ValidateAuthKey(authKey)
-}
-
-func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.PrimaryKey, session tpm2.SessionContext) error {
+func ValidateKeyDataFile(tpm *tpm2.TPMContext, keyFile string, authKey secboot.PrimaryKey) error {
 	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	if err != nil {
 		return err
 	}
 
-	return k.Validate(tpm, authKey, session)
+	return k.Validate(tpm, authKey)
 }

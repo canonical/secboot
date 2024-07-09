@@ -95,7 +95,7 @@ func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
 
 	skd, err := NewSealedKeyData(k)
 	c.Assert(err, IsNil)
-	c.Check(skd.Validate(s.TPM().TPMContext, primaryKey, s.TPM().HmacSession()), IsNil)
+	c.Check(skd.Validate(s.TPM().TPMContext, primaryKey), IsNil)
 
 	c.Check(skd.Version(), Equals, uint32(3))
 	c.Check(skd.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
@@ -382,7 +382,7 @@ func (s *sealSuite) testProtectKeyWithExternalStorageKey(c *C, params *ProtectKe
 
 	skd, err := NewSealedKeyData(k)
 	c.Assert(err, IsNil)
-	c.Check(skd.Validate(s.TPM().TPMContext, primaryKey, s.TPM().HmacSession()), IsNil)
+	c.Check(skd.Validate(s.TPM().TPMContext, primaryKey), IsNil)
 
 	c.Check(skd.Version(), Equals, uint32(3))
 	c.Check(skd.PCRPolicyCounterHandle(), Equals, tpm2.HandleNull)
@@ -586,7 +586,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 	defer restore()
 
 	pcrPolicyInitialized := false
-	restore = MockSkdbUpdatePCRProtectionPolicyNoValidate(func(skdb *SealedKeyDataBase, tpm *tpm2.TPMContext, primaryKey secboot.PrimaryKey, counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, policyVersionOption PcrPolicyVersionOption, session tpm2.SessionContext) error {
+	restore = MockSkdbUpdatePCRProtectionPolicyNoValidate(func(skdb *SealedKeyDataBase, tpm *tpm2.TPMContext, primaryKey secboot.PrimaryKey, counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, policyVersionOption PcrPolicyVersionOption) error {
 		c.Check(tpm, Equals, mockTpm)
 		c.Check(primaryKey, DeepEquals, s.lastAuthKey)
 		c.Check(counterPub, Equals, mockPcrPolicyCounterPub)
@@ -594,7 +594,6 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 		if data.PCRProfile != nil {
 			c.Check(profile, Equals, data.PCRProfile)
 		}
-		c.Check(session, Equals, mockSession)
 		c.Check(policyVersionOption, Equals, ResetPcrPolicyVersion)
 		pcrPolicyInitialized = true
 		return nil

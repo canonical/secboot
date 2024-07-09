@@ -21,7 +21,6 @@ package tpm2
 
 import (
 	"errors"
-	"fmt"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -69,6 +68,10 @@ const (
 	ProvisionModeClear
 )
 
+// provisionPrimaryKey provisions a primary key in the specified hierarchy at the specified persistent
+// handle. If session is supplied, it is expected to be a HMAC session with the AttrContinueSession
+// attribute set, and is used for authenticating with the relevant hierarchies to avoid sending the
+// authorization value in the clear.
 func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, template *tpm2.Public, handle tpm2.Handle, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	obj, err := tpm.CreateResourceContextFromTPM(handle)
 	switch {
@@ -98,13 +101,18 @@ func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, t
 	return obj, nil
 }
 
+// selectSrkTemplate chooses a template to use for the storage primary key. Either the default
+// template will be returned or a custom one stored in a decidcated NV index. The supplied
+// HMAC session is used for authenticating with the storage hierarchy and is used to avoid sending
+// the authorization value in the clear.
+// XXX: The NV index should be created with the TPMA_NV_AUTHREAD attribute to avoid this entirely.
 func selectSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) *tpm2.Public {
 	nv, err := tpm.CreateResourceContextFromTPM(srkTemplateHandle)
 	if err != nil {
 		return tcg.SRKTemplate
 	}
 
-	nvPub, _, err := tpm.NVReadPublic(nv, session.IncludeAttrs(tpm2.AttrAudit))
+	nvPub, _, err := tpm.NVReadPublic(nv)
 	if err != nil {
 		return tcg.SRKTemplate
 	}
@@ -126,10 +134,17 @@ func selectSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) *tpm2.
 	return tmpl
 }
 
+// provisionStoragePrimaryKey provisions a storage primary key at the well known persistent
+// handle. If session is supplied, it is expected to be a HMAC session with the AttrContinueSession
+// attribute set, and is used for authenticating with the relevant hierarchies to avoid sending
+// authorization values in the clear.
 func provisionStoragePrimaryKey(tpm *tpm2.TPMContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
 	return provisionPrimaryKey(tpm, tpm.OwnerHandleContext(), selectSrkTemplate(tpm, session), tcg.SRKHandle, session)
 }
 
+// storeSrkTemplate stores the supplied template at a well known handle. If session is supplied,
+// it must be a HMAC session and is used for authenticating with the storage hierarchy to avoid sending
+// authorization values in the clear.
 func storeSrkTemplate(tpm *tpm2.TPMContext, template *tpm2.Public, session tpm2.SessionContext) error {
 	tmplB, err := mu.MarshalToBytes(template)
 	if err != nil {
@@ -146,17 +161,20 @@ func storeSrkTemplate(tpm *tpm2.TPMContext, template *tpm2.Public, session tpm2.
 		return xerrors.Errorf("cannot define NV index: %w", err)
 	}
 
-	if err := tpm.NVWrite(nv, nv, tmplB, 0, session); err != nil {
+	if err := tpm.NVWrite(nv, nv, tmplB, 0, nil); err != nil {
 		return xerrors.Errorf("cannot write NV index: %w", err)
 	}
 
-	if err := tpm.NVWriteLock(nv, nv, session); err != nil {
+	if err := tpm.NVWriteLock(nv, nv, nil); err != nil {
 		return xerrors.Errorf("cannot write lock NV index: %w", err)
 	}
 
 	return nil
 }
 
+// removeStoredSrkTemplate removes the SRK template stored at the well known handle, if there
+// is one. If a session is supplied, it must be a HMAC session and is used for authenticating
+// with the storage hierarchy to avoid sending the authorization value in the clear.
 func removeStoredSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
 	nv, err := tpm.CreateResourceContextFromTPM(srkTemplateHandle)
 	switch {
@@ -178,7 +196,7 @@ func removeStoredSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) 
 func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public, useExistingSrkTemplate bool) error {
 	session := t.HmacSession()
 
-	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1, session.IncludeAttrs(tpm2.AttrAudit))
+	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 	if err != nil {
 		return xerrors.Errorf("cannot fetch permanent properties: %w", err)
 	}
@@ -190,6 +208,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 			return ErrTPMClearRequiresPPI
 		}
 
+		// Use HMAC session to authenticate with lockout hierarchy.
 		if err := t.Clear(t.LockoutHandleContext(), session); err != nil {
 			switch {
 			case isAuthFailError(err, tpm2.CommandClear, 1):
@@ -216,10 +235,6 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 	// Reinitialize the connection, which creates a new session that's salted with a value protected with the newly provisioned EK.
 	// This will have a symmetric algorithm for parameter encryption during HierarchyChangeAuth.
 	if err := t.init(); err != nil {
-		var verifyErr verificationError
-		if xerrors.As(err, &verifyErr) {
-			return TPMVerificationError{fmt.Sprintf("cannot reinitialize TPM connection after provisioning endorsement key: %v", err)}
-		}
 		return xerrors.Errorf("cannot reinitialize TPM connection after provisioning endorsement key: %w", err)
 	}
 	session = t.HmacSession()
@@ -252,7 +267,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 	t.provisionedSrk = srk
 
 	if mode == ProvisionModeWithoutLockout {
-		props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1, session.IncludeAttrs(tpm2.AttrAudit))
+		props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
 		if err != nil {
 			return xerrors.Errorf("cannot fetch permanent properties to determine if lockout hierarchy is required: %w", err)
 		}
@@ -264,7 +279,7 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 			return ErrTPMProvisioningRequiresLockout
 		}
 
-		props, err = t.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3, session.IncludeAttrs(tpm2.AttrAudit))
+		props, err = t.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3)
 		if err != nil {
 			return xerrors.Errorf("cannot fetch DA parameters to determine if lockout hierarchy is required: %w", err)
 		}
@@ -280,7 +295,8 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 
 	// Perform actions that require the lockout hierarchy authorization.
 
-	// Set the DA parameters.
+	// Set the DA parameters. Pass the HMAC session here so we don't supply the cleartext auth
+	// value for the lockout hierarchy.
 	if err := t.DictionaryAttackParameters(t.LockoutHandleContext(), maxTries, recoveryTime, lockoutRecovery, session); err != nil {
 		switch {
 		case isAuthFailError(err, tpm2.CommandDictionaryAttackParameters, 1):
@@ -291,13 +307,15 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 		return xerrors.Errorf("cannot configure dictionary attack parameters: %w", err)
 	}
 
-	// Disable owner clear
+	// Disable owner clear. Pass the HMAC session here so we don't supply the cleartext auth
+	// value for the lockout hierarchy.
 	if err := t.ClearControl(t.LockoutHandleContext(), true, session); err != nil {
 		// Lockout auth failure or lockout mode would have been caught by DictionaryAttackParameters
 		return xerrors.Errorf("cannot disable owner clear: %w", err)
 	}
 
-	// Set the lockout hierarchy authorization.
+	// Set the lockout hierarchy authorization. Use command parameter encryption here for the new value.
+	// Note that this only offers protections against passive interposers.
 	if err := t.HierarchyChangeAuth(t.LockoutHandleContext(), newLockoutAuth, session.IncludeAttrs(tpm2.AttrCommandEncrypt)); err != nil {
 		return xerrors.Errorf("cannot set the lockout hierarchy authorization value: %w", err)
 	}

@@ -95,7 +95,7 @@ func (d *keyData_v3) Imported(priv tpm2.Private) {
 	d.KeyImportSymSeed = nil
 }
 
-func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.ResourceContext, error) {
 	if d.KeyImportSymSeed != nil {
 		return nil, errors.New("cannot validate importable key data")
 	}
@@ -126,7 +126,7 @@ func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 	case pcrPolicyCounterHandle != tpm2.HandleNull && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex:
 		return nil, keyDataError{errors.New("PCR policy counter handle is invalid")}
 	case pcrPolicyCounterHandle != tpm2.HandleNull:
-		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
+		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
 		if err != nil {
 			if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
 				return nil, keyDataError{errors.New("PCR policy counter is unavailable")}

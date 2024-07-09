@@ -20,9 +20,6 @@
 package tpm2_test
 
 import (
-	"bytes"
-	"crypto"
-	"crypto/x509"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -31,14 +28,10 @@ import (
 	"time"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/mssim"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-
-	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 
-	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
 
@@ -54,21 +47,6 @@ func init() {
 }
 
 func Test(t *testing.T) { TestingT(t) }
-
-func secureConnectToDefaultTPMHelper() (*Connection, error) {
-	buf := new(bytes.Buffer)
-
-	caCert, err := x509.ParseCertificate(testCACert)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := EncodeEKCertificateChain(nil, []*x509.Certificate{caCert}, buf); err != nil {
-		return nil, err
-	}
-
-	return SecureConnectToDefaultTPM(buf, nil)
-}
 
 // Set the hierarchy auth to testAuth. Fatal on failure
 func setHierarchyAuthForTest(t *testing.T, tpm *Connection, hierarchy tpm2.ResourceContext) {
@@ -94,34 +72,6 @@ func TestMain(m *testing.M) {
 				return 1
 			}
 			defer simulatorCleanup()
-
-			var caKey crypto.PrivateKey
-			testCACert, caKey, err = tpm2test.CreateTestCA()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Cannot create test TPM CA certificate and private key: %v\n", err)
-				return 1
-			}
-
-			restoreCAHashes := tpm2test.TrustCA(testCACert)
-			defer restoreCAHashes()
-
-			if err := func() error {
-				tcti, err := mssim.OpenConnection("", tpm2_testutil.MssimPort)
-				if err != nil {
-					return xerrors.Errorf("cannot open connection: %w", err)
-				}
-				tpm := tpm2.NewTPMContext(tcti)
-				defer tpm.Close()
-
-				testEkCert, err = tpm2test.CreateTestEKCert(tpm, testCACert, caKey)
-				if err != nil {
-					return xerrors.Errorf("cannot create test EK certificate: %w", err)
-				}
-				return tpm2test.CertifyTPM(tpm, testEkCert)
-			}(); err != nil {
-				fmt.Fprintf(os.Stderr, "Cannot certify TPM simulator: %v\n", err)
-				return 1
-			}
 		}
 
 		return m.Run()

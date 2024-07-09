@@ -76,7 +76,7 @@ type keyData interface {
 	// ValidateData performs consistency checks on the key data,
 	// returning a validated context for the PCR policy counter, if
 	// one is defined.
-	ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error)
+	ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.ResourceContext, error)
 
 	// Write serializes the key data to w
 	Write(w io.Writer) error
@@ -136,12 +136,12 @@ type sealedKeyDataBase struct {
 // required, as indicated by an import symmetric seed of non-zero length. The tpmKeyData
 // structure will be updated with the newly imported private area and the import
 // symmetric seed will be cleared.
-func (k *sealedKeyDataBase) ensureImported(tpm *tpm2.TPMContext, parent tpm2.ResourceContext, session tpm2.SessionContext) error {
+func (k *sealedKeyDataBase) ensureImported(tpm *tpm2.TPMContext, parent tpm2.ResourceContext) error {
 	if len(k.data.ImportSymSeed()) == 0 {
 		return nil
 	}
 
-	priv, err := tpm.Import(parent, nil, k.data.Public(), k.data.Private(), k.data.ImportSymSeed(), nil, session)
+	priv, err := tpm.Import(parent, nil, k.data.Public(), k.data.Private(), k.data.ImportSymSeed(), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -152,16 +152,16 @@ func (k *sealedKeyDataBase) ensureImported(tpm *tpm2.TPMContext, parent tpm2.Res
 
 // load loads the TPM sealed object associated with this keyData in to the storage hierarchy of the TPM, and returns the newly
 // created tpm2.ResourceContext.
-func (k *sealedKeyDataBase) load(tpm *tpm2.TPMContext, parent tpm2.ResourceContext, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
-	if err := k.ensureImported(tpm, parent, session); err != nil {
+func (k *sealedKeyDataBase) load(tpm *tpm2.TPMContext, parent tpm2.ResourceContext) (tpm2.ResourceContext, error) {
+	if err := k.ensureImported(tpm, parent); err != nil {
 		return nil, err
 	}
 
-	return tpm.Load(parent, k.data.Private(), k.data.Public(), session)
+	return tpm.Load(parent, k.data.Private(), k.data.Public(), nil)
 }
 
 // validateData performs correctness checks on this object.
-func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string, session tpm2.SessionContext) (*tpm2.NVPublic, error) {
+func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string) (*tpm2.NVPublic, error) {
 	sealedKeyTemplate := makeImportableSealedKeyTemplate()
 
 	// Perform some initial checks on the sealed data object's public area to
@@ -179,7 +179,7 @@ func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string, sess
 	}
 
 	// Load the sealed data object in to the TPM for integrity checking
-	keyContext, err := k.load(tpm, srk, session)
+	keyContext, err := k.load(tpm, srk)
 	switch {
 	case isLoadInvalidParamError(err) || isImportInvalidParamError(err):
 		return nil, keyDataError{xerrors.Errorf("cannot load sealed key object into TPM (sealed key object is bad or TPM owner has changed): %w", err)}
@@ -190,7 +190,7 @@ func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string, sess
 	tpm.FlushContext(keyContext)
 
 	// Version specific validation.
-	pcrPolicyCounter, err := k.data.ValidateData(tpm, []byte(role), session)
+	pcrPolicyCounter, err := k.data.ValidateData(tpm, []byte(role))
 	if err != nil {
 		return nil, err
 	}

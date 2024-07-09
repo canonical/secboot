@@ -68,7 +68,7 @@ func (_ *keyData_v1) Imported(_ tpm2.Private) {
 	panic("not supported")
 }
 
-func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.ResourceContext, error) {
 	if len(role) > 0 {
 		return nil, errors.New("unexpected role")
 	}
@@ -99,7 +99,7 @@ func (d *keyData_v1) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 	case pcrPolicyCounterHandle != tpm2.HandleNull && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex:
 		return nil, keyDataError{errors.New("PCR policy counter handle is invalid")}
 	case pcrPolicyCounterHandle != tpm2.HandleNull:
-		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
+		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
 		if err != nil {
 			if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
 				return nil, keyDataError{errors.New("PCR policy counter is unavailable")}

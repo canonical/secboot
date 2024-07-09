@@ -191,16 +191,14 @@ func (s *keyDataV2Suite) TestImportImportable(c *C) {
 func (s *keyDataV2Suite) TestValidateImportable(c *C) {
 	data := s.newMockImportableKeyData(c)
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	_, err := data.ValidateData(s.TPM().TPMContext, nil, session)
+	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, ErrorMatches, "cannot validate importable key data")
 }
 
 func (s *keyDataV2Suite) TestValidateOK1(c *C) {
 	data, _ := s.newMockKeyData(c, tpm2.HandleNull)
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil, session)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter, IsNil)
 }
@@ -208,8 +206,7 @@ func (s *keyDataV2Suite) TestValidateOK1(c *C) {
 func (s *keyDataV2Suite) TestValidateOK2(c *C) {
 	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil, session)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
 }
@@ -217,8 +214,7 @@ func (s *keyDataV2Suite) TestValidateOK2(c *C) {
 func (s *keyDataV2Suite) TestValidateOK3(c *C) {
 	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x0180ff00))
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil, session)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
 }
@@ -231,8 +227,7 @@ func (s *keyDataV2Suite) TestValidateImportedOK(c *C) {
 	c.Check(err, IsNil)
 	data.Imported(priv)
 
-	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256).WithAttrs(tpm2.AttrContinueSession)
-	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil, session)
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, IsNil)
 	c.Check(pcrPolicyCounter, IsNil)
 }
@@ -286,6 +281,6 @@ func (s *keyDataV2Suite) TestReadNonImportableAsV2Fails(c *C) {
 func (s *keyDataV2Suite) TestValidateInvalidRoleSupplied(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	_, err := data.ValidateData(s.TPM().TPMContext, []byte("foo"), nil)
+	_, err := data.ValidateData(s.TPM().TPMContext, []byte("foo"))
 	c.Check(err, ErrorMatches, "unexpected role")
 }

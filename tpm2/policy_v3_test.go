@@ -342,7 +342,7 @@ func (s *policyV3Suite) testExecutePCRPolicy(c *C, data *testV3ExecutePCRPolicyD
 
 	var policyCount uint64
 	if data.policyCounterHandle != tpm2.HandleNull {
-		context, err := policyData.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub, s.TPM().HmacSession())
+		context, err := policyData.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub)
 		c.Assert(err, IsNil)
 
 		policyCount, err = context.Get()
@@ -705,7 +705,7 @@ func (s *policyV3Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV3Exec
 
 	var policyCount uint64
 	if data.policyCounterHandle != tpm2.HandleNull {
-		context, err := policyData.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub, s.TPM().HmacSession())
+		context, err := policyData.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub)
 		c.Assert(err, IsNil)
 
 		policyCount, err = context.Get()
@@ -1276,7 +1276,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 			params := NewPcrPolicyParams(primaryKey, pcrs, digests, policyCounterName, target+1)
 			data.UpdatePCRPolicy(alg, params)
 
-			context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, pub, s.TPM().HmacSession())
+			context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, pub)
 			c.Assert(err, IsNil)
 			for {
 				current, err := context.Get()
@@ -1430,6 +1430,33 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 	c.Check(err, IsNil)
 }
 
+func (s *policyV3Suite) TestPolicyCounterContextGet(c *C) {
+	authKey := make(secboot.PrimaryKey, 32)
+	rand.Read(authKey)
+	authKeyPublic := s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, authKey)
+
+	policyCounterPub, err := EnsurePcrPolicyCounter(s.TPM().TPMContext, s.NextAvailableHandle(c, 0x01800000), authKeyPublic, s.TPM().HmacSession())
+	c.Assert(err, IsNil)
+
+	policyCounterContext, err := tpm2.NewNVIndexResourceContextFromPub(policyCounterPub)
+	c.Assert(err, IsNil)
+
+	expected, err := s.TPM().NVReadCounter(policyCounterContext, policyCounterContext, nil)
+	c.Check(err, IsNil)
+
+	data := &KeyDataPolicy_v3{
+		StaticData: &StaticPolicyData_v3{
+			AuthPublicKey:          authKeyPublic,
+			PCRPolicyCounterHandle: policyCounterPub.Index}}
+
+	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub)
+	c.Assert(err, IsNil)
+
+	count, err := context.Get()
+	c.Check(err, IsNil)
+	c.Check(count, Equals, expected)
+}
+
 func (s *policyV3Suite) TestPolicyCounterContextIncrement(c *C) {
 	primaryKey := make(secboot.PrimaryKey, 32)
 	rand.Read(primaryKey)
@@ -1443,7 +1470,7 @@ func (s *policyV3Suite) TestPolicyCounterContextIncrement(c *C) {
 			AuthPublicKey:          authKeyPublic,
 			PCRPolicyCounterHandle: policyCounterPub.Index}}
 
-	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub, s.TPM().HmacSession())
+	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub)
 	c.Assert(err, IsNil)
 
 	initialCount, err := context.Get()

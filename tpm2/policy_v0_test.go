@@ -1366,7 +1366,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 
 			target := data.PCRData.PolicySequence
 
-			context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, pub, s.TPM().HmacSession())
+			context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, pub)
 			c.Assert(err, IsNil)
 			for {
 				current, err := context.Get()
@@ -1575,7 +1575,7 @@ func (s *policyV0Suite) TestPolicyCounterContextGet(c *C) {
 			PCRPolicyCounterHandle:       policyCounterPub.Index,
 			PCRPolicyCounterAuthPolicies: policyCounterPolicies}}
 
-	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub, s.TPM().HmacSession())
+	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub)
 	c.Assert(err, IsNil)
 
 	count, err := context.Get()
@@ -1596,7 +1596,7 @@ func (s *policyV0Suite) TestPolicyCounterContextIncrement(c *C) {
 			PCRPolicyCounterHandle:       policyCounterPub.Index,
 			PCRPolicyCounterAuthPolicies: policyCounterPolicies}}
 
-	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub, s.TPM().HmacSession())
+	context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, policyCounterPub)
 	c.Assert(err, IsNil)
 
 	c.Check(context.Increment(x509.MarshalPKCS1PrivateKey(authKey)), IsNil)

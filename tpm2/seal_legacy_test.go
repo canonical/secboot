@@ -71,7 +71,7 @@ func (s *sealLegacySuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 
 	authKey, err := SealKeyToTPM(s.TPM(), key, path, params)
 	c.Check(err, IsNil)
-	c.Check(ValidateKeyDataFile(s.TPM().TPMContext, path, authKey, s.TPM().HmacSession()), IsNil)
+	c.Check(ValidateKeyDataFile(s.TPM().TPMContext, path, authKey), IsNil)
 
 	k, err := ReadSealedKeyObjectFromFile(path)
 	c.Assert(err, IsNil)
@@ -258,7 +258,7 @@ func (s *sealLegacySuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMM
 	authKey, err := SealKeyToTPMMultiple(s.TPM(), requests, data.params)
 	c.Check(err, IsNil)
 	for _, r := range requests {
-		c.Check(ValidateKeyDataFile(s.TPM().TPMContext, r.Path, authKey, s.TPM().HmacSession()), IsNil)
+		c.Check(ValidateKeyDataFile(s.TPM().TPMContext, r.Path, authKey), IsNil)
 
 		k, err := ReadSealedKeyObjectFromFile(r.Path)
 		c.Assert(err, IsNil)
@@ -490,7 +490,7 @@ func (s *sealLegacySuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCr
 
 	authKey, err := SealKeyToExternalTPMStorageKey(srkPub, key, path, params)
 	c.Check(err, IsNil)
-	c.Check(ValidateKeyDataFile(s.TPM().TPMContext, path, authKey, s.TPM().HmacSession()), IsNil)
+	c.Check(ValidateKeyDataFile(s.TPM().TPMContext, path, authKey), IsNil)
 
 	k, err := ReadSealedKeyObjectFromFile(path)
 	c.Assert(err, IsNil)

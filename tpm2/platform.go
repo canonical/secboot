@@ -148,7 +148,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	}
 
 	// Validate the initial key data
-	_, err = k.validateData(tpm.TPMContext, data.Role, tpm.HmacSession())
+	_, err = k.validateData(tpm.TPMContext, data.Role)
 	switch {
 	case isKeyDataError(err):
 		return nil, &secboot.PlatformHandlerError{
@@ -168,7 +168,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}
 
-	keyObject, err := k.load(tpm.TPMContext, srk, tpm.HmacSession())
+	keyObject, err := k.load(tpm.TPMContext, srk)
 	switch {
 	case isLoadInvalidParamError(err) || isImportInvalidParamError(err):
 		// The supplied key data is invalid or is not protected by the supplied SRK.
@@ -186,7 +186,24 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	}
 	defer tpm.FlushContext(keyObject)
 
+	// Begin session for parameter encryption, salted with the SRK.
+	symmetric := &tpm2.SymDef{
+		Algorithm: tpm2.SymAlgorithmAES,
+		KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
+	}
+	session, err := tpm.StartAuthSession(srk, nil, tpm2.SessionTypeHMAC, symmetric, k.data.Public().NameAlg, nil)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create session: %w", err)
+	}
+	defer tpm.FlushContext(session)
+
 	keyObject.SetAuthValue(old)
+
+	// Use a HMAC session for authentication. This avoids sending the old value in the clear.
+	// It also encrypts the new value, although this only provides protection against passive
+	// interposers as we don't verify the key that is used to salt the session is actually a
+	// TPM protected key.
 	priv, err := tpm.ObjectChangeAuth(keyObject, srk, new, tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
 		if tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandObjectChangeAuth, 1) {
@@ -201,7 +218,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 
 	// Validate the modified key. There's no reason for this to fail, but do it anyway. We haven't made
 	// any persistent changes yet and still have an opportunity to back out.
-	if _, err = k.validateData(tpm.TPMContext, data.Role, tpm.HmacSession()); err != nil {
+	if _, err = k.validateData(tpm.TPMContext, data.Role); err != nil {
 		return nil, xerrors.Errorf("cannot validate key data after auth value change: %w", err)
 	}
 

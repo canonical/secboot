@@ -101,20 +101,20 @@ func (_ *keyData_v0) Imported(_ tpm2.Private) {
 	panic("not supported")
 }
 
-func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
+func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.ResourceContext, error) {
 	if len(role) > 0 {
 		return nil, errors.New("unexpected role")
 	}
 
 	// Obtain the name of the legacy lock NV index.
-	lockNV, err := tpm.CreateResourceContextFromTPM(lockNVHandle, session.IncludeAttrs(tpm2.AttrAudit))
+	lockNV, err := tpm.CreateResourceContextFromTPM(lockNVHandle)
 	if err != nil {
 		if tpm2.IsResourceUnavailableError(err, lockNVHandle) {
 			return nil, keyDataError{errors.New("lock NV index is unavailable")}
 		}
 		return nil, xerrors.Errorf("cannot create context for lock NV index: %w", err)
 	}
-	lockNVPub, _, err := tpm.NVReadPublic(lockNV, session.IncludeAttrs(tpm2.AttrAudit))
+	lockNVPub, _, err := tpm.NVReadPublic(lockNV)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot read public area of lock NV index: %w", err)
 	}
@@ -148,7 +148,7 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 	if pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex {
 		return nil, keyDataError{errors.New("PCR policy counter handle is invalid")}
 	}
-	pcrPolicyCounter, err := tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle, session.IncludeAttrs(tpm2.AttrAudit))
+	pcrPolicyCounter, err := tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
 	if err != nil {
 		if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
 			return nil, keyDataError{errors.New("PCR policy counter is unavailable")}
@@ -170,7 +170,7 @@ func (d *keyData_v0) ValidateData(tpm *tpm2.TPMContext, role []byte, session tpm
 	}
 
 	// Validate that the OR policy digests for the PCR policy counter match the public area of the index.
-	pcrPolicyCounterPub, _, err := tpm.NVReadPublic(pcrPolicyCounter, session.IncludeAttrs(tpm2.AttrAudit))
+	pcrPolicyCounterPub, _, err := tpm.NVReadPublic(pcrPolicyCounter)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot read public area of PCR policy counter: %w", err)
 	}

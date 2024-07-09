@@ -61,7 +61,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicyV0(tpm *Connection, policyUpd
 		return InvalidKeyDataError{"invalid metadata versions"}
 	}
 
-	return k.updatePCRProtectionPolicy(tpm.TPMContext, policyUpdateData.AuthKey, "", pcrProfile, incrementPcrPolicyVersion, tpm.HmacSession())
+	return k.updatePCRProtectionPolicy(tpm.TPMContext, policyUpdateData.AuthKey, "", pcrProfile, incrementPcrPolicyVersion)
 }
 
 // RevokeOldPCRProtectionPoliciesV0 revokes old PCR protection policies associated with this sealed key. It does
@@ -94,7 +94,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 		return InvalidKeyDataError{"invalid metadata version"}
 	}
 
-	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, policyUpdateData.AuthKey, "", tpm.HmacSession())
+	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, policyUpdateData.AuthKey, "")
 }
 
 // UpdatePCRProtectionPolicy updates the PCR protection policy for this sealed key object to the profile defined by the
@@ -108,7 +108,7 @@ func (k *SealedKeyObject) RevokeOldPCRProtectionPoliciesV0(tpm *Connection, poli
 // On success, this SealedKeyObject will have an updated authorization policy that includes a PCR policy computed
 // from the supplied PCRProtectionProfile. It must be persisted using SealedKeyObject.WriteAtomic.
 func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey secboot.PrimaryKey, pcrProfile *PCRProtectionProfile) error {
-	return k.updatePCRProtectionPolicy(tpm.TPMContext, authKey, "", pcrProfile, incrementPcrPolicyVersion, tpm.HmacSession())
+	return k.updatePCRProtectionPolicy(tpm.TPMContext, authKey, "", pcrProfile, incrementPcrPolicyVersion)
 }
 
 // RevokeOldPCRProtectionPolicies revokes old PCR protection policies associated with this sealed key. It does
@@ -126,7 +126,7 @@ func (k *SealedKeyObject) UpdatePCRProtectionPolicy(tpm *Connection, authKey sec
 //
 // If validation of the key data fails, a InvalidKeyDataError error will be returned.
 func (k *SealedKeyObject) RevokeOldPCRProtectionPolicies(tpm *Connection, authKey secboot.PrimaryKey) error {
-	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, authKey, "", tpm.HmacSession())
+	return k.revokeOldPCRProtectionPolicies(tpm.TPMContext, authKey, "")
 }
 
 // UpdateKeyPCRProtectionPolicyMultiple updates the PCR protection policy for the supplied sealed key objects to the
@@ -153,13 +153,12 @@ func UpdateKeyPCRProtectionPolicyMultiple(tpm *Connection, keys []*SealedKeyObje
 
 	// Validate secondary key objects and make sure they are related
 	primaryKey := keys[0]
-	session := tpm.HmacSession()
 	for i, k := range keys[1:] {
 		if k.data.Version() != primaryKey.data.Version() {
 			return fmt.Errorf("key data at index %d has a different metadata version compared to the primary key data", i+1)
 		}
 
-		if _, err := k.validateData(tpm.TPMContext, "", session); err != nil {
+		if _, err := k.validateData(tpm.TPMContext, ""); err != nil {
 			if isKeyDataError(err) {
 				return InvalidKeyDataError{fmt.Sprintf("%v (%d)", err.Error(), i+1)}
 			}

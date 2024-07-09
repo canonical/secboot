@@ -103,6 +103,12 @@ type makeSealedKeyDataParams struct {
 	AuthMode               secboot.AuthMode
 }
 
+// makeSealedKeyData makes a sealed key data using the supplied parameters, keySealer implementation,
+// and keyDataConstructor implementation.
+//
+// If supplied, the session must be a HMAC session with the AttrContinueSession attribute set and is
+// used for authenticating the storage hierarchy in order to avoid trasmitting the cleartext authorization
+// value.
 func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, sealer keySealer, constructor keyDataConstructor, session tpm2.SessionContext) (*secboot.KeyData, secboot.PrimaryKey, secboot.DiskUnlockKey, error) {
 	// Create a primary key, if required.
 	primaryKey := params.PrimaryKey
@@ -171,7 +177,7 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	if err := skdbUpdatePCRProtectionPolicyNoValidate(&skd.sealedKeyDataBase, tpm, primaryKey, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion, session); err != nil {
+	if err := skdbUpdatePCRProtectionPolicyNoValidate(&skd.sealedKeyDataBase, tpm, primaryKey, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion); err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot set initial PCR policy: %w", err)
 	}
 

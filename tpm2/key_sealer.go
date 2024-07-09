@@ -61,6 +61,18 @@ func (s *sealedObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.Has
 		}
 	}
 
+	// Begin session for parameter encryption, salted with the SRK.
+	symmetric := &tpm2.SymDef{
+		Algorithm: tpm2.SymAlgorithmAES,
+		KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
+	}
+	session, err := s.tpm.StartAuthSession(srk, nil, tpm2.SessionTypeHMAC, symmetric, defaultSessionHashAlgorithm, nil)
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot create session: %w", err)
+	}
+	defer s.tpm.FlushContext(session)
+
 	// Create the sensitive data
 	sensitive := tpm2.SensitiveCreate{Data: data}
 
@@ -73,8 +85,7 @@ func (s *sealedObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.Has
 	// at the handle we expect the SRK to reside at has a different name (ie, if we're
 	// connected via a resource manager and somebody swapped the object with another one), this
 	// command will fail.
-	priv, pub, _, _, _, err := s.tpm.Create(srk, &sensitive, template, nil, nil,
-		s.tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
+	priv, pub, _, _, _, err := s.tpm.Create(srk, &sensitive, template, nil, nil, session.WithAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create sealed object: %w", err)
 	}

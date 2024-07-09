@@ -60,7 +60,7 @@ func (s *keydataLegacySuite) TestFileReadAndWrite(c *C) {
 
 	k, err := ReadSealedKeyObjectFromFile(keyFile)
 	c.Assert(err, IsNil)
-	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey, s.TPM().HmacSession()), IsNil)
+	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey), IsNil)
 
 	w := NewFileSealedKeyObjectWriter(keyFile)
 	c.Check(k.WriteAtomic(w), IsNil)
@@ -71,7 +71,7 @@ func (s *keydataLegacySuite) TestFileReadAndWrite(c *C) {
 
 	k, err = ReadSealedKeyObjectFromFile(keyFile)
 	c.Assert(err, IsNil)
-	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey, s.TPM().HmacSession()), IsNil)
+	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey), IsNil)
 }
 
 func (s *keydataLegacySuite) TestReadAndWrite(c *C) {
@@ -92,5 +92,5 @@ func (s *keydataLegacySuite) TestReadAndWrite(c *C) {
 
 	k, err = ReadSealedKeyObject(w.Reader())
 	c.Assert(err, IsNil)
-	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey, s.TPM().HmacSession()), IsNil)
+	c.Check(k.Validate(s.TPM().TPMContext, authPrivateKey), IsNil)
 }

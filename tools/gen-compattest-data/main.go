@@ -21,7 +21,6 @@ package main
 
 import (
 	"crypto/rand"
-	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -162,34 +161,6 @@ func run() int {
 		return 1
 	}
 	defer tpm.Close()
-
-	caCertRaw, caKey, err := tpm2test.CreateTestCA()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot create test CA certificate: %v\n", err)
-		return 1
-	}
-
-	ekCert, err := tpm2test.CreateTestEKCert(tpm.TPMContext, caCertRaw, caKey)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot create test EK certificate: %v\n", err)
-		return 1
-	}
-
-	if err := tpm2test.CertifyTPM(tpm.TPMContext, ekCert); err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot certify TPM: %v\n", err)
-		return 1
-	}
-
-	caCert, err := x509.ParseCertificate(caCertRaw)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot parse test CA certificate: %v\n", err)
-		return 1
-	}
-
-	if err := secboot_tpm2.SaveEKCertificateChain(nil, []*x509.Certificate{caCert}, filepath.Join(outputDir, "EKCertData")); err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot save EK certificate chain: %v\n", err)
-		return 1
-	}
 
 	if err := tpm.EnsureProvisioned(secboot_tpm2.ProvisionModeFull, []byte("1234")); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot provision TPM: %v\n", err)
