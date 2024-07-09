@@ -38,7 +38,7 @@ import (
 // consumers of the API can provide a custom mechanism to read EFI variables or parse
 // the TCG event log.
 type HostEnvironment interface {
-	// VarContext returns a context containing a VarsBackend, keyed by efi.VarsBackendKey,
+	// VarContext returns a copy of parent containing a VarsBackend, keyed by efi.VarsBackendKey,
 	// for interacting with EFI variables via go-efilib. This context can be passed to any
 	// go-efilib function that interacts with EFI variables. Right now, go-efilib doesn't
 	// support any other uses of the context such as cancelation or deadlines. The efivarfs
