@@ -21,6 +21,7 @@ package efi_test
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/x509"
 	"errors"
@@ -769,4 +770,16 @@ func (v *mockPcrProfileOptionVisitor) SetEnvironment(env internal.HostEnvironmen
 
 func (v *mockPcrProfileOptionVisitor) AddInitialVariablesModifier(fn internal.InitialVariablesModifier) {
 	v.varModifiers = append(v.varModifiers, fn)
+}
+
+type mockVarReader struct {
+	ctx context.Context
+}
+
+func newMockVarReader(env HostEnvironment) *mockVarReader {
+	return &mockVarReader{ctx: env.VarContext(context.Background())}
+}
+
+func (r *mockVarReader) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
+	return efi.ReadVariable(r.ctx, name, guid)
 }

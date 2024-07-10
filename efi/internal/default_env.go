@@ -20,6 +20,7 @@
 package internal
 
 import (
+	"context"
 	"os"
 
 	efi "github.com/canonical/go-efilib"
@@ -28,15 +29,16 @@ import (
 
 var (
 	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
-	readVar      = efi.ReadVariable
 )
 
 type defaultEnvImpl struct{}
 
-func (e defaultEnvImpl) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
-	return readVar(name, guid)
+// VarContext implements [HostEnvironment.VarContext].
+func (e defaultEnvImpl) VarContext(parent context.Context) context.Context {
+	return efi.WithDefaultVarsBackend(parent)
 }
 
+// ReadEventLog implements [HostEnvironment.ReadEventLog].
 func (e defaultEnvImpl) ReadEventLog() (*tcglog.Log, error) {
 	f, err := os.Open(eventLogPath)
 	if err != nil {

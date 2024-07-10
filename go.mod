@@ -3,7 +3,7 @@ module github.com/snapcore/secboot
 go 1.18
 
 require (
-	github.com/canonical/go-efilib v0.9.10-0.20240618094320-cc6dd01c07dc
+	github.com/canonical/go-efilib v1.2.0
 	github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0
 	github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3
 	github.com/canonical/go-tpm2 v1.3.0

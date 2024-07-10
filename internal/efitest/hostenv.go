@@ -20,6 +20,7 @@
 package efitest
 
 import (
+	"context"
 	"errors"
 
 	efi "github.com/canonical/go-efilib"
@@ -39,16 +40,9 @@ func NewMockHostEnvironment(vars MockVars, log *tcglog.Log) *MockHostEnvironment
 		Log:  log}
 }
 
-// ReadVar implements [github.com/snapcore/secboot/efi.HostEnvironment.ReadVar].
-func (e *MockHostEnvironment) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
-	if e.Vars == nil {
-		return nil, 0, efi.ErrVarNotExist
-	}
-	entry, found := e.Vars[efi.VariableDescriptor{Name: name, GUID: guid}]
-	if !found {
-		return nil, 0, efi.ErrVarNotExist
-	}
-	return entry.Payload, entry.Attrs, nil
+// VarContext implements [github.com/snapcore/secboot/efi.HostEnvironment.VarContext]/
+func (e *MockHostEnvironment) VarContext(parent context.Context) context.Context {
+	return context.WithValue(parent, efi.VarsBackendKey{}, e.Vars)
 }
 
 // ReadEventLog implements [github.com/snapcore/secboot/efi.HostEnvironment.ReadEventLog].

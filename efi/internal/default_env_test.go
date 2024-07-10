@@ -20,6 +20,7 @@
 package internal_test
 
 import (
+	"context"
 	_ "embed"
 	"io"
 	"os"
@@ -35,86 +36,26 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-var (
-	//go:embed MicrosoftKEK.crt
-	msKEKCertPEM []byte
-
-	msKEKCert []byte
-)
-
-func init() {
-	msKEKCert = testutil.MustDecodePEMType("CERTIFICATE", msKEKCertPEM)
-}
-
 type defaultEnvSuite struct{}
 
 var _ = Suite(&defaultEnvSuite{})
 
-type testReadVarData struct {
-	name string
-	guid efi.GUID
-}
+type testKey struct{}
 
-func (s *defaultEnvSuite) testReadVar(c *C, data *testReadVarData) {
-	ownerGuid := efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b})
-	kek := &efi.SignatureList{
-		Type: efi.CertX509Guid,
-		Signatures: []*efi.SignatureData{
-			{
-				Owner: ownerGuid,
-				Data:  msKEKCert,
-			},
-		},
-	}
-	dbx := efitest.NewSignatureListNullSHA256(ownerGuid)
-	vars := efitest.MakeMockVars()
-	vars.SetSecureBoot(true)
-	vars.SetKEK(c, efi.SignatureDatabase{kek})
-	vars.SetDbx(c, efi.SignatureDatabase{dbx})
+func (s *defaultEnvSuite) TestVarContext(c *C) {
+	ctx := DefaultEnv.VarContext(context.WithValue(context.Background(), testKey{}, int64(10)))
+	c.Assert(ctx, NotNil)
 
-	restore := MockReadVar(func(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
-		entry, exists := vars[efi.VariableDescriptor{Name: name, GUID: guid}]
-		if !exists {
-			return nil, 0, efi.ErrVarNotExist
-		}
-		return entry.Payload, entry.Attrs, nil
-	})
-	defer restore()
+	expected := efi.WithDefaultVarsBackend(context.Background())
+	c.Check(ctx.Value(efi.VarsBackendKey{}), Equals, expected.Value(efi.VarsBackendKey{}))
 
-	payload, attrs, err := DefaultEnv.ReadVar(data.name, data.guid)
-
-	entry, exists := vars[efi.VariableDescriptor{Name: data.name, GUID: data.guid}]
-	if !exists {
-		c.Check(err, Equals, efi.ErrVarNotExist)
-	} else {
-		c.Check(err, IsNil)
-		c.Check(attrs, Equals, entry.Attrs)
-		c.Check(payload, DeepEquals, entry.Payload)
-	}
-}
-
-func (s *defaultEnvSuite) TestReadVar1(c *C) {
-	s.testReadVar(c, &testReadVarData{
-		name: "SecureBoot",
-		guid: efi.GlobalVariable})
-}
-
-func (s *defaultEnvSuite) TestReadVar2(c *C) {
-	s.testReadVar(c, &testReadVarData{
-		name: "KEK",
-		guid: efi.GlobalVariable})
-}
-
-func (s *defaultEnvSuite) TestReadVar3(c *C) {
-	s.testReadVar(c, &testReadVarData{
-		name: "dbx",
-		guid: efi.ImageSecurityDatabaseGuid})
-}
-
-func (s *defaultEnvSuite) TestReadVarNotExist(c *C) {
-	s.testReadVar(c, &testReadVarData{
-		name: "SecureBoot",
-		guid: efi.ImageSecurityDatabaseGuid})
+	// Make sure that the returned context has the right parent by testing the
+	// value we attached to it.
+	testVal := ctx.Value(testKey{})
+	c.Assert(testVal, NotNil)
+	testVali64, ok := testVal.(int64)
+	c.Assert(ok, testutil.IsTrue)
+	c.Check(testVali64, Equals, int64(10))
 }
 
 func (s *defaultEnvSuite) testReadEventLog(c *C, opts *efitest.LogOptions) {
