@@ -20,14 +20,34 @@
 package preinstall
 
 type (
-	DetectVirtResult = detectVirtResult
+	CpuVendor                              = cpuVendor
+	DetectVirtResult                       = detectVirtResult
+	MeVersion                              = meVersion
+	PlatformFirmwareProtectionsResultFlags = platformFirmwareProtectionsResultFlags
 )
 
 const (
-	DetectVirtNone = detectVirtNone
-	DetectVirtVM   = detectVirtVM
+	CpuVendorIntel                                     = cpuVendorIntel
+	CpuVendorAMD                                       = cpuVendorAMD
+	DetectVirtNone                                     = detectVirtNone
+	DetectVirtVM                                       = detectVirtVM
+	MeFamilyUnknown                                    = meFamilyUnknown
+	MeFamilySps                                        = meFamilySps
+	MeFamilyTxe                                        = meFamilyTxe
+	MeFamilyMe                                         = meFamilyMe
+	MeFamilyCsme                                       = meFamilyCsme
+	PlatformFirmwareProtectionsTPMLocality3IsProtected = platformFirmwareProtectionsTPMLocality3IsProtected
 )
 
 var (
-	DetectVirtualization = detectVirtualization
+	CalculateIntelMEFamily                              = calculateIntelMEFamily
+	CheckCPUDebuggingLockedMSR                          = checkCPUDebuggingLockedMSR
+	CheckForKernelIOMMU                                 = checkForKernelIOMMU
+	CheckPlatformFirmwareProtections                    = checkPlatformFirmwareProtections
+	CheckPlatformFirmwareProtectionsIntelMEI            = checkPlatformFirmwareProtectionsIntelMEI
+	CheckSecureBootPolicyPCRForDegradedFirmwareSettings = checkSecureBootPolicyPCRForDegradedFirmwareSettings
+	DetectVirtualization                                = detectVirtualization
+	DetermineCPUVendor                                  = determineCPUVendor
+	ReadIntelHFSTSRegistersFromMEISysfs                 = readIntelHFSTSRegistersFromMEISysfs
+	ReadIntelMEVersionFromMEISysfs                      = readIntelMEVersionFromMEISysfs
 )

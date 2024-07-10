@@ -88,10 +88,20 @@ func (b *logBuilder) hashLogExtendEvent(c *C, data logHashData, event *logEvent)
 	b.events = append(b.events, ev)
 }
 
+type DMAProtectionDisabledEventType int
+
+const (
+	DMAProtectionNotDisabled DMAProtectionDisabledEventType = iota
+	DMAProtectionDisabled
+	DMAProtectionDisabledNullTerminated
+)
+
 // LogOptions provides options for [NewLog].
 type LogOptions struct {
 	Algorithms []tpm2.HashAlgorithmId // the digest algorithms to include
 
+	FirmwareDebugger                  bool                           // indicate a firmware debugger endpoint is enabled
+	DMAProtectionDisabled             DMAProtectionDisabledEventType // whether DMA protection is disabled
 	SecureBootDisabled                bool
 	IncludeDriverLaunch               bool     // include a driver launch in the log
 	IncludeSysPrepAppLaunch           bool     // include a system-preparation app launch in the log
@@ -177,6 +187,15 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 	}
 
 	// Mock secure boot config measurements
+	if opts.FirmwareDebugger {
+		data := tcglog.FirmwareDebuggerEvent
+		builder.hashLogExtendEvent(c, data, &logEvent{
+			pcrIndex:  7,
+			eventType: tcglog.EventTypeEFIAction,
+			data:      data,
+		})
+	}
+
 	for _, sbvar := range []struct {
 		name efi.VariableDescriptor
 		data []byte
@@ -220,6 +239,21 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  7,
 			eventType: tcglog.EventTypeSeparator,
+			data:      data})
+	}
+	if opts.DMAProtectionDisabled > DMAProtectionNotDisabled {
+		var data tcglog.EventData
+		switch opts.DMAProtectionDisabled {
+		case DMAProtectionDisabled:
+			data = tcglog.DMAProtectionDisabled
+		case DMAProtectionDisabledNullTerminated:
+			data = tcglog.OpaqueEventData(append([]byte(tcglog.DMAProtectionDisabled), 0x00))
+		default:
+			c.Fatal("invalid value for DMAProtectionDisabled")
+		}
+		builder.hashLogExtendEvent(c, data, &logEvent{
+			pcrIndex:  7,
+			eventType: tcglog.EventTypeEFIAction,
 			data:      data})
 	}
 
