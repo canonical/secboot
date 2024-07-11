@@ -23,7 +23,7 @@ import (
 	"bytes"
 	"crypto/x509"
 
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/snapd/snapdenv"
 	"golang.org/x/xerrors"
 )
@@ -45,7 +45,7 @@ type vendorAuthorityGetter interface {
 
 // secureBootAuthorityIdentity corresponds to the identify of a secure boot
 // authority. A secure boot namespace has one or more of these.
-type secureBootAuthorityIdentity = internal.SecureBootAuthorityIdentity
+type secureBootAuthorityIdentity = internal_efi.SecureBootAuthorityIdentity
 
 // withAuthority adds the specified secure boot authority to a secureBootNamespaceRules.
 // Note that this won't match if the specified authority directly signs things.

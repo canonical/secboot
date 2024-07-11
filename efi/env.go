@@ -30,7 +30,7 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"golang.org/x/xerrors"
 )
 
@@ -63,7 +63,7 @@ func WithHostEnvironment(env HostEnvironment) PCRProfileOption {
 	return &hostEnvironmentOption{HostEnvironment: env}
 }
 
-func (o *hostEnvironmentOption) ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error {
+func (o *hostEnvironmentOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
 	visitor.SetEnvironment(o.HostEnvironment)
 	return nil
 }
@@ -109,7 +109,7 @@ type varBranch struct {
 	registerUpdates varBranchRegisterUpdatesFn
 }
 
-// ReadVar implements varReader.ReadVar and internal.VariableSet.ReadVar.
+// ReadVar implements varReader.ReadVar and internal_efi.VariableSet.ReadVar.
 func (s *varBranch) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAttributes, error) {
 	update := s.updates
 	for ; update != nil; update = update.previous {
@@ -121,7 +121,7 @@ func (s *varBranch) ReadVar(name string, guid efi.GUID) ([]byte, efi.VariableAtt
 	return s.initial.ReadVar(name, guid)
 }
 
-// WriteVar implements varReadWriter.WriteVar and internal.VariableSet.WriteVar.
+// WriteVar implements varReadWriter.WriteVar and internal_efi.VariableSet.WriteVar.
 // Calling this creates and registers an update which may create a new initial
 // starting variable set for another profile generation loop.
 func (s *varBranch) WriteVar(name string, guid efi.GUID, attrs efi.VariableAttributes, data []byte) error {
@@ -145,10 +145,10 @@ func (s *varBranch) WriteVar(name string, guid efi.GUID, attrs efi.VariableAttri
 	return s.registerUpdates(s.updates)
 }
 
-// Clone implements internal.VariableSet.Clone. It returns an exact copy of this
+// Clone implements internal_efi.VariableSet.Clone. It returns an exact copy of this
 // varBranch to enable callers to WriteVar to create multiple branches with different
 // write sequences.
-func (s *varBranch) Clone() internal.VariableSet {
+func (s *varBranch) Clone() internal_efi.VariableSet {
 	clone := *s
 	return &clone
 }

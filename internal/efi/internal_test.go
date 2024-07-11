@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019 Canonical Ltd
+ * Copyright (C) 2024 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -17,23 +17,12 @@
  *
  */
 
-package internal
+package efi_test
 
-import "github.com/canonical/go-tpm2"
+import (
+	"testing"
 
-const (
-	// PlatformFirmarePCR is the SRTM, POST BIOS, and Embedded Drivers PCR
-	PlatformFirmwarePCR tpm2.Handle = 0
-
-	// HostPlatformConfigPCR is the Host Platform Configuration PCR
-	HostPlatformConfigPCR tpm2.Handle = 1
-
-	// DriversAndAppsPCR is the UEFI Drivers and UEFI Applications PCR
-	DriversAndAppsPCR tpm2.Handle = 2
-
-	// BootManagerCodePCR is the Boot Manager Code and Boot Attempts PCR
-	BootManagerCodePCR tpm2.Handle = 4
-
-	// SecureBootPolicyPCR is the Secure Boot Policy Measurements PCR
-	SecureBootPolicyPCR tpm2.Handle = 7
+	. "gopkg.in/check.v1"
 )
+
+func Test(t *testing.T) { TestingT(t) }

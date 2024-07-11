@@ -25,14 +25,14 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 	"golang.org/x/xerrors"
 )
 
 // PCRProfileOption is an option for AddPCRProfile
 type PCRProfileOption interface {
-	ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error
+	ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error
 }
 
 // PCRProfileEnablePCRsOption is an option for AddPCRProfile that adds one or more PCRs.
@@ -54,7 +54,7 @@ func newPcrProfileSetPcrOption(pcr tpm2.Handle) *pcrProfileSetPcrOption {
 	return out
 }
 
-func (o *pcrProfileSetPcrOption) ApplyOptionTo(visitor internal.PCRProfileOptionVisitor) error {
+func (o *pcrProfileSetPcrOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
 	visitor.AddPCRs(o.pcr)
 	return nil
 }
@@ -71,14 +71,14 @@ func (o *pcrProfileSetPcrOption) PCRs() (tpm2.HandleList, error) {
 // hardware root of trust as opposed to being verified as authentic and prevented
 // from running otherwise.
 func WithPlatformFirmwareProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrOption(internal.PlatformFirmwarePCR)
+	return newPcrProfileSetPcrOption(internal_efi.PlatformFirmwarePCR)
 }
 
 // WithDriversAndAppsProfile adds the UEFI Drivers and UEFI Applications profile
 // (measured to PCR2). This is copied directly from the current host environment
 // configiguration.
 func WithDriversAndAppsProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrOption(internal.DriversAndAppsPCR)
+	return newPcrProfileSetPcrOption(internal_efi.DriversAndAppsPCR)
 }
 
 // WithSecureBootPolicyProfile requests that the UEFI secure boot policy profile is
@@ -138,7 +138,7 @@ func WithDriversAndAppsProfile() PCRProfileEnablePCRsOption {
 // of these makes a policy inherently fragile because it is not possible to pre-generate
 // policy to accomodate updates of these components.
 func WithSecureBootPolicyProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrOption(internal.SecureBootPolicyPCR)
+	return newPcrProfileSetPcrOption(internal_efi.SecureBootPolicyPCR)
 }
 
 // WithBootManagerCodeProfile requests that the UEFI boot manager code and boot attempts
@@ -174,7 +174,7 @@ func WithSecureBootPolicyProfile() PCRProfileEnablePCRsOption {
 // fail before performing a successful attempt, even if the images associated with the
 // successful attempt are included in this policy.
 func WithBootManagerCodeProfile() PCRProfileEnablePCRsOption {
-	return newPcrProfileSetPcrOption(internal.BootManagerCodePCR)
+	return newPcrProfileSetPcrOption(internal_efi.BootManagerCodePCR)
 }
 
 // WithKernelConfigProfile adds the kernel config profile. This binds a policy to a
@@ -230,7 +230,7 @@ type pcrProfileGenerator struct {
 	// of every possible EFI variable starting state, and is used for generating
 	// profiles that incorporate signature database updates and changest to
 	// SbatPolicy.
-	varModifiers []internal.InitialVariablesModifier
+	varModifiers []internal_efi.InitialVariablesModifier
 
 	// log is the host TCG log, which is read from the associated env.
 	log *tcglog.Log
@@ -240,7 +240,7 @@ func newPcrProfileGenerator(pcrAlg tpm2.HashAlgorithmId, loadSequences *ImageLoa
 	gen := &pcrProfileGenerator{
 		pcrAlg:        pcrAlg,
 		loadSequences: loadSequences,
-		env:           internal.DefaultEnv,
+		env:           internal_efi.DefaultEnv,
 		handlers:      makeImageLoadHandlerMap(),
 	}
 	for _, opt := range options {
@@ -321,17 +321,17 @@ func (g *pcrProfileGenerator) addOnePCRProfileBranch(bp *secboot_tpm2.PCRProtect
 	return nil
 }
 
-// AddPCRs implements [internal.PCRProfileOptionVisitor.AddPCRs]
+// AddPCRs implements [internal_efi.PCRProfileOptionVisitor.AddPCRs]
 func (g *pcrProfileGenerator) AddPCRs(pcrs ...tpm2.Handle) {
 	g.pcrs |= makePcrFlags(pcrs...)
 }
 
-// SetEnvironment implements [internal.PCRProfileOptionVisitor.SetEnvironment]
-func (g *pcrProfileGenerator) SetEnvironment(env internal.HostEnvironment) {
+// SetEnvironment implements [internal_efi.PCRProfileOptionVisitor.SetEnvironment]
+func (g *pcrProfileGenerator) SetEnvironment(env internal_efi.HostEnvironment) {
 	g.env = env
 }
 
-func (g *pcrProfileGenerator) AddInitialVariablesModifier(fn internal.InitialVariablesModifier) {
+func (g *pcrProfileGenerator) AddInitialVariablesModifier(fn internal_efi.InitialVariablesModifier) {
 	g.varModifiers = append(g.varModifiers, fn)
 }
 

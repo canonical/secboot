@@ -17,7 +17,7 @@
  *
  */
 
-package internal
+package efi
 
 func MockEventLogPath(path string) (restore func()) {
 	origPath := eventLogPath

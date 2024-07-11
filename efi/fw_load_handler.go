@@ -28,7 +28,7 @@ import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"golang.org/x/xerrors"
 )
 
@@ -69,7 +69,7 @@ func (h *fwLoadHandler) readAndMeasureSignatureDb(ctx pcrBranchContext, name efi
 		return nil, xerrors.Errorf("cannot read current variable: %w", err)
 	}
 
-	ctx.MeasureVariable(internal.SecureBootPolicyPCR, name.GUID, name.Name, db)
+	ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, name.GUID, name.Name, db)
 	return db, nil
 }
 
@@ -91,7 +91,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// This hard-codes a profile that will only work on devices with secure boot enabled,
 	// deployed mode on (where UEFI >= 2.5), without a UEFI debugger enabled and which
 	// measure events in the correct order.
-	ctx.MeasureVariable(internal.SecureBootPolicyPCR, efi.GlobalVariable, sbStateName, []byte{1})
+	ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, sbStateName, []byte{1})
 	if _, err := h.readAndMeasureSignatureDb(ctx, PK); err != nil {
 		return xerrors.Errorf("cannot measure PK: %w", err)
 	}
@@ -118,19 +118,19 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		events = events[1:]
 
 		switch {
-		case e.PCRIndex < tcglog.PCRIndex(internal.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeSeparator:
+		case e.PCRIndex < tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeSeparator:
 			// pre-OS to OS-present signal
 			foundOsPresent = true
-		case e.PCRIndex == tcglog.PCRIndex(internal.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeSeparator:
+		case e.PCRIndex == tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeSeparator:
 			// end of secure boot configuration signal
 			if foundSecureBootSeparator {
 				return errors.New("unexpected separator")
 			}
-			if err := h.measureSeparator(ctx, internal.SecureBootPolicyPCR, e); err != nil {
+			if err := h.measureSeparator(ctx, internal_efi.SecureBootPolicyPCR, e); err != nil {
 				return err
 			}
 			foundSecureBootSeparator = true
-		case e.PCRIndex == tcglog.PCRIndex(internal.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeEFIVariableAuthority:
+		case e.PCRIndex == tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeEFIVariableAuthority:
 			// secure boot verification event - shouldn't see this before the end of secure
 			// boot configuration signal.
 			if !foundSecureBootSeparator {
@@ -138,14 +138,14 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			}
 			digest := tpm2.Digest(e.Digests[ctx.PCRAlg()])
 			ctx.FwContext().AppendVerificationEvent(digest)
-			ctx.ExtendPCR(internal.SecureBootPolicyPCR, digest)
-		case e.PCRIndex == tcglog.PCRIndex(internal.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, digest)
+		case e.PCRIndex == tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
 			// ignore: part of the secure boot configuration - shouldn't see this after the
 			// end of secure boot configuration signal.
 			if foundSecureBootSeparator {
 				return errors.New("unexpected configuration event")
 			}
-		case e.PCRIndex == tcglog.PCRIndex(internal.SecureBootPolicyPCR):
+		case e.PCRIndex == tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR):
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:
 			// not a secure boot event
@@ -166,7 +166,7 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 	donePcrReset := false
 
 	for _, event := range h.log.Events {
-		if event.PCRIndex != tcglog.PCRIndex(internal.PlatformFirmwarePCR) {
+		if event.PCRIndex != tcglog.PCRIndex(internal_efi.PlatformFirmwarePCR) {
 			continue
 		}
 		if event.EventType == tcglog.EventTypeNoAction {
@@ -184,14 +184,14 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 		}
 
 		if !donePcrReset {
-			ctx.ResetPCR(internal.PlatformFirmwarePCR)
+			ctx.ResetPCR(internal_efi.PlatformFirmwarePCR)
 			donePcrReset = true
 		}
 
 		if event.EventType == tcglog.EventTypeSeparator {
-			return h.measureSeparator(ctx, internal.PlatformFirmwarePCR, event)
+			return h.measureSeparator(ctx, internal_efi.PlatformFirmwarePCR, event)
 		}
-		ctx.ExtendPCR(internal.PlatformFirmwarePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		ctx.ExtendPCR(internal_efi.PlatformFirmwarePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
 	}
 
 	return errors.New("missing separator")
@@ -199,14 +199,14 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 
 func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
 	for _, event := range h.log.Events {
-		if event.PCRIndex != tcglog.PCRIndex(internal.DriversAndAppsPCR) {
+		if event.PCRIndex != tcglog.PCRIndex(internal_efi.DriversAndAppsPCR) {
 			continue
 		}
 
 		if event.EventType == tcglog.EventTypeSeparator {
-			return h.measureSeparator(ctx, internal.DriversAndAppsPCR, event)
+			return h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event)
 		}
-		ctx.ExtendPCR(internal.DriversAndAppsPCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
 	}
 
 	return errors.New("missing separator")
@@ -252,18 +252,18 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 		event := events[0]
 		events = events[1:]
 
-		if event.PCRIndex != tcglog.PCRIndex(internal.BootManagerCodePCR) {
+		if event.PCRIndex != tcglog.PCRIndex(internal_efi.BootManagerCodePCR) {
 			continue
 		}
 
 		if event.EventType == tcglog.EventTypeSeparator {
-			if err := h.measureSeparator(ctx, internal.BootManagerCodePCR, event); err != nil {
+			if err := h.measureSeparator(ctx, internal_efi.BootManagerCodePCR, event); err != nil {
 				return err
 			}
 			measuredSeparator = true
 			break
 		}
-		ctx.ExtendPCR(internal.BootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		ctx.ExtendPCR(internal_efi.BootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
 	}
 
 	if !measuredSeparator {
@@ -279,7 +279,7 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 		event := events[0]
 		events = events[1:]
 
-		if event.PCRIndex != tcglog.PCRIndex(internal.BootManagerCodePCR) {
+		if event.PCRIndex != tcglog.PCRIndex(internal_efi.BootManagerCodePCR) {
 			continue
 		}
 		if event.EventType != tcglog.EventTypeEFIBootServicesApplication {
@@ -289,13 +289,13 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 		// once we encounter the first EV_EFI_BOOT_SERVICES_APPLICATION event in PCR4, this loop alway
 		// breaks or returns an error.
 
-		isAbsolute, err := internal.IsAbsoluteAgentLaunch(event)
+		isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(event)
 		if err != nil {
 			return fmt.Errorf("encountered an error determining whether an OS-present launch is related to Absolute: %w", err)
 		}
 		if isAbsolute {
 			// copy the digest to the policy
-			ctx.ExtendPCR(internal.BootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+			ctx.ExtendPCR(internal_efi.BootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
 		}
 		// If it's not Absolute, we assume it's related to the OS launch which we will predict
 		// later on. If it's something else, discarding it here creates an invalid policy but this is
@@ -316,28 +316,28 @@ func (h *fwLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 	// extends it later on. We ignore PCR0 here as a special case because it doesn't
 	// necessarily have a zero reset value.
 	for _, pcr := range ctx.PCRs().PCRs() {
-		if pcr == internal.PlatformFirmwarePCR {
+		if pcr == internal_efi.PlatformFirmwarePCR {
 			continue
 		}
 		ctx.ResetPCR(pcr)
 	}
 
-	if ctx.PCRs().Contains(internal.PlatformFirmwarePCR) {
+	if ctx.PCRs().Contains(internal_efi.PlatformFirmwarePCR) {
 		if err := h.measurePlatformFirmware(ctx); err != nil {
 			return fmt.Errorf("cannot measure platform firmware: %w", err)
 		}
 	}
-	if ctx.PCRs().Contains(internal.DriversAndAppsPCR) {
+	if ctx.PCRs().Contains(internal_efi.DriversAndAppsPCR) {
 		if err := h.measureDriversAndApps(ctx); err != nil {
 			return fmt.Errorf("cannot measure drivers and apps: %w", err)
 		}
 	}
-	if ctx.PCRs().Contains(internal.BootManagerCodePCR) {
+	if ctx.PCRs().Contains(internal_efi.BootManagerCodePCR) {
 		if err := h.measureBootManagerCodePreOS(ctx); err != nil {
 			return fmt.Errorf("cannot measure boot manager code: %w", err)
 		}
 	}
-	if ctx.PCRs().Contains(internal.SecureBootPolicyPCR) {
+	if ctx.PCRs().Contains(internal_efi.SecureBootPolicyPCR) {
 		if err := h.measureSecureBootPolicyPreOS(ctx); err != nil {
 			return xerrors.Errorf("cannot measure secure boot policy: %w", err)
 		}
@@ -390,7 +390,7 @@ func (m *fwImageLoadMeasurer) measureVerification() error {
 		return nil
 	}
 	m.FwContext().AppendVerificationEvent(digest)
-	m.ExtendPCR(internal.SecureBootPolicyPCR, digest)
+	m.ExtendPCR(internal_efi.SecureBootPolicyPCR, digest)
 	return nil
 }
 
@@ -399,18 +399,18 @@ func (m *fwImageLoadMeasurer) measurePEImageDigest() error {
 	if err != nil {
 		return xerrors.Errorf("cannot compute PE digest: %w", err)
 	}
-	m.ExtendPCR(internal.BootManagerCodePCR, digest)
+	m.ExtendPCR(internal_efi.BootManagerCodePCR, digest)
 	return nil
 }
 
 func (m *fwImageLoadMeasurer) measure() error {
-	if m.PCRs().Contains(internal.SecureBootPolicyPCR) {
+	if m.PCRs().Contains(internal_efi.SecureBootPolicyPCR) {
 		if err := m.measureVerification(); err != nil {
 			return xerrors.Errorf("cannot measure secure boot event: %w", err)
 		}
 	}
 
-	if m.PCRs().Contains(internal.BootManagerCodePCR) {
+	if m.PCRs().Contains(internal_efi.BootManagerCodePCR) {
 		if err := m.measurePEImageDigest(); err != nil {
 			return xerrors.Errorf("cannot measure boot manager code event: %w", err)
 		}

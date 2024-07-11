@@ -40,7 +40,7 @@ func NewMockHostEnvironment(vars MockVars, log *tcglog.Log) *MockHostEnvironment
 		Log:  log}
 }
 
-// VarContext implements [github.com/snapcore/secboot/efi.HostEnvironment.VarContext]/
+// VarContext implements [github.com/snapcore/secboot/efi.HostEnvironment.VarContext].
 func (e *MockHostEnvironment) VarContext(parent context.Context) context.Context {
 	return context.WithValue(parent, efi.VarsBackendKey{}, e.Vars)
 }

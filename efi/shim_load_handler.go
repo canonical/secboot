@@ -26,7 +26,7 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
-	"github.com/snapcore/secboot/efi/internal"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"golang.org/x/xerrors"
 )
 
@@ -177,7 +177,7 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 	ctx.ShimContext().Flags = h.Flags
 	ctx.ShimContext().VendorDb = h.VendorDb
 
-	if !ctx.PCRs().Contains(internal.SecureBootPolicyPCR) {
+	if !ctx.PCRs().Contains(internal_efi.SecureBootPolicyPCR) {
 		// We're not generating secure boot policy
 		return nil
 	}
@@ -235,7 +235,7 @@ func (h *shimLoadHandler) MeasureImageStart(ctx pcrBranchContext) error {
 	}
 
 	// Measure SbatLevel
-	ctx.MeasureVariable(internal.SecureBootPolicyPCR, shimGuid, shimSbatLevelName, sbatLevel)
+	ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, shimGuid, shimSbatLevelName, sbatLevel)
 
 	if !bytes.Equal(sbatLevel, hostSbatLevel) {
 		// This branch applies a new SBAT update
@@ -276,7 +276,7 @@ func (m *shimImageLoadMeasurer) measurePEImageDigest() error {
 	if err != nil {
 		return xerrors.Errorf("cannot compute PE digest: %w", err)
 	}
-	m.ExtendPCR(internal.BootManagerCodePCR, digest)
+	m.ExtendPCR(internal_efi.BootManagerCodePCR, digest)
 	return nil
 }
 
@@ -319,18 +319,18 @@ func (m *shimImageLoadMeasurer) measureVerification() error {
 		return nil
 	}
 	sc.AppendVerificationEvent(digest)
-	m.ExtendPCR(internal.SecureBootPolicyPCR, digest)
+	m.ExtendPCR(internal_efi.SecureBootPolicyPCR, digest)
 	return nil
 }
 
 func (m *shimImageLoadMeasurer) measure() error {
-	if m.PCRs().Contains(internal.SecureBootPolicyPCR) {
+	if m.PCRs().Contains(internal_efi.SecureBootPolicyPCR) {
 		if err := m.measureVerification(); err != nil {
 			return xerrors.Errorf("cannot measure secure boot event: %w", err)
 		}
 	}
 
-	if m.PCRs().Contains(internal.BootManagerCodePCR) {
+	if m.PCRs().Contains(internal_efi.BootManagerCodePCR) {
 		if err := m.measurePEImageDigest(); err != nil {
 			return xerrors.Errorf("cannot measure boot manager code event: %w", err)
 		}

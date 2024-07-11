@@ -17,7 +17,7 @@
  *
  */
 
-package internal
+package efi
 
 import (
 	"context"
