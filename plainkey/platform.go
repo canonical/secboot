@@ -45,27 +45,27 @@ const (
 )
 
 var (
-	platformKeysMu sync.RWMutex
-	platformKeys   [][]byte
+	protectorKeysMu sync.RWMutex
+	protectorKeys   [][]byte
 )
 
-// SetPlatformKeys sets the keys that will be used by this platform to recover other
+// SetProtectorKeys sets the keys that will be used by this platform to recover other
 // keys. These are typically stored in and loaded from an encrypted container that is
 // unlocked via some other mechanism.
-func SetPlatformKeys(keys ...[]byte) {
-	platformKeysMu.Lock()
-	platformKeys = keys
-	platformKeysMu.Unlock()
+func SetProtectorKeys(keys ...[]byte) {
+	protectorKeysMu.Lock()
+	protectorKeys = keys
+	protectorKeysMu.Unlock()
 }
 
-func getPlatformKey(id *platformKeyId) ([]byte, error) {
+func getProtectorKey(id *protectorKeyId) ([]byte, error) {
 	if !id.Alg.Available() {
 		return nil, errors.New("digest algorithm unavailable")
 	}
 
-	platformKeysMu.RLock()
-	keys := platformKeys
-	platformKeysMu.RUnlock()
+	protectorKeysMu.RLock()
+	keys := protectorKeys
+	protectorKeysMu.RUnlock()
 
 	for _, key := range keys {
 		h := hmac.New(id.Alg.New, key)
@@ -104,11 +104,11 @@ func (*platformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData, encryp
 		}
 	}
 
-	key, err := getPlatformKey(&kd.PlatformKeyID)
+	key, err := getProtectorKey(&kd.ProtectorKeyID)
 	if err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
-			Err:  fmt.Errorf("cannot select platform key: %w", err),
+			Err:  fmt.Errorf("cannot select protector key: %w", err),
 		}
 	}
 

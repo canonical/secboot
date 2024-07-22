@@ -37,17 +37,17 @@ type platformSuite struct{}
 var _ = Suite(&platformSuite{})
 
 type testRecoverKeysParams struct {
-	platformKeys [][]byte
-	generation   int
-	keyData      *KeyData
-	ciphertext   []byte
+	protectorKeys [][]byte
+	generation    int
+	keyData       *KeyData
+	ciphertext    []byte
 
 	expectedPlaintext []byte
 }
 
 func (s *platformSuite) testRecoverKeys(c *C, params *testRecoverKeysParams) {
-	SetPlatformKeys(params.platformKeys...)
-	defer SetPlatformKeys(nil)
+	SetProtectorKeys(params.protectorKeys...)
+	defer SetProtectorKeys(nil)
 
 	handle, err := json.Marshal(params.keyData)
 	c.Assert(err, IsNil)
@@ -65,13 +65,13 @@ func (s *platformSuite) testRecoverKeys(c *C, params *testRecoverKeysParams) {
 
 func (s *platformSuite) TestRecoverKeys(c *C) {
 	s.testRecoverKeys(c, &testRecoverKeysParams{
-		platformKeys: [][]byte{testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1")},
-		generation:   2,
+		protectorKeys: [][]byte{testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1")},
+		generation:    2,
 		keyData: &KeyData{
 			Version: 1,
 			Salt:    testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
 			Nonce:   testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
-			PlatformKeyID: PlatformKeyId{
+			ProtectorKeyID: ProtectorKeyId{
 				Alg:    HashAlg(crypto.SHA256),
 				Salt:   testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 				Digest: testutil.DecodeHexString(c, "119812533946d04cd3fe72626f61cf364877a8f1a6663ce8f0604da52cf0b8f3"),
@@ -84,13 +84,13 @@ func (s *platformSuite) TestRecoverKeys(c *C) {
 
 func (s *platformSuite) TestRecoverKeysDifferentKey(c *C) {
 	s.testRecoverKeys(c, &testRecoverKeysParams{
-		platformKeys: [][]byte{testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1")},
-		generation:   2,
+		protectorKeys: [][]byte{testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1")},
+		generation:    2,
 		keyData: &KeyData{
 			Version: 1,
 			Salt:    testutil.DecodeHexString(c, "dab12d7fa9c4dfb05bcc70bbd3d56ff87d5658c2f42e9e94e6273173a9d09316"),
 			Nonce:   testutil.DecodeHexString(c, "89b9b05919c41170f32cb001"),
-			PlatformKeyID: PlatformKeyId{
+			ProtectorKeyID: ProtectorKeyId{
 				Alg:    HashAlg(crypto.SHA256),
 				Salt:   testutil.DecodeHexString(c, "32b030249e7b9c614d160be5985a031654c9bba87842c40e8d1b7f8adf0b277e"),
 				Digest: testutil.DecodeHexString(c, "777cae054f1c5103149f5e30152fad0b197b3f0bb4b801327307aca50a02acff"),
@@ -101,15 +101,15 @@ func (s *platformSuite) TestRecoverKeysDifferentKey(c *C) {
 	})
 }
 
-func (s *platformSuite) TestRecoverKeysDifferentPlatformKey(c *C) {
+func (s *platformSuite) TestRecoverKeysDifferentProtectorKey(c *C) {
 	s.testRecoverKeys(c, &testRecoverKeysParams{
-		platformKeys: [][]byte{testutil.DecodeHexString(c, "1d3ae75ec26e284ab2f032256202d653025f2a1969d956a7c3b582aa368db198")},
-		generation:   2,
+		protectorKeys: [][]byte{testutil.DecodeHexString(c, "1d3ae75ec26e284ab2f032256202d653025f2a1969d956a7c3b582aa368db198")},
+		generation:    2,
 		keyData: &KeyData{
 			Version: 1,
 			Salt:    testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
 			Nonce:   testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
-			PlatformKeyID: PlatformKeyId{
+			ProtectorKeyID: ProtectorKeyId{
 				Alg:    HashAlg(crypto.SHA256),
 				Salt:   testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 				Digest: testutil.DecodeHexString(c, "a7d200c3951659d5132db221a376cfd937d65e6e991e651b62fbed48855efeaf"),
@@ -120,9 +120,9 @@ func (s *platformSuite) TestRecoverKeysDifferentPlatformKey(c *C) {
 	})
 }
 
-func (s *platformSuite) TestRecoverKeysMultiplePlatformKeys(c *C) {
+func (s *platformSuite) TestRecoverKeysMultipleProtectorKeys(c *C) {
 	s.testRecoverKeys(c, &testRecoverKeysParams{
-		platformKeys: [][]byte{
+		protectorKeys: [][]byte{
 			testutil.DecodeHexString(c, "1d3ae75ec26e284ab2f032256202d653025f2a1969d956a7c3b582aa368db198"),
 			testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1"),
 		},
@@ -131,7 +131,7 @@ func (s *platformSuite) TestRecoverKeysMultiplePlatformKeys(c *C) {
 			Version: 1,
 			Salt:    testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
 			Nonce:   testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
-			PlatformKeyID: PlatformKeyId{
+			ProtectorKeyID: ProtectorKeyId{
 				Alg:    HashAlg(crypto.SHA256),
 				Salt:   testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 				Digest: testutil.DecodeHexString(c, "119812533946d04cd3fe72626f61cf364877a8f1a6663ce8f0604da52cf0b8f3"),
@@ -147,7 +147,7 @@ func (s *platformSuite) TestRecoverKeysInvalidKDFAlg(c *C) {
 		Version: 1,
 		Salt:    testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
 		Nonce:   testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
-		PlatformKeyID: PlatformKeyId{
+		ProtectorKeyID: ProtectorKeyId{
 			Alg:    HashAlg(crypto.SHA256),
 			Salt:   testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 			Digest: testutil.DecodeHexString(c, "119812533946d04cd3fe72626f61cf364877a8f1a6663ce8f0604da52cf0b8f3"),
@@ -170,12 +170,12 @@ func (s *platformSuite) TestRecoverKeysInvalidKDFAlg(c *C) {
 	c.Check(phe.Type, Equals, secboot.PlatformHandlerErrorInvalidData)
 }
 
-func (s *platformSuite) TestRecoverKeysNoPlatformKey(c *C) {
+func (s *platformSuite) TestRecoverKeysNoProtectorKey(c *C) {
 	kd := &KeyData{
 		Version: 1,
 		Salt:    testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
 		Nonce:   testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
-		PlatformKeyID: PlatformKeyId{
+		ProtectorKeyID: ProtectorKeyId{
 			Alg:    HashAlg(crypto.SHA256),
 			Salt:   testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 			Digest: testutil.DecodeHexString(c, "119812533946d04cd3fe72626f61cf364877a8f1a6663ce8f0604da52cf0b8f3"),
@@ -191,7 +191,7 @@ func (s *platformSuite) TestRecoverKeysNoPlatformKey(c *C) {
 		KDFAlg:        crypto.SHA256,
 		AuthMode:      secboot.AuthModeNone,
 	}, nil)
-	c.Check(err, ErrorMatches, `cannot select platform key: no key available`)
+	c.Check(err, ErrorMatches, `cannot select protector key: no key available`)
 
 	var phe *secboot.PlatformHandlerError
 	c.Assert(errors.As(err, &phe), testutil.IsTrue)
@@ -199,14 +199,14 @@ func (s *platformSuite) TestRecoverKeysNoPlatformKey(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysCannotOpen(c *C) {
-	SetPlatformKeys(testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1"))
-	defer SetPlatformKeys(nil)
+	SetProtectorKeys(testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1"))
+	defer SetProtectorKeys(nil)
 
 	kd := &KeyData{
 		Version: 1,
 		Salt:    testutil.DecodeHexString(c, "d4b0b6fa2ceefabaf21f88ea42cfb8e353835ad9c190449cc01a5d275ddc84cb"),
 		Nonce:   testutil.DecodeHexString(c, "078535cc101b9d12d9b8f40e"),
-		PlatformKeyID: PlatformKeyId{
+		ProtectorKeyID: ProtectorKeyId{
 			Alg:    HashAlg(crypto.SHA256),
 			Salt:   testutil.DecodeHexString(c, "dada8164ea0d62f7fc22d09cc34bd43404554bb5ffc51937d546c9a97d68e2fe"),
 			Digest: testutil.DecodeHexString(c, "119812533946d04cd3fe72626f61cf364877a8f1a6663ce8f0604da52cf0b8f3"),
@@ -234,11 +234,11 @@ type platformSuiteIntegrated struct{}
 var _ = Suite(&platformSuiteIntegrated{})
 
 func (s *platformSuiteIntegrated) TestRecoverKeys(c *C) {
-	platformKey := testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1")
-	SetPlatformKeys(platformKey)
-	defer SetPlatformKeys(nil)
+	protectorKey := testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1")
+	SetProtectorKeys(protectorKey)
+	defer SetProtectorKeys(nil)
 
-	kd, expectedPrimaryKey, expectedUnlockKey, err := NewProtectedKey(rand.Reader, platformKey, nil)
+	kd, expectedPrimaryKey, expectedUnlockKey, err := NewProtectedKey(rand.Reader, protectorKey, nil)
 	c.Assert(err, IsNil)
 
 	unlockKey, primaryKey, err := kd.RecoverKeys()
@@ -247,14 +247,14 @@ func (s *platformSuiteIntegrated) TestRecoverKeys(c *C) {
 	c.Check(primaryKey, DeepEquals, expectedPrimaryKey)
 }
 
-func (s *platformSuiteIntegrated) TestRecoverKeysNoPlatformKey(c *C) {
-	platformKey := testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1")
+func (s *platformSuiteIntegrated) TestRecoverKeysNoProtectorKey(c *C) {
+	protectorKey := testutil.DecodeHexString(c, "8f13251b23450e1d184facfd28752c14c26439fce2765ecd92ff4b060713b5d1")
 
-	kd, _, _, err := NewProtectedKey(rand.Reader, platformKey, nil)
+	kd, _, _, err := NewProtectedKey(rand.Reader, protectorKey, nil)
 	c.Assert(err, IsNil)
 
 	_, _, err = kd.RecoverKeys()
-	c.Check(err, ErrorMatches, `invalid key data: cannot select platform key: no key available`)
+	c.Check(err, ErrorMatches, `invalid key data: cannot select protector key: no key available`)
 
 	var e *secboot.InvalidKeyDataError
 	c.Check(errors.As(err, &e), testutil.IsTrue)

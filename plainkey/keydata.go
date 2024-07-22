@@ -170,10 +170,10 @@ func (d additionalData) MarshalASN1(b *cryptobyte.Builder) {
 	})
 }
 
-// platformKeyId is a HMAC created by the platform key used to protect
+// protectorKeyId is a HMAC created by the platform key used to protect
 // a plainkey key blob. It is used to iedntify the loaded platform key
 // to use for key recovery.
-type platformKeyId struct {
+type protectorKeyId struct {
 	Alg    hashAlg `json:"alg"`    // the digest algorithm
 	Salt   []byte  `json:"salt"`   // the salt, used as data to the HMAC
 	Digest []byte  `json:"digest"` // the resulting HMAC.
@@ -185,14 +185,14 @@ type keyData struct {
 	Salt  []byte `json:"salt"`  // Used to derive the symmetric key from the platform key
 	Nonce []byte `json:"nonce"` // the GCM nonce
 
-	// PlatformKeyID is used to identify the loaded platform key to
+	// ProtectorKeyID is used to identify the loaded platform key to
 	// use for key recovery.
-	PlatformKeyID platformKeyId `json:"platform-key-id"`
+	ProtectorKeyID protectorKeyId `json:"protector-key-id"`
 }
 
 // NewProtectedKey creates a new key that is protected by this platform with the supplied
-// platform key. The platform key is typically stored inside of an encrypted container that
-// is unlocked via another mechanism, such as a TPM, and then loaded via [SetPlatformKeys]
+// protector key. The protector key is typically stored inside of an encrypted container that
+// is unlocked via another mechanism, such as a TPM, and then loaded via [SetProtectorKeys]
 // after unlocking that container.
 //
 // If primaryKey isn't supplied, then one will be generated.
@@ -203,7 +203,7 @@ type keyData struct {
 // platform uses GCM, so rand must be cryptographically secure in order to prevent nonce
 // reuse problems. Calling this function more than once in production with the same platform
 // key and the same sequence of random bytes is a bug.
-func NewProtectedKey(rand io.Reader, platformKey []byte, primaryKey secboot.PrimaryKey) (protectedKey *secboot.KeyData, primaryKeyOut secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
+func NewProtectedKey(rand io.Reader, protectorKey []byte, primaryKey secboot.PrimaryKey) (protectedKey *secboot.KeyData, primaryKeyOut secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
 	if len(primaryKey) == 0 {
 		primaryKey = make(secboot.PrimaryKey, 32)
 		if _, err := io.ReadFull(rand, primaryKey); err != nil {
@@ -244,15 +244,15 @@ func NewProtectedKey(rand io.Reader, platformKey []byte, primaryKey secboot.Prim
 		return nil, nil, nil, fmt.Errorf("cannot serialize AAD: %w", err)
 	}
 
-	id := platformKeyId{
+	id := protectorKeyId{
 		Alg:  hashAlg(idAlg),
 		Salt: idSalt,
 	}
-	h := hmac.New(id.Alg.New, platformKey)
+	h := hmac.New(id.Alg.New, protectorKey)
 	h.Write(id.Salt)
 	id.Digest = h.Sum(nil)
 
-	b, err := aes.NewCipher(deriveAESKey(platformKey, salt))
+	b, err := aes.NewCipher(deriveAESKey(protectorKey, salt))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("cannot create cipher: %w", err)
 	}
@@ -264,10 +264,10 @@ func NewProtectedKey(rand io.Reader, platformKey []byte, primaryKey secboot.Prim
 
 	kd, err := secbootNewKeyData(&secboot.KeyParams{
 		Handle: &keyData{
-			Version:       1,
-			Salt:          salt,
-			Nonce:         nonce,
-			PlatformKeyID: id,
+			Version:        1,
+			Salt:           salt,
+			Nonce:          nonce,
+			ProtectorKeyID: id,
 		},
 		EncryptedPayload: ciphertext,
 		PlatformName:     platformName,
