@@ -30,7 +30,7 @@ type (
 	HashAlg                = hashAlg
 	KeyData                = keyData
 	PlatformKeyDataHandler = platformKeyDataHandler
-	PlatformKeyId          = platformKeyId
+	ProtectorKeyId         = protectorKeyId
 )
 
 var (
