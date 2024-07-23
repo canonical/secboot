@@ -279,3 +279,29 @@ func (s *defaultEnvSuite) TestDevicesForClassIOMMU(c *C) {
 	c.Check(devices[0].Path(), Equals, filepath.Join(path, "devices/virtual/iommu/dmar0"))
 	c.Check(devices[0].Subsystem(), Equals, "iommu")
 }
+
+func (s *defaultEnvSuite) TestDevicesForClassNotExist(c *C) {
+	_, restore := s.mockSysfsPath(c, "testdata/sys.tar")
+	defer restore()
+
+	devices, err := DefaultEnv.DevicesForClass("foo")
+	c.Check(err, IsNil)
+	c.Assert(devices, HasLen, 0)
+}
+
+func (s *defaultEnvSuite) TestSysfsDeviceAttributeReaderNoAttr(c *C) {
+	_, restore := s.mockSysfsPath(c, "testdata/sys.tar")
+	defer restore()
+
+	devices, err := DefaultEnv.DevicesForClass("mei")
+	c.Check(err, IsNil)
+	c.Assert(devices, HasLen, 1)
+
+	_, err = devices[0].AttributeReader("uevent")
+	c.Check(err, Equals, ErrNoDeviceAttribute)
+	_, err = devices[0].AttributeReader("foo")
+	c.Check(err, Equals, ErrNoDeviceAttribute)
+	_, err = devices[0].AttributeReader("subsystem")
+	c.Check(err, Equals, ErrNoDeviceAttribute)
+
+}
