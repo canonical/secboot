@@ -210,9 +210,6 @@ func NewMockHostEnvironmentWithOpts(options ...MockHostEnvironmentOption) *MockH
 
 // VarContext implements [github.com/snapcore/secboot/internal/efi.HostEnvironmentEFI.VarContext].
 func (e *MockHostEnvironment) VarContext(parent context.Context) context.Context {
-	if e.Vars == nil {
-		return parent
-	}
 	return context.WithValue(parent, efi.VarsBackendKey{}, e.Vars)
 }
 
