@@ -112,7 +112,7 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileLog(c *C) {
 	defer restore()
 
 	c.Check(AddPCRProfile(tpm2.HashAlgorithmSHA256, profile.RootBranch(), sequences,
-		WithHostEnvironment(efitest.NewMockHostEnvironment(efitest.MockVars{}, expectedLog)),
+		WithHostEnvironment(efitest.NewMockHostEnvironment(nil, expectedLog)),
 		WithSecureBootPolicyProfile(),
 	), IsNil)
 }

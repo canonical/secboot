@@ -29,6 +29,10 @@ github.com/canonical/go-tpm2 v1.1.0 h1:i3YeiYTWciamtbUpKZC9FIGhCP9rWSu1AZpYnWUO9
 github.com/canonical/go-tpm2 v1.1.0/go.mod h1:kLkR1//7ocrPDl6LZfijTKEoPGxRIZSbb8GuWaO1JM8=
 github.com/canonical/go-tpm2 v1.3.0 h1:+xc2++IM4kaMCJruFzlgtYgQyV5Q0EReaP++z8VTqJk=
 github.com/canonical/go-tpm2 v1.3.0/go.mod h1:kLkR1//7ocrPDl6LZfijTKEoPGxRIZSbb8GuWaO1JM8=
+github.com/canonical/go-tpm2 v1.4.0 h1:qdOqD2tpww/8TeKdj86GatKcGrIjRl0wSwcWdqtuE6I=
+github.com/canonical/go-tpm2 v1.4.0/go.mod h1:Dz0PQRmoYrmk/4BLILjRA+SFzuqEo1etAvYeAJiMhYU=
+github.com/canonical/go-tpm2 v1.6.2 h1:hLGwI7rSSwExQZkyPF7jtAfEfH0tykxCf+O2SjXdxac=
+github.com/canonical/go-tpm2 v1.6.2/go.mod h1:Dz0PQRmoYrmk/4BLILjRA+SFzuqEo1etAvYeAJiMhYU=
 github.com/canonical/tcglog-parser v0.0.0-20210824131805-69fa1e9f0ad2/go.mod h1:QoW2apR2tBl6T/4czdND/EHjL1Ia9cCmQnIj9Xe0Kt8=
 github.com/canonical/tcglog-parser v0.0.0-20230929123437-16b3d8d08691 h1:EMZbYZXGGmtSaS2+DIza1gZ54+KVjzsw/NEUAY8me1E=
 github.com/canonical/tcglog-parser v0.0.0-20230929123437-16b3d8d08691/go.mod h1:EPlw+kpcTgSHXkLiUP/Jqp4CmkNPyVnJLAk4oSjNFrQ=
@@ -45,6 +49,8 @@ github.com/google/go-cmp v0.2.1-0.20190312032427-6f77996f0c42/go.mod h1:8QqcDgzr
 github.com/gorilla/mux v1.7.4-0.20190701202633-d83b6ffe499a/go.mod h1:1lud6UwP+6orDFRuTfBEV8e9/aOM/c4fVVCaMa2zaAs=
 github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB71So=
 github.com/gvalkov/golang-evdev v0.0.0-20191114124502-287e62b94bcb/go.mod h1:SAzVFKCRezozJTGavF3GX8MBUruETCqzivVLYiywouA=
+github.com/intel-go/cpuid v0.0.0-20220614022739-219e067757cb h1:Fg0Y/RDZ6UPwl3o7/IzPbneDq8g9+gH6DPs42KFUsy8=
+github.com/intel-go/cpuid v0.0.0-20220614022739-219e067757cb/go.mod h1:RmeVYf9XrPRbRc3XIx0gLYA8qOFvNoPOfaEZduRlEp4=
 github.com/jessevdk/go-flags v1.4.1-0.20180927143258-7309ec74f752/go.mod h1:4FA24M0QyGHXBuZZK/XkWh8h0e1EYbRYJSGM75WSRxI=
 github.com/jessevdk/go-flags v1.5.0/go.mod h1:Fw0T6WPc1dYxT4mKEZRfG5kJhaTDP9pj1c2EWnYs/m4=
 github.com/juju/ratelimit v1.0.1/go.mod h1:qapgC/Gy+xNh9UxzV13HGGl/6UXNN+ct+vwSgWNm/qk=

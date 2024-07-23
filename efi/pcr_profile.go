@@ -327,10 +327,11 @@ func (g *pcrProfileGenerator) AddPCRs(pcrs ...tpm2.Handle) {
 }
 
 // SetEnvironment implements [internal_efi.PCRProfileOptionVisitor.SetEnvironment]
-func (g *pcrProfileGenerator) SetEnvironment(env internal_efi.HostEnvironment) {
+func (g *pcrProfileGenerator) SetEnvironment(env HostEnvironment) {
 	g.env = env
 }
 
+// AddInitialVariablesModifier implements [internal_efi.PCRProfileOptionVisitor.AddInitialVariablesModifier]
 func (g *pcrProfileGenerator) AddInitialVariablesModifier(fn internal_efi.InitialVariablesModifier) {
 	g.varModifiers = append(g.varModifiers, fn)
 }
