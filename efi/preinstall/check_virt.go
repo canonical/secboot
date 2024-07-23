@@ -39,7 +39,7 @@ func detectVirtualization(env internal_efi.HostEnvironment) (detectVirtResult, e
 	// First check for any virtualization
 	virt, err := env.DetectVirtMode(internal_efi.DetectVirtModeAll)
 	if err != nil {
-		return 0, fmt.Errorf("cannot detect if environment if virtualized: %w", err)
+		return 0, fmt.Errorf("cannot detect if environment is virtualized: %w", err)
 	}
 	if virt == internal_efi.VirtModeNone {
 		// we're not in a containerized or virtualized environment

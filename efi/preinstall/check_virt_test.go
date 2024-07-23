@@ -56,7 +56,7 @@ func (s *virtSuite) TestDetectVirtualizationVM(c *C) {
 func (s *virtSuite) TestDetectVirtualizationDetectVirtModeErr1(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithVirtModeError(errors.New("some error")))
 	_, err := DetectVirtualization(env)
-	c.Check(err, ErrorMatches, `cannot detect if environment if virtualized: some error`)
+	c.Check(err, ErrorMatches, `cannot detect if environment is virtualized: some error`)
 }
 
 func (s *virtSuite) TestDetectVirtualizationDetectVirtModeErr2(c *C) {
