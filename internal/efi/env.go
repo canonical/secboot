@@ -73,7 +73,7 @@ type HostEnvironmentAMD64 interface {
 	HasCPUIDFeature(feature uint64) bool
 
 	// ReadMSRs reads the value of the specified MSR for all CPUs,
-	// returning a map of the result for all CPU numbers
+	// returning a map of the results keyed by the CPU numbers.
 	ReadMSRs(msr uint32) (map[uint32]uint64, error)
 }
 
