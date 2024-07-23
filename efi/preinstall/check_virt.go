@@ -64,7 +64,7 @@ func detectVirtualization(env internal_efi.HostEnvironment) (detectVirtResult, e
 		return 0, fmt.Errorf("cannot detect if environment is a VM: %w", err)
 	}
 	if vmVirt != virt {
-		return 0, fmt.Errorf("unexpected return value from HostEnvironment.DetectVirtMode(DetectVirtModeVM) (got:%q, expected:%q)", vmVirt, virt)
+		return 0, fmt.Errorf("inconsistent return value from HostEnvironment.DetectVirtMode(DetectVirtModeVM) (got:%q, expected:%q)", vmVirt, virt)
 	}
 
 	return detectVirtVM, nil

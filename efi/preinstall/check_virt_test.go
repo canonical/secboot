@@ -85,5 +85,5 @@ func (s *virtSuite) TestDetectVirtualizationDetectVirtModeErr4(c *C) {
 		efitest.WithDelayedVirtMode("kvm", internal_efi.DetectVirtModeVM),
 	)
 	_, err := DetectVirtualization(env)
-	c.Check(err, ErrorMatches, `unexpected return value from HostEnvironment.DetectVirtMode\(DetectVirtModeVM\) \(got:\"kvm\", expected:\"qemu\"\)`)
+	c.Check(err, ErrorMatches, `inconsistent return value from HostEnvironment.DetectVirtMode\(DetectVirtModeVM\) \(got:\"kvm\", expected:\"qemu\"\)`)
 }
