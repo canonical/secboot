@@ -20,21 +20,24 @@
 package preinstall
 
 type (
-	CpuVendor        = cpuVendor
-	DetectVirtResult = detectVirtResult
-	MeVersion        = meVersion
+	CheckTPM2DeviceFlags = checkTPM2DeviceFlags
+	CpuVendor            = cpuVendor
+	DetectVirtResult     = detectVirtResult
+	MeVersion            = meVersion
 )
 
 const (
-	CpuVendorIntel  = cpuVendorIntel
-	CpuVendorAMD    = cpuVendorAMD
-	DetectVirtNone  = detectVirtNone
-	DetectVirtVM    = detectVirtVM
-	MeFamilyUnknown = meFamilyUnknown
-	MeFamilySps     = meFamilySps
-	MeFamilyTxe     = meFamilyTxe
-	MeFamilyMe      = meFamilyMe
-	MeFamilyCsme    = meFamilyCsme
+	CheckTPM2DeviceInVM        = checkTPM2DeviceInVM
+	CheckTPM2DevicePostInstall = checkTPM2DevicePostInstall
+	CpuVendorIntel             = cpuVendorIntel
+	CpuVendorAMD               = cpuVendorAMD
+	DetectVirtNone             = detectVirtNone
+	DetectVirtVM               = detectVirtVM
+	MeFamilyUnknown            = meFamilyUnknown
+	MeFamilySps                = meFamilySps
+	MeFamilyTxe                = meFamilyTxe
+	MeFamilyMe                 = meFamilyMe
+	MeFamilyCsme               = meFamilyCsme
 )
 
 var (
@@ -46,6 +49,7 @@ var (
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings = checkSecureBootPolicyPCRForDegradedFirmwareSettings
 	DetectVirtualization                                = detectVirtualization
 	DetermineCPUVendor                                  = determineCPUVendor
+	OpenAndCheckTPM2Device                              = openAndCheckTPM2Device
 	ReadIntelHFSTSRegistersFromMEISysfs                 = readIntelHFSTSRegistersFromMEISysfs
 	ReadIntelMEVersionFromMEISysfs                      = readIntelMEVersionFromMEISysfs
 )
