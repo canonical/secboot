@@ -43,6 +43,7 @@ const (
 var (
 	CalculateIntelMEFamily                              = calculateIntelMEFamily
 	CheckCPUDebuggingLockedMSR                          = checkCPUDebuggingLockedMSR
+	CheckFirmwareLogAndChoosePCRBank                    = checkFirmwareLogAndChoosePCRBank
 	CheckForKernelIOMMU                                 = checkForKernelIOMMU
 	CheckPlatformFirmwareProtections                    = checkPlatformFirmwareProtections
 	CheckPlatformFirmwareProtectionsIntelMEI            = checkPlatformFirmwareProtectionsIntelMEI

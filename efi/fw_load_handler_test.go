@@ -285,7 +285,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartPlatformFirmwareProfile(c *C) 
 		pcrs:       MakePcrFlags(internal_efi.PlatformFirmwarePCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 0, eventType: mockPcrBranchResetEvent},
-			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6")},
+			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "cd1137dfa2bfba51973100d73d78d9f496e089fd246fe980fadc668b4efc9443")},
+			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "5ca5e6acb83d626a42b53ddc5a2fe04d6a4b2f045bb07f6d9baf0e82900d7bbe")},
 			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "aef237d4703e8936530141636186a9f249fa39e194f02f668cd328bd5902cf03")},
 			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "8b0eec99d3cccc081edb98c3a2aa74b99a02b785bd74513e1cf7401e99121e80")},
 			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
@@ -300,7 +301,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartPlatformFirmwareProfileSL3(c *
 		pcrs:       MakePcrFlags(internal_efi.PlatformFirmwarePCR),
 		expectedEvents: []*mockPcrBranchEvent{
 			{pcr: 0, eventType: mockPcrBranchResetCRTMPCREvent, locality: 3},
-			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6")},
+			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "cd1137dfa2bfba51973100d73d78d9f496e089fd246fe980fadc668b4efc9443")},
+			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "5ca5e6acb83d626a42b53ddc5a2fe04d6a4b2f045bb07f6d9baf0e82900d7bbe")},
 			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "aef237d4703e8936530141636186a9f249fa39e194f02f668cd328bd5902cf03")},
 			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "8b0eec99d3cccc081edb98c3a2aa74b99a02b785bd74513e1cf7401e99121e80")},
 			{pcr: 0, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},

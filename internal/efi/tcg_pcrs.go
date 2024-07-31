@@ -26,14 +26,28 @@ const (
 	PlatformFirmwarePCR tpm2.Handle = 0
 
 	// HostPlatformConfigPCR is the Host Platform Configuration PCR
-	HostPlatformConfigPCR tpm2.Handle = 1
+	PlatformFirmwareConfigPCR tpm2.Handle = 1
 
 	// DriversAndAppsPCR is the UEFI Drivers and UEFI Applications PCR
 	DriversAndAppsPCR tpm2.Handle = 2
 
+	// DriversAndAppsConfigPCR is the UEFI driver and application Configuration and Data PCR
+	DriversAndAppsConfigPCR tpm2.Handle = 3
+
 	// BootManagerCodePCR is the Boot Manager Code and Boot Attempts PCR
 	BootManagerCodePCR tpm2.Handle = 4
+
+	// BootManagerCodeConfigPCR is the Boot Manager Code Configuration and Data
+	// (for use by the Boot Manager Code) and GPT/Partition Table PCR.
+	BootManagerCodeConfigPCR tpm2.Handle = 5
+
+	// PlatformManufacturerPCR is the Host Platform Manufacturer Specific PCR
+	PlatformManufacturerPCR tpm2.Handle = 6
 
 	// SecureBootPolicyPCR is the Secure Boot Policy Measurements PCR
 	SecureBootPolicyPCR tpm2.Handle = 7
 )
+
+func IsTCGDefinedPCR(pcr tpm2.Handle) bool {
+	return pcr <= SecureBootPolicyPCR
+}
