@@ -85,7 +85,7 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAP
 func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedData(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 	for _, ev := range log.Events {
-		if ev.PCRIndex != tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) {
+		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
 			continue
 		}
 		ev.Data = tcglog.EFICallingEFIApplicationEvent
@@ -97,7 +97,7 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrU
 func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedType(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 	for _, ev := range log.Events {
-		if ev.PCRIndex != tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) {
+		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
 			continue
 		}
 		ev.EventType = tcglog.EventTypeAction

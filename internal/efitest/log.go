@@ -62,7 +62,7 @@ func (d bytesHashData) Write(w io.Writer) error {
 }
 
 type logEvent struct {
-	pcrIndex  tcglog.PCRIndex
+	pcrIndex  tpm2.Handle
 	eventType tcglog.EventType
 	data      tcglog.EventData
 }
@@ -131,7 +131,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		{
 			PCRIndex:  0,
 			EventType: tcglog.EventTypeNoAction,
-			Digests:   tcglog.DigestMap{tpm2.HashAlgorithmSHA1: make(tcglog.Digest, tpm2.HashAlgorithmSHA1.Size())},
+			Digests:   tcglog.DigestMap{tpm2.HashAlgorithmSHA1: make(tpm2.Digest, tpm2.HashAlgorithmSHA1.Size())},
 			Data: &tcglog.SpecIdEvent03{
 				SpecVersionMajor: 2,
 				UintnSize:        2,
@@ -147,7 +147,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			Data:      &tcglog.StartupLocalityEventData{StartupLocality: opts.StartupLocality},
 		}
 		for _, alg := range opts.Algorithms {
-			ev.Digests[alg] = make(tcglog.Digest, alg.Size())
+			ev.Digests[alg] = make(tpm2.Digest, alg.Size())
 		}
 		builder.events = append(builder.events, ev)
 	}
@@ -401,7 +401,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeEFIAction,
 			data:      data})
 	}
-	for _, pcr := range []tcglog.PCRIndex{0, 1, 2, 3, 4, 5, 6} {
+	for _, pcr := range []tpm2.Handle{0, 1, 2, 3, 4, 5, 6} {
 		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  pcr,
