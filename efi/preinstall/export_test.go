@@ -20,31 +20,35 @@
 package preinstall
 
 type (
-	CheckTPM2DeviceFlags = checkTPM2DeviceFlags
-	CpuVendor            = cpuVendor
-	DetectVirtResult     = detectVirtResult
-	MeVersion            = meVersion
+	CheckTPM2DeviceFlags      = checkTPM2DeviceFlags
+	CpuVendor                 = cpuVendor
+	DetectVirtResult          = detectVirtResult
+	DriversAndAppsResultFlags = driversAndAppsResultFlags
+	MeVersion                 = meVersion
 )
 
 const (
-	CheckTPM2DeviceInVM        = checkTPM2DeviceInVM
-	CheckTPM2DevicePostInstall = checkTPM2DevicePostInstall
-	CpuVendorIntel             = cpuVendorIntel
-	CpuVendorAMD               = cpuVendorAMD
-	DetectVirtNone             = detectVirtNone
-	DetectVirtVM               = detectVirtVM
-	MeFamilyUnknown            = meFamilyUnknown
-	MeFamilySps                = meFamilySps
-	MeFamilyTxe                = meFamilyTxe
-	MeFamilyMe                 = meFamilyMe
-	MeFamilyCsme               = meFamilyCsme
+	CheckTPM2DeviceInVM          = checkTPM2DeviceInVM
+	CheckTPM2DevicePostInstall   = checkTPM2DevicePostInstall
+	CpuVendorIntel               = cpuVendorIntel
+	CpuVendorAMD                 = cpuVendorAMD
+	DetectVirtNone               = detectVirtNone
+	DetectVirtVM                 = detectVirtVM
+	DriversAndAppsDriversPresent = driversAndAppsDriversPresent
+	MeFamilyUnknown              = meFamilyUnknown
+	MeFamilySps                  = meFamilySps
+	MeFamilyTxe                  = meFamilyTxe
+	MeFamilyMe                   = meFamilyMe
+	MeFamilyCsme                 = meFamilyCsme
 )
 
 var (
 	CalculateIntelMEFamily                              = calculateIntelMEFamily
 	CheckCPUDebuggingLockedMSR                          = checkCPUDebuggingLockedMSR
+	CheckDriversAndAppsMeasurements                     = checkDriversAndAppsMeasurements
 	CheckFirmwareLogAndChoosePCRBank                    = checkFirmwareLogAndChoosePCRBank
 	CheckForKernelIOMMU                                 = checkForKernelIOMMU
+	CheckPlatformFirmwareMeasurements                   = checkPlatformFirmwareMeasurements
 	CheckPlatformFirmwareProtections                    = checkPlatformFirmwareProtections
 	CheckPlatformFirmwareProtectionsIntelMEI            = checkPlatformFirmwareProtectionsIntelMEI
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings = checkSecureBootPolicyPCRForDegradedFirmwareSettings

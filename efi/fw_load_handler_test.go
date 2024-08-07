@@ -63,9 +63,6 @@ func (s *fwLoadHandlerSuite) testMeasureImageStart(c *C, data *testFwMeasureImag
 	handler := NewFwLoadHandler(efitest.NewLog(c, data.logOptions))
 	c.Check(handler.MeasureImageStart(ctx), IsNil)
 	c.Check(ctx.events, DeepEquals, data.expectedEvents)
-	for _, event := range ctx.events {
-		c.Logf("pcr:%d, type:%v, digest:%#x", event.pcr, event.eventType, event.digest)
-	}
 	c.Check(collector.More(), testutil.IsFalse)
 	return ctx.FwContext()
 }
