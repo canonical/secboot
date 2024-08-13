@@ -98,7 +98,19 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 			return 0, fmt.Errorf("encountered an error when determining platform firmware protections using Intel MEI: %w", err)
 		}
 		if amd64Env.HasCPUIDFeature(cpuid.SMX) {
-			// The Intel TXT spec says that locality 3 is only available to ACMs
+			// The Intel TXT spec says that locality 4 is basically only avilable
+			// to microcode, and is locked before handing over to an ACM which
+			// has access to locality 3. Access to this is meant to be locked at the
+			// hardware level before running non-Intel code, although I'm not sure if
+			// this is only relevant in the D-CRTM case where the SINIT ACM has access
+			//to locality 3, and it locks access to it, leaving access to localities 2
+			// and 1 to the measured launch environment and dynamic OS respectively. We
+			// rely on the property of locality 3 being protected somewhat in order to
+			// attempt to mitigate discrete TPM reset attacks on Intel platforms (basically
+			// by including PCR0 in the policy, even though it's otherwise useless to include
+			// it, but locality 3 access is required in order to reconstruct PCR0 after a TPM
+			// reset. Mark locality 3 as protected if we have the right instructions for
+			// implementing a D-CRTM with Intel TXT (which I think is SMX).
 			result |= platformFirmwareProtectionsTPMLocality3IsProtected
 		}
 	case cpuVendorAMD:
