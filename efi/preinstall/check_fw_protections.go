@@ -44,6 +44,20 @@ func (e *NoHardwareRootOfTrustError) Unwrap() error {
 	return e.err
 }
 
+// UnsupportedPlatformError is returned wrapped from [RunChecks] if this platform
+// is not supported for FDE.
+type UnsupportedPlatformError struct {
+	err error
+}
+
+func (e *UnsupportedPlatformError) Error() string {
+	return "unsupported platform: " + e.err.Error()
+}
+
+func (e *UnsupportedPlatformError) Unwrap() error {
+	return e.err
+}
+
 type platformFirmwareProtectionsResultFlags int
 
 const (

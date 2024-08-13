@@ -22,11 +22,12 @@
 package preinstall
 
 import (
-	"errors"
+	"fmt"
+	"runtime"
 
 	"github.com/canonical/tcglog-parser"
 )
 
 func checkPlatformFirmwareProtections(env HostEnvironment, log *tcglog.Log) (result firmwareProtectionResultFlags, err error) {
-	return 0, errors.New("checking platform firmware protections is not implemented on this platform")
+	return 0, &UnsupportedPlatformError{fmt.Errorf("checking platform firmware protections is not implemented on %s", runtime.GOARCH)}
 }

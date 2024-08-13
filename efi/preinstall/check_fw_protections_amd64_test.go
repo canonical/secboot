@@ -202,7 +202,9 @@ func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrAMDNotS
 	)
 
 	_, err := CheckPlatformFirmwareProtections(env, nil)
-	c.Check(err, ErrorMatches, `TODO: checking platform firmware protections is not yet implemented for AMD`)
+	c.Check(err, ErrorMatches, `unsupported platform: checking platform firmware protections is not yet implemented for AMD`)
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
 func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrMEI(c *C) {

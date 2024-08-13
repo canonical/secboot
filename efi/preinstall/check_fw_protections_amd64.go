@@ -102,7 +102,7 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 			result |= platformFirmwareProtectionsTPMLocality3IsProtected
 		}
 	case cpuVendorAMD:
-		return 0, errors.New("TODO: checking platform firmware protections is not yet implemented for AMD")
+		return 0, &UnsupportedPlatformError{errors.New("checking platform firmware protections is not yet implemented for AMD")}
 	default:
 		panic("not reached")
 	}
