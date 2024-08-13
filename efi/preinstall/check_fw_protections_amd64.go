@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	"github.com/intel-go/cpuid"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -81,7 +82,7 @@ func determineCPUVendor(env internal_efi.HostEnvironmentAMD64) (cpuVendor, error
 
 // checkPlatformFirmwareProtections is the main entry point for verifying that platform firmware
 // protections are sufficient.
-func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcglog.Log) (result platformFirmwareProtectionsResultFlags, err error) {
+func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcglog.Log) (protectedStartupLocalities tpm2.Locality, err error) {
 	amd64Env, err := env.AMD64()
 	if err != nil {
 		return 0, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
@@ -103,15 +104,15 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 			// has access to locality 3. Access to this is meant to be locked at the
 			// hardware level before running non-Intel code, although I'm not sure if
 			// this is only relevant in the D-CRTM case where the SINIT ACM has access
-			//to locality 3, and it locks access to it, leaving access to localities 2
+			// to locality 3, and it locks access to it, leaving access to localities 2
 			// and 1 to the measured launch environment and dynamic OS respectively. We
-			// rely on the property of locality 3 being protected somewhat in order to
-			// attempt to mitigate discrete TPM reset attacks on Intel platforms (basically
+			// rely on the property of localities 3 and 4 being protected somewhat in order
+			// to attempt to mitigate discrete TPM reset attacks on Intel platforms (basically
 			// by including PCR0 in the policy, even though it's otherwise useless to include
-			// it, but locality 3 access is required in order to reconstruct PCR0 after a TPM
-			// reset. Mark locality 3 as protected if we have the right instructions for
-			// implementing a D-CRTM with Intel TXT (which I think is SMX).
-			result |= platformFirmwareProtectionsTPMLocality3IsProtected
+			// it, but locality 3 or 4 access is required in order to reconstruct PCR0 after a
+			// TPM reset. Mark localities 3 and 4 as protected if we have the right instructions
+			// for implementing a D-CRTM with Intel TXT (which I think is SMX).
+			protectedStartupLocalities |= tpm2.LocalityThree | tpm2.LocalityFour
 		}
 	case cpuVendorAMD:
 		return 0, &UnsupportedPlatformError{errors.New("checking platform firmware protections is not yet implemented for AMD")}
@@ -129,5 +130,5 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 		return 0, fmt.Errorf("encountered an error when determining CPU debugging configuration from MSRs: %w", err)
 	}
 
-	return result, nil
+	return protectedStartupLocalities, nil
 }

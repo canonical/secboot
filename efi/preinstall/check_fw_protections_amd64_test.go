@@ -24,6 +24,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"github.com/canonical/go-tpm2"
 	"github.com/intel-go/cpuid"
 	. "github.com/snapcore/secboot/efi/preinstall"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -141,9 +142,10 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	result, err := CheckPlatformFirmwareProtections(env, log)
+	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
 	c.Check(err, IsNil)
-	c.Check(result, Equals, PlatformFirmwareProtectionsTPMLocality3IsProtected)
+	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
+	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
 func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsNoTXT(c *C) {
@@ -175,9 +177,10 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	result, err := CheckPlatformFirmwareProtections(env, log)
+	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
 	c.Check(err, IsNil)
-	c.Check(result, Equals, PlatformFirmwareProtectionsResultFlags(0))
+	c.Check(protectedStartupLocalities, Equals, tpm2.Locality(0))
+	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8(nil))
 }
 
 func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrNotAMD64(c *C) {

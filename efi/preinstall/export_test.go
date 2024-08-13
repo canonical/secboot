@@ -20,23 +20,21 @@
 package preinstall
 
 type (
-	CpuVendor                              = cpuVendor
-	DetectVirtResult                       = detectVirtResult
-	MeVersion                              = meVersion
-	PlatformFirmwareProtectionsResultFlags = platformFirmwareProtectionsResultFlags
+	CpuVendor        = cpuVendor
+	DetectVirtResult = detectVirtResult
+	MeVersion        = meVersion
 )
 
 const (
-	CpuVendorIntel                                     = cpuVendorIntel
-	CpuVendorAMD                                       = cpuVendorAMD
-	DetectVirtNone                                     = detectVirtNone
-	DetectVirtVM                                       = detectVirtVM
-	MeFamilyUnknown                                    = meFamilyUnknown
-	MeFamilySps                                        = meFamilySps
-	MeFamilyTxe                                        = meFamilyTxe
-	MeFamilyMe                                         = meFamilyMe
-	MeFamilyCsme                                       = meFamilyCsme
-	PlatformFirmwareProtectionsTPMLocality3IsProtected = platformFirmwareProtectionsTPMLocality3IsProtected
+	CpuVendorIntel  = cpuVendorIntel
+	CpuVendorAMD    = cpuVendorAMD
+	DetectVirtNone  = detectVirtNone
+	DetectVirtVM    = detectVirtVM
+	MeFamilyUnknown = meFamilyUnknown
+	MeFamilySps     = meFamilySps
+	MeFamilyTxe     = meFamilyTxe
+	MeFamilyMe      = meFamilyMe
+	MeFamilyCsme    = meFamilyCsme
 )
 
 var (

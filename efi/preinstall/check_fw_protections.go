@@ -58,17 +58,6 @@ func (e *UnsupportedPlatformError) Unwrap() error {
 	return e.err
 }
 
-type platformFirmwareProtectionsResultFlags int
-
-const (
-	// platformFirmwareProtectionsTPMLocality3IsProtected indicates that the
-	// hardware has a way of protecting access to TPM locality 3 from firmware
-	// or other software running on the CPU that isn't authenticated by the
-	// siicon vendor and part of the early chain of trust (ie, restricted to
-	// BootGuard on Intel platforms).
-	platformFirmwareProtectionsTPMLocality3IsProtected platformFirmwareProtectionsResultFlags = 1 << iota
-)
-
 var (
 	// ErrCPUDebuggingNotLocked is returned wrapped from RunChecks if the CPU
 	// has silicon debugging features but these have not been disabled and
