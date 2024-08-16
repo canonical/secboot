@@ -99,7 +99,7 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 			return 0, fmt.Errorf("encountered an error when determining platform firmware protections using Intel MEI: %w", err)
 		}
 		if amd64Env.HasCPUIDFeature(cpuid.SMX) {
-			// The Intel TXT spec says that locality 4 is basically only avilable
+			// The Intel TXT spec says that locality 4 is basically only available
 			// to microcode, and is locked before handing over to an ACM which
 			// has access to locality 3. Access to this is meant to be locked at the
 			// hardware level before running non-Intel code, although I'm not sure if
