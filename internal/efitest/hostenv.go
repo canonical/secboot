@@ -192,6 +192,7 @@ func WithAMD64Environment(cpuVendorIdentificator string, cpuidFeatures []uint64,
 		env.AMD64Env = &mockHostEnvironmentAMD64{
 			vendorIdentificator: cpuVendorIdentificator,
 			features:            features,
+			cpus:                cpus,
 			msrs:                msrs,
 		}
 	}
