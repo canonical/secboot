@@ -68,7 +68,7 @@ func checkSecureBootPolicyPCRForDegradedFirmwareSettings(log *tcglog.Log) error 
 		event := events[0]
 		events = events[1:]
 
-		if event.PCRIndex != tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) {
+		if event.PCRIndex != internal_efi.SecureBootPolicyPCR {
 			continue
 		}
 

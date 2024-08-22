@@ -59,7 +59,7 @@ func (h *fwLoadHandler) measureSeparator(ctx pcrBranchContext, pcr tpm2.Handle, 
 	if data.IsError() {
 		return fmt.Errorf("separator indicates that a firmware error occurred (error code from log: %d)", binary.LittleEndian.Uint32(data.Bytes()))
 	}
-	ctx.ExtendPCR(pcr, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+	ctx.ExtendPCR(pcr, event.Digests[ctx.PCRAlg()])
 	return nil
 }
 
@@ -118,10 +118,10 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		events = events[1:]
 
 		switch {
-		case e.PCRIndex < tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeSeparator:
+		case e.PCRIndex < internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeSeparator:
 			// pre-OS to OS-present signal
 			foundOsPresent = true
-		case e.PCRIndex == tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeSeparator:
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeSeparator:
 			// end of secure boot configuration signal
 			if foundSecureBootSeparator {
 				return errors.New("unexpected separator")
@@ -130,22 +130,22 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 				return err
 			}
 			foundSecureBootSeparator = true
-		case e.PCRIndex == tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeEFIVariableAuthority:
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableAuthority:
 			// secure boot verification event - shouldn't see this before the end of secure
 			// boot configuration signal.
 			if !foundSecureBootSeparator {
 				return errors.New("unexpected verification event")
 			}
-			digest := tpm2.Digest(e.Digests[ctx.PCRAlg()])
+			digest := e.Digests[ctx.PCRAlg()]
 			ctx.FwContext().AppendVerificationEvent(digest)
 			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, digest)
-		case e.PCRIndex == tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR) && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
 			// ignore: part of the secure boot configuration - shouldn't see this after the
 			// end of secure boot configuration signal.
 			if foundSecureBootSeparator {
 				return errors.New("unexpected configuration event")
 			}
-		case e.PCRIndex == tcglog.PCRIndex(internal_efi.SecureBootPolicyPCR):
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR:
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:
 			// not a secure boot event
@@ -166,7 +166,7 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 	donePcrReset := false
 
 	for _, event := range h.log.Events {
-		if event.PCRIndex != tcglog.PCRIndex(internal_efi.PlatformFirmwarePCR) {
+		if event.PCRIndex != internal_efi.PlatformFirmwarePCR {
 			continue
 		}
 		if event.EventType == tcglog.EventTypeNoAction {
@@ -191,7 +191,7 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 		if event.EventType == tcglog.EventTypeSeparator {
 			return h.measureSeparator(ctx, internal_efi.PlatformFirmwarePCR, event)
 		}
-		ctx.ExtendPCR(internal_efi.PlatformFirmwarePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		ctx.ExtendPCR(internal_efi.PlatformFirmwarePCR, event.Digests[ctx.PCRAlg()])
 	}
 
 	return errors.New("missing separator")
@@ -199,14 +199,14 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 
 func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
 	for _, event := range h.log.Events {
-		if event.PCRIndex != tcglog.PCRIndex(internal_efi.DriversAndAppsPCR) {
+		if event.PCRIndex != internal_efi.DriversAndAppsPCR {
 			continue
 		}
 
 		if event.EventType == tcglog.EventTypeSeparator {
 			return h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event)
 		}
-		ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
 	}
 
 	return errors.New("missing separator")
@@ -252,7 +252,7 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 		event := events[0]
 		events = events[1:]
 
-		if event.PCRIndex != tcglog.PCRIndex(internal_efi.BootManagerCodePCR) {
+		if event.PCRIndex != internal_efi.BootManagerCodePCR {
 			continue
 		}
 
@@ -263,7 +263,7 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 			measuredSeparator = true
 			break
 		}
-		ctx.ExtendPCR(internal_efi.BootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+		ctx.ExtendPCR(internal_efi.BootManagerCodePCR, event.Digests[ctx.PCRAlg()])
 	}
 
 	if !measuredSeparator {
@@ -279,7 +279,7 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 		event := events[0]
 		events = events[1:]
 
-		if event.PCRIndex != tcglog.PCRIndex(internal_efi.BootManagerCodePCR) {
+		if event.PCRIndex != internal_efi.BootManagerCodePCR {
 			continue
 		}
 		if event.EventType != tcglog.EventTypeEFIBootServicesApplication {
@@ -295,7 +295,7 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 		}
 		if isAbsolute {
 			// copy the digest to the policy
-			ctx.ExtendPCR(internal_efi.BootManagerCodePCR, tpm2.Digest(event.Digests[ctx.PCRAlg()]))
+			ctx.ExtendPCR(internal_efi.BootManagerCodePCR, event.Digests[ctx.PCRAlg()])
 		}
 		// If it's not Absolute, we assume it's related to the OS launch which we will predict
 		// later on. If it's something else, discarding it here creates an invalid policy but this is

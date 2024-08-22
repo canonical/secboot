@@ -7,7 +7,7 @@ require (
 	github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0
 	github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3
 	github.com/canonical/go-tpm2 v1.7.6
-	github.com/canonical/tcglog-parser v0.0.0-20240726104243-6363e875afc6
+	github.com/canonical/tcglog-parser v0.0.0-20240820013904-60cf7cbc7c5d
 	github.com/intel-go/cpuid v0.0.0-20220614022739-219e067757cb
 	github.com/snapcore/snapd v0.0.0-20220714152900-4a1f4c93fc85
 	golang.org/x/crypto v0.9.0

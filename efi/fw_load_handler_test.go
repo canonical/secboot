@@ -547,9 +547,9 @@ func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogSeparatorError(c *C, 
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
-		if event.PCRIndex == tcglog.PCRIndex(pcr) && event.EventType == tcglog.EventTypeSeparator {
+		if event.PCRIndex == pcr && event.EventType == tcglog.EventTypeSeparator {
 			// Overwrite the event data with a mock error event
-			log.Events[i].Data = tcglog.NewErrorSeparatorEventData([]byte{0x50, 0x10, 0x00, 0x00})
+			log.Events[i].Data = &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventErrorValue, ErrorInfo: []byte{0x50, 0x10, 0x00, 0x00}}
 			break
 		}
 	}
@@ -588,7 +588,7 @@ func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogInvalidSeparator(c *C
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
-		if event.PCRIndex == tcglog.PCRIndex(pcr) && event.EventType == tcglog.EventTypeSeparator {
+		if event.PCRIndex == pcr && event.EventType == tcglog.EventTypeSeparator {
 			// Overwrite the event data with a mock error event
 			log.Events[i].Data = &mockErrLogData{errors.New("data is the wrong size")}
 			break
@@ -629,7 +629,7 @@ func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogMissingSeparator(c *C
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
-		if event.PCRIndex == tcglog.PCRIndex(pcr) && event.EventType == tcglog.EventTypeSeparator {
+		if event.PCRIndex == pcr && event.EventType == tcglog.EventTypeSeparator {
 			events := log.Events[:i]
 			if len(log.Events) > i+1 {
 				events = append(events, log.Events[i+1:]...)
