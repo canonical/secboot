@@ -30,10 +30,16 @@ const (
 	pcClientClass uint32 = 0x00000001
 )
 
+// checkTPM2DeviceFlags are passed to openAndCheckTPM2Device
 type checkTPM2DeviceFlags int
 
 const (
+	// checkTPM2DeviceInVM indicates that the current environment is a
+	// virtual machine.
 	checkTPM2DeviceInVM checkTPM2DeviceFlags = 1 << iota
+
+	// checkTPM2DevicePostInstall indicates that this function is being
+	// executed post-install as opposed to pre-install.
 	checkTPM2DevicePostInstall
 )
 
