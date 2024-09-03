@@ -225,44 +225,6 @@ type Argon2KDF interface {
 	Time(mode Argon2Mode, params *Argon2CostParams) (time.Duration, error)
 }
 
-type inProcessArgon2KDFImpl struct{}
-
-func (_ inProcessArgon2KDFImpl) Derive(passphrase string, salt []byte, mode Argon2Mode, params *Argon2CostParams, keyLen uint32) ([]byte, error) {
-	switch {
-	case mode != Argon2i && mode != Argon2id:
-		return nil, errors.New("invalid mode")
-	case params == nil:
-		return nil, errors.New("nil params")
-	case params.Time == 0:
-		return nil, errors.New("invalid time cost")
-	case params.Threads == 0:
-		return nil, errors.New("invalid number of threads")
-	}
-
-	return argon2.Key(passphrase, salt, argon2.Mode(mode), params.internalParams(), keyLen), nil
-}
-
-func (_ inProcessArgon2KDFImpl) Time(mode Argon2Mode, params *Argon2CostParams) (time.Duration, error) {
-	switch {
-	case mode != Argon2i && mode != Argon2id:
-		return 0, errors.New("invalid mode")
-	case params == nil:
-		return 0, errors.New("nil params")
-	case params.Time == 0:
-		return 0, errors.New("invalid time cost")
-	case params.Threads == 0:
-		return 0, errors.New("invalid number of threads")
-	}
-
-	return argon2.KeyDuration(argon2.Mode(mode), params.internalParams()), nil
-}
-
-// InProcessArgon2KDF is the in-process implementation of the Argon2 KDF. This
-// shouldn't be used in long-lived system processes - these processes should
-// instead provide their own KDF implementation which delegates to a short-lived
-// utility process which will use the in-process implementation.
-var InProcessArgon2KDF = inProcessArgon2KDFImpl{}
-
 type nullArgon2KDFImpl struct{}
 
 func (_ nullArgon2KDFImpl) Derive(passphrase string, salt []byte, mode Argon2Mode, params *Argon2CostParams, keyLen uint32) ([]byte, error) {
