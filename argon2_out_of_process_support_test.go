@@ -20,11 +20,14 @@
 package secboot_test
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
@@ -39,7 +42,7 @@ func (s *argon2OutOfProcessSupportSuite) TearDownTest(c *C) {
 
 var _ = Suite(&argon2OutOfProcessSupportSuite{})
 
-func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessRequestInvalidProcess(c *C) {
+func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessDeriveRequestInvalidProcess(c *C) {
 	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -57,7 +60,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessRequestInvalid
 	})
 }
 
-func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessRequestInvalidMode(c *C) {
+func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessDeriveRequestInvalidMode(c *C) {
 	SetIsArgon2HandlerProcess()
 	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
@@ -76,7 +79,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessRequestInvalid
 	})
 }
 
-func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessRequestInvalidTime(c *C) {
+func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessDeriveRequestInvalidTime(c *C) {
 	SetIsArgon2HandlerProcess()
 	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
@@ -95,7 +98,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessRequestInvalid
 	})
 }
 
-func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessRequestInvalidThreads(c *C) {
+func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessDeriveRequestInvalidThreads(c *C) {
 	SetIsArgon2HandlerProcess()
 	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
@@ -111,6 +114,73 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessRequestInvalid
 		Command:     Argon2OutOfProcessCommandDerive,
 		ErrorType:   Argon2OutOfProcessErrorInvalidThreads,
 		ErrorString: "invalid threads: cannot be zero",
+	})
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessTimeRequestInvalidPassphrase(c *C) {
+	SetIsArgon2HandlerProcess()
+	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
+		Command:    Argon2OutOfProcessCommandTime,
+		Passphrase: "foo",
+		Mode:       Argon2id,
+		Time:       4,
+		MemoryKiB:  32,
+		Threads:    4,
+	})
+	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
+		Command:     Argon2OutOfProcessCommandTime,
+		ErrorType:   Argon2OutOfProcessErrorUnexpectedInput,
+		ErrorString: "cannot supply passphrase for \"time\" command",
+	})
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessTimeRequestInvalidSalt(c *C) {
+	SetIsArgon2HandlerProcess()
+	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
+		Command:   Argon2OutOfProcessCommandTime,
+		Salt:      []byte("0123456789abcdefghijklmnopqrstuv"),
+		Mode:      Argon2id,
+		Time:      4,
+		MemoryKiB: 32,
+		Threads:   4,
+	})
+	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
+		Command:     Argon2OutOfProcessCommandTime,
+		ErrorType:   Argon2OutOfProcessErrorUnexpectedInput,
+		ErrorString: "cannot supply salt for \"time\" command",
+	})
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessTimeRequestInvalidKeylen(c *C) {
+	SetIsArgon2HandlerProcess()
+	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
+		Command:   Argon2OutOfProcessCommandTime,
+		Keylen:    32,
+		Mode:      Argon2id,
+		Time:      4,
+		MemoryKiB: 32,
+		Threads:   4,
+	})
+	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
+		Command:     Argon2OutOfProcessCommandTime,
+		ErrorType:   Argon2OutOfProcessErrorUnexpectedInput,
+		ErrorString: "cannot supply keylen for \"time\" command",
+	})
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessInvalidCommand(c *C) {
+	SetIsArgon2HandlerProcess()
+	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
+		Command:   Argon2OutOfProcessCommand("foo"),
+		Mode:      Argon2id,
+		Time:      4,
+		MemoryKiB: 32,
+		Threads:   4,
+	})
+	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
+		Command:     Argon2OutOfProcessCommand("foo"),
+		ErrorType:   Argon2OutOfProcessErrorInvalidCommand,
+		ErrorString: "invalid command: \"foo\"",
 	})
 }
 
@@ -335,7 +405,7 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 	c.Check(res2.Duration > res.Duration, testutil.IsTrue)
 }
 
-func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessRequestConsumedProcess(c *C) {
+func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessRequestDeriveConsumedProcess(c *C) {
 	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -363,6 +433,65 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 		ErrorType:   Argon2OutOfProcessErrorConsumedProcess,
 		ErrorString: "cannot run derive command: argon2 out-of-process handler has alreay been used - a new process should be started to handle a new request",
 	})
+}
+
+func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessRequestTimeConsumedProcess(c *C) {
+	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
+		Command:   Argon2OutOfProcessCommandTime,
+		Mode:      Argon2id,
+		Time:      4,
+		MemoryKiB: 32,
+		Threads:   4,
+	})
+	c.Check(out, NotNil)
+
+	out = RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
+		Command:   Argon2OutOfProcessCommandTime,
+		Mode:      Argon2id,
+		Time:      4,
+		MemoryKiB: 32,
+		Threads:   4,
+	})
+	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
+		Command:     Argon2OutOfProcessCommandTime,
+		ErrorType:   Argon2OutOfProcessErrorConsumedProcess,
+		ErrorString: "cannot run time command: argon2 out-of-process handler has alreay been used - a new process should be started to handle a new request",
+	})
+}
+
+func (s *argon2OutOfProcessSupportSuiteExpensive) TestWaitForAndRunOutOfProcessArgon2Request(c *C) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	reqR, reqW := io.Pipe()
+	rspR, rspW := io.Pipe()
+
+	go func() {
+		c.Check(WaitForAndRunArgon2OutOfProcessRequest(reqR, rspW), IsNil)
+		wg.Done()
+	}()
+
+	enc := json.NewEncoder(reqW)
+	c.Check(enc.Encode(&Argon2OutOfProcessRequest{
+		Command:    Argon2OutOfProcessCommandDerive,
+		Passphrase: "foo",
+		Salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		Mode:       Argon2id,
+		Time:       4,
+		MemoryKiB:  32,
+		Threads:    4,
+		Keylen:     32,
+	}), IsNil)
+
+	dec := json.NewDecoder(rspR)
+	var rsp *Argon2OutOfProcessResponse
+	c.Check(dec.Decode(&rsp), IsNil)
+	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
+		Command: Argon2OutOfProcessCommandDerive,
+		Key:     testutil.DecodeHexString(c, "cbd85bef66eae997ed1f8f7f3b1d5bec09425f72789f5113d0215bb8bdc6891f"),
+	})
+
+	wg.Wait()
 }
 
 type testOutOfProcessArgon2DeriveParams struct {
