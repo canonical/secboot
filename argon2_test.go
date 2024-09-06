@@ -21,6 +21,7 @@ package secboot_test
 
 import (
 	"math"
+	"os"
 	"runtime"
 	"time"
 
@@ -245,4 +246,194 @@ func (s *argon2Suite) TestKDFParamsInvalidMemoryKiB(c *C) {
 	opts.MemoryKiB = math.MaxUint32
 	_, err := opts.KdfParams(0)
 	c.Check(err, ErrorMatches, `invalid memory cost 4294967295KiB`)
+}
+
+func (s *argon2Suite) TestInProcessKDFDeriveNoParams(c *C) {
+	_, err := InProcessArgon2KDF.Derive("foo", nil, Argon2id, nil, 32)
+	c.Check(err, ErrorMatches, `nil params`)
+}
+
+func (s *argon2Suite) TestInProcessKDFDeriveInvalidMode(c *C) {
+	_, err := InProcessArgon2KDF.Derive("foo", nil, Argon2Default, &Argon2CostParams{Time: 4, MemoryKiB: 32, Threads: 1}, 32)
+	c.Check(err, ErrorMatches, `invalid mode`)
+}
+
+func (s *argon2Suite) TestInProcessKDFDeriveInvalidTime(c *C) {
+	_, err := InProcessArgon2KDF.Derive("foo", nil, Argon2id, &Argon2CostParams{Time: 0, MemoryKiB: 32, Threads: 1}, 32)
+	c.Check(err, ErrorMatches, `invalid time cost`)
+}
+
+func (s *argon2Suite) TestInProcessKDFDeriveInvalidThreads(c *C) {
+	_, err := InProcessArgon2KDF.Derive("foo", nil, Argon2id, &Argon2CostParams{Time: 4, MemoryKiB: 32, Threads: 0}, 32)
+	c.Check(err, ErrorMatches, `invalid number of threads`)
+}
+
+func (s *argon2Suite) TestInProcessKDFTimeNoParams(c *C) {
+	_, err := InProcessArgon2KDF.Time(Argon2id, nil)
+	c.Check(err, ErrorMatches, `nil params`)
+}
+
+func (s *argon2Suite) TestInProcessKDFTimeInvalidMode(c *C) {
+	_, err := InProcessArgon2KDF.Time(Argon2Default, &Argon2CostParams{Time: 4, MemoryKiB: 32, Threads: 1})
+	c.Check(err, ErrorMatches, `invalid mode`)
+}
+
+func (s *argon2Suite) TestInProcessKDFTimeInvalidTime(c *C) {
+	_, err := InProcessArgon2KDF.Time(Argon2id, &Argon2CostParams{Time: 0, MemoryKiB: 32, Threads: 1})
+	c.Check(err, ErrorMatches, `invalid time cost`)
+}
+
+func (s *argon2Suite) TestInProcessKDFTimeInvalidThreads(c *C) {
+	_, err := InProcessArgon2KDF.Time(Argon2id, &Argon2CostParams{Time: 4, MemoryKiB: 32, Threads: 0})
+	c.Check(err, ErrorMatches, `invalid number of threads`)
+}
+
+func (s *argon2Suite) TestSetArgon2KDFSuccess(c *C) {
+	SetArgon2KDF(InProcessArgon2KDF)
+	c.Check(GlobalArgon2KDF(), Equals, InProcessArgon2KDF)
+	c.Check(SetArgon2KDF(nil), Equals, InProcessArgon2KDF)
+	_, err := GlobalArgon2KDF().Time(Argon2id, nil)
+	c.Check(err, ErrorMatches, `no argon2 KDF: please call secboot.SetArgon2KDF`)
+}
+
+func (s *argon2Suite) TestSetArgon2KDFInHandlerProcessPanics(c *C) {
+	SetIsArgon2HandlerProcess()
+	defer ClearIsArgon2HandlerProcess()
+	c.Check(func() { SetArgon2KDF(InProcessArgon2KDF) }, PanicMatches, `cannot call SetArgon2KDF in a process where SetIsArgon2HandlerProcess has already been called`)
+}
+
+type argon2Expensive struct{}
+
+var _ = Suite(&argon2Expensive{})
+
+func (s *argon2Expensive) SetUpSuite(c *C) {
+	if _, exists := os.LookupEnv("NO_ARGON2_TESTS"); exists {
+		c.Skip("skipping expensive argon2 tests")
+	}
+}
+
+type testInProcessArgon2KDFDeriveData struct {
+	passphrase string
+	salt       []byte
+	mode       Argon2Mode
+	params     *Argon2CostParams
+	keyLen     uint32
+
+	expectedKey []byte
+}
+
+func (s *argon2Expensive) testInProcessKDFDerive(c *C, data *testInProcessArgon2KDFDeriveData) {
+	key, err := InProcessArgon2KDF.Derive(data.passphrase, data.salt, data.mode, data.params, data.keyLen)
+	c.Check(err, IsNil)
+	c.Check(key, DeepEquals, data.expectedKey)
+}
+
+func (s *argon2Expensive) TestInProcessKDFDerive(c *C) {
+	s.testInProcessKDFDerive(c, &testInProcessArgon2KDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:       Argon2id,
+		params: &Argon2CostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen:      32,
+		expectedKey: testutil.DecodeHexString(c, "cbd85bef66eae997ed1f8f7f3b1d5bec09425f72789f5113d0215bb8bdc6891f"),
+	})
+}
+
+func (s *argon2Expensive) TestInProcessKDFDeriveDifferentPassphrase(c *C) {
+	s.testInProcessKDFDerive(c, &testInProcessArgon2KDFDeriveData{
+		passphrase: "bar",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:       Argon2id,
+		params: &Argon2CostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen:      32,
+		expectedKey: testutil.DecodeHexString(c, "19b17adfb811233811b9e5872165803d01e81d3951e73b996a40c49b15c6e532"),
+	})
+}
+
+func (s *argon2Expensive) TestInProcessKDFiDeriveDifferentSalt(c *C) {
+	s.testInProcessKDFDerive(c, &testInProcessArgon2KDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("zyxwtsrqponmlkjihgfedcba987654"),
+		mode:       Argon2id,
+		params: &Argon2CostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen:      32,
+		expectedKey: testutil.DecodeHexString(c, "b5cf92c57c00f2a1d0de9d46ba0acef0e37ad1d4807b45b2dad1a50e797cc96d"),
+	})
+}
+
+func (s *argon2Expensive) TestInProcessKDFDeriveDifferentMode(c *C) {
+	s.testInProcessKDFDerive(c, &testInProcessArgon2KDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:       Argon2i,
+		params: &Argon2CostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen:      32,
+		expectedKey: testutil.DecodeHexString(c, "60b6d0ab8d4c39b4f17a7c05486c714097d2bf1f1d85c6d5fad4fe24171003fe"),
+	})
+}
+
+func (s *argon2Expensive) TestInProcessKDFDeriveDifferentParams(c *C) {
+	s.testInProcessKDFDerive(c, &testInProcessArgon2KDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:       Argon2id,
+		params: &Argon2CostParams{
+			Time:      48,
+			MemoryKiB: 32 * 1024,
+			Threads:   4},
+		keyLen:      32,
+		expectedKey: testutil.DecodeHexString(c, "f83001f90fbbc24823773e56f65eeace261285ab7e1394efeb8348d2184c240c"),
+	})
+}
+
+func (s *argon2Expensive) TestInProcessKDFDeriveDifferentKeyLen(c *C) {
+	s.testInProcessKDFDerive(c, &testInProcessArgon2KDFDeriveData{
+		passphrase: "foo",
+		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:       Argon2id,
+		params: &Argon2CostParams{
+			Time:      4,
+			MemoryKiB: 32,
+			Threads:   4},
+		keyLen:      64,
+		expectedKey: testutil.DecodeHexString(c, "dc8b7ed604470a49d983f86b1574b8619631ccd0282f591b227c153ce200f395615e7ddb5b01026edbf9bf7105ca2de294d67f69d9678e65417d59e51566e746"),
+	})
+}
+
+func (s *argon2Expensive) TestInProcessKDFTime(c *C) {
+	time1, err := InProcessArgon2KDF.Time(Argon2id, &Argon2CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4})
+	c.Check(err, IsNil)
+
+	runtime.GC()
+	time2, err := InProcessArgon2KDF.Time(Argon2id, &Argon2CostParams{Time: 16, MemoryKiB: 32 * 1024, Threads: 4})
+	c.Check(err, IsNil)
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	runtime.GC()
+	time2, err = InProcessArgon2KDF.Time(Argon2id, &Argon2CostParams{Time: 4, MemoryKiB: 128 * 1024, Threads: 4})
+	c.Check(err, IsNil)
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
+
+	runtime.GC()
+	time2, err = InProcessArgon2KDF.Time(Argon2id, &Argon2CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 1})
+	c.Check(err, IsNil)
+	// XXX: this needs a checker like go-tpm2/testutil's IntGreater, which copes with
+	// types of int64 kind
+	c.Check(time2 > time1, testutil.IsTrue)
 }

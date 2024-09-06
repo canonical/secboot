@@ -31,9 +31,9 @@ func run() error {
 		return errors.New("usage: echo <input_request_json> | run_argon2")
 	}
 
-	secboot.SetIsArgon2RemoteProcess()
+	secboot.SetIsArgon2HandlerProcess()
 
-	err := secboot.WaitAndRunArgon2RequestInRemoteProcess(os.Stdin, os.Stdout)
+	err := secboot.WaitForAndRunArgon2OutOfProcessRequest(os.Stdin, os.Stdout)
 	if err != nil {
 		return fmt.Errorf("cannot run request: %w", err)
 	}

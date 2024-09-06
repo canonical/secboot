@@ -29,13 +29,15 @@ import (
 )
 
 var (
+	GlobalArgon2KDF        = argon2KDF
 	UnmarshalV1KeyPayload  = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys = unmarshalProtectedKeys
 )
 
 type (
-	KdfParams     = kdfParams
-	ProtectedKeys = protectedKeys
+	Argon2OutOfProcessHandler = argon2OutOfProcessHandler
+	KdfParams                 = kdfParams
+	ProtectedKeys             = protectedKeys
 )
 
 func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
@@ -150,8 +152,16 @@ func MockHashAlgAvailable() (restore func()) {
 	}
 }
 
-func ClearIsArgon2RemoteProcess() {
-	atomic.StoreUint32(&argon2RemoteProcessStatus, notArgon2RemoteProcess)
+// ClearIsArgon2HandlerProcess does something that isn't possible in production code
+// and turns an argon2 handler process back into a process that isn't configured to
+// handle argon2 requests. The only reason to do this is to bypass the limitation that
+// a handler process can only handle one request, so we also run a garbage collection
+// here to ensure the test binary doesn't run out of memory. It's quite possible that this
+// function violates any safety provided by the atomic modifications to the
+// argon2OutOfProcessStatus global variable and introduces race conditions that aren't
+// present in production code.
+func ClearIsArgon2HandlerProcess() {
+	atomic.StoreUint32(&argon2OutOfProcessStatus, notArgon2HandlerProcess)
 	runtime.GC()
 }
 

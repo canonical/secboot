@@ -25,6 +25,7 @@ import (
 	"math"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/xerrors"
@@ -39,14 +40,24 @@ var (
 	runtimeNumCPU = runtime.NumCPU
 )
 
-// SetArgon2KDF sets the KDF implementation for Argon2. The default here is
-// the null implementation which returns an error, so this will need to be
-// configured explicitly in order to use Argon2.
+// SetArgon2KDF sets the KDF implementation for Argon2 use from within secboot.
+// The default here is a null implementation which returns an error, so this
+// will need to be configured explicitly in order to be able to use Argon2 from
+// within secboot.
 //
 // Passing nil will configure the null implementation as well.
 //
 // This returns the currently set implementation.
+//
+// This function shouldn't be used in processes that have called
+// [SetIsArgon2HandlerProcess] to become an out-of-process handler process for
+// Argon2 requests, else it will panic. Applications should use only one of these
+// functions in a process.
 func SetArgon2KDF(kdf Argon2KDF) Argon2KDF {
+	if atomic.LoadUint32(&argon2OutOfProcessStatus) > notArgon2HandlerProcess {
+		panic("cannot call SetArgon2KDF in a process where SetIsArgon2HandlerProcess has already been called")
+	}
+
 	argon2Mu.Lock()
 	defer argon2Mu.Unlock()
 
@@ -214,7 +225,7 @@ func (p *Argon2CostParams) internalParams() *argon2.CostParams {
 }
 
 // Argon2KDF is an interface to abstract use of the Argon2 KDF to make it possible
-// to delegate execution to a short-lived utility process where required.
+// to delegate execution to a short-lived handler process where required.
 type Argon2KDF interface {
 	// Derive derives a key of the specified length in bytes, from the supplied
 	// passphrase and salt and using the supplied mode and cost parameters.
@@ -224,6 +235,59 @@ type Argon2KDF interface {
 	// specified cost parameters and mode.
 	Time(mode Argon2Mode, params *Argon2CostParams) (time.Duration, error)
 }
+
+type inProcessArgon2KDFImpl struct{}
+
+func (_ inProcessArgon2KDFImpl) Derive(passphrase string, salt []byte, mode Argon2Mode, params *Argon2CostParams, keyLen uint32) ([]byte, error) {
+	switch {
+	case mode != Argon2i && mode != Argon2id:
+		return nil, errors.New("invalid mode")
+	case params == nil:
+		return nil, errors.New("nil params")
+	case params.Time == 0:
+		return nil, errors.New("invalid time cost")
+	case params.Threads == 0:
+		return nil, errors.New("invalid number of threads")
+	}
+
+	return argon2.Key(passphrase, salt, argon2.Mode(mode), params.internalParams(), keyLen), nil
+}
+
+func (_ inProcessArgon2KDFImpl) Time(mode Argon2Mode, params *Argon2CostParams) (time.Duration, error) {
+	switch {
+	case mode != Argon2i && mode != Argon2id:
+		return 0, errors.New("invalid mode")
+	case params == nil:
+		return 0, errors.New("nil params")
+	case params.Time == 0:
+		return 0, errors.New("invalid time cost")
+	case params.Threads == 0:
+		return 0, errors.New("invalid number of threads")
+	}
+
+	return argon2.KeyDuration(argon2.Mode(mode), params.internalParams()), nil
+}
+
+// InProcessArgon2KDF is the in-process implementation of the Argon2 KDF.
+//
+// This shouldn't be used in long-lived system processes. As Argon2 intentionally
+// allocates a lot of memory and go is garbage collected, it may be some time before
+// the large amounts of memory it allocates are freed and made available to other code
+// or other processes on the system. Consecutive calls can rapidly result in the
+// application being unable to allocate more memory, and even worse, may trigger the
+// kernel's OOM killer. Whilst implementations can call [runtime.GC], the sweep phase
+// has to happen with every goroutine stopped, which isn't a great experience and may
+// result in noticeable non-responsiveness.
+//
+// Processes instead should provide their own [Argon2KDF] implementation which proxies
+// requests to a short-lived handler process which will use this in-process implementation
+// once and then exit, immediately giving the allocated memory back to the kernel and
+// avoiding the need for garbage collection entirely.
+//
+// This package provides an example of this already ([NewOutOfProcessArgon2KDF]), as well
+// as a handler for use in the short-lived handler process
+// ([WaitForAndRunArgon2OutOfProcessRequest]).
+var InProcessArgon2KDF = inProcessArgon2KDFImpl{}
 
 type nullArgon2KDFImpl struct{}
 
