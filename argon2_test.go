@@ -40,8 +40,7 @@ type argon2Suite struct {
 
 	kdf testutil.MockArgon2KDF
 
-	maxMemoryCostKiBAuto int
-	cpusAuto             int
+	cpusAuto int
 }
 
 func (s *argon2Suite) SetUpSuite(c *C) {
@@ -52,7 +51,6 @@ func (s *argon2Suite) SetUpSuite(c *C) {
 	if halfTotalRamKiB > math.MaxInt32 {
 		halfTotalRamKiB = math.MaxInt32
 	}
-	s.maxMemoryCostKiBAuto = int(halfTotalRamKiB)
 
 	cpus := runtime.NumCPU()
 	if cpus > 4 {
