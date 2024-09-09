@@ -27,13 +27,20 @@ import (
 )
 
 func run() error {
-	if len(os.Args) != 1 {
-		return errors.New("usage: echo <input_request_json> | run_argon2")
+	if len(os.Args) != 2 {
+		return errors.New("usage: echo <input_request_json> | run_argon2 <watchdog>")
 	}
-
 	secboot.SetIsArgon2HandlerProcess()
 
-	err := secboot.WaitForAndRunArgon2OutOfProcessRequest(os.Stdin, os.Stdout)
+	var watchdog secboot.Argon2OutOfProcessWatchdogHandler
+	switch os.Args[1] {
+	case "none":
+		watchdog = secboot.NoArgon2OutOfProcessWatchdogHandler
+	case "hmac-sha256":
+		watchdog = secboot.Argon2OutOfProcessWatchdogHandlerHMACSHA256()
+	}
+
+	err := secboot.WaitForAndRunArgon2OutOfProcessRequest(os.Stdin, os.Stdout, watchdog)
 	if err != nil {
 		return fmt.Errorf("cannot run request: %w", err)
 	}

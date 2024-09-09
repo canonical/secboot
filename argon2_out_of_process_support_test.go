@@ -28,10 +28,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
 	. "gopkg.in/check.v1"
+	"gopkg.in/tomb.v2"
 )
 
 type argon2OutOfProcessSupportSuite struct{}
@@ -50,13 +52,13 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessDeriveRequestI
 		Keylen:     32,
 		Mode:       Argon2id,
 		Time:       4,
-		MemoryKiB:  32,
+		MemoryKiB:  32 * 1024,
 		Threads:    4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
 		Command:     Argon2OutOfProcessCommandDerive,
-		ErrorType:   Argon2OutOfProcessErrorProcessNotConfigured,
-		ErrorString: "cannot handle out-of-process request in a process that isn't configured as an Argon2 handler process",
+		ErrorType:   Argon2OutOfProcessErrorUnexpected,
+		ErrorString: "cannot handle request in a process that isn't configured as an Argon2 handler process, try calling SetIsArgon2HandlerProcess",
 	})
 }
 
@@ -69,7 +71,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessDeriveRequestI
 		Keylen:     32,
 		Mode:       Argon2Mode("foo"),
 		Time:       4,
-		MemoryKiB:  32,
+		MemoryKiB:  32 * 10224,
 		Threads:    4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
@@ -88,7 +90,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessDeriveRequestI
 		Keylen:     32,
 		Mode:       Argon2id,
 		Time:       0,
-		MemoryKiB:  32,
+		MemoryKiB:  32 * 1024,
 		Threads:    4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
@@ -107,7 +109,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessDeriveRequestI
 		Keylen:     32,
 		Mode:       Argon2id,
 		Time:       4,
-		MemoryKiB:  32,
+		MemoryKiB:  32 * 1024,
 		Threads:    0,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
@@ -124,7 +126,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessTimeRequestInv
 		Passphrase: "foo",
 		Mode:       Argon2id,
 		Time:       4,
-		MemoryKiB:  32,
+		MemoryKiB:  32 * 1024,
 		Threads:    4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
@@ -141,7 +143,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessTimeRequestInv
 		Salt:      []byte("0123456789abcdefghijklmnopqrstuv"),
 		Mode:      Argon2id,
 		Time:      4,
-		MemoryKiB: 32,
+		MemoryKiB: 32 * 1024,
 		Threads:   4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
@@ -158,7 +160,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessTimeRequestInv
 		Keylen:    32,
 		Mode:      Argon2id,
 		Time:      4,
-		MemoryKiB: 32,
+		MemoryKiB: 32 * 1024,
 		Threads:   4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
@@ -174,7 +176,7 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessInvalidCommand
 		Command:   Argon2OutOfProcessCommand("foo"),
 		Mode:      Argon2id,
 		Time:      4,
-		MemoryKiB: 32,
+		MemoryKiB: 32 * 1024,
 		Threads:   4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
@@ -187,11 +189,11 @@ func (s *argon2OutOfProcessSupportSuite) TestRunArgon2OutOfProcessInvalidCommand
 func (s *argon2OutOfProcessSupportSuite) TestArgon2OutOfProcessResponseErr(c *C) {
 	out := &Argon2OutOfProcessResponse{
 		Command:     Argon2OutOfProcessCommandDerive,
-		ErrorType:   Argon2OutOfProcessErrorProcessNotConfigured,
+		ErrorType:   Argon2OutOfProcessErrorUnexpected,
 		ErrorString: "cannot run in a process that isn't configured as an Argon2 remote process",
 	}
 	err := out.Err()
-	c.Check(err, ErrorMatches, `cannot process KDF request: process-not-configured \(cannot run in a process that isn't configured as an Argon2 remote process\)`)
+	c.Check(err, ErrorMatches, `cannot process KDF request: unexpected-error \(cannot run in a process that isn't configured as an Argon2 remote process\)`)
 	var e *Argon2OutOfProcessError
 	c.Check(errors.As(err, &e), testutil.IsTrue)
 }
@@ -214,6 +216,79 @@ func (s *argon2OutOfProcessSupportSuite) TestCallingSetIsArgon2HandlerAfterSetAr
 	c.Assert(GlobalArgon2KDF(), testutil.ConvertibleTo, &Argon2OutOfProcessHandler{})
 	c.Check(GlobalArgon2KDF().(*Argon2OutOfProcessHandler).KDF, Equals, InProcessArgon2KDF)
 	c.Check(GlobalArgon2KDF().(*Argon2OutOfProcessHandler).Status, Equals, uint32(0))
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestCallingSetArgon2KDFAfterSetIsArgon2HandlerPanics(c *C) {
+	SetIsArgon2HandlerProcess()
+	c.Check(func() { SetArgon2KDF(InProcessArgon2KDF) }, PanicMatches, `cannot call SetArgon2KDF in a process where SetIsArgon2HandlerProcess has already been called`)
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestNoArgon2OutOfProcessWatchdogHandler(c *C) {
+	req := &Argon2OutOfProcessRequest{
+		Command:           Argon2OutOfProcessCommandWatchdog,
+		WatchdogChallenge: []byte{1, 2, 3, 4},
+	}
+	rsp, err := NoArgon2OutOfProcessWatchdogHandler(req)
+	c.Check(rsp, IsNil)
+	c.Check(err, ErrorMatches, `unexpected watchdog request: no handler service for it`)
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestArgon2OutOfProcessWatchdogHandlerHMACSHA256InvalidCommand(c *C) {
+	handler := Argon2OutOfProcessWatchdogHandlerHMACSHA256()
+
+	req := &Argon2OutOfProcessRequest{
+		Command:   Argon2OutOfProcessCommandTime,
+		Mode:      Argon2id,
+		Time:      4,
+		MemoryKiB: 32,
+		Threads:   4,
+	}
+	rsp, err := handler(req)
+	c.Check(rsp, IsNil)
+	c.Check(err, ErrorMatches, `unexpected command "time"`)
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestArgon2OutOfProcessWatchdogHandlerHMACSHA256(c *C) {
+	handler := Argon2OutOfProcessWatchdogHandlerHMACSHA256()
+
+	req := &Argon2OutOfProcessRequest{
+		Command:           Argon2OutOfProcessCommandWatchdog,
+		WatchdogChallenge: testutil.DecodeHexString(c, "79e7d47fed15d6eef1e7e5f54cbb69d37169378527d65d2ba809a364930e94e3"),
+	}
+	rsp, err := handler(req)
+	c.Check(err, IsNil)
+	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
+		Command:          Argon2OutOfProcessCommandWatchdog,
+		WatchdogResponse: testutil.DecodeHexString(c, "1fed49cb3f22b3ddc895a7837833d84b181bda9a1a6f098a297d163729a33c58"),
+	})
+
+	req = &Argon2OutOfProcessRequest{
+		Command:           Argon2OutOfProcessCommandWatchdog,
+		WatchdogChallenge: testutil.DecodeHexString(c, "3c1de58760e53cac4facc2d5409b362fcf9b81f9b611479f5956abdb0227e567"),
+	}
+	rsp, err = handler(req)
+	c.Check(err, IsNil)
+	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
+		Command:          Argon2OutOfProcessCommandWatchdog,
+		WatchdogResponse: testutil.DecodeHexString(c, "cb487ce254d115cf91f282c8c82a6c5d01b16db99f71175242d060f455fc4624"),
+	})
+}
+
+func (s *argon2OutOfProcessSupportSuite) TestNoArgon2OutOfProcessWatchdogMonitorUnexpectedResponse(c *C) {
+	reqChan := make(chan *Argon2OutOfProcessRequest)
+	rspChan := make(chan *Argon2OutOfProcessResponse)
+
+	tmb := new(tomb.Tomb)
+	tmb.Go(func() error {
+		// Run a routine for running NoArgon2OutOfProcessWatchdogMonitor.
+		tmb.Go(func() error {
+			return NoArgon2OutOfProcessWatchdogMonitor(tmb, reqChan, rspChan)
+		})
+
+		rspChan <- new(Argon2OutOfProcessResponse)
+		return nil
+	})
+	c.Check(tmb.Wait(), ErrorMatches, `unexpected watchdog response: no monitor sending requests`)
 }
 
 type argon2OutOfProcessSupportSuiteExpensive struct {
@@ -243,6 +318,62 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TearDownTest(c *C) {
 
 var _ = Suite(&argon2OutOfProcessSupportSuiteExpensive{})
 
+func (s *argon2OutOfProcessSupportSuiteExpensive) TestNoArgon2OutOfProcessWatchdogMonitor(c *C) {
+	reqChan := make(chan *Argon2OutOfProcessRequest)
+	rspChan := make(chan *Argon2OutOfProcessResponse)
+
+	doneEarlyChan := make(chan struct{})
+
+	tmb := new(tomb.Tomb)
+	tmb.Go(func() error {
+		// Run a routine for running NoArgon2OutOfProcessWatchdogMonitor.
+		tmb.Go(func() error {
+			defer func() {
+				// What we want to do here is ensure NoArgon2OutOfProcessWatchdogMonitor
+				// doesn't return until the provided tomb enters a dying state. This check
+				// is a bit racy because there's a small window where NoArgon2OutOfProcessWatchdogMonitor
+				// returns and then the tomb enters a dying state before this defer runs.
+				// I think that this is ok for now.
+				select {
+				case <-tmb.Dying():
+					// do nothing
+				default:
+					// Tomb is still alive
+					close(doneEarlyChan)
+				}
+			}()
+			return NoArgon2OutOfProcessWatchdogMonitor(tmb, reqChan, rspChan)
+		})
+
+		// Run another routine to make sure we get no watchdog requests and to detect whether
+		// NoArgon2OutOfProcessWatchdogMonitor returns early.
+		tmb.Go(func() error {
+			for tmb.Alive() {
+				select {
+				case <-reqChan:
+					return errors.New("unexpected watchdog request")
+				case <-doneEarlyChan:
+					return errors.New("watchdog monitor returned whilst tomb is still alive")
+				case <-tmb.Dying():
+				}
+			}
+			return nil
+		})
+
+		// Run the test for 1 second.
+		select {
+		case <-time.After(1 * time.Second):
+			// Kill the tomb to finish the test
+			tmb.Kill(nil)
+		case <-tmb.Dying():
+			// Something else already failed - there's no point in waiting for the timeout here
+			return nil
+		}
+		return nil
+	})
+	c.Check(tmb.Wait(), IsNil)
+}
+
 type testRunArgon2OutOfProcessRequestDeriveParams struct {
 	req         *Argon2OutOfProcessRequest
 	expectedKey []byte
@@ -264,11 +395,11 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 			Salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
 			Mode:       Argon2id,
 			Time:       4,
-			MemoryKiB:  32,
+			MemoryKiB:  32 * 1024,
 			Threads:    4,
 			Keylen:     32,
 		},
-		expectedKey: testutil.DecodeHexString(c, "cbd85bef66eae997ed1f8f7f3b1d5bec09425f72789f5113d0215bb8bdc6891f"),
+		expectedKey: testutil.DecodeHexString(c, "b47ad96075d64cb92cdc7678e6bbb85f496da6e84d7ea05fbc0092dfb0ac3e13"),
 	})
 }
 
@@ -280,11 +411,11 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 			Salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
 			Mode:       Argon2id,
 			Time:       4,
-			MemoryKiB:  32,
+			MemoryKiB:  32 * 1024,
 			Threads:    4,
 			Keylen:     32,
 		},
-		expectedKey: testutil.DecodeHexString(c, "19b17adfb811233811b9e5872165803d01e81d3951e73b996a40c49b15c6e532"),
+		expectedKey: testutil.DecodeHexString(c, "e5081bdbb5dc709ecd789ad6da76ce6c49d2bc3b958dda4a93c6b4140def877e"),
 	})
 }
 
@@ -296,11 +427,11 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 			Salt:       []byte("zyxwtsrqponmlkjihgfedcba987654"),
 			Mode:       Argon2id,
 			Time:       4,
-			MemoryKiB:  32,
+			MemoryKiB:  32 * 1024,
 			Threads:    4,
 			Keylen:     32,
 		},
-		expectedKey: testutil.DecodeHexString(c, "b5cf92c57c00f2a1d0de9d46ba0acef0e37ad1d4807b45b2dad1a50e797cc96d"),
+		expectedKey: testutil.DecodeHexString(c, "bd962af1e81debad7966d3c0ca1dd9398dc231a3c25c96de54a1df97233d1a49"),
 	})
 }
 
@@ -312,11 +443,11 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 			Salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
 			Mode:       Argon2i,
 			Time:       4,
-			MemoryKiB:  32,
+			MemoryKiB:  32 * 1024,
 			Threads:    4,
 			Keylen:     32,
 		},
-		expectedKey: testutil.DecodeHexString(c, "60b6d0ab8d4c39b4f17a7c05486c714097d2bf1f1d85c6d5fad4fe24171003fe"),
+		expectedKey: testutil.DecodeHexString(c, "0d781d62896d7bb71830251af01be0323f2006770beb917e62a2ea3330693625"),
 	})
 }
 
@@ -328,11 +459,11 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 			Salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
 			Mode:       Argon2id,
 			Time:       48,
-			MemoryKiB:  32 * 1024,
+			MemoryKiB:  64 * 1024,
 			Threads:    4,
 			Keylen:     32,
 		},
-		expectedKey: testutil.DecodeHexString(c, "f83001f90fbbc24823773e56f65eeace261285ab7e1394efeb8348d2184c240c"),
+		expectedKey: testutil.DecodeHexString(c, "ba935d605f3f021c6cad26c8e2c0316fcc23814b2aa580e33e0ddb040692fb77"),
 	})
 }
 
@@ -344,11 +475,11 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 			Salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
 			Mode:       Argon2id,
 			Time:       4,
-			MemoryKiB:  32,
+			MemoryKiB:  32 * 1024,
 			Threads:    4,
 			Keylen:     64,
 		},
-		expectedKey: testutil.DecodeHexString(c, "dc8b7ed604470a49d983f86b1574b8619631ccd0282f591b227c153ce200f395615e7ddb5b01026edbf9bf7105ca2de294d67f69d9678e65417d59e51566e746"),
+		expectedKey: testutil.DecodeHexString(c, "385251574d5dfa3c25eb5fa2ad99f74cba39c284a16999b2d8e6908ad2304225e1f706dc860867179759ca058c9e0b961f6a4ec88f0eb38ba825d655bf892116"),
 	})
 }
 
@@ -405,7 +536,7 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 	c.Check(res2.Duration > res.Duration, testutil.IsTrue)
 }
 
-func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessRequestDeriveConsumedProcess(c *C) {
+func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessRequestDeriveRestartProcess(c *C) {
 	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -413,7 +544,7 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 		Keylen:     32,
 		Mode:       Argon2id,
 		Time:       4,
-		MemoryKiB:  32,
+		MemoryKiB:  32 * 1024,
 		Threads:    4,
 	})
 	c.Check(out, NotNil)
@@ -425,22 +556,22 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 		Keylen:     32,
 		Mode:       Argon2id,
 		Time:       4,
-		MemoryKiB:  32,
+		MemoryKiB:  32 * 1024,
 		Threads:    4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
 		Command:     Argon2OutOfProcessCommandDerive,
-		ErrorType:   Argon2OutOfProcessErrorConsumedProcess,
-		ErrorString: "cannot run derive command: argon2 out-of-process handler has alreay been used - a new process should be started to handle a new request",
+		ErrorType:   Argon2OutOfProcessErrorRestartProcess,
+		ErrorString: "cannot run \"derive\" command: argon2 out-of-process handler has already been used to process a request - a new process should be started to handle another request",
 	})
 }
 
-func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessRequestTimeConsumedProcess(c *C) {
+func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessRequestTimeRestartProcess(c *C) {
 	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:   Argon2OutOfProcessCommandTime,
 		Mode:      Argon2id,
 		Time:      4,
-		MemoryKiB: 32,
+		MemoryKiB: 32 * 1024,
 		Threads:   4,
 	})
 	c.Check(out, NotNil)
@@ -449,13 +580,13 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestRunArgon2OutOfProcessReque
 		Command:   Argon2OutOfProcessCommandTime,
 		Mode:      Argon2id,
 		Time:      4,
-		MemoryKiB: 32,
+		MemoryKiB: 32 * 1024,
 		Threads:   4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
 		Command:     Argon2OutOfProcessCommandTime,
-		ErrorType:   Argon2OutOfProcessErrorConsumedProcess,
-		ErrorString: "cannot run time command: argon2 out-of-process handler has alreay been used - a new process should be started to handle a new request",
+		ErrorType:   Argon2OutOfProcessErrorRestartProcess,
+		ErrorString: "cannot run \"time\" command: argon2 out-of-process handler has already been used to process a request - a new process should be started to handle another request",
 	})
 }
 
@@ -467,7 +598,7 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestWaitForAndRunOutOfProcessA
 	rspR, rspW := io.Pipe()
 
 	go func() {
-		c.Check(WaitForAndRunArgon2OutOfProcessRequest(reqR, rspW), IsNil)
+		c.Check(WaitForAndRunArgon2OutOfProcessRequest(reqR, rspW, nil), IsNil)
 		wg.Done()
 	}()
 
@@ -478,7 +609,7 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestWaitForAndRunOutOfProcessA
 		Salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
 		Mode:       Argon2id,
 		Time:       4,
-		MemoryKiB:  32,
+		MemoryKiB:  32 * 1024,
 		Threads:    4,
 		Keylen:     32,
 	}), IsNil)
@@ -488,118 +619,150 @@ func (s *argon2OutOfProcessSupportSuiteExpensive) TestWaitForAndRunOutOfProcessA
 	c.Check(dec.Decode(&rsp), IsNil)
 	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
 		Command: Argon2OutOfProcessCommandDerive,
-		Key:     testutil.DecodeHexString(c, "cbd85bef66eae997ed1f8f7f3b1d5bec09425f72789f5113d0215bb8bdc6891f"),
+		Key:     testutil.DecodeHexString(c, "b47ad96075d64cb92cdc7678e6bbb85f496da6e84d7ea05fbc0092dfb0ac3e13"),
 	})
 
+	c.Check(reqW.Close(), IsNil)
 	wg.Wait()
 }
 
 type testOutOfProcessArgon2DeriveParams struct {
-	passphrase  string
-	salt        []byte
-	mode        Argon2Mode
-	params      *Argon2CostParams
-	keyLen      uint32
-	expectedKey []byte
+	watchdogMonitor Argon2OutOfProcessWatchdogMonitor
+	watchdogHandler string
+	passphrase      string
+	salt            []byte
+	mode            Argon2Mode
+	params          *Argon2CostParams
+	keyLen          uint32
+	expectedKey     []byte
 }
 
 func (s *argon2OutOfProcessSupportSuiteExpensive) testOutOfProcessArgon2Derive(c *C, params *testOutOfProcessArgon2DeriveParams) {
 	kdf := NewOutOfProcessArgon2KDF(func() (*exec.Cmd, error) {
-		return exec.Command(s.runArgon2HandlerPath()), nil
-	})
+		return exec.Command(s.runArgon2HandlerPath(), params.watchdogHandler), nil
+	}, params.watchdogMonitor)
 	key, err := kdf.Derive(params.passphrase, params.salt, params.mode, params.params, params.keyLen)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, params.expectedKey)
+	c.Logf("%x", key)
 }
 
 func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2Derive(c *C) {
 	s.testOutOfProcessArgon2Derive(c, &testOutOfProcessArgon2DeriveParams{
-		passphrase: "foo",
-		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
-		mode:       Argon2id,
+		watchdogMonitor: Argon2OutOfProcessWatchdogMonitorHMACSHA256(50*time.Millisecond, 50*time.Millisecond),
+		watchdogHandler: "hmac-sha256",
+		passphrase:      "foo",
+		salt:            []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:            Argon2id,
 		params: &Argon2CostParams{
 			Time:      4,
-			MemoryKiB: 32,
+			MemoryKiB: 32 * 1024,
 			Threads:   4},
 		keyLen:      32,
-		expectedKey: testutil.DecodeHexString(c, "cbd85bef66eae997ed1f8f7f3b1d5bec09425f72789f5113d0215bb8bdc6891f"),
+		expectedKey: testutil.DecodeHexString(c, "b47ad96075d64cb92cdc7678e6bbb85f496da6e84d7ea05fbc0092dfb0ac3e13"),
 	})
 }
 
 func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2DeriveDifferentPassphrase(c *C) {
 	s.testOutOfProcessArgon2Derive(c, &testOutOfProcessArgon2DeriveParams{
-		passphrase: "bar",
-		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
-		mode:       Argon2id,
+		watchdogMonitor: Argon2OutOfProcessWatchdogMonitorHMACSHA256(50*time.Millisecond, 50*time.Millisecond),
+		watchdogHandler: "hmac-sha256",
+		passphrase:      "bar",
+		salt:            []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:            Argon2id,
 		params: &Argon2CostParams{
 			Time:      4,
-			MemoryKiB: 32,
+			MemoryKiB: 32 * 1024,
 			Threads:   4},
 		keyLen:      32,
-		expectedKey: testutil.DecodeHexString(c, "19b17adfb811233811b9e5872165803d01e81d3951e73b996a40c49b15c6e532"),
+		expectedKey: testutil.DecodeHexString(c, "e5081bdbb5dc709ecd789ad6da76ce6c49d2bc3b958dda4a93c6b4140def877e"),
 	})
 }
 
 func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2DeriveDifferentSalt(c *C) {
 	s.testOutOfProcessArgon2Derive(c, &testOutOfProcessArgon2DeriveParams{
-		passphrase: "foo",
-		salt:       []byte("zyxwtsrqponmlkjihgfedcba987654"),
-		mode:       Argon2id,
+		watchdogMonitor: Argon2OutOfProcessWatchdogMonitorHMACSHA256(50*time.Millisecond, 50*time.Millisecond),
+		watchdogHandler: "hmac-sha256",
+		passphrase:      "foo",
+		salt:            []byte("zyxwtsrqponmlkjihgfedcba987654"),
+		mode:            Argon2id,
 		params: &Argon2CostParams{
 			Time:      4,
-			MemoryKiB: 32,
+			MemoryKiB: 32 * 1024,
 			Threads:   4},
 		keyLen:      32,
-		expectedKey: testutil.DecodeHexString(c, "b5cf92c57c00f2a1d0de9d46ba0acef0e37ad1d4807b45b2dad1a50e797cc96d"),
+		expectedKey: testutil.DecodeHexString(c, "bd962af1e81debad7966d3c0ca1dd9398dc231a3c25c96de54a1df97233d1a49"),
 	})
 }
 
 func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2DeriveDifferentMode(c *C) {
 	s.testOutOfProcessArgon2Derive(c, &testOutOfProcessArgon2DeriveParams{
-		passphrase: "foo",
-		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
-		mode:       Argon2i,
+		watchdogMonitor: Argon2OutOfProcessWatchdogMonitorHMACSHA256(50*time.Millisecond, 50*time.Millisecond),
+		watchdogHandler: "hmac-sha256",
+		passphrase:      "foo",
+		salt:            []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:            Argon2i,
 		params: &Argon2CostParams{
 			Time:      4,
-			MemoryKiB: 32,
+			MemoryKiB: 32 * 1024,
 			Threads:   4},
 		keyLen:      32,
-		expectedKey: testutil.DecodeHexString(c, "60b6d0ab8d4c39b4f17a7c05486c714097d2bf1f1d85c6d5fad4fe24171003fe"),
+		expectedKey: testutil.DecodeHexString(c, "0d781d62896d7bb71830251af01be0323f2006770beb917e62a2ea3330693625"),
 	})
 }
 
 func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2DeriveDifferentParams(c *C) {
 	s.testOutOfProcessArgon2Derive(c, &testOutOfProcessArgon2DeriveParams{
-		passphrase: "foo",
-		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
-		mode:       Argon2id,
+		watchdogMonitor: Argon2OutOfProcessWatchdogMonitorHMACSHA256(50*time.Millisecond, 50*time.Millisecond),
+		watchdogHandler: "hmac-sha256",
+		passphrase:      "foo",
+		salt:            []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:            Argon2id,
 		params: &Argon2CostParams{
 			Time:      48,
-			MemoryKiB: 32 * 1024,
+			MemoryKiB: 64 * 1024,
 			Threads:   4},
 		keyLen:      32,
-		expectedKey: testutil.DecodeHexString(c, "f83001f90fbbc24823773e56f65eeace261285ab7e1394efeb8348d2184c240c"),
+		expectedKey: testutil.DecodeHexString(c, "ba935d605f3f021c6cad26c8e2c0316fcc23814b2aa580e33e0ddb040692fb77"),
 	})
 }
 
-func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2DeriveDifferentKeyLen(c *C) {
+func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2DeriveLongDuration(c *C) {
 	s.testOutOfProcessArgon2Derive(c, &testOutOfProcessArgon2DeriveParams{
-		passphrase: "foo",
-		salt:       []byte("0123456789abcdefghijklmnopqrstuv"),
-		mode:       Argon2id,
+		watchdogMonitor: Argon2OutOfProcessWatchdogMonitorHMACSHA256(50*time.Millisecond, 50*time.Millisecond),
+		watchdogHandler: "hmac-sha256",
+		passphrase:      "foo",
+		salt:            []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:            Argon2id,
+		params: &Argon2CostParams{
+			Time:      100,
+			MemoryKiB: 512 * 1024,
+			Threads:   4},
+		keyLen:      32,
+		expectedKey: testutil.DecodeHexString(c, "f3dc0bc830b9530adc647b136765b4266a41a62d90b9ce6b7a784b91b1566ab5"),
+	})
+}
+
+func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2DeriveDifferentKeylen(c *C) {
+	s.testOutOfProcessArgon2Derive(c, &testOutOfProcessArgon2DeriveParams{
+		watchdogMonitor: Argon2OutOfProcessWatchdogMonitorHMACSHA256(50*time.Millisecond, 50*time.Millisecond),
+		watchdogHandler: "hmac-sha256",
+		passphrase:      "foo",
+		salt:            []byte("0123456789abcdefghijklmnopqrstuv"),
+		mode:            Argon2id,
 		params: &Argon2CostParams{
 			Time:      4,
-			MemoryKiB: 32,
+			MemoryKiB: 32 * 1024,
 			Threads:   4},
 		keyLen:      64,
-		expectedKey: testutil.DecodeHexString(c, "dc8b7ed604470a49d983f86b1574b8619631ccd0282f591b227c153ce200f395615e7ddb5b01026edbf9bf7105ca2de294d67f69d9678e65417d59e51566e746"),
+		expectedKey: testutil.DecodeHexString(c, "385251574d5dfa3c25eb5fa2ad99f74cba39c284a16999b2d8e6908ad2304225e1f706dc860867179759ca058c9e0b961f6a4ec88f0eb38ba825d655bf892116"),
 	})
 }
 
 func (s *argon2OutOfProcessSupportSuiteExpensive) TestOutOfProcessArgon2Time(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(func() (*exec.Cmd, error) {
-		return exec.Command(s.runArgon2HandlerPath()), nil
-	})
+		return exec.Command(s.runArgon2HandlerPath(), "hmac-sha256"), nil
+	}, Argon2OutOfProcessWatchdogMonitorHMACSHA256(50*time.Millisecond, 50*time.Millisecond))
 
 	time1, err := kdf.Time(Argon2id, &Argon2CostParams{Time: 4, MemoryKiB: 32 * 1024, Threads: 4})
 	c.Check(err, IsNil)
