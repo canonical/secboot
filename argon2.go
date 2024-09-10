@@ -207,6 +207,9 @@ type Argon2CostParams struct {
 }
 
 func (p *Argon2CostParams) internalParams() *argon2.CostParams {
+	if p == nil {
+		return nil
+	}
 	return &argon2.CostParams{
 		Time:      p.Time,
 		MemoryKiB: p.MemoryKiB,
@@ -228,33 +231,19 @@ type Argon2KDF interface {
 type inProcessArgon2KDFImpl struct{}
 
 func (_ inProcessArgon2KDFImpl) Derive(passphrase string, salt []byte, mode Argon2Mode, params *Argon2CostParams, keyLen uint32) ([]byte, error) {
-	switch {
-	case mode != Argon2i && mode != Argon2id:
+	if mode != Argon2i && mode != Argon2id {
 		return nil, errors.New("invalid mode")
-	case params == nil:
-		return nil, errors.New("nil params")
-	case params.Time == 0:
-		return nil, errors.New("invalid time cost")
-	case params.Threads == 0:
-		return nil, errors.New("invalid number of threads")
 	}
 
-	return argon2.Key(passphrase, salt, argon2.Mode(mode), params.internalParams(), keyLen), nil
+	return argon2.Key(passphrase, salt, argon2.Mode(mode), params.internalParams(), keyLen)
 }
 
 func (_ inProcessArgon2KDFImpl) Time(mode Argon2Mode, params *Argon2CostParams) (time.Duration, error) {
-	switch {
-	case mode != Argon2i && mode != Argon2id:
+	if mode != Argon2i && mode != Argon2id {
 		return 0, errors.New("invalid mode")
-	case params == nil:
-		return 0, errors.New("nil params")
-	case params.Time == 0:
-		return 0, errors.New("invalid time cost")
-	case params.Threads == 0:
-		return 0, errors.New("invalid number of threads")
 	}
 
-	return argon2.KeyDuration(argon2.Mode(mode), params.internalParams()), nil
+	return argon2.KeyDuration(argon2.Mode(mode), params.internalParams())
 }
 
 // InProcessArgon2KDF is the in-process implementation of the Argon2 KDF. This
