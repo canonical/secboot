@@ -28,10 +28,9 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/snapcore/snapd/asserts"
-
 	"golang.org/x/xerrors"
 
+	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
@@ -128,7 +127,6 @@ type keyCandidate struct {
 type activateWithKeyDataState struct {
 	volumeName       string
 	sourceDevicePath string
-	model            SnapModel
 	keyringPrefix    string
 
 	authRequestor   AuthRequestor
@@ -148,22 +146,26 @@ func (s *activateWithKeyDataState) errors() (out []*activateWithKeyDataError) {
 }
 
 func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey, slot int, keyData *KeyData, auxKey PrimaryKey) error {
-	model := s.model
-	// Snap model checking is skipped for generation 2 keys regardless of the model argument.
-	// Although a gen 1 key could fake the generation field which is unprotected to also
-	// bypass the model version check, that will result in an umarshalling error later on.
-	switch keyData.Generation() {
-	case 1:
-		if model == nil {
-			return errors.New("nil Model for generation 1 key")
-		}
-	default:
-		// Model authorization checking is skipped for version 2 keys and
-		// up as it is now responsibility of the platform to verify the model.
-		model = SkipSnapModelCheck
-	}
+	// Snap model checking is skipped for generation 2 keys because it's part of the platform
+	// implementation now. It's performed and is mandatory for gen 1 keys, where it was part of
+	// this package instead. Note that snapd made use of the now deleted and special
+	// SkipSnapModelCheck value for the ephemeral keys created from legacy TPM key files,
+	// as these never supported this feature anyway. But this API in the tpm2 package
+	// (NewKeyDataFromSealedKeyObjectFile) now creates gen 2 keys anyway, so they are
+	// skipped automatically because of this.
+	//
+	// The keydata generation wasn't authenticated in gen 1 keys, so it's theoretically possible
+	// that an adversary could make a gen 1 key look like a gen 2 key by adjusting the field in
+	// the metadata in order to bypass this check, but as the encrypted payload formats are
+	// different between the generations as well, doing that will result in an unmarshalling error
+	// later on. We authenticate as much metadata as possible in order to prevent the potential
+	// for downgrade attacks like this in the future.
 
-	if model != SkipSnapModelCheck {
+	if keyData.Generation() < 2 {
+		model := internal_bootscope.GetModel()
+		if model == nil {
+			return errors.New("encountered generation 1 key but bootscope.SetModel has not been called")
+		}
 		authorized, err := keyData.IsSnapModelAuthorized(auxKey, model)
 		switch {
 		case err != nil:
@@ -274,12 +276,11 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 	return false, passphraseErr
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, model SnapModel, keys []*keyCandidate, authRequestor AuthRequestor, passphraseTries int) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*keyCandidate, authRequestor AuthRequestor, passphraseTries int) *activateWithKeyDataState {
 	return &activateWithKeyDataState{
 		volumeName:       volumeName,
 		sourceDevicePath: sourceDevicePath,
 		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix),
-		model:            model,
 		authRequestor:    authRequestor,
 		passphraseTries:  passphraseTries,
 		keys:             keys}
@@ -315,19 +316,6 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor 
 
 	return lastErr
 }
-
-type nullSnapModel struct{}
-
-func (_ nullSnapModel) Series() string            { return "" }
-func (_ nullSnapModel) BrandID() string           { return "" }
-func (_ nullSnapModel) Model() string             { return "" }
-func (_ nullSnapModel) Classic() bool             { return false }
-func (_ nullSnapModel) Grade() asserts.ModelGrade { return "" }
-func (_ nullSnapModel) SignKeyID() string         { return "" }
-
-// SkipSnapModelCheck provides a mechanism to skip the snap device model
-// check when calling ActivateVolumeWithKeyData.
-var SkipSnapModelCheck SnapModel = nullSnapModel{}
 
 // ActivateVolumeOptions provides options to the ActivateVolumeWith*
 // family of functions.
@@ -369,21 +357,6 @@ type ActivateVolumeOptions struct {
 	// KeyringPrefix is the prefix used for the description of any
 	// kernel keys created during activation.
 	KeyringPrefix string
-
-	// Model is the snap device model that will access the data
-	// on the encrypted container. The ActivateVolumeWithKeyData
-	// function will check that this model is authorized via the KeyData
-	// binding before unlocking the encrypted container.
-	//
-	// The caller of the ActivateVolumeWithKeyData API is responsible
-	// for validating the associated model assertion and snaps.
-	//
-	// Set this to SkipSnapModelCheck to skip the check. It cannot
-	// be left set as nil when calling ActivateVolumeWithKeyData.
-	//
-	// It is ignored by ActivateVolumeWithRecoveryKey, and it is
-	// ok to leave it set as nil in this case.
-	Model SnapModel
 }
 
 type activateVolumeWithKeyDataError struct {
@@ -475,7 +448,7 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 		}
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, options.Model, candidates, authRequestor, options.PassphraseTries)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, candidates, authRequestor, options.PassphraseTries)
 	success, err := s.run()
 	switch {
 	case success:

@@ -33,6 +33,7 @@ import (
 	"io"
 
 	"github.com/snapcore/secboot"
+	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
 	internal_crypto "github.com/snapcore/secboot/internal/crypto"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
@@ -369,8 +370,8 @@ func (d *KeyDataScope) IsBootEnvironmentAuthorized() error {
 	}
 
 	if len(d.data.Params.ModelDigests.Digests) > 0 {
-		model, ok := currentModel.Load().(secboot.SnapModel)
-		if !ok {
+		model := internal_bootscope.GetModel()
+		if model == nil {
 			return errors.New("SetModel hasn't been called yet")
 		}
 
