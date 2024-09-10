@@ -476,7 +476,7 @@ type mockKeySealer struct {
 	called bool
 }
 
-func (s *mockKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error) {
+func (s *mockKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest, noDA bool) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error) {
 	if s.called {
 		return nil, nil, nil, errors.New("called more than once")
 	}
@@ -484,7 +484,11 @@ func (s *mockKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorit
 	pub := templates.NewSealedObject(nameAlg)
 	pub.AuthPolicy = policy
 
-	return tpm2.Private(data), pub, nil, nil
+	var noDAByte byte = 0
+	if noDA {
+		noDAByte = 1
+	}
+	return append(tpm2.Private(data), noDAByte), pub, nil, nil
 }
 
 type mockSessionContext struct {
@@ -605,7 +609,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 	primaryKey := make(secboot.PrimaryKey, 32)
 	rand.Read(primaryKey)
 
-	params := &SealedKeyDataParams{
+	params := &MakeSealedKeyDataParams{
 		PcrProfile:             data.PCRProfile,
 		Role:                   data.Role,
 		PcrPolicyCounterHandle: data.PCRPolicyCounterHandle,
@@ -638,7 +642,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 
 	payload := make([]byte, len(s.lastKeyParams.EncryptedPayload))
 
-	c.Assert(skd.Data().Private(), HasLen, 44)
+	c.Assert(skd.Data().Private(), HasLen, 45)
 	b, err := aes.NewCipher(skd.Data().Private()[:32])
 	c.Assert(err, IsNil)
 
@@ -651,7 +655,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 	aead, err := cipher.NewGCM(b)
 	c.Assert(err, IsNil)
 
-	payload, err = aead.Open(nil, skd.Data().Private()[32:], s.lastKeyParams.EncryptedPayload, aad)
+	payload, err = aead.Open(nil, skd.Data().Private()[32:44], s.lastKeyParams.EncryptedPayload, aad)
 	c.Assert(err, IsNil)
 
 	keys, err := unmarshalProtectedKeys(payload)

@@ -109,7 +109,7 @@ type makeSealedKeyDataParams struct {
 // If supplied, the session must be a HMAC session with the AttrContinueSession attribute set and is
 // used for authenticating the storage hierarchy in order to avoid trasmitting the cleartext authorization
 // value.
-func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, sealer keySealer, constructor keyDataConstructor, session tpm2.SessionContext) (*secboot.KeyData, secboot.PrimaryKey, secboot.DiskUnlockKey, error) {
+var makeSealedKeyData = func(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, sealer keySealer, constructor keyDataConstructor, session tpm2.SessionContext) (*secboot.KeyData, secboot.PrimaryKey, secboot.DiskUnlockKey, error) {
 	// Create a primary key, if required.
 	primaryKey := params.PrimaryKey
 	if primaryKey == nil {
@@ -160,7 +160,7 @@ func makeSealedKeyData(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, se
 	}
 
 	// Seal the symmetric key and nonce.
-	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], nameAlg, authPolicyDigest)
+	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], nameAlg, authPolicyDigest, !requireAuthValue)
 	if err != nil {
 		return nil, nil, nil, err
 	}
