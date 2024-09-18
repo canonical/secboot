@@ -99,6 +99,12 @@ func (s *pbkdf2Suite) TestBenchmarkOverflow(c *C) {
 	c.Check(err, ErrorMatches, `iteration count result will overflow`)
 }
 
+func (s *pbkdf2Suite) TestBenchmarkUnmocked(c *C) {
+	iterations, err := Benchmark(100*time.Millisecond, crypto.SHA256)
+	c.Check(err, IsNil)
+	c.Check(iterations, Not(Equals), uint(0))
+}
+
 func (s *pbkdf2Suite) TestKey(c *C) {
 	salt := make([]byte, 16)
 	rand.Read(salt)
