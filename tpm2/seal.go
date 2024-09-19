@@ -64,7 +64,7 @@ type ProtectKeyParams struct {
 type PassphraseProtectKeyParams struct {
 	ProtectKeyParams
 
-	KDFOptions *secboot.Argon2Options
+	KDFOptions secboot.KDFOptions
 }
 
 type keyDataConstructor func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error)
@@ -79,7 +79,7 @@ func makeKeyDataNoAuth(skd *SealedKeyData, role string, encryptedPayload []byte,
 	})
 }
 
-func makeKeyDataWithPassphraseConstructor(kdfOptions *secboot.Argon2Options, passphrase string) keyDataConstructor {
+func makeKeyDataWithPassphraseConstructor(kdfOptions secboot.KDFOptions, passphrase string) keyDataConstructor {
 	return func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
 		return secbootNewKeyDataWithPassphrase(&secboot.KeyWithPassphraseParams{
 			KeyParams: secboot.KeyParams{

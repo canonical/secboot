@@ -39,6 +39,7 @@ import (
 	"time"
 
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/pbkdf2"
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
@@ -231,6 +232,8 @@ func toHash(c *C, v interface{}) crypto.Hash {
 	str, ok := v.(string)
 	c.Assert(ok, testutil.IsTrue)
 	switch str {
+	case "null":
+		return crypto.Hash(0)
 	case "sha1":
 		return crypto.SHA1
 	case "sha224":
@@ -248,8 +251,11 @@ func toHash(c *C, v interface{}) crypto.Hash {
 }
 
 type keyDataTestBase struct {
-	handler          *mockPlatformKeyDataHandler
-	mockPlatformName string
+	handler                *mockPlatformKeyDataHandler
+	mockPlatformName       string
+	origArgon2KDF          Argon2KDF
+	restorePBKDF2Benchmark func()
+	expectedPBKDF2Hash     crypto.Hash
 }
 
 func (s *keyDataTestBase) SetUpSuite(c *C) {
@@ -261,6 +267,19 @@ func (s *keyDataTestBase) SetUpSuite(c *C) {
 func (s *keyDataTestBase) SetUpTest(c *C) {
 	s.handler.state = mockPlatformDeviceStateOK
 	s.handler.passphraseSupport = false
+	s.origArgon2KDF = SetArgon2KDF(&testutil.MockArgon2KDF{})
+	s.restorePBKDF2Benchmark = MockPBKDF2Benchmark(func(duration time.Duration, hashAlg crypto.Hash) (uint, error) {
+		c.Check(hashAlg, Equals, s.expectedPBKDF2Hash)
+		return uint(duration / time.Microsecond), nil
+	})
+}
+
+func (s *keyDataTestBase) TearDownTest(c *C) {
+	if s.restorePBKDF2Benchmark != nil {
+		s.restorePBKDF2Benchmark()
+		s.restorePBKDF2Benchmark = nil
+	}
+	SetArgon2KDF(s.origArgon2KDF)
 }
 
 func (s *keyDataTestBase) TearDownSuite(c *C) {
@@ -313,7 +332,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg cr
 	return out, unlockKey
 }
 
-func (s *keyDataTestBase) mockProtectKeysWithPassphrase(c *C, primaryKey PrimaryKey, kdfOptions *Argon2Options, authKeySize int, KDFAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyWithPassphraseParams, unlockKey DiskUnlockKey) {
+func (s *keyDataTestBase) mockProtectKeysWithPassphrase(c *C, primaryKey PrimaryKey, kdfOptions KDFOptions, authKeySize int, KDFAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyWithPassphraseParams, unlockKey DiskUnlockKey) {
 	kp, unlockKey := s.mockProtectKeys(c, primaryKey, KDFAlg, modelAuthHash)
 
 	expectedHandle, ok := kp.Handle.(*mockPlatformKeyDataHandle)
@@ -326,6 +345,14 @@ func (s *keyDataTestBase) mockProtectKeysWithPassphrase(c *C, primaryKey Primary
 	if kdfOptions == nil {
 		var defaultOptions Argon2Options
 		kdfOptions = &defaultOptions
+	}
+
+	switch opt := kdfOptions.(type) {
+	case *PBKDF2Options:
+		s.expectedPBKDF2Hash = opt.HashAlg
+		if opt.HashAlg == crypto.Hash(0) {
+			s.expectedPBKDF2Hash = crypto.SHA256
+		}
 	}
 
 	kpp := &KeyWithPassphraseParams{
@@ -428,13 +455,13 @@ func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModeNone(c *C, r io.Read
 	s.checkKeyDataJSONDecodedAuthModeNone(c, j, creationParams, nmodels)
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[string]interface{}, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts *Argon2Options) {
+func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[string]interface{}, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts KDFOptions) {
 	if kdfOpts == nil {
 		var def Argon2Options
 		kdfOpts = &def
 	}
 
-	kdfParams, err := kdfOpts.KdfParams(0)
+	kdfParams, err := KDFOptionsKdfParams(kdfOpts, 0)
 	c.Assert(err, IsNil)
 
 	s.checkKeyDataJSONCommon(c, j, &creationParams.KeyParams, nmodels)
@@ -461,14 +488,14 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	k, ok := p["kdf"].(map[string]interface{})
 	c.Check(ok, testutil.IsTrue)
 
-	str, ok := k["type"].(string)
-	c.Check(ok, testutil.IsTrue)
-	c.Check(str, Equals, "argon2id")
-
-	str, ok = k["salt"].(string)
+	str, ok := k["salt"].(string)
 	c.Check(ok, testutil.IsTrue)
 	salt, err := base64.StdEncoding.DecodeString(str)
 	c.Check(err, IsNil)
+
+	str, ok = k["type"].(string)
+	c.Check(ok, testutil.IsTrue)
+	c.Check(str, Equals, string(kdfParams.Type))
 
 	time, ok := k["time"].(float64)
 	c.Check(ok, testutil.IsTrue)
@@ -481,6 +508,10 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	cpus, ok := k["cpus"].(float64)
 	c.Check(ok, testutil.IsTrue)
 	c.Check(cpus, Equals, float64(kdfParams.CPUs))
+
+	h := toHash(c, k["hash"])
+	c.Check(ok, testutil.IsTrue)
+	c.Check(h, Equals, crypto.Hash(kdfParams.Hash))
 
 	str, ok = j["encrypted_payload"].(string)
 	c.Check(ok, testutil.IsTrue)
@@ -509,13 +540,23 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	asnsalt, err := builder.Bytes()
 	c.Assert(err, IsNil)
 
-	var kdf testutil.MockArgon2KDF
-	costParams := &Argon2CostParams{
-		Time:      uint32(kdfParams.Time),
-		MemoryKiB: uint32(kdfParams.Memory),
-		Threads:   uint8(kdfParams.CPUs),
+	var derived []byte
+	switch o := kdfOpts.(type) {
+	case *Argon2Options:
+		_ = o
+		var kdf testutil.MockArgon2KDF
+		costParams := &Argon2CostParams{
+			Time:      uint32(kdfParams.Time),
+			MemoryKiB: uint32(kdfParams.Memory),
+			Threads:   uint8(kdfParams.CPUs),
+		}
+		derived, _ = kdf.Derive(passphrase, asnsalt, Argon2Mode(kdfParams.Type), costParams, uint32(derivedKeySize))
+	case *PBKDF2Options:
+		_ = o
+		var err error
+		derived, err = pbkdf2.Key(passphrase, asnsalt, &pbkdf2.Params{Iterations: uint(kdfParams.Time), HashAlg: crypto.Hash(kdfParams.Hash)}, uint(derivedKeySize))
+		c.Assert(err, IsNil)
 	}
-	derived, _ := kdf.Derive(passphrase, asnsalt, Argon2Mode(kdfParams.Type), costParams, uint32(derivedKeySize))
 
 	key := make([]byte, int(encryptionKeySize))
 
@@ -536,7 +577,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	c.Check(payload, DeepEquals, creationParams.EncryptedPayload)
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModePassphrase(c *C, r io.Reader, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts *Argon2Options) {
+func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModePassphrase(c *C, r io.Reader, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts KDFOptions) {
 	var j map[string]interface{}
 
 	d := json.NewDecoder(r)
@@ -553,9 +594,11 @@ type keyDataSuite struct {
 func (s *keyDataSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 	s.keyDataTestBase.SetUpTest(c)
+}
 
-	origKdf := SetArgon2KDF(&testutil.MockArgon2KDF{})
-	s.AddCleanup(func() { SetArgon2KDF(origKdf) })
+func (s *keyDataSuite) TearDownTest(c *C) {
+	s.BaseTest.TearDownTest(c)
+	s.keyDataTestBase.TearDownTest(c)
 }
 
 var _ = Suite(&keyDataSuite{})
@@ -567,7 +610,7 @@ func (s *keyDataSuite) checkKeyDataJSONAuthModeNone(c *C, keyData *KeyData, crea
 	s.checkKeyDataJSONFromReaderAuthModeNone(c, w.Reader(), creationParams, nmodels)
 }
 
-func (s *keyDataSuite) checkKeyDataJSONAuthModePassphrase(c *C, keyData *KeyData, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts *Argon2Options) {
+func (s *keyDataSuite) checkKeyDataJSONAuthModePassphrase(c *C, keyData *KeyData, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts KDFOptions) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
@@ -803,6 +846,20 @@ func (s *keyDataSuite) TestRecoverKeysWithPassphrase2(c *C) {
 	s.testRecoverKeysWithPassphrase(c, "1234")
 }
 
+func (s *keyDataSuite) TestRecoverKeysWithPassphrasePBKDF2(c *C) {
+	s.handler.passphraseSupport = true
+
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, &PBKDF2Options{}, 32, crypto.SHA256, crypto.SHA256)
+	keyData, err := NewKeyDataWithPassphrase(protected, "passphrase")
+	c.Assert(err, IsNil)
+
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeysWithPassphrase("passphrase")
+	c.Check(err, IsNil)
+	c.Check(recoveredUnlockKey, DeepEquals, unlockKey)
+	c.Check(recoveredPrimaryKey, DeepEquals, primaryKey)
+}
+
 type testRecoverKeysWithPassphraseErrorHandlingData struct {
 	kdfType           string
 	errMsg            string
@@ -1023,7 +1080,7 @@ func (s *keyDataSuite) TestChangePassphraseWithoutInitial(c *C) {
 type testChangePassphraseData struct {
 	passphrase1 string
 	passphrase2 string
-	kdfOptions  *Argon2Options
+	kdfOptions  KDFOptions
 }
 
 func (s *keyDataSuite) testChangePassphrase(c *C, data *testChangePassphraseData) {
@@ -1072,6 +1129,13 @@ func (s *keyDataSuite) TestChangePassphraseForceIterations(c *C) {
 		passphrase1: "12345678",
 		passphrase2: "87654321",
 		kdfOptions:  &Argon2Options{ForceIterations: 3, MemoryKiB: 32 * 1024}})
+}
+
+func (s *keyDataSuite) TestChangePassphrasePBKDF2(c *C) {
+	s.testChangePassphrase(c, &testChangePassphraseData{
+		passphrase1: "12345678",
+		passphrase2: "87654321",
+		kdfOptions:  &PBKDF2Options{}})
 }
 
 func (s *keyDataSuite) TestChangePassphraseWrongPassphrase(c *C) {

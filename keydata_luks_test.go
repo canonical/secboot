@@ -52,6 +52,11 @@ func (s *keyDataLuksSuite) SetUpTest(c *C) {
 	s.AddCleanup(s.luks2.enableMocks())
 }
 
+func (s *keyDataLuksSuite) TearDownTest(c *C) {
+	s.keyDataTestBase.TearDownTest(c)
+	s.BaseTest.TearDownTest(c)
+}
+
 var _ = Suite(&keyDataLuksSuite{})
 
 func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id int, keyslot int, name string, priority int, creationParams *KeyParams, nmodels int) {
