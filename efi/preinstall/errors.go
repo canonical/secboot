@@ -173,7 +173,7 @@ func (e *NoSuitablePCRAlgorithmError) Error() string {
 	return w.String()
 }
 
-// UNwrapBankError returns the error associated with the specified PCR bank if one
+// UnwrapBankError returns the error associated with the specified PCR bank if one
 // occurred, or nil if none occurred.
 func (e *NoSuitablePCRAlgorithmError) UnwrapBankError(alg tpm2.HashAlgorithmId) error {
 	return e.bankErrs[alg]
