@@ -82,7 +82,7 @@ func (r *pcrResults) Err() error {
 	if len(r.pcrValue) == 0 {
 		return errors.New("PCR value has not been obtained from TPM yet")
 	}
-	if bytes.Equal(r.pcrValue, r.initialValue) {
+	if !r.extended() {
 		// Return an error if the PCR hasn't been extended.
 		return errors.New("PCR has not been extended by platform firmware")
 	}
@@ -93,11 +93,16 @@ func (r *pcrResults) Err() error {
 	return nil
 }
 
+// extended indicates that extend has already been called.
+func (r *pcrResults) extended() bool {
+	return !bytes.Equal(r.initialValue, r.logValue)
+}
+
 // setInitialValue sets the initial value for the associated PCR in the associated bank.
 // This will panic if extend has already been called, so the caller should check this. It
 // will also panic if the supplied digest has the wrong size.
 func (r *pcrResults) setInitialValue(digest tpm2.Digest) {
-	if !bytes.Equal(r.initialValue, r.logValue) {
+	if r.extended() {
 		panic("cannot set initial log value for PCR once extend has been called")
 	}
 	if len(digest) != len(r.initialValue) {
@@ -292,7 +297,7 @@ func checkFirmwareLogAgainstTPMForAlg(tpm *tpm2.TPMContext, log *tcglog.Log, alg
 				results.Lookup(ev.PCRIndex).setErr(errors.New("unexpected StartupLocality event (should be in PCR0)"))
 				continue
 			}
-			if !bytes.Equal(results.Lookup(0).logValue, results.Lookup(0).initialValue) {
+			if results.Lookup(0).extended() {
 				// This event should not appear in the log after events that have already been measured
 				results.Lookup(0).setErr(errors.New("unexpected StartupLocality event after measurements already made"))
 				continue
