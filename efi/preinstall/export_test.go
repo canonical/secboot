@@ -20,10 +20,11 @@
 package preinstall
 
 type (
-	CheckTPM2DeviceFlags = checkTPM2DeviceFlags
-	CpuVendor            = cpuVendor
-	DetectVirtResult     = detectVirtResult
-	MeVersion            = meVersion
+	CheckDriversAndAppsMeasurementsResult = checkDriversAndAppsMeasurementsResult
+	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
+	CpuVendor                             = cpuVendor
+	DetectVirtResult                      = detectVirtResult
+	MeVersion                             = meVersion
 )
 
 const (
@@ -33,16 +34,19 @@ const (
 	CpuVendorAMD               = cpuVendorAMD
 	DetectVirtNone             = detectVirtNone
 	DetectVirtVM               = detectVirtVM
+	DriversAndAppsPresent      = driversAndAppsPresent
 	MeFamilyUnknown            = meFamilyUnknown
 	MeFamilySps                = meFamilySps
 	MeFamilyTxe                = meFamilyTxe
 	MeFamilyMe                 = meFamilyMe
 	MeFamilyCsme               = meFamilyCsme
+	NoDriversAndAppsPresent    = noDriversAndAppsPresent
 )
 
 var (
 	CalculateIntelMEFamily                              = calculateIntelMEFamily
 	CheckCPUDebuggingLockedMSR                          = checkCPUDebuggingLockedMSR
+	CheckDriversAndAppsMeasurements                     = checkDriversAndAppsMeasurements
 	CheckFirmwareLogAndChoosePCRBank                    = checkFirmwareLogAndChoosePCRBank
 	CheckForKernelIOMMU                                 = checkForKernelIOMMU
 	CheckPlatformFirmwareProtections                    = checkPlatformFirmwareProtections
