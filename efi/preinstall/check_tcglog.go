@@ -413,7 +413,7 @@ const (
 type tcglogPhaseTracker struct {
 	phase             tcglogPhase
 	numSeparatorsSeen int
-	pcrSeparatorsSeen map[tpm2.Handle]struct{}
+	pcrSeparatorsSeen map[tpm2.Handle]bool
 }
 
 // newTcgLogPhaseTracker returns a new tcglogPhaseTracker
@@ -421,7 +421,7 @@ func newTcgLogPhaseTracker() *tcglogPhaseTracker {
 	return &tcglogPhaseTracker{
 		phase:             tcglogPhasePreOSBeforeMeasureSecureBootConfig,
 		numSeparatorsSeen: 0,
-		pcrSeparatorsSeen: make(map[tpm2.Handle]struct{}),
+		pcrSeparatorsSeen: make(map[tpm2.Handle]bool),
 	}
 }
 
@@ -474,8 +474,8 @@ func (t *tcglogPhaseTracker) processEvent(ev *tcglog.Event) (phase tcglogPhase, 
 			return 0, fmt.Errorf("EV_SEPARATOR event for PCR %d indicates an error occurred (error code in log: %d)", ev.PCRIndex, binary.LittleEndian.Uint32(data.Bytes()))
 		}
 
-		t.pcrSeparatorsSeen[ev.PCRIndex] = struct{}{} // Mark the EV_SEPARATOR as seen for this PCR
-		t.numSeparatorsSeen += 1                      // Count the number of EV_SEPARATORs seen.
+		t.pcrSeparatorsSeen[ev.PCRIndex] = true // Mark the EV_SEPARATOR as seen for this PCR
+		t.numSeparatorsSeen += 1                // Count the number of EV_SEPARATORs seen.
 	}
 
 	// Handle phase transitions
