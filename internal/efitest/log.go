@@ -155,6 +155,12 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	// Mock S-CRTM measurements
 	if opts.StartupLocality == 4 {
+		// If the firmware indicates that the startup locality is 4 (with the EV_NO_ACTION
+		// StartupLocality event of this value), it means that there was one or more H-CRTM event
+		// sequences (_TPM_Hash_Start, _TPM_Hash_Data, and _TPM_Hash_End) executed by the firmware
+		// before TPM2_Startup. In this case, there will be a EV_EFI_HCRTM_EVENT containing the
+		// digest for each H-CRTM sequence, and some optional EV_NO_ACTION TCG_HCRTMComponentEvents
+		// providing information about what was measured.
 		ev := &tcglog.Event{
 			PCRIndex:  0,
 			EventType: tcglog.EventTypeNoAction,
