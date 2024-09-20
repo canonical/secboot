@@ -104,6 +104,7 @@ type LogOptions struct {
 	FirmwareDebugger                  bool                           // indicate a firmware debugger endpoint is enabled
 	DMAProtectionDisabled             DMAProtectionDisabledEventType // whether DMA protection is disabled
 	SecureBootDisabled                bool                           // Whether secure boot is disabled
+	DisallowPreOSVerification         bool                           // don't measure EV_SEPARATOR to PCR7 after the secure boot config is measured
 	IncludeDriverLaunch               bool                           // include a driver launch from a PCI device in the log
 	IncludeSysPrepAppLaunch           bool                           // include a system-preparation app launch in the log
 	NoCallingEFIApplicationEvent      bool                           // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
@@ -276,7 +277,10 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			data:      data})
 
 	}
-	{
+	if !opts.DisallowPreOSVerification {
+		// Most firmware measures a EV_SEPARATOR here to separate config and verification,
+		// but some older firmware implementations don't do this - it gets measured as part
+		// of the pre-OS to OS-present transition later on.
 		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  7,
@@ -301,6 +305,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	// Mock EFI driver launch
 	if opts.IncludeDriverLaunch {
+		c.Assert(opts.DisallowPreOSVerification, testutil.IsFalse)
 		if !opts.SecureBootDisabled {
 			esd := &efi.SignatureData{
 				Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
@@ -345,6 +350,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	// Mock sysprep app launch
 	if opts.IncludeSysPrepAppLaunch {
+		c.Assert(opts.DisallowPreOSVerification, testutil.IsFalse)
 		if !opts.SecureBootDisabled && !opts.IncludeDriverLaunch {
 			esd := &efi.SignatureData{
 				Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
@@ -461,6 +467,14 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  pcr,
+			eventType: tcglog.EventTypeSeparator,
+			data:      data})
+	}
+	if opts.DisallowPreOSVerification {
+		// We also need a EV_SEPARATOR in PCR7.
+		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
+		builder.hashLogExtendEvent(c, data, &logEvent{
+			pcrIndex:  7,
 			eventType: tcglog.EventTypeSeparator,
 			data:      data})
 	}

@@ -27,3 +27,7 @@ require (
 	golang.org/x/net v0.10.0 // indirect
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
 )
+
+// github.com/intel-go was taken over.
+// TODO: Move this to github.com/canonical
+replace github.com/intel-go/cpuid => github.com/aregm/cpuid v0.0.0-20220614022739-219e067757cb

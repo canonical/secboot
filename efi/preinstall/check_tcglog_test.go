@@ -150,11 +150,12 @@ func (s *tcglogSuite) allocatePCRBanks(c *C, banks ...tpm2.HashAlgorithmId) {
 }
 
 type testCheckFirmwareLogAndChoosePCRBankParams struct {
-	enabledBanks    []tpm2.HashAlgorithmId
-	logAlgs         []tpm2.HashAlgorithmId
-	startupLocality uint8
-	replayAlgs      []tpm2.HashAlgorithmId
-	mandatoryPcrs   tpm2.HandleList
+	enabledBanks              []tpm2.HashAlgorithmId
+	logAlgs                   []tpm2.HashAlgorithmId
+	startupLocality           uint8
+	disallowPreOSVerification bool
+	replayAlgs                []tpm2.HashAlgorithmId
+	mandatoryPcrs             tpm2.HandleList
 
 	expectedAlg tpm2.HashAlgorithmId
 }
@@ -163,8 +164,9 @@ func (s *tcglogSuite) testCheckFirmwareLogAndChoosePCRBank(c *C, params *testChe
 	s.allocatePCRBanks(c, params.enabledBanks...)
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:      params.logAlgs,
-		StartupLocality: params.startupLocality,
+		Algorithms:                params.logAlgs,
+		StartupLocality:           params.startupLocality,
+		DisallowPreOSVerification: params.disallowPreOSVerification,
 	})
 	s.resetTPMAndReplayLog(c, log, params.replayAlgs...)
 	result, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, params.mandatoryPcrs)
@@ -336,6 +338,29 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleSHA384StartupL
 	})
 }
 
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankOldFirmware(c *C) {
+	// Test with a log that is similar to those seen on older firmware implementations
+	// where the EV_SEPARATOR in PCR7 is measured as part of the pre-OS to OS-present
+	// transition instead of being used to separate secure boot config from secure boot
+	// verification.
+	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
+		enabledBanks:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		logAlgs:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		disallowPreOSVerification: true,
+		replayAlgs:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		mandatoryPcrs: tpm2.HandleList{
+			internal_efi.PlatformFirmwarePCR,
+			internal_efi.PlatformConfigPCR,
+			internal_efi.DriversAndAppsPCR,
+			internal_efi.DriversAndAppsConfigPCR,
+			internal_efi.BootManagerCodePCR,
+			internal_efi.BootManagerConfigPCR,
+			internal_efi.PlatformManufacturerPCR,
+			internal_efi.SecureBootPolicyPCR,
+		},
+		expectedAlg: tpm2.HashAlgorithmSHA256,
+	})
+}
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedStartupLocality(c *C) {
 	// Test with a StartupLocality event in PCR1
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
@@ -627,6 +652,64 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPCRMismatchNonMandator
 	c.Check(results.Alg, Equals, tpm2.HashAlgorithmSHA384)
 }
 
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSecureBootConfigJumpsToOSPresent(c *C) {
+	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		DisallowPreOSVerification: true,
+	})
+	var (
+		eventsCopy                      []*tcglog.Event
+		inSecureBootConfigMeasurement   bool
+		seenSecureBootConfigMeasurement bool
+		osPresent                       bool
+	)
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		shouldCopy := true
+
+		switch {
+		case ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !inSecureBootConfigMeasurement && !seenSecureBootConfigMeasurement:
+			inSecureBootConfigMeasurement = true
+		case ev.PCRIndex != internal_efi.SecureBootPolicyPCR && inSecureBootConfigMeasurement && !seenSecureBootConfigMeasurement:
+			inSecureBootConfigMeasurement = false
+			seenSecureBootConfigMeasurement = true
+
+			shouldCopy = false
+		case ev.EventType == tcglog.EventTypeSeparator:
+			osPresent = true
+		case seenSecureBootConfigMeasurement && !osPresent:
+			shouldCopy = false
+		}
+
+		if !shouldCopy {
+			continue
+		}
+		eventsCopy = append(eventsCopy, ev)
+
+	}
+	log.Events = eventsCopy
+
+	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
+
+	results, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log,
+		tpm2.HandleList{
+			internal_efi.PlatformFirmwarePCR,
+			internal_efi.PlatformConfigPCR,
+			internal_efi.DriversAndAppsPCR,
+			internal_efi.DriversAndAppsConfigPCR,
+			internal_efi.BootManagerConfigPCR,
+			internal_efi.PlatformManufacturerPCR,
+			internal_efi.SecureBootPolicyPCR,
+		},
+	)
+	c.Assert(err, IsNil)
+	c.Check(results.Alg, Equals, tpm2.HashAlgorithmSHA256)
+}
+
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankBadSpec(c *C) {
 	// Test that the log has a valid spec
 	log := efitest.NewLog(c, &efitest.LogOptions{
@@ -769,14 +852,18 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedSuccessfulSe
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedEventDuringSecureBootConfigMeasurements(c *C) {
-	// Test that an unexpected event in any PCR whilst measuring the secure boot config is
-	// detected as an error.
+	// Test that an unexpected event in PCR7 after measuring the secure boot config but before
+	// measuring the EV_SEPARATOR results in an error.
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		DisallowPreOSVerification: true,
 	})
-	var eventsCopy []*tcglog.Event
-	var seenSecureBootMeasurement bool
+	var (
+		eventsCopy                      []*tcglog.Event
+		inSecureBootConfigMeasurement   bool
+		seenSecureBootConfigMeasurement bool
+	)
 	events := log.Events
 	for len(events) > 0 {
 		ev := events[0]
@@ -784,15 +871,20 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedEventDuringS
 
 		eventsCopy = append(eventsCopy, ev)
 
-		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !seenSecureBootMeasurement {
-			// Add a random unexpected measurement amongst the measurement of the secure boot config
-			seenSecureBootMeasurement = true
+		switch {
+		case ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !inSecureBootConfigMeasurement && !seenSecureBootConfigMeasurement:
+			inSecureBootConfigMeasurement = true
+		case ev.PCRIndex != internal_efi.SecureBootPolicyPCR && inSecureBootConfigMeasurement && !seenSecureBootConfigMeasurement:
+			inSecureBootConfigMeasurement = false
+			seenSecureBootConfigMeasurement = true
+
+			// Add an unexpected event to PCR 7
 			eventsCopy = append(eventsCopy, &tcglog.Event{
-				PCRIndex:  internal_efi.PlatformFirmwarePCR,
-				EventType: tcglog.EventTypePostCode,
-				Data:      tcglog.StringEventData("BIOS"),
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: tcglog.EventTypeEFIVariableAuthority,
+				Data:      &invalidEventData{errors.New("some error")},
 				Digests: map[tpm2.HashAlgorithmId]tpm2.Digest{
-					tpm2.HashAlgorithmSHA256: tcglog.ComputeStringEventDigest(crypto.SHA256, "BIOS"),
+					tpm2.HashAlgorithmSHA256: tcglog.ComputeEventDigest(crypto.SHA256, []byte("foo")),
 				},
 			})
 		}
@@ -803,7 +895,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedEventDuringS
 	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
 
 	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil)
-	c.Check(err, ErrorMatches, `unexpected event in PCR 0 whilst measuring secure boot config`)
+	c.Check(err, ErrorMatches, `unexpected event in PCR 7`)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMissingSeparators(c *C) {
@@ -859,4 +951,28 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleSeparatorsForS
 
 	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil)
 	c.Check(err, ErrorMatches, `more than one EV_SEPARATOR event exists for PCR 7`)
+}
+
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankTruncatedLog(c *C) {
+	// Test that we get an error if the log is truncated.
+	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+	})
+	var eventsCopy []*tcglog.Event
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		eventsCopy = append(eventsCopy, ev)
+		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeSeparator {
+			break
+		}
+	}
+	log.Events = eventsCopy
+	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
+
+	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil)
+	c.Check(err, ErrorMatches, `reached the end of the log without seeing EV_SEPARATOR events in all TCG defined PCRs`)
 }

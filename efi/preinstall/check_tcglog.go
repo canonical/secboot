@@ -392,6 +392,13 @@ const (
 	// indicate the transition to OS-present.
 	tcglogPhasePreOSAfterMeasureSecureBootConfig
 
+	// tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated happens on some older firmware
+	// implementations that don't use a EV_SEPARATOR in PCR7 to separate secure boot config
+	// from secure boot verification, but instead measure the separator as part of the pre-OS
+	// to OS-present transition. There shouldn't be any more events in PCR7 until
+	// tcglogPhaseOSPresent.
+	tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated
+
 	// tcglogPhaseTransitioningToOSPresent describes the phase of the log where the transition
 	// to OS-present happens. Either of the 2 previous pre-OS phases can transition to this one
 	// by an EV_SEPARATOR event in PCRs 0-6.
@@ -501,14 +508,25 @@ func (t *tcglogPhaseTracker) processEvent(ev *tcglog.Event) (phase tcglogPhase, 
 			// has been measured.
 			t.phase = tcglogPhaseTransitioningToOSPresent
 		case ev.PCRIndex != internal_efi.SecureBootPolicyPCR:
-			// Any other events that aren't to PCR7 whilst we're in this phase are unexpected.
-			return 0, fmt.Errorf("unexpected event in PCR %d whilst measuring secure boot config", ev.PCRIndex)
+			// Any other events that aren't to PCR7 terminate the measurement of the secure
+			// boot config. This path should only happen on older firmware implementations.
+			t.phase = tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated
 		case ev.EventType == tcglog.EventTypeSeparator:
 			// An EV_SEPARATOR in PCR7 transitions to the part of the pre-OS phase where pre-OS
 			// components can be verified and executed.
 			t.phase = tcglogPhasePreOSAfterMeasureSecureBootConfig
 		default:
 			// No change for any other event to PCR7
+		}
+	case t.phase == tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated:
+		switch {
+		case ev.EventType == tcglog.EventTypeSeparator:
+			// Any EV_SEPARATOR from this phase begins the transition to OS present.
+			t.phase = tcglogPhaseTransitioningToOSPresent
+		case ev.PCRIndex == internal_efi.SecureBootPolicyPCR:
+			return 0, errors.New("unexpected event in PCR 7")
+		default:
+			// No change for events in any other PCR.
 		}
 	case t.phase == tcglogPhasePreOSAfterMeasureSecureBootConfig:
 		switch {
