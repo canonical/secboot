@@ -434,6 +434,11 @@ func (s *cryptSuite) SetUpTest(c *C) {
 	internal_bootscope.UnsafeClearModelForTesting()
 }
 
+func (s *cryptSuite) TearDownTest(c *C) {
+	s.keyDataTestBase.TearDownTest(c)
+	s.KeyringTestBase.TearDownTest(c)
+}
+
 func (s *cryptSuite) addMockToken(path string, token luks2.Token) int {
 	dev, ok := s.luks2.devices[path]
 
