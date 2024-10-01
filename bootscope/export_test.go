@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 
 	"github.com/snapcore/secboot"
+	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
 	internal_crypto "github.com/snapcore/secboot/internal/crypto"
 )
 
@@ -36,7 +37,9 @@ var (
 )
 
 func ClearBootModeAndModel() {
-	currentModel = atomic.Value{}
+	internal_bootscope.EnableUnsafeClearModelForTesting = true
+	internal_bootscope.UnsafeClearModelForTesting()
+	internal_bootscope.EnableUnsafeClearModelForTesting = false
 	currentBootMode = atomic.Value{}
 }
 

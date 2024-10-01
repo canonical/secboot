@@ -28,6 +28,7 @@ import (
 	"encoding/binary"
 	"hash"
 
+	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
 	"github.com/snapcore/snapd/asserts"
 
 	"golang.org/x/xerrors"
@@ -49,6 +50,9 @@ type SnapModel interface {
 	Grade() asserts.ModelGrade
 	SignKeyID() string
 }
+
+// Keep these in sync
+var _ SnapModel = internal_bootscope.SnapModel(nil)
 
 func computeSnapModelHMAC(alg crypto.Hash, key []byte, model SnapModel) (snapModelHMAC, error) {
 	// XXX: Probably would be nice to know the hash algorithm used for the signing key,

@@ -30,17 +30,29 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/snapcore/snapd/asserts"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/bootscope"
+	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luks2/luks2test"
 	"github.com/snapcore/secboot/internal/luksview"
 	"github.com/snapcore/secboot/internal/paths/pathstest"
 	"github.com/snapcore/secboot/internal/testutil"
 )
+
+type nullSnapModel struct{}
+
+func (_ nullSnapModel) Series() string            { return "" }
+func (_ nullSnapModel) BrandID() string           { return "" }
+func (_ nullSnapModel) Model() string             { return "" }
+func (_ nullSnapModel) Classic() bool             { return false }
+func (_ nullSnapModel) Grade() asserts.ModelGrade { return asserts.ModelGradeUnset }
+func (_ nullSnapModel) SignKeyID() string         { return "" }
 
 type cryptTestBase struct{}
 
@@ -394,6 +406,12 @@ var _ = Suite(&cryptSuite{})
 func (s *cryptSuite) SetUpSuite(c *C) {
 	s.keyDataTestBase.SetUpSuite(c)
 	s.KeyringTestBase.SetUpSuite(c)
+	internal_bootscope.EnableUnsafeClearModelForTesting = true
+}
+
+func (s *cryptSuite) TearDownSuite(c *C) {
+	s.keyDataTestBase.TearDownSuite(c)
+	internal_bootscope.EnableUnsafeClearModelForTesting = false
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {
@@ -409,6 +427,11 @@ func (s *cryptSuite) SetUpTest(c *C) {
 		activated: make(map[string]string)}
 
 	s.AddCleanup(s.luks2.enableMocks())
+
+	origKdf := SetArgon2KDF(&testutil.MockArgon2KDF{})
+	s.AddCleanup(func() { SetArgon2KDF(origKdf) })
+
+	internal_bootscope.UnsafeClearModelForTesting()
 }
 
 func (s *cryptSuite) TearDownTest(c *C) {
@@ -842,10 +865,15 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 
 	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
 
+	model := data.model
+	if model == nil {
+		model = nullSnapModel{}
+	}
+	bootscope.SetModel(model)
+
 	options := &ActivateVolumeOptions{
 		PassphraseTries: data.passphraseTries,
-		KeyringPrefix:   data.keyringPrefix,
-		Model:           data.model}
+		KeyringPrefix:   data.keyringPrefix}
 
 	if data.tokenName != "" {
 		w := makeMockKeyDataWriter()
@@ -884,30 +912,16 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData1(c *C) {
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
 		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		model:            models[0]})
+		sourceDevicePath: "/dev/sda1"})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData2(c *C) {
 	// Test with different volumeName / sourceDevicePath
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
 		volumeName:       "foo",
-		sourceDevicePath: "/dev/vda2",
-		model:            models[0]})
-}
-
-func (s *cryptSuite) TestActivateVolumeWithKeyData4(c *C) {
-	// Test that skipping the snap model check works
-	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		model:            SkipSnapModelCheck})
+		sourceDevicePath: "/dev/vda2"})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData5(c *C) {
@@ -923,37 +937,29 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData5(c *C) {
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData6(c *C) {
 	// Test with passphrase using multiple tries
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
 		passphrase:       "1234",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		passphraseTries:  3,
-		authResponses:    []interface{}{"incorrect", "1234"},
-		model:            models[0]})
+		authResponses:    []interface{}{"incorrect", "1234"}})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData7(c *C) {
 	// Test with LUKS token
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		tokenName:        "default",
 	})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData8(c *C) {
 	// Test with LUKS token with passphrase
-	models := []SnapModel{nil}
 
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		tokenName:        "default",
 		passphraseTries:  1,
 		passphrase:       "passphrase",
@@ -965,12 +971,9 @@ func (s *cryptSuite) TestActivateVolumeWithKeyData9(c *C) {
 	// Test with LUKS token and keyslot != 0
 	s.addMockKeyslot("/dev/sda1", nil) // add an empty slot
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		tokenName:        "default",
 	})
 }
@@ -987,7 +990,8 @@ type testActivateVolumeWithKeyDataErrorHandlingData struct {
 
 	keyData *KeyData
 
-	model SnapModel
+	model   SnapModel
+	noModel bool
 
 	activateTries int
 }
@@ -1005,11 +1009,19 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 		numRecoveryResponses = len(data.authRequestor.recoveryKeyResponses)
 	}
 
+	c.Assert(data.model != nil && data.noModel, testutil.IsFalse)
+	if !data.noModel {
+		model := data.model
+		if model == nil {
+			model = nullSnapModel{}
+		}
+		bootscope.SetModel(model)
+	}
+
 	options := &ActivateVolumeOptions{
 		PassphraseTries:  data.passphraseTries,
 		RecoveryKeyTries: data.recoveryKeyTries,
-		KeyringPrefix:    data.keyringPrefix,
-		Model:            data.model}
+		KeyringPrefix:    data.keyringPrefix}
 	err := ActivateVolumeWithKeyData("data", "/dev/sda1", authRequestor, options, data.keyData)
 
 	if data.authRequestor != nil {
@@ -1069,7 +1081,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling2(c *C) {
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
 }
@@ -1087,7 +1098,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
 }
@@ -1102,7 +1112,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling4(c *C) {
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    2,
 	}), Equals, ErrRecoveryKeyUsed)
 }
@@ -1119,7 +1128,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling5(c *C) {
 		recoveryKey:      recoveryKey,
 		recoveryKeyTries: 0,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    0,
 	}), ErrorMatches,
 		"cannot activate with platform protected keys:\n"+
@@ -1141,7 +1149,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}}},
 		recoveryKeyTries: 1,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), ErrorMatches,
 		"cannot activate with platform protected keys:\n"+
@@ -1164,7 +1171,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}, recoveryKey}},
 		recoveryKeyTries: 2,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    2,
 	}), Equals, ErrRecoveryKeyUsed)
 }
@@ -1182,7 +1188,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{errors.New("some error"), recoveryKey}},
 		recoveryKeyTries: 2,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
 }
@@ -1194,7 +1199,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling9(c *C) {
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		recoveryKeyTries: 1,
-		model:            SkipSnapModelCheck,
 		keyData:          keyData,
 	}), ErrorMatches, "nil authRequestor")
 }
@@ -1213,7 +1217,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling10(c *C) {
 		passphraseTries:  2,
 		recoveryKeyTries: 2,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    1})
 }
 
@@ -1225,7 +1228,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling11(c *C) {
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		passphraseTries: 1,
 		keyData:         keyData,
-		model:           SkipSnapModelCheck,
 	}), ErrorMatches, "nil authRequestor")
 }
 
@@ -1243,7 +1245,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling13(c *C) {
 		passphraseTries:  1,
 		recoveryKeyTries: 1,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
 		"- bar: cannot recover key: the supplied passphrase is incorrect\n"+
@@ -1265,7 +1266,6 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling16(c *C) {
 		passphraseTries:  1,
 		recoveryKeyTries: 1,
 		keyData:          keyData,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
 		"- cannot obtain passphrase: \n"+
@@ -1295,10 +1295,15 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 
 	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
 
+	model := data.model
+	if model == nil {
+		model = nullSnapModel{}
+	}
+	bootscope.SetModel(model)
+
 	options := &ActivateVolumeOptions{
 		PassphraseTries: data.passphraseTries,
-		KeyringPrefix:   data.keyringPrefix,
-		Model:           data.model}
+		KeyringPrefix:   data.keyringPrefix}
 	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, options, data.keyData...)
 	c.Assert(err, IsNil)
 
@@ -1321,14 +1326,11 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData1(c *C) {
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
 		keyData:          keyData,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         keys[0],
 		validAuxKey:      auxKeys[0]})
@@ -1338,14 +1340,11 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData2(c *C) {
 	// Test with a different volumeName / sourceDevicePath
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
 		keyData:          keyData,
 		volumeName:       "foo",
 		sourceDevicePath: "/dev/vda2",
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         keys[0],
 		validAuxKey:      auxKeys[0]})
@@ -1355,14 +1354,11 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData3(c *C) {
 	// Try with an invalid first key - the second key should be used for activation.
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys[1:],
 		keyData:          keyData,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot, luks2.AnySlot},
 		validKey:         keys[1],
 		validAuxKey:      auxKeys[1]})
@@ -1373,8 +1369,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData4(c *C) {
 	passphrases := []string{"1234", "5678"}
 	keyData, keys, auxKeys := s.newMultipleNamedKeyDataWithPassphrases(c, passphrases, "", "")
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
 		keyData:          keyData,
@@ -1382,7 +1376,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData4(c *C) {
 		sourceDevicePath: "/dev/sda1",
 		passphraseTries:  1,
 		authResponses:    []interface{}{"1234"},
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         keys[0],
 		validAuxKey:      auxKeys[0]})
@@ -1393,8 +1386,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData5(c *C) {
 	passphrases := []string{"1234", "5678"}
 	keyData, keys, auxKeys := s.newMultipleNamedKeyDataWithPassphrases(c, passphrases, "", "")
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
 		keyData:          keyData,
@@ -1402,7 +1393,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData5(c *C) {
 		sourceDevicePath: "/dev/sda1",
 		passphraseTries:  1,
 		authResponses:    []interface{}{"5678"},
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         keys[1],
 		validAuxKey:      auxKeys[1]})
@@ -1418,15 +1408,12 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData6(c *C) {
 	unlockKeys := []DiskUnlockKey{unlockKey1, unlockKey2}
 	primaryKeys := []PrimaryKey{primaryKey1, primaryKey2}
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             unlockKeys,
 		keyData:          keyData,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		passphraseTries:  1,
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         unlockKeys[1],
 		validAuxKey:      primaryKeys[1]})
@@ -1438,8 +1425,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData7(c *C) {
 	passphrases := []string{"1234", "5678"}
 	keyData, keys, auxKeys := s.newMultipleNamedKeyDataWithPassphrases(c, passphrases, "", "")
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             keys,
 		keyData:          keyData,
@@ -1447,7 +1432,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData7(c *C) {
 		sourceDevicePath: "/dev/sda1",
 		passphraseTries:  3,
 		authResponses:    []interface{}{"incorrect", "5678"},
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         keys[1],
 		validAuxKey:      auxKeys[1]})
@@ -1464,8 +1448,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData8(c *C) {
 	unlockKeys := []DiskUnlockKey{unlockKey1, unlockKey2}
 	primaryKeys := []PrimaryKey{primaryKey1, primaryKey2}
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             unlockKeys[1:],
 		keyData:          keyData,
@@ -1473,7 +1455,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData8(c *C) {
 		sourceDevicePath: "/dev/sda1",
 		passphraseTries:  1,
 		authResponses:    []interface{}{"5678"},
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot, luks2.AnySlot},
 		validKey:         unlockKeys[1],
 		validAuxKey:      primaryKeys[1]})
@@ -1487,7 +1468,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData10(c *C) {
 		keyData:          keyData,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            SkipSnapModelCheck,
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         keys[0],
 		validAuxKey:      auxKeys[0]})
@@ -1496,8 +1476,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData10(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData11(c *C) {
 	// Test priority for LUKS stored keys
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "luks1", "luks2")
-
-	models := []SnapModel{nil}
 
 	for i := range keyData {
 		w := makeMockKeyDataWriter()
@@ -1517,7 +1495,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData11(c *C) {
 		keys:             keys,
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		activateSlots:    []int{1},
 		validKey:         keys[1],
 		validAuxKey:      auxKeys[1]})
@@ -1526,8 +1503,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData11(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData13(c *C) {
 	// Test that external keyData has precedence over the LUKS stored ones
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "luks", "external")
-
-	models := []SnapModel{nil}
 
 	w := makeMockKeyDataWriter()
 	c.Check(keyData[0].WriteAtomic(w), IsNil)
@@ -1545,7 +1520,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData13(c *C) {
 		keyData:          keyData[1:],
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         keys[1],
 		validAuxKey:      auxKeys[1]})
@@ -1563,14 +1537,11 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData15(c *C) {
 
 	keyData, key, auxKey := s.newNamedKeyData(c, "")
 
-	models := []SnapModel{nil}
-
 	s.testActivateVolumeWithMultipleKeyData(c, &testActivateVolumeWithMultipleKeyDataData{
 		keys:             []DiskUnlockKey{key},
 		keyData:          []*KeyData{keyData},
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         key,
 		validAuxKey:      auxKey})
@@ -1589,8 +1560,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData16(c *C) {
 
 	keyData, key, auxKey := s.newNamedKeyData(c, "")
 
-	models := []SnapModel{nil}
-
 	stderr := new(bytes.Buffer)
 	restore := MockStderr(stderr)
 	defer restore()
@@ -1600,7 +1569,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData16(c *C) {
 		keyData:          []*KeyData{keyData},
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot},
 		validKey:         key,
 		validAuxKey:      auxKey})
@@ -1614,8 +1582,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData17(c *C) {
 	s.addMockKeyslot("/dev/sda1", nil) // add an empty slot for the invalid token
 
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
-
-	models := []SnapModel{nil}
 
 	for i, kd := range keyData {
 		w := makeMockKeyDataWriter()
@@ -1635,7 +1601,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData17(c *C) {
 		keys:             keys[1:],
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		activateSlots:    []int{0, 1},
 		validKey:         keys[1],
 		validAuxKey:      auxKeys[1]})
@@ -1645,8 +1610,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData18(c *C) {
 	// Test activation with invalid (containing an invalid key) externally provided key, and
 	// valid LUKS token.
 	keyData, keys, auxKeys := s.newMultipleNamedKeyData(c, "", "")
-
-	models := []SnapModel{nil}
 
 	w := makeMockKeyDataWriter()
 	c.Check(keyData[1].WriteAtomic(w), IsNil)
@@ -1665,7 +1628,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData18(c *C) {
 		keyData:          []*KeyData{keyData[0]},
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
-		model:            models[0],
 		activateSlots:    []int{luks2.AnySlot, 0},
 		validKey:         keys[1],
 		validAuxKey:      auxKeys[1]})
@@ -1682,7 +1644,8 @@ type testActivateVolumeWithMultipleKeyDataErrorHandlingData struct {
 	recoveryKeyTries int
 	keyringPrefix    string
 
-	model SnapModel
+	model   SnapModel
+	noModel bool
 
 	activateTries int
 }
@@ -1702,11 +1665,19 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 		numRecoveryResponses = len(data.authRequestor.recoveryKeyResponses)
 	}
 
+	c.Assert(data.model != nil && data.noModel, testutil.IsFalse)
+	if !data.noModel {
+		model := data.model
+		if model == nil {
+			model = nullSnapModel{}
+		}
+		bootscope.SetModel(model)
+	}
+
 	options := &ActivateVolumeOptions{
 		PassphraseTries:  data.passphraseTries,
 		RecoveryKeyTries: data.recoveryKeyTries,
-		KeyringPrefix:    data.keyringPrefix,
-		Model:            data.model}
+		KeyringPrefix:    data.keyringPrefix}
 	err := ActivateVolumeWithKeyData("data", "/dev/sda1", authRequestor, options, data.keyData...)
 
 	if data.authRequestor != nil {
@@ -1765,7 +1736,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling2(c *C) {
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
-		model:            SkipSnapModelCheck,
 		recoveryKeyTries: 1,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1783,7 +1753,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling3(c *C) {
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
-		model:            SkipSnapModelCheck,
 		recoveryKeyTries: 1,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1798,7 +1767,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling4(c *C) {
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
-		model:            SkipSnapModelCheck,
 		recoveryKeyTries: 1,
 		activateTries:    3,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1816,7 +1784,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling5(c *C) {
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
 		recoveryKeyTries: 0,
-		model:            SkipSnapModelCheck,
 		activateTries:    0,
 	}), ErrorMatches,
 		"cannot activate with platform protected keys:\n"+
@@ -1840,7 +1807,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling6(c *C) {
 		keyData:          keyData,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}}},
 		recoveryKeyTries: 1,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), ErrorMatches,
 		"cannot activate with platform protected keys:\n"+
@@ -1864,7 +1830,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling7(c *C) {
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}, recoveryKey}},
-		model:            SkipSnapModelCheck,
 		recoveryKeyTries: 2,
 		activateTries:    2,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1882,7 +1847,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling8(c *C) {
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
 		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{errors.New("some error"), recoveryKey}},
-		model:            SkipSnapModelCheck,
 		recoveryKeyTries: 2,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1896,7 +1860,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling9(c *C) {
 	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
 		keyData:          keyData,
 		recoveryKeyTries: 1,
-		model:            SkipSnapModelCheck,
 	}), ErrorMatches, "nil authRequestor")
 }
 
@@ -1915,7 +1878,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling10(c *C) 
 			recoveryKeyResponses: []interface{}{recoveryKey}},
 		passphraseTries:  2,
 		recoveryKeyTries: 1,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
 }
@@ -1928,7 +1890,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling11(c *C) 
 	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
 		keyData:         keyData,
 		passphraseTries: 1,
-		model:           SkipSnapModelCheck,
 	}), ErrorMatches, "nil authRequestor")
 }
 
@@ -1947,7 +1908,6 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling13(c *C) 
 			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
 		passphraseTries:  1,
 		recoveryKeyTries: 1,
-		model:            SkipSnapModelCheck,
 		activateTries:    1,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
 		"- foo: cannot recover key: the supplied passphrase is incorrect\n"+
@@ -3378,10 +3338,11 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyKeyData3(c *C) {
 
 	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
 
+	bootscope.SetModel(model)
+
 	options := &ActivateVolumeOptions{
 		PassphraseTries: data.passphraseTries,
-		KeyringPrefix:   data.keyringPrefix,
-		Model:           model}
+		KeyringPrefix:   data.keyringPrefix}
 
 	slot = luks2.AnySlot
 	err = ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, options, keyData)
@@ -3404,7 +3365,7 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyKeyData3(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithLegacyKeyDataErrorHandling14(c *C) {
-	// Test with an invalid value for SnapModel for legacy keys
+	// Test with no model set for legacy keys
 	j := []byte(
 		`{` +
 			`"generation":1,` +
@@ -3437,8 +3398,9 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyKeyDataErrorHandling14(c *C) {
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		keyData: keyData,
+		noModel: true,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
-		"- : nil Model for generation 1 key\n"+
+		"- : encountered generation 1 key but bootscope.SetModel has not been called\n"+
 		"and activation with recovery key failed: no recovery key tries permitted")
 }
 
@@ -3768,7 +3730,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyData14(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyDataErrorHandling14(c *C) {
-	// Test with an invalid value for SnapModel.
+	// Test with no model set for legacy keys
 	var keyData []*KeyData
 
 	j := []byte(
@@ -3836,9 +3798,10 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyDataErrorHandling14(
 
 	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
 		keyData: keyData,
+		noModel: true,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
-		"- : nil Model for generation 1 key\n"+
-		"- : nil Model for generation 1 key\n"+
+		"- : encountered generation 1 key but bootscope.SetModel has not been called\n"+
+		"- : encountered generation 1 key but bootscope.SetModel has not been called\n"+
 		"and activation with recovery key failed: no recovery key tries permitted")
 }
 
