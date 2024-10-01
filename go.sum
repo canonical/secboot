@@ -1,3 +1,5 @@
+github.com/aregm/cpuid v0.0.0-20220614022739-219e067757cb h1:9DjQ6pcRWjaavG/kaC5x34q3r9gHpkoh55PfuXwKYiw=
+github.com/aregm/cpuid v0.0.0-20220614022739-219e067757cb/go.mod h1:U7jHFVFhE3ffvppP5MofVeTKcHBpk5GEj4CJsku5ONY=
 github.com/canonical/go-efilib v0.0.0-20210909101908-41435fa545d4/go.mod h1:9Sr9kd7IhQPYqaU5nut8Ky97/CtlhHDzQncQnrULgDM=
 github.com/canonical/go-efilib v1.2.0 h1:+fvJdkj3oVyURFtfk8gSft6pdKyVzzdzNn9GC1kMJw8=
 github.com/canonical/go-efilib v1.2.0/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=

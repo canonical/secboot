@@ -100,21 +100,22 @@ const (
 type LogOptions struct {
 	Algorithms []tpm2.HashAlgorithmId // the digest algorithms to include
 
+	StartupLocality                   uint8                          // specify a startup locality other than 0
 	FirmwareDebugger                  bool                           // indicate a firmware debugger endpoint is enabled
 	DMAProtectionDisabled             DMAProtectionDisabledEventType // whether DMA protection is disabled
-	SecureBootDisabled                bool
-	IncludeDriverLaunch               bool     // include a driver launch in the log
-	IncludeSysPrepAppLaunch           bool     // include a system-preparation app launch in the log
-	IncludeOSPresentFirmwareAppLaunch efi.GUID // include a flash based application launch in the log as part of the OS-present phase
-	NoCallingEFIApplicationEvent      bool     // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
-	NoSBAT                            bool     // omit the SbatLevel measurement.
-	StartupLocality                   uint8    // specify a startup locality other than 0
+	SecureBootDisabled                bool                           // Whether secure boot is disabled
+	DisallowPreOSVerification         bool                           // don't measure EV_SEPARATOR to PCR7 after the secure boot config is measured
+	IncludeDriverLaunch               bool                           // include a driver launch from a PCI device in the log
+	IncludeSysPrepAppLaunch           bool                           // include a system-preparation app launch in the log
+	NoCallingEFIApplicationEvent      bool                           // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
+	IncludeOSPresentFirmwareAppLaunch efi.GUID                       // include a flash based application launch in the log as part of the OS-present phase
+	NoSBAT                            bool                           // omit the SbatLevel measurement to mimic older versions of shim
 }
 
 // NewLog creates a mock TCG log for testing. The log will look like a standard
 // Linux boot (shim -> grub -> kernel) and uses hard-coded values for signature
-// databases and launch digests. The supplied options argument can be used for
-// minimal customization.
+// databases (Microsoft UEFI CA 2011 configuration, and launch digests. The
+// supplied options argument can be used for minimal customization.
 func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 	builder := &logBuilder{algs: opts.Algorithms}
 
@@ -139,6 +140,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			},
 		},
 	}
+
 	if opts.StartupLocality > 0 {
 		ev := &tcglog.Event{
 			PCRIndex:  0,
@@ -153,32 +155,73 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 	}
 
 	// Mock S-CRTM measurements
-	{
-		data := tcglog.StringEventData("1.0")
-		builder.hashLogExtendEvent(c, data, &logEvent{
+	if opts.StartupLocality == 4 {
+		// If the firmware indicates that the startup locality is 4 (with the EV_NO_ACTION
+		// StartupLocality event of this value), it means that there was one or more H-CRTM event
+		// sequences (_TPM_Hash_Start, _TPM_Hash_Data, and _TPM_Hash_End) executed by the firmware
+		// before TPM2_Startup. In this case, there will be a EV_EFI_HCRTM_EVENT containing the
+		// digest for each H-CRTM sequence, and some optional EV_NO_ACTION TCG_HCRTMComponentEvents
+		// providing information about what was measured.
+		ev := &tcglog.Event{
+			PCRIndex:  0,
+			EventType: tcglog.EventTypeNoAction,
+			Digests:   make(tcglog.DigestMap),
+			Data: &tcglog.HCRTMComponentEventData{
+				ComponentDescription:  "S-CRTM contents",
+				MeasurementFormatType: tcglog.HCRTMMeasurementFormatRawData,
+				ComponentMeasurement:  []byte("mock S-CRTM contents"),
+			},
+		}
+		for _, alg := range opts.Algorithms {
+			ev.Digests[alg] = make(tpm2.Digest, alg.Size())
+		}
+		builder.events = append(builder.events, ev)
+
+		blob := bytesHashData("mock S-CRTM contents")
+		builder.hashLogExtendEvent(c, blob, &logEvent{
 			pcrIndex:  0,
-			eventType: tcglog.EventTypeSCRTMVersion,
-			data:      data})
+			eventType: tcglog.EventTypeEFIHCRTMEvent,
+			data:      tcglog.StringEventData("HCRTM")})
+	} else {
+		{
+			blob := bytesHashData("mock S-CRTM contents")
+			data := &tcglog.EFIPlatformFirmwareBlob{
+				BlobBase:   0xff000000,
+				BlobLength: 25431}
+			builder.hashLogExtendEvent(c, blob, &logEvent{
+				pcrIndex:  0,
+				eventType: tcglog.EventTypeSCRTMContents,
+				data:      data})
+		}
+		{
+			data := tcglog.GUIDEventData(efi.MakeGUID(0x8beb77ea, 0x5c75, 0x4d08, 0x8e2b, [...]byte{0x96, 0x34, 0x86, 0xda, 0xe7, 0xf7}))
+			builder.hashLogExtendEvent(c, data, &logEvent{
+				pcrIndex:  0,
+				eventType: tcglog.EventTypeSCRTMVersion,
+				data:      data})
+		}
 	}
 	{
 		blob := bytesHashData("mock platform firmware blob 1")
-		var data [16]byte
-		binary.LittleEndian.PutUint64(data[0:], 0x820000)
-		binary.LittleEndian.PutUint64(data[8:], 0xe0000)
+		data := &tcglog.EFIPlatformFirmwareBlob{
+			BlobBase:   0xffc00000,
+			BlobLength: 0xe0000,
+		}
 		builder.hashLogExtendEvent(c, blob, &logEvent{
 			pcrIndex:  0,
 			eventType: tcglog.EventTypeEFIPlatformFirmwareBlob,
-			data:      tcglog.OpaqueEventData(data[:])})
+			data:      data})
 	}
 	{
 		blob := bytesHashData("mock platform firmware blob 2")
-		var data [16]byte
-		binary.LittleEndian.PutUint64(data[0:], 0x900000)
-		binary.LittleEndian.PutUint64(data[8:], 0xc00000)
+		data := &tcglog.EFIPlatformFirmwareBlob{
+			BlobBase:   0xffce0000,
+			BlobLength: 0xc00000,
+		}
 		builder.hashLogExtendEvent(c, blob, &logEvent{
 			pcrIndex:  0,
 			eventType: tcglog.EventTypeEFIPlatformFirmwareBlob,
-			data:      tcglog.OpaqueEventData(data[:])})
+			data:      data})
 	}
 
 	sbVal := []byte{0x01}
@@ -234,7 +277,10 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			data:      data})
 
 	}
-	{
+	if !opts.DisallowPreOSVerification {
+		// Most firmware measures a EV_SEPARATOR here to separate config and verification,
+		// but some older firmware implementations don't do this - it gets measured as part
+		// of the pre-OS to OS-present transition later on.
 		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  7,
@@ -259,6 +305,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	// Mock EFI driver launch
 	if opts.IncludeDriverLaunch {
+		c.Assert(opts.DisallowPreOSVerification, testutil.IsFalse)
 		if !opts.SecureBootDisabled {
 			esd := &efi.SignatureData{
 				Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
@@ -279,8 +326,22 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			LocationInMemory: 0x41a2f024,
 			LengthInMemory:   659024,
 			DevicePath: efi.DevicePath{
-				efi.MediaFvDevicePathNode(efi.MakeGUID(0x9b56c9db, 0x1936, 0x44a9, 0x9ed4, [...]uint8{0xb9, 0x2a, 0xef, 0xfc, 0xbb, 0x66})),
-				efi.MediaFvFileDevicePathNode(efi.MakeGUID(0x15c7a296, 0xb470, 0x4b31, 0x8314, [...]uint8{0x7f, 0x6e, 0x56, 0x14, 0x37, 0xe5}))}}
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x1c,
+					Device:   0x2,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0,
+				},
+				&efi.MediaRelOffsetRangeDevicePathNode{
+					StartingOffset: 0x38,
+					EndingOffset:   0x11dff,
+				}}}
 		builder.hashLogExtendEvent(c, pe, &logEvent{
 			pcrIndex:  2,
 			eventType: tcglog.EventTypeEFIBootServicesDriver,
@@ -289,6 +350,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	// Mock sysprep app launch
 	if opts.IncludeSysPrepAppLaunch {
+		c.Assert(opts.DisallowPreOSVerification, testutil.IsFalse)
 		if !opts.SecureBootDisabled && !opts.IncludeDriverLaunch {
 			esd := &efi.SignatureData{
 				Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
@@ -405,6 +467,14 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  pcr,
+			eventType: tcglog.EventTypeSeparator,
+			data:      data})
+	}
+	if opts.DisallowPreOSVerification {
+		// We also need a EV_SEPARATOR in PCR7.
+		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
+		builder.hashLogExtendEvent(c, data, &logEvent{
+			pcrIndex:  7,
 			eventType: tcglog.EventTypeSeparator,
 			data:      data})
 	}
