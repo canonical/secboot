@@ -398,9 +398,10 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	// Mock boot config measurements
 	{
-		var order [4]uint8
+		var order [6]uint8
 		binary.LittleEndian.PutUint16(order[0:], 3)
 		binary.LittleEndian.PutUint16(order[2:], 1)
+		binary.LittleEndian.PutUint16(order[4:], 0)
 		builder.hashLogExtendEvent(c, bytesHashData(order[:]), &logEvent{
 			pcrIndex:  1,
 			eventType: tcglog.EventTypeEFIVariableBoot,
@@ -452,6 +453,37 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			data: &tcglog.EFIVariableData{
 				VariableName: efi.GlobalVariable,
 				UnicodeName:  "Boot0001",
+				VariableData: optionBytes}})
+	}
+	{
+		option := &efi.LoadOption{
+			Attributes:  1,
+			Description: "External USB",
+			FilePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x423f43ec, 0xd34e, 0x4b55, 0xb2d7, [...]uint8{0x42, 0x2b, 0xa5, 0x02, 0x1c, 0xc4})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\BOOT\\BOOTX64.EFI")}}
+		optionBytes, err := option.Bytes()
+		c.Assert(err, IsNil)
+		builder.hashLogExtendEvent(c, option, &logEvent{
+			pcrIndex:  1,
+			eventType: tcglog.EventTypeEFIVariableBoot,
+			data: &tcglog.EFIVariableData{
+				VariableName: efi.GlobalVariable,
+				UnicodeName:  "Boot0000",
 				VariableData: optionBytes}})
 	}
 
