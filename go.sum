@@ -1,5 +1,5 @@
-github.com/aregm/cpuid v0.0.0-20220614022739-219e067757cb h1:9DjQ6pcRWjaavG/kaC5x34q3r9gHpkoh55PfuXwKYiw=
-github.com/aregm/cpuid v0.0.0-20220614022739-219e067757cb/go.mod h1:U7jHFVFhE3ffvppP5MofVeTKcHBpk5GEj4CJsku5ONY=
+github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb h1:+kA/9oHTqUx4P08ywKvmd7a1wOL3RLTrE0K958C15x8=
+github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb/go.mod h1:6j8Sw3dwYVcBXltEeGklDoK/8UJVJNQPUkg1ZdQUgbk=
 github.com/canonical/go-efilib v0.0.0-20210909101908-41435fa545d4/go.mod h1:9Sr9kd7IhQPYqaU5nut8Ky97/CtlhHDzQncQnrULgDM=
 github.com/canonical/go-efilib v1.2.0 h1:+fvJdkj3oVyURFtfk8gSft6pdKyVzzdzNn9GC1kMJw8=
 github.com/canonical/go-efilib v1.2.0/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
@@ -21,8 +21,6 @@ github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2/go.mod h1:bBOAhwG1umN6
 github.com/google/go-cmp v0.2.1-0.20190312032427-6f77996f0c42/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMywk6iLU=
 github.com/gorilla/mux v1.7.4-0.20190701202633-d83b6ffe499a/go.mod h1:1lud6UwP+6orDFRuTfBEV8e9/aOM/c4fVVCaMa2zaAs=
 github.com/gvalkov/golang-evdev v0.0.0-20191114124502-287e62b94bcb/go.mod h1:SAzVFKCRezozJTGavF3GX8MBUruETCqzivVLYiywouA=
-github.com/intel-go/cpuid v0.0.0-20220614022739-219e067757cb h1:Fg0Y/RDZ6UPwl3o7/IzPbneDq8g9+gH6DPs42KFUsy8=
-github.com/intel-go/cpuid v0.0.0-20220614022739-219e067757cb/go.mod h1:RmeVYf9XrPRbRc3XIx0gLYA8qOFvNoPOfaEZduRlEp4=
 github.com/jessevdk/go-flags v1.4.1-0.20180927143258-7309ec74f752/go.mod h1:4FA24M0QyGHXBuZZK/XkWh8h0e1EYbRYJSGM75WSRxI=
 github.com/juju/ratelimit v1.0.1/go.mod h1:qapgC/Gy+xNh9UxzV13HGGl/6UXNN+ct+vwSgWNm/qk=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
