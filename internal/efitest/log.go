@@ -21,6 +21,7 @@ package efitest
 
 import (
 	"bytes"
+	"crypto"
 	_ "embed"
 	"encoding/binary"
 	"io"
@@ -110,6 +111,7 @@ type LogOptions struct {
 	NoCallingEFIApplicationEvent      bool                           // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
 	IncludeOSPresentFirmwareAppLaunch efi.GUID                       // include a flash based application launch in the log as part of the OS-present phase
 	NoSBAT                            bool                           // omit the SbatLevel measurement to mimic older versions of shim
+	PreOSVerificationUsesDigests      crypto.Hash                    // Whether Driver or SysPrep launches are verified using a digest
 }
 
 // NewLog creates a mock TCG log for testing. The log will look like a standard
@@ -239,6 +241,25 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		})
 	}
 
+	db := efi.SignatureDatabase{
+		NewSignatureListX509(c, testutil.DecodePEMType(c, "CERTIFICATE", msPCACert), efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b})),
+		NewSignatureListX509(c, testutil.DecodePEMType(c, "CERTIFICATE", msUefiCACert), efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b})),
+	}
+	if opts.PreOSVerificationUsesDigests != crypto.Hash(0) {
+		alg := opts.PreOSVerificationUsesDigests
+		var digests [][]byte
+
+		h := alg.New()
+		io.WriteString(h, "mock EFI driver")
+		digests = append(digests, h.Sum(nil))
+
+		h = alg.New()
+		io.WriteString(h, "mock sysprep app")
+		digests = append(digests, h.Sum(nil))
+
+		db = append(db, NewSignatureListDigests(c, alg, efi.MakeGUID(0x70564dce, 0x9afc, 0x4ee3, 0x85fc, [...]uint8{0x94, 0x96, 0x49, 0xd7, 0xe4, 0x5c}), digests...))
+	}
+
 	for _, sbvar := range []struct {
 		name efi.VariableDescriptor
 		data []byte
@@ -257,10 +278,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		},
 		{
 			name: efi.VariableDescriptor{Name: "db", GUID: efi.ImageSecurityDatabaseGuid},
-			data: MakeVarPayload(c, efi.SignatureDatabase{
-				NewSignatureListX509(c, testutil.DecodePEMType(c, "CERTIFICATE", msPCACert), efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b})),
-				NewSignatureListX509(c, testutil.DecodePEMType(c, "CERTIFICATE", msUefiCACert), efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b})),
-			}),
+			data: MakeVarPayload(c, db),
 		},
 		{
 			name: efi.VariableDescriptor{Name: "dbx", GUID: efi.ImageSecurityDatabaseGuid},
@@ -305,11 +323,21 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	// Mock EFI driver launch
 	if opts.IncludeDriverLaunch {
-		c.Assert(opts.DisallowPreOSVerification, testutil.IsFalse)
+		pe := bytesHashData("mock EFI driver")
 		if !opts.SecureBootDisabled {
-			esd := &efi.SignatureData{
-				Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
-				Data:  testutil.DecodePEMType(c, "CERTIFICATE", msUefiCACert)}
+			var esd *efi.SignatureData
+			if opts.PreOSVerificationUsesDigests == crypto.Hash(0) {
+				esd = &efi.SignatureData{
+					Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
+					Data:  testutil.DecodePEMType(c, "CERTIFICATE", msUefiCACert)}
+			} else {
+				h := opts.PreOSVerificationUsesDigests.New()
+				pe.Write(h)
+				esd = &efi.SignatureData{
+					Owner: efi.MakeGUID(0x70564dce, 0x9afc, 0x4ee3, 0x85fc, [...]uint8{0x94, 0x96, 0x49, 0xd7, 0xe4, 0x5c}),
+					Data:  h.Sum(nil),
+				}
+			}
 			esdBytes := new(bytes.Buffer)
 			esd.Write(esdBytes)
 			data := &tcglog.EFIVariableData{
@@ -321,7 +349,6 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 				eventType: tcglog.EventTypeEFIVariableAuthority,
 				data:      data})
 		}
-		pe := bytesHashData("mock EFI driver")
 		data := &tcglog.EFIImageLoadEvent{
 			LocationInMemory: 0x41a2f024,
 			LengthInMemory:   659024,
@@ -350,23 +377,38 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	// Mock sysprep app launch
 	if opts.IncludeSysPrepAppLaunch {
-		c.Assert(opts.DisallowPreOSVerification, testutil.IsFalse)
-		if !opts.SecureBootDisabled && !opts.IncludeDriverLaunch {
-			esd := &efi.SignatureData{
-				Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
-				Data:  testutil.DecodePEMType(c, "CERTIFICATE", msUefiCACert)}
-			esdBytes := new(bytes.Buffer)
-			esd.Write(esdBytes)
-			data := &tcglog.EFIVariableData{
-				VariableName: efi.ImageSecurityDatabaseGuid,
-				UnicodeName:  "db",
-				VariableData: esdBytes.Bytes()}
-			builder.hashLogExtendEvent(c, data, &logEvent{
-				pcrIndex:  7,
-				eventType: tcglog.EventTypeEFIVariableAuthority,
-				data:      data})
-		}
 		pe := bytesHashData("mock sysprep app")
+		if !opts.SecureBootDisabled {
+			var esd *efi.SignatureData
+			if opts.PreOSVerificationUsesDigests == crypto.Hash(0) {
+				if !opts.IncludeDriverLaunch {
+					// This has already been measured
+					esd = &efi.SignatureData{
+						Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
+						Data:  testutil.DecodePEMType(c, "CERTIFICATE", msUefiCACert)}
+				}
+			} else {
+				h := opts.PreOSVerificationUsesDigests.New()
+				pe.Write(h)
+				esd = &efi.SignatureData{
+					Owner: efi.MakeGUID(0x70564dce, 0x9afc, 0x4ee3, 0x85fc, [...]uint8{0x94, 0x96, 0x49, 0xd7, 0xe4, 0x5c}),
+					Data:  h.Sum(nil),
+				}
+			}
+			if esd != nil {
+				esdBytes := new(bytes.Buffer)
+				esd.Write(esdBytes)
+				data := &tcglog.EFIVariableData{
+					VariableName: efi.ImageSecurityDatabaseGuid,
+					UnicodeName:  "db",
+					VariableData: esdBytes.Bytes()}
+				builder.hashLogExtendEvent(c, data, &logEvent{
+					pcrIndex:  7,
+					eventType: tcglog.EventTypeEFIVariableAuthority,
+					data:      data})
+			}
+		}
+
 		data := &tcglog.EFIImageLoadEvent{
 			LocationInMemory: 0x18e4b324,
 			LengthInMemory:   120948,
@@ -528,7 +570,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 	}
 
 	// Mock shim launch
-	if !opts.SecureBootDisabled && !opts.IncludeDriverLaunch && !opts.IncludeSysPrepAppLaunch {
+	if !opts.SecureBootDisabled && (opts.PreOSVerificationUsesDigests != crypto.Hash(0) || (!opts.IncludeDriverLaunch && !opts.IncludeSysPrepAppLaunch)) {
 		esd := &efi.SignatureData{
 			Owner: efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}),
 			Data:  testutil.DecodePEMType(c, "CERTIFICATE", msUefiCACert)}

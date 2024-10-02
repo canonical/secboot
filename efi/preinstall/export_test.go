@@ -22,6 +22,9 @@ package preinstall
 import (
 	"crypto"
 	"io"
+
+	efi "github.com/canonical/go-efilib"
+	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
 
 type (
@@ -31,6 +34,8 @@ type (
 	CpuVendor                             = cpuVendor
 	DetectVirtResult                      = detectVirtResult
 	MeVersion                             = meVersion
+	SecureBootPolicyResult                = secureBootPolicyResult
+	SecureBootPolicyResultFlags           = secureBootPolicyResultFlags
 )
 
 const (
@@ -50,25 +55,28 @@ const (
 	MeFamilyMe                                 = meFamilyMe
 	MeFamilyCsme                               = meFamilyCsme
 	NoDriversAndAppsPresent                    = noDriversAndAppsPresent
+	SecureBootIncludesWeakAlg                  = secureBootIncludesWeakAlg
+	SecureBootPreOSVerificationIncludesDigest  = secureBootPreOSVerificationIncludesDigest
 )
 
 var (
-	CalculateIntelMEFamily                              = calculateIntelMEFamily
-	CheckBootManagerCodeMeasurements                    = checkBootManagerCodeMeasurements
-	CheckCPUDebuggingLockedMSR                          = checkCPUDebuggingLockedMSR
-	CheckDriversAndAppsMeasurements                     = checkDriversAndAppsMeasurements
-	CheckFirmwareLogAndChoosePCRBank                    = checkFirmwareLogAndChoosePCRBank
-	CheckForKernelIOMMU                                 = checkForKernelIOMMU
-	CheckPlatformFirmwareProtections                    = checkPlatformFirmwareProtections
-	CheckPlatformFirmwareProtectionsIntelMEI            = checkPlatformFirmwareProtectionsIntelMEI
-	CheckSecureBootPolicyPCRForDegradedFirmwareSettings = checkSecureBootPolicyPCRForDegradedFirmwareSettings
-	DetectVirtualization                                = detectVirtualization
-	DetermineCPUVendor                                  = determineCPUVendor
-	IsLaunchedFromLoadOption                            = isLaunchedFromLoadOption
-	OpenAndCheckTPM2Device                              = openAndCheckTPM2Device
-	ReadIntelHFSTSRegistersFromMEISysfs                 = readIntelHFSTSRegistersFromMEISysfs
-	ReadIntelMEVersionFromMEISysfs                      = readIntelMEVersionFromMEISysfs
-	ReadLoadOptionFromLog                               = readLoadOptionFromLog
+	CalculateIntelMEFamily                                = calculateIntelMEFamily
+	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
+	CheckCPUDebuggingLockedMSR                            = checkCPUDebuggingLockedMSR
+	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
+	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
+	CheckForKernelIOMMU                                   = checkForKernelIOMMU
+	CheckPlatformFirmwareProtections                      = checkPlatformFirmwareProtections
+	CheckPlatformFirmwareProtectionsIntelMEI              = checkPlatformFirmwareProtectionsIntelMEI
+	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
+	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
+	DetectVirtualization                                  = detectVirtualization
+	DetermineCPUVendor                                    = determineCPUVendor
+	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
+	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
+	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
+	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
+	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
 )
 
 func MockEfiComputePeImageDigest(fn func(crypto.Hash, io.ReaderAt, int64) ([]byte, error)) (restore func()) {
@@ -76,5 +84,21 @@ func MockEfiComputePeImageDigest(fn func(crypto.Hash, io.ReaderAt, int64) ([]byt
 	efiComputePeImageDigest = fn
 	return func() {
 		efiComputePeImageDigest = orig
+	}
+}
+
+func MockInternalEfiSecureBootSignaturesFromPEFile(fn func(*pe.File, io.ReaderAt) ([]*efi.WinCertificateAuthenticode, error)) (restore func()) {
+	orig := internal_efiSecureBootSignaturesFromPEFile
+	internal_efiSecureBootSignaturesFromPEFile = fn
+	return func() {
+		internal_efiSecureBootSignaturesFromPEFile = orig
+	}
+}
+
+func MockPeNewFile(fn func(io.ReaderAt) (*pe.File, error)) (restore func()) {
+	orig := peNewFile
+	peNewFile = fn
+	return func() {
+		peNewFile = orig
 	}
 }

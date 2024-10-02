@@ -22,7 +22,6 @@ package preinstall_test
 import (
 	"context"
 	"crypto"
-	"errors"
 	"io"
 
 	efi "github.com/canonical/go-efilib"
@@ -436,44 +435,6 @@ func (s *pcr4Suite) TestIsLaunchedFromLoadOptionNotActive(c *C) {
 
 	_, err := IsLaunchedFromLoadOption(ev, opt)
 	c.Check(err, ErrorMatches, `boot option is not active`)
-}
-
-type mockImageReader struct {
-	contents []byte
-	digest   tpm2.Digest
-	closed   bool
-}
-
-func (r *mockImageReader) ReadAt(data []byte, offset int64) (int, error) {
-	copy(data, r.contents[offset:])
-	return len(data), nil
-}
-
-func (r *mockImageReader) Close() error {
-	if r.closed {
-		return errors.New("already closed")
-	}
-	r.closed = true
-	return nil
-}
-
-func (r *mockImageReader) Size() int64 {
-	return int64(len(r.contents))
-}
-
-type mockImage struct {
-	contents []byte      // Used to produce a flat-file digest
-	digest   tpm2.Digest // Authenticode digest
-}
-
-func (i *mockImage) String() string {
-	return "mock image"
-}
-
-func (i *mockImage) Open() (secboot_efi.ImageReader, error) {
-	return &mockImageReader{
-		contents: i.contents,
-		digest:   i.digest}, nil
 }
 
 type testCheckBootManagerCodeMeasurementsParams struct {

@@ -519,12 +519,18 @@ func (t *tcglogPhaseTracker) processEvent(ev *tcglog.Event) (phase tcglogPhase, 
 			// No change for any other event to PCR7
 		}
 	case t.phase == tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated:
+		// XXX(chrisccoulson): It's not clear whether this should return to
+		// tcglogPhasePreOSMeasuringSecureBootConfig if there is an event in PCR7. The
+		// justification for this is that PCR7 should begin with an extra event indicating
+		// that there is a debugger active if that is the case. EDK2 measures this in the
+		// same block of events as the secure boot configuration, but we don't know whether
+		// all firmware does this. The consequence of some firmware measuring it separately
+		// is that we may end up failing other PCRs unnecessarily for tests that use this
+		// functionality, because of the logic here.
 		switch {
 		case ev.EventType == tcglog.EventTypeSeparator:
 			// Any EV_SEPARATOR from this phase begins the transition to OS present.
 			t.phase = tcglogPhaseTransitioningToOSPresent
-		case ev.PCRIndex == internal_efi.SecureBootPolicyPCR:
-			return 0, errors.New("unexpected event in PCR 7")
 		default:
 			// No change for events in any other PCR.
 		}
