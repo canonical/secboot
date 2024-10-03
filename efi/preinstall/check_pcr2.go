@@ -20,6 +20,8 @@
 package preinstall
 
 import (
+	"errors"
+
 	"github.com/canonical/tcglog-parser"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
@@ -69,5 +71,5 @@ func checkDriversAndAppsMeasurements(log *tcglog.Log) (checkDriversAndAppsMeasur
 		}
 	}
 
-	panic("not reached")
+	return noDriversAndAppsPresent, errors.New("internal error: reached end of log before encountering transition to OS-present")
 }

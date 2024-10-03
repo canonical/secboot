@@ -68,3 +68,20 @@ func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsLogError(c *C) {
 	_, err := CheckDriversAndAppsMeasurements(log)
 	c.Check(err, ErrorMatches, `invalid event data for EV_SEPARATOR event in PCR 7: some error`)
 }
+
+func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsLogNoTransitionToOSPresent(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		if (ev.PCRIndex >= 0 && ev.PCRIndex < 7) && ev.EventType == tcglog.EventTypeSeparator {
+			break
+		}
+		events = events[1:]
+	}
+	// Truncate the log
+	log.Events = log.Events[:len(log.Events)-len(events)]
+
+	_, err := CheckDriversAndAppsMeasurements(log)
+	c.Check(err, ErrorMatches, `internal error: reached end of log before encountering transition to OS-present`)
+}
