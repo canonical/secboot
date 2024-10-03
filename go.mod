@@ -24,6 +24,6 @@ require (
 	github.com/kr/text v0.1.0 // indirect
 	github.com/snapcore/go-gettext v0.0.0-20191107141714-82bbea49e785 // indirect
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f // indirect
-	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/net v0.23.0 // indirect
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
 )
