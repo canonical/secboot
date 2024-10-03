@@ -26,7 +26,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/intel-go/cpuid"
+	"github.com/canonical/cpuid"
 	. "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/testutil"
 	. "gopkg.in/check.v1"
