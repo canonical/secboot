@@ -113,7 +113,7 @@ const (
 )
 
 type secureBootPolicyResult struct {
-	UsedAuthorities []*x509.Certificate
+	UsedAuthorities []*X509CertificateID
 	Flags           secureBootPolicyResultFlags
 }
 
@@ -354,7 +354,7 @@ NextEvent:
 				var foundSig *efi.WinCertificateAuthenticode
 				for _, cert := range result.UsedAuthorities {
 					for _, sig := range sigs {
-						if sig.CertLikelyTrustAnchor(cert) {
+						if sig.CertWithIDLikelyTrustAnchor(cert) {
 							foundSig = sig
 							break
 						}
@@ -487,7 +487,7 @@ NextEvent:
 					if err != nil {
 						return nil, fmt.Errorf("cannot decode X.509 certificate from db EV_EFI_VARIABLE_AUTHORITY event: %w", err)
 					}
-					result.UsedAuthorities = append(result.UsedAuthorities, cert)
+					result.UsedAuthorities = append(result.UsedAuthorities, newX509CertificateID(cert))
 
 					switch cert.PublicKeyAlgorithm {
 					case x509.RSA:

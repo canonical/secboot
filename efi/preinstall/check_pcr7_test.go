@@ -22,7 +22,6 @@ package preinstall_test
 import (
 	"context"
 	"crypto"
-	"crypto/x509"
 	"errors"
 	"io"
 
@@ -58,7 +57,7 @@ type testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams struct {
 	iblImage secboot_efi.Image
 
 	expectedFlags           SecureBootPolicyResultFlags
-	expectedUsedAuthorities []*x509.Certificate
+	expectedUsedAuthorities []*X509CertificateID
 }
 
 func (s *pcr7Suite) testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c *C, params *testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams) error {
@@ -93,7 +92,7 @@ func (s *pcr7Suite) testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c 
 	c.Check(result.Flags, Equals, params.expectedFlags)
 	c.Assert(result.UsedAuthorities, HasLen, len(params.expectedUsedAuthorities))
 	for i, authority := range result.UsedAuthorities {
-		c.Check(authority.Equal(params.expectedUsedAuthorities[i]), testutil.IsTrue)
+		c.Check(authority, DeepEquals, params.expectedUsedAuthorities[i])
 	}
 	return nil
 }
@@ -118,8 +117,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			},
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
-		expectedUsedAuthorities: []*x509.Certificate{
-			testutil.ParseCertificate(c, msUefiCACert),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
 	})
 	c.Check(err, IsNil)
@@ -145,8 +144,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			},
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
-		expectedUsedAuthorities: []*x509.Certificate{
-			testutil.ParseCertificate(c, msUefiCACert),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
 	})
 	c.Check(err, IsNil)
@@ -175,8 +174,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			},
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
-		expectedUsedAuthorities: []*x509.Certificate{
-			testutil.ParseCertificate(c, msUefiCACert),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
 	})
 	c.Check(err, IsNil)
@@ -206,8 +205,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			},
 		},
 		expectedFlags: SecureBootPreOSVerificationIncludesDigest,
-		expectedUsedAuthorities: []*x509.Certificate{
-			testutil.ParseCertificate(c, msUefiCACert),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
 	})
 	c.Check(err, IsNil)
@@ -237,8 +236,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			},
 		},
 		expectedFlags: SecureBootIncludesWeakAlg | SecureBootPreOSVerificationIncludesDigest,
-		expectedUsedAuthorities: []*x509.Certificate{
-			testutil.ParseCertificate(c, msUefiCACert),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
 	})
 	c.Check(err, IsNil)
@@ -267,8 +266,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			},
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
-		expectedUsedAuthorities: []*x509.Certificate{
-			testutil.ParseCertificate(c, msUefiCACert),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
 	})
 	c.Check(err, IsNil)
@@ -297,8 +296,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			},
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
-		expectedUsedAuthorities: []*x509.Certificate{
-			testutil.ParseCertificate(c, msUefiCACert),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
 	})
 	c.Check(err, IsNil)
@@ -322,8 +321,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			},
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
-		expectedUsedAuthorities: []*x509.Certificate{
-			testutil.ParseCertificate(c, msUefiCACert),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
 	})
 	c.Check(err, IsNil)

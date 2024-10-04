@@ -28,6 +28,9 @@ import (
 )
 
 type (
+	AuthorityTrust                        = authorityTrust
+	AuthorityTrustData                    = authorityTrustData
+	AuthorityTrustDataSet                 = authorityTrustDataSet
 	BootManagerCodeResultFlags            = bootManagerCodeResultFlags
 	CheckDriversAndAppsMeasurementsResult = checkDriversAndAppsMeasurementsResult
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
@@ -39,6 +42,8 @@ type (
 )
 
 const (
+	AuthorityTrustBootCode                     = authorityTrustBootCode
+	AuthorityTrustDrivers                      = authorityTrustDrivers
 	BootManagerCodeSysprepAppsPresent          = bootManagerCodeSysprepAppsPresent
 	BootManagerCodeAbsoluteComputraceRunning   = bootManagerCodeAbsoluteComputraceRunning
 	BootManagerCodeNotAllLaunchDigestsVerified = bootManagerCodeNotAllLaunchDigestsVerified
@@ -73,6 +78,7 @@ var (
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
+	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
 	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
 	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
@@ -93,6 +99,14 @@ func MockInternalEfiSecureBootSignaturesFromPEFile(fn func(*pe.File, io.ReaderAt
 	internal_efiSecureBootSignaturesFromPEFile = fn
 	return func() {
 		internal_efiSecureBootSignaturesFromPEFile = orig
+	}
+}
+
+func MockKnownCAs(set AuthorityTrustDataSet) (restore func()) {
+	orig := knownCAs
+	knownCAs = set
+	return func() {
+		knownCAs = orig
 	}
 }
 
