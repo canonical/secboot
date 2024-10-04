@@ -28,6 +28,9 @@ import (
 )
 
 type (
+	AuthorityTrust                        = authorityTrust
+	AuthorityTrustData                    = authorityTrustData
+	AuthorityTrustDataSet                 = authorityTrustDataSet
 	BootManagerCodeResultFlags            = bootManagerCodeResultFlags
 	CheckDriversAndAppsMeasurementsResult = checkDriversAndAppsMeasurementsResult
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
@@ -39,6 +42,8 @@ type (
 )
 
 const (
+	AuthorityTrustBootCode                     = authorityTrustBootCode
+	AuthorityTrustDrivers                      = authorityTrustDrivers
 	BootManagerCodeSysprepAppsPresent          = bootManagerCodeSysprepAppsPresent
 	BootManagerCodeAbsoluteComputraceRunning   = bootManagerCodeAbsoluteComputraceRunning
 	BootManagerCodeNotAllLaunchDigestsVerified = bootManagerCodeNotAllLaunchDigestsVerified
@@ -100,5 +105,13 @@ func MockPeNewFile(fn func(io.ReaderAt) (*pe.File, error)) (restore func()) {
 	peNewFile = fn
 	return func() {
 		peNewFile = orig
+	}
+}
+
+func MockKnownCAs(set AuthorityTrustDataSet) (restore func()) {
+	orig := knownCAs
+	knownCAs = set
+	return func() {
+		knownCAs = orig
 	}
 }
