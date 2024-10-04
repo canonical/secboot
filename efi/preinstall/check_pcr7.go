@@ -155,7 +155,7 @@ var errNoSignerWithTrustAnchor = errors.New("image has no signer associated with
 // signature where the signer chains to one of the supplied authorities. As with signature
 // verification in EFI, it tests each of the image's signatures against each of the supplied
 // authorities in turn, and will return the first signature that chains to the first authority.
-func extractSignerWithTrustAnchorFromImage(authorities []*x509.Certificate, image secboot_efi.Image) (*x509.Certificate, error) {
+func extractSignerWithTrustAnchorFromImage(authorities []*X509CertificateID, image secboot_efi.Image) (*x509.Certificate, error) {
 	r, err := image.Open()
 	if err != nil {
 		return nil, fmt.Errorf("cannot open image: %w", err)
@@ -177,7 +177,7 @@ func extractSignerWithTrustAnchorFromImage(authorities []*x509.Certificate, imag
 	var foundSig *efi.WinCertificateAuthenticode
 	for _, cert := range authorities {
 		for _, sig := range sigs {
-			if sig.CertLikelyTrustAnchor(cert) {
+			if sig.CertWithIDLikelyTrustAnchor(cert) {
 				foundSig = sig
 				break
 			}
@@ -295,7 +295,7 @@ const (
 
 // secureBootPolicyResult is the result of a successful call to checkSecureBootPolicyMeasurementsAndObtainAuthorities.
 type secureBootPolicyResult struct {
-	UsedAuthorities []*x509.Certificate // CA's used to authenticate boot components.
+	UsedAuthorities []*X509CertificateID // CA's used to authenticate boot components.
 	Flags           secureBootPolicyResultFlags
 }
 
@@ -582,7 +582,7 @@ NextEvent:
 					if err != nil {
 						return nil, fmt.Errorf("cannot decode X.509 certificate associated with EV_EFI_VARIABLE_AUTHORITY event in pre-OS phase: %w", err)
 					}
-					result.UsedAuthorities = append(result.UsedAuthorities, cert)
+					result.UsedAuthorities = append(result.UsedAuthorities, newX509CertificateID(cert))
 				} else {
 					// Hopefully there shouldn't be any components being authenticated by a digest. We don't support this for
 					// OS components but this could be allowed for pre-OS, but it would make PCR7 incredibly fragile.
@@ -691,7 +691,7 @@ NextEvent:
 				if err != nil {
 					return nil, fmt.Errorf("cannot decode X.509 certificate associated with EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: %w", err)
 				}
-				result.UsedAuthorities = append(result.UsedAuthorities, cert)
+				result.UsedAuthorities = append(result.UsedAuthorities, newX509CertificateID(cert))
 			case tcglog.EventTypeSeparator:
 				// ok
 			default:

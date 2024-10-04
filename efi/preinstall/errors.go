@@ -20,13 +20,68 @@
 package preinstall
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
+
+// indentLines is a helper for managing indenting in nested multi-line
+// errors.
+func indentLines(n int, str string) string {
+	r := bytes.NewReader([]byte(str))
+	w := new(bytes.Buffer)
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadString('\n')
+		fmt.Fprintf(w, "%*s%s", n, "", line)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Fprintf(w, "%*serror occurred whilst indenting: %v", n, "", err)
+			break
+		}
+	}
+	return w.String()
+}
+
+// RunChecksErrors may be returned unwrapped from [RunChecks] containing a collection
+// of errors found during the process of running various tests on the platform.
+// It provides a mechanism to access each individual error.
+type RunChecksErrors struct {
+	errs []error
+}
+
+func (e *RunChecksErrors) Error() string {
+	w := new(bytes.Buffer)
+	fmt.Fprintf(w, "one or more errors detected:\n")
+	for _, err := range e.errs {
+		fmt.Fprintf(w, "%s\n", indentLines(2, "- "+err.Error()))
+	}
+	return w.String()
+}
+
+// NumErrors returns the number of errors.
+func (e *RunChecksErrors) NumErrors() int {
+	return len(e.errs)
+}
+
+// UnwrapError unwraps the specific error at the specified index (zero-indexed).
+func (e *RunChecksErrors) UnwrapError(n int) error {
+	if n > len(e.errs)-1 {
+		return errors.New("error index out of range")
+	}
+	return e.errs[n]
+}
+
+func (e *RunChecksErrors) addErr(err error) {
+	e.errs = append(e.errs, err)
+}
 
 // Errors related to checking platform firmware protections.
 
@@ -108,8 +163,6 @@ var (
 	// supported by snapd. Snapd needs the use of both of these hierarchies, so if we
 	// want to support something other than snapd taking ownership of these in the future,
 	// this will need coordination with snapd.
-	// Unless the authorization values are known, clearing this will most likely require
-	// the TPM to be cleared.
 	ErrUnsupportedTPMOwnership = errors.New("either the TPM's storage or endorsement hierarchy is owned and this isn't currently supported")
 
 	// ErrTPMInsufficientNVCounters is returned wrapped from RunChecks if there are
@@ -216,3 +269,48 @@ var (
 	// UEFI >= 2.5 that are in user mode, but this is not the case today.
 	ErrNoDeployedMode = errors.New("deployed mode should be enabled in order to generate secure boot profiles")
 )
+
+// RequiredUnsupportedPCRsError is returned from methods of [PCRProfileAutoEnablePCRsOption]
+// when a valid PCR configuration cannot be created based on the supplied [PCRProfileOptionsFlags]
+// and [CheckResult].
+type RequiredUnsupportedPCRsError struct {
+	PCRs tpm2.HandleList
+}
+
+func newRequiredUnsupportedPCRsError(required tpm2.HandleList, flags CheckResultFlags) *RequiredUnsupportedPCRsError {
+	var pcrs tpm2.HandleList
+	for _, pcr := range required {
+		var flag CheckResultFlags
+		switch pcr {
+		case 0:
+			flag = NoPlatformFirmwareProfileSupport
+		case 1:
+			flag = NoPlatformConfigProfileSupport
+		case 2:
+			flag = NoDriversAndAppsProfileSupport
+		case 3:
+			flag = NoDriversAndAppsConfigProfileSupport
+		case 4:
+			flag = NoBootManagerCodeProfileSupport
+		case 5:
+			flag = NoBootManagerConfigProfileSupport
+		case 7:
+			flag = NoSecureBootPolicyProfileSupport
+		}
+
+		if flags&flag > 0 {
+			pcrs = append(pcrs, pcr)
+		}
+	}
+
+	return &RequiredUnsupportedPCRsError{pcrs}
+}
+
+func (e *RequiredUnsupportedPCRsError) Error() string {
+	switch len(e.PCRs) {
+	case 1:
+		return fmt.Sprintf("PCR %v is required, but is unsupported", e.PCRs[0])
+	default:
+		return fmt.Sprintf("PCRs %v are required, but are unsupported", e.PCRs)
+	}
+}
