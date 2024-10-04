@@ -31,15 +31,13 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type tpmSuite struct {
-	tpm2_testutil.TPMSimulatorTest
+type tpmPropertyModifierMixin struct {
+	transport *tpm2_testutil.Transport
 }
 
-var _ = Suite(&tpmSuite{})
-
 // addTPMPropertyModifiers permits the test to run with well-known property values
-func (s *tpmSuite) addTPMPropertyModifiers(c *C, overrides map[tpm2.Property]uint32) {
-	s.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+func (m *tpmPropertyModifierMixin) addTPMPropertyModifiers(c *C, overrides map[tpm2.Property]uint32) {
+	m.transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
 		// Check we have the right command code
 		if cmdCode != tpm2.CommandGetCapability {
 			return
@@ -89,6 +87,18 @@ func (s *tpmSuite) addTPMPropertyModifiers(c *C, overrides map[tpm2.Property]uin
 		c.Check(tpm2.WriteResponsePacket(rsp, rc, nil, rpBytes, rAuthArea), IsNil)
 	}
 }
+
+type tpmSuite struct {
+	tpm2_testutil.TPMSimulatorTest
+	tpmPropertyModifierMixin
+}
+
+func (s *tpmSuite) SetUpTest(c *C) {
+	s.TPMSimulatorTest.SetUpTest(c)
+	s.tpmPropertyModifierMixin.transport = s.Transport
+}
+
+var _ = Suite(&tpmSuite{})
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersDiscreteTPM(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
