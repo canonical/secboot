@@ -1,0 +1,550 @@
+// -*- Mode: Go; indent-tabs-mode: t -*-
+
+/*
+ * Copyright (C) 2024 Canonical Ltd
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+package preinstall
+
+import (
+	"bytes"
+	"crypto"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot"
+)
+
+// CheckResultFlags is returned from [RunChecks].
+type CheckResultFlags uint64
+
+const (
+	// NoPlatformFirmwareProfileSupport means that efi.WithPlatformFirmwareProfile can't
+	// be used to add the PCR0 profile to a policy.
+	NoPlatformFirmwareProfileSupport CheckResultFlags = 1 << iota
+
+	// NoPlatformConfigProfileSupport means that a PCR1 profile cannot be added to a
+	// policy.
+	//
+	// Note that this will always be set because the efi package does not implement
+	// support for this PCR yet.
+	NoPlatformConfigProfileSupport
+
+	// NoDriversAndAppsProfileSupport means that efi.WithDriversAndAppsProfile can't be used
+	// to add the PCR2 profile to a policy.
+	NoDriversAndAppsProfileSupport
+
+	// NoDriversAndAppsConfigProfileSupport means that a PCR3 profile cannot be added to a
+	// policy.
+	//
+	// Note that this will always be set because the efi package does not implement
+	// support for this PCR yet.
+	NoDriversAndAppsConfigProfileSupport
+
+	// NoBootManagerCodeProfileSupport means that efi.WithBootManagerCodeProfile can't be
+	// used to add the PCR4 profile to a policy.
+	NoBootManagerCodeProfileSupport
+
+	// NoBootManagerConfigProfileSupport means that a PCR5 profile cannot be added to a
+	// policy.
+	//
+	// Note that this will always be set because the efi package does not implement
+	// support for this PCR yet.
+	NoBootManagerConfigProfileSupport
+
+	// NoSecureBootPolicyProfileSupport means that efi.WithSecureBootPolicyProfile can't
+	// be used to add the PCR7 profile to a policy.
+	NoSecureBootPolicyProfileSupport
+
+	// DiscreteTPMDetected indicates that a discrete TPM was detected. Discrete TPMs suffer from
+	// some well known attacks against the bus that it uses to communicate with the host chipset if
+	// an adversary has physical access, such as passive interposer attacks (which are mitigated
+	// against in Ubuntu by using response encryption with TPM2_Unseal), active interposer attacks
+	// where an adversary can modify communications as well as monitor them (for which there are no
+	// OS-level mitigations - whilst this can be mitigated by end-to-end integrity protection of PCR
+	// extends and other critical commands, and the use of TPM2_EncryptDecrypt2 rather than TPM2_Unseal
+	// in order to prevent the ability to modify session attributes and remove response encryption flag,
+	// the mitigations are required throughout the entire trust chain including the firmware, which is
+	// not the case today) and the ability to just desolder the device and attach it to a malicious host
+	// platform, for which there are obviously no software mitigations. Firmware based TPMs such as Intel
+	// PTT or those which run in a TEE are generally considered more secure as long as the persistent
+	// storage is adequately protected from reading sensitive data, modification and rollback.
+	//
+	// They also potentially suffer from reset attacks. Whilst the TCG PC Client Platform Firmware
+	// Profile Specification requires that the TPM and host platform cannot be reset independently, some
+	// platforms permit the TPM to be reset without resetting the host platform, breaking measured boot
+	// because it may be possible to reconstruct PCR values from software. This type of issue is a
+	// hardware integration bug. Even if resetting the TPM correctly resets the host platform, it may be
+	// possible for an adversary with physical access to lift the reset pin of the TPM in order to reset
+	// it independently, depending on what type of package is used - eg, this is significantly harder for
+	// TPMs in a QFN package than it is for TPMs in a TSSOP package - both of which are permitted as
+	// described in the TCG PC Client Platform TPM Profile Specification for TPM 2.0, although the QFN
+	// package is more likely to be found in laptops and other small computing devices. Note that it may
+	// be possible to provide some mitigation against reset attacks if the TPM's startup locality is not
+	// accessible from ring 0 code (platform firmware and privileged OS code). This is because the startup
+	// locality changes the initial value of PCR 0, and so a startup locality other than 0 will make it
+	// impossible to reconstruct the same PCR values from software as long as the startup locality cannot
+	// be accessed from software by the adversary. Note that this type of mitigation offers no protection
+	// from an adversary performing an active interposer attack as described before, as if they can control
+	// bus communications then they can access any locality in order to replay PCR values, so any mitigation
+	// provided is limited.
+	DiscreteTPMDetected
+
+	// StartupLocalityNotProtected indicates that the TPM's startup locality can most likely be accessed
+	// from any code running at ring 0 (platform firmware and privileged OS code). This won't be set if
+	// DiscreteTPMDetected isn't also set. If this is set, then it is not possible to offer any mitigation
+	// against replaying PCR values from software as part of a reset attack. Support for not offering any
+	// reset attack mitigation has to be opted into with the PermitNoDiscreteTPMResetMitigation flag to
+	// RunChecks.
+	StartupLocalityNotProtected
+
+	// VARDriversPresent indicates that value-added-retailer drivers were present, either
+	// because there are Driver#### load options and/or DriverOrder global variable, or
+	// because one or more was loaded from an option ROM contained on a PCI device. These
+	// are included in a PCR policy when using efi.WithDriversAndAppsProfile. Support for
+	// including value-added-retailer drivers has to be opted into with the
+	// PermitVARSuppliedDrivers flag to RunChecks.
+	// This check may not run if the NoDriversAndAppsProfileSupport flag is set.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	VARDriversPresent
+
+	// SysPrepApplicationsPresent indicates that system preparation applications were
+	// running as part of the pre-OS environment because there are SysPrep#### and
+	// SysPrepOrder global variables defined. As these aren't under the control of the OS,
+	// these can increase the fragility of profiles that include efi.WithBootManagerCodeProfile.
+	// Support for including system preparation applications has to be opted into with the
+	// PermitSysPrepApplications flag to RunChecks.
+	// This check may not run if the NoBootManagerCodeProfileSupport flag is set.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	SysPrepApplicationsPresent
+
+	// AbsoluteComputeActive indicates that the platform firmware is executing an endpoint
+	// management application called "Absolute" using the LoadImage API. If it is, this is
+	// measured to PCR4 as part of the OS-present environment before the OS is loaded.
+	// As this is a firmware component, this increases the fragility of profiles that include
+	// efi.WithBootManagerCodeProfile. Where possible, this firmware should be disabled. Support
+	// for including Absolute has to be opted into with the PermitAbsoluteComputrace flag to
+	// RunChecks.
+	// This check may not run if the NoBootManagerCodeProfileSupport flag is set.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	AbsoluteComputraceActive
+
+	// NotAllBootManagerCodeDigestsVerified indicates that the checks for efi.WithBootManagerCodeProfile
+	// was not able to verify all of the EV_EFI_BOOT_SERVICES_APPLICATION digests that appear in the
+	// log to ensure that they contain an Authenticode digest that matches a boot component used during
+	// the current boot. If this is set, it means that not all boot components were supplied to RunChecks.
+	// Support for not verifying all EV_EFI_BOOT_SERVICES_APPLICATION digests has to opted into with the
+	// PermitNotVerifyingAllBootManagerCodeDigests flag to RunChecks.
+	// This check may not run if the NoBootManagerCodeProfileSupport flag is set.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	NotAllBootManagerCodeDigestsVerified
+
+	// RunningInVirtualMachine indicates that the OS is running in a virtual machine. As parts
+	// of the TCB, such as the initial firmware code and the vTPM are under the control of the host
+	// environment, this configuration offers little benefit other than for testing - particularly
+	// in CI environments. If this is set, no checks for platform firmware protections were
+	// performed. Support for virtual machines has to be opted into with the PermitVirtualMachine flag
+	// to RunChecks.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	RunningInVirtualMachine
+
+	// WeakSecureBootAlgorithms indicates that weak algorithms were detected during secure boot verification,
+	// such as authenticating a pre-OS binary with SHA1, or with a CA with a 1024-bit RSA public key, or because
+	// the signing key used to sign the initial boot loader uses a 1024-bit RSA key. This does have some
+	// limitations because the TCG log doesn't indicate the properties of the actual signing certificate of
+	// the algorithms used to sign each binary, so it's not possible to verify the signing keys for components
+	// outside of the OS control. Support for weak secure boot algorithms has to be opted into with the
+	// PermitWeakSecureBootAlgorithms flag to RunChecks.
+	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	WeakSecureBootAlgorithmsDetected
+
+	// PreOSVerificationUsingDigestDetected indicates that pre-OS components were verified by the
+	// use of a digest hardcoded in the authorized signature database as opposed to a X.509 certificate.
+	// Support for this has to be opted into with the PermitPreOSVerificationUsingDigests flag to
+	// RunChecks, as it implies that db has to change with each update to certain firmware components.
+	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	PreOSVerificationUsingDigestsDetected
+)
+
+var checkResultFlagToIDStringMap = map[CheckResultFlags]string{
+	NoPlatformFirmwareProfileSupport:     "no-platform-firmware-profile-support",
+	NoPlatformConfigProfileSupport:       "no-platform-config-profile-support",
+	NoDriversAndAppsProfileSupport:       "no-drivers-and-apps-profile-support",
+	NoDriversAndAppsConfigProfileSupport: "no-drivers-and-apps-config-profile-support",
+	NoBootManagerCodeProfileSupport:      "no-boot-manager-code-profile-support",
+	NoBootManagerConfigProfileSupport:    "no-boot-manager-config-profile-support",
+	NoSecureBootPolicyProfileSupport:     "no-secure-boot-policy-profile-support",
+	DiscreteTPMDetected:                  "discrete-tpm-detected",
+	StartupLocalityNotProtected:          "startup-locality-not-protected",
+}
+
+var checkNonPersistentResultFlagToIDStringMap = map[CheckResultFlags]string{
+	VARDriversPresent:                     "var-drivers-present",
+	SysPrepApplicationsPresent:            "sysprep-apps-present",
+	AbsoluteComputraceActive:              "absolute-active",
+	NotAllBootManagerCodeDigestsVerified:  "not-all-boot-manager-code-digests-verified",
+	RunningInVirtualMachine:               "running-in-vm",
+	WeakSecureBootAlgorithmsDetected:      "weak-secure-boot-algs-detected",
+	PreOSVerificationUsingDigestsDetected: "pre-os-verification-using-digests-detected",
+}
+
+var checkResultFlagFromIDStringMap = map[string]CheckResultFlags{
+	"no-platform-firmware-profile-support":       NoPlatformFirmwareProfileSupport,
+	"no-platform-config-profile-support":         NoPlatformConfigProfileSupport,
+	"no-drivers-and-apps-profile-support":        NoDriversAndAppsProfileSupport,
+	"no-drivers-and-apps-config-profile-support": NoDriversAndAppsConfigProfileSupport,
+	"no-boot-manager-code-profile-support":       NoBootManagerCodeProfileSupport,
+	"no-boot-manager-config-profile-support":     NoBootManagerConfigProfileSupport,
+	"no-secure-boot-policy-profile-support":      NoSecureBootPolicyProfileSupport,
+	"discrete-tpm-detected":                      DiscreteTPMDetected,
+	"startup-locality-not-protected":             StartupLocalityNotProtected,
+}
+
+type x509CertificateIdJSON struct {
+	Subject            []byte `json:"subject"`
+	SubjectKeyId       []byte `json:"subject-key-id"`
+	PublicKeyAlgorithm string `json:"pubkey-algorithm"`
+
+	Issuer             []byte `json:"issuer"`
+	AuthorityKeyId     []byte `json:"authority-key-id"`
+	SignatureAlgorithm string `json:"signature-algorithm"`
+}
+
+func newX509CertificateIdJSON(cert *X509CertificateID) (*x509CertificateIdJSON, error) {
+	out := &x509CertificateIdJSON{
+		Subject:        cert.subject,
+		SubjectKeyId:   cert.subjectKeyId,
+		Issuer:         cert.issuer,
+		AuthorityKeyId: cert.authorityKeyId,
+	}
+
+	switch cert.publicKeyAlgorithm {
+	case x509.RSA:
+		out.PublicKeyAlgorithm = "RSA"
+	default:
+		return nil, fmt.Errorf("unrecognized public key algorithm %q", cert.publicKeyAlgorithm)
+	}
+
+	switch cert.signatureAlgorithm {
+	case x509.SHA256WithRSA:
+		out.SignatureAlgorithm = "SHA256-RSA"
+	case x509.SHA384WithRSA:
+		out.SignatureAlgorithm = "SHA384-RSA"
+	case x509.SHA512WithRSA:
+		out.SignatureAlgorithm = "SHA512-RSA"
+	case x509.SHA256WithRSAPSS:
+		out.SignatureAlgorithm = "SHA256-RSAPSS"
+	case x509.SHA384WithRSAPSS:
+		out.SignatureAlgorithm = "SHA384-RSAPSS"
+	case x509.SHA512WithRSAPSS:
+		out.SignatureAlgorithm = "SHA512-RSAPSS"
+	default:
+		return nil, fmt.Errorf("unrecognized signature algorithm %v", cert.signatureAlgorithm)
+	}
+
+	return out, nil
+}
+
+func (id *x509CertificateIdJSON) toPublic() (*X509CertificateID, error) {
+	out := &X509CertificateID{
+		subject:        id.Subject,
+		subjectKeyId:   id.SubjectKeyId,
+		issuer:         id.Issuer,
+		authorityKeyId: id.AuthorityKeyId,
+	}
+
+	switch id.PublicKeyAlgorithm {
+	case "RSA":
+		out.publicKeyAlgorithm = x509.RSA
+	default:
+		return nil, fmt.Errorf("unrecognized public key algorithm %q", id.PublicKeyAlgorithm)
+	}
+
+	switch id.SignatureAlgorithm {
+	case "SHA256-RSA":
+		out.signatureAlgorithm = x509.SHA256WithRSA
+	case "SHA384-RSA":
+		out.signatureAlgorithm = x509.SHA384WithRSA
+	case "SHA512-RSA":
+		out.signatureAlgorithm = x509.SHA512WithRSA
+	case "SHA256-RSAPSS":
+		out.signatureAlgorithm = x509.SHA256WithRSAPSS
+	case "SHA384-RSAPSS":
+		out.signatureAlgorithm = x509.SHA384WithRSAPSS
+	case "SHA512-RSAPSS":
+		out.signatureAlgorithm = x509.SHA512WithRSAPSS
+	default:
+		return nil, fmt.Errorf("unrecognized signature algorithm %q", id.SignatureAlgorithm)
+	}
+
+	return out, nil
+}
+
+type checkResultJSON struct {
+	PCRAlg            secboot.HashAlg      `json:"pcr-alg"`
+	UsedSecureBootCAs []*X509CertificateID `json:"used-secure-boot-cas"`
+	Flags             []string             `json:"flags"`
+}
+
+func newCheckResultJSON(r *CheckResult) (*checkResultJSON, error) {
+	out := new(checkResultJSON)
+	out.PCRAlg = secboot.HashAlg(r.PCRAlg.GetHash())
+	if out.PCRAlg == secboot.HashAlg(0) {
+		return nil, errors.New("invalid PCR algorithm")
+	}
+
+	out.UsedSecureBootCAs = r.UsedSecureBootCAs
+
+	for i := 0; i < 64; i++ {
+		if r.Flags&CheckResultFlags(1<<i) > 0 {
+			if str, exists := checkResultFlagToIDStringMap[CheckResultFlags(1<<i)]; exists {
+				out.Flags = append(out.Flags, str)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (r checkResultJSON) toPublic() (*CheckResult, error) {
+	out := new(CheckResult)
+
+	switch crypto.Hash(r.PCRAlg) {
+	case crypto.SHA1:
+		out.PCRAlg = tpm2.HashAlgorithmSHA1
+	case crypto.SHA256:
+		out.PCRAlg = tpm2.HashAlgorithmSHA256
+	case crypto.SHA384:
+		out.PCRAlg = tpm2.HashAlgorithmSHA384
+	case crypto.SHA512:
+		out.PCRAlg = tpm2.HashAlgorithmSHA512
+	default:
+		return nil, errors.New("unrecognized PCR algorithm")
+	}
+
+	out.UsedSecureBootCAs = r.UsedSecureBootCAs
+
+	for _, flag := range r.Flags {
+		val, exists := checkResultFlagFromIDStringMap[flag]
+		if !exists {
+			return nil, fmt.Errorf("unrecognized flag %q", flag)
+		}
+		out.Flags |= val
+	}
+
+	return out, nil
+}
+
+// X509CertificateID corresponds to the identity of a X.509 certificate.
+// It is JSON serializable and avoids the need to persist an entire certificate
+// when we only use the parts that identify it.
+type X509CertificateID struct {
+	subject            []byte
+	subjectKeyId       []byte
+	publicKeyAlgorithm x509.PublicKeyAlgorithm
+
+	issuer             []byte
+	authorityKeyId     []byte
+	signatureAlgorithm x509.SignatureAlgorithm
+}
+
+func newX509CertificateID(cert *x509.Certificate) *X509CertificateID {
+	return &X509CertificateID{
+		subject:            cert.RawSubject,
+		subjectKeyId:       cert.SubjectKeyId,
+		publicKeyAlgorithm: cert.PublicKeyAlgorithm,
+		issuer:             cert.RawIssuer,
+		authorityKeyId:     cert.AuthorityKeyId,
+		signatureAlgorithm: cert.SignatureAlgorithm,
+	}
+}
+
+// Subject returns the readable form of the certificate's subject.
+func (id *X509CertificateID) Subject() pkix.Name {
+	rdns, err := parseName(id.subject)
+	if err != nil {
+		return pkix.Name{}
+	}
+
+	var res pkix.Name
+	res.FillFromRDNSequence(rdns)
+	return res
+}
+
+// RawSubject returns the certificate's raw DER encoded subject.
+// It implements [github.com/canonical/go-efilib.X509CertID.RawSubject].
+func (id *X509CertificateID) RawSubject() []byte {
+	return id.subject
+}
+
+// SubjectKeyID returns the ID of the subject's public key. It implements
+// [github.com/canonical/go-efilib.X509CertID.SubjectKeyID].
+func (id *X509CertificateID) SubjectKeyId() []byte {
+	return id.subjectKeyId
+}
+
+// PublicKeyAlgorithm returns the algorithm of the public key. It implements
+// [github.com/canonical/go-efilib.X509CertID.PublicKeyAlgorithm].
+func (id *X509CertificateID) PublicKeyAlgorithm() x509.PublicKeyAlgorithm {
+	return id.publicKeyAlgorithm
+}
+
+// Issuer returns the readable form of the certificate's issuer.
+func (id *X509CertificateID) Issuer() pkix.Name {
+	rdns, err := parseName(id.issuer)
+	if err != nil {
+		return pkix.Name{}
+	}
+
+	var res pkix.Name
+	res.FillFromRDNSequence(rdns)
+	return res
+}
+
+// RawIssuer returns the certificate's raw DER encoded issuer.
+// It implements [github.com/canonical/go-efilib.X509CertID.RawIssuer].
+func (id *X509CertificateID) RawIssuer() []byte {
+	return id.issuer
+}
+
+// AuthorityKeyID returns the ID of the issuer's public key. It implements
+// [github.com/canonical/go-efilib.X509CertID.AuthorityKeyID].
+func (id *X509CertificateID) AuthorityKeyId() []byte {
+	return id.authorityKeyId
+}
+
+// SignatureAlgorithm indicates the algorithm that the issuer used
+// to sign the subject certificate. It implements
+// [github.com/canonical/go-efilib.X509CertID.SignatureAlgorithm].
+func (id *X509CertificateID) SignatureAlgorithm() x509.SignatureAlgorithm {
+	return id.signatureAlgorithm
+}
+
+// MarshalJSON implements [json.Marshaler].
+func (id X509CertificateID) MarshalJSON() ([]byte, error) {
+	j, err := newX509CertificateIdJSON(&id)
+	if err != nil {
+		return nil, fmt.Errorf("cannot encode X509CertificateID: %w", err)
+	}
+	return json.Marshal(j)
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (id *X509CertificateID) UnmarshalJSON(data []byte) error {
+	var j *x509CertificateIdJSON
+	if err := json.Unmarshal(data, &j); err != nil {
+		return err
+	}
+
+	pub, err := j.toPublic()
+	if err != nil {
+		return fmt.Errorf("cannot decode X509CertificateID: %w", err)
+	}
+
+	*id = *pub
+	return nil
+}
+
+// CheckResult is returned from [RunChecks] when it completes successfully.
+// It is JSON serializable, although some flags and fields are omitted.
+type CheckResult struct {
+	PCRAlg tpm2.HashAlgorithmId // The optimum PCR algorithm.
+
+	// UsedSecureBootCAs indicates the CAs included in the firmware's authorized
+	// signature database that were used to authenticate code running on this device,
+	// so an experienced user can use this to manually express various levels of trust
+	// in these in order to customize the Options field.
+	UsedSecureBootCAs []*X509CertificateID
+
+	// Flags contains a set of result flags
+	Flags CheckResultFlags
+
+	// Warnings contains any non-fatal errors that were detected when running the tests
+	// on the current platform with the specified configuration. Note that this field is
+	// not serialized.
+	Warnings *RunChecksErrors
+}
+
+// String implements [fmt.Stringer].
+func (r CheckResult) String() string {
+	w := new(bytes.Buffer)
+	fmt.Fprintf(w, "\nEFI based TPM protected FDE test support results:\n")
+	fmt.Fprintf(w, "- Best PCR algorithm: %v\n", r.PCRAlg)
+	fmt.Fprintf(w, "- Secure boot CAs used for verification:\n")
+	for i, ca := range r.UsedSecureBootCAs {
+		fmt.Fprintf(w, "  %d: subject=%v, SKID=%#x, pubkeyAlg=%v, issuer=%v, AKID=%#x, sigAlg=%v\n", i+1,
+			ca.Subject(), ca.SubjectKeyId(), ca.PublicKeyAlgorithm(), ca.Issuer(), ca.AuthorityKeyId(), ca.SignatureAlgorithm())
+	}
+	var flags []string
+	for i := 0; i < 64; i++ {
+		if r.Flags&CheckResultFlags(1<<i) > 0 {
+			str, exists := checkResultFlagToIDStringMap[CheckResultFlags(1<<i)]
+			if !exists {
+				str, exists = checkNonPersistentResultFlagToIDStringMap[CheckResultFlags(1<<i)]
+			}
+			if !exists {
+				str = fmt.Sprintf("%016x", 1<<i)
+			}
+			flags = append(flags, str)
+		}
+	}
+	fmt.Fprintf(w, "- Flags: %s\n", strings.Join(flags, ","))
+	if r.Warnings != nil && len(r.Warnings.Errs) > 0 {
+		fmt.Fprintf(w, "- Warnings:\n")
+		for i := 0; i < len(r.Warnings.Errs); i++ {
+			fmt.Fprintf(w, "%s\n", indentLines(2, "- "+r.Warnings.Errs[i].Error()))
+		}
+	}
+	return w.String()
+}
+
+// MarshalJSON implements [json.Marshaler].
+func (r CheckResult) MarshalJSON() ([]byte, error) {
+	j, err := newCheckResultJSON(&r)
+	if err != nil {
+		return nil, fmt.Errorf("cannot encode CheckResult: %w", err)
+	}
+	return json.Marshal(j)
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (r *CheckResult) UnmarshalJSON(data []byte) error {
+	var j *checkResultJSON
+	if err := json.Unmarshal(data, &j); err != nil {
+		return err
+	}
+
+	pub, err := j.toPublic()
+	if err != nil {
+		return fmt.Errorf("cannot decode CheckResult: %w", err)
+	}
+
+	*r = *pub
+	return nil
+}

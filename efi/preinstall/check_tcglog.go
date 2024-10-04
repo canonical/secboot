@@ -84,11 +84,14 @@ func (r *pcrResults) Err() error {
 	}
 	if !r.extended() {
 		// Return an error if the PCR hasn't been extended.
+		// This generally shouldn't happen because there should at
+		// least be a EV_SEPARATOR event, and if there isn't one, we
+		// trigger errors elsewhere related to the structure of the log.
 		return errors.New("PCR has not been extended by platform firmware")
 	}
 	if !bytes.Equal(r.pcrValue, r.logValue) {
 		// The PCR value is inconsistent with the log value.
-		return fmt.Errorf("PCR value mismatch (actual from TPM %#x, reconstructed from log %#x)", r.pcrValue, r.logValue)
+		return &PCRValueMismatchError{PCRValue: r.pcrValue, LogValue: r.logValue}
 	}
 	return nil
 }
@@ -257,8 +260,7 @@ func checkFirmwareLogAgainstTPMForAlg(tpm *tpm2.TPMContext, log *tcglog.Log, alg
 		break
 	}
 	if !supported {
-		// The log doesn't contain the specified algorithm
-		return nil, errors.New("digest algorithm not present in log")
+		return nil, ErrPCRBankMissingFromLog
 	}
 
 	// Create the result tracker for PCRs 0-7
@@ -586,7 +588,10 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 	// likely to get SHA-256 here - it's only in very recent devices that we have TPMs with
 	// SHA-384 support and corresponding firmware integration.
 	// We try to keep all errors enountered during selection here.
-	mainErr := new(NoSuitablePCRAlgorithmError)
+	mainErr := &NoSuitablePCRAlgorithmError{
+		BankErrs: make(map[tpm2.HashAlgorithmId]error),
+		PCRErrs:  make(map[tpm2.HashAlgorithmId]map[tpm2.Handle]error),
+	}
 	var chosenResults *pcrBankResults
 	for _, alg := range supportedAlgs {
 		if chosenResults != nil {
