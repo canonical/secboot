@@ -24,6 +24,7 @@ import (
 	"io"
 
 	efi "github.com/canonical/go-efilib"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
 
@@ -100,6 +101,14 @@ func MockInternalEfiSecureBootSignaturesFromPEFile(fn func(*pe.File, io.ReaderAt
 	}
 }
 
+func MockKnownCAs(set AuthorityTrustDataSet) (restore func()) {
+	orig := knownCAs
+	knownCAs = set
+	return func() {
+		knownCAs = orig
+	}
+}
+
 func MockPeNewFile(fn func(io.ReaderAt) (*pe.File, error)) (restore func()) {
 	orig := peNewFile
 	peNewFile = fn
@@ -108,10 +117,10 @@ func MockPeNewFile(fn func(io.ReaderAt) (*pe.File, error)) (restore func()) {
 	}
 }
 
-func MockKnownCAs(set AuthorityTrustDataSet) (restore func()) {
-	orig := knownCAs
-	knownCAs = set
+func MockRunChecksEnv(env internal_efi.HostEnvironment) (restore func()) {
+	orig := runChecksEnv
+	runChecksEnv = env
 	return func() {
-		knownCAs = orig
+		runChecksEnv = orig
 	}
 }

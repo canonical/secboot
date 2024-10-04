@@ -97,19 +97,22 @@ const (
 	// TPMs in a QFN package than it is for TPMs in a TSSOP package - both of which are permitted as
 	// described in the TCG PC Client Platform TPM Profile Specification for TPM 2.0, although the QFN
 	// package is more likely to be found in laptops and other small computing devices. Note that it may
-	// be possible to mitigate reset attacks if the TPM's startup locality is not accessible from ring 0
-	// code. This is because the startup locality changes the initial value of PCR 0, and so a startup
-	// locality other than 0 will make it impossible to reconstruct the same PCR values from software as
-	// long as the startup locality cannot be accessed from software by the adversary. Note that this
-	// offers no protection from an adversary performing an active interposer attack as described before,
-	// as they can access any locality.
+	// be possible to provide some mitigation against reset attacks if the TPM's startup locality is not
+	// accessible from ring 0 code (platform firmware and privileged OS code). This is because the startup
+	// locality changes the initial value of PCR 0, and so a startup locality other than 0 will make it
+	// impossible to reconstruct the same PCR values from software as long as the startup locality cannot
+	// be accessed from software by the adversary. Note that this type of mitigation offers no protection
+	// from an adversary performing an active interposer attack as described before, as if they can control
+	// bus communications then they can access any locality in order to replay PCR values, so any mitigation
+	// provided is limited.
 	DiscreteTPMDetected
 
 	// StartupLocalityNotProtected indicates that the TPM's startup locality can most likely be accessed
-	// from any code running at ring 0. This won't be set if DiscreteTPMDetected isn't also set. If this
-	// is set, then it is not possible to offer any mitigation against replaying PCR values from software
-	// as part of a reset attack. Support for not offering any reset attack mitigation has to be opted
-	// into with the PermitNoDiscreteTPMResetMitigation flag to RunChecks.
+	// from any code running at ring 0 (platform firmware and privileged OS code). This won't be set if
+	// DiscreteTPMDetected isn't also set. If this is set, then it is not possible to offer any mitigation
+	// against replaying PCR values from software as part of a reset attack. Support for not offering any
+	// reset attack mitigation has to be opted into with the PermitNoDiscreteTPMResetMitigation flag to
+	// RunChecks.
 	StartupLocalityNotProtected
 
 	// VARDriversPresent indicates that value-added-retailer drivers were present, either
@@ -292,6 +295,10 @@ type CheckResult struct {
 
 	// Flags contains a set of result flags
 	Flags CheckResultFlags
+
+	// Warnings contains any non-fatal errors that were detected when running the tests
+	// on the platform. Note that this field is not serialized.
+	Warnings *RunChecksErrors
 }
 
 // String implements [fmt.Stringer].
@@ -317,6 +324,12 @@ func (r CheckResult) String() string {
 		}
 	}
 	fmt.Fprintf(w, "- Flags: %s\n", strings.Join(flags, ","))
+	if r.Warnings != nil && r.Warnings.NumErrors() > 0 {
+		fmt.Fprintf(w, "- Warnings:\n")
+		for i := 0; i < r.Warnings.NumErrors(); i++ {
+			fmt.Fprintf(w, "%s\n", indentLines(2, "- "+r.Warnings.UnwrapError(i).Error()))
+		}
+	}
 	return w.String()
 }
 

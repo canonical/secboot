@@ -118,9 +118,10 @@ const (
 	PCRProfileOptionDistrustVARSuppliedNonHostCode
 
 	// PCRProfileOptionNoDiscreteTPMResetMitigation can be used to omit PCR0 from the
-	// profile on platforms that have a discrete TPM and where including PCR0 can mitigate
-	// the replaying of PCR0 from software as part of a TPM reset attack. This should only be
-	// used if a system administrator makes an explicit decision that they don't want this
+	// profile on platforms that have a discrete TPM and where including PCR0 can provide
+	// limited mitigation of TPM reset attacks by preventing the PCR values from being
+	// reconstructed from software. This should only be used if a system administrator makes
+	// an explicit decision that they don't want the additional PCR fragility caused by this
 	// mitigation, perhaps because they consider that discrete TPMs still have other
 	// weaknesses to anyone with physical access to the device without any of their own
 	// mitigations. See the DiscreteTPMDetected CheckResultFlags flag description for more
