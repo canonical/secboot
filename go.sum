@@ -1,8 +1,8 @@
 github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb h1:+kA/9oHTqUx4P08ywKvmd7a1wOL3RLTrE0K958C15x8=
 github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb/go.mod h1:6j8Sw3dwYVcBXltEeGklDoK/8UJVJNQPUkg1ZdQUgbk=
 github.com/canonical/go-efilib v0.0.0-20210909101908-41435fa545d4/go.mod h1:9Sr9kd7IhQPYqaU5nut8Ky97/CtlhHDzQncQnrULgDM=
-github.com/canonical/go-efilib v1.2.0 h1:+fvJdkj3oVyURFtfk8gSft6pdKyVzzdzNn9GC1kMJw8=
-github.com/canonical/go-efilib v1.2.0/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
+github.com/canonical/go-efilib v1.3.1 h1:KnVlqrKn0ZDGAbgQt9tke5cvtqNRCmpEp0v7RGUVpqs=
+github.com/canonical/go-efilib v1.3.1/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0 h1:ZE2XMRFHcwlib3uU9is37+pKkkMloVoEPWmgQ6GK1yo=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=
@@ -12,8 +12,8 @@ github.com/canonical/go-tpm2 v0.0.0-20210827151749-f80ff5afff61/go.mod h1:vG41hd
 github.com/canonical/go-tpm2 v1.7.6 h1:9k9OAEEp9xKp4h2WJwfTUNivblJi4L5Wjx7Q/LkSTSQ=
 github.com/canonical/go-tpm2 v1.7.6/go.mod h1:Dz0PQRmoYrmk/4BLILjRA+SFzuqEo1etAvYeAJiMhYU=
 github.com/canonical/tcglog-parser v0.0.0-20210824131805-69fa1e9f0ad2/go.mod h1:QoW2apR2tBl6T/4czdND/EHjL1Ia9cCmQnIj9Xe0Kt8=
-github.com/canonical/tcglog-parser v0.0.0-20240820013904-60cf7cbc7c5d h1:v3gTMnOF/eT79eZnUSbHR18IJqHAXUog5SwiPn+HRXk=
-github.com/canonical/tcglog-parser v0.0.0-20240820013904-60cf7cbc7c5d/go.mod h1:ywdPBqUGkuuiitPpVWCfilf2/gq+frhq4CNiNs9KyHU=
+github.com/canonical/tcglog-parser v0.0.0-20240924110432-d15eaf652981 h1:vrUzSfbhl8mzdXPzjxq4jXZPCCNLv18jy6S7aVTS2tI=
+github.com/canonical/tcglog-parser v0.0.0-20240924110432-d15eaf652981/go.mod h1:ywdPBqUGkuuiitPpVWCfilf2/gq+frhq4CNiNs9KyHU=
 github.com/coreos/go-systemd v0.0.0-20180511133405-39ca1b05acc7/go.mod h1:F5haX7vjVVG0kc13fIWeqUViNPyEJxv/OmvnBo0Yme4=
 github.com/frankban/quicktest v1.2.2/go.mod h1:Qh/WofXFeiAFII1aEBu529AtJo6Zg2VHscnEsbBnJ20=
 github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 h1:ZpnhV/YsD2/4cESfV5+Hoeu/iUR3ruzNvZ+yQfO03a0=
