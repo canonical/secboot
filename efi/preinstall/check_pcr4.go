@@ -71,7 +71,7 @@ func readLoadOptionFromLog(log *tcglog.Log, n uint16) (*efi.LoadOption, error) {
 		}
 
 		var x uint16
-		if y, err := fmt.Sscanf(data.UnicodeName, "Boot%x", &x); err != nil || y != 1 {
+		if c, err := fmt.Sscanf(data.UnicodeName, "Boot%x", &x); err != nil || c != 1 {
 			continue
 		}
 		if x != n {

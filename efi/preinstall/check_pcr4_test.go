@@ -66,6 +66,43 @@ func (s *pcr4Suite) TestReadLoadOptionFromLogNotExist(c *C) {
 	c.Check(err, ErrorMatches, `cannot find specified boot option`)
 }
 
+func (s *pcr4Suite) TestReadLoadOptionFromLogInvalidData(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+	for _, ev := range log.Events {
+		if ev.PCRIndex != internal_efi.PlatformConfigPCR {
+			continue
+		}
+		if ev.EventType != tcglog.EventTypeEFIVariableBoot {
+			continue
+		}
+		data, ok := ev.Data.(*tcglog.EFIVariableData)
+		c.Assert(ok, testutil.IsTrue)
+		if data.UnicodeName != "Boot0003" {
+			continue
+		}
+		ev.Data = &invalidEventData{errors.New("some error")}
+	}
+	_, err := ReadLoadOptionFromLog(log, 3)
+	c.Check(err, ErrorMatches, `boot variable measurement has wrong data format: some error`)
+}
+
+func (s *pcr4Suite) TestReadLoadOptionFromLogInvalidVariableName(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+	for _, ev := range log.Events {
+		if ev.PCRIndex != internal_efi.PlatformConfigPCR {
+			continue
+		}
+		if ev.EventType != tcglog.EventTypeEFIVariableBoot {
+			continue
+		}
+		data, ok := ev.Data.(*tcglog.EFIVariableData)
+		c.Assert(ok, testutil.IsTrue)
+		data.VariableName = efi.MakeGUID(0x6be4d043, 0x2ded, 0x4669, 0xa43b, [...]byte{0x91, 0x37, 0xb8, 0xa9, 0xd1, 0xa4})
+	}
+	_, err := ReadLoadOptionFromLog(log, 3)
+	c.Check(err, ErrorMatches, `cannot find specified boot option`)
+}
+
 func (s *pcr4Suite) TestIsLaunchedFromLoadOptionGood(c *C) {
 	opt := &efi.LoadOption{
 		Attributes:  1,
@@ -640,6 +677,45 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithoutCallingEFIApp
 	c.Check(err, IsNil)
 }
 
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodSkipOtherEventTypesInOSPresent(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	var addedEvent bool
+	for _, ev := range log.Events {
+		eventsCopy = append(eventsCopy, ev)
+		if ev.PCRIndex == internal_efi.BootManagerCodePCR && ev.EventType == tcglog.EventTypeEFIBootServicesApplication && !addedEvent {
+			addedEvent = true
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.BootManagerCodePCR,
+				EventType: tcglog.EventTypeIPL,
+				Data:      tcglog.StringEventData("some data"),
+				Digests: map[tpm2.HashAlgorithmId]tpm2.Digest{
+					tpm2.HashAlgorithmSHA256: tcglog.ComputeStringEventDigest(crypto.SHA256, "some data"),
+				},
+			})
+		}
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+			}),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		images: []secboot_efi.Image{
+			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		expectedResult: 0,
+	})
+	c.Check(err, IsNil)
+}
+
 func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadNoImages(c *C) {
 	// Test error result because no load images were supplied
 	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
@@ -839,9 +915,42 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadUnexpectedTransitionT
 	c.Check(err, ErrorMatches, `unexpected event type EV_EFI_ACTION: expecting transition from pre-OS to OS-present event`)
 }
 
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadUnexpectedFirstOSPresentEvent(c *C) {
+	// Test error result because the first OS-present event is not EV_EFI_BOOT_SERVICES_APPLICATION
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	for _, ev := range log.Events {
+		eventsCopy = append(eventsCopy, ev)
+		if ev.PCRIndex == internal_efi.PlatformManufacturerPCR && ev.EventType == tcglog.EventTypeSeparator {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.BootManagerCodePCR,
+				EventType: tcglog.EventTypeIPL,
+				Data:      tcglog.StringEventData("some data"),
+				Digests: map[tpm2.HashAlgorithmId]tpm2.Digest{
+					tpm2.HashAlgorithmSHA256: tcglog.ComputeStringEventDigest(crypto.SHA256, "some data"),
+				},
+			})
+		}
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+			}),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		images: []secboot_efi.Image{
+			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
+		},
+	})
+	c.Check(err, ErrorMatches, `unexpected OS-present log event type EV_IPL \(expected EV_EFI_BOOT_SERVICES_APPLICATION\)`)
+}
+
 // TODO (other error cases - some harder, some may require more customizable log generator in internal/efitest/log.go):
-// - Boot option decode error from log (in readLoadOptionFromLog).
-// - Boot option in log not a global variable.
 // - Event data decode errors in pre-OS environment.
 // - Unexpected event types in log in pre-OS environment.
 // - Logs with EV_OMIT_BOOT_DEVICE_EVENTS.
@@ -849,7 +958,6 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadUnexpectedTransitionT
 // - EV_EFI_ACTION "Calling EFI Application from Boot Option" measured before secure boot config.
 // - EV_EFI_ACTION "Calling EFI Application from Boot Option" along with EV_OMIT_BOOT_DEVICE_EVENTS event.
 // - Driver / sysprep launches before secure boot config is measured.
-// - Event other than EV_EFI_BOOT_SERVICES_APPLICATION in initial OS-present environment (ie, immediately after EV_SEPARATOR).
 // - Event data decode error for initial EV_EFI_BOOT_SERVICES_APPLICATION event in OS-present environment.
 // - EV_EFI_BOOT_SERVICES_APPLICATION event after detecting Absolute, and which is not associated with the IBL launch (doesn't match boot option)
 // - Image open errors.
