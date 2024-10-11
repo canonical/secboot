@@ -176,6 +176,28 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 				return nil, false, ErrTPMInsufficientNVCounters
 			}
 		}
+
+		// The above check isn't perfect because it doesn't consider the amount of NV space available.
+		// There is another metric available which estimates how much space there is for counters with
+		// the orderly attribute set. This works by taking the available NV space, subtracting the space
+		// for the minimum number of evict objects and the space currently used for NV indexes in order
+		// to work out how many counters would fit in the remaining NV storage. It does the same for RAM
+		// reserved for orderly data, subtracting the space allocated for current orderly NV indexes in
+		// order to work out how many counters would fit in the remaining RAM, and then it returns the
+		// minimum of the 2 numbers. This isn't perfect - we could create more or less than the minimum
+		// number of evict objects, and we aren't creating orderly counters so we don't need to care about
+		// RAM space. But, we'll check it anyway.
+		nvCountersAvail, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyNVCountersAvail)
+		if err != nil {
+			return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_AVAIL: %w", err)
+		}
+		switch nvCountersAvail {
+		case 1:
+			// The TCG reference library permits implementations to always return 1, so we'll
+			// just have to accept this as inconclusive.
+		case 0:
+			return nil, false, ErrTPMInsufficientNVCounters
+		}
 	}
 
 	return tpm, discreteTPM, nil
