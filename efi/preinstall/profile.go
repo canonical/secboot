@@ -82,11 +82,12 @@ var (
 	}
 )
 
-// PCRProfileOptionsFlags provides a way to customize [WithAutoPCRProfile].
+// PCRProfileOptionsFlags provides a way to customize [WithAutoTCGPCRProfile].
 type PCRProfileOptionsFlags uint32
 
 const (
-	// PCRProfileOptionsDefault is the default PCR configuration
+	// PCRProfileOptionsDefault is the default PCR configuration. WithAutoTCGPCRProfile
+	// will select the most appropriate configuration depending on the CheckResult.
 	PCRProfileOptionsDefault PCRProfileOptionsFlags = 0
 
 	// PCRProfileOptionMostSecure is the most secure configuration by
@@ -117,6 +118,11 @@ const (
 	// that is not part of the host's trust chain but may still affect trust in the platform.
 	PCRProfileOptionDistrustVARSuppliedNonHostCode
 
+	// PCRProfileOptionPermitNoSecureBootPolicyProfle can be used to permit a fallback to
+	// a configuration without the secure boot policy included if the supplied CheckResult
+	// indicates that PCR7 cannot be used.
+	PCRProfileOptionPermitNoSecureBootPolicyProfile
+
 	// PCRProfileOptionNoDiscreteTPMResetMitigation can be used to omit PCR0 from the
 	// profile on platforms that have a discrete TPM and where including PCR0 can provide
 	// limited mitigation of TPM reset attacks by preventing the PCR values from being
@@ -146,9 +152,9 @@ type pcrProfileAutoSetPcrsOption struct {
 	opts   PCRProfileOptionsFlags
 }
 
-// WithAutoPCRProfile returns a profile for the TCG defined PCRs based on the supplied result
+// WithAutoTCGPCRProfile returns a profile for the TCG defined PCRs based on the supplied result
 // of [RunChecks] and the specified options.
-func WithAutoPCRProfile(r *CheckResult, opts PCRProfileOptionsFlags) PCRProfileAutoEnablePCRsOption {
+func WithAutoTCGPCRProfile(r *CheckResult, opts PCRProfileOptionsFlags) PCRProfileAutoEnablePCRsOption {
 	out := &pcrProfileAutoSetPcrsOption{
 		result: r,
 		opts:   opts,
@@ -171,22 +177,25 @@ func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnableP
 			NoBootManagerConfigProfileSupport |
 			NoSecureBootPolicyProfileSupport
 		if o.result.Flags&mask > 0 {
-			return nil, errors.New("PCRProfileOptionMostSecure does not work because of one or more of PCRs 0, 1, 2, 3, 4, 5 or 7 failed earlier checks")
+			return nil, fmt.Errorf("PCRProfileOptionMostSecure cannot be used: %w", newRequiredUnsupportedPCRsError(tpm2.HandleList{0, 1, 2, 3, 4, 5, 7}, o.result.Flags))
 		}
 
-		return nil, errors.New("PCRProfileOptionMostSecure is currently unsupported")
+		// TODO: remove this once the secboot_efi package implements support for the remaining PCRs
+		return nil, fmt.Errorf("PCRProfileOptionMostSecure cannot be used because it is currently unsupported: %w",
+			newRequiredUnsupportedPCRsError(tpm2.HandleList{0, 1, 2, 3, 4, 5, 7}, NoPlatformConfigProfileSupport|NoDriversAndAppsConfigProfileSupport|NoBootManagerConfigProfileSupport))
 		//		return []secboot_efi.PCRProfileEnablePCRsOption{
 		//			secboot_efi.WithPlatformFirmwareProfile(),
-		//			//secboot_efi.WithPlatformConfigProfile(), // TODO: implement in efi package
+		//			//secboot_efi.WithPlatformConfigProfile(), // TODO: implement in secboot_efi package
 		//			secboot_efi.WithDriversAndAppsProfile(),
-		//			//secboot_efi.WithDriversAndAppsConfigProfile() // TODO: implement in efi package
+		//			//secboot_efi.WithDriversAndAppsConfigProfile() // TODO: implement in secboot_efi package
 		//			secboot_efi.WithBootManagerCodeProfile(),
-		//			//secboot_efi.WithBootManagerConfigProfile(), // TODO: implement in efi package
+		//			//secboot_efi.WithBootManagerConfigProfile(), // TODO: implement in secboot_efi package
 		//			efi.WithSecureBootPolicyProfile(),
 		//		}, nil
 	default:
 		var opts []secboot_efi.PCRProfileEnablePCRsOption
-		if o.result.Flags&NoSecureBootPolicyProfileSupport == 0 {
+		switch {
+		case o.result.Flags&NoSecureBootPolicyProfileSupport == 0:
 			// If PCR7 usage is ok, always include it
 			opts = append(opts, secboot_efi.WithSecureBootPolicyProfile())
 
@@ -198,8 +207,9 @@ func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnableP
 				// signed under this CA). It's also assumed to be true for any unrecognized CAs.
 				// This can be overridden with PCRProfileOptionsTrustCAsForBootCode.
 				if o.result.Flags&NoBootManagerCodeProfileSupport > 0 {
-					return nil, errors.New("one or more CAs used for secure boot verification are not trusted to authenticate boot code " +
-						"and the PCRProfileOptionTrustCAsForBootCode option was not supplied, so PCR 4 is required, but PCR 4 failed earlier checks")
+					return nil, fmt.Errorf("cannot create a valid secure boot configuration: one or more CAs used for secure boot "+
+						"verification are not trusted to authenticate boot code and the PCRProfileOptionTrustCAsForBootCode "+
+						"option was not supplied: %w", newRequiredUnsupportedPCRsError(tpm2.HandleList{4}, o.result.Flags))
 				}
 				opts = append(opts, secboot_efi.WithBootManagerCodeProfile())
 			}
@@ -210,7 +220,7 @@ func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnableP
 			if includePcr2 && !isPcr2Supported {
 				// Include PCR2 if the user explicitly distrusts non-host code running
 				// in attached embedded controllers.
-				return nil, errors.New("options include PCRProfileOptionDistrustVARSuppliedNonHostCode, so PCR 2 is required, but PCR2 failed earlier checks")
+				return nil, fmt.Errorf("PCRProfileOptionDistrustVARSuppliedNonHostCode cannot be used: %w", newRequiredUnsupportedPCRsError(tpm2.HandleList{2}, o.result.Flags))
 			}
 			if !knownCAs.trustedForDrivers(o.result.UsedSecureBootCAs) && o.opts&PCRProfileOptionTrustCAsForVARSuppliedDrivers == 0 {
 				// We need to include PCR2 if any CAs used for verification are not generally trusted to sign UEFI drivers
@@ -220,30 +230,41 @@ func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnableP
 				// This can be overridden with PCRProfileOptionsTrustCAsForVARSuppliedDrivers.
 				includePcr2 = true
 				if !isPcr2Supported {
-					return nil, fmt.Errorf("one or more CAs used for secure boot verification are not trusted to authenticate value-added-retailer supplied drivers " +
-						"and the PCRProfileOptionTrustCAsForVARSuppliedDrivers option was not supplied, so PCR 2 is required, but PCR 2 failed earlier checks")
+					return nil, fmt.Errorf("cannot create a valid secure boot configuration: one or more CAs used for secure boot "+
+						"verification are not trusted to authenticate value-added-retailer suppled drivers and the "+
+						"PCRProfileOptionTrustCAsForVARSuppliedDrivers option was not supplied: %w",
+						newRequiredUnsupportedPCRsError(tpm2.HandleList{2}, o.result.Flags))
 				}
 			}
 			if includePcr2 {
 				opts = append(opts, secboot_efi.WithDriversAndAppsProfile())
 			}
-		} else {
-			// We can't use PCR7, so we must include PCRs 1, 2, 3, 4 and 5. These can't be omitted. PCR1 is required
-			// because we have to depend on platform firmware config rather relying on security-relevant firmware settings
-			// such as DMA protection changing the value of PCR7. PCR3 is required for the same reason, as firmware running
-			// in value-added-retailer components may measure configuration there. PCR5 is required for the same reason - boot
-			// manager configuration can be measured there, but anything that is security relevant should change the value of
-			// PCR7.
+		case o.opts&PCRProfileOptionPermitNoSecureBootPolicyProfile == 0:
+			// PCR 7 usage is not ok and the user hasn't opted into permitting configurations without it
+			return nil, fmt.Errorf("cannot create a valid configuration without secure boot policy and the "+
+				"PCRProfileOptionPermitNoSecureBootPolicyProfile option was not supplied: %w",
+				newRequiredUnsupportedPCRsError(tpm2.HandleList{7}, o.result.Flags))
+		default:
+			// PCR 7 usage is not ok and the user has opted into permitting configutations without it. We must include PCRs
+			// 1, 2, 3, 4 and 5 - none of these can be omitted.
+			// - PCR1 is required because we have to depend on platform config rather relying on security-relevant firmware
+			//   setting such as DMA protection changing the value of PCR7.
+			// - PCR2 is required to include all non-platform value-added-retailer supplied drivers that execute.
+			// - PCR3 is required for the same reason as PCR1, but for value-added-retailer driver configuration.
+			// - PCR4 is required for all system preparation applications and boot manager code that execute.
+			// - PCR5 is required for the same reason as PCR1, but for boot manager configuration.
 			const mask = NoPlatformConfigProfileSupport |
 				NoDriversAndAppsProfileSupport |
 				NoDriversAndAppsConfigProfileSupport |
 				NoBootManagerCodeProfileSupport |
 				NoBootManagerConfigProfileSupport
 			if o.result.Flags&mask > 0 {
-				return nil, errors.New("PCR 7 failed earlier checks making PCRs 1, 2, 3, 4 and 5 mandatory, but one or more of these failed earlier checks")
+				return nil, fmt.Errorf("cannot create a valid configuration without secure boot policy: %w", newRequiredUnsupportedPCRsError(tpm2.HandleList{1, 2, 3, 4, 5}, o.result.Flags))
 			}
 
-			return nil, errors.New("configurations without PCR 7 are currently unsupported")
+			// TODO: remove this once the secboot_efi package implements support for the remaining PCRs
+			return nil, fmt.Errorf("cannot create a configuration without secure boot policy because this is currently unsupported: %w",
+				newRequiredUnsupportedPCRsError(tpm2.HandleList{1, 2, 3, 4, 5}, NoPlatformConfigProfileSupport|NoDriversAndAppsConfigProfileSupport|NoBootManagerConfigProfileSupport))
 			//			opts = append(opts,
 			//				//secboot_efi.WithPlatformConfigProfile(), // TODO: implement in efi package
 			//				secboot_efi.WithDriversAndAppsProfile(),
@@ -263,7 +284,8 @@ func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnableP
 				// the host CPU and the discrete TPM directly, as this will allow them access to all
 				// localities.
 				if o.result.Flags&NoPlatformFirmwareProfileSupport > 0 {
-					return nil, errors.New("it was decided to enable a discrete TPM reset attack mitigation and the PCRProfileOptionNoDiscreteTPMResetMitigation option was not supplied, so PCR 0 is required, but PCR 0 failed earlier checks")
+					return nil, fmt.Errorf("cannot enable a discrete TPM reset attack mitigation and the "+
+						"PCRProfileOptionNoDiscreteTPMResetMitigation was not supplied: %w", newRequiredUnsupportedPCRsError(tpm2.HandleList{0}, o.result.Flags))
 				}
 				opts = append(opts, secboot_efi.WithPlatformFirmwareProfile())
 			}
@@ -287,7 +309,7 @@ func (o *pcrProfileAutoSetPcrsOption) ApplyOptionTo(visitor internal_efi.PCRProf
 }
 
 func (o *pcrProfileAutoSetPcrsOption) Options(opts PCRProfileOptionsFlags) PCRProfileAutoEnablePCRsOption {
-	return WithAutoPCRProfile(o.result, opts)
+	return WithAutoTCGPCRProfile(o.result, opts)
 }
 
 // PCRs implements [secboot_efi.PCRProfileEnablePCRsOption.PCRs].

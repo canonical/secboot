@@ -567,3 +567,48 @@ var (
 	// to RunChecks.
 	ErrPreOSVerificationUsingDigests = errors.New("some pre-OS components were authenticated from the authorized signature database using an Authenticode digest")
 )
+
+// RequiredUnsupportedPCRsError is returned from methods of [PCRProfileAutoEnablePCRsOption]
+// when a valid PCR configuration cannot be created based on the supplied [PCRProfileOptionsFlags]
+// and [CheckResult].
+type RequiredUnsupportedPCRsError struct {
+	PCRs tpm2.HandleList
+}
+
+func newRequiredUnsupportedPCRsError(required tpm2.HandleList, flags CheckResultFlags) *RequiredUnsupportedPCRsError {
+	var pcrs tpm2.HandleList
+	for _, pcr := range required {
+		var flag CheckResultFlags
+		switch pcr {
+		case 0:
+			flag = NoPlatformFirmwareProfileSupport
+		case 1:
+			flag = NoPlatformConfigProfileSupport
+		case 2:
+			flag = NoDriversAndAppsProfileSupport
+		case 3:
+			flag = NoDriversAndAppsConfigProfileSupport
+		case 4:
+			flag = NoBootManagerCodeProfileSupport
+		case 5:
+			flag = NoBootManagerConfigProfileSupport
+		case 7:
+			flag = NoSecureBootPolicyProfileSupport
+		}
+
+		if flags&flag > 0 {
+			pcrs = append(pcrs, pcr)
+		}
+	}
+
+	return &RequiredUnsupportedPCRsError{pcrs}
+}
+
+func (e *RequiredUnsupportedPCRsError) Error() string {
+	switch len(e.PCRs) {
+	case 1:
+		return fmt.Sprintf("PCR %v is required, but is unsupported", e.PCRs[0])
+	default:
+		return fmt.Sprintf("PCRs %v are required, but are unsupported", e.PCRs)
+	}
+}

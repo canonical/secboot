@@ -161,8 +161,8 @@ var (
 // whilst the checks continue to execute, and are returned wrapped in a *[RunChecksErrors].
 //
 // Success doesn't guarantee that it's possible to select a safe combination of profiles for sealing - the
-// returned CheckResult must be supplied to [WithAutoPCRProfile] along with a [PCRProfileOptionsFlags] which
-// is intended for user customization im order to automatically select an appropriate combination of profiles
+// returned CheckResult must be supplied to [WithAutoTCGPCRProfile] along with a [PCRProfileOptionsFlags] which
+// is intended for user customization in order to automatically select an appropriate combination of TCG profiles
 // for sealing, and this can still fail.
 func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi.Image) (result *CheckResult, err error) {
 	result = &CheckResult{
