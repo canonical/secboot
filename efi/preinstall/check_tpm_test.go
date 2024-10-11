@@ -104,6 +104,7 @@ var _ = Suite(&tpmSuite{})
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersDiscreteTPM(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyNVCountersAvail:   0x14,
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
 	})
@@ -123,6 +124,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersD
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersFWTPM(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyNVCountersAvail:   0x14,
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 	})
@@ -143,6 +145,28 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMFiniteCountersDis
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     6,
 		tpm2.PropertyNVCounters:        4,
+		tpm2.PropertyNVCountersAvail:   0x12,
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
+	})
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, IsNil)
+	c.Assert(tpm, NotNil)
+	var tmpl tpm2_testutil.TransportWrapper
+	c.Assert(tpm.Transport(), Implements, &tmpl)
+	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
+	c.Check(discreteTPM, testutil.IsTrue)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMFiniteCountersDiscreteTPMOneAvailWorkaround(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyNVCountersMax:     6,
+		tpm2.PropertyNVCounters:        4,
+		tpm2.PropertyNVCountersAvail:   1,
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
 	})
@@ -163,6 +187,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMCountersCheckSki
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     6,
 		tpm2.PropertyNVCounters:        5,
+		tpm2.PropertyNVCountersAvail:   0x11,
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
 	})
@@ -181,7 +206,9 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMCountersCheckSki
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCounters(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyNVCountersMax:   0,
+		tpm2.PropertyNVCountersAvail: 0x14,
+
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerMSFT),
 	})
@@ -202,6 +229,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutCheckSkip
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     6,
 		tpm2.PropertyNVCounters:        4,
+		tpm2.PropertyNVCountersAvail:   0x12,
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 	})
@@ -224,6 +252,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutCheckSkip
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutOwnedCheckSkipped(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyNVCountersAvail:   0x14,
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 	})
@@ -246,6 +275,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutOwnedChec
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnerOwnedCheckSkipped(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyNVCountersAvail:   0x14,
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 	})
@@ -268,6 +298,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnerOwnedCheckS
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMEndorsmentOwnedCheckSkipped(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyNVCountersAvail:   0x14,
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 	})
@@ -403,6 +434,22 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPreInstall(c 
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     6,
 		tpm2.PropertyNVCounters:        5,
+		tpm2.PropertyNVCountersAvail:   0x13,
+		tpm2.PropertyPSFamilyIndicator: 1,
+	})
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	_, _, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, Equals, ErrTPMInsufficientNVCounters)
+	c.Check(dev.NumberOpen(), Equals, int(0))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPreInstall2(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyNVCounters:        6,
+		tpm2.PropertyNVCountersAvail:   0,
 		tpm2.PropertyPSFamilyIndicator: 1,
 	})
 
