@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
@@ -37,58 +36,6 @@ import (
 var (
 	efiComputePeImageDigest = efi.ComputePeImageDigest
 )
-
-// readLoadOptionFromLog reads the corresponding Boot#### load option from the log,
-// which reflects the value of it at boot time, as opposed to reading it from an
-// EFI variable which may have been modified since booting.
-func readLoadOptionFromLog(log *tcglog.Log, n uint16) (*efi.LoadOption, error) {
-	events := log.Events
-	for len(events) > 0 {
-		ev := events[0]
-		events = events[1:]
-
-		if ev.PCRIndex != internal_efi.PlatformConfigPCR {
-			continue
-		}
-
-		if ev.EventType != tcglog.EventTypeEFIVariableBoot && ev.EventType != tcglog.EventTypeEFIVariableBoot2 {
-			// not a boot variable
-			continue
-		}
-
-		data, ok := ev.Data.(*tcglog.EFIVariableData)
-		if !ok {
-			// decode error data is guaranteed to implement the error interface
-			return nil, fmt.Errorf("boot variable measurement has wrong data format: %w", ev.Data.(error))
-		}
-		if data.VariableName != efi.GlobalVariable {
-			// not a global variable
-			continue
-		}
-		if !strings.HasPrefix(data.UnicodeName, "Boot") || len(data.UnicodeName) != 8 {
-			// name has unexpected prefix or length
-			continue
-		}
-
-		var x uint16
-		if c, err := fmt.Sscanf(data.UnicodeName, "Boot%x", &x); err != nil || c != 1 {
-			continue
-		}
-		if x != n {
-			// wrong load option
-			continue
-		}
-
-		// We've found the correct load option. Decode it from the data stored in the log.
-		opt, err := efi.ReadLoadOption(bytes.NewReader(data.VariableData))
-		if err != nil {
-			return nil, fmt.Errorf("cannot read load option from event data: %w", err)
-		}
-		return opt, nil
-	}
-
-	return nil, errors.New("cannot find specified boot option")
-}
 
 // isLaunchedFromLoadOption returns true if the supplied EV_EFI_BOOT_SERVICES_APPLICATION event
 // is associated with the supplied load option. This will panic if the event is of the
@@ -214,17 +161,11 @@ func checkBootManagerCodeMeasurements(ctx context.Context, env internal_efi.Host
 		return 0, fmt.Errorf("cannot obtain boot option support: %w", err)
 	}
 
-	// Obtain the BootCurrent variable and use this to obtain the corresponding load entry
-	// that was measured to the log. BootXXXX variables are measured to the TPM and so we don't
-	// need to read back from an EFI variable that could have been modified between boot time
-	// and now.
-	current, err := efi.ReadBootCurrentVariable(varCtx)
+	// Obtain the load option from the current boot so we can identify which load
+	// event corresponds to the initial OS boot loader.
+	bootOpt, err := readCurrentBootLoadOptionFromLog(varCtx, log)
 	if err != nil {
-		return 0, fmt.Errorf("cannot read BootCurrent variable: %w", err)
-	}
-	bootOpt, err := readLoadOptionFromLog(log, current)
-	if err != nil {
-		return 0, fmt.Errorf("cannot read current Boot%04x load option from log: %w", current, err)
+		return 0, err
 	}
 
 	var (

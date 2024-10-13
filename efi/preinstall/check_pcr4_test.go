@@ -22,7 +22,6 @@ package preinstall_test
 import (
 	"context"
 	"crypto"
-	"errors"
 	"io"
 
 	efi "github.com/canonical/go-efilib"
@@ -39,69 +38,6 @@ import (
 type pcr4Suite struct{}
 
 var _ = Suite(&pcr4Suite{})
-
-func (s *pcr4Suite) TestReadLoadOptionFromLog(c *C) {
-	log := efitest.NewLog(c, &efitest.LogOptions{})
-	opt, err := ReadLoadOptionFromLog(log, 3)
-	c.Assert(err, IsNil)
-	c.Check(opt, DeepEquals, &efi.LoadOption{
-		Attributes:  1,
-		Description: "ubuntu",
-		FilePath: efi.DevicePath{
-			&efi.HardDriveDevicePathNode{
-				PartitionNumber: 1,
-				PartitionStart:  0x800,
-				PartitionSize:   0x100000,
-				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
-				MBRType:         efi.GPT},
-			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
-		},
-		OptionalData: []byte{},
-	})
-}
-
-func (s *pcr4Suite) TestReadLoadOptionFromLogNotExist(c *C) {
-	log := efitest.NewLog(c, &efitest.LogOptions{})
-	_, err := ReadLoadOptionFromLog(log, 10)
-	c.Check(err, ErrorMatches, `cannot find specified boot option`)
-}
-
-func (s *pcr4Suite) TestReadLoadOptionFromLogInvalidData(c *C) {
-	log := efitest.NewLog(c, &efitest.LogOptions{})
-	for _, ev := range log.Events {
-		if ev.PCRIndex != internal_efi.PlatformConfigPCR {
-			continue
-		}
-		if ev.EventType != tcglog.EventTypeEFIVariableBoot {
-			continue
-		}
-		data, ok := ev.Data.(*tcglog.EFIVariableData)
-		c.Assert(ok, testutil.IsTrue)
-		if data.UnicodeName != "Boot0003" {
-			continue
-		}
-		ev.Data = &invalidEventData{errors.New("some error")}
-	}
-	_, err := ReadLoadOptionFromLog(log, 3)
-	c.Check(err, ErrorMatches, `boot variable measurement has wrong data format: some error`)
-}
-
-func (s *pcr4Suite) TestReadLoadOptionFromLogInvalidVariableName(c *C) {
-	log := efitest.NewLog(c, &efitest.LogOptions{})
-	for _, ev := range log.Events {
-		if ev.PCRIndex != internal_efi.PlatformConfigPCR {
-			continue
-		}
-		if ev.EventType != tcglog.EventTypeEFIVariableBoot {
-			continue
-		}
-		data, ok := ev.Data.(*tcglog.EFIVariableData)
-		c.Assert(ok, testutil.IsTrue)
-		data.VariableName = efi.MakeGUID(0x6be4d043, 0x2ded, 0x4669, 0xa43b, [...]byte{0x91, 0x37, 0xb8, 0xa9, 0xd1, 0xa4})
-	}
-	_, err := ReadLoadOptionFromLog(log, 3)
-	c.Check(err, ErrorMatches, `cannot find specified boot option`)
-}
 
 func (s *pcr4Suite) TestIsLaunchedFromLoadOptionGood(c *C) {
 	opt := &efi.LoadOption{

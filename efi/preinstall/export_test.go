@@ -74,6 +74,7 @@ var (
 	DetermineCPUVendor                                    = determineCPUVendor
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
+	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
 	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
 	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog

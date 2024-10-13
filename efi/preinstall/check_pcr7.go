@@ -113,18 +113,11 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 	// TODO(chrisccoulson): Not sure if there's any indication that we might get SPDM related measurements,
 	// which our profile generation for PCR7 currently doesn't support.
 
-	// Obtain the BootCurrent variable and use this to obtain the corresponding load option
-	// that was measured to the log. BootXXXX variables are measured to the TPM and so we don't
-	// need to read back from an EFI variable that could have been modified between boot time
-	// and now. We need this so that we can identify the launch of the initial boot loader later
-	// on. This uses the same code that we use for PCR4 checks.
-	current, err := efi.ReadBootCurrentVariable(varCtx)
+	// Obtain the load option for the current boot. We need this so that we can identify the launch of
+	// the initial boot loader later on.
+	bootOpt, err := readCurrentBootLoadOptionFromLog(varCtx, log)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read BootCurrent variable: %w", err)
-	}
-	bootOpt, err := readLoadOptionFromLog(log, current)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read current Boot%04x load option from log: %w", current, err)
+		return nil, err
 	}
 
 	// Make sure that the secure boot config in the log is measured in the
