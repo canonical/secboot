@@ -307,14 +307,9 @@ NextEvent:
 				// and we haven't seen the event for the IBL yet. We stop once we see this
 				// because at this point, the rest of the measurements in this PCR are under
 				// the control of the OS.
-				data, ok := ev.Data.(*tcglog.EFIImageLoadEvent)
-				if !ok {
-					return nil, fmt.Errorf("invalid OS-present EV_EFI_BOOT_SERVICES_APPLICATION event data: %w", ev.Data.(error))
-				}
-
 				yes, err := isLaunchedFromLoadOption(ev, bootOpt)
 				if err != nil {
-					return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with the current boot load option: %w", data.DevicePath, err)
+					return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for is associated with the current boot load option: %w", err)
 				}
 				if !yes {
 					// This is not the launch event for the initial boot loader - ignore it.
@@ -328,7 +323,8 @@ NextEvent:
 						// other Flash volumes), then we'll generate a potentially invalid
 						// profile for PCR7, because we don't copy events from the log once
 						// we're in OS-present.
-						return nil, fmt.Errorf("unexpected EV_EFI_BOOT_SERVICES_APPLICATION event for %v after already seeing a verification event during the OS-present environment. This event should be for the initial boot loader", data.DevicePath)
+						return nil, fmt.Errorf("unexpected EV_EFI_BOOT_SERVICES_APPLICATION event for %v after already seeing a verification event during the OS-present environment. "+
+							"This event should be for the initial boot loader", ev.Data.(*tcglog.EFIImageLoadEvent).DevicePath)
 					}
 					continue NextEvent
 				}

@@ -955,7 +955,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 		},
 	})
-	c.Check(err, ErrorMatches, `invalid OS-present EV_EFI_BOOT_SERVICES_APPLICATION event data: some error`)
+	c.Check(err, ErrorMatches, `cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for is associated with the current boot load option: event has invalid event data: some error`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadInvalidVerificationEventData(c *C) {

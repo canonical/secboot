@@ -155,3 +155,398 @@ func (s *loadOptionUtilSuite) TestReadCurrentBootLoadOptionFromLogInvalidBootCur
 	_, err = ReadCurrentBootLoadOptionFromLog(env.VarContext(context.Background()), log)
 	c.Check(err, ErrorMatches, `cannot read current Boot000A load option from log: cannot find specified boot option`)
 }
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGood(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x1d},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x0},
+			&efi.NVMENamespaceDevicePathNode{
+				NamespaceID:   0x1,
+				NamespaceUUID: 0x0},
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0},
+				&efi.NVMENamespaceDevicePathNode{
+					NamespaceID:   0x1,
+					NamespaceUUID: 0x0},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+			},
+		},
+	}
+
+	yes, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsTrue)
+}
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGoodShortFormOpt(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0},
+				&efi.NVMENamespaceDevicePathNode{
+					NamespaceID:   0x1,
+					NamespaceUUID: 0x0},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+			},
+		},
+	}
+
+	yes, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsTrue)
+}
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGoodRemovableCDROM(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x1d},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x1},
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1},
+				&efi.CDROMDevicePathNode{
+					BootEntry:      0,
+					PartitionStart: 0x800,
+					PartitionSize:  0x100000},
+				efi.FilePathDevicePathNode("\\EFI\\BOOT\\BOOTX64.EFI"),
+			},
+		},
+	}
+
+	yes, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsTrue)
+}
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGoodRemovableUSB(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x8},
+			&efi.USBDevicePathNode{
+				ParentPortNumber: 2,
+				InterfaceNumber:  0},
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x8},
+				&efi.USBDevicePathNode{
+					ParentPortNumber: 2,
+					InterfaceNumber:  0},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\BOOT\\BOOTX64.EFI"),
+			},
+		},
+	}
+
+	yes, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsTrue)
+}
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionNoMatch(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x1e482b5b, 0x6600, 0x427f, 0xb394, [...]uint8{0x9a, 0x68, 0x82, 0x3e, 0x55, 0x04})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1},
+				&efi.CDROMDevicePathNode{
+					BootEntry:      0,
+					PartitionStart: 0x800,
+					PartitionSize:  0x100000},
+				efi.FilePathDevicePathNode("\\EFI\\BOOT\\BOOTX64.EFI"),
+			},
+		},
+	}
+
+	yes, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsFalse)
+}
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionNoMatchRemovable(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x8},
+			&efi.USBDevicePathNode{
+				ParentPortNumber: 2,
+				InterfaceNumber:  0},
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\BOOT\\BOOTX64.EFI"),
+			},
+		},
+	}
+
+	yes, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsFalse)
+}
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionInvalidEventData(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  0,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data:      &invalidEventData{errors.New("some error")},
+	}
+	_, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, ErrorMatches, `event has invalid event data: some error`)
+}
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionEmptyDevicePath(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath:       efi.DevicePath{},
+		},
+	}
+
+	_, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, ErrorMatches, `event has empty device path`)
+}
+
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionNotActive(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  0,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0},
+				&efi.NVMENamespaceDevicePathNode{
+					NamespaceID:   0x1,
+					NamespaceUUID: 0x0},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+			},
+		},
+	}
+
+	_, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, ErrorMatches, `boot option is not active`)
+}
