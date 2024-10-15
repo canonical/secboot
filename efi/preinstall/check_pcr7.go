@@ -41,6 +41,70 @@ var (
 	peNewFile                                  = pe.NewFile
 )
 
+// checSucureBootVariableData checks the variable data associated with a configuration
+// measurement. For "SecureBoot", it just ensures it contains 0x1. For PK, it makes sure
+// it contains only a single X.509 signature. For the other veriables, it makes sure that
+// the signature databases decode properly.
+//
+// If the supplied parameter is for a signature database, the decoded signature database
+// is returned, else nil is returned
+func checkSecureBootVariableData(data *tcglog.EFIVariableData) (sigDb efi.SignatureDatabase, err error) {
+	switch data.UnicodeName {
+	case "SecureBoot":
+		// Make sure the SecureBoot value in the log matches the EFI variable,
+		// (ie, []byte{1}). We don't do this for other variables because they can
+		// be updated from the OS, making them potentially inconsistent. The
+		// SecureBoot variable is read only after ExitBootServices.
+		if !bytes.Equal(data.VariableData, []byte{1}) {
+			return nil, errors.New("SecureBoot variable is not consistent with the corresponding EV_EFI_VARIABLE_DRIVER_CONFIG event value in the TCG log")
+		}
+	case "PK":
+		// Make sure that we can parse the PK database and it contains a single
+		// X.509 entry.
+		sigDb, err = efi.ReadSignatureDatabase(bytes.NewReader(data.VariableData))
+		if err != nil {
+			return nil, fmt.Errorf("cannot decode PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event data: %w", err)
+		}
+		switch len(sigDb) {
+		case 0:
+			// This should never be empty when secure boot is enabled,
+			// so if it does then the firmware is broken.
+			return nil, errors.New("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: no signature list when secure boot is enabled")
+		case 1:
+			// PK only contains one ESL with the type EFI_CERT_X509_GUID
+			esl := sigDb[0]
+			if esl.Type != efi.CertX509Guid {
+				// PK can only contain a X.509 certificate. If we get another
+				// type then the firmwar is broken.
+				return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: signature list has an unexpected type: %v", esl.Type)
+			}
+			if len(esl.Signatures) != 1 {
+				// EFI_CERT_X509_GUID signature lists can only contain a single
+				// signature. Note that it's quite likely that go-efilib would have
+				// failed to decode already in this case because all signatures
+				// within a signature list have to be the same size.
+				//
+				// In any case, if this happens the firmware is broken.
+				return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: signature list should only have one signature, but got %d", len(esl.Signatures))
+			}
+			if _, err := x509.ParseCertificate(esl.Signatures[0].Data); err != nil {
+				return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: cannot decode PK certificate: %w", err)
+			}
+		default:
+			// If PK contains more than 1 ESL, then the firmware is broken.
+			return nil, errors.New("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: more than one signature list is present")
+		}
+	default:
+		// Make sure that we can parse all other signature databases ok
+		sigDb, err = efi.ReadSignatureDatabase(bytes.NewReader(data.VariableData))
+		if err != nil {
+			return nil, fmt.Errorf("cannot decode %s contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: %w", data.UnicodeName, err)
+		}
+	}
+
+	return sigDb, nil
+}
+
 type secureBootPolicyResultFlags int
 
 const (
@@ -188,53 +252,12 @@ NextEvent:
 						data.UnicodeName, data.VariableName, expectedDigest, ev.Digests[pcrAlg])
 				}
 
-				switch data.UnicodeName {
-				case "SecureBoot":
-					// Make sure the SecureBoot value in the log matches the EFI variable,
-					// (ie, []byte{1}). We don't do this for other variables because they can
-					// be updated from the OS, making them potentially inconsistent. The
-					// SecureBoot variable is read only after ExitBootServices.
-					if !bytes.Equal(data.VariableData, []byte{1}) {
-						return nil, errors.New("SecureBoot variable is not consistent with the corresponding EV_EFI_VARIABLE_DRIVER_CONFIG event value in the TCG log")
-					}
-				case "PK":
-					// Make sure that we can parse the PK database and it contains a single
-					// X.509 entry.
-					pk, err := efi.ReadSignatureDatabase(bytes.NewReader(data.VariableData))
-					if err != nil {
-						return nil, fmt.Errorf("cannot decode PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event data: %w", err)
-					}
-					switch len(pk) {
-					case 0:
-						// This should never be empty when secure boot is enabled,
-						// so if it does then the firmware is broken.
-						return nil, errors.New("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: no signature list when secure boot is enabled")
-					case 1:
-						esl := pk[0]
-						if esl.Type != efi.CertX509Guid {
-							// PK can only contain a X.509 certificate. If we get another
-							// type then the firmwar is broken.
-							return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: signature list has an unexpected type: %v", esl.Type)
-						}
-						if len(esl.Signatures) != 1 {
-							// EFI_CERT_X509_GUID signature lists can only contain a single
-							// signature. If there isn't then the firmware is broken.
-							return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: signature list should only have one signature, but got %d", len(esl.Signatures))
-						}
-						if _, err := x509.ParseCertificate(esl.Signatures[0].Data); err != nil {
-							return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: cannot decode PK certificate: %w", err)
-						}
-					default:
-						// If PK contains more than 1 ESL, then the firmware is broken.
-						return nil, errors.New("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: more than one signature list is present")
-					}
-				case "db":
+				sigDb, err := checkSecureBootVariableData(data)
+				if err != nil {
+					return nil, err
+				}
+				if data.UnicodeName == "db" {
 					// Capture the db from the log for future use.
-					var err error
-					db, err = efi.ReadSignatureDatabase(bytes.NewReader(data.VariableData))
-					if err != nil {
-						return nil, fmt.Errorf("cannot decode db contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: %w", err)
-					}
 					// We don't check the EFI_SIGNATURE_LIST types contained in db. Any OS component with a valid
 					// Authenticode signature (WIN_CERT_TYPE_PKCS_SIGNED_DATA) or a valid PKCS7 signature
 					// (WIN_CERT_TYPE_EFI_GUID with the type EFI_CERT_TYPE_PKCS7_GUID) is authenticated with
@@ -244,11 +267,7 @@ NextEvent:
 					// these are only used to authenticate unsigned images (which the profile generation in the
 					// secboot efi package rejects) or as a fallback for signed image where signature verification
 					// fails. Digests may be permitted for authenticating unsigned pre-OS components.
-				default:
-					// Make sure that we can parse all other signature databases ok
-					if _, err = efi.ReadSignatureDatabase(bytes.NewReader(data.VariableData)); err != nil {
-						return nil, fmt.Errorf("cannot decode %s contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: %w", data.UnicodeName, err)
-					}
+					db = sigDb
 				}
 			case tcglog.EventTypeEFIAction:
 				// This branch exists here for documentation purposes - it falls through to the
