@@ -22,7 +22,6 @@ package preinstall_test
 import (
 	"crypto"
 	"errors"
-	"io"
 
 	"github.com/canonical/go-tpm2"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
@@ -758,15 +757,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPreOSMeasurementToNonT
 	c.Check(err, ErrorMatches, `measurements were made by firmware from pre-OS environment to non-TCG defined PCR 8`)
 }
 
-type invalidEventData struct {
-	err error
-}
-
-func (e *invalidEventData) String() string        { return "invalid event data: " + e.err.Error() }
-func (*invalidEventData) Bytes() []byte           { return nil }
-func (*invalidEventData) Write(w io.Writer) error { return errors.New("not supported") }
-func (e *invalidEventData) Error() string         { return e.err.Error() }
-
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSeparatorDecodeError(c *C) {
 	// Test that an error decoding EV_SEPARATOR event data is properly detected
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
@@ -849,53 +839,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedSuccessfulSe
 
 	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil)
 	c.Check(err, ErrorMatches, `unexpected normal EV_SEPARATOR event in PCR 0`)
-}
-
-func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedEventDuringSecureBootConfigMeasurements(c *C) {
-	// Test that an unexpected event in PCR7 after measuring the secure boot config but before
-	// measuring the EV_SEPARATOR results in an error.
-	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
-	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		DisallowPreOSVerification: true,
-	})
-	var (
-		eventsCopy                      []*tcglog.Event
-		inSecureBootConfigMeasurement   bool
-		seenSecureBootConfigMeasurement bool
-	)
-	events := log.Events
-	for len(events) > 0 {
-		ev := events[0]
-		events = events[1:]
-
-		eventsCopy = append(eventsCopy, ev)
-
-		switch {
-		case ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !inSecureBootConfigMeasurement && !seenSecureBootConfigMeasurement:
-			inSecureBootConfigMeasurement = true
-		case ev.PCRIndex != internal_efi.SecureBootPolicyPCR && inSecureBootConfigMeasurement && !seenSecureBootConfigMeasurement:
-			inSecureBootConfigMeasurement = false
-			seenSecureBootConfigMeasurement = true
-
-			// Add an unexpected event to PCR 7
-			eventsCopy = append(eventsCopy, &tcglog.Event{
-				PCRIndex:  internal_efi.SecureBootPolicyPCR,
-				EventType: tcglog.EventTypeEFIVariableAuthority,
-				Data:      &invalidEventData{errors.New("some error")},
-				Digests: map[tpm2.HashAlgorithmId]tpm2.Digest{
-					tpm2.HashAlgorithmSHA256: tcglog.ComputeEventDigest(crypto.SHA256, []byte("foo")),
-				},
-			})
-		}
-
-	}
-	log.Events = eventsCopy
-
-	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
-
-	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil)
-	c.Check(err, ErrorMatches, `unexpected event in PCR 7`)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMissingSeparators(c *C) {

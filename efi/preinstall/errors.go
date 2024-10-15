@@ -204,3 +204,15 @@ func (e *NoSuitablePCRAlgorithmError) setPcrErrs(results *pcrBankResults) {
 	}
 	e.pcrErrs[results.Alg] = results.pcrErrs()
 }
+
+// Errors related to secure boot policy PCR checks.
+
+var (
+	// ErrNoSecureBoot is returned wrapped from DetectSupport to indicate that secure boot is disabled
+	ErrNoSecureBoot = errors.New("secure boot should be enabled in order to generate secure boot profiles")
+
+	// ErrNoDeployedMode is returned wrapped from DetectSupport to indicate that deployed mode is not
+	// enabled. In the future, this package will permit generation of profiles on systems that implement
+	// UEFI >= 2.5 that are in user mode, but this is not the case today.
+	ErrNoDeployedMode = errors.New("deployed mode should be enabled in order to generate secure boot profiles")
+)
