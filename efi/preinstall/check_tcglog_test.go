@@ -22,9 +22,9 @@ package preinstall_test
 import (
 	"crypto"
 	"errors"
-	"io"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/mssim"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/tcglog-parser"
 	. "github.com/snapcore/secboot/efi/preinstall"
@@ -34,14 +34,19 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type tcglogSuite struct {
-	tpm2_testutil.TPMSimulatorTest
+type tcglogReplayMixinInterface interface {
+	Tpm() *tpm2.TPMContext
+	Mssim(*C) *mssim.Transport
+	ResetTPMSimulator(*C)
+	ResetTPMSimulatorNoStartup(*C)
 }
 
-var _ = Suite(&tcglogSuite{})
+type tcglogReplayMixin struct {
+	impl tcglogReplayMixinInterface
+}
 
-func (s *tcglogSuite) resetTPMAndReplayLog(c *C, log *tcglog.Log, algs ...tpm2.HashAlgorithmId) {
-	s.ResetTPMSimulatorNoStartup(c) // Shutdown and reset the simulator to reset the PCRs back to their reset values.
+func (m *tcglogReplayMixin) resetTPMAndReplayLog(c *C, log *tcglog.Log, algs ...tpm2.HashAlgorithmId) {
+	m.impl.ResetTPMSimulatorNoStartup(c) // Shutdown and reset the simulator to reset the PCRs back to their reset values.
 	// Don't immediately call TPM2_Startup in case the log indicates we need to change localities.
 	started := false
 	for _, ev := range log.Events {
@@ -55,9 +60,9 @@ func (s *tcglogSuite) resetTPMAndReplayLog(c *C, log *tcglog.Log, algs ...tpm2.H
 				case 0:
 					// do nothing
 				case 3:
-					s.Mssim(c).SetLocality(3)
-					c.Assert(s.TPM.Startup(tpm2.StartupClear), IsNil)
-					s.Mssim(c).SetLocality(0)
+					m.impl.Mssim(c).SetLocality(3)
+					c.Assert(m.impl.Tpm().Startup(tpm2.StartupClear), IsNil)
+					m.impl.Mssim(c).SetLocality(0)
 					started = true
 				case 4:
 					c.Fatal(`Handling H-CRTM event sequences is not supported yet because it requires work in
@@ -73,7 +78,7 @@ func (s *tcglogSuite) resetTPMAndReplayLog(c *C, log *tcglog.Log, algs ...tpm2.H
 		if !started {
 			// Our first actual measurement and we haven't called TPM2_Startup yet,
 			// so just call it from locality 0.
-			c.Assert(s.TPM.Startup(tpm2.StartupClear), IsNil)
+			c.Assert(m.impl.Tpm().Startup(tpm2.StartupClear), IsNil)
 			started = true
 		}
 
@@ -83,12 +88,12 @@ func (s *tcglogSuite) resetTPMAndReplayLog(c *C, log *tcglog.Log, algs ...tpm2.H
 			c.Assert(ok, testutil.IsTrue)
 			digests = append(digests, tpm2.MakeTaggedHash(alg, tpm2.Digest(digest)))
 		}
-		c.Assert(s.TPM.PCRExtend(s.TPM.PCRHandleContext(int(ev.PCRIndex)), digests, nil), IsNil)
+		c.Assert(m.impl.Tpm().PCRExtend(m.impl.Tpm().PCRHandleContext(int(ev.PCRIndex)), digests, nil), IsNil)
 	}
 }
 
-func (s *tcglogSuite) allocatePCRBanks(c *C, banks ...tpm2.HashAlgorithmId) {
-	current, err := s.TPM.GetCapabilityPCRs()
+func (m *tcglogReplayMixin) allocatePCRBanks(c *C, banks ...tpm2.HashAlgorithmId) {
+	current, err := m.impl.Tpm().GetCapabilityPCRs()
 	c.Assert(err, IsNil)
 
 	pcrs := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}
@@ -142,19 +147,34 @@ func (s *tcglogSuite) allocatePCRBanks(c *C, banks ...tpm2.HashAlgorithmId) {
 	}
 
 	// Set the PCR allocation
-	success, _, _, _, err := s.TPM.PCRAllocate(s.TPM.PlatformHandleContext(), current, nil)
+	success, _, _, _, err := m.impl.Tpm().PCRAllocate(m.impl.Tpm().PlatformHandleContext(), current, nil)
 	c.Assert(err, IsNil)
 	c.Assert(success, testutil.IsTrue)
 
-	s.ResetTPMSimulator(c) // This is needed for the changes to take effect. This does call TPM2_Startup.
+	m.impl.ResetTPMSimulator(c) // This is needed for the changes to take effect. This does call TPM2_Startup.
 }
+
+type tcglogSuite struct {
+	tpm2_testutil.TPMSimulatorTest
+	tcglogReplayMixin
+}
+
+func (s *tcglogSuite) SetUpTest(c *C) {
+	s.TPMSimulatorTest.SetUpTest(c)
+	s.tcglogReplayMixin.impl = s
+}
+
+func (s *tcglogSuite) Tpm() *tpm2.TPMContext {
+	return s.TPM
+}
+
+var _ = Suite(&tcglogSuite{})
 
 type testCheckFirmwareLogAndChoosePCRBankParams struct {
 	enabledBanks              []tpm2.HashAlgorithmId
 	logAlgs                   []tpm2.HashAlgorithmId
 	startupLocality           uint8
 	disallowPreOSVerification bool
-	replayAlgs                []tpm2.HashAlgorithmId
 	mandatoryPcrs             tpm2.HandleList
 
 	expectedAlg tpm2.HashAlgorithmId
@@ -168,7 +188,7 @@ func (s *tcglogSuite) testCheckFirmwareLogAndChoosePCRBank(c *C, params *testChe
 		StartupLocality:           params.startupLocality,
 		DisallowPreOSVerification: params.disallowPreOSVerification,
 	})
-	s.resetTPMAndReplayLog(c, log, params.replayAlgs...)
+	s.resetTPMAndReplayLog(c, log, params.logAlgs...)
 	result, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, params.mandatoryPcrs)
 	c.Assert(err, IsNil)
 	c.Check(result.Alg, Equals, params.expectedAlg)
@@ -179,7 +199,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA256(c *C) {
 	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		logAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		replayAlgs:   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -199,7 +218,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA384(c *C) {
 	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384},
 		logAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384},
-		replayAlgs:   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384},
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -219,7 +237,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA512(c *C) {
 	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA512},
 		logAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA512},
-		replayAlgs:   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA512},
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -239,7 +256,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleSHA384(c *C) {
 	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
 		logAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
-		replayAlgs:   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -259,7 +275,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA256WithEmptySHA384B
 	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
 		logAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		replayAlgs:   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -279,7 +294,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA256StartupLocality3
 		enabledBanks:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		logAlgs:         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		startupLocality: 3,
-		replayAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -302,7 +316,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA256StartupLocality3
 //		enabledBanks:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 //		logAlgs:         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 //		startupLocality: 4,
-//		replayAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 //		mandatoryPcrs: tpm2.HandleList{
 //			internal_efi.PlatformFirmwarePCR,
 //			internal_efi.PlatformConfigPCR,
@@ -323,7 +336,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleSHA384StartupL
 		enabledBanks:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
 		logAlgs:         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
 		startupLocality: 3,
-		replayAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -347,7 +359,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankOldFirmware(c *C) {
 		enabledBanks:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		logAlgs:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		disallowPreOSVerification: true,
-		replayAlgs:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -758,15 +769,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPreOSMeasurementToNonT
 	c.Check(err, ErrorMatches, `measurements were made by firmware from pre-OS environment to non-TCG defined PCR 8`)
 }
 
-type invalidEventData struct {
-	err error
-}
-
-func (e *invalidEventData) String() string        { return "invalid event data: " + e.err.Error() }
-func (*invalidEventData) Bytes() []byte           { return nil }
-func (*invalidEventData) Write(w io.Writer) error { return errors.New("not supported") }
-func (e *invalidEventData) Error() string         { return e.err.Error() }
-
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSeparatorDecodeError(c *C) {
 	// Test that an error decoding EV_SEPARATOR event data is properly detected
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
@@ -849,53 +851,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedSuccessfulSe
 
 	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil)
 	c.Check(err, ErrorMatches, `unexpected normal EV_SEPARATOR event in PCR 0`)
-}
-
-func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedEventDuringSecureBootConfigMeasurements(c *C) {
-	// Test that an unexpected event in PCR7 after measuring the secure boot config but before
-	// measuring the EV_SEPARATOR results in an error.
-	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
-	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		DisallowPreOSVerification: true,
-	})
-	var (
-		eventsCopy                      []*tcglog.Event
-		inSecureBootConfigMeasurement   bool
-		seenSecureBootConfigMeasurement bool
-	)
-	events := log.Events
-	for len(events) > 0 {
-		ev := events[0]
-		events = events[1:]
-
-		eventsCopy = append(eventsCopy, ev)
-
-		switch {
-		case ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !inSecureBootConfigMeasurement && !seenSecureBootConfigMeasurement:
-			inSecureBootConfigMeasurement = true
-		case ev.PCRIndex != internal_efi.SecureBootPolicyPCR && inSecureBootConfigMeasurement && !seenSecureBootConfigMeasurement:
-			inSecureBootConfigMeasurement = false
-			seenSecureBootConfigMeasurement = true
-
-			// Add an unexpected event to PCR 7
-			eventsCopy = append(eventsCopy, &tcglog.Event{
-				PCRIndex:  internal_efi.SecureBootPolicyPCR,
-				EventType: tcglog.EventTypeEFIVariableAuthority,
-				Data:      &invalidEventData{errors.New("some error")},
-				Digests: map[tpm2.HashAlgorithmId]tpm2.Digest{
-					tpm2.HashAlgorithmSHA256: tcglog.ComputeEventDigest(crypto.SHA256, []byte("foo")),
-				},
-			})
-		}
-
-	}
-	log.Events = eventsCopy
-
-	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
-
-	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil)
-	c.Check(err, ErrorMatches, `unexpected event in PCR 7`)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMissingSeparators(c *C) {
