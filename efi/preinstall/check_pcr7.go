@@ -41,7 +41,7 @@ var (
 	peNewFile                                  = pe.NewFile
 )
 
-// checSucureBootVariableData checks the variable data associated with a configuration
+// checkSecureBootVariableData checks the variable data associated with a configuration
 // measurement. For "SecureBoot", it just ensures it contains 0x1. For PK, it makes sure
 // it contains only a single X.509 signature. For the other veriables, it makes sure that
 // the signature databases decode properly.
@@ -56,27 +56,27 @@ func checkSecureBootVariableData(data *tcglog.EFIVariableData) (sigDb efi.Signat
 		// be updated from the OS, making them potentially inconsistent. The
 		// SecureBoot variable is read only after ExitBootServices.
 		if !bytes.Equal(data.VariableData, []byte{1}) {
-			return nil, errors.New("SecureBoot variable is not consistent with the corresponding EV_EFI_VARIABLE_DRIVER_CONFIG event value in the TCG log")
+			return nil, errors.New("SecureBoot value is not consistent with the current EFI variable value")
 		}
 	case "PK":
 		// Make sure that we can parse the PK database and it contains a single
 		// X.509 entry.
 		sigDb, err = efi.ReadSignatureDatabase(bytes.NewReader(data.VariableData))
 		if err != nil {
-			return nil, fmt.Errorf("cannot decode PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event data: %w", err)
+			return nil, fmt.Errorf("cannot decode PK contents: %w", err)
 		}
 		switch len(sigDb) {
 		case 0:
 			// This should never be empty when secure boot is enabled,
 			// so if it does then the firmware is broken.
-			return nil, errors.New("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: no signature list when secure boot is enabled")
+			return nil, errors.New("invalid PK contents: no signature list when secure boot is enabled")
 		case 1:
 			// PK only contains one ESL with the type EFI_CERT_X509_GUID
 			esl := sigDb[0]
 			if esl.Type != efi.CertX509Guid {
 				// PK can only contain a X.509 certificate. If we get another
 				// type then the firmwar is broken.
-				return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: signature list has an unexpected type: %v", esl.Type)
+				return nil, fmt.Errorf("invalid PK contents: signature list has an unexpected type: %v", esl.Type)
 			}
 			if len(esl.Signatures) != 1 {
 				// EFI_CERT_X509_GUID signature lists can only contain a single
@@ -85,38 +85,291 @@ func checkSecureBootVariableData(data *tcglog.EFIVariableData) (sigDb efi.Signat
 				// within a signature list have to be the same size.
 				//
 				// In any case, if this happens the firmware is broken.
-				return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: signature list should only have one signature, but got %d", len(esl.Signatures))
+				return nil, fmt.Errorf("invalid PK contents: signature list should only have one signature, but got %d", len(esl.Signatures))
 			}
 			if _, err := x509.ParseCertificate(esl.Signatures[0].Data); err != nil {
-				return nil, fmt.Errorf("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: cannot decode PK certificate: %w", err)
+				return nil, fmt.Errorf("invalid PK contents: cannot decode PK certificate: %w", err)
 			}
 		default:
 			// If PK contains more than 1 ESL, then the firmware is broken.
-			return nil, errors.New("invalid PK contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: more than one signature list is present")
+			return nil, errors.New("invalid PK contents: more than one signature list is present")
 		}
 	default:
 		// Make sure that we can parse all other signature databases ok
 		sigDb, err = efi.ReadSignatureDatabase(bytes.NewReader(data.VariableData))
 		if err != nil {
-			return nil, fmt.Errorf("cannot decode %s contents from EV_EFI_VARIABLE_DRIVER_CONFIG event: %w", data.UnicodeName, err)
+			return nil, fmt.Errorf("cannot decode %s contents: %w", data.UnicodeName, err)
 		}
 	}
 
 	return sigDb, nil
 }
 
+// checkX509CertificatePublicKeyStrength checks whether the supplied certificate's
+// public key is considered strong enough for signing. This will return true if it is
+// or false if it isn't. It will return an error for unsupported public key algorithms
+// or if the public key's concrete type is inconsistent with the algorithm.
+func checkX509CertificatePublicKeyStrength(cert *x509.Certificate) (ok bool, err error) {
+	switch cert.PublicKeyAlgorithm {
+	case x509.RSA:
+		pubKey, isRsa := cert.PublicKey.(*rsa.PublicKey)
+		if !isRsa {
+			return false, errors.New("unsupported public key type")
+		}
+		if pubKey.Size() < 256 {
+			// Anything less than 2048-bits is considered weak
+			return false, nil
+		}
+	default:
+		// EFI implementations aren't required to support anything other
+		// than RSA.
+		return false, errors.New("unsupported public key algorithm")
+	}
+
+	return true, nil
+}
+
+// checkSignatureDataStrength will check if the signature data of the supplied type is
+// strong enough for authenticating images. This will return true if it is or false if
+// it isn't.
+func checkSignatureDataStrength(eslType efi.GUID, esdData []byte) (ok bool, err error) {
+	switch eslType {
+	case efi.CertX509Guid:
+		cert, err := x509.ParseCertificate(esdData)
+		if err != nil {
+			return false, fmt.Errorf("cannot decode certificate: %w", err)
+		}
+		return checkX509CertificatePublicKeyStrength(cert)
+	case efi.CertSHA1Guid:
+		return false, nil
+	case efi.CertSHA224Guid, efi.CertSHA256Guid, efi.CertSHA384Guid, efi.CertSHA512Guid:
+		return true, nil
+	default:
+		return false, fmt.Errorf("unrecognized signature type: %v", eslType)
+	}
+}
+
+var errNoSignerWithTrustAnchor = errors.New("image has no signer associated with any of the supplied authorities")
+
+// extractSignerWithTrustAnchorFromImage extracts and returns the signing certificate from any
+// signature where the signer chains to one of the supplied authorities. As with signature
+// verification in EFI, it tests each of the image's signatures against each of the supplied
+// authorities in turn, and will return the first signature that chains to the first authority.
+func extractSignerWithTrustAnchorFromImage(authorities []*x509.Certificate, image secboot_efi.Image) (*x509.Certificate, error) {
+	r, err := image.Open()
+	if err != nil {
+		return nil, fmt.Errorf("cannot open image: %w", err)
+	}
+	defer r.Close()
+
+	pefile, err := peNewFile(r)
+	if err != nil {
+		return nil, fmt.Errorf("cannot decode image: %w", err)
+	}
+
+	sigs, err := internal_efiSecureBootSignaturesFromPEFile(pefile, r)
+	if err != nil {
+		return nil, fmt.Errorf("cannot obtain secure boot signatures from image %s: %w", image, err)
+	}
+
+	// Make sure that one of the CA's measured for verification so far
+	// is a trust anchor for one of the signatures on the image.
+	var foundSig *efi.WinCertificateAuthenticode
+	for _, cert := range authorities {
+		for _, sig := range sigs {
+			if sig.CertLikelyTrustAnchor(cert) {
+				foundSig = sig
+				break
+			}
+		}
+		if foundSig != nil {
+			break
+		}
+	}
+	if foundSig == nil {
+		return nil, errNoSignerWithTrustAnchor
+	}
+
+	return foundSig.GetSigner(), nil
+}
+
+// handleVariableAuthority event processes the event data for the supplied EV_EFI_VARIABLE_AUTHORITY
+// event. It expects the authority to be the UEFI db, and if verifyEventDigest is true, it expects
+// the digests associated with pcrAlg to match the digest computed from the event data. It will return
+// an error if the digest already appears in the provided alreadyMeasured argument, as the firmware
+// should only measure a digest once. It uses the supplied db to match the EFI_SIGNATURE_DATA in the
+// event data to a EFI_SIGNATURE_LIST, in order to obtain the signature type. On success, the function
+// returns the signature type and signature data (without the owner). The caller should subsequently add
+// the measurement digest to the alreadyMeasured slice.
+func handleVariableAuthorityEvent(pcrAlg tpm2.HashAlgorithmId, db efi.SignatureDatabase, alreadyMeasured tpm2.DigestList, ev *tcglog.Event, verifyEventDigest bool) (eslType efi.GUID, esdData []byte, err error) {
+	// Decode the verification event
+	data, ok := ev.Data.(*tcglog.EFIVariableData)
+	if !ok {
+		// if decoding failed, the resulting data is guaranteed to implement error.
+		return efi.GUID{}, nil, fmt.Errorf("event has wong data format: %w", ev.Data.(error))
+	}
+
+	// As we're only checking events up to the launch of the IBL, we don't expect
+	// to see anything other than verification events from db here.
+	if data.VariableName != efi.ImageSecurityDatabaseGuid || data.UnicodeName != "db" {
+		return efi.GUID{}, nil, fmt.Errorf("event is not from db (got %s-%v)", data.UnicodeName, data.VariableName)
+	}
+
+	if verifyEventDigest {
+		expectedDigest := tcglog.ComputeEFIVariableDataDigest(pcrAlg.GetHash(), data.UnicodeName, data.VariableName, data.VariableData)
+		if !bytes.Equal(ev.Digests[pcrAlg], expectedDigest) {
+			return efi.GUID{}, nil, fmt.Errorf("event data inconsistent with %v event digest (log digest:%#x, expected digest:%#x)", pcrAlg, ev.Digests[pcrAlg], expectedDigest)
+		}
+	}
+
+	// Make sure that this signature hasn't already been measured. Duplicate signatures measured
+	// by the firmware may result in incorrectly computed PCR policies.
+	// Unfortunately, this test isn't 100% reliable as we stop processing events after the launch
+	// of the IBL (usually shim). Once the IBL has launched, we can't tell whether subsequent events
+	// were generated by the firmware because an OS component made use of LoadImage (where we would
+	// want to make sure it isn't measured again) or whether subsequent events are measured via some
+	// other mechanism by an OS component, such as the shim verification (which we wouldn't want to
+	// check, because we're only testing firmware compatbility here). I can't think of a way to make
+	// this 100% reliable other than by ensuring OS components never measure events with "db" and
+	// IMAGE_SECURITY_DATABASE_GUID in their event data, as a way of being able to distinguish
+	// firmware generated events from OS component generated events. It's a legitimate scenario for
+	// both the firmware and shim to both measure the same signature they used for verification from db
+	// because they both maintain their own de-duplication lists.
+	//
+	// If this test fails, the firmware is definitely broken. If this test doesn't fail, the opposite is
+	// not true - it's not a definitive guarantee that the firmware isn't broken, unfortunately.
+	for _, measured := range alreadyMeasured {
+		if bytes.Equal(measured, ev.Digests[pcrAlg]) {
+			return efi.GUID{}, nil, fmt.Errorf("digest %#x has been measured by the firmware already", ev.Digests[pcrAlg])
+		}
+	}
+
+	// Try to discover the type of authentication. The measured EFI_SIGNATURE_DATA doesn't
+	// contain this.
+
+	// First of all, construct a signature data entry from the raw event data.
+	esd := new(efi.SignatureData)
+	r := bytes.NewReader(data.VariableData)
+
+	// THE EFI_SIGNATURE_DATA entry starts with the owner GUID
+	sigOwner, err := efi.ReadGUID(r)
+	if err != nil {
+		return efi.GUID{}, nil, fmt.Errorf("cannot decode owner GUID from event: %w", err)
+	}
+	esd.Owner = sigOwner
+
+	// The rest of the EFI_SIGNATURE_DATA entry is the data
+	sigData, err := io.ReadAll(r)
+	if err != nil {
+		return efi.GUID{}, nil, fmt.Errorf("cannot read data from event: %w", err)
+	}
+	esd.Data = sigData
+
+	// We have a fully constructed EFI_SIGNATURE_DATA. Now iterate over db to see if this
+	// EFI_SIGNATURE_DATA belongs to any EFI_SIGNATURE_LIST, in order to grab its type.
+	var matchedEsl *efi.SignatureList
+	for _, list := range db {
+		for _, sig := range list.Signatures {
+			if sig.Equal(esd) {
+				matchedEsl = list
+				break
+			}
+		}
+		if matchedEsl != nil {
+			break
+		}
+	}
+	if matchedEsl == nil {
+		return efi.GUID{}, nil, fmt.Errorf("event does not match any db EFI_SIGNATURE_LIST")
+	}
+
+	return matchedEsl.Type, esd.Data, nil
+}
+
 type secureBootPolicyResultFlags int
 
 const (
-	secureBootIncludesWeakAlg secureBootPolicyResultFlags = 1 << iota
-	secureBootPreOSVerificationIncludesDigest
+	secureBootIncludesWeakAlg                 secureBootPolicyResultFlags = 1 << iota // Weak algorithms were used during image verification.
+	secureBootPreOSVerificationIncludesDigest                                         // Authenticode digests were used to authenticate pre-OS components.
 )
 
+// secureBootPolicyResult is the result of a successful call to checkSecureBootPolicyMeasurementsAndObtainAuthorities.
 type secureBootPolicyResult struct {
-	UsedAuthorities []*x509.Certificate
+	UsedAuthorities []*x509.Certificate // CA's used to authenticate boot components.
 	Flags           secureBootPolicyResultFlags
 }
 
+// checkSecureBootPolicyMeasurementsAndObtainAuthorities performs some checks on the secure boot policy PCR (7).
+
+// The supplied context is used to attach an EFI variable backend to, for functions that read
+// from EFI variables. The supplied env and log arguments provide other inputs to this function.
+// The pcrAlg argument is the PCR bank that is chosen as the best one to use. The iblImage
+// corresponds to the initial boot loader image for the current boot. This is used to detect the
+// launch of the OS, at which checks for PCR7 end. There are some limitations of this, ie, we may
+// not detect LoadImage bugs that happen later on, but once the OS has loaded, it's impossible to
+// tell whicj events come from firmware and which are under the control of OS components.
+
+// This ensures that secure boot is enabled, else an error is returned, as WithSecureBootPolicyProfile
+// only generates profiles compatible with secure boot being enabled.
+
+// If the version of UEFI is >= 2.5, it also makes sure that the secure boot mode is "deployed mode".
+// If the secure boot mode is "user mode", then the "AuditMode" and "DeployedMode" values are measured to PCR7,
+// something that WithSecureBootPolicyProfile doesn't support today. Support for "user mode" will be added
+// in the future, although the public RunChecks API will probably require a flag to opt in to supporting user
+// mode, as it is the less secure mode of the 2 (see the documentation for SecureBootMode in
+// github.com/canonical/go-efilib).
+
+// It also reads the "OsIndicationsSupported" variable to test for features that are not supported by
+// WithSecureBootPolicyProfile. These are timestamp revocation (which requires an extra signature database -
+// "dbt") and OS recovery (which requires an extra signature database -"dbr", used to control access to
+// OsRecoveryOrder and OsRecover#### variables). Of the 2, it's likely that we might need to add support for
+// timestamp revocation at some point in the future.
+
+// It reads the "BootCurrent" EFI variable and matches this to the EFI_LOAD_OPTION associated with the current
+// boot from the TCG log - it uses the log as "BootXXXX" EFI variables can be updated at runtime and
+// might be out of data when this code runs. It uses this to detect the launch of the initial boot loader,
+// which might not necessarily be the first EV_EFI_BOOT_SERVICES_APPLICATION event in the OS-present
+// environment in PCR4 (eg, if Absolute is active).
+
+// After these checks, it iterates over the secure boot configuration in the log, making sure that the
+// configuration is measured in the correct order, that the event data is valid, and that the measured digest
+// is the tagged hash of the event data. It makes sure that the value of "SecureBoot" in the log is consistent
+// with the "SecureBoot" variable (which is read-only at runtime), and it verifies that all of the signature
+// databases are formatted correctly and can be decoded. It will return an error if any of these checks fail.
+
+// If the pre-OS environment contains events other than EV_EFI_VARIABLE_DRIVER_CONFIG, it will return an error.
+// This can happen a firmware debugger is enabled, in which case PCR7 will begin with a EV_EFI_ACTION
+// "UEFI Debug Mode" event. This case is detected by earlier firmware protection checks.
+
+// If not all of the expected secure boot configuration is measured, an error is returned.
+
+// Once the secure boot configuration has been measured, it looks for EV_EFI_VARIABLE_AUTHORITY events in PCR7,
+// until it detects the launch of the initial boot loader. It verifies that each of these come from db, and
+// if the log is in the OS-present environment, it ensures that the measured digest is the tagged hash of the
+// event data. It doesn't do this for events in the pre-OS environment because WithSecureBootPolicyProfile
+// just copies these to the profile. It verifies that the firmware doesn't measure a signature more than once.
+// For each EV_EFI_VARIABLE_AUTHORITY event, it also matches the measured signature to a EFI_SIGNATURE_LIST
+// structure in db. If the matched ESL is a X.509 certificate, it records the use of this CA in the return value.
+// If the CA is an RSA certificate with a public modulus of < 256 bytes, it sets a flag in the return value
+// indicating a weak algorithm. If the matched ESL is a Authenticode digest, it sets a flag in the return value
+// indicating that pre-OS components were verified using digests rather than signatures. This only applies to the
+// pre-OS environment and makes PCR7 fragile wrt firmware updates, because it means db needs to be updated to
+// reflect the new components each time. If the digest being matched is SHA-1, it sets the flag in the return
+// value indicating a weak algorithm. If any of these checks fail, an error is returned. If an event type
+// other than EV_EFI_VARIABLE_AUTHORITY is detected, an error is returned.
+
+// Upon detecting the launch of the initial boot loader in PCR4, it extracts the authenticode signatures from
+// the supplied image, and matches these to a previously measured CA. If no match is found, an error is returned.
+// If a match is found, it ensures that the signing certificate has an RSA public key with a modulus that is at
+// least 256 bytes, else it sets a flag in the return value indicating a weak algorithm.
+//
+// Once the event for the initial boot loader is complete, the function returns. It doesn't process any more
+// EV_EFI_VARIABLE_AUTHORITY events because it's impossible to determine if these result from a call to the
+// firmware's LoadImage API, or if they are logged by an OS component, both of which may maintain their own
+// de-duplication lists (this is certainly the case for shim). Ideally, checking would continue but this trade
+// off was made instead.
+//
+// If the end of the log is reached without encountering the launch of the initial boot loader, an error is returned.
 func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId, iblImage secboot_efi.Image) (result *secureBootPolicyResult, err error) {
 	if iblImage == nil {
 		return nil, errors.New("must supply the initial boot loader image")
@@ -254,7 +507,7 @@ NextEvent:
 
 				sigDb, err := checkSecureBootVariableData(data)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("invalid event data for EV_EFI_VARIABLE_DRIVER_CONFIG event: %w", err)
 				}
 				if data.UnicodeName == "db" {
 					// Capture the db from the log for future use.
@@ -291,7 +544,57 @@ NextEvent:
 				// Anything that isn't EV_EFI_VARIABLE_DRIVER_CONFIG ends up here.
 				return nil, fmt.Errorf("unexpected %v event %q whilst measuring config", ev.EventType, ev.Data)
 			}
-		case tcglogPhasePreOSAfterMeasureSecureBootConfig, tcglogPhaseOSPresent:
+		case tcglogPhasePreOSAfterMeasureSecureBootConfig:
+			if len(configs) > 0 {
+				// We've transitioned to a phase where components can be loaded and verified but we haven't
+				// measured all of the secure boot variables. We'll fail to generate a valid policy with
+				// WithSecureBootPolicyProfile() in this case.
+				return nil, errors.New("EV_EFI_VARIABLE_DRIVER_CONFIG events for some secure boot variables missing from log")
+			}
+
+			if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
+				// Not PCR7
+				continue NextEvent
+			}
+
+			switch ev.EventType {
+			case tcglog.EventTypeEFIVariableAuthority:
+				eslType, esdData, err := handleVariableAuthorityEvent(pcrAlg, db, measuredSignatures, ev, false)
+				if err != nil {
+					return nil, fmt.Errorf("cannot handle EV_EFI_VARIABLE_AUTHORITY event in pre-OS phase: %w", err)
+				}
+
+				measuredSignatures = append(measuredSignatures, ev.Digests[pcrAlg])
+
+				ok, err := checkSignatureDataStrength(eslType, esdData)
+				if err != nil {
+					return nil, fmt.Errorf("cannot check strength of EFI_SIGNATURE_DATA associated with EV_EFI_VARIABLE_AUTHORITY event in pre-OS phase: %w", err)
+				}
+				if !ok {
+					// XXX: unfortunately in the case where an image is signed, the verification event only includes the CA
+					// certificate - it's not possible from this to determine the actual signing certificate, it's signature
+					// algorithm, and the algorithm used for signing the binary. In this case, the check is on the CA's
+					// public key, which still has some value.
+					result.Flags |= secureBootIncludesWeakAlg
+				}
+				if eslType == efi.CertX509Guid {
+					cert, err := x509.ParseCertificate(esdData)
+					if err != nil {
+						return nil, fmt.Errorf("cannot decode X.509 certificate associated with EV_EFI_VARIABLE_AUTHORITY event in pre-OS phase: %w", err)
+					}
+					result.UsedAuthorities = append(result.UsedAuthorities, cert)
+				} else {
+					// Hopefully there shouldn't be any components being authenticated by a digest. We don't support this for
+					// OS components but this could be allowed for pre-OS, but it would make PCR7 incredibly fragile.
+					result.Flags |= secureBootPreOSVerificationIncludesDigest
+				}
+			case tcglog.EventTypeSeparator:
+				// ok
+			default:
+				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY ends up here.
+				return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
+			}
+		case tcglogPhaseOSPresent:
 			if len(configs) > 0 {
 				// We've transitioned to a phase where components can be loaded and verified but we haven't
 				// measured all of the secure boot variables. We'll fail to generate a valid policy with
@@ -301,7 +604,6 @@ NextEvent:
 
 			if ev.PCRIndex == internal_efi.BootManagerCodePCR &&
 				ev.EventType == tcglog.EventTypeEFIBootServicesApplication &&
-				phase == tcglogPhaseOSPresent &&
 				!seenIBLLoadEvent {
 				// This is an EV_EFI_BOOT_SERVICES_APPLICATION event during OS-present,
 				// and we haven't seen the event for the IBL yet. We stop once we see this
@@ -331,54 +633,20 @@ NextEvent:
 
 				// This is the IBL for the OS. Obtain signatures from binary
 				seenIBLLoadEvent = true
-				sigs, err := func() ([]*efi.WinCertificateAuthenticode, error) {
-					r, err := iblImage.Open()
-					if err != nil {
-						return nil, fmt.Errorf("cannot open image: %w", err)
-					}
-					defer r.Close()
-
-					pefile, err := peNewFile(r)
-					if err != nil {
-						return nil, fmt.Errorf("cannot decode image: %w", err)
-					}
-
-					return internal_efiSecureBootSignaturesFromPEFile(pefile, r)
-				}()
-				if err != nil {
-					return nil, fmt.Errorf("cannot obtain secure boot signatures from image %s: %w", iblImage, err)
-				}
-
-				// Make sure that one of the CA's used for verification so far
-				// is a trust anchor for one of the signatures on the image.
-				var foundSig *efi.WinCertificateAuthenticode
-				for _, cert := range result.UsedAuthorities {
-					for _, sig := range sigs {
-						if sig.CertLikelyTrustAnchor(cert) {
-							foundSig = sig
-							break
-						}
-					}
-					if foundSig != nil {
-						break
-					}
-				}
-				if foundSig == nil {
+				signer, err := extractSignerWithTrustAnchorFromImage(result.UsedAuthorities, iblImage)
+				switch {
+				case err == errNoSignerWithTrustAnchor:
 					return nil, errors.New("OS initial boot loader was not verified by any X.509 certificate measured by any EV_EFI_VARIABLE_AUTHORITY event")
+				case err != nil:
+					return nil, fmt.Errorf("cannot determine if OS initial boot loader was verified by any X.509 certificate measured by any EV_EFI_VARIABLE_AUTHORITY event: %w", err)
 				}
 
-				signer := foundSig.GetSigner()
-				switch signer.PublicKeyAlgorithm {
-				case x509.RSA:
-					pubKey, ok := signer.PublicKey.(*rsa.PublicKey)
-					if !ok {
-						return nil, errors.New("signer certificate for OS initial boot loader contains unsupported public key type")
-					}
-					if pubKey.N.BitLen() <= 1024 {
-						result.Flags |= secureBootIncludesWeakAlg
-					}
-				default:
-					return nil, errors.New("signer certificate for OS initial boot loader contains unsupported public key algorithm")
+				ok, err := checkX509CertificatePublicKeyStrength(signer)
+				if err != nil {
+					return nil, fmt.Errorf("cannot determine public key strength of initial OS boot loader signer: %w", err)
+				}
+				if !ok {
+					result.Flags |= secureBootIncludesWeakAlg
 				}
 
 				// This is the launch of the IBL. At this point, events are under control of the
@@ -394,129 +662,36 @@ NextEvent:
 
 			switch ev.EventType {
 			case tcglog.EventTypeEFIVariableAuthority:
-				// Decode the verification event
-				data, ok := ev.Data.(*tcglog.EFIVariableData)
-				if !ok {
-					// if decoding failed, the resulting data is guaranteed to implement error.
-					return nil, fmt.Errorf("EV_EFI_VARIABLE_AUTHORITY event has wrong data format: %w", ev.Data.(error))
+				// Make sure that the expected digest from the event data in the log is consistent
+				// with the measured digest. We only do this for OS-present events because these are
+				// the ones we compute. Pre-OS events are just copied from the log, so we don't check
+				// them.
+				eslType, esdData, err := handleVariableAuthorityEvent(pcrAlg, db, measuredSignatures, ev, true)
+				if err != nil {
+					return nil, fmt.Errorf("cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: %w", err)
 				}
 
-				// As we're only checking events up to the launch of the IBL, we don't expect
-				// to see anything other than verification events from db here.
-				if data.VariableName != efi.ImageSecurityDatabaseGuid || data.UnicodeName != "db" {
-					return nil, fmt.Errorf("EV_EFI_VARIABLE_AUTHORITY event is not from db (got %s-%v)", data.UnicodeName, data.VariableName)
-				}
-
-				if phase == tcglogPhaseOSPresent {
-					// Compute the expected digest from the event data in the log and make
-					// sure it's consistent with the measured digest. We only do this for
-					// OS-present events because these are the ones we compute. Pre-OS
-					// events are just copied from the log.
-					seenOSPresentVerification = true
-					expectedDigest := tcglog.ComputeEFIVariableDataDigest(pcrAlg.GetHash(), data.UnicodeName, data.VariableName, data.VariableData)
-					if !bytes.Equal(ev.Digests[pcrAlg], expectedDigest) {
-						return nil, fmt.Errorf("event data inconsistent with %v event digest for EV_EFI_VARIABLE_AUTHORITY event (log digest:%#x, expected digest:%#x)", pcrAlg, ev.Digests[pcrAlg], expectedDigest)
-					}
-				}
-
-				// Make sure that this signature hasn't already been measured. Duplicate signatures measured
-				// by the firmware may result in incorrectly computed PCR policies.
-				// Unfortunately, this test isn't 100% reliable as we stop processing events after the launch
-				// of the IBL (usually shim). Once the IBL has launched, we can't tell whether subsequent events
-				// were generated by the firmware because an OS component made use of LoadImage (where we would
-				// want to make sure it isn't measured again) or whether subsequent events are measured via some
-				// other mechanism by an OS component, such as the shim verification (which we wouldn't want to
-				// check, because we're only testing firmware compatbility here). I can't think of a way to make
-				// this 100% reliable other than by ensuring OS components never measure events with "db" and
-				// IMAGE_SECURITY_DATABASE_GUID in their event data, as a way of being able to distinguish
-				// firmware generated events from OS component generated events. It's a legitimate scenario for
-				// both the firmware and shim to both measure the same signature they used for verification from db
-				// because they both maintain their own de-duplication lists.
-				//
-				// If this test fails, the firmware is definitely broken. If this test doesn't fail, the opposite is
-				// not true - it's not a definitive guarantee that the firmware isn't broken, unfortunately.
-				for _, measured := range measuredSignatures {
-					if bytes.Equal(measured, ev.Digests[pcrAlg]) {
-						return nil, fmt.Errorf("EV_EFI_VARIABLE_AUTHORITY digest %#x has been measured by the firmware more than once", ev.Digests[pcrAlg])
-					}
-				}
 				measuredSignatures = append(measuredSignatures, ev.Digests[pcrAlg])
-
-				// Try to discover the type of authentication. The measured EFI_SIGNATURE_DATA doesn't
-				// contain this.
-
-				// First of all, construct a signature data entry from the raw event data.
-				esd := new(efi.SignatureData)
-				r := bytes.NewReader(data.VariableData)
-
-				// THE EFI_SIGNATURE_DATA entry starts with the owner GUID
-				sigOwner, err := efi.ReadGUID(r)
+				seenOSPresentVerification = true
+				ok, err := checkSignatureDataStrength(eslType, esdData)
 				if err != nil {
-					return nil, fmt.Errorf("cannot decode owner GUID from EV_EFI_VARIABLE_AUTHORITY event: %w", err)
+					return nil, fmt.Errorf("cannot check strength of EFI_SIGNATURE_DATA associated with EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: %w", err)
 				}
-				esd.Owner = sigOwner
-
-				// The rest of the EFI_SIGNATURE_DATA entry is the data
-				sigData, err := io.ReadAll(r)
-				if err != nil {
-					return nil, fmt.Errorf("cannot read data from EV_EFI_VARIABLE_AUTHORITY event: %w", err)
-				}
-				esd.Data = sigData
-
-				// We have a fully constructed EFI_SIGNATURE_DATA. Now iterate over db to see if this
-				// EFI_SIGNATURE_DATA belongs to any EFI_SIGNATURE_LIST, in order to grab its type.
-				var matchedEsl *efi.SignatureList
-				for _, list := range db {
-					for _, sig := range list.Signatures {
-						if sig.Equal(esd) {
-							matchedEsl = list
-							break
-						}
-					}
-					if matchedEsl != nil {
-						break
-					}
-				}
-				if matchedEsl == nil {
-					return nil, fmt.Errorf("encountered db EV_EFI_VARIABLE_AUTHORITY event with data that doesn't match to any db EFI_SIGNATURE_LIST")
-				}
-
-				switch matchedEsl.Type {
-				case efi.CertX509Guid:
-					cert, err := x509.ParseCertificate(esd.Data)
-					if err != nil {
-						return nil, fmt.Errorf("cannot decode X.509 certificate from db EV_EFI_VARIABLE_AUTHORITY event: %w", err)
-					}
-					result.UsedAuthorities = append(result.UsedAuthorities, cert)
-
-					switch cert.PublicKeyAlgorithm {
-					case x509.RSA:
-						pubKey, ok := cert.PublicKey.(*rsa.PublicKey)
-						if !ok {
-							return nil, errors.New("db EV_EFI_VARIABLE_AUTHORITY event includes X.509 certificate with unsupported public key type")
-						}
-						if pubKey.N.BitLen() <= 1024 {
-							result.Flags |= secureBootIncludesWeakAlg
-						}
-					default:
-						return nil, errors.New("db EV_EFI_VARIABLE_AUTHORITY event includes X.509 certificate with unsupported public key algorithm")
-					}
-					// XXX: unfortunately the verification event only includes the CA certificate - it's not possible from this to
-					// determine the actual signing certificate, it's signature algorithm, and the algorithm used for signing the
-					// binary.
-				case efi.CertSHA1Guid:
-					// Hopefully there shouldn't be any components being authenticated by a digest. We don't support this for
-					// OS components so this might be relevant for pre-OS, but it would make PCR7 incredibly fragile.
+				if !ok {
+					// XXX: unfortunately in the case where an image is signed, the verification event only includes the CA
+					// certificate - it's not possible from this to determine the actual signing certificate, it's signature
+					// algorithm, and the algorithm used for signing the binary. In this case, the check is on the CA's
+					// public key, which still has some value.
 					result.Flags |= secureBootIncludesWeakAlg
-					fallthrough
-				case efi.CertSHA224Guid, efi.CertSHA256Guid, efi.CertSHA384Guid, efi.CertSHA512Guid:
-					if phase == tcglogPhaseOSPresent {
-						return nil, errors.New("encountered EV_EFI_VARIABLE_AUTHORITY event without X.509 certificate during OS present, which is not supported")
-					}
-					result.Flags |= secureBootPreOSVerificationIncludesDigest
-				default:
-					return nil, fmt.Errorf("unrecognized EFI_SIGNATURE_DATA type for EV_EFI_VARIABLE_AUTHORITY event: %v", matchedEsl.Type)
 				}
+				if eslType != efi.CertX509Guid {
+					return nil, errors.New("encountered EV_EFI_VARIABLE_AUTHORITY event without X.509 certificate during OS present, which is not supported")
+				}
+				cert, err := x509.ParseCertificate(esdData)
+				if err != nil {
+					return nil, fmt.Errorf("cannot decode X.509 certificate associated with EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: %w", err)
+				}
+				result.UsedAuthorities = append(result.UsedAuthorities, cert)
 			case tcglog.EventTypeSeparator:
 				// ok
 			default:

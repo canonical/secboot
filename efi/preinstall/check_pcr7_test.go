@@ -666,7 +666,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 		},
 	})
-	c.Check(err, ErrorMatches, `SecureBoot variable is not consistent with the corresponding EV_EFI_VARIABLE_DRIVER_CONFIG event value in the TCG log`)
+	c.Check(err, ErrorMatches, `invalid event data for EV_EFI_VARIABLE_DRIVER_CONFIG event: SecureBoot value is not consistent with the current EFI variable value`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadUEFIDebuggerPresent(c *C) {
@@ -837,7 +837,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 		},
 	})
-	c.Check(err, ErrorMatches, `EV_EFI_VARIABLE_AUTHORITY event is not from db \(got db-8be4df61-93ca-11d2-aa0d-00e098032b8c\)`)
+	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: event is not from db \(got db-8be4df61-93ca-11d2-aa0d-00e098032b8c\)`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadFirstOSPresentVerificationWrongDigest(c *C) {
@@ -872,7 +872,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 		},
 	})
-	c.Check(err, ErrorMatches, `event data inconsistent with TPM_ALG_SHA256 event digest for EV_EFI_VARIABLE_AUTHORITY event \(log digest:0x8c8d89cdf0f2de4a1e97d436d7f6a19c49ab55d33bdb81c27470d4140b3de220, expected digest:0x4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9\)`)
+	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: event data inconsistent with TPM_ALG_SHA256 event digest \(log digest:0x8c8d89cdf0f2de4a1e97d436d7f6a19c49ab55d33bdb81c27470d4140b3de220, expected digest:0x4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9\)`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDuplicateVerificationDigests(c *C) {
@@ -920,7 +920,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 		},
 	})
-	c.Check(err, ErrorMatches, `EV_EFI_VARIABLE_AUTHORITY digest 0x4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9 has been measured by the firmware more than once`)
+	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: digest 0x4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9 has been measured by the firmware already`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadInvalidIBLLoadEventData(c *C) {
@@ -990,7 +990,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 		},
 	})
-	c.Check(err, ErrorMatches, `EV_EFI_VARIABLE_AUTHORITY event has wrong data format: some error`)
+	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: event has wong data format: some error`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDMAProtectionDisabled(c *C) {
