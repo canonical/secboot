@@ -578,7 +578,7 @@ func (t *tcglogPhaseTracker) reachedOSPresent() bool {
 // PCRs set, but the errors will be accessible on the returned results struct.
 //
 // The returned results struct indicates the best PCR bank to use and specifies the TPM startup locality as well.
-func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, mandatoryPcrs tpm2.HandleList) (results *pcrBankResults, err error) {
+func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, mandatoryPcrs tpm2.HandleList, permitEmptyPCRBanks bool) (results *pcrBankResults, err error) {
 	// Make sure it's a crypto-agile log
 	if !log.Spec.IsEFI_2() {
 		return nil, errors.New("invalid log spec")
@@ -601,6 +601,23 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 
 		results, err := checkFirmwareLogAgainstTPMForAlg(tpm, log, alg, mandatoryPcrs)
 		switch {
+		case errors.Is(err, ErrPCRBankMissingFromLog):
+			if !permitEmptyPCRBanks {
+				// Make sure that the TPM PCR bank is not enabled
+				pcrs, err := tpm.GetCapabilityPCRs()
+				if err != nil {
+					return nil, fmt.Errorf("cannot obtain active PCRs: %w", err)
+				}
+				for _, selection := range pcrs {
+					if selection.Hash == alg && len(selection.Select) > 0 {
+						// This bank is missing from the log but enabled on the TPM.
+						// This is very bad for remote attestation (not so bad for FDE), but treat
+						// this as a serious error nonetheless.
+						return nil, &EmptyPCRBankError{alg}
+					}
+				}
+			}
+			fallthrough
 		case err != nil:
 			// This entire bank is bad
 			mainErr.setBankErr(alg, err)

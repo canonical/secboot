@@ -142,6 +142,12 @@ const (
 	// regards to firmware updates because db has to be changed accordingly each time, so this is not
 	// advisable.
 	PermitPreOSVerificationUsingDigests
+
+	// PermitEmptyPCRBanks will prevent RunChecks from returning an error if there are any PCR banks
+	// (those are PCR banks that are enabled but which firmware doesn't perform measurements to). This
+	// is generally ok for full-disk encryption, but completely breaks the remote attestation model
+	// because it allows an adversary to trivially spoof an entire trusted platform from software.
+	PermitEmptyPCRBanks
 )
 
 var (
@@ -236,11 +242,17 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.SecureBootPolicyPCR)
 	}
 
-	logResults, err := checkFirmwareLogAndChoosePCRBank(tpm, log, mandatoryPcrs)
+	permitEmptyPCRBanks := flags&PermitEmptyPCRBanks > 0
+	logResults, err := checkFirmwareLogAndChoosePCRBank(tpm, log, mandatoryPcrs, permitEmptyPCRBanks)
 	switch {
 	case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode):
 		return nil, &TPM2DeviceError{err}
 	case err != nil:
+		var pcrBankErr *EmptyPCRBankError
+		if errors.As(err, &pcrBankErr) {
+			// return this one unwrapped
+			return nil, err
+		}
 		return nil, &TCGLogError{err}
 	}
 
