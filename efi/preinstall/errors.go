@@ -249,7 +249,7 @@ var (
 	ErrTPMDisabled = errors.New("TPM2 device is present but is currently disabled by the platform firmware")
 )
 
-// TPMHierarchyOwnedError is returned wrapped in TPM2DeviceError if the authorization value
+// TPMHierarchyOwnedError is returned wrapped in [TPM2DeviceError] if the authorization value
 // for the specified hierarchy is set, but the PostInstallChecks flag isn't set. If a
 // hierarchy is owned during pre-install, the TPM will most likely need to be cleared.
 type TPM2HierarchyOwnedError struct {
@@ -291,6 +291,22 @@ type PCRValueMismatchError struct {
 
 func (e *PCRValueMismatchError) Error() string {
 	return fmt.Sprintf("PCR value mismatch (actual from TPM %#x, reconstructed from log %#x)", e.PCRValue, e.LogValue)
+}
+
+// EmptyPCRBankError may be returned unwrapped in the event where a PCR bank seems
+// to be active but not extended by firmware and not present in the log. This doesn't matter so
+// much for FDE because we can select a good bank, but is a serious firmware bug for any scenario
+// that requires remote attestation, because it permits an entire trusted computing environment to
+// be spoofed by an adversary in software.
+//
+// This error can be ignored by passing the PermitEmptyPCRBanks flag to [RunChecks]. This is
+// generally ok, as long as the device is not going to be used for any kind of remote attestation.
+type EmptyPCRBankError struct {
+	Alg tpm2.HashAlgorithmId
+}
+
+func (e *EmptyPCRBankError) Error() string {
+	return fmt.Sprintf("the PCR bank for %v is missing from the TCG log but is active on the TPM", e.Alg)
 }
 
 // NoSuitablePCRAlgorithmError is returned wrapped in [TCGLogError] if there is no suitable PCR
