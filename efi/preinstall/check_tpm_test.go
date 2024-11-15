@@ -21,6 +21,7 @@ package preinstall_test
 
 import (
 	"bytes"
+	"errors"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
@@ -31,15 +32,13 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type tpmSuite struct {
-	tpm2_testutil.TPMSimulatorTest
+type tpmPropertyModifierMixin struct {
+	transport *tpm2_testutil.Transport
 }
 
-var _ = Suite(&tpmSuite{})
-
 // addTPMPropertyModifiers permits the test to run with well-known property values
-func (s *tpmSuite) addTPMPropertyModifiers(c *C, overrides map[tpm2.Property]uint32) {
-	s.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+func (m *tpmPropertyModifierMixin) addTPMPropertyModifiers(c *C, overrides map[tpm2.Property]uint32) {
+	m.transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
 		// Check we have the right command code
 		if cmdCode != tpm2.CommandGetCapability {
 			return
@@ -89,6 +88,18 @@ func (s *tpmSuite) addTPMPropertyModifiers(c *C, overrides map[tpm2.Property]uin
 		c.Check(tpm2.WriteResponsePacket(rsp, rc, nil, rpBytes, rAuthArea), IsNil)
 	}
 }
+
+type tpmSuite struct {
+	tpm2_testutil.TPMSimulatorTest
+	tpmPropertyModifierMixin
+}
+
+func (s *tpmSuite) SetUpTest(c *C) {
+	s.TPMSimulatorTest.SetUpTest(c)
+	s.tpmPropertyModifierMixin.transport = s.Transport
+}
+
+var _ = Suite(&tpmSuite{})
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersDiscreteTPM(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
@@ -148,7 +159,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMFiniteCountersDis
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMFiniteCountersDiscreteTPM(c *C) {
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMCountersCheckSkippedDiscreteTPM(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     6,
 		tpm2.PropertyNVCounters:        5,
@@ -169,18 +180,104 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMFiniteCountersDi
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCounters(c *C) {
-	family, err := s.TPM.GetCapabilityTPMProperty(tpm2.PropertyFamilyIndicator)
-	c.Assert(err, IsNil)
-
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     0,
-		tpm2.PropertyPSFamilyIndicator: family,
+		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerMSFT),
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DeviceInVM)
+	c.Check(err, IsNil)
+	c.Assert(tpm, NotNil)
+	var tmpl tpm2_testutil.TransportWrapper
+	c.Assert(tpm.Transport(), Implements, &tmpl)
+	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
+	c.Check(discreteTPM, testutil.IsFalse)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutCheckSkipped(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyNVCountersMax:     6,
+		tpm2.PropertyNVCounters:        4,
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Trip the DA logic by setting newMaxTries to 0
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 10000, 10000, nil), IsNil)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
+	c.Check(err, IsNil)
+	c.Assert(tpm, NotNil)
+	var tmpl tpm2_testutil.TransportWrapper
+	c.Assert(tpm.Transport(), Implements, &tmpl)
+	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
+	c.Check(discreteTPM, testutil.IsFalse)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutOwnedCheckSkipped(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Set the lockout hierarchy auth value.
+	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.LockoutHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
+	c.Check(err, IsNil)
+	c.Assert(tpm, NotNil)
+	var tmpl tpm2_testutil.TransportWrapper
+	c.Assert(tpm.Transport(), Implements, &tmpl)
+	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
+	c.Check(discreteTPM, testutil.IsFalse)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnerOwnedCheckSkipped(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Set the owner hierarchy auth value.
+	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.OwnerHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
+	c.Check(err, IsNil)
+	c.Assert(tpm, NotNil)
+	var tmpl tpm2_testutil.TransportWrapper
+	c.Assert(tpm.Transport(), Implements, &tmpl)
+	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
+	c.Check(discreteTPM, testutil.IsFalse)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMEndorsmentOwnedCheckSkipped(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyNVCountersMax:     0,
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Set the endorsement hierarchy auth value.
+	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.EndorsementHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
 	var tmpl tpm2_testutil.TransportWrapper
@@ -209,6 +306,11 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceDisabled(c *C) {
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
 	// Trip the DA logic by setting newMaxTries to 0
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 10000, 10000, nil), IsNil)
 
@@ -219,26 +321,57 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout(c *C) {
 	c.Check(dev.NumberOpen(), Equals, int(0))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwned(c *C) {
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedLockout(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
 	// Set the lockout hierarchy auth value so we get an error indicating that the TPM is already owned.
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.LockoutHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
 	_, _, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, Equals, ErrTPMLockoutAlreadyOwned)
+	c.Check(err, ErrorMatches, `TPM lockout hierarchy is currently owned`)
+	var he *TPM2HierarchyOwnedError
+	c.Check(errors.As(err, &he), testutil.IsTrue)
 	c.Check(dev.NumberOpen(), Equals, int(0))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwned2(c *C) {
-	// Set the owner hierarchy auth value and run the post-install test. We get an error indicating that the TPM is already owned
-	// because we don't support setting this value yet, but should in the value (setting this needs to be coordinated with snapd)
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedOwner(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Set the owner hierarchy auth value so we get an error indicating that the TPM is already owned.
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.OwnerHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
-	_, _, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
-	c.Check(err, Equals, ErrUnsupportedTPMOwnership)
+	_, _, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, ErrorMatches, `TPM owner hierarchy is currently owned`)
+	var he *TPM2HierarchyOwnedError
+	c.Check(errors.As(err, &he), testutil.IsTrue)
+	c.Check(dev.NumberOpen(), Equals, int(0))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsement(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Set the endorsement hierarchy auth value so we get an error indicating that the TPM is already owned.
+	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.EndorsementHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	_, _, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, ErrorMatches, `TPM endorsement hierarchy is currently owned`)
+	var he *TPM2HierarchyOwnedError
+	c.Check(errors.As(err, &he), testutil.IsTrue)
 	c.Check(dev.NumberOpen(), Equals, int(0))
 }
 
@@ -276,20 +409,6 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPreInstall(c 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
 	_, _, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, Equals, ErrTPMInsufficientNVCounters)
-	c.Check(dev.NumberOpen(), Equals, int(0))
-}
-
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPostInstall(c *C) {
-	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyNVCountersMax:     6,
-		tpm2.PropertyNVCounters:        6,
-		tpm2.PropertyPSFamilyIndicator: 1,
-	})
-
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
-	_, _, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, Equals, ErrTPMInsufficientNVCounters)
 	c.Check(dev.NumberOpen(), Equals, int(0))
 }
