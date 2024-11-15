@@ -73,7 +73,7 @@ var _ = Suite(&argon2Suite{})
 
 func (s *argon2Suite) TestKDFParamsDefault(c *C) {
 	var opts Argon2Options
-	params, err := opts.KdfParams(0)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
 
@@ -85,10 +85,24 @@ func (s *argon2Suite) TestKDFParamsDefault(c *C) {
 	})
 }
 
+func (s *argon2Suite) TestKDFParamsDefaultWithDifferentTargetDuration(c *C) {
+	var opts Argon2Options
+	params, err := opts.KdfParams(200*time.Millisecond, 32)
+	c.Assert(err, IsNil)
+	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
+
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   4,
+		Memory: 102406,
+		CPUs:   s.cpusAuto,
+	})
+}
+
 func (s *argon2Suite) TestKDFParamsExplicitMode(c *C) {
 	var opts Argon2Options
 	opts.Mode = Argon2i
-	params, err := opts.KdfParams(0)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2i)
 
@@ -103,7 +117,7 @@ func (s *argon2Suite) TestKDFParamsExplicitMode(c *C) {
 func (s *argon2Suite) TestKDFParamsTargetDuration(c *C) {
 	var opts Argon2Options
 	opts.TargetDuration = 1 * time.Second
-	params, err := opts.KdfParams(32)
+	params, err := opts.KdfParams(2*time.Second, 32)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
 
@@ -118,7 +132,7 @@ func (s *argon2Suite) TestKDFParamsTargetDuration(c *C) {
 func (s *argon2Suite) TestKDFParamsMemoryLimit(c *C) {
 	var opts Argon2Options
 	opts.MemoryKiB = 32 * 1024
-	params, err := opts.KdfParams(0)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
 
@@ -133,7 +147,7 @@ func (s *argon2Suite) TestKDFParamsMemoryLimit(c *C) {
 func (s *argon2Suite) TestKDFParamsForceBenchmarkedThreads(c *C) {
 	var opts Argon2Options
 	opts.Parallel = 1
-	params, err := opts.KdfParams(0)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
 
@@ -151,7 +165,7 @@ func (s *argon2Suite) TestKDFParamsForceIterations(c *C) {
 
 	var opts Argon2Options
 	opts.ForceIterations = 3
-	params, err := opts.KdfParams(0)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
@@ -170,7 +184,7 @@ func (s *argon2Suite) TestKDFParamsForceMemory(c *C) {
 	var opts Argon2Options
 	opts.ForceIterations = 3
 	opts.MemoryKiB = 32 * 1024
-	params, err := opts.KdfParams(0)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
@@ -188,7 +202,7 @@ func (s *argon2Suite) TestKDFParamsForceIterationsDifferentCPUNum(c *C) {
 
 	var opts Argon2Options
 	opts.ForceIterations = 3
-	params, err := opts.KdfParams(0)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
@@ -207,7 +221,7 @@ func (s *argon2Suite) TestKDFParamsForceThreads(c *C) {
 	var opts Argon2Options
 	opts.ForceIterations = 3
 	opts.Parallel = 1
-	params, err := opts.KdfParams(9)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
@@ -226,7 +240,7 @@ func (s *argon2Suite) TestKDFParamsForceThreadsGreatherThanCPUNum(c *C) {
 	var opts Argon2Options
 	opts.ForceIterations = 3
 	opts.Parallel = 8
-	params, err := opts.KdfParams(0)
+	params, err := opts.KdfParams(2*time.Second, 0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
@@ -241,7 +255,7 @@ func (s *argon2Suite) TestKDFParamsForceThreadsGreatherThanCPUNum(c *C) {
 func (s *argon2Suite) TestKDFParamsInvalidForceIterations(c *C) {
 	var opts Argon2Options
 	opts.ForceIterations = math.MaxUint32
-	_, err := opts.KdfParams(0)
+	_, err := opts.KdfParams(2*time.Second, 0)
 	c.Check(err, ErrorMatches, `invalid iterations count 4294967295`)
 }
 
@@ -249,7 +263,7 @@ func (s *argon2Suite) TestKDFParamsInvalidMemoryKiB(c *C) {
 	var opts Argon2Options
 	opts.ForceIterations = 4
 	opts.MemoryKiB = math.MaxUint32
-	_, err := opts.KdfParams(0)
+	_, err := opts.KdfParams(2*time.Second, 0)
 	c.Check(err, ErrorMatches, `invalid memory cost 4294967295KiB`)
 }
 
