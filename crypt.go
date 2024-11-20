@@ -890,9 +890,7 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 	return nil
 }
 
-// RenameLUKS2Container key renames the keyslot with the specified oldName on
-// the LUKS2 container at the specified path.
-func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
+func renameLUKS2ContainerKey(devicePath, oldName, newName string, replace bool) error {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
@@ -928,11 +926,35 @@ func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
 		return errors.New("cannot rename key with unexpected token type")
 	}
 
-	if err := luks2ImportToken(devicePath, newToken, &luks2.ImportTokenOptions{Id: id, Replace: true}); err != nil {
-		return xerrors.Errorf("cannot import new token: %w", err)
+	if replace {
+		if err := luks2ImportToken(devicePath, newToken, &luks2.ImportTokenOptions{Id: id, Replace: true}); err != nil {
+			return xerrors.Errorf("cannot import new token: %w", err)
+		}
+	} else {
+		if err := luks2ImportToken(devicePath, newToken, nil); err != nil {
+			return xerrors.Errorf("cannot import new token: %w", err)
+		}
+		if err := luks2RemoveToken(devicePath, id); err != nil {
+			return xerrors.Errorf("cannot remove existing token %d: %w", id, err)
+		}
 	}
 
 	return nil
+}
+
+// RenameLUKS2Container key renames the keyslot with the specified oldName on
+// the LUKS2 container at the specified path.
+func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
+	const replace = true
+	return renameLUKS2ContainerKey(devicePath, oldName, newName, replace)
+}
+
+// CopyAndRemoveLUKS2ContainerKey key renames the keyslot with the
+// specified oldName on the LUKS2 container at the specified path. It
+// does not use new feature from cryptsetup. However it is not atomic.
+func CopyAndRemoveLUKS2ContainerKey(devicePath, oldName, newName string) error {
+	const replace = false
+	return renameLUKS2ContainerKey(devicePath, oldName, newName, replace)
 }
 
 // KeyslotAlreadyHasANameErr may be returned by
