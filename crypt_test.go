@@ -4003,3 +4003,98 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyPathsError(c *C) {
 
 	s.checkKeyDataKeysInKeyring(c, "", "/dev/some/path", unlockKey, primaryKey)
 }
+
+func (s *cryptSuite) TestNameLegacyLUKS2ContainerKey(c *C) {
+	firstKey := s.newPrimaryKey(c, 32)
+	secondKey := s.newPrimaryKey(c, 32)
+
+	m := &mockLUKS2Container{
+		tokens: map[int]luks2.Token{},
+		keyslots: map[int][]byte{
+			0: firstKey,
+			1: secondKey,
+		},
+	}
+
+	s.luks2.devices["/dev/foo1"] = m
+
+	// Nothing should happen
+	err := NameLegacyLUKS2ContainerKey("/dev/foo1", 2, "some-name")
+	c.Check(err, IsNil)
+	c.Check(m.tokens, HasLen, 0)
+
+	err = NameLegacyLUKS2ContainerKey("/dev/foo1", 0, "some-name")
+	c.Check(err, IsNil)
+
+	token, hasToken := m.tokens[0]
+	c.Assert(hasToken, Equals, true)
+	c.Check(token, DeepEquals, &luksview.RecoveryToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslot: 0,
+			TokenName:    "some-name",
+		},
+	})
+
+	err = NameLegacyLUKS2ContainerKey("/dev/foo1", 1, "some-other-name")
+	c.Check(err, IsNil)
+
+	token, hasToken = m.tokens[1]
+	c.Assert(hasToken, Equals, true)
+	c.Check(token, DeepEquals, &luksview.RecoveryToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslot: 1,
+			TokenName:    "some-other-name",
+		},
+	})
+}
+
+func (s *cryptSuite) TestNameLegacyLUKS2ContainerKeyNameExists(c *C) {
+	firstKey := s.newPrimaryKey(c, 32)
+	secondKey := s.newPrimaryKey(c, 32)
+
+	m := &mockLUKS2Container{
+		tokens: map[int]luks2.Token{
+			1: &luksview.KeyDataToken{
+				TokenBase: luksview.TokenBase{
+					TokenKeyslot: 1,
+					TokenName:    "already",
+				},
+			},
+		},
+		keyslots: map[int][]byte{
+			0: firstKey,
+			1: secondKey,
+		},
+	}
+
+	s.luks2.devices["/dev/foo1"] = m
+
+	err := NameLegacyLUKS2ContainerKey("/dev/foo1", 1, "some-name")
+	c.Check(err, ErrorMatches, `keyslot already has a name`)
+	c.Check(errors.Is(err, KeyslotAlreadyHasANameErr), Equals, true)
+}
+
+func (s *cryptSuite) TestNameLegacyLUKS2ContainerKeyNameAlreadyUsed(c *C) {
+	firstKey := s.newPrimaryKey(c, 32)
+	secondKey := s.newPrimaryKey(c, 32)
+
+	m := &mockLUKS2Container{
+		tokens: map[int]luks2.Token{
+			1: &luksview.KeyDataToken{
+				TokenBase: luksview.TokenBase{
+					TokenKeyslot: 1,
+					TokenName:    "already-used",
+				},
+			},
+		},
+		keyslots: map[int][]byte{
+			0: firstKey,
+			1: secondKey,
+		},
+	}
+
+	s.luks2.devices["/dev/foo1"] = m
+
+	err := NameLegacyLUKS2ContainerKey("/dev/foo1", 0, "already-used")
+	c.Check(err, ErrorMatches, `the new name is already in use`)
+}
