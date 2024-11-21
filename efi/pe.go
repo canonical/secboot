@@ -24,13 +24,13 @@ import (
 	"crypto"
 	"encoding/csv"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 
 	efi "github.com/canonical/go-efilib"
 	"golang.org/x/xerrors"
 
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
 
@@ -179,73 +179,12 @@ func (h *peImageHandleImpl) SbatComponents() ([]sbatComponent, error) {
 	return components, nil
 }
 
-const (
-	certTableIndex = 4 // Index of the Certificate Table entry in the Data Directory of a PE image optional header
-)
-
 func (h *peImageHandleImpl) ImageDigest(alg crypto.Hash) ([]byte, error) {
 	return efi.ComputePeImageDigest(alg, h.r, h.r.Size())
 }
 
 func (h *peImageHandleImpl) SecureBootSignatures() ([]*efi.WinCertificateAuthenticode, error) {
-	// Obtain security directory entry from optional header
-	var dd []pe.DataDirectory
-	switch oh := h.pefile.OptionalHeader.(type) {
-	case *pe.OptionalHeader32:
-		dd = oh.DataDirectory[0:oh.NumberOfRvaAndSizes]
-	case *pe.OptionalHeader64:
-		dd = oh.DataDirectory[0:oh.NumberOfRvaAndSizes]
-	default:
-		return nil, errors.New("cannot obtain security directory entry: no optional header")
-	}
-
-	if len(dd) <= certTableIndex {
-		// This image doesn't include a certificate table entry, so has no signatures.
-		return nil, nil
-	}
-
-	// Create a reader for the security directory entry, which points to one or more WIN_CERTIFICATE structs
-	certReader := io.NewSectionReader(
-		h.r,
-		int64(dd[certTableIndex].VirtualAddress),
-		int64(dd[certTableIndex].Size))
-
-	// Binaries can have multiple signers - this is achieved using multiple single-signed Authenticode
-	// signatures - see section 32.5.3.3 ("Secure Boot and Driver Signing - UEFI Image Validation -
-	// Signature Database Update - Authorization Process") of the UEFI Specification, version 2.8.
-	var sigs []*efi.WinCertificateAuthenticode
-
-SignatureLoop:
-	for i := 0; ; i++ {
-		// Signatures in this section are 8-byte aligned - see the PE spec:
-		// https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-attribute-certificate-table-image-only
-		off, _ := certReader.Seek(0, io.SeekCurrent)
-		alignSize := (8 - (off & 7)) % 8
-		certReader.Seek(alignSize, io.SeekCurrent)
-
-		c, err := efi.ReadWinCertificate(certReader)
-		switch {
-		case xerrors.Is(err, io.EOF):
-			break SignatureLoop
-		case err != nil:
-			return nil, xerrors.Errorf("cannot decode WIN_CERTIFICATE from security directory entry %d: %w", i, err)
-		}
-
-		sig, ok := c.(*efi.WinCertificateAuthenticode)
-		if !ok {
-			return nil, fmt.Errorf("unexpected WIN_CERTIFICATE type from security directory entry %d: not an Authenticode signature", i)
-		}
-
-		// Reject any signature with a digest algorithm other than SHA256, as that's the only algorithm used
-		// for binaries we're expected to support, and therefore required by the UEFI implementation.
-		if sig.DigestAlgorithm() != crypto.SHA256 {
-			return nil, fmt.Errorf("signature from security directory entry %d has unexpected digest algorithm", i)
-		}
-
-		sigs = append(sigs, sig)
-	}
-
-	return sigs, nil
+	return internal_efi.SecureBootSignaturesFromPEFile(h.pefile, h.r)
 }
 
 // cstringReader is a reader that can read a C-style NULL terminated string.
