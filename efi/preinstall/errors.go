@@ -20,8 +20,11 @@
 package preinstall
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 
+	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
@@ -128,3 +131,76 @@ var (
 	// [github.com/canonical/go-tpm2/linux/RawDevice.PhysicalPresenceInterface].
 	ErrTPMDisabled = errors.New("TPM2 device is present but is currently disabled by the platform firmware")
 )
+
+// Errors related to general TCG log checks and PCR bank selection.
+
+// NoSuitablePCRAlgorithmError is returned wrapped from [RunChecks] if there is no suitable PCR bank
+// where the log matches the TPM values when reconstructed. As multiple errors can occur during
+// testing (multiple banks and multiple PCRs), this error tries to keep as much information as
+// possible
+type NoSuitablePCRAlgorithmError struct {
+	bankErrs map[tpm2.HashAlgorithmId]error                 // bankErrs apply to an entire PCR bank
+	pcrErrs  map[tpm2.HashAlgorithmId]map[tpm2.Handle]error // pcrErrs apply to a single PCR in a single bank
+}
+
+func (e *NoSuitablePCRAlgorithmError) Error() string {
+	w := new(bytes.Buffer)
+	fmt.Fprintf(w, "no suitable PCR algorithm available:\n")
+
+	// Note that this function iterates over the supportedAlgs and supportedPcrs
+	// slices rather than the maps directly to ensure consistent ordering (which
+	// go maps don't guarantee when iterating over keys).
+	for _, alg := range supportedAlgs {
+		// Print error for this PCR bank first, if there is one.
+		if err, isErr := e.bankErrs[alg]; isErr {
+			// We have a general error for this PCR bank
+			fmt.Fprintf(w, "- %v: %v.\n", alg, err)
+		}
+
+		// Then print errors associated with individual PCRs in this bank.
+		pcrErrs, hasPcrErrs := e.pcrErrs[alg]
+		if !hasPcrErrs {
+			// We have no individual PCR errors for this bank
+			continue
+		}
+		for _, pcr := range supportedPcrs {
+			if err, isErr := pcrErrs[pcr]; isErr {
+				// We have an error for this PCR
+				fmt.Fprintf(w, "- %v(PCR%d): %v.\n", alg, pcr, err)
+			}
+		}
+	}
+	return w.String()
+}
+
+// UnwrapBankError returns the error associated with the specified PCR bank if one
+// occurred, or nil if none occurred.
+func (e *NoSuitablePCRAlgorithmError) UnwrapBankError(alg tpm2.HashAlgorithmId) error {
+	return e.bankErrs[alg]
+}
+
+// UnwrapPCRError returns the error associated with the specified PCR in the specified
+// bank if one occurred, or nil if none occurred.
+func (e *NoSuitablePCRAlgorithmError) UnwrapPCRError(alg tpm2.HashAlgorithmId, pcr tpm2.Handle) error {
+	pcrErrs, exists := e.pcrErrs[alg]
+	if !exists {
+		return nil
+	}
+	return pcrErrs[pcr]
+}
+
+// setBankErr sets an error for an entire PCR bank
+func (e *NoSuitablePCRAlgorithmError) setBankErr(alg tpm2.HashAlgorithmId, err error) {
+	if e.bankErrs == nil {
+		e.bankErrs = make(map[tpm2.HashAlgorithmId]error)
+	}
+	e.bankErrs[alg] = err
+}
+
+// setPcrErrs sets errors for individual PCRs associated with a bank
+func (e *NoSuitablePCRAlgorithmError) setPcrErrs(results *pcrBankResults) {
+	if e.pcrErrs == nil {
+		e.pcrErrs = make(map[tpm2.HashAlgorithmId]map[tpm2.Handle]error)
+	}
+	e.pcrErrs[results.Alg] = results.pcrErrs()
+}

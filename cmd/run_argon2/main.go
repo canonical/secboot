@@ -19,6 +19,10 @@
 package main
 
 import (
+	"crypto"
+	_ "crypto/sha1"
+	_ "crypto/sha256"
+	_ "crypto/sha512"
 	"errors"
 	"fmt"
 	"os"
@@ -27,17 +31,35 @@ import (
 )
 
 func run() error {
-	if len(os.Args) != 2 {
-		return errors.New("usage: echo <input_request_json> | run_argon2 <watchdog>")
+	if len(os.Args) < 2 {
+		return errors.New("usage: echo <input_request_json> | run_argon2 <watchdog> [<optional_params>]")
 	}
 	secboot.SetIsArgon2HandlerProcess()
 
 	var watchdog secboot.Argon2OutOfProcessWatchdogHandler
 	switch os.Args[1] {
 	case "none":
-		watchdog = secboot.NoArgon2OutOfProcessWatchdogHandler
-	case "hmac-sha256":
-		watchdog = secboot.Argon2OutOfProcessWatchdogHandlerHMACSHA256()
+		watchdog = secboot.NoArgon2OutOfProcessWatchdogHandler()
+	case "hmac":
+		if len(os.Args) != 3 {
+			return errors.New("usage: echo <input_request_json> | run_argon2 hmac <alg>")
+		}
+		var alg crypto.Hash
+		switch os.Args[2] {
+		case "sha1":
+			alg = crypto.SHA1
+		case "sha224":
+			alg = crypto.SHA224
+		case "sha256":
+			alg = crypto.SHA256
+		case "sha384":
+			alg = crypto.SHA384
+		case "sha512":
+			alg = crypto.SHA512
+		default:
+			return fmt.Errorf("unrecognized HMAC digest algorithm %q", os.Args[2])
+		}
+		watchdog = secboot.HMACArgon2OutOfProcessWatchdogHandler(alg)
 	}
 
 	err := secboot.WaitForAndRunArgon2OutOfProcessRequest(os.Stdin, os.Stdout, watchdog)

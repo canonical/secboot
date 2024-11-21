@@ -70,6 +70,11 @@ func SetArgon2KDF(kdf Argon2KDF) Argon2KDF {
 	return orig
 }
 
+// argon2KDF returns the global [Argon2KDF] implementation set for this process. This
+// can be set via calls to [SetArgon2KDF] in parent processes, or calls to
+// [SetIsArgon2HandlerProcess] from remote, short-lieved utility processes that handle
+// Argon2 requests on behalf of a longer lived process in order to avoid the problems
+// associated with garbage collection.
 func argon2KDF() Argon2KDF {
 	argon2Mu.Lock()
 	defer argon2Mu.Unlock()
@@ -218,6 +223,9 @@ type Argon2CostParams struct {
 }
 
 func (p *Argon2CostParams) internalParams() *argon2.CostParams {
+	if p == nil {
+		return nil
+	}
 	return &argon2.CostParams{
 		Time:      p.Time,
 		MemoryKiB: p.MemoryKiB,
@@ -225,7 +233,8 @@ func (p *Argon2CostParams) internalParams() *argon2.CostParams {
 }
 
 // Argon2KDF is an interface to abstract use of the Argon2 KDF to make it possible
-// to delegate execution to a short-lived handler process where required.
+// to delegate execution to a short-lived handler process where required. See
+// [SetArgon2KDF].
 type Argon2KDF interface {
 	// Derive derives a key of the specified length in bytes, from the supplied
 	// passphrase and salt and using the supplied mode and cost parameters.
@@ -239,33 +248,19 @@ type Argon2KDF interface {
 type inProcessArgon2KDFImpl struct{}
 
 func (_ inProcessArgon2KDFImpl) Derive(passphrase string, salt []byte, mode Argon2Mode, params *Argon2CostParams, keyLen uint32) ([]byte, error) {
-	switch {
-	case mode != Argon2i && mode != Argon2id:
+	if mode != Argon2i && mode != Argon2id {
 		return nil, errors.New("invalid mode")
-	case params == nil:
-		return nil, errors.New("nil params")
-	case params.Time == 0:
-		return nil, errors.New("invalid time cost")
-	case params.Threads == 0:
-		return nil, errors.New("invalid number of threads")
 	}
 
-	return argon2.Key(passphrase, salt, argon2.Mode(mode), params.internalParams(), keyLen), nil
+	return argon2.Key(passphrase, salt, argon2.Mode(mode), params.internalParams(), keyLen)
 }
 
 func (_ inProcessArgon2KDFImpl) Time(mode Argon2Mode, params *Argon2CostParams) (time.Duration, error) {
-	switch {
-	case mode != Argon2i && mode != Argon2id:
+	if mode != Argon2i && mode != Argon2id {
 		return 0, errors.New("invalid mode")
-	case params == nil:
-		return 0, errors.New("nil params")
-	case params.Time == 0:
-		return 0, errors.New("invalid time cost")
-	case params.Threads == 0:
-		return 0, errors.New("invalid number of threads")
 	}
 
-	return argon2.KeyDuration(argon2.Mode(mode), params.internalParams()), nil
+	return argon2.KeyDuration(argon2.Mode(mode), params.internalParams())
 }
 
 // InProcessArgon2KDF is the in-process implementation of the Argon2 KDF.
@@ -286,7 +281,10 @@ func (_ inProcessArgon2KDFImpl) Time(mode Argon2Mode, params *Argon2CostParams) 
 //
 // This package provides an example of this already ([NewOutOfProcessArgon2KDF]), as well
 // as a handler for use in the short-lived handler process
-// ([WaitForAndRunArgon2OutOfProcessRequest]).
+// ([WaitForAndRunArgon2OutOfProcessRequest]). In order to save space, it is possible that
+// the functionality be duplicated in the same executable (ie, using the same executable such
+// as snapd or snap-bootstrap to provide the parent [Argon2KDF] and the remote, short-lived
+// KDF helper).
 var InProcessArgon2KDF = inProcessArgon2KDFImpl{}
 
 type nullArgon2KDFImpl struct{}

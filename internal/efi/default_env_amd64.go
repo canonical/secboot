@@ -28,7 +28,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/intel-go/cpuid"
+	"github.com/canonical/cpuid"
 )
 
 var (

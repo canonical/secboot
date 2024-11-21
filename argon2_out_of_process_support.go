@@ -202,7 +202,14 @@ var (
 // request before responding with an error on subsequent requests.
 //
 // Calling this function is required in order to be able to use [RunArgon2OutOfProcessRequest]
-// and [WaitForAndRunArgon2OutOfProcessRequest].
+// and [WaitForAndRunArgon2OutOfProcessRequest], which run Argon2 requests in-process. Argon2
+// remoting support (the ability for a consumer of Argon2 to delegate calls to a short-lived utility
+// process) is required in go and other garbage collected languages because they intentionally
+// allocate significant amounts of memory. Without performing a full GC mark-sweep inbetween
+// each call, repeated calls will rapidly trigger the kernel's OOM killer. Go's sweep implementation
+// stops the world, which makes interaction with goroutines and the scheduler poor. It's better to
+// just let the kernel deal with this instead by using short-lived process's as opposed to calling
+// [runtime.GC] in processes's that we want to remain responsive.
 func SetIsArgon2HandlerProcess() {
 	// Mark process as becoming an argon2 handler process. This will ensure that new calls
 	// to both this function and SetArgon2KDF will panic.
@@ -218,8 +225,8 @@ func SetIsArgon2HandlerProcess() {
 	// There currently aren't any callers inside SetArgon2KDF, and we have the lock. We
 	// own the global KDF now - we're going to set the global implementation, overwriting
 	// whatever was there previously. Any future calls to SetArgon2KDF will panic. The
-	// implementation we set is a version of InProcessArgon2KDF that can only run a single
-	// time.
+	// implementation we set is a version of InProcessArgon2KDF that will only run once
+	// before returning an error.
 	argon2Impl = &argon2OutOfProcessHandler{
 		Status: argon2Unused,
 		KDF:    InProcessArgon2KDF,
@@ -242,17 +249,20 @@ func SetIsArgon2HandlerProcess() {
 //
 // This function does not service watchdog requests, as the KDF request happens synchronously in the
 // current go routine. If this is required, it needs to be implemented in supporting code that makes
-// use of other go routines. [WaitForAndRunArgon2OutOfProcessRequest] already does this.
+// use of other go routines, noting that the watchdog handler shoould test that the input request
+// processing continues to function. [WaitForAndRunArgon2OutOfProcessRequest] already does this correctly,
+// and most implementations should just use this.
 //
 // Unfortunately, there is no way to interrupt this function once it has been called. because the
-// low-level crypto library does not support this.
+// low-level crypto library does not support this. This feature may be desired in the future, which might
+// require replacing the existing library we use for Argon2.
 func RunArgon2OutOfProcessRequest(request *Argon2OutOfProcessRequest) *Argon2OutOfProcessResponse {
 	if atomic.LoadUint32(&argon2OutOfProcessStatus) < readyArgon2HandlerProcess {
 		// SetIsArgon2HandlerProcess hasn't been called, or hasn't completed yet.
 		return &Argon2OutOfProcessResponse{
 			Command:     request.Command,
 			ErrorType:   Argon2OutOfProcessErrorUnexpected,
-			ErrorString: "cannot handle request in a process that isn't configured as an Argon2 handler process, try calling SetIsArgon2HandlerProcess",
+			ErrorString: "cannot handle request in a process that isn't configured as an Argon2 handler process",
 		}
 	}
 
@@ -290,7 +300,8 @@ func RunArgon2OutOfProcessRequest(request *Argon2OutOfProcessRequest) *Argon2Out
 
 	if len(request.WatchdogChallenge) > 0 {
 		// This function does everything in the same go routine, and therefore
-		// has no ability to service a watchdog.
+		// has no ability to service a watchdog. It's an error if we get here
+		// with a watchdog request.
 		return &Argon2OutOfProcessResponse{
 			Command:     request.Command,
 			ErrorType:   Argon2OutOfProcessErrorUnexpectedInput,
@@ -311,7 +322,7 @@ func RunArgon2OutOfProcessRequest(request *Argon2OutOfProcessRequest) *Argon2Out
 			return &Argon2OutOfProcessResponse{
 				Command:     request.Command,
 				ErrorType:   errorType,
-				ErrorString: fmt.Sprintf("cannot run \"derive\" command: %v", err),
+				ErrorString: fmt.Sprintf("cannot run derive command: %v", err),
 			}
 		}
 		return &Argon2OutOfProcessResponse{
@@ -353,7 +364,7 @@ func RunArgon2OutOfProcessRequest(request *Argon2OutOfProcessRequest) *Argon2Out
 			return &Argon2OutOfProcessResponse{
 				Command:     request.Command,
 				ErrorType:   errorType,
-				ErrorString: fmt.Sprintf("cannot run \"time\" command: %v", err),
+				ErrorString: fmt.Sprintf("cannot run time command: %v", err),
 			}
 		}
 		return &Argon2OutOfProcessResponse{
@@ -371,61 +382,63 @@ func RunArgon2OutOfProcessRequest(request *Argon2OutOfProcessRequest) *Argon2Out
 	}
 }
 
-// Argon2OutOfProcessWatchdogHandler defines the behaviour of the watchdog
-// service handler for out-of-process [Argon2KDF] implementations, and is on
-// the remote side of the implementation (the process that generally calls
-// [SetIsArgon2HandlerProcess]) if it using one of the built in functions.
-// It is intended to be compatible with [WaitForAndRunArgon2OutOfProcessRequest].
+// Argon2OutOfProcessWatchdogHandler defines the behaviour of a watchdog handler
+// for the remote side of an out-of-process [Argon2KDF] implementation created by
+// [WaitForAndRunArgon2OutOfProcessRequest].
 //
-// The out-of-process Argon2 implementation is expected to call this inline on
-// the same goroutine that loops over received requests, as
-// [WaitForAndRunArgon2OutOfProcessRequest] does.
+// If is expected to be called periodically on the same go routine that processes
+// incoming requests to ensure that this routine is functioning correctly. The response
+// should make use of the same code path that the eventual KDF response will be sent
+// using so that the watchdog handler tests all of the code associated with this and so
+// the parent process can be assured that it will eventually receive a KDF response
+// and won't be left waiting indefinitely.
 //
-// The out-of-process Argon2 implementation is expected to only send watchdog
-// requests to this function, as [WaitForAndRunArgon2OutOfProcessRequest] does.
+// Implementations define their own protocol, with limitations. All requests and
+// responses use the watchdog command [Argon2OutOfProcessCommandWatchdog]. The
+// [Argon2OutOfProcessRequest] type has a WatchdogChallenge field (which is supplied
+// as an argument to this function. The [Argon2OutOfProcessResponse] type has a
+// WatchdogResponse field (which the response of this function is used for). It's up
+// to the implementation how they choose to use these fields.
 //
-// Implementations of this should return the response or an error. If an error
-// is returned, the calling loop should break and the remote process implementation
-// should begin terminating (as [WaitForAndRunArgon2OutOfProcessRequest] does).
+// If the implementation returns an error, it begins the shutdown of the processing
+// of commands and the eventual return of [WaitForAndRunArgon2OutOfProcessRequest].
 //
-// Implementations must not return a nil response and a nil error.
-type Argon2OutOfProcessWatchdogHandler = func(req *Argon2OutOfProcessRequest) (*Argon2OutOfProcessResponse, error)
+// The implementation is expected to be paired with an equivalent implementation of
+// [Argon2OutOfProcessWatchdogMonitor] in the parent process.
+type Argon2OutOfProcessWatchdogHandler = func(challenge []byte) (response []byte, err error)
 
-// Argon2OutOfProcessWatchdogHandlerHMACSHA256 is the counterpart to
-// [Argon2OutOfProcessWatchgogMonitorHMACSHA256]. It generates a HMAC-SHA256 of
-// the received challenge, keyed with the previously transmitted response.
-func Argon2OutOfProcessWatchdogHandlerHMACSHA256() Argon2OutOfProcessWatchdogHandler {
-	lastWatchdogResponse := make([]byte, 32)
+// HMACArgon2OutOfProcessWatchdogHandler returns the remote process counterpart to
+// [HMACArgon2OutOfProcessWatchdogMonitor]. It receives a challenge from the monitor,
+// computes a HMAC of this challenge, keyed with previously sent response. Both
+// implementations must use the same algorithm.
+//
+// This implementation of [Argon2OutOfProcessWatchdogHandler] never returns an error.
+func HMACArgon2OutOfProcessWatchdogHandler(alg crypto.Hash) Argon2OutOfProcessWatchdogHandler {
+	if !alg.Available() {
+		panic("digest algorithm unavailable")
+	}
 
-	return func(req *Argon2OutOfProcessRequest) (*Argon2OutOfProcessResponse, error) {
-		if req.Command != Argon2OutOfProcessCommandWatchdog {
-			return nil, fmt.Errorf("unexpected command %q", req.Command)
-		}
+	lastResponse := make([]byte, 32)
 
-		h := hmac.New(crypto.SHA256.New, lastWatchdogResponse)
-		h.Write(req.WatchdogChallenge)
+	return func(challenge []byte) (response []byte, err error) {
+		h := hmac.New(alg.New, lastResponse)
+		h.Write(challenge)
 
-		// Generate the response structure
-		rsp := &Argon2OutOfProcessResponse{
-			Command:          Argon2OutOfProcessCommandWatchdog,
-			WatchdogResponse: h.Sum(nil),
-		}
-
-		// Save the response we just sent because it's needed for the next
-		// watchdog request.
-		lastWatchdogResponse = rsp.WatchdogResponse
-
-		return rsp, nil
+		return h.Sum(nil), nil
 	}
 }
 
-func NoArgon2OutOfProcessWatchdogHandler(req *Argon2OutOfProcessRequest) (*Argon2OutOfProcessResponse, error) {
-	return nil, errors.New("unexpected watchdog request: no handler service for it")
+// NoArgon2OutOfProcessWatchdogHandler is an implmenentation of [Argon2OutOfProcessWatchdogHandler] that
+// provides no watchdog functionality. It is paired with [NoArgon2OutOfProcessWatchdogMonitor] on the
+// parent side. This implementation will return an error if a watchdog request is received.
+func NoArgon2OutOfProcessWatchdogHandler() Argon2OutOfProcessWatchdogHandler {
+	return func(_ []byte) ([]byte, error) {
+		return nil, errors.New("unexpected request: no handler for watchdog")
+	}
 }
 
 // ErrKDFNotRequested is returned from [WaitForAndRunArgon2OutOfProcessRequest]
-// if the supplied io.Reader is closed by the parent before a [Argon2OutOfProcessRequest]
-// has been received.
+// if the supplied io.Reader is closed before a [Argon2OutOfProcessRequest] has been received.
 var ErrKDFNotRequested = errors.New("no KDF request was received")
 
 // WaitForAndRunArgon2OutOfProcessRequest waits for a [Argon2OutOfProcessRequest] request on the
@@ -437,11 +450,14 @@ var ErrKDFNotRequested = errors.New("no KDF request was received")
 // result in an error response being returned via the io.Writer (after receiving a new request via
 // the io.Reader).
 //
-// This function can service watchdog requests from the parent process by providing an appropriate
-// watchdog handler. If no watchdog handler is supplied, [NoArgon2OutOfProcessWatchdogHandler] is used.
+// This function will service watchdog requests from the parent process if a watchdog handler is supplied.
+// If supplied, it must match the corresponding monitor in the parent process. If not supplied, the default
+// [NoArgon2OutOfProcessWatchdogHandler] will be used.
 //
 // Unfortunately, KDF requests cannot be interrupted once they have started because the low-level crypto
-// library does not provide this functionality.
+// library does not provide this functionality, although watchdog requests can still be serviced. The ability
+// to interrupt a KDF request in the future may be desired, although it may require replacing the existing
+// library we use for Argon2.
 //
 // This function requires [SetIsArgon2HandlerProcess] to have already been called in this process,
 // else an error response will be returned via the io.Writer.
@@ -450,66 +466,52 @@ var ErrKDFNotRequested = errors.New("no KDF request was received")
 // returned from go routines that are created during the handling of a request may be returned directly
 // from this function.
 //
-// Note that this function won't return until the supplied io.Reader is closed (it returns [io.EOF]),
-// and all created go routines terminate. As long as no go routines return an error and the io.Reader is
-// closed after receiving a KDF request, then no error will be returned. If the io.Reader is closed before
-// a KDF request is received, a [ErrKDFNotRequested] error will be returned.
-//
-// As this function cannot be used again, the calling process is expected to exit once this returns.
+// Note that this function won't return until the supplied io.Reader is closed by the parent.
 func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdog Argon2OutOfProcessWatchdogHandler) error {
 	if watchdog == nil {
-		watchdog = NoArgon2OutOfProcessWatchdogHandler
+		watchdog = NoArgon2OutOfProcessWatchdogHandler()
 	}
 
 	tmb := new(tomb.Tomb)
 
-	// rspChan is sent a response which is received by another goroutine,
-	// which serializes it and sends it to the parent process via the
-	// supplied io.Writer.
+	// rspChan is the channel from the routine that runs the KDF to the dedicated output routine
+	// which serializes the response to the supplied io.Writer.
 	rspChan := make(chan *Argon2OutOfProcessResponse)
 
-	// wdRspChan is send watchdog responses which are received by another
-	// goroutine, which serializes them and sends them to the parent process
-	// via the supplied io.Writer.
-	wdRspChan := make(chan *Argon2OutOfProcessResponse)
-
-	// Spin-up a routine for receiving incoming requests - this will include the initial
-	// request and periodic watchdog requests if these are in use.
 	tmb.Go(func() error {
 		// Also spin-up the routine for sending outgoing responses that are generated internally.
-		// This handles the receive ends of rspChan and wdRspChan, and serializes them to the
-		// supplied io.Writer.
+		// This handles the read end of rspChan. This serializes them to the supplied io.Writer.
+		// This gets its own goroutine so that all responses are sent via the same code path
+		// - responses can ultimately come directly from the request processing loop (in the event
+		// of a watchdog request), or from a dedicated KDF routine which permits the request processing
+		// loop to continue executing whilst the KDF is running - something which results in the blocking
+		// of the current goroutine.
 		tmb.Go(func() error {
 			for {
 				// Wait for a response from somewhere or wait for the tomb to
 				// begin dying.
-				var jsonRsp *Argon2OutOfProcessResponse
 				select {
 				case rsp := <-rspChan:
-					jsonRsp = rsp
-				case rsp := <-wdRspChan:
-					jsonRsp = rsp
+					// We've got a response from somewhere. Encode it send the
+					// response out on the io.Writer. If this fails, return an error,
+					// which begins the dying of this tomb and will result in an error
+					// being returned to the caller.
+					enc := json.NewEncoder(out)
+					if err := enc.Encode(rsp); err != nil {
+						return fmt.Errorf("cannot encode response: %w", err)
+					}
 				case <-tmb.Dying():
-					// The tomb has begun dying - this is a normal part of shutdown,
-					// so return now. Senders to the channels we receive need to be
-					// careful about handling this routine terminating before they
-					// do in order to avoid deadlocks with unbuffered channels.
+					// If the tomb begins dying, end this routine - this is part of
+					// the normal shutdown.
 					return nil
 				}
-				// We've got a response from somewhere. Encode it send the
-				// response out on the io.Writer. If this fails, return an error,
-				// which begins the dying of this tomb and will result in an error
-				// being returned to the caller.
-				enc := json.NewEncoder(out)
-				if err := enc.Encode(jsonRsp); err != nil {
-					return fmt.Errorf("cannot encode response: %w", err)
-				}
 			}
-			panic("not reached")
+			return nil
 		})
 
 		// kdfRequestReceived indicates that a KDF request was received. If one has been received,
-		// it's not an error for the parent to close its side of the incoming channel.
+		// it's not an error for the parent to close its side of the incoming channel. We consider it
+		// an error for the parent to close its side of the incoming channel before sending a KDF request.
 		kdfRequestReceived := false
 
 		// Run a loop for receiving incoming requests from the io.Reader as long
@@ -519,12 +521,13 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 			// if the parent sends something or closes its end of the OS pipe. If it's
 			// closed before we've received a KDF request, then we terminate this routine
 			// with an error to begin the process of the tomb dying and the function
-			// eventually returning an error.
+			// eventually returning an error to the caller.
 			var req *Argon2OutOfProcessRequest
 			dec := json.NewDecoder(in)
 			dec.DisallowUnknownFields()
 			if err := dec.Decode(&req); err != nil {
-				if errors.Is(err, io.EOF) {
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					// The parent has closed stdin without sending us a full request.
 					if !kdfRequestReceived {
 						// The parent has closed their end of the connection before
 						// sending a request, so we return an error here to begin
@@ -535,55 +538,51 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 					// In any case, if the parent has closed their end of the pipe, there's
 					// nothing else for us to process so we can break from this loop in order
 					// to shutdown of this routine. We can't receive any more watchdog requests.
+					// We have to kill the tomb because else the routine that waits for and
+					// encodes responses will continue running forever. We don't specify a reason
+					// here because it's considered a normal shutdown.
+					tmb.Kill(nil)
 					break
 				}
+
+				// We failed to decode an incoming request. Returning the error here will begin the
+				// shutdown of the tomb, the eventual termination of any goroutines and the eventual
+				// return of this error to the caller.
 				return fmt.Errorf("cannot decode request: %w", err)
 			}
 
+			// We have a request!
+
 			switch req.Command {
 			case Argon2OutOfProcessCommandWatchdog:
-				// Special case to handle watchdog requests
-				rsp, err := watchdog(req)
+				// Special case to handle watchdog requests.
+				wdRsp, err := watchdog(req.WatchdogChallenge)
 				if err != nil {
-					return fmt.Errorf("cannot run watchdog handler: %w", err)
+					return fmt.Errorf("cannot handle watchdog request: %w", err)
 				}
 
-				// Send the response structure to be serialized and sent to the parent.
-				// This blocks until the response is received by the other end of the
-				// channel, or the tomb enters a dying state.
-				select {
-				case wdRspChan <- rsp:
-					// The watchdog response was delivered to the receiving end ok
-				case <-tmb.Dying():
-					// The watchdog response was not delivered because the tomb entered
-					// a dying state and the receive end of wdRspChan has already gone.
+				// Generate the response structure to send to the same goroutine that
+				// will eventually encode and send the KDF response back to the parent.
+				rspChan <- &Argon2OutOfProcessResponse{
+					Command:          Argon2OutOfProcessCommandWatchdog,
+					WatchdogResponse: wdRsp,
 				}
 			default:
 				// Anything else is considered a KDF request
 				kdfRequestReceived = true
 
 				// Spin up a new routine to handle the request, as it blocks and is long running,
-				// and we still want to be able to service watchdog requests. Block the current
-				// routine until we know the new routine has started so that the watchdog handler
-				// will fail if the new routine doesn't begin properly.
+				// and we still want to be able to service watchdog requests whilst it's running.
+				// Block the current routine until we know the new routine has started so that the
+				// watchdog handler will fail if the new routine doesn't begin properly.
 				var startupWg sync.WaitGroup
 				startupWg.Add(1)
 				tmb.Go(func() error {
 					startupWg.Done() // Unblock the main routine.
 
-					// Run the KDF request.
-					rsp := RunArgon2OutOfProcessRequest(req)
-
-					// Send the response structure to be serialized and sent to the parent.
-					// This blocks until the response is received by the other end of the
-					// channel, or the tomb enters a dying state.
-					select {
-					case rspChan <- rsp:
-						// The response was delivered to the receiving end ok.
-					case <-tmb.Dying():
-						// The response was not delivered because the tomb entered
-						// a dying state and the receive end of rspChan has already gone.
-					}
+					// Run the KDF request, and send the response structure to the routine that
+					// is serializing these to the supplied io.Writer.
+					rspChan <- RunArgon2OutOfProcessRequest(req)
 
 					// As we only handle a single request, mark the tomb as dying to begin its
 					// clean shutdown if it isn't shutting down already.
@@ -600,17 +599,15 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 		return nil
 	})
 
-	// Wait for the tomb to die and return the first error that occurred to the caller if there was one.
 	return tmb.Wait()
 }
 
 // Argon2OutOfProcessWatchdogMonitor defines the behaviour of a watchdog monitor
-// for out-of-process [Argon2KDF] implementations, and is managed on the parent side
-// of an implementation of [Argon2KDF].
+// for out-of-process [Argon2KDF] implementations created by [NewOutOfProcessArgon2KDF],
+// and is managed on the parent side of an implementation of [Argon2KDF].
 //
 // It is expected to be called in its own dedicated go routine that is tracked
-// by the supplied tomb, as with the implementation of [Argon2KDF] returned by
-// [NewOutOfProcessArgon2KDF].
+// by the supplied tomb.
 //
 // Implementations define their own protocol, with limitations. All requests and
 // responses use the watchdog command [Argon2OutOfProcessCommandWatchdog]. The
@@ -622,51 +619,43 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 // time limit, the implementation is expected to return an error.
 //
 // The [Argon2KDF] implementation that manages this watchdog should kill the remote
-// process in the event that the monitor implementation returns an error, as
-// the one returned by [NewOutOfProcessArgon2KDF] does.
+// process in the event that the monitor implementation returns an error. It should also
+// ensure the termination of the parent tomb and the eventual return of an error to the
+// caller.
 //
-// The implementation of this should not close reqChan. It should also expect reqChan
-// to be blocking (ie, not buffered), as is the case with the [Argon2KDF] implementaton
-// returned from [NewOutOfProcessArgon2KDF].
+// The implementation of this should not close reqChan.
 //
 // It is expected that the [Argon2KDF] implementation that manages this watchdog
 // only sends watchdog requests via the rspChan channel (ie, it's verified that the
-// Command field in the [Argon2OutOfProcessResponse] is [Argon2OutOfProcessCommandWatchdog]).
-// The implementation returned by [NewOutOfProcessArgon2KDF] makes this assurance.
+// Command field in the [Argon2OutOfProcessResponse] is [Argon2OutOfProcessCommandWatchdog])
 //
-// It is expected that the [Argon2KDF] implementation doesn't close the suppled rspChan,
-// as the one returned by [NewOutOfProcessArgon2KDF] doesn't.
-//
-// The implementation should continue to process requests as long as the supplied tomb
-// is alive ([Tomb.Alive] returns true) before returning, unless an error occurs.
+// It is expected that the [Argon2KDF] implementation doesn't close the suppled rspChan.
 type Argon2OutOfProcessWatchdogMonitor = func(tmb *tomb.Tomb, reqChan chan<- *Argon2OutOfProcessRequest, rspChan <-chan *Argon2OutOfProcessResponse) error
 
-func NoArgon2OutOfProcessWatchdogMonitor(tmb *tomb.Tomb, reqChan chan<- *Argon2OutOfProcessRequest, rspChan <-chan *Argon2OutOfProcessResponse) error {
-	for {
-		select {
-		case <-rspChan:
-			// We never sent a request, so this is an error
-			return errors.New("unexpected watchdog response: no monitor sending requests")
-		case <-tmb.Dying():
-			return nil
-		}
+// HMACArgon2OutOfProcessWatchdogMonitor returns a watchdog monitor that generates a
+// challenge every period, computes a HMAC of this challenge, keyed with previously received
+// watchdog response. It stops and returns an error if it doen't receive a valid respose
+// in the specified timeout. This is intended be paired with [HMACArgon2OutOfProcessWatchdogHandler]
+// on the remote side.
+func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period, timeout time.Duration) Argon2OutOfProcessWatchdogMonitor {
+	if timeout > period {
+		panic("watchdog timeout can't be larger than period")
 	}
-	return nil
-}
-
-// Argon2OutOfProcessWatchdogMonitorHMACSHA256 returns a watchdog monitor that generates a
-// challenge, computes a HMAC-SHA256 of this challenge, keyed with previously received
-// watchdog response. It It stops and returns an error if we don't receive a respose
-func Argon2OutOfProcessWatchdogMonitorHMACSHA256(period, timeout time.Duration) Argon2OutOfProcessWatchdogMonitor {
-	lastWatchdogResponse := make([]byte, 32)
+	if !alg.Available() {
+		panic("specified digest algorithm not available")
+	}
 
 	return func(tmb *tomb.Tomb, reqChan chan<- *Argon2OutOfProcessRequest, rspChan <-chan *Argon2OutOfProcessResponse) error {
-		for {
-			timer := time.NewTimer(period)
+		lastWatchdogResponse := make([]byte, 32)     // the last response received from the child.
+		expectedWatchdogResponse := make([]byte, 32) // the next expected response.
+
+		// Only run the watchdog whilst the tomb is alive
+		for tmb.Alive() {
+			// Run it every defined period
 			select {
-			case <-timer.C: // run it every defined period
-			case <-tmb.Dying(): // exit early if the tomb is dying
-				timer.Stop() // Make sure the timer can be collected. Not necessary from go 1.23
+			case <-time.After(period):
+			case <-tmb.Dying():
+				// Handle the tomb dying before the end of the period.
 				return nil
 			}
 
@@ -675,38 +664,32 @@ func Argon2OutOfProcessWatchdogMonitorHMACSHA256(period, timeout time.Duration) 
 			if _, err := rand.Read(challenge); err != nil {
 				return fmt.Errorf("cannot generate new watchdog challenge: %w", err)
 			}
-			// The expected response is the HMAC-SHA256 of the challenge, keyed with the
+			// The expected response is the HMAC of the challenge, keyed with the
 			// last response.
-			h := hmac.New(crypto.SHA256.New, lastWatchdogResponse)
+			h := hmac.New(alg.New, lastWatchdogResponse)
 			h.Write(challenge)
-			expectedWatchdogResponse := h.Sum(nil)
+			expectedWatchdogResponse = h.Sum(nil)
 
 			req := &Argon2OutOfProcessRequest{
 				Command:           Argon2OutOfProcessCommandWatchdog,
 				WatchdogChallenge: challenge,
 			}
 
-			// Send the request. If reqChan is unbuffered, this blocks until the
-			// request is received by the other end or the tomb enters a dying state.
+			// Send the request.
 			select {
 			case reqChan <- req:
-				// The watchdog request was sent ok.
+				// Request sent ok
 			case <-tmb.Dying():
-				// The watchdog request was not sent ok because the tomb is
-				// in a dying state and receiving end has already gone away.
-				// Just return now as we won't run another iteration of this
-				// loop anyway.
+				// The tomb began dying before we finished sending the request (reqChan is blocking).
 				return nil
 			}
 
 			// Wait for the response from the remote process.
-			timer = time.NewTimer(timeout)
 			select {
-			case <-timer.C: // Give it up to the time defined by the timeout
+			case <-time.Tick(timeout): // Give it up to the time defined by the timeout
 				return errors.New("timeout waiting for watchdog response from remote process")
 			case rsp := <-rspChan:
 				// We got a response from the remote process.
-				timer.Stop() // Make sure the timer can be collected. Not necessary from go 1.23
 				if err := rsp.Err(); err != nil {
 					// We got an error response, so just return the error.
 					return fmt.Errorf("cannot process watchdog response from remote process: %w", rsp.Err())
@@ -719,11 +702,26 @@ func Argon2OutOfProcessWatchdogMonitorHMACSHA256(period, timeout time.Duration) 
 				lastWatchdogResponse = rsp.WatchdogResponse
 			case <-tmb.Dying():
 				// Don't need to wait any more as the tomb has begun dying.
-				timer.Stop() // Make sure the timer can be collected. Not necessary from go 1.23
 				return nil
 			}
+			return nil
 		}
+
 		return nil
+	}
+}
+
+// NoArgon2OutOfProcessWatchdogMonitor is an implmenentation of Argon2OutOfProcessWatchdogMonitor that
+// provides no watchdog functionality. It is paired with [NoArgon2OutOfProcessWatchdogHandler] on the
+// remote side. It holds the watchdog goroutine in a parked state for the lifetime of the tomb.
+func NoArgon2OutOfProcessWatchdogMonitor() Argon2OutOfProcessWatchdogMonitor {
+	return func(tmb *tomb.Tomb, reqChan chan<- *Argon2OutOfProcessRequest, rspChan <-chan *Argon2OutOfProcessResponse) error {
+		select {
+		case <-tmb.Dying():
+			return nil
+		case <-rspChan:
+			return errors.New("unexpected watchdog response")
+		}
 	}
 }
 
@@ -766,16 +764,23 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 	var actualRsp *Argon2OutOfProcessResponse
 	tmb := new(tomb.Tomb)
 
-	// Spin up a routine to handle communications with the remote process and wait
-	// for it to exit.
+	// Spin up a routine to handle communications with the remote process.
 	tmb.Go(func() error {
+		// Spin up a routine for killing the child process if it doesn't
+		// die cleanly
+		tmb.Go(func() error {
+			<-tmb.Dying()
+
+			select {}
+		})
 		// wdReqChan is sent requests from the watchdog monitor which are then
 		// received by another goroutine, which serializes them and sends them to
 		// the remote process via its stdin.
 		wdReqChan := make(chan *Argon2OutOfProcessRequest)
 
 		// wdRspChan is sent watchdog responses received from the remote process
-		// via stdout, and they are subsequently received by the watchdog monitor.
+		// via stdout, and they are subsequently received by the watchdog monitor
+		// for processing.
 		wdRspChan := make(chan *Argon2OutOfProcessResponse)
 
 		// reqChan is sent the main KDF request, which is received by another goroutine,
@@ -797,10 +802,8 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 					// We have a request from the watchdog monitor to send.
 					jsonReq = req
 				case <-tmb.Dying():
-					// The tomb has begun dying - this is a normal part of shutdown,
-					// so return now. Senders to the channels we receive need to be
-					// careful about handling this routine terminating before they
-					// do in order to avoid deadlocks with unbuffered channels.
+					// If the tomb begins dying, end this routine - this is a normal
+					// shutdown of this routine.
 					return nil
 				}
 
@@ -811,35 +814,18 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 				}
 
 			}
-			panic("not reached")
+			return nil
 		})
 
-		// Send the initial request. This will block until the request
-		// is received by the other end (the previously started go
-		// routine), or until the tomb enters a dying state.
-		select {
-		case reqChan <- req:
-			// Initial request sent ok.
-		case <-tmb.Dying():
-			// Initial request was not sent, because the tomb is already
-			// dying and the receiving end has already gone away.
-			//
-			// This is an abnormal condition - nothing should have
-			// put the tomb into a dying state at this point. There
-			// should already be an error associated with whatever
-			// caused this, but just in case there isn't, we'll return
-			// our own error from the current routine.
-			return errors.New("internal error: cannot send KDF request because the tomb is already in a dying state for an unknown reason")
-		}
-
-		// Spin up another routine to run the supplied watchdog implementation.
+		// Spin up another routine to run the watchdog
 		tmb.Go(func() error {
 			err := k.watchdog(tmb, wdReqChan, wdRspChan)
-			if err != nil {
-				// If the watchdog returns an error, then we kill the remote process.
-				if err := cmd.Process.Kill(); err != nil {
-					return fmt.Errorf("cannot kill remote process that stopped responding to watchdog: %w", err)
-				}
+			if err == nil && tmb.Alive() {
+				// The watchdog returning an error will terminate the tomb, but if
+				// it returns no error whilst the tomb is still alive, then consider
+				// this to be unexpected. In this case, begin the termination of the
+				// tomb.
+				return errors.New("watchdog monitor terminated unexpectedly")
 			}
 			return err
 		})
@@ -847,16 +833,10 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 		// Wait for responses from the remote process whilst the tomb is alive.
 		for tmb.Alive() {
 			// Wait for a response from the io.Reader. The only way to unblock this is
-			// if the remote process sends something, closes its end of the OS pipe
-			// explicitly, or is terminated (either by its own choice or by us).
-			//
-			// In general, the last response received is the response to the initial KDF
-			// request. When we receive this, we put the tomb into a dying state and therefore
-			// there won't be another iteration of this loop and this code won't be reached
-			// again.
-			//
-			// Of course, if this instance is created with a proper watchdog implementation,
-			// we can kill processes that we know are genuinely not responding as well.
+			// if the remote process sends something or closes its end of the OS pipe.
+			// We do no special error handling here like we do on the remote side for the
+			// request channel - in general, the last response is the result of the KDF
+			// operation which begins the tomb's dying process anyway.
 			dec := json.NewDecoder(stdoutPipe)
 			dec.DisallowUnknownFields()
 			var rsp *Argon2OutOfProcessResponse
@@ -866,22 +846,9 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 
 			switch rsp.Command {
 			case Argon2OutOfProcessCommandWatchdog:
-				// Direct watchdog responses to wdRspChan so they can be received by
-				// the watchdog monitor. This blocks until the watchdog monitor receives
-				// the response or the tomb enters a dying state.
-				select {
-				case wdRspChan <- rsp:
-					// Watchdog response sent to watchdog monitor ok.
-				case <-tmb.Dying():
-					// Watchdog response was not sent to the watchdog
-					// monitor because the tomb is in a dying state and
-					// the receiving end has already gone away (watchdog
-					// implementations are meant to end once the tomb enters
-					// a dying state).
-					//
-					// There's nothing else to do as the outer loop will just
-					// not run another iteration again.
-				}
+				// Direct watchdog responses to wdRspChan so they can be picked up by
+				// the watchdog handler.
+				wdRspChan <- rsp
 			default:
 				// For any other response, first of all make sure that the command value is
 				// consistent with the sent command.
@@ -896,34 +863,6 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 				tmb.Kill(nil)
 			}
 		}
-
-		// Set up a routine to kill the process if it doesn't terminate within 2 seconds.
-		waitedChan := make(chan struct{})
-		tmb.Go(func() error {
-			timer := time.NewTimer(2 * time.Second)
-			select {
-			case <-timer.C:
-				// The process has not terminated cleanly, so kill it.
-				if err := cmd.Process.Kill(); err != nil {
-					return fmt.Errorf("cannot kill remote process that hasn't terminated properly: %w", err)
-				}
-			case <-waitedChan:
-				// The process terminated cleanly
-				timer.Stop() // Make sure the timer can be collected. Not necessary from go 1.23
-			}
-			return nil
-		})
-
-		// Closing the stdin pipe might be necessary to unblock a stuck goroutine in the
-		// remote process. It is necessary for WaitForAndRunArgon2OutOfProcessRequest.
-		if err := stdinPipe.Close(); err != nil {
-			return fmt.Errorf("cannot close stdin pipe: %w", err)
-		}
-		// We can wait for the remote process to exit now.
-		if err := cmd.Wait(); err != nil {
-			return fmt.Errorf("an error occurred whilst waiting for the remote process to finish: %w", err)
-		}
-		close(waitedChan)
 		return nil
 	})
 
@@ -933,7 +872,15 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 		// to Tomb.Kill. There's no benefit to adding additional context here.
 		return nil, err
 	}
-
+	// Closing the stdin pipe is necessary for WaitForAndRunArgon2OutOfProcessRequest to finish
+	// on the remote side (so that the child process exits cleanly)
+	if err := stdinPipe.Close(); err != nil {
+		return nil, fmt.Errorf("cannot close stdin pipe: %w", err)
+	}
+	// We can wait for the remote process to exit now.
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("an error occurred whilst waiting for the remote process to finish: %w", err)
+	}
 	return actualRsp, nil
 }
 
@@ -978,25 +925,30 @@ func (k *outOfProcessArgon2KDFImpl) Time(mode Argon2Mode, params *Argon2CostPara
 
 // NewOutOfProcessArgonKDF returns a new Argon2KDF that runs each KDF invocation in a
 // short-lived handler process, using a *[exec.Cmd] created by the supplied function,
-// and using a protocol compatibile with [WaitForAndRunArgon2OutOfProcessRequest]
-// in the handler process.
+// and using a protocol compatibile with [WaitForAndRunArgon2OutOfProcessRequest], which
+// will be expected to run in the remote handler process.
 //
 // The supplied function must not start the process, nor should it set the Stdin or
 // Stdout fields of the [exec.Cmd] structure, as 2 pipes will be created for sending
 // the request to the process via its stdin and receiving the response from the process
 // via its stdout.
 //
-// An optional watchdog monitor can be supplied. If nil, the
-// [NoArgon2OutOfProcessWatchdogMonitor] is used by default, providing no watchdog
+// The optional watchdog field makes it possible to send periodic pings to the remote
+// process to ensure that it is still alive and still processing IPC requests, given that
+// the KDF may be asked to run for a long time, and the KDF itself is not interruptible.
+// The supplied monitor must be paired with a matching handler on the remote side (passed to
+// [WaitForAndRunArgon2OutOfProcessRequest] for this to work properly. If no monitor is
+// supplied, [NoArgon2OutOfProcessWatchdogMonitor] is used, which provides no watchdog monitor
 // functionality.
+//
+// The watchdog functionality is more suitable for KDF uses that are more than 1 second long.
 func NewOutOfProcessArgon2KDF(newHandlerCmd func() (*exec.Cmd, error), watchdog Argon2OutOfProcessWatchdogMonitor) Argon2KDF {
 	if newHandlerCmd == nil {
 		panic("newHandlerCmd cannot be nil")
 	}
 	if watchdog == nil {
-		watchdog = NoArgon2OutOfProcessWatchdogMonitor
+		watchdog = NoArgon2OutOfProcessWatchdogMonitor()
 	}
-
 	return &outOfProcessArgon2KDFImpl{
 		newHandlerCmd: newHandlerCmd,
 		watchdog:      watchdog,

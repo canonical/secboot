@@ -17,30 +17,48 @@
  *
  */
 
-// Package bootscope provides a way to bind keys to certain system properties for
-// platforms that don't support measured boot.
-//
-// It is used to track the currently used boot mode and model, provides
-// the KeyDataScope object which encapsulates the binding of boot environment
-// information to a key, and helper functions used to authenticate and bind a
-// scope with a key.
 package bootscope
 
 import (
 	"sync/atomic"
 
-	"github.com/snapcore/secboot"
-	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
+	"github.com/snapcore/snapd/asserts"
 )
 
 var (
-	currentBootMode atomic.Value
+	currentModel atomic.Value
 )
 
-func SetModel(model secboot.SnapModel) {
-	internal_bootscope.SetModel(model)
+// SnapModel exists to avoid a circular dependency on the core secboot package.
+// It must be kept in sync with the interface in snap.go.
+type SnapModel interface {
+	Series() string
+	BrandID() string
+	Model() string
+	Classic() bool
+	Grade() asserts.ModelGrade
+	SignKeyID() string
 }
 
-func SetBootMode(mode string) {
-	currentBootMode.Store(mode)
+func GetModel() SnapModel {
+	model, ok := currentModel.Load().(SnapModel)
+	if !ok {
+		return nil
+	}
+	return model
+}
+
+func SetModel(model SnapModel) {
+	currentModel.Store(model)
+}
+
+var (
+	EnableUnsafeClearModelForTesting = false
+)
+
+func UnsafeClearModelForTesting() {
+	if !EnableUnsafeClearModelForTesting {
+		panic("can only be called in test binaries")
+	}
+	currentModel = atomic.Value{}
 }

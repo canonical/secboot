@@ -32,6 +32,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/argon2"
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
@@ -40,8 +41,7 @@ type argon2Suite struct {
 
 	kdf testutil.MockArgon2KDF
 
-	halfTotalRamKiB uint32
-	cpus            uint8
+	cpusAuto int
 }
 
 func (s *argon2Suite) SetUpSuite(c *C) {
@@ -49,16 +49,15 @@ func (s *argon2Suite) SetUpSuite(c *C) {
 	c.Check(unix.Sysinfo(&sysInfo), IsNil)
 
 	halfTotalRamKiB := uint64(sysInfo.Totalram) * uint64(sysInfo.Unit) / 2048
-	if halfTotalRamKiB > math.MaxUint32 {
-		halfTotalRamKiB = math.MaxUint32
+	if halfTotalRamKiB > math.MaxInt32 {
+		halfTotalRamKiB = math.MaxInt32
 	}
-	s.halfTotalRamKiB = uint32(halfTotalRamKiB)
 
 	cpus := runtime.NumCPU()
-	if cpus > math.MaxUint8 {
-		cpus = math.MaxUint8
+	if cpus > 4 {
+		cpus = 4
 	}
-	s.cpus = uint8(cpus)
+	s.cpusAuto = cpus
 }
 
 func (s *argon2Suite) SetUpTest(c *C) {
@@ -70,60 +69,6 @@ func (s *argon2Suite) SetUpTest(c *C) {
 	s.AddCleanup(func() { SetArgon2KDF(origKdf) })
 }
 
-func (s *argon2Suite) checkParams(c *C, opts *Argon2Options, ncpus uint8, params *KdfParams) {
-	expectedMode := Argon2id
-	if opts.Mode != Argon2Default {
-		expectedMode = opts.Mode
-	}
-	c.Check(params.Type, Equals, string(expectedMode))
-
-	if opts.ForceIterations != 0 {
-		c.Check(params.Time, Equals, int(opts.ForceIterations))
-
-		expectedMem := opts.MemoryKiB
-		if expectedMem == 0 {
-			expectedMem = 1 * 1024 * 1024
-		}
-		c.Check(params.Memory, Equals, int(expectedMem))
-
-		expectedThreads := opts.Parallel
-		if expectedThreads == 0 {
-			expectedThreads = uint8(ncpus)
-		}
-		c.Check(params.CPUs, Equals, int(expectedThreads))
-	} else {
-		targetDuration := opts.TargetDuration
-		if targetDuration == 0 {
-			targetDuration = 2 * time.Second
-		}
-		var kdf testutil.MockArgon2KDF
-		duration, _ := kdf.Time(Argon2Default, &Argon2CostParams{
-			Time:      uint32(params.Time),
-			MemoryKiB: uint32(params.Memory),
-			Threads:   uint8(params.CPUs),
-		})
-		c.Check(duration, Equals, targetDuration)
-
-		maxMem := opts.MemoryKiB
-		if maxMem == 0 {
-			maxMem = 1 * 1024 * 1024
-		}
-		if maxMem > s.halfTotalRamKiB {
-			maxMem = s.halfTotalRamKiB
-		}
-		c.Check(params.Memory, snapd_testutil.IntLessEqual, int(maxMem))
-
-		expectedThreads := opts.Parallel
-		if expectedThreads == 0 {
-			expectedThreads = uint8(ncpus)
-		}
-		if expectedThreads > 4 {
-			expectedThreads = 4
-		}
-		c.Check(params.CPUs, Equals, int(expectedThreads))
-	}
-}
-
 var _ = Suite(&argon2Suite{})
 
 func (s *argon2Suite) TestKDFParamsDefault(c *C) {
@@ -132,17 +77,42 @@ func (s *argon2Suite) TestKDFParamsDefault(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
 
-	s.checkParams(c, &opts, s.cpus, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   4,
+		Memory: 1024063,
+		CPUs:   s.cpusAuto,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsExplicitMode(c *C) {
 	var opts Argon2Options
 	opts.Mode = Argon2i
-	params, err := opts.KdfParams(9)
+	params, err := opts.KdfParams(0)
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2i)
 
-	s.checkParams(c, &opts, s.cpus, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2i",
+		Time:   4,
+		Memory: 1024063,
+		CPUs:   s.cpusAuto,
+	})
+}
+
+func (s *argon2Suite) TestKDFParamsTargetDuration(c *C) {
+	var opts Argon2Options
+	opts.TargetDuration = 1 * time.Second
+	params, err := opts.KdfParams(32)
+	c.Assert(err, IsNil)
+	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
+
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   4,
+		Memory: 512031,
+		CPUs:   s.cpusAuto,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsMemoryLimit(c *C) {
@@ -152,7 +122,12 @@ func (s *argon2Suite) TestKDFParamsMemoryLimit(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
 
-	s.checkParams(c, &opts, s.cpus, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   125,
+		Memory: 32 * 1024,
+		CPUs:   s.cpusAuto,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsForceBenchmarkedThreads(c *C) {
@@ -162,7 +137,12 @@ func (s *argon2Suite) TestKDFParamsForceBenchmarkedThreads(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2id)
 
-	s.checkParams(c, &opts, s.cpus, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   4,
+		Memory: 1024063,
+		CPUs:   1,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsForceIterations(c *C) {
@@ -175,7 +155,12 @@ func (s *argon2Suite) TestKDFParamsForceIterations(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
-	s.checkParams(c, &opts, 2, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   3,
+		Memory: 1 * 1024 * 1024,
+		CPUs:   2,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsForceMemory(c *C) {
@@ -189,7 +174,12 @@ func (s *argon2Suite) TestKDFParamsForceMemory(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
-	s.checkParams(c, &opts, 2, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   3,
+		Memory: 32 * 1024,
+		CPUs:   2,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsForceIterationsDifferentCPUNum(c *C) {
@@ -202,7 +192,12 @@ func (s *argon2Suite) TestKDFParamsForceIterationsDifferentCPUNum(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
-	s.checkParams(c, &opts, 4, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   3,
+		Memory: 1 * 1024 * 1024,
+		CPUs:   4,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsForceThreads(c *C) {
@@ -216,7 +211,12 @@ func (s *argon2Suite) TestKDFParamsForceThreads(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
-	s.checkParams(c, &opts, 1, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   3,
+		Memory: 1 * 1024 * 1024,
+		CPUs:   1,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsForceThreadsGreatherThanCPUNum(c *C) {
@@ -230,7 +230,12 @@ func (s *argon2Suite) TestKDFParamsForceThreadsGreatherThanCPUNum(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(s.kdf.BenchmarkMode, Equals, Argon2Default)
 
-	s.checkParams(c, &opts, 8, params)
+	c.Check(params, DeepEquals, &KdfParams{
+		Type:   "argon2id",
+		Time:   3,
+		Memory: 1 * 1024 * 1024,
+		CPUs:   8,
+	})
 }
 
 func (s *argon2Suite) TestKDFParamsInvalidForceIterations(c *C) {
@@ -288,12 +293,9 @@ func (s *argon2Suite) TestInProcessKDFTimeInvalidThreads(c *C) {
 	c.Check(err, ErrorMatches, `invalid number of threads`)
 }
 
-func (s *argon2Suite) TestSetArgon2KDFSuccess(c *C) {
-	SetArgon2KDF(InProcessArgon2KDF)
-	c.Check(GlobalArgon2KDF(), Equals, InProcessArgon2KDF)
-	c.Check(SetArgon2KDF(nil), Equals, InProcessArgon2KDF)
-	_, err := GlobalArgon2KDF().Time(Argon2id, nil)
-	c.Check(err, ErrorMatches, `no argon2 KDF: please call secboot.SetArgon2KDF`)
+func (s *argon2Suite) TestModeConstants(c *C) {
+	c.Check(Argon2i, Equals, Argon2Mode(argon2.ModeI))
+	c.Check(Argon2id, Equals, Argon2Mode(argon2.ModeID))
 }
 
 func (s *argon2Suite) TestSetArgon2KDFInHandlerProcessPanics(c *C) {

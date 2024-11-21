@@ -301,10 +301,10 @@ func (c *benchmarkContext) run(params *BenchmarkParams, keyFn KeyDurationFunc, s
 //
 // By design, this function consumes a lot of memory depending on the supplied
 // parameters. It may be desirable to execute it in a short-lived utility process.
-func KeyDuration(mode Mode, params *CostParams) time.Duration {
+func KeyDuration(mode Mode, params *CostParams) (time.Duration, error) {
 	start := time.Now()
-	Key(benchmarkPassword, benchmarkSalt, mode, params, benchmarkKeyLen)
-	return time.Now().Sub(start)
+	_, err := Key(benchmarkPassword, benchmarkSalt, mode, params, benchmarkKeyLen)
+	return time.Now().Sub(start), err
 }
 
 // KeyDurationFunc provides a mechanism to delegate key derivation measurements
@@ -349,7 +349,17 @@ func Benchmark(params *BenchmarkParams, keyFn KeyDurationFunc) (*CostParams, err
 // By design, this function consumes a lot of memory depending on the supplied parameters.
 // It may be desirable to execute it in a short-lived utility process.
 //
-// This will panic if the time or threads cost parameter are zero.
-func Key(passphrase string, salt []byte, mode Mode, params *CostParams, keyLen uint32) []byte {
-	return mode.keyFn()([]byte(passphrase), salt, params.Time, params.MemoryKiB, params.Threads, keyLen)
+// This will return an error if the time or threads cost parameter are zero. If the memory
+// cost is less than the minimum (8KiB per thread) for the specified number of threads, it
+// will be rounded up to the minimum accordingly.
+func Key(passphrase string, salt []byte, mode Mode, params *CostParams, keyLen uint32) ([]byte, error) {
+	switch {
+	case params == nil:
+		return nil, errors.New("nil params")
+	case params.Time == 0:
+		return nil, errors.New("invalid time cost")
+	case params.Threads == 0:
+		return nil, errors.New("invalid number of threads")
+	}
+	return mode.keyFn()([]byte(passphrase), salt, params.Time, params.MemoryKiB, params.Threads, keyLen), nil
 }
