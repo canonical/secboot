@@ -84,26 +84,6 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_PERMANENT: %w", err)
 	}
 
-	// Make sure that the DA lockout mode is not activated.
-	if tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0 {
-		return nil, false, ErrTPMLockout
-	}
-
-	// Make sure the lockout hierarchy auth value hasn't been set, unless we are
-	// being called in post-install mode.
-	if flags&checkTPM2DevicePostInstall == 0 {
-		if tpm2.PermanentAttributes(perm)&tpm2.AttrLockoutAuthSet > 0 {
-			return nil, false, ErrTPMLockoutAlreadyOwned
-		}
-	}
-	// Make sure the owner and endorsement hierarchy authorization values have never been set.
-	// We don't support this yet - this needs to be coordinated with snapd because snapd will need
-	// access to these values.
-	if tpm2.PermanentAttributes(perm)&(tpm2.AttrOwnerAuthSet|tpm2.AttrEndorsementAuthSet) > 0 {
-		// We don't support setting these at all yet
-		return nil, false, ErrUnsupportedTPMOwnership
-	}
-
 	// Check TPM2 device class. The class is associated with a TPM Profile (PTP) spec
 	// which says a lot about the TPM such as mandatory commands, algorithms, PCR banks
 	// and the minimum number of PCRs. In all honesty, we're only ever likely to see
@@ -137,29 +117,6 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		}
 	}
 
-	// Make sure we have enough NV counters for PCR policy revocation. We need at least 2 (1 normally, and
-	// an extra 1 during reprovision). The platform firmware may use up some of the allocation.
-	nvCountersMax, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyNVCountersMax)
-	if err != nil {
-		return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
-	}
-	if nvCountersMax > 0 {
-		// If the TPM returns 0, there are no limits to the number of counters other than
-		// available NV storage. Obtain the number of active counters.
-		nvCounters, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyNVCounters)
-		if err != nil {
-			return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
-		}
-		required := uint32(1) // extra index for re-provision
-		if flags&checkTPM2DevicePostInstall == 0 {
-			// This is pre-install, so we need the initial index for provision
-			required += 1
-		}
-		if (nvCountersMax - nvCounters) < required {
-			return nil, false, ErrTPMInsufficientNVCounters
-		}
-	}
-
 	// Determine whether we have a discrete TPM by querying the manufacturer.
 	// Assume that Intel is firmware (ie, Intel PTT) and everything else is discrete
 	// unless we are in a VM.
@@ -177,5 +134,49 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	if flags&checkTPM2DeviceInVM > 0 {
 		discreteTPM = false
 	}
+
+	if flags&checkTPM2DevicePostInstall == 0 {
+		// Perform some checks only during pre-install.
+
+		// Make sure that the DA lockout mode is not activated.
+		if tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0 {
+			return nil, false, ErrTPMLockout
+		}
+
+		// Make sure the lockout hierarchy auth value is not set.
+		if tpm2.PermanentAttributes(perm)&tpm2.AttrLockoutAuthSet > 0 {
+			return nil, false, &TPM2HierarchyOwnedError{Hierarchy: tpm2.HandleLockout}
+		}
+
+		// Make sure the owner hierarchy authorization value is not set.
+		if tpm2.PermanentAttributes(perm)&(tpm2.AttrOwnerAuthSet) > 0 {
+			return nil, false, &TPM2HierarchyOwnedError{Hierarchy: tpm2.HandleOwner}
+		}
+
+		// Make sure the endorsement hierarchy authorization value is not set.
+		if tpm2.PermanentAttributes(perm)&(tpm2.AttrEndorsementAuthSet) > 0 {
+			return nil, false, &TPM2HierarchyOwnedError{Hierarchy: tpm2.HandleEndorsement}
+		}
+
+		// Make sure we have enough NV counters for PCR policy revocation. We need at least 2 (1 normally, and
+		// an extra 1 during reprovision). The platform firmware may use up some of the allocation.
+		nvCountersMax, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyNVCountersMax)
+		if err != nil {
+			return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
+		}
+		if nvCountersMax > 0 {
+			// If the TPM returns 0, there are no limits to the number of counters other than
+			// available NV storage. If there are a finite number of counters, obtain the number
+			// of active counters.
+			nvCounters, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyNVCounters)
+			if err != nil {
+				return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
+			}
+			if (nvCountersMax - nvCounters) < 2 {
+				return nil, false, ErrTPMInsufficientNVCounters
+			}
+		}
+	}
+
 	return tpm, discreteTPM, nil
 }
