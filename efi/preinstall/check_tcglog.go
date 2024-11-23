@@ -84,11 +84,14 @@ func (r *pcrResults) Err() error {
 	}
 	if !r.extended() {
 		// Return an error if the PCR hasn't been extended.
+		// This generally shouldn't happen because there should at
+		// least be a EV_SEPARATOR event, and if there isn't one, we
+		// trigger errors elsewhere related to the structure of the log.
 		return errors.New("PCR has not been extended by platform firmware")
 	}
 	if !bytes.Equal(r.pcrValue, r.logValue) {
 		// The PCR value is inconsistent with the log value.
-		return fmt.Errorf("PCR value mismatch (actual from TPM %#x, reconstructed from log %#x)", r.pcrValue, r.logValue)
+		return &PCRValueMismatchError{PCRValue: r.pcrValue, LogValue: r.logValue}
 	}
 	return nil
 }
@@ -257,8 +260,7 @@ func checkFirmwareLogAgainstTPMForAlg(tpm *tpm2.TPMContext, log *tcglog.Log, alg
 		break
 	}
 	if !supported {
-		// The log doesn't contain the specified algorithm
-		return nil, errors.New("digest algorithm not present in log")
+		return nil, ErrPCRBankMissingFromLog
 	}
 
 	// Create the result tracker for PCRs 0-7
@@ -576,7 +578,7 @@ func (t *tcglogPhaseTracker) reachedOSPresent() bool {
 // PCRs set, but the errors will be accessible on the returned results struct.
 //
 // The returned results struct indicates the best PCR bank to use and specifies the TPM startup locality as well.
-func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, mandatoryPcrs tpm2.HandleList) (results *pcrBankResults, err error) {
+func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, mandatoryPcrs tpm2.HandleList, permitEmptyPCRBanks bool) (results *pcrBankResults, err error) {
 	// Make sure it's a crypto-agile log
 	if !log.Spec.IsEFI_2() {
 		return nil, errors.New("invalid log spec")
@@ -586,7 +588,10 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 	// likely to get SHA-256 here - it's only in very recent devices that we have TPMs with
 	// SHA-384 support and corresponding firmware integration.
 	// We try to keep all errors enountered during selection here.
-	mainErr := new(NoSuitablePCRAlgorithmError)
+	mainErr := &NoSuitablePCRAlgorithmError{
+		BankErrs: make(map[tpm2.HashAlgorithmId]error),
+		PCRErrs:  make(map[tpm2.HashAlgorithmId]map[tpm2.Handle]error),
+	}
 	var chosenResults *pcrBankResults
 	for _, alg := range supportedAlgs {
 		if chosenResults != nil {
@@ -596,6 +601,23 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 
 		results, err := checkFirmwareLogAgainstTPMForAlg(tpm, log, alg, mandatoryPcrs)
 		switch {
+		case errors.Is(err, ErrPCRBankMissingFromLog):
+			if !permitEmptyPCRBanks {
+				// Make sure that the TPM PCR bank is not enabled
+				pcrs, err := tpm.GetCapabilityPCRs()
+				if err != nil {
+					return nil, fmt.Errorf("cannot obtain active PCRs: %w", err)
+				}
+				for _, selection := range pcrs {
+					if selection.Hash == alg && len(selection.Select) > 0 {
+						// This bank is missing from the log but enabled on the TPM.
+						// This is very bad for remote attestation (not so bad for FDE), but treat
+						// this as a serious error nonetheless.
+						return nil, &EmptyPCRBankError{alg}
+					}
+				}
+			}
+			fallthrough
 		case err != nil:
 			// This entire bank is bad
 			mainErr.setBankErr(alg, err)
