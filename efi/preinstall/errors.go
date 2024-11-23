@@ -140,24 +140,13 @@ var (
 	// known then the TPM will most likely need to be cleared in order to fix this.
 	ErrTPMLockout = errors.New("TPM is in DA lockout mode")
 
-	// ErrTPMLockoutAlreadyOwned is returned wrapped from RunChecks if the authorization
-	// value for the lockout hierarchy is already set but the PostInstallChecks flag isn't
-	// supplied. If the lockout hierarchy is set at pre-install time, then the TPM will
-	// most likely need to be cleared.
-	ErrTPMLockoutAlreadyOwned = errors.New("TPM lockout hierarchy is already owned")
-
-	// ErrUnsupportedTPMOwnership is returned wrapped from RunChecks if the authorization
-	// value for the owner or endorsement hierarchies are set, which currently isn't
-	// supported by snapd. Snapd needs the use of both of these hierarchies, so if we
-	// want to support something other than snapd taking ownership of these in the future,
-	// this will need coordination with snapd.
-	ErrUnsupportedTPMOwnership = errors.New("either the TPM's storage or endorsement hierarchy is owned and this isn't currently supported")
-
-	// ErrTPMInsufficientNVCounters is returned wrapped from RunChecks if there are
+	// ErrTPMInsufficientNVCounters is returned wrapped in TPM2DeviceError if there are
 	// insufficient NV counters available for PCR policy revocation. If this is still
-	// the case after a TPM clear then it means that the platform firmware is using
-	// most of the allocation of available counters for itself, and maybe the
-	// feature needs to be disabled by snapd.
+	// the case after a TPM clear then it means that the platform firmware is using most
+	// of the allocation of available counters for itself, and maybe the feature needs
+	// to be disabled by snapd (although this would require an option to skip this check).
+	// This test only runs during pre-install, and not if the PostInstall flag is passed
+	// to RunChecks.
 	ErrTPMInsufficientNVCounters = errors.New("insufficient NV counters available")
 
 	// ErrNoPCClientTPM is returned wrapped from RunChecks if a TPM2 device exists
@@ -172,6 +161,29 @@ var (
 	// [github.com/canonical/go-tpm2/linux/RawDevice.PhysicalPresenceInterface].
 	ErrTPMDisabled = errors.New("TPM2 device is present but is currently disabled by the platform firmware")
 )
+
+// TPMHierarchyOwnedError is returned wrapped in TPM2DeviceError if the authorization value
+// for the specified hierarchy is set, but the PostInstallChecks flag isn't set. If a
+// hierarchy is owned during pre-install, the TPM will most likely need to be cleared.
+type TPM2HierarchyOwnedError struct {
+	Hierarchy tpm2.Handle
+}
+
+func (e *TPM2HierarchyOwnedError) Error() string {
+	var hierarchy string
+	switch e.Hierarchy {
+	case tpm2.HandleOwner:
+		hierarchy = "owner"
+	case tpm2.HandleLockout:
+		hierarchy = "lockout"
+	case tpm2.HandleEndorsement:
+		hierarchy = "endorsement"
+	default:
+		hierarchy = "unknwon"
+	}
+
+	return "TPM " + hierarchy + " hierarchy is currently owned"
+}
 
 // Errors related to general TCG log checks and PCR bank selection.
 
