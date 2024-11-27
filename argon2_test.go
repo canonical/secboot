@@ -298,12 +298,6 @@ func (s *argon2Suite) TestModeConstants(c *C) {
 	c.Check(Argon2id, Equals, Argon2Mode(argon2.ModeID))
 }
 
-func (s *argon2Suite) TestSetArgon2KDFInHandlerProcessPanics(c *C) {
-	SetIsArgon2HandlerProcess()
-	defer ClearIsArgon2HandlerProcess()
-	c.Check(func() { SetArgon2KDF(InProcessArgon2KDF) }, PanicMatches, `cannot call SetArgon2KDF in a process where SetIsArgon2HandlerProcess has already been called`)
-}
-
 type argon2Expensive struct{}
 
 var _ = Suite(&argon2Expensive{})

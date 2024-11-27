@@ -19,4 +19,13 @@
 
 package paths
 
-var RunDir = "/run"
+import "path/filepath"
+
+var (
+	RunDir = "/run"
+
+	// Argon2OutOfProcessHandlerSystemLockPath is the lock file path used to
+	// serialize KDF requests system-wide. All process's that use the system-wide
+	// lock participate in the lock/unlock contract described above.
+	Argon2OutOfProcessHandlerSystemLockPath = filepath.Join(RunDir, "snapd/argon2.lock")
+)

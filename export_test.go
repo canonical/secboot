@@ -1,3 +1,4 @@
+// go:build test
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
@@ -28,6 +29,7 @@ import (
 
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
+	"github.com/snapcore/secboot/internal/paths"
 )
 
 const (
@@ -35,15 +37,15 @@ const (
 )
 
 var (
-	GlobalArgon2KDF        = argon2KDF
-	UnmarshalV1KeyPayload  = unmarshalV1KeyPayload
-	UnmarshalProtectedKeys = unmarshalProtectedKeys
+	AcquireArgon2OutOfProcessHandlerSystemLock    = acquireArgon2OutOfProcessHandlerSystemLock
+	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
+	UnmarshalProtectedKeys                        = unmarshalProtectedKeys
 )
 
 type (
-	Argon2OutOfProcessHandler = argon2OutOfProcessHandler
-	KdfParams                 = kdfParams
-	ProtectedKeys             = protectedKeys
+	KdfParams     = kdfParams
+	ProtectedKeys = protectedKeys
 )
 
 func KDFOptionsKdfParams(o KDFOptions, keyLen uint32) (*KdfParams, error) {
@@ -56,6 +58,22 @@ func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
 
 func (o *PBKDF2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
 	return o.kdfParams(keyLen)
+}
+
+func MockArgon2OutOfProcessHandlerSystemLockPath(path string) (restore func()) {
+	orig := paths.Argon2OutOfProcessHandlerSystemLockPath
+	paths.Argon2OutOfProcessHandlerSystemLockPath = path
+	return func() {
+		paths.Argon2OutOfProcessHandlerSystemLockPath = orig
+	}
+}
+
+func MockArgon2SysLockStderr(w io.Writer) (restore func()) {
+	orig := argon2SysLockStderr
+	argon2SysLockStderr = w
+	return func() {
+		argon2SysLockStderr = orig
+	}
 }
 
 func MockLUKS2Activate(fn func(string, string, []byte, int) error) (restore func()) {
@@ -174,16 +192,8 @@ func MockHashAlgAvailable() (restore func()) {
 	}
 }
 
-// ClearIsArgon2HandlerProcess does something that isn't possible in production code
-// and turns an argon2 handler process back into a process that isn't configured to
-// handle argon2 requests. The only reason to do this is to bypass the limitation that
-// a handler process can only handle one request, so we also run a garbage collection
-// here to ensure the test binary doesn't run out of memory. It's quite possible that this
-// function violates any safety provided by the atomic modifications to the
-// argon2OutOfProcessStatus global variable and introduces race conditions that aren't
-// present in production code.
-func ClearIsArgon2HandlerProcess() {
-	atomic.StoreUint32(&argon2OutOfProcessStatus, notArgon2HandlerProcess)
+func ResetArgon2OutOfProcessHandlerStatus() {
+	atomic.StoreUint32(&argon2OutOfProcessHandlerStatus, inProcessArgon2KDFAvailable)
 	runtime.GC()
 }
 

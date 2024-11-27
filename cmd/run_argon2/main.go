@@ -28,24 +28,26 @@ import (
 	"os"
 
 	"github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/paths"
 )
 
 func run() error {
-	if len(os.Args) < 2 {
-		return errors.New("usage: echo <input_request_json> | run_argon2 <watchdog> [<optional_params>]")
+	if len(os.Args) < 3 {
+		return errors.New("usage: echo <input_request_json> | run_argon2 <lockpath> <watchdog> [<optional_params>]")
 	}
-	secboot.SetIsArgon2HandlerProcess()
+
+	paths.Argon2OutOfProcessHandlerSystemLockPath = os.Args[1]
 
 	var watchdog secboot.Argon2OutOfProcessWatchdogHandler
-	switch os.Args[1] {
+	switch os.Args[2] {
 	case "none":
 		watchdog = secboot.NoArgon2OutOfProcessWatchdogHandler()
 	case "hmac":
-		if len(os.Args) != 3 {
+		if len(os.Args) != 4 {
 			return errors.New("usage: echo <input_request_json> | run_argon2 hmac <alg>")
 		}
 		var alg crypto.Hash
-		switch os.Args[2] {
+		switch os.Args[3] {
 		case "sha1":
 			alg = crypto.SHA1
 		case "sha224":
@@ -57,7 +59,7 @@ func run() error {
 		case "sha512":
 			alg = crypto.SHA512
 		default:
-			return fmt.Errorf("unrecognized HMAC digest algorithm %q", os.Args[2])
+			return fmt.Errorf("unrecognized HMAC digest algorithm %q", os.Args[3])
 		}
 		watchdog = secboot.HMACArgon2OutOfProcessWatchdogHandler(alg)
 	}
