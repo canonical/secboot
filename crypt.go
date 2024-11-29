@@ -934,3 +934,34 @@ func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
 
 	return nil
 }
+
+func NameLegacyLUKS2ContainerKey(devicePath string, keyslot int, newName string) error {
+	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	if err != nil {
+		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+	}
+
+	for _, name := range view.TokenNames() {
+		_, id, _ := view.TokenByName(name)
+		if keyslot == id {
+			return errors.New("keyslot already has a name")
+		}
+	}
+
+	token := &luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenName:    newName,
+			TokenKeyslot: keyslot,
+		},
+	}
+
+	if err := luks2ImportToken(devicePath, token, nil); err != nil {
+		return xerrors.Errorf("cannot import token: %w", err)
+	}
+
+	if err := luks2SetSlotPriority(devicePath, keyslot, luks2.SlotPriorityHigh); err != nil {
+		return xerrors.Errorf("cannot change keyslot priority: %w", err)
+	}
+
+	return nil
+}
