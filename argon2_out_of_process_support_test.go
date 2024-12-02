@@ -1164,10 +1164,10 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFTime(c *C) {
 }
 
 func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveParallelSerialized(c *C) {
-	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 10*time.Minute, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
+	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 1*time.Minute, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
-		MemoryKiB: 2 * 1024 * 1024,
+		MemoryKiB: 512 * 1024,
 		Threads:   4,
 	}
 
@@ -1177,13 +1177,13 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveParallelSerial
 	go func() {
 		key, err := kdf.Derive("foo", testutil.DecodeHexString(c, "7ed928d8153e3084393d73f938ad3e03"), Argon2id, params, 32)
 		c.Check(err, IsNil)
-		c.Check(key, DeepEquals, testutil.DecodeHexString(c, "d38bda36abedb509c77cbc032d80f8ebc2c1742f12a4dbedfe42a20c77db51f3"))
+		c.Check(key, DeepEquals, testutil.DecodeHexString(c, "08f295932cdf618ac5a085f177d621ec0d0a0d2a4a3ed4e471d67133cb875c6a"))
 		wg.Done()
 	}()
 	go func() {
 		key, err := kdf.Derive("bar", testutil.DecodeHexString(c, "7ed928d8153e3084393d73f938ad3e03"), Argon2id, params, 32)
 		c.Check(err, IsNil)
-		c.Check(key, DeepEquals, testutil.DecodeHexString(c, "4f98f746990ccc53520a3096ce201e2935aac92649896c65fb5f947824f0032e"))
+		c.Check(key, DeepEquals, testutil.DecodeHexString(c, "1e75b6c1809f73f0127fffcf013241fe5476558b3a748e78e02638012bd1cc01"))
 		wg.Done()
 	}()
 	wg.Wait()
@@ -1193,7 +1193,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveParallelTimeou
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 100*time.Millisecond, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
-		MemoryKiB: 2 * 1024 * 1024,
+		MemoryKiB: 512 * 1024,
 		Threads:   4,
 	}
 
@@ -1203,7 +1203,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveParallelTimeou
 	go func() {
 		key, err := kdf.Derive("foo", testutil.DecodeHexString(c, "7ed928d8153e3084393d73f938ad3e03"), Argon2id, params, 32)
 		c.Check(err, IsNil)
-		c.Check(key, DeepEquals, testutil.DecodeHexString(c, "d38bda36abedb509c77cbc032d80f8ebc2c1742f12a4dbedfe42a20c77db51f3"))
+		c.Check(key, DeepEquals, testutil.DecodeHexString(c, "08f295932cdf618ac5a085f177d621ec0d0a0d2a4a3ed4e471d67133cb875c6a"))
 		wg.Done()
 	}()
 	go func() {
