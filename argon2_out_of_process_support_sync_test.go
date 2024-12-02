@@ -111,7 +111,7 @@ func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfPro
 	// Close our FD to free up the locking - it should loop and try again
 	c.Check(f.Close(), IsNil)
 
-	wg.Done()
+	wg.Wait()
 }
 
 func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfProcessHandlerSystemLockChangedInode(c *C) {
@@ -146,5 +146,5 @@ func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfPro
 	// Close our original FD to free up the locking - it should loop and try again
 	c.Check(f.Close(), IsNil)
 
-	wg.Done()
+	wg.Wait()
 }
