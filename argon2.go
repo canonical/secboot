@@ -130,7 +130,7 @@ func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 
 	mode := o.Mode
 	if mode == Argon2Default {
-		//
+		// Select the hybrid mode by default.
 		mode = Argon2id
 	}
 
