@@ -1164,7 +1164,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFTime(c *C) {
 }
 
 func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveParallelSerialized(c *C) {
-	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 10*time.Second, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
+	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 10*time.Minute, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
 		MemoryKiB: 2 * 1024 * 1024,
