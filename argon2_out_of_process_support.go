@@ -30,7 +30,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -540,11 +539,10 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 				// and we still want to be able to service watchdog requests on this routine whilst
 				// it's running. Block the current routine until we know the new routine has started
 				// so that the watchdog handler will fail if the new routine doesn't begin properly.
-				var startupWg sync.WaitGroup
-				startupWg.Add(1) // Mark the WaitGroup as waiting for a single event.
+				startupCh := make(chan struct{})
 
 				tmb.Go(func() error {
-					startupWg.Done() // Unblock the main routine.
+					startupCh <- struct{}{} // Unblock the main routine.
 
 					// Run the KDF request. This performs a lot of checking of the supplied
 					// request, so there's no need to repeat any of that here.
@@ -575,7 +573,7 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 
 				// Wait here for the KDF handler routine to startup. This should never fail to start-up,
 				// but doing this blocks the processing of watchdog requests temporarily.
-				startupWg.Wait()
+				<-startupCh
 			}
 		}
 		return tomb.ErrDying
