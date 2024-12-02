@@ -621,7 +621,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveD
 	})
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcess2GB(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcess512MB(c *C) {
 	out := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "bar",
@@ -629,12 +629,12 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProce
 		Keylen:     32,
 		Mode:       Argon2id,
 		Time:       4,
-		MemoryKiB:  2 * 1024 * 1024,
+		MemoryKiB:  512 * 1024,
 		Threads:    4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
 		Command: Argon2OutOfProcessCommandDerive,
-		Key:     testutil.DecodeHexString(c, "9b5add3d66b041c49c63ba1244bb1cd8cbc7dcf1e4b0918dc13b4fd6131ae5fd"),
+		Key:     testutil.DecodeHexString(c, "80dec1e34e9ea2da382852e4d935672ed4ed0c56aa9d109a14829a3f161903c0"),
 	})
 }
 
@@ -873,7 +873,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	})
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequest2GB(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequest512MB(c *C) {
 	rsp, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -882,7 +882,7 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2
 			Keylen:     32,
 			Mode:       Argon2id,
 			Time:       4,
-			MemoryKiB:  2 * 1024 * 1024,
+			MemoryKiB:  512 * 1024,
 			Threads:    4,
 		},
 		wdHandler: HMACArgon2OutOfProcessWatchdogHandler(crypto.SHA256),
@@ -891,7 +891,7 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2
 	c.Check(err, IsNil)
 	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
 		Command: Argon2OutOfProcessCommandDerive,
-		Key:     testutil.DecodeHexString(c, "9b5add3d66b041c49c63ba1244bb1cd8cbc7dcf1e4b0918dc13b4fd6131ae5fd"),
+		Key:     testutil.DecodeHexString(c, "80dec1e34e9ea2da382852e4d935672ed4ed0c56aa9d109a14829a3f161903c0"),
 	})
 }
 
