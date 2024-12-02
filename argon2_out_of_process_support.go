@@ -557,16 +557,9 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 						return tomb.ErrDying
 					}
 
-					if rsp.Err() != nil {
-						// We got an error response, which means that the KDF request was
-						// not handled. The error response has already been sent to the parent,
-						// so carry on processing requests by returning no error from this
-						// goroutine.
-						return nil
-					}
-
-					// As we only handle a single successful request, mark the tomb as dying to
-					// begin its clean shutdown.
+					// As we only handle a single request, mark the tomb as dying to
+					// begin its clean shutdown. RunArgon2OutOfProcessRequest will only
+					// run a single time.
 					tmb.Kill(nil)
 					return tomb.ErrDying
 				})
