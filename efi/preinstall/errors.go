@@ -38,6 +38,10 @@ func indentLines(n int, str string) string {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadString('\n')
+		if err == io.EOF && line == "" {
+			break
+		}
+		fmt.Fprintf(w, "%*s%s", n, "", line)
 		if err == io.EOF {
 			break
 		}
@@ -45,7 +49,6 @@ func indentLines(n int, str string) string {
 			fmt.Fprintf(w, "%*serror occurred whilst indenting: %v", n, "", err)
 			break
 		}
-		fmt.Fprintf(w, "%*s%s", n, "", line)
 	}
 	return w.String()
 }
@@ -62,7 +65,7 @@ func (e *RunChecksErrors) Error() string {
 	w := new(bytes.Buffer)
 	fmt.Fprintf(w, "one or more errors detected:\n")
 	for _, err := range e.Errs {
-		fmt.Fprintf(w, "%s\n", indentLines(2, "- "+err.Error()))
+		fmt.Fprintf(w, "%s\n", indentLines(0, "- "+err.Error()))
 	}
 	return w.String()
 }

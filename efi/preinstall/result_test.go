@@ -21,6 +21,7 @@ package preinstall_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
@@ -316,5 +317,29 @@ EFI based TPM protected FDE test support results:
 - Secure boot CAs used for verification:
   1: subject=CN=Microsoft Corporation UEFI CA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US, SKID=0x13adbf4309bd82709c8cd54f316ed522988a1bd4, pubkeyAlg=RSA, issuer=CN=Microsoft Corporation Third Party Marketplace Root,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US, AKID=0x45665243e17e5811bfd64e9e2355083b3a226aa8, sigAlg=SHA256-RSA
 - Flags: no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support,discrete-tpm-detected,var-drivers-present,absolute-active
+`)
+}
+
+func (s *resultSuite) TestCheckResultStringWithWarnings(c *C) {
+	result := CheckResult{
+		PCRAlg:            tpm2.HashAlgorithmSHA256,
+		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | VARDriversPresent | AbsoluteComputraceActive,
+		Warnings: &RunChecksErrors{
+			Errs: []error{
+				errors.New("some error 1"),
+				errors.New("some error 2"),
+			},
+		},
+	}
+	c.Check(result.String(), Equals, `
+EFI based TPM protected FDE test support results:
+- Best PCR algorithm: TPM_ALG_SHA256
+- Secure boot CAs used for verification:
+  1: subject=CN=Microsoft Corporation UEFI CA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US, SKID=0x13adbf4309bd82709c8cd54f316ed522988a1bd4, pubkeyAlg=RSA, issuer=CN=Microsoft Corporation Third Party Marketplace Root,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US, AKID=0x45665243e17e5811bfd64e9e2355083b3a226aa8, sigAlg=SHA256-RSA
+- Flags: no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support,discrete-tpm-detected,var-drivers-present,absolute-active
+- Warnings:
+  - some error 1
+  - some error 2
 `)
 }
