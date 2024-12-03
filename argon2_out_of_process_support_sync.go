@@ -103,6 +103,7 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 
 	// Run a loop to try to acquire the lock.
 	for {
+		skipBackoffCh := make(chan struct{}) // Don't wait 100ms before trying again
 		if triedOnce {
 			// If the loop has executed at least once, make sure that
 			// the timeout hasn't expired.
@@ -110,8 +111,10 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 			case <-timeoutTimer.C:
 				// The timeout has expired.
 				return nil, errArgon2OutOfProcessHandlerSystemLockTimeout
-			default:
-				// continue trying
+			case <-skipBackoffCh:
+				// continue trying without waiting
+			case <-time.NewTimer(100 * time.Millisecond).C:
+				// Wait for 100ms before trying again
 			}
 		}
 		triedOnce = true
@@ -146,15 +149,7 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 			// We failed to acquire the lock.
 			if os.IsTimeout(err) {
 				// The EWOULDBLOCK case. Someone else already has a lock on the
-				// file we have opened. Try again with a 10ms backoff time,
-				// unless the request timeout fires first.
-				select {
-				case <-time.NewTimer(10 * time.Millisecond).C:
-					// We can try again
-				case <-timeoutTimer.C:
-					// The timeout has expired
-					return nil, errArgon2OutOfProcessHandlerSystemLockTimeout
-				}
+				// file we have opened. Try again with a 100ms backoff time.
 				continue
 			}
 
@@ -174,6 +169,7 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 			if os.IsNotExist(err) {
 				// The lock file path no longer exists because it was unlinked by
 				// another process. Try again immediately.
+				skipBackoffCh <- struct{}{}
 				continue
 			}
 
@@ -198,6 +194,7 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 		// The inode that we have a lock on is not the same one that the lock file
 		// path currently points to, so nothing is stopping another process from acquiring
 		// a lock. We should try again immediately.
+		skipBackoffCh <- struct{}{}
 	}
 
 	if lockFile == nil {
