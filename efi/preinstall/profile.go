@@ -213,7 +213,7 @@ func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnableP
 				// don't extend anything to the TPM, breaking the root-of-trust. This is true of the Microsoft UEFI CA 2011,
 				// and for now, we assume to be true of the 2023 UEFI CA unless Microsoft are more transparent about what is
 				// signed under this CA). It's also assumed to be true for any unrecognized CAs.
-				// This can be overridden with PCRProfileOptionsTrustCAsForBootCode.
+				// This can be overridden with PCRProfileOptionTrustCAsForBootCode.
 				if o.result.Flags&NoBootManagerCodeProfileSupport > 0 {
 					return nil, fmt.Errorf("cannot create a valid secure boot configuration: one or more CAs used for secure boot "+
 						"verification are not trusted to authenticate boot code and the PCRProfileOptionTrustCAsForBootCode "+
@@ -235,7 +235,7 @@ func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnableP
 				// (ie, they may have signed code in the past that can defeat our security model. This is true of the Microsoft
 				// UEFI CA 2011, and for now, we assume to be true of the 2023 UEFI CA unless Microsoft are more transparent about
 				// what they sign under this CA). It's also assumed to be true for any unrecognized CAs.
-				// This can be overridden with PCRProfileOptionsTrustCAsForVARSuppliedDrivers.
+				// This can be overridden with PCRProfileOptionTrustCAsForVARSuppliedDrivers.
 				includePcr2 = true
 				if !isPcr2Supported {
 					return nil, fmt.Errorf("cannot create a valid secure boot configuration: one or more CAs used for secure boot "+
