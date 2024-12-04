@@ -177,7 +177,7 @@ func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 		}
 
 		if o.MemoryKiB != 0 {
-			// The memory cost has been spcified expli
+			// The memory cost has been specified explicitly
 			benchmarkParams.MaxMemoryCostKiB = o.MemoryKiB // this is capped to 4GiB by internal/argon2.
 		}
 		if o.TargetDuration != 0 {
