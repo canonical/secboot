@@ -542,7 +542,7 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 				startupCh := make(chan struct{})
 
 				tmb.Go(func() error {
-					startupCh <- struct{}{} // Unblock the main routine.
+					close(startupCh)
 
 					// Run the KDF request. This performs a lot of checking of the supplied
 					// request, so there's no need to repeat any of that here.
