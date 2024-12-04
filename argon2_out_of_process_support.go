@@ -478,7 +478,6 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.Writer, watchdo
 			// eventually returning an error to the caller.
 			var req *Argon2OutOfProcessRequest
 			dec := json.NewDecoder(in)
-			dec.DisallowUnknownFields()
 			if err := dec.Decode(&req); err != nil {
 				// Decoding returned an error.
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
@@ -832,7 +831,6 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 			// request channel - in general, the last response is the result of the KDF
 			// operation which begins the tomb's dying process anyway.
 			dec := json.NewDecoder(stdoutPipe)
-			dec.DisallowUnknownFields()
 			var rsp *Argon2OutOfProcessResponse
 			if err := dec.Decode(&rsp); err != nil {
 				return fmt.Errorf("cannot decode response: %w", err)
