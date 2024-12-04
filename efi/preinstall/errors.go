@@ -20,13 +20,95 @@
 package preinstall
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
+
+// makeIndentedListItem turns the supplied string into a list item by prepending
+// the supplied marker string (which could be a bullet point or numeric character)
+// to the supplied string, useful for displaying multiple errors. In a multi-line
+// string, subsequent lines in the supplied string will all be aligned with the start
+// of the first line after the marker. The indentation argument specifies the
+// indentation of the maker, in the number of characters.
+func makeIndentedListItem(indentation int, marker, str string) string {
+	scanner := bufio.NewScanner(bytes.NewReader([]byte(str)))
+
+	// lastLineEndsInNewline is needed as a flag to determine whether we need
+	// to return our string with a newline terminator. This is because, whilst
+	// the default bufio.Scanner implementation, which uses bufio.ScanLines,
+	// returns each line of text separately, it does not return the newline
+	// characters. We do a bit of a hack here to intercept the bufio.ScanLines
+	// call to determine if the last line was terminated with a newline character.
+	lastLineEndsInNewline := false
+	scanner.Split(func(data []byte, atEOF bool) (adv int, token []byte, err error) {
+		adv, token, err = bufio.ScanLines(data, atEOF)
+		if atEOF {
+			switch {
+			case len(data) == 0:
+				// The last call was with data and !atEOF, so the last byte
+				// had to have been a newline in order to end up here.
+				lastLineEndsInNewline = true
+			case adv == len(data) && data[len(data)-1] == byte('\n'):
+				// The data argument contains all of the remaining data, we
+				// advanced to the end of it, and the last character is a
+				// newline.
+				lastLineEndsInNewline = true
+			}
+		}
+		return adv, token, err
+	})
+
+	w := new(bytes.Buffer)
+
+	// Start the first line with a hyphen, at the specified indentation.
+	fmt.Fprintf(w, "%*s%s ", indentation, "", marker)
+	firstLine := true // we treat the first and subsequent lines differently.
+	for scanner.Scan() {
+		if firstLine {
+			io.WriteString(w, scanner.Text())
+			firstLine = false
+			continue
+		}
+
+		// Subsequent lines should be aligned with the first line.
+		fmt.Fprintf(w, "\n%*s%s", indentation+2, "", scanner.Text())
+	}
+	if scanner.Err() != nil {
+		// If an error occurred in scanning, add the error message to our output.
+		fmt.Fprintf(w, "\n%*s<scanner error: %v>", indentation+2, "", scanner.Err())
+	}
+	if lastLineEndsInNewline {
+		io.WriteString(w, "\n")
+	}
+	return w.String()
+}
+
+// RunChecksErrors may be returned unwrapped from [RunChecks] containing a collection
+// of errors found during the process of running various tests on the platform.
+// It provides a mechanism to access each individual error. This is used as an alternative
+// to aborting early, in order for the caller to gather as much information as possible.
+type RunChecksErrors struct {
+	Errs []error // All of the errors collected during the execution of RunChecks.
+}
+
+func (e *RunChecksErrors) Error() string {
+	w := new(bytes.Buffer)
+	fmt.Fprintf(w, "one or more errors detected:\n")
+	for _, err := range e.Errs {
+		io.WriteString(w, makeIndentedListItem(0, "-", err.Error()))
+	}
+	return w.String()
+}
+
+func (e *RunChecksErrors) addErr(err error) {
+	e.Errs = append(e.Errs, err)
+}
 
 // Errors related to checking platform firmware protections.
 
@@ -144,13 +226,32 @@ func (e *TPM2HierarchyOwnedError) Error() string {
 
 // Errors related to general TCG log checks and PCR bank selection.
 
+var (
+	// ErrPCRBankMissingFromLog may be returned wrapped by NoSuitablePCRAlgorithmError
+	// in the event where a PCR bank does not exist in the TCG log. It may be obtained from
+	// the BankErrs field.
+	ErrPCRBankMissingFromLog = errors.New("the PCR bank is missing from the TCG log")
+)
+
+// PCRValueMismatchError may be returned wrapped by NoSuitablePCRAlgorithmError for a specific
+// PCR in the event where there is a mismatch between the actual PCR value and the value reconstructed
+// from the TCG log. It may be obtained from the PCRErrs field.
+type PCRValueMismatchError struct {
+	PCRValue tpm2.Digest // The PCR value obtained from the TPM.
+	LogValue tpm2.Digest // The expected value reconstructed from the TCG log.
+}
+
+func (e *PCRValueMismatchError) Error() string {
+	return fmt.Sprintf("PCR value mismatch (actual from TPM %#x, reconstructed from log %#x)", e.PCRValue, e.LogValue)
+}
+
 // NoSuitablePCRAlgorithmError is returned wrapped from [RunChecks] if there is no suitable PCR bank
 // where the log matches the TPM values when reconstructed. As multiple errors can occur during
 // testing (multiple banks and multiple PCRs), this error tries to keep as much information as
 // possible
 type NoSuitablePCRAlgorithmError struct {
-	bankErrs map[tpm2.HashAlgorithmId]error                 // bankErrs apply to an entire PCR bank
-	pcrErrs  map[tpm2.HashAlgorithmId]map[tpm2.Handle]error // pcrErrs apply to a single PCR in a single bank
+	BankErrs map[tpm2.HashAlgorithmId]error                 // BankErrs apply to an entire PCR bank
+	PCRErrs  map[tpm2.HashAlgorithmId]map[tpm2.Handle]error // PCRErrs apply to a single PCR in a single bank
 }
 
 func (e *NoSuitablePCRAlgorithmError) Error() string {
@@ -162,13 +263,13 @@ func (e *NoSuitablePCRAlgorithmError) Error() string {
 	// go maps don't guarantee when iterating over keys).
 	for _, alg := range supportedAlgs {
 		// Print error for this PCR bank first, if there is one.
-		if err, isErr := e.bankErrs[alg]; isErr {
+		if err, isErr := e.BankErrs[alg]; isErr {
 			// We have a general error for this PCR bank
 			fmt.Fprintf(w, "- %v: %v.\n", alg, err)
 		}
 
 		// Then print errors associated with individual PCRs in this bank.
-		pcrErrs, hasPcrErrs := e.pcrErrs[alg]
+		pcrErrs, hasPcrErrs := e.PCRErrs[alg]
 		if !hasPcrErrs {
 			// We have no individual PCR errors for this bank
 			continue
@@ -183,36 +284,14 @@ func (e *NoSuitablePCRAlgorithmError) Error() string {
 	return w.String()
 }
 
-// UnwrapBankError returns the error associated with the specified PCR bank if one
-// occurred, or nil if none occurred.
-func (e *NoSuitablePCRAlgorithmError) UnwrapBankError(alg tpm2.HashAlgorithmId) error {
-	return e.bankErrs[alg]
-}
-
-// UnwrapPCRError returns the error associated with the specified PCR in the specified
-// bank if one occurred, or nil if none occurred.
-func (e *NoSuitablePCRAlgorithmError) UnwrapPCRError(alg tpm2.HashAlgorithmId, pcr tpm2.Handle) error {
-	pcrErrs, exists := e.pcrErrs[alg]
-	if !exists {
-		return nil
-	}
-	return pcrErrs[pcr]
-}
-
 // setBankErr sets an error for an entire PCR bank
 func (e *NoSuitablePCRAlgorithmError) setBankErr(alg tpm2.HashAlgorithmId, err error) {
-	if e.bankErrs == nil {
-		e.bankErrs = make(map[tpm2.HashAlgorithmId]error)
-	}
-	e.bankErrs[alg] = err
+	e.BankErrs[alg] = err
 }
 
 // setPcrErrs sets errors for individual PCRs associated with a bank
 func (e *NoSuitablePCRAlgorithmError) setPcrErrs(results *pcrBankResults) {
-	if e.pcrErrs == nil {
-		e.pcrErrs = make(map[tpm2.HashAlgorithmId]map[tpm2.Handle]error)
-	}
-	e.pcrErrs[results.Alg] = results.pcrErrs()
+	e.PCRErrs[results.Alg] = results.pcrErrs()
 }
 
 // Errors related to secure boot policy PCR checks.
@@ -226,3 +305,48 @@ var (
 	// UEFI >= 2.5 that are in user mode, but this is not the case today.
 	ErrNoDeployedMode = errors.New("deployed mode should be enabled in order to generate secure boot profiles")
 )
+
+// UnsupportedReqiredPCRsError is returned from methods of [PCRProfileAutoEnablePCRsOption]
+// when a valid PCR configuration cannot be created based on the supplied [PCRProfileOptionsFlags]
+// and [CheckResult].
+type UnsupportedRequiredPCRsError struct {
+	PCRs tpm2.HandleList
+}
+
+func newUnsupportedRequiredPCRsError(required tpm2.HandleList, flags CheckResultFlags) *UnsupportedRequiredPCRsError {
+	var pcrs tpm2.HandleList
+	for _, pcr := range required {
+		var flag CheckResultFlags
+		switch pcr {
+		case 0:
+			flag = NoPlatformFirmwareProfileSupport
+		case 1:
+			flag = NoPlatformConfigProfileSupport
+		case 2:
+			flag = NoDriversAndAppsProfileSupport
+		case 3:
+			flag = NoDriversAndAppsConfigProfileSupport
+		case 4:
+			flag = NoBootManagerCodeProfileSupport
+		case 5:
+			flag = NoBootManagerConfigProfileSupport
+		case 7:
+			flag = NoSecureBootPolicyProfileSupport
+		}
+
+		if flags&flag > 0 {
+			pcrs = append(pcrs, pcr)
+		}
+	}
+
+	return &UnsupportedRequiredPCRsError{pcrs}
+}
+
+func (e *UnsupportedRequiredPCRsError) Error() string {
+	switch len(e.PCRs) {
+	case 1:
+		return fmt.Sprintf("PCR %v is required, but is unsupported", e.PCRs[0])
+	default:
+		return fmt.Sprintf("PCRs %v are required, but are unsupported", e.PCRs)
+	}
+}

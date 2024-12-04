@@ -40,22 +40,26 @@ var (
 	//go:embed testdata/MicrosoftUefiCA.crt
 	msUefiCACertPEM []byte
 
+	//go:embed testdata/MicrosoftUefiCA2023.crt
+	msUefiCACert2023PEM []byte
+
 	//go:embed testdata/shim-signed_1.54+15.7-0ubuntu1_amd64_latest.pk7
 	shimUbuntuSig4PEM []byte
 
 	//go:embed testdata/PkKek-1-snakeoil.pem
 	snakeoilCertPEM []byte
 
-	dellPKCert     []byte
-	msUefiCACert   []byte
-	shimUbuntuSig4 []byte
-	snakeoilCert   []byte
+	msUefiCACert     []byte
+	msUefiCACert2023 []byte
+	shimUbuntuSig4   []byte
+	snakeoilCert     []byte
 )
 
 func init() {
 	tpm2_testutil.AddCommandLineFlags()
 
 	msUefiCACert = testutil.MustDecodePEMType("CERTIFICATE", msUefiCACertPEM)
+	msUefiCACert2023 = testutil.MustDecodePEMType("CERTIFICATE", msUefiCACert2023PEM)
 	shimUbuntuSig4 = testutil.MustDecodePEMType("PKCS7", shimUbuntuSig4PEM)
 	snakeoilCert = testutil.MustDecodePEMType("CERTIFICATE", snakeoilCertPEM)
 }

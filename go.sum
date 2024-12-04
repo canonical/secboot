@@ -1,8 +1,8 @@
 github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb h1:+kA/9oHTqUx4P08ywKvmd7a1wOL3RLTrE0K958C15x8=
 github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb/go.mod h1:6j8Sw3dwYVcBXltEeGklDoK/8UJVJNQPUkg1ZdQUgbk=
 github.com/canonical/go-efilib v0.0.0-20210909101908-41435fa545d4/go.mod h1:9Sr9kd7IhQPYqaU5nut8Ky97/CtlhHDzQncQnrULgDM=
-github.com/canonical/go-efilib v1.3.1 h1:KnVlqrKn0ZDGAbgQt9tke5cvtqNRCmpEp0v7RGUVpqs=
-github.com/canonical/go-efilib v1.3.1/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
+github.com/canonical/go-efilib v1.4.1 h1:/VMNCypz+iVmnNuMcsm7WvmDMI1ObkEP2W1h8Ls7OyM=
+github.com/canonical/go-efilib v1.4.1/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0 h1:ZE2XMRFHcwlib3uU9is37+pKkkMloVoEPWmgQ6GK1yo=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=
