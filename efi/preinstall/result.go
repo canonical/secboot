@@ -25,6 +25,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strconv"
 	"strings"
 
 	"github.com/canonical/go-tpm2"
@@ -303,11 +305,11 @@ type CheckResult struct {
 func (r CheckResult) String() string {
 	w := new(bytes.Buffer)
 	fmt.Fprintf(w, "\nEFI based TPM protected FDE test support results:\n")
-	fmt.Fprintf(w, "- Best PCR algorithm: %v\n", r.PCRAlg)
-	fmt.Fprintf(w, "- Secure boot CAs used for verification:\n")
+	io.WriteString(w, makeIndentedListItem(0, "-", fmt.Sprintf("Best PCR algorithm: %v\n", r.PCRAlg)))
+	io.WriteString(w, makeIndentedListItem(0, "-", fmt.Sprintf("Secure boot CAs used for verification:\n")))
 	for i, ca := range r.UsedSecureBootCAs {
-		fmt.Fprintf(w, "  %d: subject=%v, SKID=%#x, pubkeyAlg=%v, issuer=%v, AKID=%#x, sigAlg=%v\n", i+1,
-			ca.Subject(), ca.SubjectKeyId(), ca.PublicKeyAlgorithm(), ca.Issuer(), ca.AuthorityKeyId(), ca.SignatureAlgorithm())
+		io.WriteString(w, makeIndentedListItem(2, strconv.Itoa(i+1)+":", fmt.Sprintf("subject=%v, SKID=%#x, pubkeyAlg=%v, issuer=%v, AKID=%#x, sigAlg=%v\n",
+			ca.Subject(), ca.SubjectKeyId(), ca.PublicKeyAlgorithm(), ca.Issuer(), ca.AuthorityKeyId(), ca.SignatureAlgorithm())))
 	}
 	var flags []string
 	for i := 0; i < 64; i++ {
@@ -322,11 +324,11 @@ func (r CheckResult) String() string {
 			flags = append(flags, str)
 		}
 	}
-	fmt.Fprintf(w, "- Flags: %s\n", strings.Join(flags, ","))
+	io.WriteString(w, makeIndentedListItem(0, "-", fmt.Sprintf("Flags: %s\n", strings.Join(flags, ","))))
 	if r.Warnings != nil && len(r.Warnings.Errs) > 0 {
-		fmt.Fprintf(w, "- Warnings:\n")
+		io.WriteString(w, makeIndentedListItem(0, "-", "Warnings:\n"))
 		for i := 0; i < len(r.Warnings.Errs); i++ {
-			fmt.Fprintf(w, "%s\n", indentLines(2, "- "+r.Warnings.Errs[i].Error()))
+			io.WriteString(w, makeIndentedListItem(2, "-", fmt.Sprintf("%v\n", r.Warnings.Errs[i])))
 		}
 	}
 	return w.String()

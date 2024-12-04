@@ -328,7 +328,8 @@ func (s *resultSuite) TestCheckResultStringWithWarnings(c *C) {
 		Warnings: &RunChecksErrors{
 			Errs: []error{
 				errors.New("some error 1"),
-				errors.New("some error 2"),
+				errors.New(`some error 2
+across more than one line`),
 			},
 		},
 	}
@@ -341,5 +342,6 @@ EFI based TPM protected FDE test support results:
 - Warnings:
   - some error 1
   - some error 2
+    across more than one line
 `)
 }

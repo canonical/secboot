@@ -30,25 +30,61 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-// indentLines is a helper for managing indenting in nested multi-line
-// errors.
-func indentLines(n int, str string) string {
-	r := bytes.NewReader([]byte(str))
+// makeIndentedListItem turns the supplied string into a list item by prepending
+// the supplied marker string (which could be a bullet point or numeric character)
+// to the supplied string, useful for displaying multiple errors. In a multi-line
+// string, subsequent lines in the supplied string will all be aligned with the start
+// of the first line after the marker. The indentation argument specifies the
+// indentation of the maker, in the number of characters.
+func makeIndentedListItem(indentation int, marker, str string) string {
+	scanner := bufio.NewScanner(bytes.NewReader([]byte(str)))
+
+	// lastLineEndsInNewline is needed as a flag to determine whether we need
+	// to return our string with a newline terminator. This is because, whilst
+	// the default bufio.Scanner implementation, which uses bufio.ScanLines,
+	// returns each line of text separately, it does not return the newline
+	// characters. We do a bit of a hack here to intercept the bufio.ScanLines
+	// call to determine if the last line was terminated with a newline character.
+	lastLineEndsInNewline := false
+	scanner.Split(func(data []byte, atEOF bool) (adv int, token []byte, err error) {
+		adv, token, err = bufio.ScanLines(data, atEOF)
+		if atEOF {
+			switch {
+			case len(data) == 0:
+				// The last call was with data and !atEOF, so the last byte
+				// had to have been a newline in order to end up here.
+				lastLineEndsInNewline = true
+			case adv == len(data) && data[len(data)-1] == byte('\n'):
+				// The data argument contains all of the remaining data, we
+				// advanced to the end of it, and the last character is a
+				// newline.
+				lastLineEndsInNewline = true
+			}
+		}
+		return adv, token, err
+	})
+
 	w := new(bytes.Buffer)
-	br := bufio.NewReader(r)
-	for {
-		line, err := br.ReadString('\n')
-		if err == io.EOF && line == "" {
-			break
+
+	// Start the first line with a hyphen, at the specified indentation.
+	fmt.Fprintf(w, "%*s%s ", indentation, "", marker)
+	firstLine := true // we treat the first and subsequent lines differently.
+	for scanner.Scan() {
+		if firstLine {
+			io.WriteString(w, scanner.Text())
+			firstLine = false
+			continue
 		}
-		fmt.Fprintf(w, "%*s%s", n, "", line)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			fmt.Fprintf(w, "%*serror occurred whilst indenting: %v", n, "", err)
-			break
-		}
+
+		// Subsequent lines should be aligned with the first line.
+		fmt.Fprintf(w, "\n%*s%s", indentation+2, "", scanner.Text())
+	}
+	if scanner.Err() != nil {
+		// If an error occurred in scanning, add the error message to our output.
+		fmt.Fprintf(w, "\n%*s<scanner error: %v>", indentation+2, "", scanner.Err())
+	}
+	if lastLineEndsInNewline {
+		io.WriteString(w, "\n")
 	}
 	return w.String()
 }
@@ -65,7 +101,7 @@ func (e *RunChecksErrors) Error() string {
 	w := new(bytes.Buffer)
 	fmt.Fprintf(w, "one or more errors detected:\n")
 	for _, err := range e.Errs {
-		fmt.Fprintf(w, "%s\n", indentLines(0, "- "+err.Error()))
+		io.WriteString(w, makeIndentedListItem(0, "-", err.Error()))
 	}
 	return w.String()
 }
