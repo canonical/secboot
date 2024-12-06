@@ -625,25 +625,23 @@ type Argon2OutOfProcessWatchdogMonitor = func(tmb *tomb.Tomb, reqChan chan<- *Ar
 
 // HMACArgon2OutOfProcessWatchdogMonitor returns a watchdog monitor that generates a
 // challenge every period, computes a HMAC of this challenge, keyed with previously received
-// watchdog response. It stops and returns an error if it doen't receive a valid respose
-// in the specified timeout. This is intended be paired with [HMACArgon2OutOfProcessWatchdogHandler]
-// on the remote side.
-func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period, timeout time.Duration) Argon2OutOfProcessWatchdogMonitor {
-	if timeout > period {
-		panic("watchdog timeout can't be larger than period")
-	}
+// watchdog response. It stops and returns an error if it doen't receive a valid response
+// before the next cycle is meant to run. This is intended be paired with
+// [HMACArgon2OutOfProcessWatchdogHandler] on the remote side.
+func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period time.Duration) Argon2OutOfProcessWatchdogMonitor {
 	if !alg.Available() {
 		panic("specified digest algorithm not available")
 	}
 
 	return func(tmb *tomb.Tomb, reqChan chan<- *Argon2OutOfProcessRequest, rspChan <-chan *Argon2OutOfProcessResponse) error {
 		lastWatchdogResponse := make([]byte, 32) // the last response received from the child.
+		ticker := time.NewTicker(period)
 
 		// Run the watchdog whilst the tomb is alive.
 		for tmb.Alive() {
-			// Run it every defined period
+			// Wait for the next tick
 			select {
-			case <-time.NewTimer(period).C:
+			case <-ticker.C:
 			case <-tmb.Dying():
 				// Handle the tomb dying before the end of the period.
 				return tomb.ErrDying
@@ -676,7 +674,8 @@ func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period, timeout time
 
 			// Wait for the response from the remote process.
 			select {
-			case <-time.NewTimer(timeout).C: // Give it up to the time defined by the timeout
+			case <-ticker.C:
+				// We didn't receive a response before the next tick.
 				return errors.New("timeout waiting for watchdog response from remote process")
 			case rsp := <-rspChan:
 				// We got a response from the remote process.

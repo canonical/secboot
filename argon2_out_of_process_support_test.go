@@ -257,7 +257,6 @@ func (s *argon2OutOfProcessParentSupportMixin) checkNoLockFile(c *C) {
 type testHMACArgon2OutOfProcessWatchdogMonitorParams struct {
 	monitorAlg crypto.Hash
 	period     time.Duration
-	timeout    time.Duration
 	handlerAlg crypto.Hash
 
 	minDelay time.Duration
@@ -267,7 +266,7 @@ type testHMACArgon2OutOfProcessWatchdogMonitorParams struct {
 func (s *argon2OutOfProcessParentSupportMixin) testHMACArgon2OutOfProcessWatchdogMonitor(c *C, params *testHMACArgon2OutOfProcessWatchdogMonitorParams) error {
 	c.Assert(params.maxDelay >= params.minDelay, testutil.IsTrue)
 
-	monitor := HMACArgon2OutOfProcessWatchdogMonitor(params.monitorAlg, params.period, params.timeout)
+	monitor := HMACArgon2OutOfProcessWatchdogMonitor(params.monitorAlg, params.period)
 	handler := HMACArgon2OutOfProcessWatchdogHandler(params.handlerAlg)
 
 	tmb := new(tomb.Tomb)
@@ -1000,7 +999,7 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2
 			Threads:    4,
 		},
 		wdHandler: HMACArgon2OutOfProcessWatchdogHandler(crypto.SHA256),
-		wdMonitor: HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond),
+		wdMonitor: HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond),
 	})
 	c.Check(err, IsNil)
 	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
@@ -1084,7 +1083,6 @@ func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestHMACArgon2OutOfProce
 	err := s.testHMACArgon2OutOfProcessWatchdogMonitor(c, &testHMACArgon2OutOfProcessWatchdogMonitorParams{
 		monitorAlg: crypto.SHA256,
 		period:     100 * time.Millisecond,
-		timeout:    20 * time.Millisecond,
 		handlerAlg: crypto.SHA256,
 		minDelay:   5 * time.Millisecond,
 		maxDelay:   15 * time.Millisecond,
@@ -1096,7 +1094,6 @@ func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestHMACArgon2OutOfProce
 	err := s.testHMACArgon2OutOfProcessWatchdogMonitor(c, &testHMACArgon2OutOfProcessWatchdogMonitorParams{
 		monitorAlg: crypto.SHA384,
 		period:     100 * time.Millisecond,
-		timeout:    20 * time.Millisecond,
 		handlerAlg: crypto.SHA384,
 		minDelay:   5 * time.Millisecond,
 		maxDelay:   15 * time.Millisecond,
@@ -1108,22 +1105,9 @@ func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestHMACArgon2OutOfProce
 	err := s.testHMACArgon2OutOfProcessWatchdogMonitor(c, &testHMACArgon2OutOfProcessWatchdogMonitorParams{
 		monitorAlg: crypto.SHA256,
 		period:     200 * time.Millisecond,
-		timeout:    20 * time.Millisecond,
 		handlerAlg: crypto.SHA256,
 		minDelay:   5 * time.Millisecond,
 		maxDelay:   15 * time.Millisecond,
-	})
-	c.Check(err, IsNil)
-}
-
-func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestHMACArgon2OutOfProcessWatchdogMonitorDifferentTimeout(c *C) {
-	err := s.testHMACArgon2OutOfProcessWatchdogMonitor(c, &testHMACArgon2OutOfProcessWatchdogMonitorParams{
-		monitorAlg: crypto.SHA256,
-		period:     100 * time.Millisecond,
-		timeout:    50 * time.Millisecond,
-		handlerAlg: crypto.SHA256,
-		minDelay:   35 * time.Millisecond,
-		maxDelay:   45 * time.Millisecond,
 	})
 	c.Check(err, IsNil)
 }
@@ -1132,10 +1116,9 @@ func (s *argon2OutOfProcessParentSupportSuite) TestHMACArgon2OutOfProcessWatchdo
 	err := s.testHMACArgon2OutOfProcessWatchdogMonitor(c, &testHMACArgon2OutOfProcessWatchdogMonitorParams{
 		monitorAlg: crypto.SHA256,
 		period:     100 * time.Millisecond,
-		timeout:    20 * time.Millisecond,
 		handlerAlg: crypto.SHA256,
-		minDelay:   25 * time.Millisecond,
-		maxDelay:   25 * time.Millisecond,
+		minDelay:   200 * time.Millisecond,
+		maxDelay:   200 * time.Millisecond,
 	})
 	c.Check(err, ErrorMatches, `timeout waiting for watchdog response from remote process`)
 }
@@ -1144,7 +1127,6 @@ func (s *argon2OutOfProcessParentSupportSuite) TestHMACArgon2OutOfProcessWatchdo
 	err := s.testHMACArgon2OutOfProcessWatchdogMonitor(c, &testHMACArgon2OutOfProcessWatchdogMonitorParams{
 		monitorAlg: crypto.SHA384,
 		period:     100 * time.Millisecond,
-		timeout:    20 * time.Millisecond,
 		handlerAlg: crypto.SHA256,
 		minDelay:   5 * time.Millisecond,
 		maxDelay:   15 * time.Millisecond,
@@ -1257,7 +1239,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentMode(
 }
 
 func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDerive2GB(c *C) {
-	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 0, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
+	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 0, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
 		MemoryKiB: 2 * 1024 * 1024,
@@ -1270,7 +1252,7 @@ func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDerive2GB(c
 }
 
 func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDerive2GBDifferentWatchdogHMAC(c *C) {
-	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha384"), 0, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA384, 100*time.Millisecond, 50*time.Millisecond))
+	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha384"), 0, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA384, 100*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
 		MemoryKiB: 2 * 1024 * 1024,
@@ -1315,8 +1297,8 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFTime(c *C) {
 	c.Check(duration > origDuration, testutil.IsTrue)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveParallelSerialized(c *C) {
-	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 1*time.Minute, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveParallelSerialized(c *C) {
+	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 1*time.Minute, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
 		MemoryKiB: 512 * 1024,
@@ -1342,8 +1324,8 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveParallelSerial
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveParallelTimeout(c *C) {
-	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 100*time.Millisecond, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveParallelTimeout(c *C) {
+	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 100*time.Millisecond, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
 		MemoryKiB: 512 * 1024,
