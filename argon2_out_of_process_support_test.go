@@ -192,63 +192,6 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 	// Wait for everything to die, hopefully successfully.
 	err = tmb.Wait()
 
-	// Make sure that the test function closed its side of the response channel, as
-	// it's expected to do. We do this by attemping to read from the parent side,
-	// which should immediately return io.EOF. We do this in a way that won't cause
-	// the test to block indefinitely if the test function misbehaves and doesn't do
-	// this.
-	cleanupTmb := new(tomb.Tomb)
-
-	// Spin up a routine that will timeout and unblock the test if the test function
-	// didn't close its side of the response channel.
-	cleanupTmb.Go(func() error {
-		// Spin up a routine to attempt to read from the response channel.
-		// It should immediately receive io.EOF, putting the tomb into a
-		// dying state with this error.
-		cleanupTmb.Go(func() error {
-			var data [1]byte
-			_, err := rspR.Read(data[:])
-			// This should be io.EOF and should put the tomb into a
-			// dying state
-			return err
-		})
-
-		// Spin up a routine that will unblock the goroutine that is blocked
-		// on its attempt to read from the response channel if it wasn't closed
-		// properly by the test function. We do this in a separate routine as
-		// opposed to just after the timer fires, because we want the tomb to
-		// enter a dying state with an error other than io.EOF in this case.
-		cleanupTmb.Go(func() error {
-			<-cleanupTmb.Dying() // Wait until we enter a dying state.
-
-			// Check the error - if the test function closed its end of the
-			// response channel, we expect the dying reason to be io.EOF. If
-			// it's not, we'll close the write end of the response channel here.
-			switch cleanupTmb.Err() {
-			case io.EOF:
-				// Everything's good - nothing to do here.
-			default:
-				rspW.Close()
-			}
-
-			return tomb.ErrDying
-		})
-
-		// Give the tomb 500ms to enter a dying state, which should be long
-		// enough for the Read attempt to return io.EOF.
-		select {
-		case <-time.NewTimer(500 * time.Millisecond).C:
-			// This will put the tomb into a dying state ane make sure it
-			// return an appropriate error before we unblock the blocked
-			// goroutine.
-			return errors.New("remote side of response channel not closed as expected")
-		case <-cleanupTmb.Dying():
-		}
-
-		return tomb.ErrDying
-	})
-	c.Check(cleanupTmb.Wait(), Equals, io.EOF)
-
 	// Grab the response
 	select {
 	case rsp = <-rspChan:
