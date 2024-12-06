@@ -681,11 +681,15 @@ func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period time.Duration
 
 			fmt.Printf(" - time to send request: %v\n", time.Now().Sub(start))
 
+			// Reset the ticker to remove the cost of gathering entropy, calculating the
+			// challenge and sending it.
+			ticker.Reset(period)
+
 			// Wait for the response from the remote process.
 			select {
-			//case <-ticker.C:
-			//	// We didn't receive a response before the next tick.
-			//	return errors.New("timeout waiting for watchdog response from remote process")
+			case <-ticker.C:
+				// We didn't receive a response before the next tick.
+				return errors.New("timeout waiting for watchdog response from remote process")
 			case rsp := <-rspChan:
 				// We got a response from the remote process.
 				fmt.Printf(" - time to receive response: %v\n", time.Now().Sub(start))
