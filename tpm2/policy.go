@@ -124,6 +124,10 @@ type keyDataPolicy interface {
 	// the public area of the counter associated with this policy.
 	PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tpm2.NVPublic) (pcrPolicyCounterContext, error)
 
+	// RequireUserAuth returns true if the object has an authorization value that is needed
+	// from the user.
+	RequireUserAuth() bool
+
 	// ValidateAuthKey verifies that the supplied key is associated with this
 	// keyDataPolicy.
 	ValidateAuthKey(key secboot.PrimaryKey) error

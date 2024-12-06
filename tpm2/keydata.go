@@ -28,6 +28,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/canonical/go-tpm2/objectutil"
 
 	"golang.org/x/xerrors"
 
@@ -162,14 +163,33 @@ func (k *sealedKeyDataBase) load(tpm *tpm2.TPMContext, parent tpm2.ResourceConte
 
 // validateData performs correctness checks on this object.
 func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string) (*tpm2.NVPublic, error) {
-	sealedKeyTemplate := makeImportableSealedKeyTemplate()
+	optsInternal := []objectutil.PublicTemplateOption{
+		objectutil.WithUserAuthMode(objectutil.RequirePolicy),
+		objectutil.WithProtectionGroupMode(objectutil.NonDuplicable),
+		objectutil.WithDuplicationMode(objectutil.FixedParent),
+	}
+	optsExternal := []objectutil.PublicTemplateOption{
+		objectutil.WithUserAuthMode(objectutil.RequirePolicy),
+		objectutil.WithProtectionGroupMode(objectutil.NonDuplicable),
+		objectutil.WithDuplicationMode(objectutil.DuplicationRoot),
+	}
+	if k.data.Policy().RequireUserAuth() {
+		optsInternal = append(optsInternal, objectutil.WithDictionaryAttackProtection())
+		optsExternal = append(optsExternal, objectutil.WithDictionaryAttackProtection())
+	} else {
+		optsInternal = append(optsInternal, objectutil.WithoutDictionaryAttackProtection())
+		optsExternal = append(optsExternal, objectutil.WithoutDictionaryAttackProtection())
+	}
+	internalSealedKeyTemplate := objectutil.NewSealedObjectTemplate(optsInternal...)
+	externalSealedKeyTemplate := objectutil.NewSealedObjectTemplate(optsExternal...)
 
 	// Perform some initial checks on the sealed data object's public area to
 	// make sure it's a sealed data object.
-	if k.data.Public().Type != sealedKeyTemplate.Type {
+	if k.data.Public().Type != internalSealedKeyTemplate.Type {
 		return nil, keyDataError{errors.New("sealed key object has the wrong type")}
 	}
-	if k.data.Public().Attrs&^(tpm2.AttrFixedTPM|tpm2.AttrFixedParent) != sealedKeyTemplate.Attrs {
+	attrs := k.data.Public().Attrs
+	if attrs != internalSealedKeyTemplate.Attrs && attrs != externalSealedKeyTemplate.Attrs {
 		return nil, keyDataError{errors.New("sealed key object has the wrong attributes")}
 	}
 
