@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -991,6 +992,17 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2
 }
 
 func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequest2GB(c *C) {
+	// We're running the Argon2 KDF with high memory requirements in-process
+	// and testing the watchdog functionality at the same time. This case
+	// seems particularly hard in the Github runner environment, with tests
+	// failing due to missed watchdog responses, despite debugging showing that
+	// we're normally getting responses within ~10ms when running the KDF out
+	// of process. Try temporarily disabling GC during this test to see if it
+	// helps.
+	runtime.GC()
+	origGCPercent := debug.SetGCPercent(-1)
+	defer debug.SetGCPercent(origGCPercent)
+
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
