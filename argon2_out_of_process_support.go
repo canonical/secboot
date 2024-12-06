@@ -30,6 +30,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"gopkg.in/tomb.v2"
@@ -121,13 +122,12 @@ type Argon2OutOfProcessError struct {
 
 // Error implements the error interface.
 func (e *Argon2OutOfProcessError) Error() string {
-	str := "cannot process request: " + string(e.ErrorType)
+	var b strings.Builder
+	b.WriteString("cannot process request: " + string(e.ErrorType))
 	if e.ErrorString != "" {
-		str += " ("
-		str += e.ErrorString
-		str += ")"
+		b.WriteString(" (" + e.ErrorString + ")")
 	}
-	return str
+	return b.String()
 }
 
 // Err returns an error associated with the response if one occurred (if the
