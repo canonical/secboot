@@ -23,8 +23,6 @@ package secboot
 import (
 	"crypto"
 	"io"
-	"runtime"
-	"sync/atomic"
 	"time"
 
 	"github.com/snapcore/secboot/internal/luks2"
@@ -190,11 +188,6 @@ func MockHashAlgAvailable() (restore func()) {
 	return func() {
 		hashAlgAvailable = orig
 	}
-}
-
-func ResetArgon2OutOfProcessHandlerStatus() {
-	atomic.StoreUint32(&argon2OutOfProcessHandlerStatus, inProcessArgon2KDFAvailable)
-	runtime.GC()
 }
 
 func (d *KeyData) DerivePassphraseKeys(passphrase string) (key, iv, auth []byte, err error) {

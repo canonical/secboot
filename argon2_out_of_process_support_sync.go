@@ -30,41 +30,54 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Due to the amount of memory a KDF request comsumes, we try to serialize the
-// requests system-wide to avoid triggering memory pressure. The system-wide
+// Due to the amount of memory an Argon2 KDF request comsumes, we try to serialize
+// the requests system-wide to avoid triggering memory pressure. The system-wide
 // lock is represented by a file in /run. A process must open this file and
 // hold an exclusive advisory lock on the open file descriptor before processing
-// a KDF request. It must maintain this exclusive lock and keep the file descriptor
-// open until the KDF request completes, at which point the file can be unlinked
-// (still inside the exlusive lock) before closing the file descriptor.
+// an Argon2 KDF request. It must maintain this exclusive lock until the request
+// completes, and ideally should maintain hold of the lock until the process has
+// handed the memory the operation consumed back to the operating system, which is
+// only guaranteed to happen once the program exits or until after a call to
+// [runtime.GC].
 //
-// Care must be taken wrt race conditions between other process when removing the
-// system-wide lock file. Eg, in between opening the system-wide lock file and
-// obtaining an exlusive lock on the opened file descriptor, it's possible that
-// a lock holder in another process releases its lock on the same file and
-// unlinks the system-wide lock file that we opened. In this case, this process
-// doesn't really hold the system-wide lock as nothing prevents another process from
-// taking another one by creating a new file. It's also possible that in-between
-// opening the system-wide lock file and obtaining an exclusive lock on the opened
-// file descriptor, another lock holder released its lock on the same file (unlinking
-// the system-wide lock file that we opened), and another process has since created
-// a new file in preparation for taking its own lock. Again, we don't really hold the
+// This means that processes that are handling Argon2 KDF requests should generally
+// not explicitly release the lock if they actually execute the KDF, and should just
+// let it be released implicitly by calling [os.Exit] and the file descriptor being
+// closed as part of normal process termination.
+//
+// Implicit release of the lock does leave a lock file in /run. If so desired, this
+// can be removed by the parent process, although the parent process would need to
+// temporarily acquire the lock to do this (it could do this with a timeout of 0 to
+// avoid any delays).
+//
+// Note the comments below wrt race conditions when removing the lock file, which
+// explains why the file can only be removed by the current lock holder.
+//
+// Care must be taken wrt race conditions between other process or goroutines when
+// removing the system-wide lock file. Eg, in between opening the system-wide lock
+// file and obtaining an exlusive lock on the opened file descriptor, it's possible
+// that another lock holder in another process or goroutine explicitly releases its
+// lock on the same file and unlinks the system-wide lock file that we opened. In this
+// case, the calling goroutine doesn't really hold the system-wide lock as nothing
+// prevents another process or goroutine from taking another one by creating a new file.
+// It's also possible that in-between opening the system-wide lock file and obtaining
+// an exclusive lock on the opened file descriptor, another lock holder explicitly
+// released its lock on the same file (unlinking the system-wide lock file that we
+// opened), and another process or goroutine has since created a new file in preparation
+// for taking its own lock. Again, the calling goroutine doesn't really hold the
 // system-wide lock in this case because we don't hold a lock on the file that the lock
-// file path currently points to, so nothing prevents multiple processes from thinking
-// that they have taken the lock. Both of these cases can be tested for by doing the
-// following after acquiring an exclusive advisory lock on the open file descriptor for
-// the system lock file:
+// file path currently points to, so nothing prevents multiple processes or goroutines
+// from thinking that they have taken the lock. Both of these cases can be tested for by
+// doing the following after acquiring an exclusive advisory lock on the open file
+// descriptor for the system lock file:
 // - Ensure that there is still a file at the system-wide lock file path.
 // - Ensure the inode that the system-wide lock file path currently points to matches
 //   the inode that we acquired an exclusive lock on.
-// If either of these checks fail, this process does not own the system-wide lock and
-// another attempt must be made to attempt to acquire it.
+// If either of these checks fail, the calling gorouitine does not own the system-wide
+// lock and another attempt must be made to attempt to acquire it.
 //
 // For this to work reliably and without race conditions, the system-wide lock file must
-// only be unlinked by the current lock holder. Unlinking the current file would normally
-// happen when a process relinquishes the lock, but it's also ok to leave a stale lock
-// file around - in this case, another process will just re-use it rather than creating
-// a new one.
+// only be unlinked by the current lock holder.
 
 var (
 	argon2SysLockStderr io.Writer = os.Stderr
@@ -73,11 +86,12 @@ var (
 )
 
 // acquireArgon2OutOfProcessHandlerSystemLock acquires the system-wide lock
-// for serializing Argon2 execution system-wide  via this package. If the
+// for serializing Argon2 execution system-wide via this package. If the
 // function returns with an error, then the lock was not acquired. If the
 // function returns wthout an error, the returned callback can be used to
-// release the lock (note that the lock will be relinquished automatically if
-// the process exits too).
+// explicitly release the lock (note that the lock will be relinquished
+// automatically when the process exits too, although the lock-file won't
+// be unlinked).
 //
 // The specified timeout determines how long this function will wait before
 // aborting its attempt to acquire the lock. If set to 0, the function will

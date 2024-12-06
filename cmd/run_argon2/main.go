@@ -64,7 +64,8 @@ func run() error {
 		watchdog = secboot.HMACArgon2OutOfProcessWatchdogHandler(alg)
 	}
 
-	err := secboot.WaitForAndRunArgon2OutOfProcessRequest(os.Stdin, os.Stdout, watchdog)
+	// Ignore the lock release callback and use implicit release on process termination.
+	_, err := secboot.WaitForAndRunArgon2OutOfProcessRequest(os.Stdin, os.Stdout, watchdog)
 	if err != nil {
 		return fmt.Errorf("cannot run request: %w", err)
 	}
