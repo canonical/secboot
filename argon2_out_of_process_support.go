@@ -433,10 +433,6 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.WriteCloser, wa
 	// dedicated output routine which serializes the response to the supplied io.Writer.
 	rspChan := make(chan *Argon2OutOfProcessResponse)
 
-	// lockReleaseChan is the channel from which this routine receives a callback to explicitly
-	// relinquish the system-wide lock. It's buffered because it's read by the current goroutine.
-	lockReleaseChan := make(chan func(), 1)
-
 	// Spin up a routine for receiving requests from the supplied io.Reader.
 	tmb.Go(func() error {
 		// Also spin-up the routine for sending outgoing responses that are generated internally.
@@ -554,16 +550,14 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.WriteCloser, wa
 					rsp, release := RunArgon2OutOfProcessRequest(req)
 
 					if release != nil {
-						// This channel is buffered with a size of 1 so that it can be obtained by
-						// the calling goroutine when the tomb has died. Therefore, it should never
-						// block. Although theoretically this process could be sent more than one
-						// request (although the parent side implementation in secboot won't do this),
+						// Although theoretically this process could be sent more than one request
+						// (although the parent side implementation in secboot won't do this),
 						// subsequent calls to RunArgon2OutOfProcessRequest eventually all timeout,
 						// unable to acquire another system-wide lock (it will be acquired on the first
-						// request and the release callback buffered in the channel already). In this
-						// case, there will be no new release callback so the channel should always be
-						// empty at this point.
-						lockReleaseChan <- release
+						// request and the return value will contain the release callback already). In
+						// this case, there will be no new release callback to overwrite the one that
+						// the return value was set to on the first request.
+						lockRelease = release
 					}
 
 					// Send the response.
@@ -592,16 +586,7 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.WriteCloser, wa
 	})
 
 	// Wait here for the tomb to die and return the first error that occurred.
-	err = tmb.Wait()
-
-	select {
-	case lockRelease = <-lockReleaseChan:
-		// The system-wide lock was acquired and we have a release callback for it.
-	default:
-		// The system-wide lock was never acquired
-	}
-
-	return lockRelease, err
+	return lockRelease, tmb.Wait()
 }
 
 // Argon2OutOfProcessWatchdogMonitor defines the behaviour of a watchdog monitor

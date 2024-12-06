@@ -77,9 +77,8 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 	reqR, reqW := io.Pipe()
 	rspR, rspW := io.Pipe()
 
-	rspChan := make(chan *Argon2OutOfProcessResponse, 1) // A buffered channel to receive the response from the test function
-	releaseChan := make(chan func(), 1)                  // A buffered channel to receive the lock release callback from the test function
-	tmb := new(tomb.Tomb)                                // The tomb for tracking goroutines
+	var actualRsp *Argon2OutOfProcessResponse
+	tmb := new(tomb.Tomb) // The tomb for tracking goroutines
 
 	// Spin up a goroutine to bootstrap the test setup and then process responses from the
 	// test function. I'm not sure how thread safe the test library is, so we avoid doing
@@ -91,9 +90,9 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 		// nothing else in the test exits a routine with an error, errors
 		// returned from the test function will propagate out of the tomb
 		// and will be checked on the main test goroutine.
-		tmb.Go(func() (err error) {
-			release, err := WaitForAndRunArgon2OutOfProcessRequest(reqR, rspW, params.wdHandler)
-			releaseChan <- release
+		tmb.Go(func() error {
+			var err error
+			release, err = WaitForAndRunArgon2OutOfProcessRequest(reqR, rspW, params.wdHandler)
 			return err
 		})
 
@@ -164,7 +163,7 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 				}
 			default:
 				// We got a response - begin the process of dying.
-				rspChan <- rsp
+				actualRsp = rsp
 				tmb.Kill(nil)
 				// This loop will no longer iterate
 			}
@@ -216,19 +215,7 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 	}
 	c.Check(cleanupTmb.Wait(), Equals, io.ErrClosedPipe)
 
-	// Grab the response
-	select {
-	case rsp = <-rspChan:
-	default:
-	}
-
-	// Grab the lock release callback
-	select {
-	case release = <-releaseChan:
-	default:
-	}
-
-	return rsp, release, err
+	return actualRsp, release, err
 }
 
 // argon2OutOfProcessParentSupportMixin provides capabilities shared
