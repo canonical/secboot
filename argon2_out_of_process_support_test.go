@@ -713,7 +713,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveD
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcess512MB(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcess2GB(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "bar",
@@ -721,12 +721,12 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProce
 		Keylen:     32,
 		Mode:       Argon2id,
 		Time:       4,
-		MemoryKiB:  512 * 1024,
+		MemoryKiB:  2 * 1024 * 1024,
 		Threads:    4,
 	})
 	c.Check(out, DeepEquals, &Argon2OutOfProcessResponse{
 		Command: Argon2OutOfProcessCommandDerive,
-		Key:     testutil.DecodeHexString(c, "80dec1e34e9ea2da382852e4d935672ed4ed0c56aa9d109a14829a3f161903c0"),
+		Key:     testutil.DecodeHexString(c, "9b5add3d66b041c49c63ba1244bb1cd8cbc7dcf1e4b0918dc13b4fd6131ae5fd"),
 	})
 	c.Assert(release, NotNil)
 	release()
@@ -987,7 +987,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequest512MB(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequest2GB(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -996,7 +996,7 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2
 			Keylen:     32,
 			Mode:       Argon2id,
 			Time:       4,
-			MemoryKiB:  512 * 1024,
+			MemoryKiB:  2 * 1024 * 1024,
 			Threads:    4,
 		},
 		wdHandler: HMACArgon2OutOfProcessWatchdogHandler(crypto.SHA256),
@@ -1005,7 +1005,7 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2
 	c.Check(err, IsNil)
 	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
 		Command: Argon2OutOfProcessCommandDerive,
-		Key:     testutil.DecodeHexString(c, "80dec1e34e9ea2da382852e4d935672ed4ed0c56aa9d109a14829a3f161903c0"),
+		Key:     testutil.DecodeHexString(c, "9b5add3d66b041c49c63ba1244bb1cd8cbc7dcf1e4b0918dc13b4fd6131ae5fd"),
 	})
 	c.Assert(release, NotNil)
 	release()
@@ -1256,29 +1256,29 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentMode(
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDerive512MB(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDerive2GB(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256"), 0, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond, 50*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
-		MemoryKiB: 512 * 1024,
+		MemoryKiB: 2 * 1024 * 1024,
 		Threads:   4,
 	}
 	key, err := kdf.Derive("bar", testutil.DecodeHexString(c, "5d53157092d5f97034c0d3fd078b8f5c"), Argon2id, params, 32)
 	c.Check(err, IsNil)
-	c.Check(key, DeepEquals, testutil.DecodeHexString(c, "80dec1e34e9ea2da382852e4d935672ed4ed0c56aa9d109a14829a3f161903c0"))
+	c.Check(key, DeepEquals, testutil.DecodeHexString(c, "9b5add3d66b041c49c63ba1244bb1cd8cbc7dcf1e4b0918dc13b4fd6131ae5fd"))
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDerive512MBDifferentWatchdogHMAC(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDerive2GBDifferentWatchdogHMAC(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha384"), 0, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA384, 100*time.Millisecond, 50*time.Millisecond))
 	params := &Argon2CostParams{
 		Time:      4,
-		MemoryKiB: 512 * 1024,
+		MemoryKiB: 2 * 1024 * 1024,
 		Threads:   4,
 	}
 	key, err := kdf.Derive("bar", testutil.DecodeHexString(c, "5d53157092d5f97034c0d3fd078b8f5c"), Argon2id, params, 32)
 	c.Check(err, IsNil)
-	c.Check(key, DeepEquals, testutil.DecodeHexString(c, "80dec1e34e9ea2da382852e4d935672ed4ed0c56aa9d109a14829a3f161903c0"))
+	c.Check(key, DeepEquals, testutil.DecodeHexString(c, "9b5add3d66b041c49c63ba1244bb1cd8cbc7dcf1e4b0918dc13b4fd6131ae5fd"))
 	s.checkNoLockFile(c)
 }
 
