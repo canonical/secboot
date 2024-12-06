@@ -62,12 +62,8 @@ func (s *argon2OutOfProcessHandlerSupportMixin) TearDownTest(c *C) {
 }
 
 func (s *argon2OutOfProcessHandlerSupportMixin) checkNoLockFile(c *C) {
-	f, err := os.Open(s.lockPath)
+	_, err := os.Stat(s.lockPath)
 	c.Check(os.IsNotExist(err), testutil.IsTrue)
-	if err != nil {
-		return
-	}
-	f.Close()
 }
 
 type testWaitForAndRunArgon2OutOfProcessRequestParams struct {
@@ -176,7 +172,8 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 		return tomb.ErrDying
 	})
 
-	// Wait for the tomb to begin dying
+	// Wait for the tomb to begin dying. The test could block here indefinitely if
+	// we never get a response.
 	<-tmb.Dying()
 
 	// Closing our end of the request channel supplied to the test function, as
@@ -189,7 +186,10 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 	// a way to mitigate that
 	c.Check(reqW.Close(), IsNil)
 
-	// Wait for everything to die, hopefully successfully.
+	// Wait for everything to die, hopefully successfully. The test could block
+	// indefinitely here if WaitForAndRunArgon2OutOfProcessRequest doesn't return
+	// when we closed our end of the request channel above, or if the supplied
+	// watchdog monitor misbehaves and doesn't return when it is supposed to.
 	err = tmb.Wait()
 
 	// Make sure that WaitForAndRunArgon2OutOfProcessRequest closed its end of the
@@ -263,12 +263,8 @@ func (s *argon2OutOfProcessParentSupportMixin) newHandlerCmd(args ...string) fun
 }
 
 func (s *argon2OutOfProcessParentSupportMixin) checkNoLockFile(c *C) {
-	f, err := os.Open(s.lockPath)
+	_, err := os.Stat(s.lockPath)
 	c.Check(os.IsNotExist(err), testutil.IsTrue)
-	if err != nil {
-		return
-	}
-	f.Close()
 }
 
 type testHMACArgon2OutOfProcessWatchdogMonitorParams struct {
@@ -349,6 +345,9 @@ func (s *argon2OutOfProcessParentSupportMixin) testHMACArgon2OutOfProcessWatchdo
 		return tomb.ErrDying
 	})
 
+	// This test could block indefinitely here if HMACArgon2OutOfProcessWatchdogMonitor
+	// doesn't behave as it's expected and return when the supplied tomb enters a
+	// dying state.
 	return tmb.Wait()
 }
 

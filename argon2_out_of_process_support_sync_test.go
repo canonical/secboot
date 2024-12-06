@@ -23,7 +23,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"time"
 
@@ -71,11 +70,13 @@ func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfPro
 	c.Check(errors.Is(err, syscall.Errno(syscall.EWOULDBLOCK)), testutil.IsTrue)
 
 	release()
-	_, err = os.OpenFile(s.lockPath, os.O_RDWR, 0600)
+	_, err = os.Stat(s.lockPath)
 	c.Check(os.IsNotExist(err), testutil.IsTrue)
 }
 
 func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfProcessHandlerSystemLockTimeout(c *C) {
+	// Note that this test could potentially deadlock if the timeout
+	// functionality is broken.
 	release, err := AcquireArgon2OutOfProcessHandlerSystemLock(0)
 	c.Assert(err, IsNil)
 	defer release()
@@ -85,66 +86,97 @@ func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfPro
 }
 
 func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfProcessHandlerSystemLockDeletedFile(c *C) {
-	// Grab an exclusive lock on the file first to block
-	// AcquireArgon2OutOfProcessHandlerSystemLock
+	loopedOnce := false
+	restore := MockAcquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint(func() {
+		if loopedOnce {
+			return
+		}
+		loopedOnce = true
+		c.Check(os.Remove(s.lockPath), IsNil)
+	})
+	defer restore()
+
+	release, err := AcquireArgon2OutOfProcessHandlerSystemLock(10 * time.Second)
+	c.Assert(err, IsNil)
+	defer release()
+
+	c.Check(loopedOnce, testutil.IsTrue)
+
 	f, err := os.OpenFile(s.lockPath, os.O_RDWR|os.O_CREATE, 0600)
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	c.Check(unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB), IsNil)
+	err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, ErrorMatches, `resource temporarily unavailable`)
+	c.Check(errors.Is(err, syscall.Errno(syscall.EWOULDBLOCK)), testutil.IsTrue)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		release, err := AcquireArgon2OutOfProcessHandlerSystemLock(10 * time.Second)
-		c.Check(err, IsNil)
-		release()
-		wg.Done()
-	}()
-
-	// Ensure we end up waiting for the exclusive lock
-	<-time.NewTimer(500 * time.Millisecond).C
-
-	// Delete the file
-	c.Check(os.Remove(s.lockPath), IsNil)
-
-	// Close our FD to free up the locking - it should loop and try again
-	c.Check(f.Close(), IsNil)
-
-	wg.Wait()
+	release()
+	_, err = os.Stat(s.lockPath)
+	c.Check(os.IsNotExist(err), testutil.IsTrue)
 }
 
 func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfProcessHandlerSystemLockChangedInode(c *C) {
-	// Grab an exclusive lock on the file first to block
-	// AcquireArgon2OutOfProcessHandlerSystemLock
+	loopedOnce := false
+	restore := MockAcquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint(func() {
+		if loopedOnce {
+			return
+		}
+		loopedOnce = true
+		c.Check(os.Remove(s.lockPath), IsNil)
+		f, err := os.OpenFile(s.lockPath, os.O_RDWR|os.O_CREATE, 0600)
+		c.Assert(err, IsNil)
+		c.Check(f.Close(), IsNil)
+	})
+	defer restore()
+
+	release, err := AcquireArgon2OutOfProcessHandlerSystemLock(10 * time.Second)
+	c.Assert(err, IsNil)
+	defer release()
+
+	c.Check(loopedOnce, testutil.IsTrue)
+
 	f, err := os.OpenFile(s.lockPath, os.O_RDWR|os.O_CREATE, 0600)
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	c.Check(unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB), IsNil)
+	err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, ErrorMatches, `resource temporarily unavailable`)
+	c.Check(errors.Is(err, syscall.Errno(syscall.EWOULDBLOCK)), testutil.IsTrue)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		release, err := AcquireArgon2OutOfProcessHandlerSystemLock(10 * time.Second)
-		c.Check(err, IsNil)
-		release()
-		wg.Done()
-	}()
+	release()
+	_, err = os.Stat(s.lockPath)
+	c.Check(os.IsNotExist(err), testutil.IsTrue)
+}
 
-	// Ensure we end up waiting for the exclusive lock
-	<-time.NewTimer(500 * time.Millisecond).C
+func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfProcessHandlerSystemLockMultipleLoops(c *C) {
+	loopCount := 0
+	restore := MockAcquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint(func() {
+		loopCount += 1
+		switch loopCount {
+		case 1, 3:
+			c.Check(os.Remove(s.lockPath), IsNil)
+		case 2, 4:
+			c.Check(os.Remove(s.lockPath), IsNil)
+			f, err := os.OpenFile(s.lockPath, os.O_RDWR|os.O_CREATE, 0600)
+			c.Assert(err, IsNil)
+			c.Check(f.Close(), IsNil)
+		}
+	})
+	defer restore()
 
-	// Delete the file
-	c.Check(os.Remove(s.lockPath), IsNil)
-
-	// Create a new file
-	f2, err := os.OpenFile(s.lockPath, os.O_RDWR|os.O_CREATE, 0600)
+	release, err := AcquireArgon2OutOfProcessHandlerSystemLock(10 * time.Second)
 	c.Assert(err, IsNil)
-	defer f2.Close()
+	defer release()
 
-	// Close our original FD to free up the locking - it should loop and try again
-	c.Check(f.Close(), IsNil)
+	f, err := os.OpenFile(s.lockPath, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
 
-	wg.Wait()
+	err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, ErrorMatches, `resource temporarily unavailable`)
+	c.Check(errors.Is(err, syscall.Errno(syscall.EWOULDBLOCK)), testutil.IsTrue)
+
+	release()
+	_, err = os.Stat(s.lockPath)
+	c.Check(os.IsNotExist(err), testutil.IsTrue)
 }

@@ -80,7 +80,8 @@ import (
 // only be unlinked by the current lock holder.
 
 var (
-	argon2SysLockStderr io.Writer = os.Stderr
+	argon2SysLockStderr                                          io.Writer = os.Stderr
+	acquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint           = func() {}
 
 	errArgon2OutOfProcessHandlerSystemLockTimeout = errors.New("request timeout")
 )
@@ -117,7 +118,7 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 
 	// Run a loop to try to acquire the lock.
 	for {
-		skipBackoffCh := make(chan struct{}) // Don't wait 100ms before trying again
+		skipBackoffCh := make(chan struct{}, 1) // Don't wait 100ms before trying again
 		if triedOnce {
 			// If the loop has executed at least once, make sure that
 			// the timeout hasn't expired.
@@ -170,6 +171,9 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 			// No other error is expected.
 			return nil, fmt.Errorf("cannot obtain lock on open lock file descriptor: %w", err)
 		}
+
+		// This is useful for blocking the function here in unit tests
+		acquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint()
 
 		// We have acquired an exclusive advisory lock on the file that we opened, but perform
 		// some checks to ensure we haven't hit a race condition with another process.

@@ -66,6 +66,14 @@ func MockArgon2OutOfProcessHandlerSystemLockPath(path string) (restore func()) {
 	}
 }
 
+func MockAcquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint(fn func()) (restore func()) {
+	orig := acquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint
+	acquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint = fn
+	return func() {
+		acquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint = orig
+	}
+}
+
 func MockArgon2SysLockStderr(w io.Writer) (restore func()) {
 	orig := argon2SysLockStderr
 	argon2SysLockStderr = w
