@@ -647,16 +647,11 @@ func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period time.Duration
 				return tomb.ErrDying
 			}
 
-			fmt.Printf("* New watchdog ping\n")
-			start := time.Now()
-
 			// Generate a new 32-byte challenge and calculate the expected response
 			challenge := make([]byte, 32)
 			if _, err := rand.Read(challenge); err != nil {
 				return fmt.Errorf("cannot generate new watchdog challenge: %w", err)
 			}
-
-			fmt.Printf(" - time to read entropy: %v\n", time.Now().Sub(start))
 
 			// The expected response is the HMAC of the challenge, keyed with the
 			// last response.
@@ -669,8 +664,6 @@ func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period time.Duration
 				WatchdogChallenge: challenge,
 			}
 
-			fmt.Printf(" - time to prepare request: %v\n", time.Now().Sub(start))
-
 			// Send the request.
 			select {
 			case reqChan <- req: // Unbuffered channel, but read end is always there unless the tomb is dying.
@@ -678,8 +671,6 @@ func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period time.Duration
 				// The tomb began dying before we finished sending the request (reqChan is blocking).
 				return tomb.ErrDying
 			}
-
-			fmt.Printf(" - time to send request: %v\n", time.Now().Sub(start))
 
 			// Reset the ticker to remove the cost of gathering entropy, calculating the
 			// challenge and sending it.
@@ -692,7 +683,6 @@ func HMACArgon2OutOfProcessWatchdogMonitor(alg crypto.Hash, period time.Duration
 				return errors.New("timeout waiting for watchdog response from remote process")
 			case rsp := <-rspChan:
 				// We got a response from the remote process.
-				fmt.Printf(" - time to receive response: %v\n", time.Now().Sub(start))
 				if err := rsp.Err(); err != nil {
 					// We got an error response, so just return the error.
 					return rsp.Err()
