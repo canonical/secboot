@@ -752,13 +752,17 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		// This doesn't fail once the OS pipe is created, so there's no
-		// cleanup to do on failure paths other than closing the stdinPipe
-		stdinPipe.Close()
+		// cleanup to do on failure paths other than closing the stdinPipe.
+		// Note that we need to close both ends of it.
+		stdinPipe.Close()            // The parent end
+		cmd.Stdin.(*os.File).Close() // The child end
 		return nil, fmt.Errorf("cannot create stdout pipe: %w", err)
 	}
 
 	// Start the remote process.
 	if err := cmd.Start(); err != nil {
+		// This takes care of closing both ends of each of the pipes
+		// we created earlier.
 		return nil, fmt.Errorf("cannot start handler process: %w", err)
 	}
 
@@ -923,8 +927,8 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 	// [exec.Cmd.Wait] will close parent FDs for us once the process has exitted. However, closing
 	// the stdin pipe is necessary to unblock WaitForAndRunArgon2OutOfProcessRequest on the remote
 	// side, if it is blocked in a read. We don't do the same for stdoutPipe (the request channel)
-	// because the remote process is expected to close its end of it, freeing up any goroutines
-	// that are blocked on writing a response to us.
+	// because the remote process is expected to close its end of it, freeing up any of its own
+	// goroutines that are blocked on writing a response to us.
 	if err := stdinPipe.Close(); err != nil {
 		return nil, fmt.Errorf("cannot close stdin pipe: %w", err)
 	}
