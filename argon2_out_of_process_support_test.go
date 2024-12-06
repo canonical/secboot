@@ -58,7 +58,6 @@ func (s *argon2OutOfProcessHandlerSupportMixin) TearDownTest(c *C) {
 	if s.restoreLockPath != nil {
 		s.restoreLockPath()
 	}
-	runtime.GC()
 }
 
 func (s *argon2OutOfProcessHandlerSupportMixin) checkNoLockFile(c *C) {
@@ -351,6 +350,11 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) SetUpSuite(c *C) {
 	}
 }
 
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TearDownTest(c *C) {
+	s.argon2OutOfProcessHandlerSupportMixin.TearDownTest(c)
+	runtime.GC() // Because we are running Argon2 in this process.
+}
+
 type argon2OutOfProcessParentSupportSuite struct {
 	argon2OutOfProcessParentSupportMixin
 }
@@ -523,7 +527,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessInvalid
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveMoreThanOnceWithRelease(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveMoreThanOnceWithRelease(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -560,7 +564,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveM
 	c.Check(release2, IsNil)
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveMinimum(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveMinimum(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -579,7 +583,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveM
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveDifferentThreads(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveDifferentThreads(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -598,7 +602,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveD
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveDifferentTime(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveDifferentTime(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -617,7 +621,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveD
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveDifferentMemory(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveDifferentMemory(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -636,7 +640,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveD
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveDifferentPassphrase(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveDifferentPassphrase(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "bar",
@@ -655,7 +659,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveD
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveDifferentSalt(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveDifferentSalt(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -674,7 +678,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveD
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveDifferentKeyLen(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveDifferentKeyLen(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -693,7 +697,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveD
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessDeriveDifferentMode(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessDeriveDifferentMode(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:    Argon2OutOfProcessCommandDerive,
 		Passphrase: "foo",
@@ -731,7 +735,7 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProce
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestRunArgon2OutOfProcessTime(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestRunArgon2OutOfProcessTime(c *C) {
 	out, release := RunArgon2OutOfProcessRequest(&Argon2OutOfProcessRequest{
 		Command:   Argon2OutOfProcessCommandTime,
 		Mode:      Argon2id,
@@ -794,7 +798,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestNoArgon2OutOfProcessWatchdog
 	c.Check(err, ErrorMatches, `unexpected watchdog request: no handler`)
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProcessRequestMinimum(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestMinimum(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -818,7 +822,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProcessRequestDifferentThreads(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestDifferentThreads(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -842,7 +846,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProcessRequestDifferentTime(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestDifferentTime(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -866,7 +870,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProcessRequestDifferentMemory(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestDifferentMemory(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -890,7 +894,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProcessRequestPassphrase(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestPassphrase(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -914,7 +918,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProcessRequestDifferentSalt(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestDifferentSalt(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -938,7 +942,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProcessRequestDifferentKeyLen(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestDifferentKeyLen(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -962,7 +966,7 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProcessRequestDifferentMode(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestDifferentMode(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -999,7 +1003,7 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2
 			Threads:    4,
 		},
 		wdHandler: HMACArgon2OutOfProcessWatchdogHandler(crypto.SHA256),
-		wdMonitor: HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond),
+		wdMonitor: HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 200*time.Millisecond),
 	})
 	c.Check(err, IsNil)
 	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
@@ -1134,7 +1138,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestHMACArgon2OutOfProcessWatchdo
 	c.Check(err, ErrorMatches, `unexpected watchdog response value from remote process`)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveMinimum(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveMinimum(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      4,
@@ -1147,7 +1151,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveMinimum(c *C) 
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentThreads(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveDifferentThreads(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      4,
@@ -1160,7 +1164,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentThrea
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentTime(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveDifferentTime(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      5,
@@ -1173,7 +1177,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentTime(
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentMemory(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveDifferentMemory(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      4,
@@ -1186,7 +1190,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentMemor
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentPassphrase(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveDifferentPassphrase(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      4,
@@ -1199,7 +1203,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentPassp
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentSalt(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveDifferentSalt(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      4,
@@ -1212,7 +1216,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentSalt(
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveKeyLen(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveKeyLen(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      4,
@@ -1225,7 +1229,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveKeyLen(c *C) {
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveDifferentMode(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveDifferentMode(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      4,
@@ -1277,7 +1281,7 @@ func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFDeriveErr(c *C) {
 	s.checkNoLockFile(c)
 }
 
-func (s *argon2OutOfProcessParentSupportSuite) TestArgon2KDFTime(c *C) {
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFTime(c *C) {
 	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("none"), 0, nil)
 	params := &Argon2CostParams{
 		Time:      4,
