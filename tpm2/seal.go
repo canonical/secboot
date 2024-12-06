@@ -159,7 +159,9 @@ var makeSealedKeyData = func(tpm *tpm2.TPMContext, params *makeSealedKeyDataPara
 		return nil, nil, nil, xerrors.Errorf("cannot create symmetric key: %w", err)
 	}
 
-	// Seal the symmetric key and nonce.
+	// Seal the symmetric key and nonce. The final boolean argument is set to true in order
+	// to disable dictionary attack protection (ie, adding the noDA attribute). We want this
+	// when no user auth value is required.
 	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], nameAlg, authPolicyDigest, !requireAuthValue)
 	if err != nil {
 		return nil, nil, nil, err
