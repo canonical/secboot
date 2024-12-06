@@ -192,6 +192,30 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 	// Wait for everything to die, hopefully successfully.
 	err = tmb.Wait()
 
+	// Make sure that WaitForAndRunArgon2OutOfProcessRequest closed its end of the
+	// response channel
+	cleanupTmb := new(tomb.Tomb)
+	cleanupTmb.Go(func() error {
+		cleanupTmb.Go(func() error {
+			var data [1]byte
+			_, err := rspW.Write(data[:])
+			return err
+		})
+
+		select {
+		case <-time.NewTimer(500 * time.Millisecond).C:
+			return errors.New("write end of response channel was not closed by WaitForAndRunArgon2OutOfProcessRequest")
+		case <-cleanupTmb.Dying():
+		}
+		return tomb.ErrDying
+	})
+	<-cleanupTmb.Dying()
+	c.Check(cleanupTmb.Err(), Equals, io.ErrClosedPipe)
+	if cleanupTmb.Err() != io.ErrClosedPipe {
+		c.Check(rspW.Close(), IsNil)
+	}
+	c.Check(cleanupTmb.Wait(), Equals, io.ErrClosedPipe)
+
 	// Grab the response
 	select {
 	case rsp = <-rspChan:
