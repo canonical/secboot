@@ -171,8 +171,8 @@ func (s *argon2OutOfProcessHandlerSupportMixin) testWaitForAndRunArgon2OutOfProc
 		return tomb.ErrDying
 	})
 
-	// Wait for the tomb to begin dying. The test could block here indefinitely if
-	// we never get a response.
+	// Wait for the tomb to begin dying. Bugs in WaitForAndRunArgon2OutOfProcessRequest
+	// could cause the test to block here indefinitely.
 	<-tmb.Dying()
 
 	// Closing our end of the request channel supplied to the test function, as
@@ -895,7 +895,7 @@ func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2
 	release()
 }
 
-func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestPassphrase(c *C) {
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestDifferentPassphrase(c *C) {
 	rsp, release, err := s.testWaitForAndRunArgon2OutOfProcessRequest(c, &testWaitForAndRunArgon2OutOfProcessRequestParams{
 		req: &Argon2OutOfProcessRequest{
 			Command:    Argon2OutOfProcessCommandDerive,
@@ -1049,6 +1049,78 @@ func (s *argon2OutOfProcessHandlerSupportSuite) TestWaitForAndRunArgon2OutOfProc
 	})
 	c.Check(release, IsNil)
 	s.checkNoLockFile(c)
+}
+
+func (s *argon2OutOfProcessHandlerSupportSuiteExpensive) TestWaitForAndRunArgon2OutOfProcessRequestMultiple(c *C) {
+	// Create 2 pipes to communicate with WaitForAndRunArgon2OutOfProcessRequest
+	reqR, reqW := io.Pipe()
+	rspR, rspW := io.Pipe()
+
+	var rsp *Argon2OutOfProcessResponse
+	tmb := new(tomb.Tomb) // The tomb for tracking goroutines
+
+	// Spin up a dedicated routine for running the test function
+	// (WaitForAndRunArgon2OutOfProcessRequest), passing it one end
+	// of each pipe.
+	tmb.Go(func() error {
+		release, err := WaitForAndRunArgon2OutOfProcessRequest(reqR, rspW, nil)
+		if release != nil {
+			defer release()
+		}
+		return err
+	})
+
+	req := &Argon2OutOfProcessRequest{
+		Command:    Argon2OutOfProcessCommandDerive,
+		Passphrase: "foo",
+		Salt:       testutil.DecodeHexString(c, "7ed928d8153e3084393d73f938ad3e03"),
+		Keylen:     32,
+		Mode:       Argon2id,
+		Time:       4,
+		MemoryKiB:  32,
+		Threads:    4,
+	}
+
+	// Note that bugs in WaitForAndRunArgon2OutOfProcessRequest could cause the test to
+	// block here indefinitely on any request / response.
+	enc := json.NewEncoder(reqW)
+	c.Check(enc.Encode(req), IsNil)
+
+	// Wait for the first response
+	dec := json.NewDecoder(rspR)
+	c.Check(dec.Decode(&rsp), IsNil)
+	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
+		Command: Argon2OutOfProcessCommandDerive,
+		Key:     testutil.DecodeHexString(c, "7306196ab24ea3ac9daab7f14345a9dc228dccef07075dbd2e047deac96689ea"),
+	})
+
+	rsp = nil
+
+	// Send the second request
+	c.Check(enc.Encode(req), IsNil)
+
+	// Wait for the second response
+	c.Check(dec.Decode(&rsp), IsNil)
+	c.Check(rsp, DeepEquals, &Argon2OutOfProcessResponse{
+		Command:     Argon2OutOfProcessCommandDerive,
+		ErrorType:   Argon2OutOfProcessErrorInvalidCommand,
+		ErrorString: "a command has already been executed",
+	})
+
+	// Closing our end of the request channel supplied to the test function, as
+	// a real parent process would, should be sufficient to begin termination
+	// of the test function (WaitForAndRunArgon2OutOfProcessRequest) on the remote
+	// side.
+	//
+	// Note that the test will block indefinitely on waiting for the tomb to fully
+	// die if this doesn't work properly, which isn't ideal.
+	c.Check(reqW.Close(), IsNil)
+
+	// Wait for everything to die, hopefully successfully. The test could block
+	// indefinitely here if WaitForAndRunArgon2OutOfProcessRequest doesn't return
+	// when we closed our end of the request channel above, or if the supplied
+	// watchdog monitor misbehaves and doesn't return when it is supposed to.
+	c.Check(tmb.Wait(), IsNil)
 }
 
 func (s *argon2OutOfProcessParentSupportSuite) TestNoArgon2OutOfProcessWatchdogMonitorUnexpectedResponse(c *C) {

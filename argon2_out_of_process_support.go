@@ -173,19 +173,25 @@ func (e *Argon2OutOfProcessResponseCommandInvalidError) Error() string {
 
 // RunArgon2OutOfProcessRequest runs the specified Argon2 request, and returns a response.
 //
-// In general, this is intended to be executed once in a process, before the process is discarded.
+// In general, this is intended to be executed once in a short-lived process, before the process
+// is discarded. It could be executed more than once in the same process, as long as the caller
+// takes steps to ensure that memory consumed by previous calls has been reclaimed by the GC
+// before calling this function again, but this isn't advised.
 //
 // Note that Argon2 requests are serialized using a system-wide lock, which this function does not
 // explicitly release. If the lock is acquired, it returns a callback that the caller may choose
 // to execute in order to explicitly release the lock, or the caller can just leave it to be
 // implicitly released on process exit. If the lock is explicitly released, the caller must be
-// sure that the large amount of memory allocated for the Argon2 operation has been freed and
-// returned back to the OS, else this defeats the point of having a system-wide lock (to avoid
-// having multiple processes with high physical memory requirements running at the same time). If
-// the lock wasn't acquired, no release callback will be returned.
+// sure that the large amount of memory allocated for the Argon2 operation has been reclaimed by
+// the GC, else this defeats the point of having a system-wide lock (to avoid multiple operations
+// consuming too much memory). If the process is re-used by calling this function more than once,
+// the lock will have to be explcitly released. If the lock wasn't acquired, no release callback
+// will be returned.
 //
 // This is quite a low-level function, suitable for implementations that want to manage their own
-// transport. In general, implementations will use [WaitForAndRunArgon2OutOfProcessRequest].
+// transport and their own remote process management. In general, implementations will use
+// [WaitForAndRunArgon2OutOfProcessRequest] in the remote process and [NewOutOfProcessArgonKDF]
+// for process management in the parent process.
 //
 // This function does not service watchdog requests, as the KDF request happens synchronously in the
 // current goroutine. If this is required, it needs to be implemented in supporting code that makes
@@ -385,14 +391,16 @@ func NoArgon2OutOfProcessWatchdogHandler() Argon2OutOfProcessWatchdogHandler {
 
 // WaitForAndRunArgon2OutOfProcessRequest waits for a [Argon2OutOfProcessRequest] request on the
 // supplied io.Reader before running it and sending a [Argon2OutOfProcessResponse] response back via
-// the supplied io.Writer. These will generally be connected to the process's os.Stdin and
-// os.Stdout - at least they will need to be when using [NewOutOfProcessArgon2KDF] on the parent side.
+// the supplied io.WriteCloser. These will generally be connected to the process's os.Stdin and
+// os.Stdout - at least they will need to be when using [NewOutOfProcessArgon2KDF] on the parent side,
+// which this function is intended to be compatible with.
 //
 // This function will service watchdog requests from the parent process if a watchdog handler is supplied.
 // If supplied, it must match the corresponding monitor in the parent process. If not supplied, the default
 // [NoArgon2OutOfProcessWatchdogHandler] will be used.
 //
-// In general, this is intended to be executed once in a process, before the process is discarded.
+// This won't process more than one request, and in general is intended to be executed once in a process,
+// before the process is discarded. This is how the function is used with [NewOutOfProcessArgon2KDF].
 //
 // Note that Argon2 requests are serialized using a system-wide lock, which this function does not
 // explicitly release. If the lock is acquired, it returns a callback that the caller may choose
@@ -429,14 +437,18 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.WriteCloser, wa
 
 	tmb := new(tomb.Tomb)
 
-	// rspChan is the channel from the routines that process requests and run the KDF to the
-	// dedicated output routine which serializes the response to the supplied io.Writer.
-	rspChan := make(chan *Argon2OutOfProcessResponse)
-
 	// Spin up a routine for receiving requests from the supplied io.Reader.
 	tmb.Go(func() error {
-		// Also spin-up the routine for sending outgoing responses that are generated internally.
-		// This handles the read end of rspChan, and serializes responses to the supplied io.Writer.
+		// reqChan is sent requests from this routine which are received by the dedicated
+		// KDF routine.
+		reqChan := make(chan *Argon2OutOfProcessRequest)
+
+		// rspChan is sent responses from the KDF routine or watchdog, which are then received
+		// by a dedicated output routine which serializes the response to the supplied io.Writer.
+		rspChan := make(chan *Argon2OutOfProcessResponse)
+
+		// Spin-up the routine for sending outgoing responses that are generated internally.
+		// This handles the read end of rspChan, and serializes responses to the supplied io.WriteCloser.
 		// This gets its own goroutine so that all responses are sent via the same code path - responses
 		// can ultimately come directly from the request processing loop in this routine (in the event
 		// of a watchdog request), or from a dedicated KDF routine which permits the request processing
@@ -477,6 +489,55 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.WriteCloser, wa
 		tmb.Go(func() error {
 			<-tmb.Dying()
 			return out.Close()
+		})
+
+		// Spin up a goroutine for running the KDF without blocking the request handling
+		// loop on this routine. This reads from reqChan.
+		tmb.Go(func() error {
+			select {
+			case req := <-reqChan:
+				// Run the KDF request. This performs a lot of checking of the supplied
+				// request, so there's no need to repeat any of that here.
+				rsp, release := RunArgon2OutOfProcessRequest(req)
+
+				// Ensure the release callback for the system lock gets returned
+				// to the caller.
+				lockRelease = release
+
+				// Send the response.
+				select {
+				case rspChan <- rsp: // Unbuffered channel, but read end is always there unless the tomb is dying.
+				case <-tmb.Dying():
+					// The tomb began dying before the response was sent,
+					// so exit early.
+					return tomb.ErrDying
+				}
+			case <-tmb.Dying():
+				return tomb.ErrDying
+			}
+
+			// We don't handle any more requests. Run a loop for processing additional
+			// requests in order to return errors, until the tomb enters a dying state.
+			for tmb.Alive() {
+				select {
+				case req := <-reqChan:
+					rsp := &Argon2OutOfProcessResponse{
+						Command:     req.Command,
+						ErrorType:   Argon2OutOfProcessErrorInvalidCommand,
+						ErrorString: "a command has already been executed",
+					}
+					// Send the response.
+					select {
+					case rspChan <- rsp: // Unbuffered channel, but read end is always there unless the tomb is dying.
+					case <-tmb.Dying():
+						// The tomb began dying before the response was sent. The
+						// loop won't run again.
+					}
+				case <-tmb.Dying():
+					// The loop won't run again.
+				}
+			}
+			return tomb.ErrDying
 		})
 
 		// Run a loop for receiving and processing incoming requests from the io.Reader as
@@ -533,53 +594,14 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.WriteCloser, wa
 				}
 			default:
 				// Treat everything else as a KDF request. We don't actually check the
-				// command here - RunArgon2OutOfProcessRequest does this already and will
-				// return an error response if the command is invalid.
-
-				// Spin up a new routine to handle the request, as it blocks and is long running,
-				// and we still want to be able to service watchdog requests on this routine whilst
-				// it's running. Block the current routine until we know the new routine has started
-				// so that the watchdog handler will fail if the new routine doesn't begin properly.
-				startupCh := make(chan struct{})
-
-				tmb.Go(func() error {
-					close(startupCh)
-
-					// Run the KDF request. This performs a lot of checking of the supplied
-					// request, so there's no need to repeat any of that here.
-					rsp, release := RunArgon2OutOfProcessRequest(req)
-
-					if release != nil {
-						// Although theoretically this process could be sent more than one request
-						// (although the parent side implementation in secboot won't do this),
-						// subsequent calls to RunArgon2OutOfProcessRequest eventually all timeout,
-						// unable to acquire another system-wide lock (it will be acquired on the first
-						// request and the return value will contain the release callback already). In
-						// this case, there will be no new release callback to overwrite the one that
-						// the return value was set to on the first request.
-						lockRelease = release
-					}
-
-					// Send the response.
-					select {
-					case rspChan <- rsp: // Unbuffered channel, but read end is always there unless the tomb is dying.
-					case <-tmb.Dying():
-						// The tomb began dying before the response was sent,
-						// so exit early.
-						return tomb.ErrDying
-					}
-
-					// Although we're only meant to handle a single request, and we've
-					// done that now, don't put the tomb into a dying state yet. Wait
-					// for the parent process to close its end of the request channel
-					// first to avoid race conditions with an in-flight watchdog request
-					// from the parent process.
-					return nil
-				})
-
-				// Wait here for the KDF handler routine to startup. This should never fail to start-up,
-				// but doing this blocks the processing of watchdog requests temporarily.
-				<-startupCh
+				// request here - this is done by RunArgon2OutOfProcessRequest which runs
+				// on a dedicated routine.
+				select {
+				case reqChan <- req: // Unbuffered channel, but read end is always there unless the tomb is dying.
+				case <-tmb.Dying():
+					// The tomb began dying before the rquest was sent, so
+					// the outer loop won't run again.
+				}
 			}
 		}
 		return tomb.ErrDying
@@ -758,9 +780,9 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 		// The remote process may release the system-wide lock implicitly on process
 		// termination. In this case, we make an attempt to cleanup the lock-file on
 		// behalf of the remote process. This isn't strictly necessary, which is why
-		// we set the timeout to 0 - we don't want to wait if someone else has already
-		// managed to grab the lock and we don't want to delay the return of the response
-		// from this function.
+		// we set the timeout to 0, which makes it completely non-blocking - we don't
+		// want to wait if someone else has already managed to grab the lock and we
+		// don't want to delay the return of the response from this function.
 		release, err := acquireArgon2OutOfProcessHandlerSystemLock(0)
 		if err != nil {
 			// We didn't acquire the lock with a single attempt, so never mind.
@@ -810,7 +832,7 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 		// serialize then and sends them to the remote process via its stdin.
 		reqChan := make(chan *Argon2OutOfProcessRequest)
 
-		// Spin up a routine for sending requests to the remote process via stdinPipe.
+		// Spin up a routine for encoding and sending requests to the remote process via stdinPipe.
 		tmb.Go(func() error {
 			// Run a loop to send requests as long as the tomb is alive.
 			for tmb.Alive() {
@@ -828,7 +850,7 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 			return tomb.ErrDying
 		})
 
-		// Send the main request before starting the watchdog or running the response loop
+		// Send the main request before starting the watchdog or running the response loop.
 		select {
 		case reqChan <- req: // Unbuffered channel, but read end is always there unless the tomb is dying.
 		case <-tmb.Dying():
