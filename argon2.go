@@ -33,19 +33,26 @@ import (
 )
 
 var (
-	argon2Mu   sync.Mutex
-	argon2Impl Argon2KDF = nullArgon2KDFImpl{}
+	argon2Mu   sync.Mutex                       // Protects access to argon2Impl
+	argon2Impl Argon2KDF  = nullArgon2KDFImpl{} // The Argon2KDF implementation used by functions in this package
 
 	runtimeNumCPU = runtime.NumCPU
 )
 
-// SetArgon2KDF sets the KDF implementation for Argon2. The default here is
-// the null implementation which returns an error, so this will need to be
-// configured explicitly in order to use Argon2.
+// SetArgon2KDF sets the KDF implementation for Argon2 use from within secboot.
+// The default here is a null implementation which returns an error, so this
+// will need to be configured explicitly in order to be able to use Argon2 from
+// within secboot.
 //
 // Passing nil will configure the null implementation as well.
 //
-// This returns the currently set implementation.
+// This function returns the previously configured Argon2KDF instance.
+//
+// This exists to facilitate running Argon2 operations in short-lived helper
+// processes (see [InProcessArgon2KDF]), because Argon2 doesn't interact very
+// well with Go's garbage collector, and is an algorithm that is only really
+// suited to languages / runtimes with explicit memory allocation and
+// de-allocation primitves.
 func SetArgon2KDF(kdf Argon2KDF) Argon2KDF {
 	argon2Mu.Lock()
 	defer argon2Mu.Unlock()
@@ -59,13 +66,17 @@ func SetArgon2KDF(kdf Argon2KDF) Argon2KDF {
 	return orig
 }
 
+// argon2KDF returns the global [Argon2KDF] implementation set for this process. This
+// can be set via calls to [SetArgon2KDF].
 func argon2KDF() Argon2KDF {
 	argon2Mu.Lock()
 	defer argon2Mu.Unlock()
 	return argon2Impl
 }
 
-// Argon2Mode describes the Argon2 mode to use.
+// Argon2Mode describes the Argon2 mode to use. Note that the
+// fully data-dependent mode is not supported because the underlying
+// argon2 implementation lacks support for it.
 type Argon2Mode = argon2.Mode
 
 const (
@@ -119,6 +130,7 @@ func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 
 	mode := o.Mode
 	if mode == Argon2Default {
+		// Select the hybrid mode by default.
 		mode = Argon2id
 	}
 
@@ -126,7 +138,7 @@ func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 	case o.ForceIterations > 0:
 		// The non-benchmarked path. Ensure that ForceIterations
 		// and MemoryKiB fit into an int32 so that it always fits
-		// into an int
+		// into an int, because the retuned kdfParams uses ints.
 		switch {
 		case o.ForceIterations > math.MaxInt32:
 			return nil, fmt.Errorf("invalid iterations count %d", o.ForceIterations)
@@ -157,12 +169,15 @@ func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 
 		return params, nil
 	default:
+		// The benchmarked path, where we determing what cost paramters to
+		// use in order to obtain the desired execution time.
 		benchmarkParams := &argon2.BenchmarkParams{
 			MaxMemoryCostKiB: 1 * 1024 * 1024, // the default maximum memory cost is 1GiB.
 			TargetDuration:   2 * time.Second, // the default target duration is 2s.
 		}
 
 		if o.MemoryKiB != 0 {
+			// The memory cost has been specified explicitly
 			benchmarkParams.MaxMemoryCostKiB = o.MemoryKiB // this is capped to 4GiB by internal/argon2.
 		}
 		if o.TargetDuration != 0 {
@@ -172,6 +187,7 @@ func (o *Argon2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 			benchmarkParams.Threads = o.Parallel // this is capped to 4 by internal/argon2.
 		}
 
+		// Run the benchmark, which relies on the global Argon2KDF implementation.
 		params, err := argon2.Benchmark(benchmarkParams, func(params *argon2.CostParams) (time.Duration, error) {
 			return argon2KDF().Time(mode, &Argon2CostParams{
 				Time:      params.Time,
@@ -217,7 +233,9 @@ func (p *Argon2CostParams) internalParams() *argon2.CostParams {
 }
 
 // Argon2KDF is an interface to abstract use of the Argon2 KDF to make it possible
-// to delegate execution to a short-lived utility process where required.
+// to delegate execution to a short-lived handler process where required. See
+// [SetArgon2KDF] and [InProcessArgon2KDF]. Implementations should be thread-safe
+// (ie, they should be able to handle calls from different goroutines).
 type Argon2KDF interface {
 	// Derive derives a key of the specified length in bytes, from the supplied
 	// passphrase and salt and using the supplied mode and cost parameters.
@@ -246,10 +264,27 @@ func (_ inProcessArgon2KDFImpl) Time(mode Argon2Mode, params *Argon2CostParams) 
 	return argon2.KeyDuration(argon2.Mode(mode), params.internalParams())
 }
 
-// InProcessArgon2KDF is the in-process implementation of the Argon2 KDF. This
-// shouldn't be used in long-lived system processes - these processes should
-// instead provide their own KDF implementation which delegates to a short-lived
-// utility process which will use the in-process implementation.
+// InProcessArgon2KDF is the in-process implementation of the Argon2 KDF.
+//
+// This shouldn't be used in long-lived system processes. As Argon2 intentionally
+// allocates a lot of memory and go is garbage collected, it may be some time before
+// the large amounts of memory it allocates are freed and made available to other code
+// or other processes on the system. Consecutive calls can rapidly result in the
+// application being unable to allocate more memory, and even worse, may trigger the
+// kernel's OOM killer. Whilst implementations can call [runtime.GC] between calls,
+// go's sweep implementation stops the world, which makes interaction with goroutines
+// and the scheduler poor, and will likely result in noticeable periods of
+// unresponsiveness. Rather than using this directly, it's better to pass requests to
+// a short-lived helper process where this can be used, and let the kernel deal with
+// reclaiming memory when the short-lived process exits instead.
+//
+// This package provides APIs to support this architecture already -
+// [NewOutOfProcessArgon2KDF] for the parent side, and [WaitForAndRunArgon2OutOfProcessRequest]
+// for the remote side, which runs in a short-lived process. In order to save storage
+// space that would be consumed by another go binary, it is reasonable that the parent
+// side (the one that calls [SetArgon2KDF]) and the remote side (which calls
+// [WaitForAndRunArgon2OutOfProcessRequest]) could live in the same executable that
+// is invoked with different arguments depending on which function is required.
 var InProcessArgon2KDF = inProcessArgon2KDFImpl{}
 
 type nullArgon2KDFImpl struct{}

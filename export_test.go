@@ -1,3 +1,4 @@
+// go:build test
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
@@ -28,6 +29,7 @@ import (
 
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
+	"github.com/snapcore/secboot/internal/paths"
 )
 
 const (
@@ -35,8 +37,10 @@ const (
 )
 
 var (
-	UnmarshalV1KeyPayload  = unmarshalV1KeyPayload
-	UnmarshalProtectedKeys = unmarshalProtectedKeys
+	AcquireArgon2OutOfProcessHandlerSystemLock    = acquireArgon2OutOfProcessHandlerSystemLock
+	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
+	UnmarshalProtectedKeys                        = unmarshalProtectedKeys
 )
 
 type (
@@ -54,6 +58,30 @@ func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
 
 func (o *PBKDF2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
 	return o.kdfParams(keyLen)
+}
+
+func MockArgon2OutOfProcessHandlerSystemLockPath(path string) (restore func()) {
+	orig := paths.Argon2OutOfProcessHandlerSystemLockPath
+	paths.Argon2OutOfProcessHandlerSystemLockPath = path
+	return func() {
+		paths.Argon2OutOfProcessHandlerSystemLockPath = orig
+	}
+}
+
+func MockAcquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint(fn func()) (restore func()) {
+	orig := acquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint
+	acquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint = fn
+	return func() {
+		acquireArgon2OutOfProcessHandlerSystemLockAcquiredCheckpoint = orig
+	}
+}
+
+func MockArgon2SysLockStderr(w io.Writer) (restore func()) {
+	orig := argon2SysLockStderr
+	argon2SysLockStderr = w
+	return func() {
+		argon2SysLockStderr = orig
+	}
 }
 
 func MockLUKS2Activate(fn func(string, string, []byte, int) error) (restore func()) {
