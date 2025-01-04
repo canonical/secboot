@@ -20,14 +20,13 @@
 package testutil
 
 import (
-	"crypto"
 	_ "crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"time"
 
-	kdf "github.com/canonical/go-sp800.108-kdf"
-
+	"github.com/canonical/go-kbkdf"
+	"github.com/canonical/go-kbkdf/hmac_prf"
 	"github.com/snapcore/secboot"
 )
 
@@ -57,7 +56,7 @@ func (_ *MockArgon2KDF) Derive(passphrase string, salt []byte, mode secboot.Argo
 	binary.LittleEndian.PutUint32(context[len(salt)+5:], params.MemoryKiB)
 	context[len(salt)+9] = params.Threads
 
-	return kdf.CounterModeKey(kdf.NewHMACPRF(crypto.SHA256), []byte(passphrase), nil, context, keyLen*8), nil
+	return kbkdf.CounterModeKey(hmac_prf.SHA256, []byte(passphrase), nil, context, keyLen*8), nil
 }
 
 // Time implements secboot.KDF.Time and returns a time that is linearly
