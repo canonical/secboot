@@ -25,8 +25,6 @@ import (
 	gohash "hash"
 	"io"
 	"math/rand"
-	"os"
-	"syscall"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/util"
@@ -39,6 +37,7 @@ import (
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
@@ -376,8 +375,8 @@ func (s *platformSuite) TestRecoverKeysNoTPMConnection(c *C) {
 	})
 	c.Check(err, IsNil)
 
-	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return nil, &os.PathError{Op: "open", Path: "/dev/tpm0", Err: syscall.ENOENT}
+	restore := tpm2test.MockDefaultDeviceFn(func(tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
+		return nil, tpm2_device.ErrNoTPM2Device
 	})
 	s.AddCleanup(restore)
 

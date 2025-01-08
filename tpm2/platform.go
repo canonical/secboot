@@ -67,7 +67,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 			Err:  fmt.Errorf("invalid key data version: %d", k.data.Version())}
 	}
 
-	tpm, err := ConnectToTPM()
+	tpm, err := ConnectToDefaultTPM()
 	switch {
 	case err == ErrNoTPM2Device:
 		return nil, &secboot.PlatformHandlerError{
@@ -121,7 +121,7 @@ func (h *platformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKe
 }
 
 func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte) ([]byte, error) {
-	tpm, err := ConnectToTPM()
+	tpm, err := ConnectToDefaultTPM()
 	switch {
 	case err == ErrNoTPM2Device:
 		return nil, &secboot.PlatformHandlerError{

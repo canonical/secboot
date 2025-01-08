@@ -53,7 +53,7 @@ const legacyPlatformName = "tpm2-legacy"
 type legacyPlatformKeyDataHandler struct{}
 
 func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData, encryptedPayload []byte) ([]byte, error) {
-	tpm, err := ConnectToTPM()
+	tpm, err := ConnectToDefaultTPM()
 	switch {
 	case err == ErrNoTPM2Device:
 		return nil, &secboot.PlatformHandlerError{
