@@ -59,19 +59,24 @@ type testCreateSealedObjectData struct {
 	data         tpm2.SensitiveData
 	nameAlg      tpm2.HashAlgorithmId
 	policyDigest tpm2.Digest
+	noDA         bool
 	session      tpm2.SessionContext
 }
 
 func (s *sealedObjectKeySealerSuite) testCreateSealedObject(c *C, data *testCreateSealedObjectData) {
 	sealer := NewSealedObjectKeySealer(s.TPM())
 
-	priv, pub, importSymSeed, err := sealer.CreateSealedObject(data.data, data.nameAlg, data.policyDigest)
+	priv, pub, importSymSeed, err := sealer.CreateSealedObject(data.data, data.nameAlg, data.policyDigest, data.noDA)
 	c.Assert(err, IsNil)
 	c.Check(importSymSeed, IsNil)
 
 	c.Check(pub.Type, Equals, tpm2.ObjectTypeKeyedHash)
 	c.Check(pub.NameAlg, Equals, data.nameAlg)
-	c.Check(pub.Attrs, Equals, tpm2.AttrFixedParent|tpm2.AttrFixedTPM)
+	expectedAttrs := tpm2.AttrFixedParent | tpm2.AttrFixedTPM
+	if data.noDA {
+		expectedAttrs |= tpm2.AttrNoDA
+	}
+	c.Check(pub.Attrs, Equals, expectedAttrs)
 	c.Check(pub.AuthPolicy, DeepEquals, data.policyDigest)
 	c.Check(pub.Params, DeepEquals,
 		&tpm2.PublicParamsU{
@@ -96,6 +101,7 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObject(c *C) {
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
 		policyDigest: make([]byte, 32),
+		noDA:         true,
 		session:      s.StartAuthSession(c, nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)})
 }
 
@@ -108,6 +114,7 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectWithNewConnection(c *
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
 		policyDigest: make([]byte, 32),
+		noDA:         true,
 		session:      s.StartAuthSession(c, nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)})
 }
 
@@ -122,6 +129,7 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectMissingSRK(c *C) {
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
 		policyDigest: make([]byte, 32),
+		noDA:         true,
 		session:      s.StartAuthSession(c, nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)})
 }
 
@@ -130,6 +138,7 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectDifferentData(c *C) {
 		data:         []byte("bar"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
 		policyDigest: make([]byte, 32),
+		noDA:         true,
 		session:      s.StartAuthSession(c, nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)})
 }
 
@@ -138,6 +147,7 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectDifferentNameAlg(c *C
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA1,
 		policyDigest: make([]byte, 20),
+		noDA:         true,
 		session:      s.StartAuthSession(c, nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA1)})
 }
 
@@ -152,7 +162,17 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectDifferentPolicy(c *C)
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
 		policyDigest: trial.GetDigest(),
+		noDA:         true,
 		session:      session})
+}
+
+func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectWithDA(c *C) {
+	s.testCreateSealedObject(c, &testCreateSealedObjectData{
+		data:         []byte("foo"),
+		nameAlg:      tpm2.HashAlgorithmSHA256,
+		policyDigest: make([]byte, 32),
+		noDA:         false,
+		session:      s.StartAuthSession(c, nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)})
 }
 
 type importableObjectKeySealerSuite struct{}
@@ -167,12 +187,16 @@ func (s *importableObjectKeySealerSuite) testCreateSealedObject(c *C, data *test
 
 	sealer := NewImportableObjectKeySealer(srk)
 
-	priv, pub, importSymSeed, err := sealer.CreateSealedObject(data.data, data.nameAlg, data.policyDigest)
+	priv, pub, importSymSeed, err := sealer.CreateSealedObject(data.data, data.nameAlg, data.policyDigest, data.noDA)
 	c.Assert(err, IsNil)
 
 	c.Check(pub.Type, Equals, tpm2.ObjectTypeKeyedHash)
 	c.Check(pub.NameAlg, Equals, data.nameAlg)
-	c.Check(pub.Attrs, Equals, tpm2.ObjectAttributes(0))
+	expectedAttrs := tpm2.ObjectAttributes(0)
+	if data.noDA {
+		expectedAttrs |= tpm2.AttrNoDA
+	}
+	c.Check(pub.Attrs, Equals, expectedAttrs)
 	c.Check(pub.AuthPolicy, DeepEquals, data.policyDigest)
 	c.Check(pub.Params, DeepEquals,
 		&tpm2.PublicParamsU{
@@ -191,21 +215,24 @@ func (s *importableObjectKeySealerSuite) TestCreateSealedObject(c *C) {
 	s.testCreateSealedObject(c, &testCreateSealedObjectData{
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
-		policyDigest: make([]byte, 32)})
+		policyDigest: make([]byte, 32),
+		noDA:         true})
 }
 
 func (s *importableObjectKeySealerSuite) TestCreateSealedObjectDifferentData(c *C) {
 	s.testCreateSealedObject(c, &testCreateSealedObjectData{
 		data:         []byte("bar"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
-		policyDigest: make([]byte, 32)})
+		policyDigest: make([]byte, 32),
+		noDA:         true})
 }
 
 func (s *importableObjectKeySealerSuite) TestCreateSealedObjectiDifferentNameAlg(c *C) {
 	s.testCreateSealedObject(c, &testCreateSealedObjectData{
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA1,
-		policyDigest: make([]byte, 20)})
+		policyDigest: make([]byte, 20),
+		noDA:         true})
 }
 
 func (s *importableObjectKeySealerSuite) TestCreateSealedObjectWithDifferentPolicy(c *C) {
@@ -215,5 +242,14 @@ func (s *importableObjectKeySealerSuite) TestCreateSealedObjectWithDifferentPoli
 	s.testCreateSealedObject(c, &testCreateSealedObjectData{
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
-		policyDigest: trial.GetDigest()})
+		policyDigest: trial.GetDigest(),
+		noDA:         true})
+}
+
+func (s *importableObjectKeySealerSuite) TestCreateSealedObjectWithDA(c *C) {
+	s.testCreateSealedObject(c, &testCreateSealedObjectData{
+		data:         []byte("foo"),
+		nameAlg:      tpm2.HashAlgorithmSHA256,
+		policyDigest: make([]byte, 32),
+		noDA:         false})
 }

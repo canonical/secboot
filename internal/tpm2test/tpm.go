@@ -20,15 +20,18 @@
 package tpm2test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/ppi"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot/internal/tcg"
-	"github.com/snapcore/secboot/internal/tcti"
+	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
 
@@ -81,13 +84,13 @@ const (
 	//TPMFeaturePersistent		= tpm2_testutil.TPMFeaturePersistent
 )
 
-// MockOpenDefaultTctiFn overrides the tcti.OpenDefault function, used
-// to create a connection to the default TPM.
-func MockOpenDefaultTctiFn(fn func() (tpm2.TCTI, error)) (restore func()) {
-	origFn := tcti.OpenDefault
-	tcti.OpenDefault = fn
+// MockDefaultDeviceFn overrides the tpm2_device.DefaultDevice function, used
+// to obtain the default TPM device.
+func MockDefaultDeviceFn(fn func(tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error)) (restore func()) {
+	orig := tpm2_device.DefaultDevice
+	tpm2_device.DefaultDevice = fn
 	return func() {
-		tcti.OpenDefault = origFn
+		tpm2_device.DefaultDevice = orig
 	}
 }
 
@@ -101,53 +104,126 @@ func MockEKTemplate(mock *tpm2.Public) (restore func()) {
 	}
 }
 
-// OpenTPMSimulatorConnection returns a new TPM connection to the TPM simulator on
-// the port specified by tpm2_testutil.MssimPort. If tpm2_testutil.TPMBackend is
-// not TPMBackendMssim then the test will be skipped.
-//
-// The returned connection must be closed when it is no longer required.
-func OpenTPMSimulatorConnection(c *C) (tpm *secboot_tpm2.Connection, tcti *TCTI) {
-	tcti = WrapTCTI(tpm2_testutil.NewSimulatorTCTI(c))
-
-	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tcti, nil
-	})
-	defer restore()
-
-	tpm, err := secboot_tpm2.ConnectToTPM()
-	c.Assert(err, IsNil)
-
-	return tpm, tcti
+type testTpmDevice struct {
+	tpm2.TPMDevice
 }
 
-// OpenTPMSimulatorConnectionT returns a new TPM connection to the TPM simulator
-// on the port specified by tpm2_testutil.MssimPort. If tpm2_testutil.TPMBackend is
-// not TPMBackendMssim then the test will be skipped.
-//
-// The returned connection must be closed when it is no longer required. This can
-// be done with the returned close callback, which will cause the test to fail if
-// closing doesn't succeed.
-func OpenTPMSimulatorConnectionT(t *testing.T) (tpm *secboot_tpm2.Connection, tcti *TCTI, close func()) {
-	tcti = WrapTCTI(tpm2_testutil.NewSimulatorTCTIT(t))
+func newTestTpmDevice(dev tpm2.TPMDevice) *testTpmDevice {
+	return &testTpmDevice{TPMDevice: dev}
+}
 
-	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tcti, nil
+func (d *testTpmDevice) Open() (tpm2.Transport, error) {
+	transport, err := d.TPMDevice.Open()
+	if err != nil {
+		return nil, err
+	}
+	testTransport, ok := transport.(*tpm2_testutil.Transport)
+	if !ok {
+		return nil, errors.New("expected a tpm2_testutil.Transport")
+	}
+	return WrapTransport(testTransport), nil
+}
+
+type tpmDevice struct {
+	tpm2.TPMDevice
+	mode   tpm2_device.DeviceMode
+	ppi    ppi.PPI
+	ppiErr error
+}
+
+func newTpmDevice(dev tpm2.TPMDevice, mode tpm2_device.DeviceMode, ppi ppi.PPI, ppiErr error) *tpmDevice {
+	return &tpmDevice{
+		TPMDevice: dev,
+		mode:      mode,
+		ppi:       ppi,
+		ppiErr:    ppiErr,
+	}
+}
+
+func (d *tpmDevice) Mode() tpm2_device.DeviceMode {
+	return d.mode
+}
+
+func (d *tpmDevice) PPI() (ppi.PPI, error) {
+	return d.ppi, d.ppiErr
+}
+
+func openTPMDevice(dev tpm2.TPMDevice, ppi ppi.PPI, ppiErr error) (tpm *secboot_tpm2.Connection, err error) {
+	restore := MockDefaultDeviceFn(func(mode tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
+		if mode != tpm2_device.DeviceModeDirect {
+			// TODO: Support other modes here
+			return nil, errors.New("unexpected mode")
+		}
+		if ppi == nil && ppiErr == nil {
+			ppiErr = tpm2_device.ErrNoPPI
+		}
+		return newTpmDevice(newTestTpmDevice(dev), mode, ppi, ppiErr), nil
 	})
 	defer restore()
 
-	tpm, err := secboot_tpm2.ConnectToTPM()
+	tpm, err = secboot_tpm2.ConnectToDefaultTPM()
+	if err != nil {
+		return nil, err
+	}
+
+	return tpm, nil
+}
+
+func OpenTPMDevice(c *C, dev tpm2.TPMDevice, ppi ppi.PPI, ppiErr error) (tpm *secboot_tpm2.Connection, transport *Transport) {
+	tpm, err := openTPMDevice(dev, ppi, ppiErr)
+	if errors.Is(err, tpm2_testutil.ErrSkipNoTPM) {
+		c.Skip("no TPM available for the test")
+	}
+	c.Assert(err, IsNil)
+	c.Assert(tpm.Transport(), testutil.ConvertibleTo, &Transport{})
+
+	return tpm, tpm.Transport().(*Transport)
+}
+
+func OpenTPMDeviceT(t *testing.T, dev tpm2.TPMDevice, ppi ppi.PPI, ppiErr error) (tpm *secboot_tpm2.Connection, transport *Transport, close func()) {
+	tpm, err := openTPMDevice(dev, ppi, ppiErr)
+	if errors.Is(err, tpm2_testutil.ErrSkipNoTPM) {
+		t.SkipNow()
+	}
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
-	return tpm, tcti, func() {
+	transport, ok := tpm.Transport().(*Transport)
+	if !ok {
+		t.Fatal("unexpected transport type")
+	}
+
+	return tpm, transport, func() {
 		if err := tpm.Close(); err != nil {
 			t.Errorf("close failed: %v", err)
 		}
 	}
 }
 
-// OpenTPMConnection returns a new TPM connection for testing. If tpm2_testutil.TPMBackend
+// OpenDefaultTPMSimulatorConnection returns a new TPM connection to the TPM simulator on
+// the port specified by tpm2_testutil.MssimPort. If tpm2_testutil.TPMBackend is
+// not TPMBackendMssim then the test will be skipped.
+//
+// The returned connection must be closed when it is no longer required.
+func OpenDefaultTPMSimulatorConnection(c *C) (tpm *secboot_tpm2.Connection, transport *Transport) {
+	// TODO: Support supplying a ppi.PPI implementation that can be tested.
+	return OpenTPMDevice(c, tpm2_testutil.NewSimulatorDevice(), nil, nil)
+}
+
+// OpenDefaultTPMSimulatorConnectionT returns a new TPM connection to the TPM simulator
+// on the port specified by tpm2_testutil.MssimPort. If tpm2_testutil.TPMBackend is
+// not TPMBackendMssim then the test will be skipped.
+//
+// The returned connection must be closed when it is no longer required. This can
+// be done with the returned close callback, which will cause the test to fail if
+// closing doesn't succeed.
+func OpenDefaultTPMSimulatorConnectionT(t *testing.T) (tpm *secboot_tpm2.Connection, transport *Transport, close func()) {
+	// TODO: Support supplying a ppi.PPI implementation that can be tested.
+	return OpenTPMDeviceT(t, tpm2_testutil.NewSimulatorDevice(), nil, nil)
+}
+
+// OpenDefaultTPMConnection returns a new TPM connection for testing. If tpm2_testutil.TPMBackend
 // is TPMBackendNone then the current test will be skipped. If tpm2_testutil.TPMBackend
 // is TPMBackendMssim, the returned context will correspond to a connection to the TPM
 // simulator on the port specified by the tpm2_testutil.MssimPort variable. If
@@ -158,21 +234,12 @@ func OpenTPMSimulatorConnectionT(t *testing.T) (tpm *secboot_tpm2.Connection, tc
 // If the test requires features that are not permitted, the test will be skipped.
 //
 // The returned connection must be closed when it is no longer required.
-func OpenTPMConnection(c *C, features tpm2_testutil.TPMFeatureFlags) (tpm *secboot_tpm2.Connection, tcti *TCTI) {
-	tcti = WrapTCTI(tpm2_testutil.NewTCTI(c, features))
-
-	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tcti, nil
-	})
-	defer restore()
-
-	tpm, err := secboot_tpm2.ConnectToTPM()
-	c.Assert(err, IsNil)
-
-	return tpm, tcti
+func OpenDefaultTPMConnection(c *C, features tpm2_testutil.TPMFeatureFlags) (tpm *secboot_tpm2.Connection, transport *Transport) {
+	// TODO: Support supplying a ppi.PPI implementation that can be tested.
+	return OpenTPMDevice(c, tpm2_testutil.NewDevice(c, features), nil, nil)
 }
 
-// OpenTPMConnectionT returns a new TPM connection for testing. If tpm2_testutil.TPMBackend
+// OpenDefaultTPMConnectionT returns a new TPM connection for testing. If tpm2_testutil.TPMBackend
 // is TPMBackendNone then the current test will be skipped. If tpm2_testutil.TPMBackend
 // is TPMBackendMssim, the returned context will correspond to a connection to the TPM
 // simulator on the port specified by the tpm2_testutil.MssimPort variable. If
@@ -185,51 +252,45 @@ func OpenTPMConnection(c *C, features tpm2_testutil.TPMFeatureFlags) (tpm *secbo
 // The returned connection must be closed when it is no longer required. This can be
 // done with the returned close callback, which will cause the test to fail if closing
 // doesn't succeed.
-func OpenTPMConnectionT(t *testing.T, features tpm2_testutil.TPMFeatureFlags) (tpm *secboot_tpm2.Connection, tcti *TCTI, close func()) {
-	tcti = WrapTCTI(tpm2_testutil.NewTCTIT(t, features))
-
-	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tcti, nil
-	})
-	defer restore()
-
-	tpm, err := secboot_tpm2.ConnectToTPM()
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-
-	return tpm, tcti, func() {
-		if err := tpm.Close(); err != nil {
-			t.Errorf("close failed: %v", err)
-		}
-	}
+func OpenDefaultTPMConnectionT(t *testing.T, features tpm2_testutil.TPMFeatureFlags) (tpm *secboot_tpm2.Connection, transport *Transport, close func()) {
+	// TODO: Support supplying a ppi.PPI implementation that can be tested.
+	return OpenTPMDeviceT(t, tpm2_testutil.NewDeviceT(t, features), nil, nil)
 }
 
-func newTPMConnectionFromExisting(tpm *secboot_tpm2.Connection, tcti *TCTI) (*secboot_tpm2.Connection, *TCTI, error) {
+func newTPMConnectionFromExistingTransport(tpm *secboot_tpm2.Connection, transport *Transport) (*secboot_tpm2.Connection, *Transport, error) {
+	// Wrap the supplied transport in a TPMDevice.
+	dev := tpm2_testutil.NewTransportPassthroughDevice(transport.Unwrap())
+
 	if tpm != nil {
+		// A TPM Connection was supplied. Pretend to close the existing connection,
+		// which flushes the HMAC session associated with it. This will close the
+		// test transport, but we keep the underlying transport open.
+		if transport != tpm.Transport() {
+			return nil, nil, errors.New("invalid transport")
+		}
 		// Pretend to close the existing connection, which flushes
 		// the HMAC session associated with it.
-		tcti.SetKeepOpen(true)
+		transport.SetKeepOpen(true)
 
 		if err := tpm.Close(); err != nil {
 			return nil, nil, err
 		}
+
+		// Create another device based on the same underlying transport.
+		dev = tpm2_testutil.NewTransportPassthroughDevice(transport.Unwrap())
 	}
 
-	// Create a new tcti, using the same underlyinhg connection.
-	tcti = WrapTCTI(tcti.Unwrap().(*tpm2_testutil.TCTI))
-
-	restore := MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return tcti, nil
+	restore := MockDefaultDeviceFn(func(mode tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
+		return newTpmDevice(newTestTpmDevice(dev), mode, nil, tpm2_device.ErrNoPPI), nil
 	})
 	defer restore()
 
-	// Create a new connection.
-	tpm, err := secboot_tpm2.ConnectToTPM()
+	// Create a new connection using the existing transport.
+	tpm, err := secboot_tpm2.ConnectToDefaultTPM()
 	if err != nil {
-		tcti.Close()
+		transport.Close()
 	}
-	return tpm, tcti, err
+	return tpm, tpm.Transport().(*Transport), err
 }
 
 // NewTPMConnectionFromExistingT creates a new connection and TCTI from the
@@ -237,13 +298,13 @@ func newTPMConnectionFromExisting(tpm *secboot_tpm2.Connection, tcti *TCTI) (*se
 // test execution require a different connection. The returned connection
 // uses the same underlying connection as the one supplied. The supplied
 // source connection does not need to be closed afterwards.
-func NewTPMConnectionFromExistingT(t *testing.T, tpm *secboot_tpm2.Connection, tcti *TCTI) (newTpm *secboot_tpm2.Connection, newTcti *TCTI, close func()) {
-	tpm, tcti, err := newTPMConnectionFromExisting(tpm, tcti)
+func NewTPMConnectionFromExistingTransportT(t *testing.T, tpm *secboot_tpm2.Connection, transport *Transport) (newTpm *secboot_tpm2.Connection, newTransport *Transport, close func()) {
+	newTpm, newTransport, err := newTPMConnectionFromExistingTransport(tpm, transport)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tpm, tcti, func() {
-		if err := tpm.Close(); err != nil {
+	return newTpm, newTransport, func() {
+		if err := newTpm.Close(); err != nil {
 			t.Errorf("close failed: %v", err)
 		}
 	}
@@ -252,7 +313,7 @@ func NewTPMConnectionFromExistingT(t *testing.T, tpm *secboot_tpm2.Connection, t
 // ResetTPMSimulatorT issues a Shutdown -> Reset -> Startup cycle of the TPM
 // simulator and returns a newly initialized TPM connection. The supplied
 // source connection does not need to be closed afterwards.
-func ResetTPMSimulatorT(t *testing.T, tpm *secboot_tpm2.Connection, tcti *TCTI) (newTpm *secboot_tpm2.Connection, newTcti *TCTI, close func()) {
-	tpm2_testutil.ResetTPMSimulatorT(t, tpm.TPMContext, tcti.Unwrap().(*tpm2_testutil.TCTI))
-	return NewTPMConnectionFromExistingT(t, tpm, tcti)
+func ResetTPMSimulatorT(t *testing.T, tpm *secboot_tpm2.Connection, transport *Transport) (newTpm *secboot_tpm2.Connection, newTransport *Transport, close func()) {
+	tpm2_testutil.ResetTPMSimulatorT(t, tpm.TPMContext, transport.Unwrap().(*tpm2_testutil.Transport))
+	return NewTPMConnectionFromExistingTransportT(t, tpm, transport)
 }

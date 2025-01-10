@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 
 	"golang.org/x/xerrors"
 )
@@ -48,8 +49,8 @@ var (
 	// the TPM (eg, a recovery key)
 	ErrTPMLockout = errors.New("the TPM is in DA lockout mode")
 
-	// ErrNoTPM2Device is returned from ConnectToDefaultTPM or SecureConnectToDefaultTPM if no TPM2 device is avaiable.
-	ErrNoTPM2Device = errors.New("no TPM2 device is available")
+	// ErrNoTPM2Device is returned from ConnectToDefaultTPM if no TPM2 device is avaiable.
+	ErrNoTPM2Device = tpm2_device.ErrNoTPM2Device
 )
 
 // TPMResourceExistsError is returned from any function that creates a persistent TPM resource if a resource already exists

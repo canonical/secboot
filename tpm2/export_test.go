@@ -68,7 +68,7 @@ type KeyData_v2 = keyData_v2
 type KeyData_v3 = keyData_v3
 type AdditionalData_v3 = additionalData_v3
 type KeyDataError = keyDataError
-type SealedKeyDataParams = makeSealedKeyDataParams
+type MakeSealedKeyDataParams = makeSealedKeyDataParams
 type KeyDataPolicy = keyDataPolicy
 type KeyDataPolicy_v0 = keyDataPolicy_v0
 type KeyDataPolicy_v1 = keyDataPolicy_v1
@@ -82,6 +82,9 @@ func NewImportableObjectKeySealer(key *tpm2.Public) keySealer {
 func NewSealedObjectKeySealer(tpm *Connection) keySealer {
 	return &sealedObjectKeySealer{tpm}
 }
+
+type KeyDataConstructor = keyDataConstructor
+type KeySealer = keySealer
 
 type PcrPolicyVersionOption = pcrPolicyVersionOption
 type PolicyDataError = policyDataError
@@ -188,6 +191,14 @@ func MockEnsurePcrPolicyCounter(fn func(*tpm2.TPMContext, tpm2.Handle, *tpm2.Pub
 	ensurePcrPolicyCounter = fn
 	return func() {
 		ensurePcrPolicyCounter = orig
+	}
+}
+
+func MockMakeSealedKeyData(fn func(*tpm2.TPMContext, *MakeSealedKeyDataParams, KeySealer, KeyDataConstructor, tpm2.SessionContext) (*secboot.KeyData, secboot.PrimaryKey, secboot.DiskUnlockKey, error)) (restore func()) {
+	orig := makeSealedKeyData
+	makeSealedKeyData = fn
+	return func() {
+		makeSealedKeyData = orig
 	}
 }
 

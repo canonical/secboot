@@ -350,6 +350,10 @@ func (p *keyDataPolicy_v3) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 		updateKey: p.StaticData.AuthPublicKey}, nil
 }
 
+func (p *keyDataPolicy_v3) RequireUserAuth() bool {
+	return p.StaticData.RequireAuthValue
+}
+
 func (p *keyDataPolicy_v3) ValidateAuthKey(key secboot.PrimaryKey) error {
 	priv, err := deriveV3PolicyAuthKey(p.StaticData.AuthPublicKey.NameAlg.GetHash(), key)
 	if err != nil {

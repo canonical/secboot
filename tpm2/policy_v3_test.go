@@ -1510,3 +1510,15 @@ func (s *policyV3SuiteNoTPM) TestValidateAuthKeyWrongKey(c *C) {
 	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "dynamic authorization policy signing private key doesn't match public key")
 }
+
+func (s *policyV3SuiteNoTPM) TestRequireUserAuthTrue(c *C) {
+	data := &KeyDataPolicy_v3{
+		StaticData: &StaticPolicyData_v3{RequireAuthValue: true}}
+	c.Check(data.RequireUserAuth(), testutil.IsTrue)
+}
+
+func (s *policyV3SuiteNoTPM) TestRequireUserAuthFalse(c *C) {
+	data := &KeyDataPolicy_v3{
+		StaticData: &StaticPolicyData_v3{RequireAuthValue: false}}
+	c.Check(data.RequireUserAuth(), testutil.IsFalse)
+}

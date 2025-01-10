@@ -20,48 +20,46 @@
 package tpm2test
 
 import (
-	"os"
-
 	"github.com/canonical/go-tpm2"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 )
 
-// TCTI is a wrapper around tpm2_testutil.TCTI that provides a mechanism
+// Transport is a wrapper around tpm2_testutil.Transport that provides a mechanism
 // to keep the underlying connection open when Close is called.
-type TCTI struct {
-	tcti         *tpm2_testutil.TCTI
+type Transport struct {
+	transport    *tpm2_testutil.Transport
 	keepOpen     bool
 	markedClosed bool
 	closed       bool
 }
 
-func (t *TCTI) Read(data []byte) (int, error) {
+func (t *Transport) Read(data []byte) (int, error) {
 	if t.markedClosed {
-		return 0, os.ErrClosed
+		return 0, tpm2.ErrTransportClosed
 	}
-	return t.tcti.Read(data)
+	return t.transport.Read(data)
 }
 
-func (t *TCTI) Write(data []byte) (int, error) {
+func (t *Transport) Write(data []byte) (int, error) {
 	if t.markedClosed {
-		return 0, os.ErrClosed
+		return 0, tpm2.ErrTransportClosed
 	}
-	return t.tcti.Write(data)
+	return t.transport.Write(data)
 }
 
 // Close closes the underlying connection unless SetKeepOpen has
 // been called with keepOpen set to true, in which case, the
 // interface is marked as closed without actually closing it.
-func (t *TCTI) Close() error {
+func (t *Transport) Close() error {
 	if t.markedClosed {
-		return os.ErrClosed
+		return tpm2.ErrTransportClosed
 	}
 	t.markedClosed = true
 	if t.keepOpen {
 		return nil
 	}
 	t.closed = true
-	return t.tcti.Close()
+	return t.transport.Close()
 }
 
 // SetKeepOpen provides a mechanism to keep the underlying connection
@@ -69,19 +67,19 @@ func (t *TCTI) Close() error {
 // mark the connection as closed without actually closing it. This
 // makes it possible to reuse the underlying connection in another
 // secboot_tpm2.Connection.
-func (t *TCTI) SetKeepOpen(keepOpen bool) error {
+func (t *Transport) SetKeepOpen(keepOpen bool) error {
 	t.keepOpen = keepOpen
 	if !t.keepOpen && t.markedClosed && !t.closed {
 		t.closed = true
-		return t.tcti.Close()
+		return t.transport.Close()
 	}
 	return nil
 }
 
-func (t *TCTI) Unwrap() tpm2.TCTI {
-	return t.tcti
+func (t *Transport) Unwrap() tpm2.Transport {
+	return t.transport
 }
 
-func WrapTCTI(tcti *tpm2_testutil.TCTI) *TCTI {
-	return &TCTI{tcti: tcti}
+func WrapTransport(transport *tpm2_testutil.Transport) *Transport {
+	return &Transport{transport: transport}
 }

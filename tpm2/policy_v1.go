@@ -318,6 +318,10 @@ func (p *keyDataPolicy_v1) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 		updateKey: p.StaticData.AuthPublicKey}, nil
 }
 
+func (p *keyDataPolicy_v1) RequireUserAuth() bool {
+	return true
+}
+
 func (p *keyDataPolicy_v1) ValidateAuthKey(key secboot.PrimaryKey) error {
 	pub, ok := p.StaticData.AuthPublicKey.Public().(*ecdsa.PublicKey)
 	if !ok {

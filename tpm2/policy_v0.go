@@ -605,6 +605,10 @@ func (p *keyDataPolicy_v0) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 		authPolicies: p.StaticData.PCRPolicyCounterAuthPolicies}, nil
 }
 
+func (p *keyDataPolicy_v0) RequireUserAuth() bool {
+	return true
+}
+
 func (p *keyDataPolicy_v0) ValidateAuthKey(key secboot.PrimaryKey) error {
 	rsaKey, err := x509.ParsePKCS1PrivateKey(key)
 	if err != nil {
