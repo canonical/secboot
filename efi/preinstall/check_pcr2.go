@@ -20,8 +20,6 @@
 package preinstall
 
 import (
-	"errors"
-
 	"github.com/canonical/tcglog-parser"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
@@ -44,19 +42,23 @@ const (
 // prediction for this PCR, this function doesn't do any more extensive testing, such
 // as ensuring that the PCR only contains events of the expected type, the event data
 // for each event is of an expected type, and for events where the digest is a tagged
-// hash of the event data, that the digest is consistent with the event data.
-func checkDriversAndAppsMeasurements(log *tcglog.Log) (checkDriversAndAppsMeasurementsResult, error) {
+// hash of the event data, that the digest is consistent with the event data. It may be
+// extended to in the future.
+//
+// This function expects that the supplied log has already been tested to be valid (eg,
+// with checkFirmwareLogAndChoosePCRBank), and will panic if it isn't
+func checkDriversAndAppsMeasurements(log *tcglog.Log) checkDriversAndAppsMeasurementsResult {
 	// Iterate over the log until OS-present and check if there are any
 	// drivers or applications loaded
 	phaseTracker := newTcgLogPhaseTracker()
 	for _, ev := range log.Events {
 		phase, err := phaseTracker.processEvent(ev)
 		if err != nil {
-			return noDriversAndAppsPresent, err
+			panic(err)
 		}
 
 		if phase >= tcglogPhaseTransitioningToOSPresent {
-			return noDriversAndAppsPresent, nil
+			return noDriversAndAppsPresent
 		}
 
 		if ev.PCRIndex != internal_efi.DriversAndAppsPCR {
@@ -67,9 +69,9 @@ func checkDriversAndAppsMeasurements(log *tcglog.Log) (checkDriversAndAppsMeasur
 		switch ev.EventType {
 		case tcglog.EventTypeEFIBootServicesApplication, tcglog.EventTypeEFIBootServicesDriver, tcglog.EventTypeEFIRuntimeServicesDriver,
 			tcglog.EventTypeEFIPlatformFirmwareBlob, tcglog.EventTypeEFIPlatformFirmwareBlob2, tcglog.EventTypeEFISPDMFirmwareBlob:
-			return driversAndAppsPresent, nil
+			return driversAndAppsPresent
 		}
 	}
 
-	return noDriversAndAppsPresent, errors.New("internal error: reached end of log before encountering transition to OS-present")
+	panic("reached end of log before encountering transition to OS-present")
 }

@@ -405,14 +405,10 @@ func (e *PlatformConfigPCRError) Unwrap() error {
 
 // Errors related to drivers and apps PCR checks.
 
-// DriversAndAppsPCRError is returned wrapped in [RunChecksErrors] if the
-// DriversAndAppsProfileSupportRequired flag is supplied to [RunChecks] and
-// an error occurs that means that
-// [github.com/snapcore/secboot/efi.WithDriversAndAppsProfile] cannot be used
-// to generate profiles for PCR 2.
-//
-// It is returned as a warning in [CheckResult] instead if the
-// DriversAndAppsProfileSupportRequired flag is not supplied to [RunChecks].
+// DriversAndAppsPCRError is returned as a warning in [CheckResult] if the
+// DriversAndAppsProfileSupportRequired flag is not supplied to [RunChecks],
+// to indicate that [github.com/snapcore/secboot/efi.WithPlatformFirmwareProfile]
+// cannot be used to add a profile for PCR 2.
 //
 // If the DriversAndAppsProfileSupportRequiredflag is supplied to [RunChecks],
 // an alternative error will be returned via [NoSuitablePCRAlgorithmError] instead

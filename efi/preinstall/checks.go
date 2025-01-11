@@ -328,13 +328,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	if logResults.Lookup(internal_efi.DriversAndAppsPCR).Ok() {
 		// Only run PCR2 checks if we established earlier that the PCR value matches
 		// the reconstructed log value.
-		pcr2Results, err := checkDriversAndAppsMeasurements(log)
+		pcr2Results := checkDriversAndAppsMeasurements(log)
 		switch {
-		case err != nil && flags&DriversAndAppsProfileSupportRequired > 0:
-			mainErr.addErr(&DriversAndAppsPCRError{err})
-		case err != nil:
-			result.Flags |= NoDriversAndAppsProfileSupport
-			result.Warnings.addErr(&DriversAndAppsPCRError{err})
 		case pcr2Results == driversAndAppsPresent && flags&PermitVARSuppliedDrivers == 0:
 			mainErr.addErr(ErrVARSuppliedDriversPresent)
 		case pcr2Results == driversAndAppsPresent:
