@@ -49,36 +49,82 @@ func (m *tcglogReplayMixin) resetTPMAndReplayLog(c *C, log *tcglog.Log, algs ...
 	m.impl.ResetTPMSimulatorNoStartup(c) // Shutdown and reset the simulator to reset the PCRs back to their reset values.
 	// Don't immediately call TPM2_Startup in case the log indicates we need to change localities.
 	started := false
-	for _, ev := range log.Events {
+	var startupLocality uint8
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
 		if ev.EventType == tcglog.EventTypeNoAction {
 			// EV_NO_ACTION events are informational and not measured
+			c.Assert(ev.PCRIndex, Equals, internal_efi.PlatformFirmwarePCR)
 			if startupLocalityData, isStartupLocality := ev.Data.(*tcglog.StartupLocalityEventData); isStartupLocality {
-				c.Assert(ev.PCRIndex, Equals, internal_efi.PlatformFirmwarePCR)
 				c.Assert(started, testutil.IsFalse)
 
-				switch startupLocalityData.StartupLocality {
-				case 0:
-					// do nothing
-				case 3:
-					m.impl.Mssim(c).SetLocality(3)
-					c.Assert(m.impl.Tpm().Startup(tpm2.StartupClear), IsNil)
-					m.impl.Mssim(c).SetLocality(0)
-					started = true
-				case 4:
-					c.Fatal(`Handling H-CRTM event sequences is not supported yet because it requires work in
- github.com/canonical/go-tpm2/mssim in order to create them with simulator commands, and it's not clear whether H-CRTM event sequences
- can be reverse constructed from H-CRTM events in the log`)
+				startupLocality = startupLocalityData.StartupLocality
+				switch startupLocality {
+				case 0, 3, 4:
+					// ok
 				default:
-					c.Fatal("TPM2_Startup can only be called from localities 0 or 3")
+					c.Fatal("TPM2_Startup can only be called from localities 0 or 3 or from one of these but preceded by a HCRTM event sequence")
 				}
 			}
 			continue
 		}
 
+		if ev.EventType == tcglog.EventTypeEFIHCRTMEvent {
+			c.Assert(started, testutil.IsFalse)
+			c.Assert(ev.PCRIndex, Equals, internal_efi.PlatformFirmwarePCR)
+			c.Assert(ev.Data, Equals, tcglog.HCRTM)
+
+			// The HCRTM event contains the digest, but in order to replay
+			// the log, we need to reconstruct this digest from the subsequent
+			// component events in the log that contain the raw data
+
+			var components [][]byte
+			for len(events) > 0 {
+				if events[0].EventType != tcglog.EventTypeNoAction {
+					// If we hit an event that isn't EV_NO_ACTION, then
+					// we should have all components.
+					break
+				}
+
+				// The next event is a EV_NO_ACTION event, so make sure it's for PCR0
+				c.Assert(events[0].PCRIndex, Equals, internal_efi.PlatformFirmwarePCR)
+
+				hcrtmComponentEventData, isHcrtmComponentEventType := events[0].Data.(*tcglog.HCRTMComponentEventData)
+				if !isHcrtmComponentEventType {
+					// We should have all components by now.
+					break
+				}
+
+				// Consume the HCRTM component event
+				events = events[1:]
+
+				// We only support raw data events.
+				c.Assert(hcrtmComponentEventData.MeasurementFormatType, Equals, tcglog.HCRTMMeasurementFormatRawData)
+				components = append(components, hcrtmComponentEventData.ComponentMeasurement)
+			}
+
+			// Replay the HCRTM sequence now
+			seq, err := m.impl.Mssim(c).HashStart()
+			c.Assert(err, IsNil)
+			for _, comp := range components {
+				c.Check(seq.Write(comp), IsNil)
+			}
+			c.Check(seq.End(), IsNil)
+
+			continue
+		}
+
 		if !started {
-			// Our first actual measurement and we haven't called TPM2_Startup yet,
-			// so just call it from locality 0.
+			// Our first actual measurement and we haven't called TPM2_Startup yet.
+			if startupLocality == 4 {
+				startupLocality = 0
+			}
+			m.impl.Mssim(c).SetLocality(startupLocality)
 			c.Assert(m.impl.Tpm().Startup(tpm2.StartupClear), IsNil)
+			m.impl.Mssim(c).SetLocality(0)
 			started = true
 		}
 
@@ -414,7 +460,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedStartupLocal
 - TPM_ALG_SHA256\(PCR1\): unexpected StartupLocality event \(should be in PCR0\).
 `)
 	var e *NoSuitablePCRAlgorithmError
-	c.Check(errors.As(err, &e), testutil.IsTrue)
+	c.Assert(errors.As(err, &e), testutil.IsTrue)
 
 	// Test that we can access individual errors.
 	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA512], Equals, ErrPCRBankMissingFromLog)
