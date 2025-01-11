@@ -36,7 +36,37 @@ import (
 
 const platformName = "tpm2"
 
-type platformKeyDataHandler struct{}
+var mainPlatformKeyDataHandler *platformKeyDataHandler
+
+type platformKeyDataHandler struct {
+	tpm *Connection
+}
+
+// tpm returns a currently open or new TPM connection. The caller mustn't call
+// the Close method on the returned connection - it should call the returned close
+// callback instead.
+func (h *platformKeyDataHandler) tpmConnection() (conn *Connection, close func() error, err error) {
+	if h.tpm != nil {
+		return h.tpm, func() error { return nil }, nil
+	}
+
+	tpm, err := ConnectToDefaultTPM()
+	switch {
+	case err == ErrNoTPM2Device:
+		return nil, nil, &secboot.PlatformHandlerError{
+			Type: secboot.PlatformHandlerErrorUnavailable,
+			Err:  err}
+	case err != nil:
+		return nil, nil, fmt.Errorf("cannot connect to TPM: %w", err)
+	}
+
+	h.tpm = tpm
+
+	return tpm, func() error {
+		h.tpm = nil
+		return tpm.Close()
+	}, nil
+}
 
 func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData, encryptedPayload, authKey []byte) ([]byte, error) {
 	if data.Generation < 0 || int64(data.Generation) > math.MaxUint32 {
@@ -67,16 +97,11 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 			Err:  fmt.Errorf("invalid key data version: %d", k.data.Version())}
 	}
 
-	tpm, err := ConnectToDefaultTPM()
-	switch {
-	case err == ErrNoTPM2Device:
-		return nil, &secboot.PlatformHandlerError{
-			Type: secboot.PlatformHandlerErrorUnavailable,
-			Err:  err}
-	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+	tpm, closeTpm, err := h.tpmConnection()
+	if err != nil {
+		return nil, err
 	}
-	defer tpm.Close()
+	defer closeTpm()
 
 	symKey, err := k.unsealDataFromTPM(tpm.TPMContext, authKey, tpm.HmacSession())
 	if err != nil {
@@ -121,16 +146,11 @@ func (h *platformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKe
 }
 
 func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte) ([]byte, error) {
-	tpm, err := ConnectToDefaultTPM()
-	switch {
-	case err == ErrNoTPM2Device:
-		return nil, &secboot.PlatformHandlerError{
-			Type: secboot.PlatformHandlerErrorUnavailable,
-			Err:  err}
-	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+	tpm, closeTpm, err := h.tpmConnection()
+	if err != nil {
+		return nil, err
 	}
-	defer tpm.Close()
+	defer closeTpm()
 
 	var k *SealedKeyData
 	if err := json.Unmarshal(data.EncodedHandle, &k); err != nil {
@@ -231,5 +251,6 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 }
 
 func init() {
-	secboot.RegisterPlatformKeyDataHandler(platformName, &platformKeyDataHandler{})
+	mainPlatformKeyDataHandler = new(platformKeyDataHandler)
+	secboot.RegisterPlatformKeyDataHandler(platformName, mainPlatformKeyDataHandler)
 }

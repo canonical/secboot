@@ -29,8 +29,9 @@ import (
 )
 
 type tpmTestMixin struct {
-	TPM       *secboot_tpm2.Connection
-	Transport *Transport
+	TPM            *secboot_tpm2.Connection
+	Transport      *Transport
+	mockConnection *secboot_tpm2.Connection // Unit tests always consume a connection, although this can be temporarily closed
 }
 
 func (m *tpmTestMixin) setUpTest(c *C, suite *tpm2_testutil.TPMTest, open func() (*secboot_tpm2.Connection, *Transport)) (cleanup func(*C)) {
@@ -68,20 +69,49 @@ func (m *tpmTestMixin) setUpTest(c *C, suite *tpm2_testutil.TPMTest, open func()
 	// tests existing underlying connection, but don't allow the code
 	// to fully close the connection - leave this to the test fixture.
 	// TODO: Support resource managed device concepts in tests.
-	// XXX: Set the maximum numbner of open connections to 1 when
-	//  https://github.com/canonical/secboot/issues/353 is fixed.
-	internalDev := newTpmDevice(tpm2_testutil.NewTransportBackedDevice(suite.Transport, false, -1), tpm2_device.DeviceModeDirect, nil, tpm2_device.ErrNoPPI)
+	internalDev := newTpmDevice(tpm2_testutil.NewTransportBackedDevice(suite.Transport, false, 1), tpm2_device.DeviceModeDirect, nil, tpm2_device.ErrNoPPI)
 	restoreDefaultDeviceFn := MockDefaultDeviceFn(func(mode tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
 		c.Assert(mode, Equals, tpm2_device.DeviceModeDirect)
 		return internalDev, nil
 	})
 
+	// Unit tests always consume a connection
+	mockConn, err := secboot_tpm2.ConnectToDefaultTPM()
+	c.Assert(err, IsNil)
+	m.mockConnection = mockConn
+	// This connection isn't going to be used, so don't take up a loaded session slot
+	m.mockConnection.FlushContext(m.mockConnection.HmacSession())
+
 	return func(c *C) {
+		if m.mockConnection != nil {
+			c.Check(m.mockConnection.Close(), IsNil)
+		}
 		restoreDefaultDeviceFn()
 		c.Check(internalDev.TPMDevice.(*tpm2_testutil.TransportBackedDevice).NumberOpen(), Equals, 0)
 		c.Check(m.TPM.Close(), IsNil)
 		m.TPM = nil
 		m.Transport = nil
+	}
+}
+
+// CloseMockConnection closes a mock connection that is opened automatically in test
+// setup via the mock device, but not exposed for use by testing. The connection mocks
+// the behaviour of having already called ConnectToDefaultTPM for testing APIs that
+// accept an already open connection. In order to test APIs that don't already accept
+// an open connection, and open their own connection instead, the test should call this
+// API to temporarily close the internal mock connection.
+//
+// It returns a callback to re-open the mock connection again.
+func (m *tpmTestMixin) CloseMockConnection(c *C) (restore func()) {
+	c.Assert(m.mockConnection, NotNil)
+	c.Check(m.mockConnection.Close(), IsNil)
+	m.mockConnection = nil
+	return func() {
+		mockConn, err := secboot_tpm2.ConnectToDefaultTPM()
+		c.Assert(err, IsNil)
+		m.mockConnection = mockConn
+		// This connection isn't going to be used, so don't take up a loaded session slot
+		m.mockConnection.FlushContext(m.mockConnection.HmacSession())
 	}
 }
 

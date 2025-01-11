@@ -134,18 +134,21 @@ func (s *tpmSuiteCommon) testConnectToDefaultTPM(c *C, hasEncryption bool) {
 }
 
 func (s *tpmSuiteSimulator) TestConnectToDefaultTPMUnprovisioned(c *C) {
+	s.AddCleanup(s.CloseMockConnection(c))
 	s.testConnectToDefaultTPM(c, false)
 }
 
 func (s *tpmSuite) TestConnectToDefaultTPMProvisioned(c *C) {
 	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
 		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+	s.AddCleanup(s.CloseMockConnection(c))
 	s.testConnectToDefaultTPM(c, true)
 }
 
 func (s *tpmSuite) TestConnectToDefaultTPMInvalidEK(c *C) {
 	primary := s.CreatePrimary(c, tpm2.HandleOwner, tpm2_testutil.NewRSAKeyTemplate(templates.KeyUsageDecrypt, nil))
 	s.EvictControl(c, tpm2.HandleOwner, primary, tcg.EKHandle)
+	s.AddCleanup(s.CloseMockConnection(c))
 	s.testConnectToDefaultTPM(c, false)
 }
 
