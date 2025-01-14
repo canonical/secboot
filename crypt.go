@@ -935,10 +935,10 @@ func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
 	return nil
 }
 
-// KeyslotAlreadyHasAName may be returned bv
+// KeyslotAlreadyHasANameErr may be returned by
 // NameLegacyLUKS2ContainerKey when trying to create a token for a
 // keyslot that already used by a token.
-var KeyslotAlreadyHasAName = errors.New("keyslot already has a name")
+var KeyslotAlreadyHasANameErr = errors.New("keyslot already has a name")
 
 // NameLegacyLUKS2ContainerKey will add a token for a recovery key for
 // a specified keyslot. That keyslot must not be in use in any
