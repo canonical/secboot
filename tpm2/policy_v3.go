@@ -23,6 +23,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"hash"
@@ -30,7 +31,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/policyutil"
 
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/xerrors"
@@ -89,36 +90,44 @@ func computeV3PcrPolicyRefFromCounterContext(alg tpm2.HashAlgorithmId, role []by
 // computeV3PcrPolicyCounterAuthPolicies computes the authorization policy digests passed to
 // TPM2_PolicyOR for a PCR policy counter that can be updated with the key associated with
 // updateKeyName.
-func computeV3PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
+func computeV3PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKey *tpm2.Public) (tpm2.DigestList, error) {
+	if !alg.Available() {
+		return nil, errors.New("digest algorithm is not available")
+	}
+
 	// The NV index requires 3 policies:
 	// - A policy to read the index with no authorization.
 	// - A policy to initialize the index with no authorization.
 	// - A policy for updating the index to revoke old PCR policies using a signed assertion.
 	var authPolicies tpm2.DigestList
 
-	if !updateKeyName.IsValid() {
-		// avoid a panic if updateKeyName is invalid. Note that this will
-		// produce invalid policies - callers should take steps to ensure that
-		// updateKeyName is valid.
-		// TODO: Use tpm2.MakeHandleName here
-		updateKeyName = tpm2.Name(mu.MustMarshalToBytes(tpm2.HandleUnassigned))
+	builder := policyutil.NewPolicyBuilder(alg)
+	builder.RootBranch().PolicyCommandCode(tpm2.CommandNVRead)
+	digest, err := builder.Digest()
+	if err != nil {
+		return nil, err
 	}
+	authPolicies = append(authPolicies, digest)
 
-	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyCommandCode(tpm2.CommandNVRead)
-	authPolicies = append(authPolicies, trial.GetDigest())
+	builder = policyutil.NewPolicyBuilder(alg)
+	builder.RootBranch().PolicyNvWritten(false)
+	builder.RootBranch().PolicyCommandCode(tpm2.CommandNVIncrement)
+	digest, err = builder.Digest()
+	if err != nil {
+		return nil, err
+	}
+	authPolicies = append(authPolicies, digest)
 
-	trial = util.ComputeAuthPolicy(alg)
-	trial.PolicyNvWritten(false)
-	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
-	authPolicies = append(authPolicies, trial.GetDigest())
+	builder = policyutil.NewPolicyBuilder(alg)
+	builder.RootBranch().PolicySigned(updateKey, []byte("PCR-POLICY-REVOKE"))
+	builder.RootBranch().PolicyCommandCode(tpm2.CommandNVIncrement)
+	digest, err = builder.Digest()
+	if err != nil {
+		return nil, err
+	}
+	authPolicies = append(authPolicies, digest)
 
-	trial = util.ComputeAuthPolicy(alg)
-	trial.PolicySigned(updateKeyName, []byte("PCR-POLICY-REVOKE"))
-	trial.PolicyCommandCode(tpm2.CommandNVIncrement)
-	authPolicies = append(authPolicies, trial.GetDigest())
-
-	return authPolicies
+	return authPolicies, nil
 }
 
 // deriveV3PolicyAuthKey derives an elliptic curve key for signing authorization policies from the
@@ -174,13 +183,13 @@ func (p *keyDataPolicy_v3) PCRPolicySequence() uint64 {
 func (p *keyDataPolicy_v3) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcrPolicyParams) error {
 	pcrData := new(pcrPolicyData_v3)
 
-	trial := util.ComputeAuthPolicy(alg)
-	if err := pcrData.addPcrAssertions(alg, trial, params.pcrs, params.pcrDigests); err != nil {
+	builder, err := pcrData.addPcrAssertions(alg, params.pcrs, params.pcrDigests)
+	if err != nil {
 		return xerrors.Errorf("cannot compute base PCR policy: %w", err)
 	}
 
-	if params.policyCounterName != nil {
-		pcrData.addRevocationCheck(trial, params.policyCounterName, params.policySequence)
+	if params.policyCounter != nil {
+		pcrData.addRevocationCheck(builder, params.policyCounter, params.policySequence)
 	}
 
 	key, err := deriveV3PolicyAuthKey(p.StaticData.AuthPublicKey.NameAlg.GetHash(), params.key)
@@ -188,12 +197,11 @@ func (p *keyDataPolicy_v3) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 		return xerrors.Errorf("cannot derive auth key: %w", err)
 	}
 
-	scheme := &tpm2.SigScheme{
-		Scheme: tpm2.SigSchemeAlgECDSA,
-		Details: &tpm2.SigSchemeU{
-			ECDSA: &tpm2.SigSchemeECDSA{
-				HashAlg: p.StaticData.AuthPublicKey.NameAlg}}}
-	if err := pcrData.authorizePolicy(key, scheme, trial.GetDigest(), p.StaticData.PCRPolicyRef); err != nil {
+	approvedPolicy, err := builder.Digest()
+	if err != nil {
+		return fmt.Errorf("cannot compute approved policy: %w", err)
+	}
+	if err := pcrData.authorizePolicy(approvedPolicy, p.StaticData.AuthPublicKey, p.StaticData.PCRPolicyRef, key, p.StaticData.AuthPublicKey.NameAlg); err != nil {
 		return xerrors.Errorf("cannot authorize policy: %w", err)
 	}
 
@@ -218,7 +226,7 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	var pcrPolicyCounter tpm2.ResourceContext
 	if pcrPolicyCounterHandle != tpm2.HandleNull {
 		var err error
-		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
+		pcrPolicyCounter, err = tpm.NewResourceContext(pcrPolicyCounterHandle)
 		switch {
 		case tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle):
 			// If there is no NV index at the expected handle then the key file is invalid and must be recreated.
@@ -244,10 +252,11 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	defer tpm.FlushContext(authorizeKey)
 
 	pcrPolicyRef := p.StaticData.PCRPolicyRef
-	pcrPolicyDigest, err := util.ComputePolicyAuthorizeDigest(authPublicKey.NameAlg, p.PCRData.AuthorizedPolicy, pcrPolicyRef)
-	if err != nil {
-		return policyDataError{xerrors.Errorf("cannot compute PCR policy digest: %w", err)}
+
+	if !authPublicKey.NameAlg.Available() {
+		return policyDataError{errors.New("name algorithm for auth public key is not available")}
 	}
+	pcrPolicyDigest := policyutil.ComputePolicyAuthorizationTBSDigest(authPublicKey.NameAlg.GetHash(), p.PCRData.AuthorizedPolicy, pcrPolicyRef)
 
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, pcrPolicyDigest, p.PCRData.AuthorizedPolicySignature)
 	if err != nil {
@@ -309,23 +318,22 @@ func (c *pcrPolicyCounterContext_v3) Increment(key secboot.PrimaryKey) error {
 	defer c.tpm.FlushContext(keyLoaded)
 
 	// Create a signed authorization. keyData.validate checks that this scheme is compatible with the key
-	scheme := tpm2.SigScheme{
-		Scheme: tpm2.SigSchemeAlgECDSA,
-		Details: &tpm2.SigSchemeU{
-			ECDSA: &tpm2.SigSchemeECDSA{
-				HashAlg: c.updateKey.NameAlg}}}
-	signature, err := util.SignPolicyAuthorization(ecdsaKey, &scheme, policySession.NonceTPM(), nil, []byte("PCR-POLICY-REVOKE"), 0)
+	params := &policyutil.PolicySignedParams{NonceTPM: policySession.State().NonceTPM}
+	auth, err := policyutil.SignPolicySignedAuthorization(rand.Reader, params, c.updateKey, []byte("PCR-POLICY-REVOKE"), ecdsaKey, c.updateKey.NameAlg)
 	if err != nil {
 		return xerrors.Errorf("cannot sign authorization: %w", err)
 	}
 
-	if _, _, err := c.tpm.PolicySigned(keyLoaded, policySession, true, nil, []byte("PCR-POLICY-REVOKE"), 0, signature); err != nil {
+	if _, _, err := c.tpm.PolicySigned(keyLoaded, policySession, true, nil, []byte("PCR-POLICY-REVOKE"), 0, auth.Signature); err != nil {
 		return err
 	}
 	if err := c.tpm.PolicyCommandCode(policySession, tpm2.CommandNVIncrement); err != nil {
 		return err
 	}
-	authPolicies := computeV3PcrPolicyCounterAuthPolicies(c.index.Name().Algorithm(), c.updateKey.Name())
+	authPolicies, err := computeV3PcrPolicyCounterAuthPolicies(c.index.Name().Algorithm(), c.updateKey)
+	if err != nil {
+		return fmt.Errorf("cannot compute OR policies for index: %w", err)
+	}
 	if err := c.tpm.PolicyOR(policySession, authPolicies); err != nil {
 		return err
 	}
@@ -339,7 +347,7 @@ func (p *keyDataPolicy_v3) PCRPolicyCounterContext(tpm *tpm2.TPMContext, pub *tp
 		return nil, errors.New("NV index public area is inconsistent with metadata")
 	}
 
-	index, err := tpm2.CreateNVIndexResourceContextFromPublic(pub)
+	index, err := tpm2.NewNVIndexResourceContextFromPub(pub)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for NV index: %w", err)
 	}

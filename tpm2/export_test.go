@@ -127,13 +127,13 @@ type PcrPolicyData_v3 = pcrPolicyData_v3
 
 type PcrPolicyParams = pcrPolicyParams
 
-func NewPcrPolicyParams(key secboot.PrimaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounterName tpm2.Name, policySequence uint64) *PcrPolicyParams {
+func NewPcrPolicyParams(key secboot.PrimaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounter *tpm2.NVPublic, policySequence uint64) *PcrPolicyParams {
 	return &PcrPolicyParams{
-		key:               key,
-		pcrs:              pcrs,
-		pcrDigests:        pcrDigests,
-		policyCounterName: policyCounterName,
-		policySequence:    policySequence,
+		key:            key,
+		pcrs:           pcrs,
+		pcrDigests:     pcrDigests,
+		policyCounter:  policyCounter,
+		policySequence: policySequence,
 	}
 }
 

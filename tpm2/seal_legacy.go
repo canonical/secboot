@@ -25,31 +25,16 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/objectutil"
 
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot"
 )
-
-func makeSealedKeyTemplate() *tpm2.Public {
-	return &tpm2.Public{
-		Type:    tpm2.ObjectTypeKeyedHash,
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.AttrFixedTPM | tpm2.AttrFixedParent,
-		Params:  &tpm2.PublicParamsU{KeyedHashDetail: &tpm2.KeyedHashParams{Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}}}
-}
-
-func makeImportableSealedKeyTemplate() *tpm2.Public {
-	tmpl := makeSealedKeyTemplate()
-	tmpl.Attrs &^= tpm2.AttrFixedTPM | tpm2.AttrFixedParent
-	return tmpl
-}
 
 // KeyCreationParams provides arguments for SealKeyToTPM.
 //
@@ -129,42 +114,26 @@ func SealKeyToExternalTPMStorageKey(tpmKey *tpm2.Public, key secboot.DiskUnlockK
 	authPublicKey := createTPMPublicAreaForECDSAKey(&goAuthKey.PublicKey)
 	authKey = goAuthKey.D.Bytes()
 
-	pub := makeImportableSealedKeyTemplate()
+	// Create the sensitive data
+	sensitiveData, err := mu.MarshalToBytes(sealedData{Key: key, AuthPrivateKey: authKey})
+	if err != nil {
+		panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
+	}
+
+	// Seal key
+	pub, sensitive, err := objectutil.NewSealedObject(rand.Reader, sensitiveData, nil,
+		objectutil.WithUserAuthMode(objectutil.RequirePolicy),
+	)
 
 	// Create the initial policy data
 	policyData, authPolicy, err := newKeyDataPolicyLegacy(pub.NameAlg, authPublicKey, nil, 0)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create initial policy data: %w", err)
 	}
-
 	pub.AuthPolicy = authPolicy
 
-	// Seal key
-
-	// Create the sensitive data
-	sealedData, err := mu.MarshalToBytes(sealedData{Key: key, AuthPrivateKey: authKey})
-	if err != nil {
-		panic(fmt.Sprintf("cannot marshal sensitive data: %v", err))
-	}
-	// Define the actual sensitive area. The initial auth value is empty - note
-	// that util.CreateDuplicationObjectFromSensitive pads this to the length of
-	// the name algorithm for us so we don't define it here.
-	sensitive := tpm2.Sensitive{
-		Type:      pub.Type,
-		SeedValue: make(tpm2.Digest, pub.NameAlg.Size()),
-		Sensitive: &tpm2.SensitiveCompositeU{Bits: sealedData}}
-	if _, err := io.ReadFull(rand.Reader, sensitive.SeedValue); err != nil {
-		return nil, xerrors.Errorf("cannot create seed value: %w", err)
-	}
-
-	// Compute the public ID
-	h := pub.NameAlg.NewHash()
-	h.Write(sensitive.SeedValue)
-	h.Write(sensitive.Sensitive.Bits)
-	pub.Unique = &tpm2.PublicIDU{KeyedHash: h.Sum(nil)}
-
 	// Now create the importable sealed key object (duplication object).
-	_, priv, importSymSeed, err := util.CreateDuplicationObject(&sensitive, pub, tpmKey, nil, nil)
+	_, priv, importSymSeed, err := objectutil.CreateImportable(rand.Reader, sensitive, pub, tpmKey, nil, nil)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create duplication object: %w", err)
 	}
@@ -303,7 +272,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 			if succeeded {
 				return
 			}
-			index, err := tpm2.CreateNVIndexResourceContextFromPublic(pcrPolicyCounterPub)
+			index, err := tpm2.NewNVIndexResourceContextFromPub(pcrPolicyCounterPub)
 			if err != nil {
 				return
 			}
@@ -311,7 +280,7 @@ func SealKeyToTPMMultiple(tpm *Connection, keys []*SealKeyRequest, params *KeyCr
 		}()
 	}
 
-	template := makeSealedKeyTemplate()
+	template := objectutil.NewSealedObjectTemplate(objectutil.WithUserAuthMode(objectutil.RequirePolicy))
 
 	// Create the initial policy data
 	policyData, authPolicy, err := newKeyDataPolicyLegacy(template.NameAlg, authPublicKey, pcrPolicyCounterPub, pcrPolicyCount)

@@ -114,7 +114,7 @@ func (s *unsealSuite) testUnsealFromTPMNoValidSRK(c *C, prepareSrk func()) {
 
 func (s *unsealSuite) TestUnsealFromTPMMissingSRK(c *C) {
 	s.testUnsealFromTPMNoValidSRK(c, func() {
-		srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+		srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 		c.Assert(err, IsNil)
 		s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 	})
@@ -122,7 +122,7 @@ func (s *unsealSuite) TestUnsealFromTPMMissingSRK(c *C) {
 
 func (s *unsealSuite) TestUnsealFromTPMWrongSRK(c *C) {
 	s.testUnsealFromTPMNoValidSRK(c, func() {
-		srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+		srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 		c.Assert(err, IsNil)
 		s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -134,7 +134,7 @@ func (s *unsealSuite) TestUnsealFromTPMWrongSRK(c *C) {
 }
 
 func (s *unsealSuite) testUnsealImportableFromTPM(c *C, params *KeyCreationParams) {
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)

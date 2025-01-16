@@ -23,7 +23,7 @@ import (
 	"crypto/x509"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/templates"
+	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	. "gopkg.in/check.v1"
@@ -144,7 +144,7 @@ func (s *tpmSuite) TestConnectToDefaultTPMProvisioned(c *C) {
 }
 
 func (s *tpmSuite) TestConnectToDefaultTPMInvalidEK(c *C) {
-	primary := s.CreatePrimary(c, tpm2.HandleOwner, tpm2_testutil.NewRSAKeyTemplate(templates.KeyUsageDecrypt, nil))
+	primary := s.CreatePrimary(c, tpm2.HandleOwner, tpm2_testutil.NewRSAKeyTemplate(objectutil.UsageDecrypt, nil))
 	s.EvictControl(c, tpm2.HandleOwner, primary, tcg.EKHandle)
 	s.testConnectToDefaultTPM(c, false)
 }
