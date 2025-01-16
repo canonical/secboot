@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -111,8 +112,9 @@ func DetectCryptsetupFeatures() Features {
 				}
 			}
 		}
-		if err := cryptsetupCmd(nil, "--test-args", "token", "import", "--token-id", "0",
-			"--token-replace", "/dev/null"); err == nil {
+		cmd = exec.Command("cryptsetup", "--help")
+		out, err = cmd.CombinedOutput()
+		if err == nil && strings.Contains(string(out), "--token-replace") {
 			features |= FeatureTokenReplace
 		}
 	})

@@ -22,13 +22,10 @@ package luks2_test
 import (
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	snapd_testutil "github.com/snapcore/snapd/testutil"
@@ -80,9 +77,6 @@ func (s *cryptsetupSuiteExpensive) SetUpSuite(c *C) {
 func (s *cryptsetupSuiteBase) mockCryptsetupFeatures(c *C, features Features) (cmd *snapd_testutil.MockCmd, reset func()) {
 	ResetCryptsetupFeatures()
 
-	responsesFile := filepath.Join(c.MkDir(), "responses")
-
-	responses := []string{"0"}
 	var version string
 	switch {
 	case features&(FeatureHeaderSizeSetting|FeatureTokenImport) == (FeatureHeaderSizeSetting | FeatureTokenImport):
@@ -95,21 +89,27 @@ func (s *cryptsetupSuiteBase) mockCryptsetupFeatures(c *C, features Features) (c
 		version = "2.0.2"
 	}
 
+	var hasTokenReplace string
 	if features&FeatureTokenReplace > 0 {
-		responses = append(responses, "0")
-	} else {
-		responses = append(responses, "1")
+		hasTokenReplace = "true"
 	}
 
-	c.Check(ioutil.WriteFile(responsesFile, []byte(strings.Join(responses, "\n")), 0644), IsNil)
-
-	cryptsetupBottom := `
-r=$(head -1 %[1]s)
-sed -i -e '1,1d' %[1]s
-echo "cryptsetup %[2]s"
-exit "$r"
+	cryptsetupScript := `
+hasTokenReplace='%[1]s'
+case "$1" in
+  --version)
+    echo "cryptsetup %[2]s"
+    ;;
+  --help)
+    echo "Some help"
+    if [ "${hasTokenReplace}" = true ]; then
+      echo "    --token-replace    Replace the current token"
+    fi
+    echo "Some other help"
+    ;;
+esac
 `
-	cmd = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupBottom, responsesFile, version))
+	cmd = snapd_testutil.MockCommand(c, "cryptsetup", fmt.Sprintf(cryptsetupScript, hasTokenReplace, version))
 	return cmd, func() {
 		ResetCryptsetupFeatures()
 		cmd.Restore()
@@ -128,7 +128,7 @@ func (s *cryptsetupSuite) testDetectCryptsetupFeatures(c *C, expected Features) 
 
 	c.Check(mockCryptsetup.Calls(), DeepEquals, [][]string{
 		{"cryptsetup", "--version"},
-		{"cryptsetup", "--test-args", "token", "import", "--token-id", "0", "--token-replace", "/dev/null"}})
+		{"cryptsetup", "--help"}})
 	mockCryptsetup.ForgetCalls()
 
 	features = DetectCryptsetupFeatures()
