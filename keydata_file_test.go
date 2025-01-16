@@ -46,7 +46,7 @@ var _ = Suite(&keyDataFileSuite{})
 
 func (s *keyDataFileSuite) TestWriter(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -64,12 +64,12 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 	d := json.NewDecoder(f)
 	c.Check(d.Decode(&j), IsNil)
 
-	s.checkKeyDataJSONDecodedAuthModeNone(c, j, protected, 0)
+	s.checkKeyDataJSONDecodedAuthModeNone(c, j, protected)
 }
 
 func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -93,7 +93,7 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 
 func (s *keyDataFileSuite) TestReader(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -117,6 +117,8 @@ func (s *keyDataFileSuite) TestReader(c *C) {
 	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)
 	c.Check(id, DeepEquals, expectedId)
+
+	c.Check(keyData.Role(), Equals, "foo")
 
 	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
 	c.Check(err, IsNil)

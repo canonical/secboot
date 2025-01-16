@@ -68,7 +68,8 @@ func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRPro
 	params := &ProtectKeyParams{
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
 		PCRPolicyCounterHandle: data.pcrPolicyCounterHandle,
-		PrimaryKey:             data.primaryKey}
+		PrimaryKey:             data.primaryKey,
+		Role:                   "foo"}
 	k, primaryKey, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
@@ -170,7 +171,9 @@ func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		PrimaryKey:             primaryKey}
+		PrimaryKey:             primaryKey,
+		Role:                   "bar",
+	}
 
 	var keys []*secboot.KeyData
 	for i := 0; i < 2; i++ {
