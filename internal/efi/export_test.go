@@ -20,8 +20,7 @@
 package efi
 
 import (
-	"github.com/canonical/go-tpm2/linux"
-	. "gopkg.in/check.v1"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
 func MockEventLogPath(path string) (restore func()) {
@@ -32,24 +31,11 @@ func MockEventLogPath(path string) (restore func()) {
 	}
 }
 
-func MockLinuxDefaultTPM2Device(dev *linux.RawDevice, err error) (restore func()) {
-	orig := linuxDefaultTPM2Device
-	linuxDefaultTPM2Device = func() (*linux.RawDevice, error) {
-		return dev, err
-	}
+func MockDefaultTPM2Device(fn func(tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error)) (restore func()) {
+	orig := tpm2_deviceDefaultDevice
+	tpm2_deviceDefaultDevice = fn
 	return func() {
-		linuxDefaultTPM2Device = orig
-	}
-}
-
-func MockLinuxRawDeviceResourceManagedDevice(c *C, expectedDev *linux.RawDevice, dev *linux.RMDevice, err error) (restore func()) {
-	orig := linuxRawDeviceResourceManagedDevice
-	linuxRawDeviceResourceManagedDevice = func(device *linux.RawDevice) (*linux.RMDevice, error) {
-		c.Check(device, Equals, expectedDev)
-		return dev, err
-	}
-	return func() {
-		linuxRawDeviceResourceManagedDevice = orig
+		tpm2_deviceDefaultDevice = orig
 	}
 }
 

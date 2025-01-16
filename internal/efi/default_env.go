@@ -22,7 +22,6 @@ package efi
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,13 +30,12 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/linux"
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
 var (
-	linuxDefaultTPM2Device              = linux.DefaultTPM2Device
-	linuxRawDeviceResourceManagedDevice = (*linux.RawDevice).ResourceManagedDevice
+	tpm2_deviceDefaultDevice = tpm2_device.DefaultDevice
 
 	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
 	sysfsPath    = "/sys"
@@ -63,27 +61,7 @@ func (defaultEnvImpl) ReadEventLog() (*tcglog.Log, error) {
 
 // TPMDevice implements [HostEnvironment.TPMDevice].
 func (defaultEnvImpl) TPMDevice() (tpm2.TPMDevice, error) {
-	device, err := linuxDefaultTPM2Device()
-	switch {
-	case errors.Is(err, linux.ErrNoTPMDevices) || errors.Is(err, linux.ErrDefaultNotTPM2Device):
-		return nil, ErrNoTPM2Device
-	case err != nil:
-		return nil, err
-	}
-
-	rmDevice, err := linuxRawDeviceResourceManagedDevice(device)
-	switch {
-	case errors.Is(err, linux.ErrNoResourceManagedDevice):
-		// Return the raw device. This can only be open once, so can block and may block other users.
-		return device, nil
-	case err != nil:
-		return nil, err
-	default:
-		// Return the resource managed device. There is no limit as to how may of these can be opened,
-		// although note that they can't be opened if the raw device is opened so this can still block
-		// if something else has the raw device open and might block other raw device users.
-		return rmDevice, nil
-	}
+	return tpm2_deviceDefaultDevice(tpm2_device.DeviceModeTryResourceManaged)
 }
 
 // DetectVirtMode implements [HostEnvironment.DetectVirtMode].

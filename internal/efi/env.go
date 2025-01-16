@@ -26,6 +26,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
 // XXX: Some of the interfaces here are really public, but they are here because they are shared by
@@ -97,7 +98,7 @@ const VirtModeNone = "none"
 var (
 	// ErrNoTPM2Device is returned from HostEnvironment.TPMDevice if no TPM2
 	// device is available.
-	ErrNoTPM2Device = errors.New("no TPM2 device is available")
+	ErrNoTPM2Device = tpm2_device.ErrNoTPM2Device
 
 	// ErrNoDeviceAttribute is returned from SysfsDevice.Attribute if the supplied attribute
 	// does not exist.
