@@ -1034,6 +1034,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBankAllowed(c 
 	log = efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 	})
+	const permitEmptyPCRBanks = true
 	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log,
 		tpm2.HandleList{
 			internal_efi.PlatformConfigPCR,
@@ -1044,7 +1045,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBankAllowed(c 
 			internal_efi.PlatformManufacturerPCR,
 			internal_efi.SecureBootPolicyPCR,
 		},
-		true,
+		permitEmptyPCRBanks,
 	)
 	c.Assert(err, IsNil)
 }
