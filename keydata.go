@@ -533,6 +533,7 @@ func (d *KeyData) platformKeyData() *PlatformKeyData {
 	return &PlatformKeyData{
 		Generation:    d.Generation(),
 		EncodedHandle: d.data.PlatformHandle,
+		Role:          d.data.Role,
 		KDFAlg:        crypto.Hash(d.data.KDFAlg),
 		AuthMode:      d.AuthMode(),
 	}

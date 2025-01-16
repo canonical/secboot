@@ -72,14 +72,21 @@ func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRPro
 	k, primaryKey, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
+	restore := s.CloseMockConnection(c)
+
 	_, _, err = k.RecoverKeys()
 	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
+
+	restore()
 
 	skd, err := NewSealedKeyData(k)
 	c.Assert(err, IsNil)
 
 	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), NoNewPCRPolicyVersion), IsNil)
+
+	restore = s.CloseMockConnection(c)
+	defer restore()
 
 	_, _, err = k.RecoverKeys()
 	c.Check(err, IsNil)
@@ -124,23 +131,34 @@ func (s *updateSuite) testRevokeOldPCRProtectionPolicies(c *C, params *ProtectKe
 	c.Assert(err, IsNil)
 	c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, params.PCRProfile, NewPCRPolicyVersion), IsNil)
 
+	restore := s.CloseMockConnection(c)
+
 	_, _, err = k1.RecoverKeys()
 	c.Check(err, IsNil)
 	_, _, err = k2.RecoverKeys()
 	c.Check(err, IsNil)
+
+	restore()
 
 	skd, err = NewSealedKeyData(k1)
 	c.Assert(err, IsNil)
 	c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), primaryKey), IsNil)
 
+	restore = s.CloseMockConnection(c)
+
 	_, _, err = k1.RecoverKeys()
 	c.Check(err, IsNil)
 	_, _, err = k2.RecoverKeys()
 	c.Check(err, IsNil)
 
+	restore()
+
 	skd, err = NewSealedKeyData(k2)
 	c.Assert(err, IsNil)
 	c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), primaryKey), IsNil)
+
+	restore = s.CloseMockConnection(c)
+	defer restore()
 
 	_, _, err = k2.RecoverKeys()
 	c.Check(err, IsNil)
@@ -177,14 +195,19 @@ func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy(c *C) {
 		k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
 		c.Assert(err, IsNil)
 
+		restore := s.CloseMockConnection(c)
 		_, _, err = k.RecoverKeys()
 		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+		restore()
 
 		keys = append(keys, k)
 	}
 
 	c.Check(UpdateKeyDataPCRProtectionPolicy(s.TPM(), primaryKey, tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}), NoNewPCRPolicyVersion, keys...), IsNil)
+
+	restore := s.CloseMockConnection(c)
+	defer restore()
 
 	for _, k := range keys {
 		_, _, err := k.RecoverKeys()

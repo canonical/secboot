@@ -64,6 +64,8 @@ func (s *platformLegacySuite) TestRecoverKeys(c *C) {
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
+	s.AddCleanup(s.CloseMockConnection(c))
+
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
 	c.Assert(err, IsNil)
 
@@ -108,6 +110,8 @@ func (s *platformLegacySuite) TestRecoverKeysInvalidPCRPolicy(c *C) {
 	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(7), tpm2.Event("foo"), nil)
 	c.Check(err, IsNil)
 
+	s.AddCleanup(s.CloseMockConnection(c))
+
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
 	c.Assert(err, IsNil)
 
@@ -128,6 +132,8 @@ func (s *platformLegacySuite) TestRecoverKeysTPMLockout(c *C) {
 
 	// Put the TPM in DA lockout mode
 	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
 	c.Assert(err, IsNil)
@@ -151,6 +157,8 @@ func (s *platformLegacySuite) TestRecoverKeysErrTPMProvisioning(c *C) {
 
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("foo"))
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	k, err := NewKeyDataFromSealedKeyObjectFile(keyFile)
 	c.Assert(err, IsNil)
