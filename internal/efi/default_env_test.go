@@ -29,11 +29,12 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/linux"
+	"github.com/canonical/go-tpm2/ppi"
 	"github.com/canonical/tcglog-parser"
 	. "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
@@ -107,35 +108,44 @@ func (s *defaultEnvSuite) TestReadEventLog2(c *C) {
 	})
 }
 
-func (s *defaultEnvSuite) TestTPMDeviceRM(c *C) {
-	rawDev := new(linux.RawDevice)
-	restore := MockLinuxDefaultTPM2Device(rawDev, nil)
-	defer restore()
-
-	rmDev := new(linux.RMDevice)
-	restore = MockLinuxRawDeviceResourceManagedDevice(c, rawDev, rmDev, nil)
-	defer restore()
-
-	dev, err := DefaultEnv.TPMDevice()
-	c.Check(err, IsNil)
-	c.Check(dev, Equals, rmDev)
+type mockTpmDevice struct {
+	mode tpm2_device.DeviceMode
 }
 
-func (s *defaultEnvSuite) TestTPMDeviceRaw(c *C) {
-	rawDev := new(linux.RawDevice)
-	restore := MockLinuxDefaultTPM2Device(rawDev, nil)
-	defer restore()
+func (*mockTpmDevice) Open() (tpm2.Transport, error) {
+	return nil, errors.New("not supported")
+}
 
-	restore = MockLinuxRawDeviceResourceManagedDevice(c, rawDev, nil, linux.ErrNoResourceManagedDevice)
+func (*mockTpmDevice) String() string {
+	return "mock TPM device"
+}
+
+func (d *mockTpmDevice) Mode() tpm2_device.DeviceMode {
+	return d.mode
+}
+
+func (*mockTpmDevice) PPI() (ppi.PPI, error) {
+	return nil, tpm2_device.ErrNoPPI
+}
+
+func (s *defaultEnvSuite) TestTPMDevice(c *C) {
+	expectedDev := &mockTpmDevice{mode: tpm2_device.DeviceModeResourceManaged}
+	restore := MockDefaultTPM2Device(func(mode tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
+		c.Assert(mode, Equals, tpm2_device.DeviceModeTryResourceManaged)
+		return expectedDev, nil
+	})
 	defer restore()
 
 	dev, err := DefaultEnv.TPMDevice()
 	c.Check(err, IsNil)
-	c.Check(dev, Equals, rawDev)
+	c.Check(dev, DeepEquals, expectedDev)
 }
 
 func (s *defaultEnvSuite) TestTPMDeviceNoDevicesErr(c *C) {
-	restore := MockLinuxDefaultTPM2Device(nil, linux.ErrNoTPMDevices)
+	restore := MockDefaultTPM2Device(func(mode tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
+		c.Check(mode, Equals, tpm2_device.DeviceModeTryResourceManaged)
+		return nil, tpm2_device.ErrNoTPM2Device
+	})
 	defer restore()
 
 	_, err := DefaultEnv.TPMDevice()
@@ -143,19 +153,10 @@ func (s *defaultEnvSuite) TestTPMDeviceNoDevicesErr(c *C) {
 }
 
 func (s *defaultEnvSuite) TestTPMDeviceNoDevicesOtherErr(c *C) {
-	restore := MockLinuxDefaultTPM2Device(nil, errors.New("some error"))
-	defer restore()
-
-	_, err := DefaultEnv.TPMDevice()
-	c.Check(err, ErrorMatches, `some error`)
-}
-
-func (s *defaultEnvSuite) TestTPMDeviceRMOtherErr(c *C) {
-	rawDev := new(linux.RawDevice)
-	restore := MockLinuxDefaultTPM2Device(rawDev, nil)
-	defer restore()
-
-	restore = MockLinuxRawDeviceResourceManagedDevice(c, rawDev, nil, errors.New("some error"))
+	restore := MockDefaultTPM2Device(func(mode tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
+		c.Check(mode, Equals, tpm2_device.DeviceModeTryResourceManaged)
+		return nil, errors.New("some error")
+	})
 	defer restore()
 
 	_, err := DefaultEnv.TPMDevice()
