@@ -236,6 +236,11 @@ func RunArgon2OutOfProcessRequest(request *Argon2OutOfProcessRequest) (response 
 		}, nil
 	}
 
+	// We don't validate the MemoryKiB parameter here. The Argon2 crypto package we use
+	// will round up this value to the minimum required, which is 8KiB per thread (so if
+	// we pass MemoryKiB==0 and Threads==4, then MemoryKiB will automatically be increased
+	// to 32KiB).
+
 	if len(request.WatchdogChallenge) > 0 {
 		// This function does everything in the same go routine, and therefore
 		// has no ability to service a watchdog. It's an error if we get here
