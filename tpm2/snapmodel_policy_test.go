@@ -23,8 +23,8 @@ import (
 	"encoding/binary"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/policyutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -61,7 +61,7 @@ func (s *snapModelProfileSuite) testAddSnapModelProfile(c *C, data *testAddSnapM
 	expectedPcrs = expectedPcrs.MustMerge(tpm2.PCRSelectionList{{Hash: data.params.PCRAlgorithm, Select: []int{data.params.PCRIndex}}})
 	var expectedDigests tpm2.DigestList
 	for _, v := range data.values {
-		d, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
+		d, _ := policyutil.ComputePCRDigest(tpm2.HashAlgorithmSHA256, expectedPcrs, v)
 		expectedDigests = append(expectedDigests, d)
 	}
 

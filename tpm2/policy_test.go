@@ -28,8 +28,8 @@ import (
 	"strconv"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/templates"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/objectutil"
+	"github.com/canonical/go-tpm2/policyutil"
 
 	. "gopkg.in/check.v1"
 
@@ -43,7 +43,7 @@ type policyOrTreeMixin struct{}
 func (_ policyOrTreeMixin) checkPolicyOrTree(c *C, alg tpm2.HashAlgorithmId, digests tpm2.DigestList, tree *PolicyOrTree) (policy tpm2.Digest, depth int) {
 	// Try a manual walk of the tree for every input digest
 	for i, digest := range digests {
-		trial := util.ComputeAuthPolicy(alg)
+		builder := policyutil.NewPolicyBuilder(alg)
 
 		var node *PolicyOrNode
 		for _, n := range tree.LeafNodes() {
@@ -63,15 +63,19 @@ func (_ policyOrTreeMixin) checkPolicyOrTree(c *C, alg tpm2.HashAlgorithmId, dig
 			if len(digests) == 1 {
 				digests = tpm2.DigestList{digests[0], digests[0]}
 			}
-			trial.PolicyOR(digests)
+			builder.RootBranch().PolicyOR(digests...)
 			node = node.Parent()
 		}
 
 		if i == 0 {
-			policy = trial.GetDigest()
+			var err error
+			policy, err = builder.Digest()
+			c.Assert(err, IsNil)
 			depth = d
 		} else {
-			c.Assert(trial.GetDigest(), DeepEquals, policy)
+			digest, err := builder.Digest()
+			c.Assert(err, IsNil)
+			c.Assert(digest, DeepEquals, policy)
 			c.Assert(d, Equals, depth)
 		}
 	}
@@ -114,12 +118,14 @@ type testNewPolicyOrTreeData struct {
 }
 
 func (s *policySuiteNoTPM) testNewPolicyOrTree(c *C, data *testNewPolicyOrTreeData) {
-	trial := util.ComputeAuthPolicy(data.alg)
-
-	tree, err := NewPolicyOrTree(data.alg, trial, data.digests)
+	tree, rootDigests, err := NewPolicyOrTree(data.alg, data.digests)
 	c.Assert(err, IsNil)
 
-	c.Assert(trial.GetDigest(), DeepEquals, data.expected)
+	builder := policyutil.NewPolicyBuilder(data.alg)
+	builder.RootBranch().PolicyOR(rootDigests...)
+	digest, err := builder.Digest()
+	c.Check(err, IsNil)
+	c.Check(digest, DeepEquals, data.expected)
 
 	policy, depth := s.checkPolicyOrTree(c, data.alg, data.digests, tree)
 	c.Check(policy, DeepEquals, data.expected)
@@ -196,12 +202,12 @@ func (s *policySuiteNoTPM) TestNewPolicyOrTreeDepth4(c *C) {
 }
 
 func (s *policySuiteNoTPM) TestNewPolicyOrTreeNoDigests(c *C) {
-	_, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256), nil)
+	_, _, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, nil)
 	c.Check(err, ErrorMatches, "no digests supplied")
 }
 
 func (s *policySuiteNoTPM) TestNewPolicyOrTreeTooManyDigests(c *C) {
-	_, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256), make(tpm2.DigestList, 5000))
+	_, _, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, make(tpm2.DigestList, 5000))
 	c.Check(err, ErrorMatches, "too many digests")
 }
 
@@ -224,7 +230,8 @@ func (s *policySuiteNoTPM) testNewKeyDataPolicy(c *C, data *testNewKeyDataPolicy
 	c.Assert(err, IsNil)
 	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
-	authKey := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey))
+	authKey, err := objectutil.NewECCPublicKey(key.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
 
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	if data.pcrPolicyCounterPub != nil {
@@ -412,7 +419,8 @@ func (s *policySuite) testNewKeyDataPolicyLegacy(c *C, data *testNewKeyDataPolic
 	c.Assert(err, IsNil)
 	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
-	authKey := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey))
+	authKey, err := objectutil.NewECCPublicKey(key.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
 
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	if data.pcrPolicyCounterPub != nil {
@@ -494,15 +502,19 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 func (s *policySuite) TestPolicyOrTreeExecuteAssertions(c *C) {
 	var digests tpm2.DigestList
 	for i := 1; i < 201; i++ {
-		trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-		trial.PolicyPCR(hash(crypto.SHA256, strconv.Itoa(i)), tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
-		digests = append(digests, trial.GetDigest())
+		builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+		builder.RootBranch().PolicyPCRDigest(hash(crypto.SHA256, strconv.Itoa(i)), tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+		digest, err := builder.Digest()
+		c.Check(err, IsNil)
+		digests = append(digests, digest)
 	}
 
-	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	tree, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, trial, digests)
+	tree, rootDigests, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, digests)
 	c.Assert(err, IsNil)
-	expectedDigest := trial.GetDigest()
+	builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+	builder.RootBranch().PolicyOR(rootDigests...)
+	expectedDigest, err := builder.Digest()
+	c.Check(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeTrial, nil, tpm2.HashAlgorithmSHA256)
 
@@ -520,13 +532,14 @@ func (s *policySuite) TestPolicyOrTreeExecuteAssertions(c *C) {
 func (s *policySuite) TestPolicyOrTreeExecuteAssertionsDigestNotFound(c *C) {
 	var digests tpm2.DigestList
 	for i := 1; i < 201; i++ {
-		trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-		trial.PolicyPCR(hash(crypto.SHA256, strconv.Itoa(i)), tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
-		digests = append(digests, trial.GetDigest())
+		builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+		builder.RootBranch().PolicyPCRDigest(hash(crypto.SHA256, strconv.Itoa(i)), tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+		digest, err := builder.Digest()
+		c.Check(err, IsNil)
+		digests = append(digests, digest)
 	}
 
-	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	tree, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, trial, digests)
+	tree, _, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, digests)
 	c.Assert(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeTrial, nil, tpm2.HashAlgorithmSHA256)
@@ -556,9 +569,11 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	c.Assert(err, IsNil)
 	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
+	authKey, err := objectutil.NewECCPublicKey(key.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
+
 	handle := s.NextAvailableHandle(c, 0x0181ff00)
-	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle,
-		util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey)), s.TPM().HmacSession())
+	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle, authKey, s.TPM().HmacSession())
 	c.Assert(err, IsNil)
 	c.Check(pub.Index, Equals, handle)
 	c.Check(pub.Attrs.Type(), Equals, tpm2.NVTypeCounter)
@@ -568,7 +583,7 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	name, err := pub.ComputeName()
 	c.Check(err, IsNil)
 
-	index, err := s.TPM().CreateResourceContextFromTPM(handle)
+	index, err := s.TPM().NewResourceContext(handle)
 	c.Assert(err, IsNil)
 	c.Check(name, DeepEquals, index.Name())
 }
@@ -634,9 +649,11 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	c.Assert(err, IsNil)
 	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
+	authKey, err := objectutil.NewECCPublicKey(key.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
+
 	handle := tpm2.Handle(0x0181ff00)
-	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle,
-		util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey)), s.TPM().HmacSession())
+	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle, authKey, s.TPM().HmacSession())
 	c.Assert(err, IsNil)
 	c.Check(pub.Index, Equals, handle)
 	c.Check(pub.Attrs.Type(), Equals, tpm2.NVTypeCounter)
@@ -646,7 +663,7 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	name, err := pub.ComputeName()
 	c.Check(err, IsNil)
 
-	index, err := s.TPM().CreateResourceContextFromTPM(handle)
+	index, err := s.TPM().NewResourceContext(handle)
 	c.Assert(err, IsNil)
 	c.Check(name, DeepEquals, index.Name())
 }

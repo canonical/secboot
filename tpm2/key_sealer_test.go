@@ -23,8 +23,9 @@ import (
 	"crypto/rsa"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/objectutil"
+	"github.com/canonical/go-tpm2/policyutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -85,7 +86,7 @@ func (s *sealedObjectKeySealerSuite) testCreateSealedObject(c *C, data *testCrea
 					Scheme:  tpm2.KeyedHashSchemeNull,
 					Details: &tpm2.SchemeKeyedHashU{}}}})
 
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	k, err := s.TPM().Load(srk, priv, pub, nil)
@@ -119,7 +120,7 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectWithNewConnection(c *
 }
 
 func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectMissingSRK(c *C) {
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -152,8 +153,10 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectDifferentNameAlg(c *C
 }
 
 func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectDifferentPolicy(c *C) {
-	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	trial.PolicyAuthValue()
+	builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+	builder.RootBranch().PolicyAuthValue()
+	digest, err := builder.Digest()
+	c.Check(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
 	c.Check(s.TPM().PolicyAuthValue(session), IsNil)
@@ -161,7 +164,7 @@ func (s *sealedObjectKeySealerSuite) TestCreateSealedObjectDifferentPolicy(c *C)
 	s.testCreateSealedObject(c, &testCreateSealedObjectData{
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
-		policyDigest: trial.GetDigest(),
+		policyDigest: digest,
 		noDA:         true,
 		session:      session})
 }
@@ -203,7 +206,7 @@ func (s *importableObjectKeySealerSuite) testCreateSealedObject(c *C, data *test
 			KeyedHashDetail: &tpm2.KeyedHashParams{
 				Scheme: tpm2.KeyedHashScheme{Scheme: tpm2.KeyedHashSchemeNull}}})
 
-	sensitive, err := util.UnwrapDuplicationObject(priv, pub, key, srk.NameAlg, &srk.Params.RSADetail.Symmetric, importSymSeed, nil, nil)
+	sensitive, err := objectutil.UnwrapDuplicated(priv, pub, key, srk.NameAlg, &srk.Params.RSADetail.Symmetric, importSymSeed, nil, nil)
 	c.Assert(err, IsNil)
 
 	c.Check(sensitive.Type, Equals, tpm2.ObjectTypeKeyedHash)
@@ -236,13 +239,15 @@ func (s *importableObjectKeySealerSuite) TestCreateSealedObjectiDifferentNameAlg
 }
 
 func (s *importableObjectKeySealerSuite) TestCreateSealedObjectWithDifferentPolicy(c *C) {
-	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	trial.PolicyAuthValue()
+	builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+	builder.RootBranch().PolicyAuthValue()
+	digest, err := builder.Digest()
+	c.Check(err, IsNil)
 
 	s.testCreateSealedObject(c, &testCreateSealedObjectData{
 		data:         []byte("foo"),
 		nameAlg:      tpm2.HashAlgorithmSHA256,
-		policyDigest: trial.GetDigest(),
+		policyDigest: digest,
 		noDA:         true})
 }
 

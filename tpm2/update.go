@@ -72,16 +72,11 @@ const (
 // must be supplied, and it must correspond to the public area associated with that handle.
 func (k *sealedKeyDataBase) updatePCRProtectionPolicyNoValidate(tpm *tpm2.TPMContext, key secboot.PrimaryKey,
 	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, policyVersionOption pcrPolicyVersionOption) error {
-	var counterName tpm2.Name
 	var policySequence uint64
 	if counterPub != nil {
 		if tpm == nil {
 			return errors.New("TPM connection required to update PCR policy with revocation")
 		}
-
-		// Callers obtain a valid counterPub from sealedKeyDataBase.validateData, so
-		// we know that this succeeds. If it failed, we would sign an invalid policy.
-		counterName = counterPub.Name()
 
 		switch policyVersionOption {
 		case resetPcrPolicyVersion, newPcrPolicyVersion:
@@ -154,12 +149,12 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyNoValidate(tpm *tpm2.TPMCon
 	}
 
 	params := &pcrPolicyParams{
-		key:               key,
-		pcrs:              pcrs,
-		pcrDigests:        pcrDigests,
-		policyCounterName: counterName,
-		policySequence:    policySequence}
-	return k.data.Policy().UpdatePCRPolicy(alg, params)
+		key:            key,
+		pcrs:           pcrs,
+		pcrDigests:     pcrDigests,
+		policyCounter:  counterPub,
+		policySequence: policySequence}
+	return k.data.Policy().UpdatePCRPolicy(k.data.Public().NameAlg, params)
 }
 
 func (k *sealedKeyDataBase) revokeOldPCRProtectionPolicies(tpm *tpm2.TPMContext, key secboot.PrimaryKey, role string) error {

@@ -89,7 +89,7 @@ func (t *Connection) init() (err error) {
 	}
 	t.provisionedSrk = nil
 
-	ek, err := t.CreateResourceContextFromTPM(tcg.EKHandle)
+	ek, err := t.NewResourceContext(tcg.EKHandle)
 	switch {
 	case tpm2.IsResourceUnavailableError(err, tcg.EKHandle):
 		// ok

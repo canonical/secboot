@@ -11,8 +11,8 @@ github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0/go.mod 
 github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3 h1:oe6fCvaEpkhyW3qAicT0TnGtyht/UrgvOwMcEgLb7Aw=
 github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3/go.mod h1:qdP0gaj0QtgX2RUZhnlVrceJ+Qln8aSlDyJwelLLFeM=
 github.com/canonical/go-tpm2 v0.0.0-20210827151749-f80ff5afff61/go.mod h1:vG41hdbBjV4+/fkubTT1ENBBqSkLwLr7mCeW9Y6kpZY=
-github.com/canonical/go-tpm2 v1.10.1 h1:TtCuiJLX5sU8GNIxEycnc51CzsDd3nXUUkin3/My9gg=
-github.com/canonical/go-tpm2 v1.10.1/go.mod h1:zK+qESVwu78XyX+NPhiBdN+zwPPDoKk4rYlQ7VUsRp4=
+github.com/canonical/go-tpm2 v1.11.1 h1:RivdSXfBWWW+eFaFNYQby5+kVgY4km9eEayot1wX/qU=
+github.com/canonical/go-tpm2 v1.11.1/go.mod h1:zK+qESVwu78XyX+NPhiBdN+zwPPDoKk4rYlQ7VUsRp4=
 github.com/canonical/tcglog-parser v0.0.0-20210824131805-69fa1e9f0ad2/go.mod h1:QoW2apR2tBl6T/4czdND/EHjL1Ia9cCmQnIj9Xe0Kt8=
 github.com/canonical/tcglog-parser v0.0.0-20240924110432-d15eaf652981 h1:vrUzSfbhl8mzdXPzjxq4jXZPCCNLv18jy6S7aVTS2tI=
 github.com/canonical/tcglog-parser v0.0.0-20240924110432-d15eaf652981/go.mod h1:ywdPBqUGkuuiitPpVWCfilf2/gq+frhq4CNiNs9KyHU=

@@ -26,8 +26,8 @@ import (
 	"errors"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/templates"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/objectutil"
+	"github.com/canonical/go-tpm2/policyutil"
 
 	"golang.org/x/xerrors"
 
@@ -50,10 +50,10 @@ type pcrPolicyParams struct {
 	pcrs       tpm2.PCRSelectionList // PCR selection
 	pcrDigests tpm2.DigestList       // Approved PCR digests
 
-	// policyCounterName is the name of the NV index used for revoking authorization
-	// policies. The name must be associated with the handle in the keyDataPolicy,
-	// else the policy will not work.
-	policyCounterName tpm2.Name
+	// policyCounter is the public area of the NV index used for revoking authorization
+	// policies. It must be associated with the handle in the keyDataPolicy, else the
+	// policy will not work.
+	policyCounter *tpm2.NVPublic
 
 	policySequence uint64 // the PCR policy sequence
 }
@@ -144,16 +144,23 @@ type keyDataPolicy interface {
 func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (public *tpm2.NVPublic, value uint64, err error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
-	authPolicies := computeV2PcrPolicyCounterAuthPolicies(nameAlg, updateKey.Name())
+	authPolicies, err := computeV2PcrPolicyCounterAuthPolicies(nameAlg, updateKey)
+	if err != nil {
+		return nil, 0, err
+	}
 
-	trial := util.ComputeAuthPolicy(nameAlg)
-	trial.PolicyOR(authPolicies)
+	builder := policyutil.NewPolicyBuilder(nameAlg)
+	builder.RootBranch().PolicyOR(authPolicies...)
+	policyDigest, err := builder.Digest()
+	if err != nil {
+		return nil, 0, err
+	}
 
 	public = &tpm2.NVPublic{
 		Index:      handle,
 		NameAlg:    tpm2.HashAlgorithmSHA256,
 		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA),
-		AuthPolicy: trial.GetDigest(),
+		AuthPolicy: policyDigest,
 		Size:       8}
 
 	index, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), nil, public, hmacSession)
@@ -211,19 +218,26 @@ func createPcrPolicyCounterLegacy(tpm *tpm2.TPMContext, handle tpm2.Handle, upda
 var ensurePcrPolicyCounter = func(tpm *tpm2.TPMContext, handle tpm2.Handle, updateKey *tpm2.Public, hmacSession tpm2.SessionContext) (public *tpm2.NVPublic, err error) {
 	nameAlg := tpm2.HashAlgorithmSHA256
 
-	authPolicies := computeV3PcrPolicyCounterAuthPolicies(nameAlg, updateKey.Name())
+	authPolicies, err := computeV3PcrPolicyCounterAuthPolicies(nameAlg, updateKey)
+	if err != nil {
+		return nil, err
+	}
 
-	trial := util.ComputeAuthPolicy(nameAlg)
-	trial.PolicyOR(authPolicies)
+	builder := policyutil.NewPolicyBuilder(nameAlg)
+	builder.RootBranch().PolicyOR(authPolicies...)
+	policyDigest, err := builder.Digest()
+	if err != nil {
+		return nil, err
+	}
 
 	public = &tpm2.NVPublic{
 		Index:      handle,
 		NameAlg:    tpm2.HashAlgorithmSHA256,
 		Attrs:      tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA),
-		AuthPolicy: trial.GetDigest(),
+		AuthPolicy: policyDigest,
 		Size:       8}
 
-	index, err := tpm.CreateResourceContextFromTPM(handle)
+	index, err := tpm.NewResourceContext(handle)
 	switch {
 	case tpm2.IsResourceUnavailableError(err, handle):
 		// ok, need to create
@@ -284,7 +298,7 @@ var newPolicyAuthPublicKey = func(key secboot.PrimaryKey) (*tpm2.Public, error) 
 		return nil, err
 	}
 
-	return util.NewExternalECCPublicKey(tpm2.HashAlgorithmSHA256, templates.KeyUsageSign, nil, &ecdsaKey.PublicKey), nil
+	return objectutil.NewECCPublicKey(&ecdsaKey.PublicKey)
 }
 
 // ensureSufficientORDigests turns a single digest in to a pair of identical digests.
@@ -332,10 +346,14 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role str
 
 	pcrPolicyRef := computeV3PcrPolicyRef(key.NameAlg, []byte(role), pcrPolicyCounterName)
 
-	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(pcrPolicyRef, key.Name())
+	builder := policyutil.NewPolicyBuilder(alg)
+	builder.RootBranch().PolicyAuthorize(pcrPolicyRef, key)
 	if requireAuthValue {
-		trial.PolicyAuthValue()
+		builder.RootBranch().PolicyAuthValue()
+	}
+	policyDigest, err := builder.Digest()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return &keyDataPolicy_v3{
@@ -347,7 +365,7 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role str
 		PCRData: &pcrPolicyData_v3{
 			// Set AuthorizedPolicySignature here because this object needs to be
 			// serializable before the initial signature is created.
-			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}, trial.GetDigest(), nil
+			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}, policyDigest, nil
 }
 
 // newKeyDataPolicyLegacy creates a keyDataPolicy for legacy sealed key files containing a static
@@ -370,21 +388,25 @@ func newKeyDataPolicyLegacy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolic
 		pcrPolicyCounterName = pcrPolicyCounterPub.Name()
 	}
 
-	trial := util.ComputeAuthPolicy(alg)
-	trial.PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), key.Name())
-	trial.PolicyAuthValue()
+	builder := policyutil.NewPolicyBuilder(alg)
+	builder.RootBranch().PolicyAuthorize(computeV2PcrPolicyRefFromCounterName(pcrPolicyCounterName), key)
+	builder.RootBranch().PolicyAuthValue()
+	policyDigest, err := builder.Digest()
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return &keyDataPolicy_v2{
 		StaticData: &staticPolicyData_v2{
 			AuthPublicKey:          key,
 			PCRPolicyCounterHandle: pcrPolicyCounterHandle},
 		PCRData: &pcrPolicyData_v2{
-			PolicySequence: pcrPolicySequence}}, trial.GetDigest(), nil
+			PolicySequence: pcrPolicySequence}}, policyDigest, nil
 }
 
 // newPolicyOrTree creates a new policyOrTree from the supplied digests
 // for creating a policy that can be satisified by multiple conditions. It also
-// extends the supplied trial policy.
+// returns a list of digests to use in the root PolicyOR assertion.
 //
 // It works by turning the supplied list of digests (each corresponding to some
 // condition) into a tree of nodes, with each node containing no more than 8 digests
@@ -396,12 +418,12 @@ func newKeyDataPolicyLegacy(alg tpm2.HashAlgorithmId, key *tpm2.Public, pcrPolic
 //
 // It returns an error if no digests are supplied or if too many digests are
 // supplied. The returned tree won't have a depth of more than 4.
-func newPolicyOrTree(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, digests tpm2.DigestList) (out *policyOrTree, err error) {
+func newPolicyOrTree(alg tpm2.HashAlgorithmId, digests tpm2.DigestList) (out *policyOrTree, rootDigest tpm2.DigestList, err error) {
 	if len(digests) == 0 {
-		return nil, errors.New("no digests supplied")
+		return nil, nil, errors.New("no digests supplied")
 	}
 	if len(digests) > policyOrMaxDigests {
-		return nil, errors.New("too many digests")
+		return nil, nil, errors.New("too many digests")
 	}
 
 	var prev []*policyOrNode
@@ -428,9 +450,13 @@ func newPolicyOrTree(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, dige
 
 			// Consume the next n digests to fit in to this node and produce a single digest
 			// that will go in to the parent node.
-			trial := util.ComputeAuthPolicy(alg)
-			trial.PolicyOR(ensureSufficientORDigests(digests[:n]))
-			nextDigests = append(nextDigests, trial.GetDigest())
+			builder := policyutil.NewPolicyBuilder(alg)
+			builder.RootBranch().PolicyOR(ensureSufficientORDigests(digests[:n])...)
+			digest, err := builder.Digest()
+			if err != nil {
+				return nil, nil, err
+			}
+			nextDigests = append(nextDigests, digest)
 
 			// We've consumed n digests, so adjust the slice to point to the next ones to consume to
 			// produce a sibling node.
@@ -453,8 +479,7 @@ func newPolicyOrTree(alg tpm2.HashAlgorithmId, trial *util.TrialAuthPolicy, dige
 		}
 	}
 
-	trial.PolicyOR(ensureSufficientORDigests(prev[0].digests))
-	return out, nil
+	return out, ensureSufficientORDigests(prev[0].digests), nil
 }
 
 type policyDataError struct {

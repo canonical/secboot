@@ -193,7 +193,7 @@ func (k *sealedKeyDataBase) validateData(tpm *tpm2.TPMContext, role string) (*tp
 		return nil, keyDataError{errors.New("sealed key object has the wrong attributes")}
 	}
 
-	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := tpm.NewResourceContext(tcg.SRKHandle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot create context for SRK: %w", err)
 	}

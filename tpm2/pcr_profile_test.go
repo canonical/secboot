@@ -24,8 +24,8 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/canonical/go-tpm2/policyutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -51,7 +51,7 @@ func (s *pcrProfileSuite) testPCRProtectionProfile(c *C, data *testPCRProtection
 
 	var expectedDigests tpm2.DigestList
 	for _, v := range data.values {
-		d, _ := util.ComputePCRDigest(data.alg, expectedPcrs, v)
+		d, _ := policyutil.ComputePCRDigest(data.alg, expectedPcrs, v)
 		expectedDigests = append(expectedDigests, d)
 	}
 
@@ -1086,7 +1086,7 @@ func (s *pcrProfileTPMSuite) TestAddValueFromTPM(c *C) {
 	c.Check(pcrs, tpm2_testutil.TPMValueDeepEquals, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}})
 	c.Check(digests, HasLen, 1)
 
-	expectedDigest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}}, values)
+	expectedDigest, _ := policyutil.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}}}, values)
 	c.Check(digests[0], DeepEquals, expectedDigest)
 }
 
@@ -1112,7 +1112,7 @@ func (s *pcrProfileTPMSuite) TestAddValueFromTPMAddProfileORPropagatesSelection(
 	})
 	c.Check(digests, HasLen, 1)
 
-	expectedDigest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{
+	expectedDigest, _ := policyutil.ComputePCRDigest(tpm2.HashAlgorithmSHA256, tpm2.PCRSelectionList{
 		{Hash: tpm2.HashAlgorithmSHA1, Select: []int{23}},
 		{Hash: tpm2.HashAlgorithmSHA256, Select: []int{23}},
 	}, values)
