@@ -20,9 +20,10 @@
 package tpm2
 
 import (
+	"crypto/rand"
+
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/templates"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/objectutil"
 
 	"golang.org/x/xerrors"
 )
@@ -33,7 +34,7 @@ type keySealer interface {
 	// and with the specified name algorithm and authorization policy. It returns
 	// the private and public parts of the object, and an optional secret value if
 	// the returned object has to be imported.
-	CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error)
+	CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest, noDA bool) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error)
 }
 
 // sealedObjectKeySealer is an implementation of keySealer that seals data to
@@ -42,7 +43,7 @@ type sealedObjectKeySealer struct {
 	tpm *Connection
 }
 
-func (s *sealedObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error) {
+func (s *sealedObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest, noDA bool) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error) {
 	// Obtain a context for the SRK now. If we're called immediately after ProvisionTPM without
 	// closing the Connection, we use the context cached by ProvisionTPM, which corresponds to
 	// the object provisioned. If not, we just unconditionally provision a new SRK as this function
@@ -77,9 +78,17 @@ func (s *sealedObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.Has
 	sensitive := tpm2.SensitiveCreate{Data: data}
 
 	// Define the template
-	template := templates.NewSealedObject(nameAlg)
-	template.Attrs &^= tpm2.AttrUserWithAuth
-	template.AuthPolicy = policy
+	opts := []objectutil.PublicTemplateOption{
+		objectutil.WithNameAlg(nameAlg),
+		objectutil.WithUserAuthMode(objectutil.RequirePolicy),
+		objectutil.WithAuthPolicy(policy),
+	}
+	if noDA {
+		opts = append(opts, objectutil.WithoutDictionaryAttackProtection())
+	} else {
+		opts = append(opts, objectutil.WithDictionaryAttackProtection())
+	}
+	template := objectutil.NewSealedObjectTemplate(opts...)
 
 	// Now create the sealed key object. The command is integrity protected so if the object
 	// at the handle we expect the SRK to reside at has a different name (ie, if we're
@@ -101,13 +110,24 @@ type importableObjectKeySealer struct {
 	tpmKey *tpm2.Public
 }
 
-func (s *importableObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error) {
-	pub, sensitive := util.NewExternalSealedObject(nameAlg, nil, data)
-	pub.Attrs &^= tpm2.AttrUserWithAuth
-	pub.AuthPolicy = policy
+func (s *importableObjectKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorithmId, policy tpm2.Digest, noDA bool) (tpm2.Private, *tpm2.Public, tpm2.EncryptedSecret, error) {
+	opts := []objectutil.PublicTemplateOption{
+		objectutil.WithNameAlg(nameAlg),
+		objectutil.WithUserAuthMode(objectutil.RequirePolicy),
+		objectutil.WithAuthPolicy(policy),
+	}
+	if noDA {
+		opts = append(opts, objectutil.WithoutDictionaryAttackProtection())
+	} else {
+		opts = append(opts, objectutil.WithDictionaryAttackProtection())
+	}
+	pub, sensitive, err := objectutil.NewSealedObject(rand.Reader, data, nil, opts...)
+	if err != nil {
+		return nil, nil, nil, xerrors.Errorf("cannot create external sealed object: %w", err)
+	}
 
 	// Now create the importable sealed key object (duplication object).
-	_, priv, importSymSeed, err := util.CreateDuplicationObject(sensitive, pub, s.tpmKey, nil, nil)
+	_, priv, importSymSeed, err := objectutil.CreateImportable(rand.Reader, sensitive, pub, s.tpmKey, nil, nil)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create duplication object: %w", err)
 	}

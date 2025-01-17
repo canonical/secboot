@@ -21,9 +21,7 @@ package tpm2_test
 
 import (
 	"math/rand"
-	"os"
 	"path/filepath"
-	"syscall"
 
 	"github.com/canonical/go-tpm2"
 
@@ -31,6 +29,7 @@ import (
 
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/tcg"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	. "github.com/snapcore/secboot/tpm2"
 )
@@ -84,8 +83,8 @@ func (s *platformLegacySuite) TestRecoverKeysNoTPMConnection(c *C) {
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
-	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return nil, &os.PathError{Op: "open", Path: "/dev/tpm0", Err: syscall.ENOENT}
+	restore := tpm2test.MockDefaultDeviceFn(func(tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
+		return nil, tpm2_device.ErrNoTPM2Device
 	})
 	s.AddCleanup(restore)
 
@@ -147,7 +146,7 @@ func (s *platformLegacySuite) TestRecoverKeysErrTPMProvisioning(c *C) {
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())

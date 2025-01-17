@@ -29,10 +29,12 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"syscall"
 
 	"github.com/snapcore/snapd/asserts"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
+	"golang.org/x/sys/unix"
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot"
@@ -399,6 +401,9 @@ type cryptSuite struct {
 	testutil.KeyringTestBase
 
 	luks2 *mockLUKS2
+
+	deviceStats    map[string]unix.Stat_t
+	requestedStats []string
 }
 
 var _ = Suite(&cryptSuite{})
@@ -415,6 +420,28 @@ func (s *cryptSuite) TearDownSuite(c *C) {
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {
+	s.AddCleanup(MockUnixStat(func(devicePath string, st *unix.Stat_t) error {
+		fmt.Printf("Called mock for %s\n", devicePath)
+		s.requestedStats = append(s.requestedStats, devicePath)
+		foundSt, hasSt := s.deviceStats[devicePath]
+		if !hasSt {
+			return syscall.ENOENT
+		}
+		*st = foundSt
+		return nil
+	}))
+
+	s.deviceStats = map[string]unix.Stat_t{
+		"/dev/sda1": unix.Stat_t{
+			Mode: 0600|unix.S_IFBLK,
+			Rdev: unix.Mkdev(8, 1),
+		},
+		"/dev/vda2": unix.Stat_t{
+			Mode: 0600|unix.S_IFBLK,
+			Rdev: unix.Mkdev(9, 2),
+		},
+	}
+
 	s.keyDataTestBase.SetUpTest(c)
 	s.KeyringTestBase.SetUpTest(c)
 
@@ -761,6 +788,15 @@ type testActivateVolumeWithRecoveryKeyErrorHandlingData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *testActivateVolumeWithRecoveryKeyErrorHandlingData) error {
+	defer MockUnixStat(func(devicePath string, st *unix.Stat_t) error {
+		c.Check(devicePath, Equals, "/dev/sda1")
+		*st = unix.Stat_t{
+			Mode: 0600|unix.S_IFBLK,
+			Rdev: unix.Mkdev(8, 1),
+		}
+		return nil
+	})()
+
 	recoveryKey := s.newRecoveryKey()
 	s.addMockKeyslot("/dev/sda1", recoveryKey[:])
 
@@ -840,13 +876,14 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 }
 
 type testActivateVolumeWithKeyDataData struct {
-	passphrase       string
-	volumeName       string
-	sourceDevicePath string
-	passphraseTries  int
-	keyringPrefix    string
-	authResponses    []interface{}
-	model            SnapModel
+	passphrase        string
+	volumeName        string
+	sourceDevicePath  string
+	legacyDevicePaths []string
+	passphraseTries   int
+	keyringPrefix     string
+	authResponses     []interface{}
+	model             SnapModel
 
 	tokenName string
 }
@@ -874,6 +911,10 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 	options := &ActivateVolumeOptions{
 		PassphraseTries: data.passphraseTries,
 		KeyringPrefix:   data.keyringPrefix}
+
+	if len(data.legacyDevicePaths) > 0 {
+		options.LegacyDevicePaths = data.legacyDevicePaths
+	}
 
 	if data.tokenName != "" {
 		w := makeMockKeyDataWriter()
@@ -909,6 +950,10 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 
 	// This should be done last because it may fail in some circumstances.
 	s.checkKeyDataKeysInKeyring(c, data.keyringPrefix, data.sourceDevicePath, unlockKey, primaryKey)
+
+	for _, legacyPath := range data.legacyDevicePaths {
+		s.checkKeyDataKeysInKeyring(c, data.keyringPrefix, legacyPath, unlockKey, primaryKey)
+	}
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyData1(c *C) {
@@ -3895,4 +3940,66 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyDataErrorHandling15(
 		"- foo: snap model is not authorized\n"+
 		"- bar: snap model is not authorized\n"+
 		"and activation with recovery key failed: no recovery key tries permitted")
+}
+
+func (s *cryptSuite) TestActivateVolumeWithLegacyPaths(c *C) {
+	s.deviceStats = map[string]unix.Stat_t{
+		"/dev/some/path": unix.Stat_t{
+			Mode: 0600|unix.S_IFBLK,
+			Rdev: unix.Mkdev(8, 1),
+		},
+		"/dev/some/legacy/path": unix.Stat_t{
+			Mode: 0600|unix.S_IFBLK,
+			Rdev: unix.Mkdev(8, 1),
+		},
+	}
+
+	models := []SnapModel{nil}
+
+	s.testActivateVolumeWithKeyData(c, &testActivateVolumeWithKeyDataData{
+		volumeName:        "data",
+		sourceDevicePath:  "/dev/some/path",
+		legacyDevicePaths: []string{"/dev/some/legacy/path"},
+		model:             models[0],
+	})
+}
+
+func (s *cryptSuite) TestActivateVolumeWithLegacyPathsError(c *C) {
+	s.deviceStats = map[string]unix.Stat_t{
+		"/dev/some/path": unix.Stat_t{
+			Mode: 0600|unix.S_IFBLK,
+			Rdev: unix.Mkdev(8, 1),
+		},
+		"/dev/some/legacy/path": unix.Stat_t{
+			Mode: 0600|unix.S_IFBLK,
+			// different node
+			Rdev: unix.Mkdev(8, 2),
+		},
+	}
+
+	keyData, unlockKey, primaryKey := s.newNamedKeyData(c, "")
+	authRequestor := &mockAuthRequestor{}
+
+	options := &ActivateVolumeOptions{
+		LegacyDevicePaths: []string{"/dev/some/legacy/path"},
+	}
+
+	s.addMockKeyslot("/dev/some/path", unlockKey)
+
+	stderr := new(bytes.Buffer)
+	restore := MockStderr(stderr)
+	defer restore()
+
+	err := ActivateVolumeWithKeyData("data", "/dev/some/path", authRequestor, options, keyData)
+	c.Assert(err, IsNil)
+
+	c.Check(stderr.String(), Equals, `secboot: device path /dev/some/legacy/path is a different device`)
+
+	_, err = GetDiskUnlockKeyFromKernel("", "/dev/some/legacy/path", false)
+	c.Check(err, ErrorMatches, `cannot find key in kernel keyring`)
+
+	_, err = GetPrimaryKeyFromKernel("", "/dev/some/legacy/path", false)
+	c.Check(err, ErrorMatches, `cannot find key in kernel keyring`)
+
+	s.checkKeyDataKeysInKeyring(c, "", "/dev/some/path", unlockKey, primaryKey)
 }

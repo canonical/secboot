@@ -28,6 +28,7 @@ import (
 	"os"
 	"strconv"
 
+	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
 
 	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
@@ -54,6 +55,8 @@ var (
 	newLUKSView = luksview.NewView
 
 	osStderr io.Writer = os.Stderr
+
+	unixStat = unix.Stat
 )
 
 const (
@@ -125,9 +128,10 @@ type keyCandidate struct {
 }
 
 type activateWithKeyDataState struct {
-	volumeName       string
-	sourceDevicePath string
-	keyringPrefix    string
+	volumeName        string
+	sourceDevicePath  string
+	legacyDevicePaths []string
+	keyringPrefix     string
 
 	authRequestor   AuthRequestor
 	passphraseTries int
@@ -179,12 +183,40 @@ func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey
 		return xerrors.Errorf("cannot activate volume: %w", err)
 	}
 
-	if err := keyring.AddKeyToUserKeyring(key, s.sourceDevicePath, keyringPurposeDiskUnlock, s.keyringPrefix); err != nil {
-		fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
+	var firstDeviceStat uint64
+	foundFirstDevice := false
+	addToKeyring := func(devicePath string) {
+		var st unix.Stat_t
+		if err := unixStat(devicePath, &st); err != nil {
+			fmt.Fprintf(osStderr, "secboot: cannot read device path %s: %v\n", devicePath, err)
+			if foundFirstDevice {
+				return
+			}
+		} else if (st.Mode & unix.S_IFBLK) == 0 {
+			fmt.Fprintf(osStderr, "secboot: device path %s is not a block device\n", devicePath)
+			if foundFirstDevice {
+				return
+			}
+		} else if !foundFirstDevice {
+			firstDeviceStat = st.Rdev
+			foundFirstDevice = true
+		} else if firstDeviceStat != uint64(st.Rdev) {
+			fmt.Fprintf(osStderr, "secboot: device path %s is a different device", devicePath)
+			return
+		}
+
+		if err := keyring.AddKeyToUserKeyring(key, devicePath, keyringPurposeDiskUnlock, s.keyringPrefix); err != nil {
+			fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
+		}
+
+		if err := keyring.AddKeyToUserKeyring(auxKey, devicePath, keyringPurposeAuxiliary, s.keyringPrefix); err != nil {
+			fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
+		}
 	}
 
-	if err := keyring.AddKeyToUserKeyring(auxKey, s.sourceDevicePath, keyringPurposeAuxiliary, s.keyringPrefix); err != nil {
-		fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
+	addToKeyring(s.sourceDevicePath)
+	for _, devicePath := range s.legacyDevicePaths {
+		addToKeyring(devicePath)
 	}
 
 	return nil
@@ -276,14 +308,15 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 	return false, passphraseErr
 }
 
-func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*keyCandidate, authRequestor AuthRequestor, passphraseTries int) *activateWithKeyDataState {
+func newActivateWithKeyDataState(volumeName, sourceDevicePath string, keyringPrefix string, keys []*keyCandidate, authRequestor AuthRequestor, passphraseTries int, legacyDevicePaths []string) *activateWithKeyDataState {
 	return &activateWithKeyDataState{
-		volumeName:       volumeName,
-		sourceDevicePath: sourceDevicePath,
-		keyringPrefix:    keyringPrefixOrDefault(keyringPrefix),
-		authRequestor:    authRequestor,
-		passphraseTries:  passphraseTries,
-		keys:             keys}
+		volumeName:        volumeName,
+		sourceDevicePath:  sourceDevicePath,
+		legacyDevicePaths: legacyDevicePaths,
+		keyringPrefix:     keyringPrefixOrDefault(keyringPrefix),
+		authRequestor:     authRequestor,
+		passphraseTries:   passphraseTries,
+		keys:              keys}
 }
 
 func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor AuthRequestor, tries int, keyringPrefix string) error {
@@ -357,6 +390,11 @@ type ActivateVolumeOptions struct {
 	// KeyringPrefix is the prefix used for the description of any
 	// kernel keys created during activation.
 	KeyringPrefix string
+
+	// LegacyDevicePaths are the device paths to register keys to
+	// keyring. This is useful when snap-bootstrap boots to an
+	// older version of snapd.
+	LegacyDevicePaths []string
 }
 
 type activateVolumeWithKeyDataError struct {
@@ -448,7 +486,8 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 		}
 	}
 
-	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, candidates, authRequestor, options.PassphraseTries)
+	s := newActivateWithKeyDataState(volumeName, sourceDevicePath, options.KeyringPrefix, candidates, authRequestor, options.PassphraseTries, options.LegacyDevicePaths)
+
 	success, err := s.run()
 	switch {
 	case success:

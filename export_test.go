@@ -25,6 +25,8 @@ import (
 	"io"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 	"github.com/snapcore/secboot/internal/paths"
@@ -200,4 +202,12 @@ func MockHashAlgAvailable() (restore func()) {
 
 func (d *KeyData) DerivePassphraseKeys(passphrase string) (key, iv, auth []byte, err error) {
 	return d.derivePassphraseKeys(passphrase)
+}
+
+func MockUnixStat(f func(devicePath string, st *unix.Stat_t) error) (restore func()) {
+	old := unixStat
+	unixStat = f
+	return func() {
+		unixStat = old
+	}
 }

@@ -123,7 +123,7 @@ func (s *sealLegacySuite) TestSealKeyToTPMWithNewConnection(c *C) {
 
 func (s *sealLegacySuite) TestSealKeyToTPMMissingSRK(c *C) {
 	// Ensure that calling SealKeyToTPM recreates the SRK with the standard template
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -139,7 +139,7 @@ func (s *sealLegacySuite) TestSealKeyToTPMMissingSRK(c *C) {
 func (s *sealLegacySuite) TestSealKeyToTPMMissingCustomSRK(c *C) {
 	// Ensure that calling SealKeyToTPM recreates the SRK with the custom
 	// template originally supplied during provisioning
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -180,7 +180,7 @@ func (s *sealLegacySuite) TestSealKeyToTPMMissingSRKWithInvalidCustomTemplate(c 
 	// Ensure that calling SealKeyToTPM recreates the SRK with the standard
 	// template if the NV index we use to store custom templates has invalid
 	// contents - if the contents are invalid then we didn't create it.
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -332,7 +332,7 @@ func (s *sealLegacySuite) TestSealKeyToTPMMultipleWithNewConnection(c *C) {
 func (s *sealLegacySuite) TestSealKeyToTPMMultipleMissingSRK(c *C) {
 	// Ensure that calling SealKeyToTPMMultiple recreates the SRK with the standard
 	// template
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -377,7 +377,7 @@ func (s *sealLegacySuite) testSealKeyToTPMErrorHandling(c *C, params *KeyCreatio
 	var origCounter tpm2.ResourceContext
 	if params != nil && params.PCRPolicyCounterHandle != tpm2.HandleNull {
 		var err error
-		origCounter, err = s.TPM().CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
+		origCounter, err = s.TPM().NewResourceContext(params.PCRPolicyCounterHandle)
 		if tpm2.IsResourceUnavailableError(err, params.PCRPolicyCounterHandle) {
 			err = nil
 		}
@@ -398,7 +398,7 @@ func (s *sealLegacySuite) testSealKeyToTPMErrorHandling(c *C, params *KeyCreatio
 	var counter tpm2.ResourceContext
 	if params != nil && params.PCRPolicyCounterHandle != tpm2.HandleNull {
 		var err error
-		counter, err = s.TPM().CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
+		counter, err = s.TPM().NewResourceContext(params.PCRPolicyCounterHandle)
 		if tpm2.IsResourceUnavailableError(err, params.PCRPolicyCounterHandle) {
 			err = nil
 		}
@@ -476,7 +476,7 @@ func (s *sealLegacySuite) TestSealKeyToTPMErrorHandlingWrongCurve(c *C) {
 }
 
 func (s *sealLegacySuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCreationParams) {
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)
@@ -540,7 +540,7 @@ func (s *sealLegacySuite) TestSealKeyToExternalTPMStorageKeyWithProvidedAuthKey(
 }
 
 func (s *sealLegacySuite) testSealKeyToExternalTPMStorageKeyErrorHandling(c *C, params *KeyCreationParams) error {
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)

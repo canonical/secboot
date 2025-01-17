@@ -29,13 +29,12 @@ import (
 	"path/filepath"
 
 	efi "github.com/canonical/go-efilib"
-	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/mssim"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/tcglog-parser"
 
 	secboot_efi "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
@@ -146,8 +145,11 @@ func run() int {
 	}
 	defer cleanupTpmSimulator()
 
-	restore := tpm2test.MockOpenDefaultTctiFn(func() (tpm2.TCTI, error) {
-		return mssim.OpenConnection("", tpm2_testutil.MssimPort)
+	// TODO: The original API was deleted in https://github.com/canonical/secboot/pull/357.
+	// This just makes ConnectToDefaultTPM return an error for now, but this binary is already
+	//  broken anyway.
+	restore := tpm2test.MockDefaultDeviceFn(func(mode tpm2_device.DeviceMode) (tpm2_device.TPMDevice, error) {
+		return nil, tpm2_device.ErrNoTPM2Device
 	})
 	defer restore()
 

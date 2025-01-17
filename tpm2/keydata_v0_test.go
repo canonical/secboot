@@ -25,9 +25,8 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/templates"
+	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -63,11 +62,12 @@ func (s *keyDataV0Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	authKey, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
 
-	authKeyPublic := util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewRSAPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
 	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
 
 	// Create a mock PCR policy counter
-	policyCounter, count, policyCounterPolicies := s.createMockPcrPolicyCounter(c, pcrPolicyCounterHandle, authKeyPublic.Name())
+	policyCounter, count, policyCounterPolicies := s.createMockPcrPolicyCounter(c, pcrPolicyCounterHandle, authKeyPublic)
 
 	// Create sealed object
 	secret := []byte("secret data")
@@ -139,7 +139,7 @@ func (s *keyDataV0Suite) TestValidateOK2(c *C) {
 func (s *keyDataV0Suite) TestValidateNoLockIndex(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	index, err := s.TPM().CreateResourceContextFromTPM(LockNVHandle)
+	index, err := s.TPM().NewResourceContext(LockNVHandle)
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 
@@ -155,7 +155,7 @@ func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
 
 	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "cannot compute name of dynamic authorization policy key: unsupported name algorithm or algorithm not linked into binary: TPM_ALG_NULL")
+	c.Check(err, ErrorMatches, "cannot compute expected static authorization policy digest: could not build policy: encountered an error when calling PolicyAuthorize: invalid keySign")
 }
 
 func (s *keyDataV0Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
@@ -194,7 +194,7 @@ func (s *keyDataV0Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
 func (s *keyDataV0Suite) TestValidateNoPolicyCounter(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
+	index, err := s.TPM().NewResourceContext(data.Policy().PCRPolicyCounterHandle())
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 
@@ -218,7 +218,9 @@ func (s *keyDataV0Suite) TestValidateWrongAuthKey(c *C) {
 
 	authKey, err := rsa.GenerateKey(testutil.RandReader, 2048)
 	c.Assert(err, IsNil)
-	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey = util.NewExternalRSAPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authPublicKey, err := objectutil.NewRSAPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
+	data.(*KeyData_v0).PolicyData.StaticData.AuthPublicKey = authPublicKey
 
 	_, err = data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
@@ -228,7 +230,7 @@ func (s *keyDataV0Suite) TestValidateWrongAuthKey(c *C) {
 func (s *keyDataV0Suite) TestValidateWrongPolicyCounter(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
+	index, err := s.TPM().NewResourceContext(data.Policy().PCRPolicyCounterHandle())
 	handle := index.Handle()
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
@@ -248,7 +250,7 @@ func (s *keyDataV0Suite) TestValidateWrongPolicyCounter(c *C) {
 func (s *keyDataV0Suite) TestValidateWrongLockIndex(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	index, err := s.TPM().CreateResourceContextFromTPM(LockNVHandle)
+	index, err := s.TPM().NewResourceContext(LockNVHandle)
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 

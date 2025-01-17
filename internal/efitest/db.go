@@ -66,3 +66,25 @@ func NewSignatureListNullSHA256(owner efi.GUID) *efi.SignatureList {
 		},
 	}
 }
+
+func NewSignatureListDigests(c *C, alg crypto.Hash, owner efi.GUID, digests ...[]byte) *efi.SignatureList {
+	var eslType efi.GUID
+	switch alg {
+	case crypto.SHA1:
+		eslType = efi.CertSHA1Guid
+	case crypto.SHA256:
+		eslType = efi.CertSHA256Guid
+	case crypto.SHA384:
+		eslType = efi.CertSHA384Guid
+	case crypto.SHA512:
+		eslType = efi.CertSHA512Guid
+	default:
+		c.Fatal("unsupported digest")
+	}
+
+	esl := &efi.SignatureList{Type: eslType}
+	for _, digest := range digests {
+		esl.Signatures = append(esl.Signatures, &efi.SignatureData{Owner: owner, Data: digest})
+	}
+	return esl
+}

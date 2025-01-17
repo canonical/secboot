@@ -26,9 +26,10 @@ import (
 	"strconv"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/templates"
+	"github.com/canonical/go-tpm2/cryptutil"
+	"github.com/canonical/go-tpm2/objectutil"
+	"github.com/canonical/go-tpm2/policyutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -103,12 +104,15 @@ func (s *policyV1SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV1UpdatePCRPoli
 		policyCounterName = policyCounterPub.Name()
 	}
 
+	authPublicKey, err := objectutil.NewECCPublicKey(&key.PublicKey, objectutil.WithNameAlg(data.authKeyNameAlg))
+	c.Assert(err, IsNil)
+
 	var policyData KeyDataPolicy = &KeyDataPolicy_v1{
 		StaticData: &StaticPolicyData_v1{
-			AuthPublicKey: util.NewExternalECCPublicKey(data.authKeyNameAlg, templates.KeyUsageSign, nil, &key.PublicKey)},
+			AuthPublicKey: authPublicKey},
 	}
 
-	params := NewPcrPolicyParams(key.D.Bytes(), data.pcrs, data.pcrDigests, policyCounterName, data.initialSeq)
+	params := NewPcrPolicyParams(key.D.Bytes(), data.pcrs, data.pcrDigests, policyCounterPub, data.initialSeq)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.Selection, tpm2_testutil.TPMValueDeepEquals, data.pcrs)
@@ -117,9 +121,11 @@ func (s *policyV1SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV1UpdatePCRPoli
 	c.Assert(err, IsNil)
 	var digests tpm2.DigestList
 	for _, digest := range data.pcrDigests {
-		trial := util.ComputeAuthPolicy(data.alg)
-		trial.PolicyPCR(digest, data.pcrs)
-		digests = append(digests, trial.GetDigest())
+		builder := policyutil.NewPolicyBuilder(data.alg)
+		builder.RootBranch().PolicyPCRDigest(digest, data.pcrs)
+		digest, err := builder.Digest()
+		c.Assert(err, IsNil)
+		digests = append(digests, digest)
 	}
 	s.checkPolicyOrTree(c, data.alg, digests, orTree)
 
@@ -134,11 +140,11 @@ func (s *policyV1SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV1UpdatePCRPoli
 	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.AuthorizedPolicySignature.SigAlg, Equals, tpm2.SigSchemeAlgECDSA)
 	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.AuthorizedPolicySignature.Signature.ECDSA.Hash, Equals, data.authKeyNameAlg)
 
-	digest, err := util.ComputePolicyAuthorizeDigest(data.authKeyNameAlg,
+	digest := policyutil.ComputePolicyAuthorizationTBSDigest(data.authKeyNameAlg.GetHash(),
 		policyData.(*KeyDataPolicy_v1).PCRData.AuthorizedPolicy,
 		ComputeV1PcrPolicyRefFromCounterName(policyCounterName))
 	c.Check(err, IsNil)
-	ok, err := util.VerifySignature(&key.PublicKey, digest, policyData.(*KeyDataPolicy_v1).PCRData.AuthorizedPolicySignature)
+	ok, err := cryptutil.VerifySignature(&key.PublicKey, digest, policyData.(*KeyDataPolicy_v1).PCRData.AuthorizedPolicySignature)
 	c.Check(err, IsNil)
 	c.Check(ok, testutil.IsTrue)
 }
@@ -260,20 +266,26 @@ func (s *policyV1SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 		Size:    8}
 
+	authPublicKey, err := objectutil.NewECCPublicKey(&key.PublicKey)
+	c.Assert(err, IsNil)
+
 	policyData1 := &KeyDataPolicy_v1{
 		StaticData: &StaticPolicyData_v1{
-			AuthPublicKey: util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &key.PublicKey)},
+			AuthPublicKey: authPublicKey},
 	}
 
 	params := NewPcrPolicyParams(key.D.Bytes(),
 		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		tpm2.DigestList{hash(crypto.SHA256, "1"), hash(crypto.SHA256, "2")},
-		policyCounterPub.Name(), 5000)
+		policyCounterPub, 5000)
 	c.Check(policyData1.UpdatePCRPolicy(tpm2.HashAlgorithmSHA256, params), IsNil)
+
+	authPublicKey, err = objectutil.NewECCPublicKey(&key.PublicKey)
+	c.Assert(err, IsNil)
 
 	var policyData2 KeyDataPolicy = &KeyDataPolicy_v1{
 		StaticData: &StaticPolicyData_v1{
-			AuthPublicKey: util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &key.PublicKey)}}
+			AuthPublicKey: authPublicKey}}
 	policyData2.SetPCRPolicyFrom(policyData1)
 
 	c.Check(policyData2.(*KeyDataPolicy_v1).PCRData, DeepEquals, policyData1.PCRData)
@@ -293,15 +305,14 @@ type testV1ExecutePCRPolicyData struct {
 func (s *policyV1Suite) testExecutePCRPolicy(c *C, data *testV1ExecutePCRPolicyData) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
-	authKeyPublic := util.NewExternalECCPublicKey(data.authKeyNameAlg, templates.KeyUsageSign, nil, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey, objectutil.WithNameAlg(data.authKeyNameAlg))
+	c.Assert(err, IsNil)
 
 	var policyCounterPub *tpm2.NVPublic
 	var policyCount uint64
-	var policyCounterName tpm2.Name
 	if data.policyCounterHandle != tpm2.HandleNull {
 		policyCounterPub, policyCount, err = CreatePcrPolicyCounter(s.TPM().TPMContext, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyPublic, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
-		policyCounterName = policyCounterPub.Name()
 	}
 
 	policyData, expectedDigest, err := NewKeyDataPolicyLegacy(data.alg, authKeyPublic, policyCounterPub, policyCount)
@@ -310,11 +321,11 @@ func (s *policyV1Suite) testExecutePCRPolicy(c *C, data *testV1ExecutePCRPolicyD
 
 	var digests tpm2.DigestList
 	for _, v := range data.pcrValues {
-		d, _ := util.ComputePCRDigest(data.alg, data.pcrs, v)
+		d, _ := policyutil.ComputePCRDigest(data.alg, data.pcrs, v)
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterName, policyCount)
+	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterPub, policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -646,15 +657,14 @@ type testV1ExecutePCRPolicyErrorHandlingData struct {
 func (s *policyV1Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV1ExecutePCRPolicyErrorHandlingData) error {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
-	authKeyPublic := util.NewExternalECCPublicKey(data.authKeyNameAlg, templates.KeyUsageSign, nil, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey, objectutil.WithNameAlg(data.authKeyNameAlg))
+	c.Assert(err, IsNil)
 
 	var policyCounterPub *tpm2.NVPublic
 	var policyCount uint64
-	var policyCounterName tpm2.Name
 	if data.policyCounterHandle != tpm2.HandleNull {
 		policyCounterPub, policyCount, err = CreatePcrPolicyCounter(s.TPM().TPMContext, s.NextAvailableHandle(c, data.policyCounterHandle), authKeyPublic, s.TPM().HmacSession())
 		c.Assert(err, IsNil)
-		policyCounterName = policyCounterPub.Name()
 	}
 
 	policyData, expectedDigest, err := NewKeyDataPolicyLegacy(data.alg, authKeyPublic, policyCounterPub, policyCount)
@@ -663,11 +673,11 @@ func (s *policyV1Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV1Exec
 
 	var digests tpm2.DigestList
 	for _, v := range data.pcrValues {
-		d, _ := util.ComputePCRDigest(data.alg, data.pcrs, v)
+		d, _ := policyutil.ComputePCRDigest(data.alg, data.pcrs, v)
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterName, policyCount)
+	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterPub, policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -936,18 +946,19 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree4(c *C) {
 			},
 		},
 		fn: func(data *KeyDataPolicy_v1, key *ecdsa.PrivateKey) {
-			digest, _ := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, data.PCRData.Selection, tpm2.PCRValues{
+			digest, _ := policyutil.ComputePCRDigest(tpm2.HashAlgorithmSHA256, data.PCRData.Selection, tpm2.PCRValues{
 				tpm2.HashAlgorithmSHA256: {
 					16: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "foo1", "bar1"),
 					23: tpm2test.MakePCRValueFromEvents(tpm2.HashAlgorithmSHA256, "bar1", "foo1"),
 				},
 			})
-			trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-			trial.PolicyPCR(digest, data.PCRData.Selection)
-			digest = trial.GetDigest()
 
-			trial = util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-			orData, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, trial, tpm2.DigestList{digest})
+			builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+			builder.RootBranch().PolicyPCRDigest(digest, data.PCRData.Selection)
+			digest, err := builder.Digest()
+			c.Check(err, IsNil)
+
+			orData, _, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, tpm2.DigestList{digest})
 			c.Assert(err, IsNil)
 
 			data.PCRData.OrData = NewPolicyOrDataV0(orData)
@@ -1202,7 +1213,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 			},
 		},
 		fn: func(data *KeyDataPolicy_v1, authKey *ecdsa.PrivateKey) {
-			pub, _, err := s.TPM().NVReadPublic(tpm2.CreatePartialHandleContext(data.StaticData.PCRPolicyCounterHandle))
+			pub, _, err := s.TPM().NVReadPublic(tpm2.NewHandleContext(data.StaticData.PCRPolicyCounterHandle))
 			c.Assert(err, IsNil)
 
 			target := data.PCRData.PolicySequence
@@ -1346,16 +1357,13 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 			key, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 			c.Assert(err, IsNil)
 
-			data.StaticData.AuthPublicKey = util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &key.PublicKey)
-
-			scheme := &tpm2.SigScheme{
-				Scheme: tpm2.SigSchemeAlgECDSA,
-				Details: &tpm2.SigSchemeU{
-					ECDSA: &tpm2.SigSchemeECDSA{
-						HashAlg: data.StaticData.AuthPublicKey.NameAlg}}}
-			_, signature, err := util.PolicyAuthorize(key, scheme, data.PCRData.AuthorizedPolicy, ComputeV1PcrPolicyRefFromCounterName(nil))
+			authPublicKey, err := objectutil.NewECCPublicKey(&key.PublicKey)
 			c.Assert(err, IsNil)
-			data.PCRData.AuthorizedPolicySignature = signature
+			data.StaticData.AuthPublicKey = authPublicKey
+
+			auth, err := policyutil.SignPolicyAuthorization(testutil.RandReader, data.PCRData.AuthorizedPolicy, authPublicKey, ComputeV1PcrPolicyRefFromCounterName(nil), key, tpm2.HashAlgorithmSHA256)
+			c.Assert(err, IsNil)
+			data.PCRData.AuthorizedPolicySignature = auth.Signature
 		},
 	})
 	c.Check(err, IsNil)
@@ -1364,7 +1372,8 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 func (s *policyV1Suite) TestPolicyCounterContextGet(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
-	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
 
 	policyCounterPub, policyCount, err := CreatePcrPolicyCounter(s.TPM().TPMContext, s.NextAvailableHandle(c, 0x01800000), authKeyPublic, s.TPM().HmacSession())
 	c.Assert(err, IsNil)
@@ -1385,7 +1394,8 @@ func (s *policyV1Suite) TestPolicyCounterContextGet(c *C) {
 func (s *policyV1Suite) TestPolicyCounterContextIncrement(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
-	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
 
 	policyCounterPub, policyCount, err := CreatePcrPolicyCounter(s.TPM().TPMContext, s.NextAvailableHandle(c, 0x01800000), authKeyPublic, s.TPM().HmacSession())
 	c.Assert(err, IsNil)
@@ -1408,7 +1418,8 @@ func (s *policyV1Suite) TestPolicyCounterContextIncrement(c *C) {
 func (s *policyV1SuiteNoTPM) TestValidateAuthKey(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
-	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
 
 	data := &KeyDataPolicy_v1{
 		StaticData: &StaticPolicyData_v1{
@@ -1419,7 +1430,8 @@ func (s *policyV1SuiteNoTPM) TestValidateAuthKey(c *C) {
 func (s *policyV1SuiteNoTPM) TestValidateAuthKeyWrongKey(c *C) {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
-	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
 
 	data := &KeyDataPolicy_v1{
 		StaticData: &StaticPolicyData_v1{
@@ -1430,4 +1442,9 @@ func (s *policyV1SuiteNoTPM) TestValidateAuthKeyWrongKey(c *C) {
 	err = data.ValidateAuthKey(authKey.D.Bytes())
 	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "dynamic authorization policy signing private key doesn't match public key")
+}
+
+func (s *policyV1SuiteNoTPM) TestRequireUserAuth(c *C) {
+	data := &KeyDataPolicy_v1{}
+	c.Check(data.RequireUserAuth(), testutil.IsTrue)
 }

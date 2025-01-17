@@ -57,7 +57,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 		var srk tpm2.ResourceContext
 		var thisErr error
 		if try == tryPersistentSRK {
-			srk, thisErr = tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			srk, thisErr = tpm.NewResourceContext(tcg.SRKHandle)
 			if tpm2.IsResourceUnavailableError(thisErr, tcg.SRKHandle) {
 				// No SRK - save the error and try creating a transient
 				err = ErrTPMProvisioning
@@ -108,6 +108,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 		// then redirect the command to an adversary supplied session for which they can calculate
 		// the HMAC for. Whilst the host CPU can detect this tampering (because the response
 		// HMAC will be invalid), this happens after the TPM has already provided the unsealed data.
+
 		symmetric := &tpm2.SymDef{
 			Algorithm: tpm2.SymAlgorithmAES,
 			KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
@@ -153,16 +154,6 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 // storage primary key needs to be created, in order to avoid transmitting the cleartext
 // authorization value.
 func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []byte, hmacSession tpm2.SessionContext) (data []byte, err error) {
-	// Check if the TPM is in lockout mode
-	props, err := tpm.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot fetch properties from TPM: %w", err)
-	}
-
-	if tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrInLockout > 0 {
-		return nil, ErrTPMLockout
-	}
-
 	keyObject, policySession, err := k.loadForUnseal(tpm, hmacSession)
 	if err != nil {
 		return nil, err
@@ -189,6 +180,8 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []
 	// Unseal
 	data, err = tpm.Unseal(keyObject, policySession)
 	switch {
+	case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandUnseal):
+		return nil, ErrTPMLockout
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
 		return nil, InvalidKeyDataError{"the authorization policy check failed during unsealing"}
 	case err != nil:

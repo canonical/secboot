@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
@@ -37,120 +36,6 @@ import (
 var (
 	efiComputePeImageDigest = efi.ComputePeImageDigest
 )
-
-// readLoadOptionFromLog reads the corresponding Boot#### load option from the log,
-// which reflects the value of it at boot time, as opposed to reading it from an
-// EFI variable which may have been modified since booting.
-func readLoadOptionFromLog(log *tcglog.Log, n uint16) (*efi.LoadOption, error) {
-	events := log.Events
-	for len(events) > 0 {
-		ev := events[0]
-		events = events[1:]
-
-		if ev.PCRIndex != internal_efi.PlatformConfigPCR {
-			continue
-		}
-
-		if ev.EventType != tcglog.EventTypeEFIVariableBoot && ev.EventType != tcglog.EventTypeEFIVariableBoot2 {
-			// not a boot variable
-			continue
-		}
-
-		data, ok := ev.Data.(*tcglog.EFIVariableData)
-		if !ok {
-			// decode error data is guaranteed to implement the error interface
-			return nil, fmt.Errorf("boot variable measurement has wrong data format: %w", ev.Data.(error))
-		}
-		if data.VariableName != efi.GlobalVariable {
-			// not a global variable
-			continue
-		}
-		if !strings.HasPrefix(data.UnicodeName, "Boot") || len(data.UnicodeName) != 8 {
-			// name has unexpected prefix or length
-			continue
-		}
-
-		var x uint16
-		if c, err := fmt.Sscanf(data.UnicodeName, "Boot%x", &x); err != nil || c != 1 {
-			continue
-		}
-		if x != n {
-			// wrong load option
-			continue
-		}
-
-		// We've found the correct load option. Decode it from the data stored in the log.
-		opt, err := efi.ReadLoadOption(bytes.NewReader(data.VariableData))
-		if err != nil {
-			return nil, fmt.Errorf("cannot read load option from event data: %w", err)
-		}
-		return opt, nil
-	}
-
-	return nil, errors.New("cannot find specified boot option")
-}
-
-// isLaunchedFromLoadOption returns true if the supplied EV_EFI_BOOT_SERVICES_APPLICATION event
-// is associated with the supplied load option. This will panic if the event is of the
-// wrong type or the event data decodes incorrectly. This works by doing a device path match,
-// which can either be a full match, or a recognized short-form match. This also handles the case
-// where the boot option points to a removable device and the executable associated with the load
-// event is loaded from that device.
-func isLaunchedFromLoadOption(ev *tcglog.Event, opt *efi.LoadOption) (yes bool, err error) {
-	if ev.EventType != tcglog.EventTypeEFIBootServicesApplication {
-		// The caller should check this.
-		panic("unexpected event type")
-	}
-
-	// Grab the device path from the event. For the launch of the initial boot loader, this
-	// will always be a full path.
-	eventDevicePath := ev.Data.(*tcglog.EFIImageLoadEvent).DevicePath
-	if len(eventDevicePath) == 0 {
-		return false, errors.New("EV_EFI_BOOT_SERVICES_APPLICATION event has empty device path")
-	}
-
-	// Try to match the load option.
-	if opt.Attributes&efi.LoadOptionActive == 0 {
-		// the load option isn't active.
-		return false, errors.New("boot option is not active")
-	}
-
-	// Test to see if the load option path matches the load event path in some way. Note
-	// that the load option might be in short-form, but this function takes that into
-	// account.
-	if eventDevicePath.Matches(opt.FilePath) != efi.DevicePathNoMatch {
-		// We have a match. This is very likely to be a launch of the
-		// load option.
-		return true, nil
-	}
-
-	// There's no match with the load option. This might happen when booting from
-	// removable media where the load option specifies the device path pointing to
-	// the bus that the removable media is connected to, but the load event contains
-	// the full path to the initial boot loader, using some extra components.
-	// Unless the load option is already using a short-form path, try appending the
-	// extra components for the removable media from the load event to the load option
-	// path and try testing for a match again.
-	if opt.FilePath.ShortFormType().IsShortForm() {
-		// The load option path is in short-form. We aren't going to find a match.
-		return false, nil
-	}
-
-	// Copy the load option path
-	optFilePath := append(efi.DevicePath{}, opt.FilePath...)
-	if cdrom := efi.DevicePathFindFirstOccurrence[*efi.CDROMDevicePathNode](eventDevicePath); len(cdrom) > 0 {
-		// Booting from CD-ROM.
-		optFilePath = append(optFilePath, cdrom...)
-	} else if hd := efi.DevicePathFindFirstOccurrence[*efi.HardDriveDevicePathNode](eventDevicePath); len(hd) > 0 {
-		// Booting from any removable device with a GPT, such as a USB drive.
-		optFilePath = append(optFilePath, hd...)
-	}
-
-	// With the CDROM() or HD() components of the event file path appended to the
-	// load option path, test for a match again. In this case, we expect a full
-	// match as neither paths are in short-form.
-	return eventDevicePath.Matches(optFilePath) == efi.DevicePathFullMatch, nil
-}
 
 type bootManagerCodeResultFlags int
 
@@ -214,17 +99,11 @@ func checkBootManagerCodeMeasurements(ctx context.Context, env internal_efi.Host
 		return 0, fmt.Errorf("cannot obtain boot option support: %w", err)
 	}
 
-	// Obtain the BootCurrent variable and use this to obtain the corresponding load entry
-	// that was measured to the log. BootXXXX variables are measured to the TPM and so we don't
-	// need to read back from an EFI variable that could have been modified between boot time
-	// and now.
-	current, err := efi.ReadBootCurrentVariable(varCtx)
+	// Obtain the load option from the current boot so we can identify which load
+	// event corresponds to the initial OS boot loader.
+	bootOpt, err := readCurrentBootLoadOptionFromLog(varCtx, log)
 	if err != nil {
-		return 0, fmt.Errorf("cannot read BootCurrent variable: %w", err)
-	}
-	bootOpt, err := readLoadOptionFromLog(log, current)
-	if err != nil {
-		return 0, fmt.Errorf("cannot read current Boot%04x load option from log: %w", current, err)
+		return 0, err
 	}
 
 	var (
@@ -348,21 +227,13 @@ NextEvent:
 				continue NextEvent
 			}
 
-			data, eventDataOk := ev.Data.(*tcglog.EFIImageLoadEvent)
-
 			switch seenOSComponentLaunches {
 			case 0:
-				if !eventDataOk {
-					// Only require the event data to be ok for firmware generated events. This is because
-					// OS components might create invalid data (and shim actually does), so we ignore those
-					// errors.
-					return 0, fmt.Errorf("invalid OS-present EV_EFI_BOOT_SERVICES_APPLICATION event data: %w", ev.Data.(error))
-				}
 				// Check if this launch is associated with the EFI_LOAD_OPTION associated with
-				// the current boot.
+				// the current boot. This will fail if the data associated with the event is invalid.
 				isBootOptLaunch, err := isLaunchedFromLoadOption(ev, bootOpt)
 				if err != nil {
-					return 0, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with the current boot load option: %w", data.DevicePath, err)
+					return 0, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event is associated with the current boot load option: %w", err)
 				}
 				if isBootOptLaunch {
 					// We have the EV_EFI_BOOT_SERVICES_APPLICATION event associated with the IBL launch.
@@ -370,13 +241,15 @@ NextEvent:
 				} else {
 					// We have an EV_EFI_BOOT_SERVICES_APPLICATION that didn't come from the load option
 					// associated with the current boot.
-					// Test to see if it's part of Absolute. If it is, that's fine - we copy this into
+					// Test to see if it's part of Absolute. I it is, that's fine - we copy this into
 					// the profile, so we don't need to do any other verification of it and we don't have
 					// anything to verify the Authenticode digest against anyway. We have a device path,
 					// but not one that we're able to read back from.
 					//
 					// If this isn't Absolute, we bail with an error. We don't support anything else being
 					// loaded here, and ideally Absolute will be turned off as well.
+
+					data := ev.Data.(*tcglog.EFIImageLoadEvent) // this is safe, else the earlier isLaunchedFromLoadOption would have returned an error
 					if result&bootManagerCodeAbsoluteComputraceRunning > 0 {
 						return 0, fmt.Errorf("OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is not associated with the current boot load option and is not Absolute", data.DevicePath)
 					}

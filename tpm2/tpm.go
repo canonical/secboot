@@ -27,7 +27,7 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/snapcore/secboot/internal/tcg"
-	"github.com/snapcore/secboot/internal/tcti"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
 // Connection corresponds to a connection to a TPM device, and is a wrapper around *tpm2.TPMContext.
@@ -89,7 +89,7 @@ func (t *Connection) init() (err error) {
 	}
 	t.provisionedSrk = nil
 
-	ek, err := t.CreateResourceContextFromTPM(tcg.EKHandle)
+	ek, err := t.NewResourceContext(tcg.EKHandle)
 	switch {
 	case tpm2.IsResourceUnavailableError(err, tcg.EKHandle):
 		// ok
@@ -132,27 +132,20 @@ func (t *Connection) init() (err error) {
 
 // connectToDefaultTPM opens a connection to the default TPM device.
 func connectToDefaultTPM() (*tpm2.TPMContext, error) {
-	tcti, err := tcti.OpenDefault()
+	dev, err := tpm2_device.DefaultDevice(tpm2_device.DeviceModeDirect)
 	if err != nil {
-		if isPathError(err) {
-			return nil, ErrNoTPM2Device
-		}
-		return nil, xerrors.Errorf("cannot open TPM device: %w", err)
+		return nil, err
 	}
 
-	tpm := tpm2.NewTPMContext(tcti)
-	if !tpm.IsTPM2() {
-		tpm.Close()
-		return nil, ErrNoTPM2Device
+	tpm, err := tpm2.OpenTPMDevice(dev)
+	if err != nil {
+		return nil, err
 	}
 
 	return tpm, nil
 }
 
-// ConnectToDefaultTPM will attempt to connect to the default TPM. It makes no attempt to verify the authenticity of the TPM. This
-// function is useful for connecting to a device that isn't correctly provisioned and for which the endorsement hierarchy
-// authorization value is unknown (so that it can be cleared), or for connecting to a device in order to execute
-// FetchAndSaveEKCertificateChain. It should not be used in any other scenario.
+// ConnectToDefaultTPM will attempt to connect to the default TPM2 device.
 //
 // If no TPM2 device is available, then a ErrNoTPM2Device error will be returned.
 func ConnectToDefaultTPM() (*Connection, error) {
@@ -178,10 +171,3 @@ func ConnectToDefaultTPM() (*Connection, error) {
 	succeeded = true
 	return t, nil
 }
-
-// ConnectToTPM will attempt to connect to a TPM using the currently
-// defined connection function. This is used internally by the tpm2
-// package when a connection is required, and defaults to
-// ConnectToDefaultTPM. This can be overridden with a custom connection
-// function.
-var ConnectToTPM func() (*Connection, error) = ConnectToDefaultTPM
