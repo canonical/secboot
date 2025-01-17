@@ -21,6 +21,7 @@ package secboot_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -179,4 +180,11 @@ func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireAndReleaseArgon2OutOfPro
 	release()
 	_, err = os.Stat(s.lockPath)
 	c.Check(os.IsNotExist(err), testutil.IsTrue)
+}
+
+func (s *argon2OutOfProcessSupportSyncSuite) TestAcquireArgon2OutOfProcessHandlerSystemLockErrorDir(c *C) {
+	os.Mkdir(s.lockPath, 0755)
+
+	_, err := AcquireArgon2OutOfProcessHandlerSystemLock(0)
+	c.Assert(err, ErrorMatches, fmt.Sprintf("cannot open lock file for writing: open %s: is a directory", s.lockPath))
 }

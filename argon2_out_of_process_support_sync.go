@@ -160,6 +160,11 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 			return nil, fmt.Errorf("cannot obtain lock file info from open descriptor: %w", err)
 		}
 
+		// Make sure we have opened a regular file
+		if lockFileSt.Mode&syscall.S_IFMT != syscall.S_IFREG {
+			return nil, errors.New("opened lock file is not a regular file")
+		}
+
 		// Attempt to acquire an exclusive, non-blocking, advisory lock.
 		if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 			// We failed to acquire the lock.
