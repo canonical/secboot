@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/canonical/go-tpm2"
 
@@ -39,17 +40,30 @@ const platformName = "tpm2"
 var mainPlatformKeyDataHandler *platformKeyDataHandler
 
 type platformKeyDataHandler struct {
-	tpm *Connection
+	cond sync.Cond
+	tpm  *Connection
 }
 
-// tpm returns a currently open or new TPM connection. The caller mustn't call
-// the Close method on the returned connection - it should call the returned close
+// TPMConnection returns a currently open or a TPM connection that was cached by
+// a call to setTPMConnection. The caller mustn't
+// call the Close method on the returned connection - it should call the returned close
 // callback instead.
-func (h *platformKeyDataHandler) tpmConnection() (conn *Connection, close func() error, err error) {
+func (h *platformKeyDataHandler) TPMConnection() (conn *Connection, close func() error, err error) {
+	// Take the lock that protects the tpm member first,
+	// before trying that. If there is
+	h.cond.L.Lock()
 	if h.tpm != nil {
-		return h.tpm, func() error { return nil }, nil
+		return conn, func() error {
+			h.tpm = nil
+			h.cond.L.Unlock()
+			return nil
+		}, nil
 	}
+	h.cond.L.Unlock()
 
+	// Nothing else has set the TPM connection, so create a new one. Note that
+	// we don't set the tpm member to this, to avoid issues where potentially
+	// another caller into us comes from a routine
 	tpm, err := ConnectToDefaultTPM()
 	switch {
 	case err == ErrNoTPM2Device:
@@ -60,12 +74,39 @@ func (h *platformKeyDataHandler) tpmConnection() (conn *Connection, close func()
 		return nil, nil, fmt.Errorf("cannot connect to TPM: %w", err)
 	}
 
-	h.tpm = tpm
-
 	return tpm, func() error {
-		h.tpm = nil
+		h.cond.L.Unlock()
+		unset()
 		return tpm.Close()
 	}, nil
+}
+
+func (h *platformKeyDataHandler) setTPMConnection(conn *Connection) (unset func()) {
+	// Take the lock that protects the tpm member and wait for it to become clear.
+	h.cond.L.Lock()
+
+	for h.tpm != nil {
+		// This releases the lock internally but ensures we
+		// are holding the lock again before returning.
+		h.cond.Wait()
+	}
+
+	// The tpm member has been cleared and we are holding the lock
+	// that protects it again.
+	h.tpm = tpm
+
+	// We can release the lock now. Other callers to this function will
+	// wait for the tpm member to be cleared.
+	h.cond.L.Unlock()
+
+	return func() {
+		// Take the lock so that we can unset the tpm member
+		h.cond.L.Lock()
+		h.tpm = nil
+		// Wake up another gorountine waiting for the tpm member to become clear.
+		h.cond.Signal()
+		h.cond.L.Unlock()
+	}
 }
 
 func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData, encryptedPayload, authKey []byte) ([]byte, error) {
@@ -251,6 +292,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 }
 
 func init() {
-	mainPlatformKeyDataHandler = new(platformKeyDataHandler)
+	var mu sync.Mutex
+	mainPlatformKeyDataHandler = &platformKeyDataHandler{cond: sync.Cond{L: &mu}}
 	secboot.RegisterPlatformKeyDataHandler(platformName, mainPlatformKeyDataHandler)
 }
