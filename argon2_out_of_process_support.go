@@ -813,6 +813,11 @@ func (k *outOfProcessArgon2KDFImpl) sendRequestAndWaitForResponse(req *Argon2Out
 				// has a new feature (WaitDelay) which might make things a bit better
 				// here because I don't know how racey things are here - exec.Cmd is
 				// quite complicated.
+				//
+				// Note that this only kills the process launched by us - it's not expected
+				// that processes launched to handle KDF requests fork or clone any other
+				// processes, as these will continue running, being reparented to the nearest
+				// reaper.
 				if err := cmd.Process.Kill(); err != nil {
 					if err != os.ErrProcessDone {
 						return fmt.Errorf("failed to kill blocked remote process: %w", err)
