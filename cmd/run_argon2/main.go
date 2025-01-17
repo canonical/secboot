@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/paths"
@@ -33,17 +34,19 @@ import (
 
 func run() error {
 	if len(os.Args) < 3 {
-		return errors.New("usage: echo <input_request_json> | run_argon2 <lockpath> <watchdog> [<optional_params>]")
+		return errors.New("usage: echo <input_request_json> | run_argon2 <lockpath> <watchdog> [<optional_params>] [kdf_panic]")
 	}
 
 	paths.Argon2OutOfProcessHandlerSystemLockPath = os.Args[1]
 
 	var watchdog secboot.Argon2OutOfProcessWatchdogHandler
+	var remaining []string
 	switch os.Args[2] {
 	case "none":
 		watchdog = secboot.NoArgon2OutOfProcessWatchdogHandler()
+		remaining = os.Args[3:]
 	case "hmac":
-		if len(os.Args) != 4 {
+		if len(os.Args) < 4 {
 			return errors.New("usage: echo <input_request_json> | run_argon2 hmac <alg>")
 		}
 		var alg crypto.Hash
@@ -62,6 +65,14 @@ func run() error {
 			return fmt.Errorf("unrecognized HMAC digest algorithm %q", os.Args[3])
 		}
 		watchdog = secboot.HMACArgon2OutOfProcessWatchdogHandler(alg)
+		remaining = os.Args[4:]
+	}
+
+	if len(remaining) > 0 && remaining[0] == "kdf_panic" {
+		secboot.MockRunArgon2OutOfProcessRequestForTest(func(*secboot.Argon2OutOfProcessRequest) (*secboot.Argon2OutOfProcessResponse, func()) {
+			<-time.NewTimer(500 * time.Millisecond).C
+			panic("KDF panic")
+		})
 	}
 
 	// Ignore the lock release callback and use implicit release on process termination.

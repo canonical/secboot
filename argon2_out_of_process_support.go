@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/snapcore/secboot/internal/testenv"
 	"gopkg.in/tomb.v2"
 )
 
@@ -389,6 +390,22 @@ func NoArgon2OutOfProcessWatchdogHandler() Argon2OutOfProcessWatchdogHandler {
 	}
 }
 
+var runArgon2OutOfProcessRequest = RunArgon2OutOfProcessRequest
+
+// MockRunArgon2OutOfProcessRequestForTest mocks the call to [RunArgon2OutOfProcessRequest]
+// from [WaitForAndRunArgon2OutOfProcessRequest]. This can only be used in test binaries, and
+// will panic otherwise.
+func MockRunArgon2OutOfProcessRequestForTest(fn func(*Argon2OutOfProcessRequest) (*Argon2OutOfProcessResponse, func())) (restore func()) {
+	if !testenv.IsTestBinary() {
+		panic("not a test binary")
+	}
+	orig := runArgon2OutOfProcessRequest
+	runArgon2OutOfProcessRequest = fn
+	return func() {
+		runArgon2OutOfProcessRequest = orig
+	}
+}
+
 // WaitForAndRunArgon2OutOfProcessRequest waits for a [Argon2OutOfProcessRequest] request on the
 // supplied io.Reader before running it and sending a [Argon2OutOfProcessResponse] response back via
 // the supplied io.WriteCloser. These will generally be connected to the process's os.Stdin and
@@ -493,12 +510,23 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.WriteCloser, wa
 
 		// Spin up a goroutine for running the KDF without blocking the request handling
 		// loop on this routine. This reads from reqChan.
-		tmb.Go(func() error {
+		tmb.Go(func() (err error) {
+			defer func() {
+				// The tomb package doesn't handle panics very well - it won't result
+				// in the routine count being decremented and nor will it put it into
+				// a dying state. Ensure we put it into a dying state if we encounter
+				// a panic, else this routine will disappear and we'll continue serving
+				// watchdog requests forever.
+				if r := recover(); r != nil {
+					err = fmt.Errorf("goroutine for KDF encountered a panic: %v", r)
+				}
+			}()
+
 			select {
 			case req := <-reqChan:
 				// Run the KDF request. This performs a lot of checking of the supplied
 				// request, so there's no need to repeat any of that here.
-				rsp, release := RunArgon2OutOfProcessRequest(req)
+				rsp, release := runArgon2OutOfProcessRequest(req)
 
 				// Ensure the release callback for the system lock gets returned
 				// to the caller.

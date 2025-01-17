@@ -228,8 +228,8 @@ type argon2OutOfProcessParentSupportMixin struct {
 
 func (s *argon2OutOfProcessParentSupportMixin) SetUpSuite(c *C) {
 	s.runArgon2OutputDir = c.MkDir()
-	cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", s.runArgon2OutputDir, "./cmd/run_argon2")
-	c.Assert(cmd.Run(), IsNil)
+	cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-ldflags", "-X github.com/snapcore/secboot/internal/testenv.testBinary=enabled", "-o", s.runArgon2OutputDir, "./cmd/run_argon2")
+	c.Check(cmd.Run(), IsNil)
 }
 
 func (s *argon2OutOfProcessParentSupportMixin) SetUpTest(c *C) {
@@ -1349,6 +1349,24 @@ func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDerive2GBDi
 	key, err := kdf.Derive("bar", testutil.DecodeHexString(c, "5d53157092d5f97034c0d3fd078b8f5c"), Argon2id, params, 32)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, testutil.DecodeHexString(c, "9b5add3d66b041c49c63ba1244bb1cd8cbc7dcf1e4b0918dc13b4fd6131ae5fd"))
+	s.checkNoLockFile(c)
+}
+
+func (s *argon2OutOfProcessParentSupportSuiteExpensive) TestArgon2KDFDeriveKDFPanic(c *C) {
+	kdf := NewOutOfProcessArgon2KDF(s.newHandlerCmd("hmac", "sha256", "kdf_panic"), 0, HMACArgon2OutOfProcessWatchdogMonitor(crypto.SHA256, 100*time.Millisecond))
+	params := &Argon2CostParams{
+		Time:      4,
+		MemoryKiB: 2 * 1024 * 1024,
+		Threads:   4,
+	}
+	_, err := kdf.Derive("bar", testutil.DecodeHexString(c, "5d53157092d5f97034c0d3fd078b8f5c"), Argon2id, params, 32)
+	// We could get 1 of 2 errors here - either we notice that the process has terminated early, or we get a watchdog failure
+	var wdErr *Argon2OutOfProcessWatchdogError
+	if errors.As(err, &wdErr) {
+		c.Check(err, ErrorMatches, `watchdog failure: timeout waiting for watchdog response from remote process`)
+	} else {
+		c.Check(err, ErrorMatches, `an error occurred whilst waiting for the remote process to finish: exit status 1`)
+	}
 	s.checkNoLockFile(c)
 }
 
