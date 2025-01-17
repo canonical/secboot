@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/snapcore/secboot/internal/paths"
@@ -146,7 +147,7 @@ func acquireArgon2OutOfProcessHandlerSystemLock(timeout time.Duration) (release 
 		}
 
 		// Attempt to open the lock file for writing.
-		lockFile, err = os.OpenFile(paths.Argon2OutOfProcessHandlerSystemLockPath, os.O_RDWR|os.O_CREATE, 0600)
+		lockFile, err = os.OpenFile(paths.Argon2OutOfProcessHandlerSystemLockPath, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0600)
 		if err != nil {
 			// No error is expected here.
 			return nil, fmt.Errorf("cannot open lock file for writing: %w", err)
