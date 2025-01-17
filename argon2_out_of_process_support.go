@@ -362,7 +362,7 @@ func RunArgon2OutOfProcessRequest(request *Argon2OutOfProcessRequest) (response 
 //
 // The implementation is expected to be paired with an equivalent implementation of
 // [Argon2OutOfProcessWatchdogMonitor] in the parent process.
-type Argon2OutOfProcessWatchdogHandler = func(challenge []byte) (response []byte, err error)
+type Argon2OutOfProcessWatchdogHandler func(challenge []byte) (response []byte, err error)
 
 // HMACArgon2OutOfProcessWatchdogHandler returns the remote process counterpart to
 // [HMACArgon2OutOfProcessWatchdogMonitor]. It receives a challenge from the monitor,
@@ -676,7 +676,7 @@ func WaitForAndRunArgon2OutOfProcessRequest(in io.Reader, out io.WriteCloser, wa
 //
 // The supplied rspChan is unbuffered. The monitor implementation should guarantee that
 // there is a reader as long as the supplied tomb is alive.
-type Argon2OutOfProcessWatchdogMonitor = func(tmb *tomb.Tomb, reqChan chan<- *Argon2OutOfProcessRequest, rspChan <-chan *Argon2OutOfProcessResponse) error
+type Argon2OutOfProcessWatchdogMonitor func(tmb *tomb.Tomb, reqChan chan<- *Argon2OutOfProcessRequest, rspChan <-chan *Argon2OutOfProcessResponse) error
 
 // HMACArgon2OutOfProcessWatchdogMonitor returns a watchdog monitor that generates a
 // challenge every period, computes a HMAC of this challenge, keyed with previously received
