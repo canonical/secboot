@@ -51,7 +51,7 @@ type argon2OutOfProcessHandlerSupportMixin struct {
 }
 
 func (s *argon2OutOfProcessHandlerSupportMixin) SetUpTest(c *C) {
-	s.lockPath = filepath.Join(c.MkDir(), "argon2.lock")
+	s.lockPath = filepath.Join(c.MkDir(), "secboot_argon2.lock")
 	s.restoreLockPath = MockArgon2OutOfProcessHandlerSystemLockPath(s.lockPath)
 }
 
