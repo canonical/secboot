@@ -41,6 +41,10 @@ var (
 		tpm2.HashAlgorithmSHA256,
 	}
 
+	weakSupportedAlgs = []tpm2.HashAlgorithmId{
+		tpm2.HashAlgorithmSHA1,
+	}
+
 	// supportedPcrs specifies all of the TCG defined PCRs, although we don't actually
 	// support generating profiles for all of them at the moment, nor are we likely to
 	// for some of them in the future.
@@ -566,6 +570,46 @@ func (t *tcglogPhaseTracker) reachedOSPresent() bool {
 	return t.phase == tcglogPhaseOSPresent
 }
 
+func checkPCRBankNotEnabledAndEmpty(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithmId) (emptyPcrs tpm2.HandleList, err error) {
+	pcrs, err := tpm.GetCapabilityPCRs()
+	if err != nil {
+		return nil, fmt.Errorf("cannot obtain active PCRs: %w", err)
+	}
+	for _, selection := range pcrs {
+		if selection.Hash != alg || len(selection.Select) == 0 {
+			continue
+		}
+
+		// This bank is missing from the log but enabled on the TPM. Make sure that
+		// none of the TPM PCRs are not at their reset value - this is very bad for
+		// remote attestation (not so bad for FDE), but treat this as a serious error
+		// nonetheless.
+		var pcrs []int
+		for _, pcr := range supportedPcrs {
+			pcrs = append(pcrs, int(pcr))
+		}
+		_, pcrValues, err := tpm.PCRRead(tpm2.PCRSelectionList{{Hash: alg, Select: pcrs}})
+		if err != nil {
+			return nil, err
+		}
+		emptyDigest := make(tpm2.Digest, alg.Size())
+		for pcr, digest := range pcrValues[alg] {
+			if bytes.Equal(digest, emptyDigest) {
+				emptyPcrs = append(emptyPcrs, tpm2.Handle(pcr))
+			}
+		}
+	}
+
+	return emptyPcrs, nil
+}
+
+type checkFirmwareLogFlags int
+
+const (
+	checkFirmwareLogPermitEmptyPCRBanks checkFirmwareLogFlags = 1 << iota
+	checkFirmwareLogPermitWeakPCRBanks
+)
+
 // checkFirmwareLogAndChoosePCRBank verifies that the firmware TCG log is in crypto-agile form and
 // consistent with at least one supported PCR bank for the specified mandatory PCRs when reconstructed
 // for the TCG defined PCRs (0-7). It also ensures that:
@@ -578,7 +622,7 @@ func (t *tcglogPhaseTracker) reachedOSPresent() bool {
 // PCRs set, but the errors will be accessible on the returned results struct.
 //
 // The returned results struct indicates the best PCR bank to use and specifies the TPM startup locality as well.
-func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, mandatoryPcrs tpm2.HandleList, permitEmptyPCRBanks bool) (results *pcrBankResults, err error) {
+func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, mandatoryPcrs tpm2.HandleList, flags checkFirmwareLogFlags) (results *pcrBankResults, err error) {
 	// Make sure it's a crypto-agile log
 	if !log.Spec.IsEFI_2() {
 		return nil, errors.New("invalid log spec")
@@ -588,12 +632,27 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 	// likely to get SHA-256 here - it's only in very recent devices that we have TPMs with
 	// SHA-384 support and corresponding firmware integration.
 	// We try to keep all errors enountered during selection here.
+
+	// Instantiate and maintain an instance of NoSuitablePCRAlgorithmError
+	// to return later if appropriate.
 	mainErr := &NoSuitablePCRAlgorithmError{
 		BankErrs: make(map[tpm2.HashAlgorithmId]error),
 		PCRErrs:  make(map[tpm2.HashAlgorithmId]map[tpm2.Handle]error),
 	}
+
+	// Instantiate and maintain an instance of EmptyPCRBanks to return later
+	// if approriate.
+	emptyBanksErr := new(EmptyPCRBanksError)
+
+	testAlgs := make([]tpm2.HashAlgorithmId, len(supportedAlgs))
+	copy(testAlgs, supportedAlgs)
+
+	if flags&checkFirmwareLogPermitWeakPCRBanks > 0 {
+		testAlgs = append(testAlgs, weakSupportedAlgs...)
+	}
+
 	var chosenResults *pcrBankResults
-	for _, alg := range supportedAlgs {
+	for _, alg := range testAlgs {
 		if chosenResults != nil {
 			// We've already got a good PCR bank, so no need to carry on.
 			break
@@ -602,33 +661,37 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 		results, err := checkFirmwareLogAgainstTPMForAlg(tpm, log, alg, mandatoryPcrs)
 		switch {
 		case errors.Is(err, ErrPCRBankMissingFromLog):
-			if !permitEmptyPCRBanks {
-				// Make sure that the TPM PCR bank is not enabled
-				pcrs, err := tpm.GetCapabilityPCRs()
+			if flags&checkFirmwareLogPermitEmptyPCRBanks == 0 {
+				// Make sure that the TPM PCR bank is not enabled, and if it is,
+				// that it doesn't contain any empty PCRs.
+				emptyPcrs, err := checkPCRBankNotEnabledAndEmpty(tpm, alg)
 				if err != nil {
-					return nil, fmt.Errorf("cannot obtain active PCRs: %w", err)
+					return nil, fmt.Errorf("cannot check if PCR bank %v, which is missing from the log, is enabled and empty: %w", alg, err)
 				}
-				for _, selection := range pcrs {
-					if selection.Hash == alg && len(selection.Select) > 0 {
-						// This bank is missing from the log but enabled on the TPM.
-						// This is very bad for remote attestation (not so bad for FDE), but treat
-						// this as a serious error nonetheless.
-						return nil, &EmptyPCRBankError{alg}
-					}
+				if len(emptyPcrs) > 0 {
+					emptyBanksErr.Algs = append(emptyBanksErr.Algs, alg)
 				}
 			}
 			fallthrough
 		case err != nil:
 			// This entire bank is bad
 			mainErr.setBankErr(alg, err)
-		case results.Ok():
-			// This is a good PCR bank
+		case results.Ok() && chosenResults == nil:
+			// This will be the best PCR bank
 			chosenResults = results
+		case results.Ok():
+			// We've already chosen a PCR bank, so do nothing in this case.
+			// All we're doing now is looking for empty banks.
 		default:
 			// This isn't a good PCR bank because some mandatory PCRs
 			// failed. Record the individual PCR errors.
 			mainErr.setPcrErrs(results)
 		}
+	}
+
+	// Bail early if there are any active but empty TPM PCR hanks.
+	if len(emptyBanksErr.Algs) > 0 {
+		return nil, emptyBanksErr
 	}
 
 	if chosenResults == nil {

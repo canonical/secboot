@@ -287,6 +287,87 @@ C7E003CB
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
 
+func (s *runChecksSuite) TestRunChecksGoodSHA1(c *C) {
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	warnings, err := s.testRunChecks(c, &testRunChecksParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		flags:                     PermitWeakPCRBanks,
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+	})
+	c.Assert(err, IsNil)
+	c.Assert(warnings.Errs, HasLen, 3)
+
+	warning := warnings.Errs[0]
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	var pce *PlatformConfigPCRError
+	c.Check(errors.As(warning, &pce), testutil.IsTrue)
+
+	warning = warnings.Errs[1]
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	var dce *DriversAndAppsConfigPCRError
+	c.Check(errors.As(warning, &dce), testutil.IsTrue)
+
+	warning = warnings.Errs[2]
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	var bmce *BootManagerConfigPCRError
+	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
+}
+
 func (s *runChecksSuite) TestRunChecksGoodEmptySHA384(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
@@ -979,6 +1060,7 @@ C7E003CB
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
+
 func (s *runChecksSuite) TestRunChecksGoodInvalidPCR0Value(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
@@ -2227,6 +2309,79 @@ C7E003CB
 	c.Check(errors.As(err, &pfe), testutil.IsTrue)
 }
 
+func (s *runChecksSuite) TestRunChecksBadSHA1(c *C) {
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	_, err := s.testRunChecks(c, &testRunChecksParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1},
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+	})
+	c.Check(err, ErrorMatches, `error with TCG log: no suitable PCR algorithm available:
+- TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
+- TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
+- TPM_ALG_SHA256: the PCR bank is missing from the TCG log.
+`)
+
+	var e *NoSuitablePCRAlgorithmError
+	c.Assert(errors.As(err, &e), testutil.IsTrue)
+
+	// Test that we can access individual errors.
+	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA512], Equals, ErrPCRBankMissingFromLog)
+	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA384], Equals, ErrPCRBankMissingFromLog)
+	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA256], Equals, ErrPCRBankMissingFromLog)
+}
+
 func (s *runChecksSuite) TestRunChecksBadMandatoryPCR1(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
@@ -3253,8 +3408,8 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
-	c.Assert(err, ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but is active on the TPM`)
+	c.Assert(err, ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
 
-	var be *EmptyPCRBankError
+	var be *EmptyPCRBanksError
 	c.Check(errors.As(err, &be), testutil.IsTrue)
 }

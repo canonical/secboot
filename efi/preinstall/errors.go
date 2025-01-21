@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -293,7 +294,7 @@ func (e *PCRValueMismatchError) Error() string {
 	return fmt.Sprintf("PCR value mismatch (actual from TPM %#x, reconstructed from log %#x)", e.PCRValue, e.LogValue)
 }
 
-// EmptyPCRBankError may be returned unwrapped in the event where a PCR bank seems
+// EmptyPCRBanksError may be returned unwrapped in the event where one or more PCR banks seem
 // to be active but not extended by firmware and not present in the log. This doesn't matter so
 // much for FDE because we can select a good bank, but is a serious firmware bug for any scenario
 // that requires remote attestation, because it permits an entire trusted computing environment to
@@ -301,12 +302,26 @@ func (e *PCRValueMismatchError) Error() string {
 //
 // This error can be ignored by passing the PermitEmptyPCRBanks flag to [RunChecks]. This is
 // generally ok, as long as the device is not going to be used for any kind of remote attestation.
-type EmptyPCRBankError struct {
-	Alg tpm2.HashAlgorithmId
+type EmptyPCRBanksError struct {
+	Algs []tpm2.HashAlgorithmId
 }
 
-func (e *EmptyPCRBankError) Error() string {
-	return fmt.Sprintf("the PCR bank for %v is missing from the TCG log but is active on the TPM", e.Alg)
+func (e *EmptyPCRBanksError) Error() string {
+	var algs []string
+	for _, alg := range e.Algs {
+		algs = append(algs, fmt.Sprintf("%v", alg))
+	}
+
+	var s string
+	switch len(e.Algs) {
+	case 0:
+		return "internal error: invalid EmptyPCRBanksError"
+	case 1:
+		s = fmt.Sprintf("bank for %s is", algs[0])
+	default:
+		s = fmt.Sprintf("banks for %s are", strings.Join(algs, ", "))
+	}
+	return fmt.Sprintf("the PCR %s missing from the TCG log but active and with one or more empty PCRs on the TPM", s)
 }
 
 // NoSuitablePCRAlgorithmError is returned wrapped in [TCGLogError] if there is no suitable PCR
@@ -314,8 +329,12 @@ func (e *EmptyPCRBankError) Error() string {
 // during testing (multiple banks and multiple PCRs), this error wraps each individual error
 // that occurred and provides access to them.
 type NoSuitablePCRAlgorithmError struct {
-	BankErrs map[tpm2.HashAlgorithmId]error                 // BankErrs apply to an entire PCR bank
-	PCRErrs  map[tpm2.HashAlgorithmId]map[tpm2.Handle]error // PCRErrs apply to a single PCR in a single bank
+	// BankErrs apply to an entire PCR bank. This field is only populated
+	// if it is not possible to check any PCR in this bank.
+	BankErrs map[tpm2.HashAlgorithmId]error
+
+	// PCRErrs contain errors associated with specific PCRs in a specific bank.
+	PCRErrs map[tpm2.HashAlgorithmId]map[tpm2.Handle]error
 }
 
 func (e *NoSuitablePCRAlgorithmError) Error() string {
