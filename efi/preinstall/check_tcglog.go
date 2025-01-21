@@ -34,7 +34,6 @@ import (
 
 var (
 	// supportedAlgs specifies the supported PCR banks, in order of preference.
-	// XXX: We disallow SHA-1 here - perhaps this should be optionally permitted?
 	supportedAlgs = []tpm2.HashAlgorithmId{
 		tpm2.HashAlgorithmSHA512,
 		tpm2.HashAlgorithmSHA384,
