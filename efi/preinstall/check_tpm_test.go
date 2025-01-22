@@ -766,10 +766,11 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout(c *C) {
 	c.Assert(err, Implements, &tmpl)
 	c.Assert(err.(CompoundError).Unwrap(), HasLen, 1)
 
+	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockout)
+
 	c.Check(tpm, NotNil)
 	c.Check(discreteTPM, testutil.IsFalse)
 
-	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockout)
 	c.Check(dev.NumberOpen(), Equals, int(0))
 }
 
