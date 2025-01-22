@@ -294,19 +294,35 @@ func (e *PCRValueMismatchError) Error() string {
 	return fmt.Sprintf("PCR value mismatch (actual from TPM %#x, reconstructed from log %#x)", e.PCRValue, e.LogValue)
 }
 
-// EmptyPCRBanksError may be returned unwrapped in the event where one or more PCR banks seem
-// to be active but not extended by firmware and not present in the log. This doesn't matter so
-// much for FDE because we can select a good bank, but is a serious firmware bug for any scenario
-// that requires remote attestation, because it permits an entire trusted computing environment to
-// be spoofed by an adversary in software.
+// EmptyPCRBanksError may be returned unwrapped in the event where one or more TCG defined PCR
+// banks seem to be active but not extended by firmware and not present in the log. This doesn't
+// matter so much for FDE because we can select a good bank, but is a serious firmware bug for
+// any scenario that requires remote attestation, because it permits an entire trusted computing
+// environment to be spoofed by an adversary in software.
+//
+// If a PCR bank is missing from the TCG log but is enabled on the TPM with empty PCRs, the bank
+// will be recorded to the Algs field.
+//
+// This might also indicate one or more errors that occur whilst checking for this condition.
+// These will be stored in the Errs field.
 //
 // This error can be ignored by passing the PermitEmptyPCRBanks flag to [RunChecks]. This is
 // generally ok, as long as the device is not going to be used for any kind of remote attestation.
 type EmptyPCRBanksError struct {
-	Algs []tpm2.HashAlgorithmId
+	Algs []tpm2.HashAlgorithmId // The PCR banks that have empty PCRs in the TCG defined range.
+	Errs []error                // Any errors that occurred when trying to determine whether a bank missing from the log has any empty PCRs.
 }
 
 func (e *EmptyPCRBanksError) Error() string {
+	if len(e.Errs) > 0 {
+		w := new(bytes.Buffer)
+		fmt.Fprintf(w, "one or more errors detected when trying to determine whether PCR banks missing from the TCG log are enabled with empty PCRs:\n")
+		for _, err := range e.Errs {
+			io.WriteString(w, makeIndentedListItem(0, "-", err.Error()))
+		}
+		return w.String()
+	}
+
 	var algs []string
 	for _, alg := range e.Algs {
 		algs = append(algs, fmt.Sprintf("%v", alg))

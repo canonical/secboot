@@ -20,11 +20,13 @@
 package preinstall_test
 
 import (
+	"bytes"
 	"crypto"
 	"errors"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mssim"
+	"github.com/canonical/go-tpm2/mu"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/tcglog-parser"
 	. "github.com/snapcore/secboot/efi/preinstall"
@@ -1071,6 +1073,58 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleEmptyPCRBanksN
 		CheckFirmwareLogPermitWeakPCRBanks,
 	)
 	c.Check(err, ErrorMatches, `the PCR banks for TPM_ALG_SHA384, TPM_ALG_SHA1 are missing from the TCG log but active and with one or more empty PCRs on the TPM`)
+
+	var emptyPCRErr *EmptyPCRBanksError
+	c.Check(errors.As(err, &emptyPCRErr), testutil.IsTrue)
+}
+
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksError(c *C) {
+	// Test the case where we get a TPM response error when testing if a PCR
+	// bank has empty PCRs, and make sure that the error takes precedence over
+	// the one good bank.
+	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
+	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384)
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		StartupLocality: 3,
+	})
+	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
+
+	s.TPMSimulatorTest.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			// The only TPM2_GetCapability call is to obtain informatio
+			// about active PCR banks.
+			return
+		}
+
+		hdr := tpm2.ResponseHeader{
+			Tag:          tpm2.TagNoSessions,
+			ResponseSize: 10,
+			ResponseCode: tpm2.ResponseBadTag,
+		}
+		rsp.Reset()
+		_, err := mu.MarshalToWriter(rsp, &hdr)
+		c.Check(err, IsNil)
+	}
+	defer func() { s.TPMSimulatorTest.Transport.ResponseIntercept = nil }()
+
+	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log,
+		tpm2.HandleList{
+			internal_efi.PlatformConfigPCR,
+			internal_efi.DriversAndAppsPCR,
+			internal_efi.DriversAndAppsConfigPCR,
+			internal_efi.BootManagerCodePCR,
+			internal_efi.BootManagerConfigPCR,
+			internal_efi.PlatformManufacturerPCR,
+			internal_efi.SecureBootPolicyPCR,
+		},
+		0,
+	)
+	c.Check(err, ErrorMatches, `one or more errors detected when trying to determine whether PCR banks missing from the TCG log are enabled with empty PCRs:
+- cannot determine whether PCR bank TPM_ALG_SHA512 is active but empty on the TPM: cannot obtain active PCRs: TPM returned a TPM_RC_BAD_TAG error whilst executing command TPM_CC_GetCapability
+- cannot determine whether PCR bank TPM_ALG_SHA384 is active but empty on the TPM: cannot obtain active PCRs: TPM returned a TPM_RC_BAD_TAG error whilst executing command TPM_CC_GetCapability
+`)
 
 	var emptyPCRErr *EmptyPCRBanksError
 	c.Check(errors.As(err, &emptyPCRErr), testutil.IsTrue)
