@@ -461,7 +461,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 		kdfOpts = &def
 	}
 
-	kdfParams, err := KDFOptionsKdfParams(kdfOpts, 0)
+	kdfParams, err := KDFOptionsKdfParams(kdfOpts, 2*time.Second, 0)
 	c.Assert(err, IsNil)
 
 	s.checkKeyDataJSONCommon(c, j, &creationParams.KeyParams, nmodels)
