@@ -232,7 +232,7 @@ func checkPlatformFirmwareProtectionsIntelMEI(env internal_efi.HostEnvironment) 
 	// From here, these checks are based on the HSI checks performed in the pci-mei
 	// plugin in fwupd.
 	family := calculateIntelMEFamily(vers, hfsts1Reg)
-	if err != nil {
+	if family == meFamilyUnknown {
 		return fmt.Errorf("cannot determine ME family: %w", err)
 	}
 
