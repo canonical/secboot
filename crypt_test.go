@@ -2983,7 +2983,7 @@ func (s *cryptSuite) TestCopyAndRemoveLUKS2ContainerKey(c *C) {
 	}
 	s.luks2.devices["/dev/sda1"] = dev
 
-	c.Check(CopyAndRemoveLUKS2ContainerKey("/dev/sda1", "foo", "bar"), IsNil)
+	c.Check(CopyAndRemoveLUKS2ContainerKey(AllowNonAtomicOperation(), "/dev/sda1", "foo", "bar"), IsNil)
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
 		"newLUKSView(/dev/sda1,0)",
@@ -3002,6 +3002,30 @@ func (s *cryptSuite) TestCopyAndRemoveLUKS2ContainerKey(c *C) {
 		Priority: 10,
 		Data:     json.RawMessage("1234567890"),
 	})
+}
+
+func (s *cryptSuite) TestCopyAndRemoveLUKS2ContainerKeyPrevented(c *C) {
+	dev := &mockLUKS2Container{
+		tokens: map[int]luks2.Token{
+			0: &luksview.KeyDataToken{
+				TokenBase: luksview.TokenBase{
+					TokenKeyslot: 0,
+					TokenName:    "foo"},
+				Priority: 10,
+				Data:     json.RawMessage("1234567890")},
+			1: &luksview.RecoveryToken{
+				TokenBase: luksview.TokenBase{
+					TokenKeyslot: 1,
+					TokenName:    "default-recovery"}},
+		},
+		keyslots: map[int][]byte{
+			0: nil,
+			1: nil,
+		},
+	}
+	s.luks2.devices["/dev/sda1"] = dev
+
+	c.Check(CopyAndRemoveLUKS2ContainerKey(nil, "/dev/sda1", "foo", "bar"), ErrorMatches, `internal error: using a functionality that should proliferate has been attempted`)
 }
 
 type cryptSuiteUnmockedBase struct {

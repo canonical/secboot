@@ -890,7 +890,18 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 	return nil
 }
 
-func renameLUKS2ContainerKey(devicePath, oldName, newName string, replace bool) error {
+type nonAtomicOperationAllowedFlag struct {
+}
+
+// AllowNonAtomicOperation gives a flag to allow some operations that
+// are not atomic. Those can be dangerous depending on usage context,
+// they should be used with care and intentionally (that's why the
+// extra hoops).
+func AllowNonAtomicOperation() *nonAtomicOperationAllowedFlag {
+	return &nonAtomicOperationAllowedFlag{}
+}
+
+func renameLUKS2ContainerKey(nonAtomic *nonAtomicOperationAllowedFlag, devicePath, oldName, newName string, replace bool) error {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
@@ -931,6 +942,9 @@ func renameLUKS2ContainerKey(devicePath, oldName, newName string, replace bool) 
 			return xerrors.Errorf("cannot import new token: %w", err)
 		}
 	} else {
+		if nonAtomic == nil {
+			return errors.New("internal error: using a functionality that should proliferate has been attempted")
+		}
 		if err := luks2ImportToken(devicePath, newToken, nil); err != nil {
 			return xerrors.Errorf("cannot import new token: %w", err)
 		}
@@ -946,15 +960,18 @@ func renameLUKS2ContainerKey(devicePath, oldName, newName string, replace bool) 
 // the LUKS2 container at the specified path.
 func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
 	const replace = true
-	return renameLUKS2ContainerKey(devicePath, oldName, newName, replace)
+	return renameLUKS2ContainerKey(nil, devicePath, oldName, newName, replace)
 }
 
 // CopyAndRemoveLUKS2ContainerKey key renames the keyslot with the
 // specified oldName on the LUKS2 container at the specified path. It
 // does not use new feature from cryptsetup. However it is not atomic.
-func CopyAndRemoveLUKS2ContainerKey(devicePath, oldName, newName string) error {
+// This must be used with care and
+// intentionally. AllowNontAtomicOperation result must be provided to
+// allow for its use.
+func CopyAndRemoveLUKS2ContainerKey(nonAtomic *nonAtomicOperationAllowedFlag, devicePath, oldName, newName string) error {
 	const replace = false
-	return renameLUKS2ContainerKey(devicePath, oldName, newName, replace)
+	return renameLUKS2ContainerKey(nonAtomic, devicePath, oldName, newName, replace)
 }
 
 // KeyslotAlreadyHasANameErr may be returned by
