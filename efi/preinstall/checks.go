@@ -270,7 +270,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	logResults, err := checkFirmwareLogAndChoosePCRBank(tpm, log, mandatoryPcrs, checkLogFlags)
 	switch {
-	case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode):
+	case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode) ||
+		tpm2.IsTPMWarning(err, tpm2.AnyWarningCode, tpm2.AnyCommandCode) ||
+		isInvalidTPMResponse(err) || isTPMCommunicationError(err):
 		return nil, &TPM2DeviceError{err}
 	case isEmptyPCRBanksError(err):
 		// Save this error and return it unwrapped when the checks complete
@@ -461,6 +463,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			}
 			result.UsedSecureBootCAs = pcr7Result.UsedAuthorities
 
+			// Only return these errors if PCR7 is required.
 			if result.Flags&WeakSecureBootAlgorithmsDetected > 0 && flags&PermitWeakSecureBootAlgorithms == 0 {
 				// We don't support weak secure boot verification algorithms
 				deferredErrs = append(deferredErrs, ErrWeakSecureBootAlgorithmDetected)

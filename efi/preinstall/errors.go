@@ -22,6 +22,7 @@ package preinstall
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -91,12 +92,20 @@ func makeIndentedListItem(indentation int, marker, str string) string {
 }
 
 // CompoundError is an interface for accessing wrapped errors from an error type that
-// wraps more than one error. The [RunChecks] API may return multiple errors that are
-// wrapped by a type implementing this interface, as an alternative to aborting early
-// and returning individual errors as the occur. This is to ensure as much information
-// is gathered as possible.
+// wraps more than one error. The [RunChecks] and [RunChecksContext.Run] APIs may return
+// multiple errors that are wrapped by a type implementing this interface, as an
+// alternative to aborting early and returning individual errors as the occur. This is
+// to ensure as much information is gathered as possible.
 type CompoundError interface {
 	Unwrap() []error
+}
+
+func unwrapCompoundError(err error) []error {
+	errs, ok := err.(CompoundError)
+	if !ok {
+		return []error{err}
+	}
+	return errs.Unwrap()
 }
 
 // joinError is a simple implementation of the type of the same name from the
@@ -813,4 +822,26 @@ func (e *UnsupportedRequiredPCRsError) Error() string {
 	default:
 		return fmt.Sprintf("PCRs %v are required, but are unsupported", e.PCRs)
 	}
+}
+
+// ErrorKindAndActions is an error type that can be serialized to JSON, represented by
+// an error kind, associated arguments and a set of potential remedial actions.
+type ErrorKindAndActions struct {
+	ErrorKind ErrorKind       `json:"kind"`    // The error kind
+	ErrorArgs json.RawMessage `json:"args"`    // The arguments associated with the error, as a slice. See the documentation for the ErrorKind for the meaning of these.
+	Actions   []Action        `json:"actions"` // Potential remedial actions. This may be empty. Note that not all actions can be supplied to RunChecksContext.Run.
+
+	err error `json:"-"` // The original error. This is not serialized to JSON.
+}
+
+func (e *ErrorKindAndActions) Error() string {
+	data, err := json.Marshal(e)
+	if err != nil {
+		data = []byte(fmt.Sprintf("cannot serialize error: %v", err))
+	}
+	return fmt.Sprintf("%v %s", e.err, string(data))
+}
+
+func (e *ErrorKindAndActions) Unwrap() error {
+	return e.err
 }
