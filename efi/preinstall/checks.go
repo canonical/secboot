@@ -74,6 +74,12 @@ const (
 	// PCR 7 is not optional.
 	SecureBootPolicyProfileSupportRequired
 
+	// PermitWeakPCRBanks permits selecting a weak PCR algorithm if
+	// no other valid ones are available. This currently only includes
+	// SHA1. Without this, RunChecks will only test for SHA2-512, SHA2-384,
+	// and SHA2-256.
+	PermitWeakPCRBanks
+
 	// PostInstallChecks indicates that the tests are being executed
 	// post-install as opposed to pre-install.
 	PostInstallChecks
@@ -242,14 +248,21 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.SecureBootPolicyPCR)
 	}
 
-	permitEmptyPCRBanks := flags&PermitEmptyPCRBanks > 0
-	logResults, err := checkFirmwareLogAndChoosePCRBank(tpm, log, mandatoryPcrs, permitEmptyPCRBanks)
+	var checkLogFlags checkFirmwareLogFlags
+	if flags&PermitEmptyPCRBanks > 0 {
+		checkLogFlags |= checkFirmwareLogPermitEmptyPCRBanks
+	}
+	if flags&PermitWeakPCRBanks > 0 {
+		checkLogFlags |= checkFirmwareLogPermitWeakPCRBanks
+	}
+
+	logResults, err := checkFirmwareLogAndChoosePCRBank(tpm, log, mandatoryPcrs, checkLogFlags)
 	switch {
 	case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode):
 		return nil, &TPM2DeviceError{err}
 	case err != nil:
-		var pcrBankErr *EmptyPCRBankError
-		if errors.As(err, &pcrBankErr) {
+		var pcrBanksErr *EmptyPCRBanksError
+		if errors.As(err, &pcrBanksErr) {
 			// return this one unwrapped
 			return nil, err
 		}
