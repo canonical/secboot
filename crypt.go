@@ -934,3 +934,60 @@ func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
 
 	return nil
 }
+
+// KeyslotAlreadyHasANameErr may be returned by
+// NameLegacyLUKS2ContainerKey when trying to create a token for a
+// keyslot that already used by a token.
+var KeyslotAlreadyHasANameErr = errors.New("keyslot already has a name")
+
+// NameLegacyLUKS2ContainerKey will add a token for a recovery key for
+// a specified keyslot. That keyslot must not be in use in any
+// existing token. If the keyslot does not exist, this function will
+// do nothing. This function is intended to be used to name keys on
+// an old container.
+func NameLegacyLUKS2ContainerKey(devicePath string, keyslot int, newName string) error {
+	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	if err != nil {
+		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+	}
+
+	_, _, inUse := view.TokenByName(newName)
+	if inUse {
+		return errors.New("the new name is already in use")
+	}
+
+	for _, name := range view.TokenNames() {
+		token, _, inUse := view.TokenByName(name)
+		if inUse {
+			for _, usedKeyslot := range token.Keyslots() {
+				if usedKeyslot == keyslot {
+					return KeyslotAlreadyHasANameErr
+				}
+			}
+		}
+	}
+
+	keyslotExists := false
+	for _, usedSlot := range view.UsedKeyslots() {
+		if usedSlot == keyslot {
+			keyslotExists = true
+			break
+		}
+	}
+	if !keyslotExists {
+		return nil
+	}
+
+	token := &luksview.RecoveryToken{
+		TokenBase: luksview.TokenBase{
+			TokenName:    newName,
+			TokenKeyslot: keyslot,
+		},
+	}
+
+	if err := luks2ImportToken(devicePath, token, nil); err != nil {
+		return xerrors.Errorf("cannot import token: %w", err)
+	}
+
+	return nil
+}
