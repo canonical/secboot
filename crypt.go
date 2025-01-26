@@ -890,9 +890,18 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 	return nil
 }
 
-// RenameLUKS2Container key renames the keyslot with the specified oldName on
-// the LUKS2 container at the specified path.
-func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
+type nonAtomicOperationAllowedFlag struct {
+}
+
+// AllowNonAtomicOperation gives a flag to allow some operations that
+// are not atomic. Those can be dangerous depending on usage context,
+// they should be used with care and intentionally (that's why the
+// extra hoops).
+func AllowNonAtomicOperation() *nonAtomicOperationAllowedFlag {
+	return &nonAtomicOperationAllowedFlag{}
+}
+
+func renameLUKS2ContainerKey(nonAtomic *nonAtomicOperationAllowedFlag, devicePath, oldName, newName string, replace bool) error {
 	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
@@ -928,8 +937,95 @@ func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
 		return errors.New("cannot rename key with unexpected token type")
 	}
 
-	if err := luks2ImportToken(devicePath, newToken, &luks2.ImportTokenOptions{Id: id, Replace: true}); err != nil {
-		return xerrors.Errorf("cannot import new token: %w", err)
+	if replace {
+		if err := luks2ImportToken(devicePath, newToken, &luks2.ImportTokenOptions{Id: id, Replace: true}); err != nil {
+			return xerrors.Errorf("cannot import new token: %w", err)
+		}
+	} else {
+		if nonAtomic == nil {
+			return errors.New("internal error: using a functionality that should proliferate has been attempted")
+		}
+		if err := luks2ImportToken(devicePath, newToken, nil); err != nil {
+			return xerrors.Errorf("cannot import new token: %w", err)
+		}
+		if err := luks2RemoveToken(devicePath, id); err != nil {
+			return xerrors.Errorf("cannot remove existing token %d: %w", id, err)
+		}
+	}
+
+	return nil
+}
+
+// RenameLUKS2Container key renames the keyslot with the specified oldName on
+// the LUKS2 container at the specified path.
+func RenameLUKS2ContainerKey(devicePath, oldName, newName string) error {
+	const replace = true
+	return renameLUKS2ContainerKey(nil, devicePath, oldName, newName, replace)
+}
+
+// CopyAndRemoveLUKS2ContainerKey key renames the keyslot with the
+// specified oldName on the LUKS2 container at the specified path. It
+// does not use new feature from cryptsetup. However it is not atomic.
+// This must be used with care and
+// intentionally. AllowNontAtomicOperation result must be provided to
+// allow for its use.
+func CopyAndRemoveLUKS2ContainerKey(nonAtomic *nonAtomicOperationAllowedFlag, devicePath, oldName, newName string) error {
+	const replace = false
+	return renameLUKS2ContainerKey(nonAtomic, devicePath, oldName, newName, replace)
+}
+
+// KeyslotAlreadyHasANameErr may be returned by
+// NameLegacyLUKS2ContainerKey when trying to create a token for a
+// keyslot that already used by a token.
+var KeyslotAlreadyHasANameErr = errors.New("keyslot already has a name")
+
+// NameLegacyLUKS2ContainerKey will add a token for a recovery key for
+// a specified keyslot. That keyslot must not be in use in any
+// existing token. If the keyslot does not exist, this function will
+// do nothing. This function is intended to be used to name keys on
+// an old container.
+func NameLegacyLUKS2ContainerKey(devicePath string, keyslot int, newName string) error {
+	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	if err != nil {
+		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+	}
+
+	_, _, inUse := view.TokenByName(newName)
+	if inUse {
+		return errors.New("the new name is already in use")
+	}
+
+	for _, name := range view.TokenNames() {
+		token, _, inUse := view.TokenByName(name)
+		if inUse {
+			for _, usedKeyslot := range token.Keyslots() {
+				if usedKeyslot == keyslot {
+					return KeyslotAlreadyHasANameErr
+				}
+			}
+		}
+	}
+
+	keyslotExists := false
+	for _, usedSlot := range view.UsedKeyslots() {
+		if usedSlot == keyslot {
+			keyslotExists = true
+			break
+		}
+	}
+	if !keyslotExists {
+		return nil
+	}
+
+	token := &luksview.RecoveryToken{
+		TokenBase: luksview.TokenBase{
+			TokenName:    newName,
+			TokenKeyslot: keyslot,
+		},
+	}
+
+	if err := luks2ImportToken(devicePath, token, nil); err != nil {
+		return xerrors.Errorf("cannot import token: %w", err)
 	}
 
 	return nil

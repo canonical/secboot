@@ -34,6 +34,7 @@ type (
 	AuthorityTrustDataSet                 = authorityTrustDataSet
 	BootManagerCodeResultFlags            = bootManagerCodeResultFlags
 	CheckDriversAndAppsMeasurementsResult = checkDriversAndAppsMeasurementsResult
+	CheckFirmwareLogFlags                 = checkFirmwareLogFlags
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
 	CpuVendor                             = cpuVendor
 	DetectVirtResult                      = detectVirtResult
@@ -48,6 +49,8 @@ const (
 	BootManagerCodeSysprepAppsPresent          = bootManagerCodeSysprepAppsPresent
 	BootManagerCodeAbsoluteComputraceRunning   = bootManagerCodeAbsoluteComputraceRunning
 	BootManagerCodeNotAllLaunchDigestsVerified = bootManagerCodeNotAllLaunchDigestsVerified
+	CheckFirmwareLogPermitEmptyPCRBanks        = checkFirmwareLogPermitEmptyPCRBanks
+	CheckFirmwareLogPermitWeakPCRBanks         = checkFirmwareLogPermitWeakPCRBanks
 	CheckTPM2DeviceInVM                        = checkTPM2DeviceInVM
 	CheckTPM2DevicePostInstall                 = checkTPM2DevicePostInstall
 	CpuVendorIntel                             = cpuVendorIntel
