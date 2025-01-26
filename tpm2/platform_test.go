@@ -27,7 +27,7 @@ import (
 	"math/rand"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/policyutil"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/hkdf"
@@ -315,7 +315,7 @@ func (s *platformSuite) testRecoverKeysNoValidSRK(c *C, prepareSrk func()) {
 
 func (s *platformSuite) TestRecoverKeysMissingSRK(c *C) {
 	s.testRecoverKeysNoValidSRK(c, func() {
-		srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+		srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 		c.Assert(err, IsNil)
 		s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 	})
@@ -323,7 +323,7 @@ func (s *platformSuite) TestRecoverKeysMissingSRK(c *C) {
 
 func (s *platformSuite) TestRecoverKeysWrongSRK(c *C) {
 	s.testRecoverKeysNoValidSRK(c, func() {
-		srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+		srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 		c.Assert(err, IsNil)
 		s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -335,7 +335,7 @@ func (s *platformSuite) TestRecoverKeysWrongSRK(c *C) {
 }
 
 func (s *platformSuite) testRecoverKeysImportable(c *C, params *ProtectKeyParams) {
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)
@@ -482,7 +482,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingSealedKeyAccessLocked(
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingProvisioningError(c *C) {
 	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
-		srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+		srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 		c.Assert(err, IsNil)
 		s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -521,9 +521,9 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 
 		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
 
-		trial := util.ComputeAuthPolicy(alg)
-		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
-		trial.PolicyAuthValue()
+		builder := policyutil.NewPolicyBuilder(alg)
+		builder.RootBranch().PolicyAuthorize(pcrPolicyRef, key)
+		builder.RootBranch().PolicyAuthValue()
 
 		mockPolicyData := &KeyDataPolicy_v3{
 			StaticData: &StaticPolicyData_v3{
@@ -535,7 +535,8 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull},
 			}}
 
-		mockPolicyDigest := trial.GetDigest()
+		mockPolicyDigest, err := builder.Digest()
+		c.Assert(err, IsNil)
 
 		return mockPolicyData, mockPolicyDigest, nil
 	})
@@ -606,9 +607,9 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 
 		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
 
-		trial := util.ComputeAuthPolicy(alg)
-		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
-		trial.PolicyAuthValue()
+		builder := policyutil.NewPolicyBuilder(alg)
+		builder.RootBranch().PolicyAuthorize(pcrPolicyRef, key)
+		builder.RootBranch().PolicyAuthValue()
 
 		mockPolicyData := &KeyDataPolicy_v3{
 			StaticData: &StaticPolicyData_v3{
@@ -620,7 +621,8 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull},
 			}}
 
-		mockPolicyDigest := trial.GetDigest()
+		mockPolicyDigest, err := builder.Digest()
+		c.Assert(err, IsNil)
 
 		return mockPolicyData, mockPolicyDigest, nil
 	})
@@ -686,9 +688,9 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 
 		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
 
-		trial := util.ComputeAuthPolicy(alg)
-		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
-		trial.PolicyAuthValue()
+		builder := policyutil.NewPolicyBuilder(alg)
+		builder.RootBranch().PolicyAuthorize(pcrPolicyRef, key)
+		builder.RootBranch().PolicyAuthValue()
 
 		mockPolicyData := &KeyDataPolicy_v3{
 			StaticData: &StaticPolicyData_v3{
@@ -700,7 +702,8 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull},
 			}}
 
-		mockPolicyDigest := trial.GetDigest()
+		mockPolicyDigest, err := builder.Digest()
+		c.Assert(err, IsNil)
 
 		return mockPolicyData, mockPolicyDigest, nil
 	})
@@ -768,9 +771,9 @@ func (s *platformSuite) TestRecoverKeysWithAuthKeyTPMLockout(c *C) {
 
 		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
 
-		trial := util.ComputeAuthPolicy(alg)
-		trial.PolicyAuthorize(pcrPolicyRef, key.Name())
-		trial.PolicyAuthValue()
+		builder := policyutil.NewPolicyBuilder(alg)
+		builder.RootBranch().PolicyAuthorize(pcrPolicyRef, key)
+		builder.RootBranch().PolicyAuthValue()
 
 		mockPolicyData := &KeyDataPolicy_v3{
 			StaticData: &StaticPolicyData_v3{
@@ -782,7 +785,8 @@ func (s *platformSuite) TestRecoverKeysWithAuthKeyTPMLockout(c *C) {
 				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull},
 			}}
 
-		mockPolicyDigest := trial.GetDigest()
+		mockPolicyDigest, err := builder.Digest()
+		c.Assert(err, IsNil)
 
 		return mockPolicyData, mockPolicyDigest, nil
 	})

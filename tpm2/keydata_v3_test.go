@@ -26,9 +26,8 @@ import (
 	"math/rand"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/templates"
+	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -147,7 +146,7 @@ func (s *keyDataV3Suite) newMockImportableKeyData(c *C, role string, requireAuth
 	srkPub, _, _, err := s.TPM().ReadPublic(s.primary)
 	c.Assert(err, IsNil)
 
-	_, priv, symSeed, err := util.CreateDuplicationObject(sensitive, pub, srkPub, nil, nil)
+	_, priv, symSeed, err := objectutil.CreateImportable(testutil.RandReader, sensitive, pub, srkPub, nil, nil)
 	c.Assert(err, IsNil)
 
 	return &KeyData_v3{
@@ -245,7 +244,7 @@ func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
 
 	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "cannot compute name of dynamic authorization policy key: unsupported name algorithm or algorithm not linked into binary: TPM_ALG_NULL")
+	c.Check(err, ErrorMatches, "name algorithm for signing key is invalid or not available: TPM_ALG_NULL")
 }
 
 func (s *keyDataV3Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
@@ -297,7 +296,7 @@ func (s *keyDataV3Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
 func (s *keyDataV3Suite) TestValidateNoPolicyCounter(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000), "", false)
 
-	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
+	index, err := s.TPM().NewResourceContext(data.Policy().PCRPolicyCounterHandle())
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 
@@ -314,7 +313,7 @@ func (s *keyDataV3Suite) TestValidateInvalidSealedObjectNameAlg(c *C) {
 
 	_, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "cannot determine if static authorization policy matches sealed key object: algorithm unavailable")
+	c.Check(err, ErrorMatches, "cannot determine if static authorization policy matches sealed key object: algorithm TPM_ALG_NULL unavailable")
 }
 
 func (s *keyDataV3Suite) TestValidateWrongAuthKey(c *C) {
@@ -323,7 +322,9 @@ func (s *keyDataV3Suite) TestValidateWrongAuthKey(c *C) {
 
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
-	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey = util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authPublicKey, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
+	data.(*KeyData_v3).PolicyData.StaticData.AuthPublicKey = authPublicKey
 
 	_, err = data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
@@ -334,7 +335,7 @@ func (s *keyDataV3Suite) TestValidateWrongPolicyCounter1(c *C) {
 	role := "foo"
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000), role, false)
 
-	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
+	index, err := s.TPM().NewResourceContext(data.Policy().PCRPolicyCounterHandle())
 	handle := index.Handle()
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)

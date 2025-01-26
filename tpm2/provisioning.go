@@ -73,7 +73,7 @@ const (
 // attribute set, and is used for authenticating with the relevant hierarchies to avoid sending the
 // authorization value in the clear.
 func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, template *tpm2.Public, handle tpm2.Handle, session tpm2.SessionContext) (tpm2.ResourceContext, error) {
-	obj, err := tpm.CreateResourceContextFromTPM(handle)
+	obj, err := tpm.NewResourceContext(handle)
 	switch {
 	case err != nil && !tpm2.IsResourceUnavailableError(err, handle):
 		// Unexpected error
@@ -107,7 +107,7 @@ func provisionPrimaryKey(tpm *tpm2.TPMContext, hierarchy tpm2.ResourceContext, t
 // the authorization value in the clear.
 // XXX: The NV index should be created with the TPMA_NV_AUTHREAD attribute to avoid this entirely.
 func selectSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) *tpm2.Public {
-	nv, err := tpm.CreateResourceContextFromTPM(srkTemplateHandle)
+	nv, err := tpm.NewResourceContext(srkTemplateHandle)
 	if err != nil {
 		return tcg.SRKTemplate
 	}
@@ -176,7 +176,7 @@ func storeSrkTemplate(tpm *tpm2.TPMContext, template *tpm2.Public, session tpm2.
 // is one. If a session is supplied, it must be a HMAC session and is used for authenticating
 // with the storage hierarchy to avoid sending the authorization value in the clear.
 func removeStoredSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
-	nv, err := tpm.CreateResourceContextFromTPM(srkTemplateHandle)
+	nv, err := tpm.NewResourceContext(srkTemplateHandle)
 	switch {
 	case err != nil && !tpm2.IsResourceUnavailableError(err, srkTemplateHandle):
 		// Unexpected error

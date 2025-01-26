@@ -23,8 +23,8 @@ import (
 	"github.com/canonical/go-tpm2"
 )
 
-func computeV2PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKeyName tpm2.Name) tpm2.DigestList {
-	return computeV1PcrPolicyCounterAuthPolicies(alg, updateKeyName)
+func computeV2PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKey *tpm2.Public) (tpm2.DigestList, error) {
+	return computeV1PcrPolicyCounterAuthPolicies(alg, updateKey)
 }
 
 func computeV2PcrPolicyRefFromCounterName(name tpm2.Name) tpm2.Nonce {

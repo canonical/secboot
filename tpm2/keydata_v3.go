@@ -24,11 +24,12 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/policyutil"
 	"github.com/snapcore/secboot"
 
 	"golang.org/x/xerrors"
@@ -102,19 +103,15 @@ func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.Resou
 
 	// Validate the type and scheme of the dynamic authorization policy signing key.
 	authPublicKey := d.PolicyData.StaticData.AuthPublicKey
-	authKeyName, err := authPublicKey.ComputeName()
-	if err != nil {
-		return nil, keyDataError{xerrors.Errorf("cannot compute name of dynamic authorization policy key: %w", err)}
-	}
 	if authPublicKey.Type != tpm2.ObjectTypeECC {
 		return nil, keyDataError{errors.New("public area of dynamic authorization policy signing key has the wrong type")}
 	}
-	authKeyScheme := authPublicKey.Params.AsymDetail(authPublicKey.Type).Scheme
+	authKeyScheme := authPublicKey.AsymDetail().Scheme
 	if authKeyScheme.Scheme != tpm2.AsymSchemeNull {
 		if authKeyScheme.Scheme != tpm2.AsymSchemeECDSA {
 			return nil, keyDataError{errors.New("dynamic authorization policy signing key has unexpected scheme")}
 		}
-		if authKeyScheme.Details.Any(authKeyScheme.Scheme).HashAlg != authPublicKey.NameAlg {
+		if authKeyScheme.AnyDetails().HashAlg != authPublicKey.NameAlg {
 			return nil, keyDataError{errors.New("dynamic authorization policy signing key algorithm must match name algorithm")}
 		}
 	}
@@ -126,7 +123,8 @@ func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.Resou
 	case pcrPolicyCounterHandle != tpm2.HandleNull && pcrPolicyCounterHandle.Type() != tpm2.HandleTypeNVIndex:
 		return nil, keyDataError{errors.New("PCR policy counter handle is invalid")}
 	case pcrPolicyCounterHandle != tpm2.HandleNull:
-		pcrPolicyCounter, err = tpm.CreateResourceContextFromTPM(pcrPolicyCounterHandle)
+		var err error
+		pcrPolicyCounter, err = tpm.NewResourceContext(pcrPolicyCounterHandle)
 		if err != nil {
 			if tpm2.IsResourceUnavailableError(err, pcrPolicyCounterHandle) {
 				return nil, keyDataError{errors.New("PCR policy counter is unavailable")}
@@ -136,6 +134,9 @@ func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.Resou
 	}
 
 	// Make sure the saved PCR policy ref matches what we expect
+	if !authPublicKey.NameAlg.Available() {
+		return nil, keyDataError{fmt.Errorf("name algorithm for signing key is invalid or not available: %v", authPublicKey.NameAlg)}
+	}
 	pcrPolicyRef := computeV3PcrPolicyRefFromCounterContext(authPublicKey.NameAlg, role, pcrPolicyCounter)
 	if !bytes.Equal(pcrPolicyRef, d.PolicyData.StaticData.PCRPolicyRef) {
 		return nil, keyDataError{errors.New("unexpected PCR policy ref")}
@@ -143,15 +144,19 @@ func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.Resou
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
 	if !d.KeyPublic.NameAlg.Available() {
-		return nil, keyDataError{errors.New("cannot determine if static authorization policy matches sealed key object: algorithm unavailable")}
+		return nil, keyDataError{fmt.Errorf("cannot determine if static authorization policy matches sealed key object: algorithm %v unavailable", d.KeyPublic.NameAlg)}
 	}
-	trial := util.ComputeAuthPolicy(d.KeyPublic.NameAlg)
-	trial.PolicyAuthorize(d.PolicyData.StaticData.PCRPolicyRef, authKeyName)
+	builder := policyutil.NewPolicyBuilder(d.KeyPublic.NameAlg)
+	builder.RootBranch().PolicyAuthorize(d.PolicyData.StaticData.PCRPolicyRef, authPublicKey)
 	if d.PolicyData.StaticData.RequireAuthValue {
-		trial.PolicyAuthValue()
+		builder.RootBranch().PolicyAuthValue()
+	}
+	expectedDigest, err := builder.Digest()
+	if err != nil {
+		return nil, keyDataError{fmt.Errorf("cannot compute expected static authorization policy digest: %w", err)}
 	}
 
-	if !bytes.Equal(trial.GetDigest(), d.KeyPublic.AuthPolicy) {
+	if !bytes.Equal(expectedDigest, d.KeyPublic.AuthPolicy) {
 		return nil, keyDataError{errors.New("the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")}
 	}
 

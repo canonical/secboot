@@ -167,7 +167,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 		return nil, xerrors.Errorf("cannot validate key data: %w", err)
 	}
 
-	srk, err := tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := tpm.NewResourceContext(tcg.SRKHandle)
 	switch {
 	case tpm2.IsResourceUnavailableError(err, tcg.SRKHandle):
 		return nil, &secboot.PlatformHandlerError{

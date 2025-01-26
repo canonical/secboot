@@ -164,6 +164,12 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		// before TPM2_Startup. In this case, there will be a EV_EFI_HCRTM_EVENT containing the
 		// digest for each H-CRTM sequence, and some optional EV_NO_ACTION TCG_HCRTMComponentEvents
 		// providing information about what was measured.
+		blob := bytesHashData("mock S-CRTM contents")
+		builder.hashLogExtendEvent(c, blob, &logEvent{
+			pcrIndex:  0,
+			eventType: tcglog.EventTypeEFIHCRTMEvent,
+			data:      tcglog.StringEventData("HCRTM")})
+
 		ev := &tcglog.Event{
 			PCRIndex:  0,
 			EventType: tcglog.EventTypeNoAction,
@@ -171,7 +177,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			Data: &tcglog.HCRTMComponentEventData{
 				ComponentDescription:  "S-CRTM contents",
 				MeasurementFormatType: tcglog.HCRTMMeasurementFormatRawData,
-				ComponentMeasurement:  []byte("mock S-CRTM contents"),
+				ComponentMeasurement:  []byte(blob),
 			},
 		}
 		for _, alg := range opts.Algorithms {
@@ -179,11 +185,6 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		}
 		builder.events = append(builder.events, ev)
 
-		blob := bytesHashData("mock S-CRTM contents")
-		builder.hashLogExtendEvent(c, blob, &logEvent{
-			pcrIndex:  0,
-			eventType: tcglog.EventTypeEFIHCRTMEvent,
-			data:      tcglog.StringEventData("HCRTM")})
 	} else {
 		{
 			blob := bytesHashData("mock S-CRTM contents")

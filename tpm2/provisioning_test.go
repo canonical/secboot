@@ -44,7 +44,7 @@ func (m *primaryKeyMixin) validatePrimaryKeyAgainstTemplate(c *C, hierarchy, han
 	expected := m.tpmTest.CreatePrimary(c, hierarchy, template)
 	defer m.tpmTest.TPM.FlushContext(expected)
 
-	key, err := m.tpmTest.TPM.CreateResourceContextFromTPM(handle)
+	key, err := m.tpmTest.TPM.NewResourceContext(handle)
 	c.Assert(err, IsNil)
 	c.Check(key.Name(), DeepEquals, expected.Name())
 }
@@ -297,7 +297,7 @@ func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
 
 	origHmacSession := s.TPM().HmacSession()
 
-	ek, err := s.TPM().CreateResourceContextFromTPM(tcg.EKHandle)
+	ek, err := s.TPM().NewResourceContext(tcg.EKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, ek, ek.Handle())
 
@@ -331,7 +331,7 @@ func (s *provisioningSuite) testProvisionRecreateSRK(c *C, mode ProvisionMode) {
 		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
 	})
 
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	expectedName := srk.Name()
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
@@ -341,7 +341,7 @@ func (s *provisioningSuite) testProvisionRecreateSRK(c *C, mode ProvisionMode) {
 	s.validateEK(c)
 	s.validateSRK(c)
 
-	srk, err = s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err = s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	c.Check(srk.Name(), DeepEquals, expectedName)
 }
@@ -393,7 +393,7 @@ func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, mode Provis
 
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
-	nv, err := s.TPM().CreateResourceContextFromTPM(0x01810001)
+	nv, err := s.TPM().NewResourceContext(0x01810001)
 	c.Assert(err, IsNil)
 
 	nvPub, _, err := s.TPM().NVReadPublic(nv)
@@ -457,7 +457,7 @@ func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C,
 		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
 	})
 
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -532,7 +532,7 @@ func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateOverwritesExisting
 	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template2), IsNil)
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template2)
 
-	nv, err := s.TPM().CreateResourceContextFromTPM(0x01810001)
+	nv, err := s.TPM().NewResourceContext(0x01810001)
 	c.Assert(err, IsNil)
 
 	nvPub, _, err := s.TPM().NVReadPublic(nv)

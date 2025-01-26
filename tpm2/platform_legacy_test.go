@@ -152,7 +152,7 @@ func (s *platformLegacySuite) TestRecoverKeysErrTPMProvisioning(c *C) {
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, IsNil)
 
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())

@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021 Canonical Ltd
+ * Copyright (C) 2021-2024 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -17,15 +17,14 @@
  *
  */
 
-package paths
+package testenv
 
-import "path/filepath"
+var testBinary string = ""
 
-var (
-	RunDir = "/run"
-
-	// Argon2OutOfProcessHandlerSystemLockPath is the lock file path used to
-	// serialize KDF requests system-wide. All process's that use the system-wide
-	// lock participate in the lock/unlock contract described above.
-	Argon2OutOfProcessHandlerSystemLockPath = filepath.Join(RunDir, "secboot-argon2.lock")
-)
+// IsTestBinary returns whether the current binary is a test binary. To
+// define something as a test binary and make this return true, pass
+// "-ldflags '-X github.com/snapcore/secboot/internal/testenv.testBinary=enabled'"
+// to "go build" or "go test".
+func IsTestBinary() bool {
+	return testBinary == "enabled"
+}

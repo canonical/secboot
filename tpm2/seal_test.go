@@ -29,7 +29,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/templates"
+	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
@@ -119,7 +119,7 @@ func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
 
 	var pcrPolicyCounterPub *tpm2.NVPublic
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
-		index, err := s.TPM().CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
+		index, err := s.TPM().NewResourceContext(params.PCRPolicyCounterHandle)
 		c.Assert(err, IsNil)
 
 		pcrPolicyCounterPub, _, err = s.TPM().NVReadPublic(index)
@@ -127,7 +127,7 @@ func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
 
 	}
 
-	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, "", pcrPolicyCounterPub, false)
+	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, params.Role, pcrPolicyCounterPub, false)
 	c.Assert(err, IsNil)
 
 	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
@@ -165,6 +165,7 @@ func (s *sealSuite) TestProtectKeyWithTPM(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		Role:                   "foo",
 	})
 }
 
@@ -172,6 +173,7 @@ func (s *sealSuite) TestProtectKeyWithTPMDifferentPCRPolicyCounterHandle(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "foo",
 	})
 }
 
@@ -183,6 +185,7 @@ func (s *sealSuite) TestProtectKeyWithTPMWithNewConnection(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		Role:                   "foo",
 	})
 
 	s.validateSRK(c)
@@ -190,7 +193,7 @@ func (s *sealSuite) TestProtectKeyWithTPMWithNewConnection(c *C) {
 
 func (s *sealSuite) TestProtectKeyWithTPMMissingSRK(c *C) {
 	// Ensure that calling ProtectKeyWithTPM recreates the SRK with the standard template
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -199,6 +202,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingSRK(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		Role:                   "foo",
 	})
 
 	s.validateSRK(c)
@@ -207,7 +211,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingSRK(c *C) {
 func (s *sealSuite) TestProtectKeyWithTPMMissingCustomSRK(c *C) {
 	// Ensure that calling ProtectKeyWithTPM recreates the SRK with the custom
 	// template originally supplied during provisioning
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -240,6 +244,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingCustomSRK(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		Role:                   "foo",
 	})
 
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, template)
@@ -249,7 +254,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingSRKWithInvalidCustomTemplate(c *
 	// Ensure that calling ProtectKeyWithTPM recreates the SRK with the standard
 	// template if the NV index we use to store custom templates has invalid
 	// contents - if the contents are invalid then we didn't create it.
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
@@ -284,20 +289,17 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingSRKWithInvalidCustomTemplate(c *
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		Role:                   "foo",
 	})
 
 	s.validateSRK(c)
-}
-
-func (s *sealSuite) TestProtectKeyWithTPMNilPCRProfileAndNoAuthorizedSnapModels(c *C) {
-	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
 }
 
 func (s *sealSuite) TestProtectKeyWithTPMNoPCRPolicyCounterHandle(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull,
+		Role:                   "foo",
 	})
 }
 
@@ -308,14 +310,28 @@ func (s *sealSuite) TestProtectKeyWithTPMWithProvidedPrimaryKey(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		Role:                   "foo",
 		PrimaryKey:             primaryKey})
+}
+
+func (s *sealSuite) TestProtectKeyWithTPMWithDifferentRole(c *C) {
+	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		Role:                   "bar"})
+}
+
+func (s *sealSuite) TestProtectKeyWithTPMWithNoRole(c *C) {
+	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
 }
 
 func (s *sealSuite) testProtectKeyWithTPMErrorHandling(c *C, params *ProtectKeyParams) error {
 	var origCounter tpm2.ResourceContext
 	if params != nil && params.PCRPolicyCounterHandle != tpm2.HandleNull {
 		var err error
-		origCounter, err = s.TPM().CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
+		origCounter, err = s.TPM().NewResourceContext(params.PCRPolicyCounterHandle)
 		if tpm2.IsResourceUnavailableError(err, params.PCRPolicyCounterHandle) {
 			err = nil
 		}
@@ -330,7 +346,7 @@ func (s *sealSuite) testProtectKeyWithTPMErrorHandling(c *C, params *ProtectKeyP
 	var counter tpm2.ResourceContext
 	if params != nil && params.PCRPolicyCounterHandle != tpm2.HandleNull {
 		var err error
-		counter, err = s.TPM().CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
+		counter, err = s.TPM().NewResourceContext(params.PCRPolicyCounterHandle)
 		if tpm2.IsResourceUnavailableError(err, params.PCRPolicyCounterHandle) {
 			err = nil
 		}
@@ -382,6 +398,14 @@ func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidPCRProfileSelection
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size())),
 		PCRPolicyCounterHandle: tpm2.HandleNull})
 	c.Check(err, ErrorMatches, "cannot set initial PCR policy: PCR protection profile contains digests for unsupported PCRs")
+}
+
+func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidRole(c *C) {
+	err := s.testProtectKeyWithTPMErrorHandling(c, &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		Role:                   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"})
+	c.Check(err, ErrorMatches, `cannot create initial policy data: invalid role: too large`)
 }
 
 func (s *sealSuite) testPassphraseProtectKeyWithTPM(c *C, params *PassphraseProtectKeyParams, passphrase string) {
@@ -508,7 +532,7 @@ func (s *sealSuite) TestPassphraseProtectKeyWithTPMDifferentPassphrase(c *C) {
 }
 
 func (s *sealSuite) testProtectKeyWithExternalStorageKey(c *C, params *ProtectKeyParams) {
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)
@@ -582,7 +606,7 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKeyWithProvidedPrimaryKey(c
 }
 
 func (s *sealSuite) testProtectKeyWithExternalStorageKeyErrorHandling(c *C, params *ProtectKeyParams) error {
-	srk, err := s.TPM().CreateResourceContextFromTPM(tcg.SRKHandle)
+	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
 
 	srkPub, _, _, err := s.TPM().ReadPublic(srk)
@@ -623,7 +647,7 @@ func (s *mockKeySealer) CreateSealedObject(data []byte, nameAlg tpm2.HashAlgorit
 		return nil, nil, nil, errors.New("called more than once")
 	}
 
-	pub := templates.NewSealedObject(nameAlg)
+	pub := objectutil.NewSealedObjectTemplate(objectutil.WithNameAlg(nameAlg))
 	pub.AuthPolicy = policy
 
 	var noDAByte byte = 0

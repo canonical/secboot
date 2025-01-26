@@ -57,7 +57,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 		var srk tpm2.ResourceContext
 		var thisErr error
 		if try == tryPersistentSRK {
-			srk, thisErr = tpm.CreateResourceContextFromTPM(tcg.SRKHandle)
+			srk, thisErr = tpm.NewResourceContext(tcg.SRKHandle)
 			if tpm2.IsResourceUnavailableError(thisErr, tcg.SRKHandle) {
 				// No SRK - save the error and try creating a transient
 				err = ErrTPMProvisioning

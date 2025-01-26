@@ -26,9 +26,8 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/templates"
+	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -59,7 +58,8 @@ func (s *keyDataV2Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
 
-	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
 	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
 
 	// Create a mock PCR policy counter
@@ -110,7 +110,8 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
 
-	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
 	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
 
 	// Create sealed object
@@ -139,7 +140,7 @@ func (s *keyDataV2Suite) newMockImportableKeyData(c *C) KeyData {
 	srkPub, _, _, err := s.TPM().ReadPublic(s.primary)
 	c.Assert(err, IsNil)
 
-	_, priv, symSeed, err := util.CreateDuplicationObject(sensitive, pub, srkPub, nil, nil)
+	_, priv, symSeed, err := objectutil.CreateImportable(testutil.RandReader, sensitive, pub, srkPub, nil, nil)
 	c.Assert(err, IsNil)
 
 	return &KeyData_v2{

@@ -24,6 +24,7 @@ import (
 	"io"
 
 	efi "github.com/canonical/go-efilib"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
 
@@ -33,6 +34,7 @@ type (
 	AuthorityTrustDataSet                 = authorityTrustDataSet
 	BootManagerCodeResultFlags            = bootManagerCodeResultFlags
 	CheckDriversAndAppsMeasurementsResult = checkDriversAndAppsMeasurementsResult
+	CheckFirmwareLogFlags                 = checkFirmwareLogFlags
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
 	CpuVendor                             = cpuVendor
 	DetectVirtResult                      = detectVirtResult
@@ -47,6 +49,8 @@ const (
 	BootManagerCodeSysprepAppsPresent          = bootManagerCodeSysprepAppsPresent
 	BootManagerCodeAbsoluteComputraceRunning   = bootManagerCodeAbsoluteComputraceRunning
 	BootManagerCodeNotAllLaunchDigestsVerified = bootManagerCodeNotAllLaunchDigestsVerified
+	CheckFirmwareLogPermitEmptyPCRBanks        = checkFirmwareLogPermitEmptyPCRBanks
+	CheckFirmwareLogPermitWeakPCRBanks         = checkFirmwareLogPermitWeakPCRBanks
 	CheckTPM2DeviceInVM                        = checkTPM2DeviceInVM
 	CheckTPM2DevicePostInstall                 = checkTPM2DevicePostInstall
 	CpuVendorIntel                             = cpuVendorIntel
@@ -115,5 +119,13 @@ func MockPeNewFile(fn func(io.ReaderAt) (*pe.File, error)) (restore func()) {
 	peNewFile = fn
 	return func() {
 		peNewFile = orig
+	}
+}
+
+func MockRunChecksEnv(env internal_efi.HostEnvironment) (restore func()) {
+	orig := runChecksEnv
+	runChecksEnv = env
+	return func() {
+		runChecksEnv = orig
 	}
 }

@@ -26,9 +26,8 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/templates"
+	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
-	"github.com/canonical/go-tpm2/util"
 
 	. "gopkg.in/check.v1"
 
@@ -59,7 +58,8 @@ func (s *keyDataV1Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
 
-	authKeyPublic := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authKeyPublic, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
 	mu.MustCopyValue(&authKeyPublic, authKeyPublic)
 
 	// Create a mock PCR policy counter
@@ -158,7 +158,7 @@ func (s *keyDataV1Suite) TestValidateInvalidAuthPublicKeyNameAlg(c *C) {
 
 	_, err := data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "cannot compute name of dynamic authorization policy key: unsupported name algorithm or algorithm not linked into binary: TPM_ALG_NULL")
+	c.Check(err, ErrorMatches, "cannot compute expected static authorization policy digest: could not build policy: encountered an error when calling PolicyAuthorize: invalid keySign")
 }
 
 func (s *keyDataV1Suite) TestValidateInvalidAuthPublicKeyType(c *C) {
@@ -197,7 +197,7 @@ func (s *keyDataV1Suite) TestValidateInvalidPolicyCounterHandle(c *C) {
 func (s *keyDataV1Suite) TestValidateNoPolicyCounter(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
+	index, err := s.TPM().NewResourceContext(data.Policy().PCRPolicyCounterHandle())
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)
 
@@ -221,7 +221,9 @@ func (s *keyDataV1Suite) TestValidateWrongAuthKey(c *C) {
 
 	authKey, err := ecdsa.GenerateKey(elliptic.P256(), testutil.RandReader)
 	c.Assert(err, IsNil)
-	data.(*KeyData_v1).PolicyData.StaticData.AuthPublicKey = util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, &authKey.PublicKey)
+	authPublicKey, err := objectutil.NewECCPublicKey(&authKey.PublicKey)
+	c.Assert(err, IsNil)
+	data.(*KeyData_v1).PolicyData.StaticData.AuthPublicKey = authPublicKey
 
 	_, err = data.ValidateData(s.TPM().TPMContext, nil)
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
@@ -231,7 +233,7 @@ func (s *keyDataV1Suite) TestValidateWrongAuthKey(c *C) {
 func (s *keyDataV1Suite) TestValidateWrongPolicyCounter1(c *C) {
 	data, _ := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x01800000))
 
-	index, err := s.TPM().CreateResourceContextFromTPM(data.Policy().PCRPolicyCounterHandle())
+	index, err := s.TPM().NewResourceContext(data.Policy().PCRPolicyCounterHandle())
 	handle := index.Handle()
 	c.Assert(err, IsNil)
 	c.Check(s.TPM().NVUndefineSpace(s.TPM().OwnerHandleContext(), index, nil), IsNil)

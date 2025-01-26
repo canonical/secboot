@@ -28,8 +28,8 @@ import (
 	"strconv"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/templates"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/objectutil"
+	"github.com/canonical/go-tpm2/policyutil"
 
 	. "gopkg.in/check.v1"
 
@@ -43,7 +43,7 @@ type policyOrTreeMixin struct{}
 func (_ policyOrTreeMixin) checkPolicyOrTree(c *C, alg tpm2.HashAlgorithmId, digests tpm2.DigestList, tree *PolicyOrTree) (policy tpm2.Digest, depth int) {
 	// Try a manual walk of the tree for every input digest
 	for i, digest := range digests {
-		trial := util.ComputeAuthPolicy(alg)
+		builder := policyutil.NewPolicyBuilder(alg)
 
 		var node *PolicyOrNode
 		for _, n := range tree.LeafNodes() {
@@ -63,15 +63,19 @@ func (_ policyOrTreeMixin) checkPolicyOrTree(c *C, alg tpm2.HashAlgorithmId, dig
 			if len(digests) == 1 {
 				digests = tpm2.DigestList{digests[0], digests[0]}
 			}
-			trial.PolicyOR(digests)
+			builder.RootBranch().PolicyOR(digests...)
 			node = node.Parent()
 		}
 
 		if i == 0 {
-			policy = trial.GetDigest()
+			var err error
+			policy, err = builder.Digest()
+			c.Assert(err, IsNil)
 			depth = d
 		} else {
-			c.Assert(trial.GetDigest(), DeepEquals, policy)
+			digest, err := builder.Digest()
+			c.Assert(err, IsNil)
+			c.Assert(digest, DeepEquals, policy)
 			c.Assert(d, Equals, depth)
 		}
 	}
@@ -114,12 +118,14 @@ type testNewPolicyOrTreeData struct {
 }
 
 func (s *policySuiteNoTPM) testNewPolicyOrTree(c *C, data *testNewPolicyOrTreeData) {
-	trial := util.ComputeAuthPolicy(data.alg)
-
-	tree, err := NewPolicyOrTree(data.alg, trial, data.digests)
+	tree, rootDigests, err := NewPolicyOrTree(data.alg, data.digests)
 	c.Assert(err, IsNil)
 
-	c.Assert(trial.GetDigest(), DeepEquals, data.expected)
+	builder := policyutil.NewPolicyBuilder(data.alg)
+	builder.RootBranch().PolicyOR(rootDigests...)
+	digest, err := builder.Digest()
+	c.Check(err, IsNil)
+	c.Check(digest, DeepEquals, data.expected)
 
 	policy, depth := s.checkPolicyOrTree(c, data.alg, data.digests, tree)
 	c.Check(policy, DeepEquals, data.expected)
@@ -196,12 +202,12 @@ func (s *policySuiteNoTPM) TestNewPolicyOrTreeDepth4(c *C) {
 }
 
 func (s *policySuiteNoTPM) TestNewPolicyOrTreeNoDigests(c *C) {
-	_, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256), nil)
+	_, _, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, nil)
 	c.Check(err, ErrorMatches, "no digests supplied")
 }
 
 func (s *policySuiteNoTPM) TestNewPolicyOrTreeTooManyDigests(c *C) {
-	_, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256), make(tpm2.DigestList, 5000))
+	_, _, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, make(tpm2.DigestList, 5000))
 	c.Check(err, ErrorMatches, "too many digests")
 }
 
@@ -213,7 +219,8 @@ type testNewKeyDataPolicyData struct {
 	pcrPolicySequence   uint64
 	requireAuthValue    bool
 
-	expected tpm2.Digest
+	expectedPcrPolicyRef tpm2.Nonce
+	expected             tpm2.Digest
 }
 
 func (s *policySuiteNoTPM) testNewKeyDataPolicy(c *C, data *testNewKeyDataPolicyData) {
@@ -223,7 +230,8 @@ func (s *policySuiteNoTPM) testNewKeyDataPolicy(c *C, data *testNewKeyDataPolicy
 	c.Assert(err, IsNil)
 	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
-	authKey := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey))
+	authKey, err := objectutil.NewECCPublicKey(key.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
 
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	if data.pcrPolicyCounterPub != nil {
@@ -238,73 +246,11 @@ func (s *policySuiteNoTPM) testNewKeyDataPolicy(c *C, data *testNewKeyDataPolicy
 	c.Check(policy.PCRPolicySequence(), Equals, data.pcrPolicySequence)
 	c.Check(policy.RequireUserAuth(), Equals, data.requireAuthValue)
 
-	c.Logf("%x", digest)
+	c.Check(policy.(*KeyDataPolicy_v3).StaticData.PCRPolicyRef, DeepEquals, data.expectedPcrPolicyRef)
 	c.Check(digest, DeepEquals, data.expected)
 }
 
 func (s *policySuiteNoTPM) TestNewKeyDataPolicy(c *C) {
-	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
-		alg: tpm2.HashAlgorithmSHA256,
-		key: `
------BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
-xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
------END PUBLIC KEY-----`,
-		pcrPolicyCounterPub: &tpm2.NVPublic{
-			Index:   0x0181fff0,
-			NameAlg: tpm2.HashAlgorithmSHA256,
-			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
-			Size:    8},
-		pcrPolicySequence: 0,
-		expected:          testutil.DecodeHexString(c, "aaf8226b1df9aefc9d03533b58abaf514b0f4ab6c10af0e26ef5d9db0d8aff24")})
-}
-
-func (s *policySuiteNoTPM) TestNewKeyDataPolicySHA1(c *C) {
-	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
-		alg: tpm2.HashAlgorithmSHA1,
-		key: `
------BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
-xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
------END PUBLIC KEY-----`,
-		pcrPolicyCounterPub: &tpm2.NVPublic{
-			Index:   0x0181fff0,
-			NameAlg: tpm2.HashAlgorithmSHA256,
-			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
-			Size:    8},
-		pcrPolicySequence: 0,
-		expected:          testutil.DecodeHexString(c, "9a9aeb1e55e96cbae4cba7bc798046cc82ff669f")})
-}
-
-func (s *policySuiteNoTPM) TestNewKeyDataPolicyNoPCRPolicyCounterHandle(c *C) {
-	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
-		alg: tpm2.HashAlgorithmSHA256,
-		key: `
------BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
-xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
------END PUBLIC KEY-----`,
-		expected: testutil.DecodeHexString(c, "9cac9314ff38f2cdf8c876b57d344657e76996ea872925acd95abec805165c31")})
-}
-
-func (s *policySuiteNoTPM) TestNewKeyDataPolicyDifferentInitialSequence(c *C) {
-	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
-		alg: tpm2.HashAlgorithmSHA256,
-		key: `
------BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
-xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
------END PUBLIC KEY-----`,
-		pcrPolicyCounterPub: &tpm2.NVPublic{
-			Index:   0x0181fff0,
-			NameAlg: tpm2.HashAlgorithmSHA256,
-			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
-			Size:    8},
-		pcrPolicySequence: 0,
-		expected:          testutil.DecodeHexString(c, "aaf8226b1df9aefc9d03533b58abaf514b0f4ab6c10af0e26ef5d9db0d8aff24")})
-}
-
-func (s *policySuiteNoTPM) TestNewKeyDataPolicyDifferentRole(c *C) {
 	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
 		alg: tpm2.HashAlgorithmSHA256,
 		key: `
@@ -318,11 +264,82 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 			NameAlg: tpm2.HashAlgorithmSHA256,
 			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 			Size:    8},
-		pcrPolicySequence: 0,
-		expected:          testutil.DecodeHexString(c, "18520b70f76191008b461386d54d6219ffb068bbd4f3b82e495a6c8eca81c8cd")})
+		pcrPolicySequence:    0,
+		expectedPcrPolicyRef: testutil.DecodeHexString(c, "fd2ce82dd8a3365dac93cbbace43c1848fb7acce5c9b40e3d795d7c16e2d8d61"),
+		expected:             testutil.DecodeHexString(c, "18520b70f76191008b461386d54d6219ffb068bbd4f3b82e495a6c8eca81c8cd")})
 }
 
-func (s *policySuiteNoTPM) TestNewKeyDataPolicyWithUserAuth(c *C) {
+func (s *policySuiteNoTPM) TestNewKeyDataPolicySHA1(c *C) {
+	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
+		alg: tpm2.HashAlgorithmSHA1,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		role: "foo",
+		pcrPolicyCounterPub: &tpm2.NVPublic{
+			Index:   0x0181fff0,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
+			Size:    8},
+		pcrPolicySequence:    0,
+		expectedPcrPolicyRef: testutil.DecodeHexString(c, "fd2ce82dd8a3365dac93cbbace43c1848fb7acce5c9b40e3d795d7c16e2d8d61"),
+		expected:             testutil.DecodeHexString(c, "dcbabe5d40139f6c6f2ff01d28a3c6096b1e58e4")})
+}
+
+func (s *policySuiteNoTPM) TestNewKeyDataPolicyNoPCRPolicyCounterHandle(c *C) {
+	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
+		alg: tpm2.HashAlgorithmSHA256,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		role:                 "foo",
+		expectedPcrPolicyRef: testutil.DecodeHexString(c, "67f52d97a210cd2e9e5bf485329e722995d066d3f22a7357d5b5dc1ca357837c"),
+		expected:             testutil.DecodeHexString(c, "b4726cb7d5b8a4463444f69f25bd0b64fadb371e28fb0aabb2e34f71036f857f")})
+}
+
+func (s *policySuiteNoTPM) TestNewKeyDataPolicyDifferentInitialSequence(c *C) {
+	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
+		alg: tpm2.HashAlgorithmSHA256,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		role: "foo",
+		pcrPolicyCounterPub: &tpm2.NVPublic{
+			Index:   0x0181fff0,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
+			Size:    8},
+		pcrPolicySequence:    0,
+		expectedPcrPolicyRef: testutil.DecodeHexString(c, "fd2ce82dd8a3365dac93cbbace43c1848fb7acce5c9b40e3d795d7c16e2d8d61"),
+		expected:             testutil.DecodeHexString(c, "18520b70f76191008b461386d54d6219ffb068bbd4f3b82e495a6c8eca81c8cd")})
+}
+
+func (s *policySuiteNoTPM) TestNewKeyDataPolicyDifferentRole(c *C) {
+	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
+		alg: tpm2.HashAlgorithmSHA256,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		role: "bar",
+		pcrPolicyCounterPub: &tpm2.NVPublic{
+			Index:   0x0181fff0,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
+			Size:    8},
+		pcrPolicySequence:    0,
+		expectedPcrPolicyRef: testutil.DecodeHexString(c, "39524ee2f7a93a406a8b2bae481e945891a7d1d7aa14cfe41849f3a3b6c93515"),
+		expected:             testutil.DecodeHexString(c, "de7da338a070e9da027d4223c8dda65f47c674fcdafbc7a221c07bd8b0cc89ee")})
+}
+
+func (s *policySuiteNoTPM) TestNewKeyDataPolicyNoRole(c *C) {
 	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
 		alg: tpm2.HashAlgorithmSHA256,
 		key: `
@@ -335,9 +352,56 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 			NameAlg: tpm2.HashAlgorithmSHA256,
 			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 			Size:    8},
-		pcrPolicySequence: 0,
-		requireAuthValue:  true,
-		expected:          testutil.DecodeHexString(c, "1cefd40aad2757cd72a238a8d208e8b1a31d94adf7fa88dd5333b43e006b09a6")})
+		pcrPolicySequence:    0,
+		expectedPcrPolicyRef: testutil.DecodeHexString(c, "1f7da3fe6795c7398966e09908c7a196f5cf423a5f352b8e63ff81b8ede95eaf"),
+		expected:             testutil.DecodeHexString(c, "aaf8226b1df9aefc9d03533b58abaf514b0f4ab6c10af0e26ef5d9db0d8aff24")})
+}
+
+func (s *policySuiteNoTPM) TestNewKeyDataPolicyWithUserAuth(c *C) {
+	s.testNewKeyDataPolicy(c, &testNewKeyDataPolicyData{
+		alg: tpm2.HashAlgorithmSHA256,
+		key: `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`,
+		role: "foo",
+		pcrPolicyCounterPub: &tpm2.NVPublic{
+			Index:   0x0181fff0,
+			NameAlg: tpm2.HashAlgorithmSHA256,
+			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
+			Size:    8},
+		pcrPolicySequence:    0,
+		requireAuthValue:     true,
+		expectedPcrPolicyRef: testutil.DecodeHexString(c, "fd2ce82dd8a3365dac93cbbace43c1848fb7acce5c9b40e3d795d7c16e2d8d61"),
+		expected:             testutil.DecodeHexString(c, "da3d3b6c768bed86001b85e2310a7eff36be3718a93dafae61607e13fbaa621c")})
+}
+
+func (s *policySuiteNoTPM) TestNewKeyDataPolicyRoleLengthLimit(c *C) {
+	key := `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE49+rltJgmI3V7QqrkLBpB4V3xunW
+xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
+-----END PUBLIC KEY-----`
+	block, _ := pem.Decode([]byte(key))
+	c.Assert(block, NotNil)
+	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	c.Assert(err, IsNil)
+	c.Assert(pubKey, testutil.ConvertibleTo, &ecdsa.PublicKey{})
+
+	authKey, err := objectutil.NewECCPublicKey(pubKey.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
+
+	role := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+	pcrPolicyCounterPub := &tpm2.NVPublic{
+		Index:   0x0181fff0,
+		NameAlg: tpm2.HashAlgorithmSHA256,
+		Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
+		Size:    8}
+
+	_, _, err = NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, authKey, role, pcrPolicyCounterPub, false)
+	c.Check(err, ErrorMatches, `invalid role: too large`)
 }
 
 type testNewKeyDataPolicyLegacyData struct {
@@ -356,7 +420,8 @@ func (s *policySuite) testNewKeyDataPolicyLegacy(c *C, data *testNewKeyDataPolic
 	c.Assert(err, IsNil)
 	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
-	authKey := util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey))
+	authKey, err := objectutil.NewECCPublicKey(key.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
 
 	pcrPolicyCounterHandle := tpm2.HandleNull
 	if data.pcrPolicyCounterPub != nil {
@@ -438,15 +503,19 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 func (s *policySuite) TestPolicyOrTreeExecuteAssertions(c *C) {
 	var digests tpm2.DigestList
 	for i := 1; i < 201; i++ {
-		trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-		trial.PolicyPCR(hash(crypto.SHA256, strconv.Itoa(i)), tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
-		digests = append(digests, trial.GetDigest())
+		builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+		builder.RootBranch().PolicyPCRDigest(hash(crypto.SHA256, strconv.Itoa(i)), tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+		digest, err := builder.Digest()
+		c.Check(err, IsNil)
+		digests = append(digests, digest)
 	}
 
-	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	tree, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, trial, digests)
+	tree, rootDigests, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, digests)
 	c.Assert(err, IsNil)
-	expectedDigest := trial.GetDigest()
+	builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+	builder.RootBranch().PolicyOR(rootDigests...)
+	expectedDigest, err := builder.Digest()
+	c.Check(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeTrial, nil, tpm2.HashAlgorithmSHA256)
 
@@ -464,13 +533,14 @@ func (s *policySuite) TestPolicyOrTreeExecuteAssertions(c *C) {
 func (s *policySuite) TestPolicyOrTreeExecuteAssertionsDigestNotFound(c *C) {
 	var digests tpm2.DigestList
 	for i := 1; i < 201; i++ {
-		trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-		trial.PolicyPCR(hash(crypto.SHA256, strconv.Itoa(i)), tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
-		digests = append(digests, trial.GetDigest())
+		builder := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA256)
+		builder.RootBranch().PolicyPCRDigest(hash(crypto.SHA256, strconv.Itoa(i)), tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+		digest, err := builder.Digest()
+		c.Check(err, IsNil)
+		digests = append(digests, digest)
 	}
 
-	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	tree, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, trial, digests)
+	tree, _, err := NewPolicyOrTree(tpm2.HashAlgorithmSHA256, digests)
 	c.Assert(err, IsNil)
 
 	session := s.StartAuthSession(c, nil, nil, tpm2.SessionTypeTrial, nil, tpm2.HashAlgorithmSHA256)
@@ -500,9 +570,11 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	c.Assert(err, IsNil)
 	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
+	authKey, err := objectutil.NewECCPublicKey(key.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
+
 	handle := s.NextAvailableHandle(c, 0x0181ff00)
-	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle,
-		util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey)), s.TPM().HmacSession())
+	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle, authKey, s.TPM().HmacSession())
 	c.Assert(err, IsNil)
 	c.Check(pub.Index, Equals, handle)
 	c.Check(pub.Attrs.Type(), Equals, tpm2.NVTypeCounter)
@@ -512,7 +584,7 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	name, err := pub.ComputeName()
 	c.Check(err, IsNil)
 
-	index, err := s.TPM().CreateResourceContextFromTPM(handle)
+	index, err := s.TPM().NewResourceContext(handle)
 	c.Assert(err, IsNil)
 	c.Check(name, DeepEquals, index.Name())
 }
@@ -578,9 +650,11 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	c.Assert(err, IsNil)
 	c.Assert(key, testutil.ConvertibleTo, &ecdsa.PublicKey{})
 
+	authKey, err := objectutil.NewECCPublicKey(key.(*ecdsa.PublicKey))
+	c.Assert(err, IsNil)
+
 	handle := tpm2.Handle(0x0181ff00)
-	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle,
-		util.NewExternalECCPublicKeyWithDefaults(templates.KeyUsageSign, key.(*ecdsa.PublicKey)), s.TPM().HmacSession())
+	pub, count, err := CreatePcrPolicyCounter(s.TPM().TPMContext, handle, authKey, s.TPM().HmacSession())
 	c.Assert(err, IsNil)
 	c.Check(pub.Index, Equals, handle)
 	c.Check(pub.Attrs.Type(), Equals, tpm2.NVTypeCounter)
@@ -590,7 +664,7 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9pYAXaeeWBHZZ9TCRXNHClxi6NBB
 	name, err := pub.ComputeName()
 	c.Check(err, IsNil)
 
-	index, err := s.TPM().CreateResourceContextFromTPM(handle)
+	index, err := s.TPM().NewResourceContext(handle)
 	c.Assert(err, IsNil)
 	c.Check(name, DeepEquals, index.Name())
 }
