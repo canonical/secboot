@@ -165,6 +165,12 @@ type KeyWithPassphraseParams struct {
 	// AuthKeySize is the size of key to derive from the passphrase for
 	// use by the platform implementation.
 	AuthKeySize int
+
+	// ChangeAuthKeyContext can be set to the caller to any arbitrary value
+	// that should be passed to the initial call to
+	// [PlatformKeyDataHandler.ChangeAuthKey]. The main use for this is to
+	// permit the tpm2 package to supply an open TPM connection.
+	ChangeAuthKeyContext any
 }
 
 // KeyID is the unique ID for a KeyData object. It is used to facilitate the
@@ -471,7 +477,7 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 	return key, iv, auth, nil
 }
 
-func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string) error {
+func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string, platformContext any) error {
 	handler := handlers[d.data.PlatformName]
 	if handler == nil {
 		return ErrNoPlatformHandlerRegistered
@@ -487,7 +493,7 @@ func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string
 		return fmt.Errorf("unexpected encryption algorithm \"%s\"", d.data.PassphraseParams.Encryption)
 	}
 
-	handle, err := handler.ChangeAuthKey(d.platformKeyData(), oldAuthKey, authKey)
+	handle, err := handler.ChangeAuthKey(d.platformKeyData(), oldAuthKey, authKey, platformContext)
 	if err != nil {
 		return err
 	}
@@ -703,7 +709,7 @@ func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string) error {
 		return err
 	}
 
-	if err := d.updatePassphrase(payload, oldKey, newPassphrase); err != nil {
+	if err := d.updatePassphrase(payload, oldKey, newPassphrase, nil); err != nil {
 		return processPlatformHandlerError(err)
 	}
 
@@ -797,7 +803,7 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 		AuthKeySize:       params.AuthKeySize,
 	}
 
-	if err := kd.updatePassphrase(kd.data.EncryptedPayload, make([]byte, params.AuthKeySize), passphrase); err != nil {
+	if err := kd.updatePassphrase(kd.data.EncryptedPayload, make([]byte, params.AuthKeySize), passphrase, params.ChangeAuthKeyContext); err != nil {
 		return nil, xerrors.Errorf("cannot set passphrase: %w", err)
 	}
 

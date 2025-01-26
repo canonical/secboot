@@ -563,7 +563,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 	}
 
 	var handler PlatformKeyDataHandler
-	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4}, nil)
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
@@ -648,7 +648,7 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 	}
 
 	var handler PlatformKeyDataHandler
-	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4}, nil)
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
@@ -728,7 +728,7 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 	}
 
 	var handler PlatformKeyDataHandler
-	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4}, nil)
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
@@ -738,7 +738,7 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 		AuthMode:      k.AuthMode(),
 	}
 
-	_, err = handler.ChangeAuthKey(newPlatformKeyData, nil, []byte{5, 6, 7, 8})
+	_, err = handler.ChangeAuthKey(newPlatformKeyData, nil, []byte{5, 6, 7, 8}, nil)
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidAuthKey)
 	c.Check(err, ErrorMatches, "TPM returned an error for session 1 whilst executing command TPM_CC_ObjectChangeAuth: "+

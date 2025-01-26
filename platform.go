@@ -97,8 +97,11 @@ type PlatformKeyDataHandler interface {
 	// keys. Either value can be nil if passphrase authentication is being enabled (
 	// where old will be nil) or disabled (where new will be nil).
 	//
+	// The use of the context argument isn't defined here - it's passed during
+	// key construction and the platform is free to use it however it likes.
+	//
 	// On success, it should return an updated handle.
-	ChangeAuthKey(data *PlatformKeyData, old, new []byte) ([]byte, error)
+	ChangeAuthKey(data *PlatformKeyData, old, new []byte, context any) ([]byte, error)
 }
 
 var handlers = make(map[string]PlatformKeyDataHandler)

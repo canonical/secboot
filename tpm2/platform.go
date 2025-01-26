@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sync"
 
 	"github.com/canonical/go-tpm2"
 
@@ -37,77 +36,7 @@ import (
 
 const platformName = "tpm2"
 
-var mainPlatformKeyDataHandler *platformKeyDataHandler
-
-type platformKeyDataHandler struct {
-	cond sync.Cond
-	tpm  *Connection
-}
-
-// TPMConnection returns a currently open or a TPM connection that was cached by
-// a call to setTPMConnection. The caller mustn't
-// call the Close method on the returned connection - it should call the returned close
-// callback instead.
-func (h *platformKeyDataHandler) TPMConnection() (conn *Connection, close func() error, err error) {
-	// Take the lock that protects the tpm member first,
-	// before trying that. If there is
-	h.cond.L.Lock()
-	if h.tpm != nil {
-		return conn, func() error {
-			h.tpm = nil
-			h.cond.L.Unlock()
-			return nil
-		}, nil
-	}
-	h.cond.L.Unlock()
-
-	// Nothing else has set the TPM connection, so create a new one. Note that
-	// we don't set the tpm member to this, to avoid issues where potentially
-	// another caller into us comes from a routine
-	tpm, err := ConnectToDefaultTPM()
-	switch {
-	case err == ErrNoTPM2Device:
-		return nil, nil, &secboot.PlatformHandlerError{
-			Type: secboot.PlatformHandlerErrorUnavailable,
-			Err:  err}
-	case err != nil:
-		return nil, nil, fmt.Errorf("cannot connect to TPM: %w", err)
-	}
-
-	return tpm, func() error {
-		h.cond.L.Unlock()
-		unset()
-		return tpm.Close()
-	}, nil
-}
-
-func (h *platformKeyDataHandler) setTPMConnection(conn *Connection) (unset func()) {
-	// Take the lock that protects the tpm member and wait for it to become clear.
-	h.cond.L.Lock()
-
-	for h.tpm != nil {
-		// This releases the lock internally but ensures we
-		// are holding the lock again before returning.
-		h.cond.Wait()
-	}
-
-	// The tpm member has been cleared and we are holding the lock
-	// that protects it again.
-	h.tpm = tpm
-
-	// We can release the lock now. Other callers to this function will
-	// wait for the tpm member to be cleared.
-	h.cond.L.Unlock()
-
-	return func() {
-		// Take the lock so that we can unset the tpm member
-		h.cond.L.Lock()
-		h.tpm = nil
-		// Wake up another gorountine waiting for the tpm member to become clear.
-		h.cond.Signal()
-		h.cond.L.Unlock()
-	}
-}
+type platformKeyDataHandler struct{}
 
 func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData, encryptedPayload, authKey []byte) ([]byte, error) {
 	if data.Generation < 0 || int64(data.Generation) > math.MaxUint32 {
@@ -138,11 +67,16 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 			Err:  fmt.Errorf("invalid key data version: %d", k.data.Version())}
 	}
 
-	tpm, closeTpm, err := h.tpmConnection()
-	if err != nil {
-		return nil, err
+	tpm, err := ConnectToDefaultTPM()
+	switch {
+	case err == ErrNoTPM2Device:
+		return nil, &secboot.PlatformHandlerError{
+			Type: secboot.PlatformHandlerErrorUnavailable,
+			Err:  err}
+	case err != nil:
+		return nil, fmt.Errorf("cannot connect to TPM: %w", err)
 	}
-	defer closeTpm()
+	defer tpm.Close()
 
 	symKey, err := k.unsealDataFromTPM(tpm.TPMContext, authKey, tpm.HmacSession())
 	if err != nil {
@@ -186,12 +120,26 @@ func (h *platformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKe
 	return h.recoverKeysCommon(data, encryptedPayload, key)
 }
 
-func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte) ([]byte, error) {
-	tpm, closeTpm, err := h.tpmConnection()
-	if err != nil {
-		return nil, err
+func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte, context any) ([]byte, error) {
+	var tpm *Connection
+	switch c := context.(type) {
+	case *Connection:
+		tpm = c
 	}
-	defer closeTpm()
+
+	if tpm == nil {
+		var err error
+		tpm, err = ConnectToDefaultTPM()
+		switch {
+		case err == ErrNoTPM2Device:
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorUnavailable,
+				Err:  err}
+		case err != nil:
+			return nil, fmt.Errorf("cannot connect to TPM: %w", err)
+		}
+		defer tpm.Close()
+	}
 
 	var k *SealedKeyData
 	if err := json.Unmarshal(data.EncodedHandle, &k); err != nil {
@@ -209,7 +157,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	}
 
 	// Validate the initial key data
-	_, err = k.validateData(tpm.TPMContext, data.Role)
+	_, err := k.validateData(tpm.TPMContext, data.Role)
 	switch {
 	case isKeyDataError(err):
 		return nil, &secboot.PlatformHandlerError{
@@ -292,7 +240,5 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 }
 
 func init() {
-	var mu sync.Mutex
-	mainPlatformKeyDataHandler = &platformKeyDataHandler{cond: sync.Cond{L: &mu}}
-	secboot.RegisterPlatformKeyDataHandler(platformName, mainPlatformKeyDataHandler)
+	secboot.RegisterPlatformKeyDataHandler(platformName, new(platformKeyDataHandler))
 }

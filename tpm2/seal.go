@@ -81,11 +81,6 @@ func makeKeyDataNoAuth(skd *SealedKeyData, role string, encryptedPayload []byte,
 
 func makeKeyDataWithPassphraseConstructor(tpm *Connection, kdfOptions secboot.KDFOptions, passphrase string) keyDataConstructor {
 	return func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
-		// Avoid trying to reopen another connection when setting the user auth value
-		orig := mainPlatformKeyDataHandler.tpm
-		mainPlatformKeyDataHandler.tpm = tpm
-		defer func() { mainPlatformKeyDataHandler.tpm = orig }()
-
 		return secbootNewKeyDataWithPassphrase(&secboot.KeyWithPassphraseParams{
 			KeyParams: secboot.KeyParams{
 				Handle:           skd,
@@ -94,8 +89,9 @@ func makeKeyDataWithPassphraseConstructor(tpm *Connection, kdfOptions secboot.KD
 				PlatformName:     platformName,
 				KDFAlg:           kdfAlg,
 			},
-			KDFOptions:  kdfOptions,
-			AuthKeySize: skd.data.Public().NameAlg.Size(),
+			KDFOptions:           kdfOptions,
+			AuthKeySize:          skd.data.Public().NameAlg.Size(),
+			ChangeAuthKeyContext: tpm,
 		}, passphrase)
 	}
 }
