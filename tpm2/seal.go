@@ -194,6 +194,7 @@ var makeSealedKeyData = func(tpm *tpm2.TPMContext, params *makeSealedKeyDataPara
 	// already bound to the sealed object via its authorization policy.
 	aad, err := mu.MarshalToBytes(&additionalData_v3{
 		Generation: uint32(secboot.KeyDataGeneration),
+		Role:       []byte(params.Role),
 		KDFAlg:     tpm2.HashAlgorithmSHA256,
 		AuthMode:   params.AuthMode,
 	})

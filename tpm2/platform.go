@@ -102,7 +102,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
 
-	payload, err := k.data.Decrypt(symKey, encryptedPayload, uint32(data.Generation), kdfAlg, data.AuthMode)
+	payload, err := k.data.Decrypt(symKey, encryptedPayload, uint32(data.Generation), []byte(data.Role), kdfAlg, data.AuthMode)
 	if err != nil {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,

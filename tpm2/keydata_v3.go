@@ -37,6 +37,7 @@ import (
 
 type additionalData_v3 struct {
 	Generation uint32
+	Role       []byte
 	KDFAlg     tpm2.HashAlgorithmId
 	AuthMode   secboot.AuthMode
 }
@@ -44,7 +45,7 @@ type additionalData_v3 struct {
 func (d additionalData_v3) Marshal(w io.Writer) error {
 	_, err := mu.MarshalToWriter(w,
 		uint32(3), // The TPM2 platform keydata version
-		d.Generation, d.KDFAlg, d.AuthMode)
+		d.Generation, d.Role, d.KDFAlg, d.AuthMode)
 	return err
 }
 
@@ -172,7 +173,7 @@ func (d *keyData_v3) Policy() keyDataPolicy {
 	return d.PolicyData
 }
 
-func (d *keyData_v3) Decrypt(key, payload []byte, generation uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
+func (d *keyData_v3) Decrypt(key, payload []byte, generation uint32, role []byte, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
 	// We only support AES-256-GCM with a 12-byte nonce, so we expect 44 bytes here
 	if len(key) != 32+12 {
 		return nil, errors.New("invalid symmetric key size")
@@ -180,6 +181,7 @@ func (d *keyData_v3) Decrypt(key, payload []byte, generation uint32, kdfAlg tpm2
 
 	aad, err := mu.MarshalToBytes(&additionalData_v3{
 		Generation: generation,
+		Role:       role,
 		KDFAlg:     kdfAlg,
 		AuthMode:   authMode,
 	})
