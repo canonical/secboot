@@ -36,6 +36,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"reflect"
 	"time"
 
 	. "github.com/snapcore/secboot"
@@ -160,13 +161,27 @@ func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyDat
 	return h.recoverKeys(handle, encryptedPayload)
 }
 
-func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, new []byte) ([]byte, error) {
+type mockChangeAuthKeyContextType struct{}
+
+var mockChangeAuthKeyContext = mockChangeAuthKeyContextType{}
+
+func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, new []byte, context any) ([]byte, error) {
 	if !h.passphraseSupport {
 		return nil, errors.New("not supported")
 	}
 
 	if err := h.checkState(); err != nil {
 		return nil, err
+	}
+
+	switch c := context.(type) {
+	case nil:
+	case mockChangeAuthKeyContextType:
+		if c != mockChangeAuthKeyContext {
+			return nil, errors.New("unexpected context value")
+		}
+	default:
+		return nil, fmt.Errorf("unexpected context type: %v", reflect.TypeOf(context))
 	}
 
 	handle, err := h.unmarshalHandle(data)
@@ -356,9 +371,10 @@ func (s *keyDataTestBase) mockProtectKeysWithPassphrase(c *C, primaryKey Primary
 	}
 
 	kpp := &KeyWithPassphraseParams{
-		KeyParams:   *kp,
-		KDFOptions:  kdfOptions,
-		AuthKeySize: authKeySize,
+		KeyParams:            *kp,
+		KDFOptions:           kdfOptions,
+		AuthKeySize:          authKeySize,
+		ChangeAuthKeyContext: mockChangeAuthKeyContext,
 	}
 
 	return kpp, unlockKey
