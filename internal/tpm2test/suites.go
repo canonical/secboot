@@ -101,12 +101,23 @@ func (m *tpmTestMixin) setUpTest(c *C, suite *tpm2_testutil.TPMTest, open func()
 // an open connection, and open their own connection instead, the test should call this
 // API to temporarily close the internal mock connection.
 //
-// It returns a callback to re-open the mock connection again.
+// This also context saves the HMAC session associated with the connection accessible
+// via the TPM() accessor.
+//
+// It returns a callback to re-open the mock connection again, and restore the HMAC
+// session that was context saved.
 func (m *tpmTestMixin) CloseMockConnection(c *C) (restore func()) {
 	c.Assert(m.mockConnection, NotNil)
 	c.Check(m.mockConnection.Close(), IsNil)
 	m.mockConnection = nil
+
+	hmacSessionContext, err := m.TPM.ContextSave(m.TPM.HmacSession())
+	c.Assert(err, IsNil)
+
 	return func() {
+		_, err := m.TPM.ContextLoad(hmacSessionContext)
+		c.Assert(err, IsNil)
+
 		mockConn, err := secboot_tpm2.ConnectToDefaultTPM()
 		c.Assert(err, IsNil)
 		m.mockConnection = mockConn

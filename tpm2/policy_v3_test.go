@@ -1330,8 +1330,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthPublicKey(c 
 		},
 	})
 	c.Check(IsPolicyDataError(err), testutil.IsTrue)
-	c.Check(err, ErrorMatches, "public area of dynamic authorization policy signing key is invalid: TPM returned an error for parameter 2 whilst executing command TPM_CC_LoadExternal: "+
-		"TPM_RC_HASH \\(hash algorithm not supported or not appropriate\\)")
+	c.Check(err, ErrorMatches, "cannot compute auth policies for PCR policy counter: could not build policy: encountered an error when calling PolicySigned: invalid authKey")
 }
 
 func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicySignature(c *C) {

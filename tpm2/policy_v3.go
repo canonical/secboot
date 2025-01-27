@@ -24,6 +24,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash"
@@ -97,6 +98,7 @@ func computeV3PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKey *
 
 	// The NV index requires 3 policies:
 	// - A policy to read the index with no authorization.
+	// - A policy to use the index with TPM2_PolicyNV with no authorization.
 	// - A policy to initialize the index with no authorization.
 	// - A policy for updating the index to revoke old PCR policies using a signed assertion.
 	var authPolicies tpm2.DigestList
@@ -104,6 +106,14 @@ func computeV3PcrPolicyCounterAuthPolicies(alg tpm2.HashAlgorithmId, updateKey *
 	builder := policyutil.NewPolicyBuilder(alg)
 	builder.RootBranch().PolicyCommandCode(tpm2.CommandNVRead)
 	digest, err := builder.Digest()
+	if err != nil {
+		return nil, err
+	}
+	authPolicies = append(authPolicies, digest)
+
+	builder = policyutil.NewPolicyBuilder(alg)
+	builder.RootBranch().PolicyCommandCode(tpm2.CommandPolicyNV)
+	digest, err = builder.Digest()
 	if err != nil {
 		return nil, err
 	}
@@ -148,10 +158,140 @@ type staticPolicyData_v3 struct {
 	RequireAuthValue       bool
 }
 
+// policyOrData_v3 is the version 3 on-disk representation of policyOrTree.
+// It is a flattened tree which suitable for serializing - the tree is just
+// a slice of nodes, with each node specifying an offset to its parent node.
+type policyOrData_v3 = policyOrData_v0
+
 // pcrPolicyData_v3 represents version 3 of the PCR policy metadata for
 // executing a policy session, and can be updated. It has the same format
 // as version 2.
-type pcrPolicyData_v3 = pcrPolicyData_v2
+type pcrPolicyData_v3 struct {
+	Selection                 tpm2.PCRSelectionList
+	OrData                    policyOrData_v3
+	PolicySequence            uint64
+	AuthorizedPolicy          tpm2.Digest
+	AuthorizedPolicySignature *tpm2.Signature
+}
+
+func (d *pcrPolicyData_v3) addPcrAssertions(alg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, digests tpm2.DigestList) (*policyutil.PolicyBuilder, error) {
+	// Compute the policy digest that would result from a TPM2_PolicyPCR assertion for each condition
+	var orDigests tpm2.DigestList
+
+	d.Selection = pcrs
+
+	for i, digest := range digests {
+		builder := policyutil.NewPolicyBuilder(alg)
+		builder.RootBranch().PolicyPCRDigest(digest, d.Selection)
+		orDigest, err := builder.Digest()
+		if err != nil {
+			return nil, fmt.Errorf("cannot compute OR digest for PCR digest %d: %w", i, err)
+		}
+		orDigests = append(orDigests, orDigest)
+
+	}
+
+	orTree, rootDigests, err := newPolicyOrTree(alg, orDigests)
+	if err != nil {
+		return nil, xerrors.Errorf("cannot create tree for PolicyOR digests: %w", err)
+	}
+	d.OrData = newPolicyOrDataV0(orTree)
+
+	builder := policyutil.NewPolicyBuilder(alg)
+	builder.RootBranch().PolicyOR(rootDigests...)
+
+	return builder, nil
+}
+
+func (d *pcrPolicyData_v3) addRevocationCheck(builder *policyutil.PolicyBuilder, policyCounter *tpm2.NVPublic, policySequence uint64) {
+	operandB := make([]byte, 8)
+	binary.BigEndian.PutUint64(operandB, policySequence)
+	builder.RootBranch().PolicyNV(policyCounter, operandB, 0, tpm2.OpUnsignedLE)
+	d.PolicySequence = policySequence
+}
+
+func (d *pcrPolicyData_v3) authorizePolicy(approvedPolicy tpm2.Digest, authKey *tpm2.Public, policyRef tpm2.Nonce, signer crypto.Signer, opts crypto.SignerOpts) error {
+	d.AuthorizedPolicy = approvedPolicy
+
+	auth, err := policyutil.SignPolicyAuthorization(rand.Reader, approvedPolicy, authKey, policyRef, signer, opts)
+	if err != nil {
+		return err
+	}
+	d.AuthorizedPolicySignature = auth.Signature
+	return nil
+}
+
+func (d *pcrPolicyData_v3) executePcrAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
+	if err := tpm.PolicyPCR(session, nil, d.Selection); err != nil {
+		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyPCR, 2) {
+			return policyDataError{errors.New("invalid PCR selection")}
+		}
+		return err
+	}
+
+	tree, err := d.OrData.resolve()
+	if err != nil {
+		return policyDataError{xerrors.Errorf("cannot resolve PolicyOR tree: %w", err)}
+	}
+	if err := tree.executeAssertions(tpm, session); err != nil {
+		err = xerrors.Errorf("cannot execute PolicyOR assertions: %w", err)
+		switch {
+		case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1):
+			// A digest list in the tree is invalid.
+			return policyDataError{errors.New("cannot execute PolicyOR assertions: invalid data")}
+		case xerrors.Is(err, errSessionDigestNotFound):
+			// Current session digest does not appear in any leaf node.
+			return policyDataError{err}
+		default:
+			// Unexpected error
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (d *pcrPolicyData_v3) executeRevocationCheck(tpm *tpm2.TPMContext, counter tpm2.ResourceContext, updateKey *tpm2.Public, policySession tpm2.SessionContext) error {
+	operandB := make([]byte, 8)
+	binary.BigEndian.PutUint64(operandB, d.PolicySequence)
+
+	// XXX(chrisccoulson): This is the 3rd session we open here, with all 3 loaded
+	// on the TPM. PC Client TPMs are only guaranteed to support 3 loaded sessions,
+	// so we're pushing things a bit close to the wire here. This code does execute
+	// during early boot, but it might be better to make the HMAC session associated
+	// with the TPM connection unloaded by default (context saved), and only context
+	// load it when needed.
+	revocationCheckSession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, counter.Name().Algorithm())
+	if err != nil {
+		return fmt.Errorf("cannot create policy session for revocation check: %w", err)
+	}
+	defer tpm.FlushContext(revocationCheckSession)
+
+	authPolicies, err := computeV3PcrPolicyCounterAuthPolicies(counter.Name().Algorithm(), updateKey)
+	if err != nil {
+		return policyDataError{fmt.Errorf("cannot compute auth policies for PCR policy counter: %w", err)}
+	}
+	if err := tpm.PolicyCommandCode(revocationCheckSession, tpm2.CommandPolicyNV); err != nil {
+		return err
+	}
+	if err := tpm.PolicyOR(revocationCheckSession, authPolicies); err != nil {
+		return err
+	}
+
+	if err := tpm.PolicyNV(counter, counter, policySession, operandB, 0, tpm2.OpUnsignedLE, revocationCheckSession); err != nil {
+		switch {
+		case tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV):
+			// The PCR policy has been revoked.
+			return policyDataError{errors.New("the PCR policy has been revoked")}
+		case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1):
+			// Either StaticData.PCRPolicyCounterAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
+			return policyDataError{errors.New("invalid PCR policy counter or associated authorization policy metadata")}
+		}
+		return xerrors.Errorf("cannot complete PCR policy revocation check: %w", err)
+	}
+
+	return nil
+}
 
 // keyDataPolicy_v3 represents version 3 of the metadata for executing a
 // policy session.
@@ -223,6 +363,8 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 		return policyDataError{fmt.Errorf("invalid handle %v for PCR policy counter", pcrPolicyCounterHandle)}
 	}
 
+	authPublicKey := p.StaticData.AuthPublicKey
+
 	var pcrPolicyCounter tpm2.ResourceContext
 	if pcrPolicyCounterHandle != tpm2.HandleNull {
 		var err error
@@ -235,12 +377,11 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 			return err
 		}
 
-		if err := p.PCRData.executeRevocationCheck(tpm, pcrPolicyCounter, policySession, nil); err != nil {
+		if err := p.PCRData.executeRevocationCheck(tpm, pcrPolicyCounter, authPublicKey, policySession); err != nil {
 			return err
 		}
 	}
 
-	authPublicKey := p.StaticData.AuthPublicKey
 	authorizeKey, err := tpm.LoadExternal(nil, authPublicKey, tpm2.HandleOwner)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandLoadExternal, 2) {
