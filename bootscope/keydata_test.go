@@ -968,7 +968,7 @@ func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyDat
 	return h.recoverKeys(handle, encryptedPayload)
 }
 
-func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, new []byte) ([]byte, error) {
+func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, new []byte, context any) ([]byte, error) {
 	if err := h.checkState(); err != nil {
 		return nil, err
 	}
