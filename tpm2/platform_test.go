@@ -76,7 +76,7 @@ func (s *platformSuite) TestRecoverKeysIntegrated(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "foo",
 	}
 
 	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
@@ -92,7 +92,7 @@ func (s *platformSuite) TestRecoverKeysWithPassphraseIntegrated(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "bar",
 	}
 
 	passphraseParams := &PassphraseProtectKeyParams{
@@ -112,7 +112,7 @@ func (s *platformSuite) TestRecoverKeysWithPassphraseIntegratedPBKDF2(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "foo",
 	}
 
 	passphraseParams := &PassphraseProtectKeyParams{
@@ -136,7 +136,7 @@ func (s *platformSuite) TestRecoverKeysWithBadPassphraseIntegrated(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "foo",
 	}
 
 	passphraseParams := &PassphraseProtectKeyParams{
@@ -154,7 +154,7 @@ func (s *platformSuite) TestChangePassphraseIntegrated(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "foo",
 	}
 
 	passphraseParams := &PassphraseProtectKeyParams{
@@ -176,7 +176,7 @@ func (s *platformSuite) TestChangePassphraseWithBadPassphraseIntegrated(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "foo",
 	}
 
 	passphraseParams := &PassphraseProtectKeyParams{
@@ -217,6 +217,7 @@ func (s *platformSuite) testRecoverKeys(c *C, params *ProtectKeyParams) {
 	platformKeyData := &secboot.PlatformKeyData{
 		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
+		Role:          params.Role,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),
 	}
@@ -239,19 +240,31 @@ func (s *platformSuite) TestRecoverKeysSimplePCRProfile(c *C) {
 	s.testRecoverKeys(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "foo",
 	})
 }
 
 func (s *platformSuite) TestRecoverKeysNilPCRProfile(c *C) {
 	s.testRecoverKeys(c, &ProtectKeyParams{
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)})
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "foo",
+	})
 }
 
 func (s *platformSuite) TestRecoverKeysNoPCRPolicyCounter(c *C) {
 	s.testRecoverKeys(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		Role:                   "foo",
+	})
+}
+
+func (s *platformSuite) TestRecoverKeysDifferentRole(c *C) {
+	s.testRecoverKeys(c, &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "bar",
+	})
 }
 
 func (s *platformSuite) TestRecoverKeysTPMLockout(c *C) {
@@ -412,7 +425,7 @@ func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*s
 	_, err = handler.RecoverKeys(&secboot.PlatformKeyData{
 		Generation:    k.Generation(),
 		AuthMode:      secboot.AuthModeNone,
-		Role:          "",
+		Role:          "foo",
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		EncodedHandle: platformHandle},
 		s.lastEncryptedPayload)
@@ -525,7 +538,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "foo",
 	}
 
 	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
@@ -537,6 +550,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 	platformKeyData := &secboot.PlatformKeyData{
 		Generation:    k.Generation(),
 		EncodedHandle: platformHandle,
+		Role:          "foo",
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),
 	}

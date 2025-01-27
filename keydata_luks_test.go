@@ -59,7 +59,7 @@ func (s *keyDataLuksSuite) TearDownTest(c *C) {
 
 var _ = Suite(&keyDataLuksSuite{})
 
-func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id int, keyslot int, name string, priority int, creationParams *KeyParams, nmodels int) {
+func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id int, keyslot int, name string, priority int, creationParams *KeyParams) {
 	t, exists := s.luks2.devices[path].tokens[id]
 	c.Assert(exists, testutil.IsTrue)
 
@@ -83,7 +83,7 @@ func (s *keyDataLuksSuite) checkKeyDataJSONFromLUKSToken(c *C, path string, id i
 	keyData, ok := token.Params["ubuntu_fde_data"].(map[string]interface{})
 	c.Assert(ok, testutil.IsTrue)
 
-	s.checkKeyDataJSONDecodedAuthModeNone(c, keyData, creationParams, nmodels)
+	s.checkKeyDataJSONDecodedAuthModeNone(c, keyData, creationParams)
 }
 
 type testKeyDataLuksWriterData struct {
@@ -97,7 +97,7 @@ type testKeyDataLuksWriterData struct {
 
 func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	s.luks2.devices[data.path] = &mockLUKS2Container{
 		tokens: map[int]luks2.Token{
@@ -125,7 +125,7 @@ func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
 		fmt.Sprint("ImportToken(", data.path, ",", &luks2.ImportTokenOptions{Id: data.id, Replace: true}, ")"),
 	})
 
-	s.checkKeyDataJSONFromLUKSToken(c, data.path, data.id, data.slot, data.name, data.setPriority, protected, 0)
+	s.checkKeyDataJSONFromLUKSToken(c, data.path, data.id, data.slot, data.name, data.setPriority, protected)
 }
 
 func (s *keyDataLuksSuite) TestWriter(c *C) {
@@ -238,7 +238,7 @@ type testKeyDataLuksReaderData struct {
 
 func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	s.luks2.devices[data.path] = &mockLUKS2Container{
 		tokens: map[int]luks2.Token{
@@ -361,7 +361,7 @@ func (s *keyDataLuksUnmockedSuite) TestReaderAndWriter(c *C) {
 	path := luks2test.CreateEmptyDiskImage(c, 20)
 
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 	c.Check(InitializeLUKS2Container(path, "", unlockKey, nil), IsNil)
 
 	keyData, err := NewKeyData(protected)
@@ -385,6 +385,7 @@ func (s *keyDataLuksUnmockedSuite) TestReaderAndWriter(c *C) {
 	keyData, err = ReadKeyData(r)
 	c.Assert(err, IsNil)
 	c.Check(keyData.ReadableName(), Equals, path+":default")
+	c.Check(keyData.Role(), Equals, "foo")
 
 	id, err := keyData.UniqueID()
 	c.Check(err, IsNil)

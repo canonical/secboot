@@ -55,6 +55,7 @@ type mockPlatformKeyDataHandle struct {
 	IV                 []byte      `json:"iv"`
 	AuthKeyHMAC        []byte      `json:"auth-key-hmac"`
 	ExpectedGeneration int         `json:"exp-generation"`
+	ExpectedRole       string      `json:"exp-role"`
 	ExpectedKDFAlg     crypto.Hash `json:"exp-kdf_alg"`
 	ExpectedAuthMode   AuthMode    `json:"exp-auth-mode"`
 }
@@ -89,6 +90,10 @@ func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mo
 
 	if data.Generation != handle.ExpectedGeneration {
 		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("unexpected generation")}
+	}
+
+	if data.Role != handle.ExpectedRole {
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("unexpected role")}
 	}
 
 	if data.Generation > 1 {
@@ -294,7 +299,7 @@ func (s *keyDataTestBase) newPrimaryKey(c *C, sz1 int) PrimaryKey {
 	return primaryKey
 }
 
-func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyParams, unlockKey DiskUnlockKey) {
+func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, role string, kdfAlg crypto.Hash) (out *KeyParams, unlockKey DiskUnlockKey) {
 	unique := make([]byte, len(primaryKey))
 	_, err := rand.Read(unique)
 	c.Assert(err, IsNil)
@@ -310,6 +315,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg cr
 		Key:                k[:32],
 		IV:                 k[32:],
 		ExpectedGeneration: KeyDataGeneration,
+		ExpectedRole:       role,
 		ExpectedKDFAlg:     kdfAlg,
 		ExpectedAuthMode:   AuthModeNone,
 	}
@@ -325,6 +331,7 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg cr
 	out = &KeyParams{
 		PlatformName:     s.mockPlatformName,
 		Handle:           &handle,
+		Role:             role,
 		EncryptedPayload: make([]byte, len(payload)),
 		KDFAlg:           kdfAlg}
 	stream.XORKeyStream(out.EncryptedPayload, payload)
@@ -332,15 +339,13 @@ func (s *keyDataTestBase) mockProtectKeys(c *C, primaryKey PrimaryKey, kdfAlg cr
 	return out, unlockKey
 }
 
-func (s *keyDataTestBase) mockProtectKeysWithPassphrase(c *C, primaryKey PrimaryKey, kdfOptions KDFOptions, authKeySize int, KDFAlg crypto.Hash, modelAuthHash crypto.Hash) (out *KeyWithPassphraseParams, unlockKey DiskUnlockKey) {
-	kp, unlockKey := s.mockProtectKeys(c, primaryKey, KDFAlg, modelAuthHash)
+func (s *keyDataTestBase) mockProtectKeysWithPassphrase(c *C, primaryKey PrimaryKey, role string, kdfOptions KDFOptions, authKeySize int, kdfAlg crypto.Hash) (out *KeyWithPassphraseParams, unlockKey DiskUnlockKey) {
+	kp, unlockKey := s.mockProtectKeys(c, primaryKey, role, kdfAlg)
 
 	expectedHandle, ok := kp.Handle.(*mockPlatformKeyDataHandle)
 	c.Assert(ok, testutil.IsTrue)
 
 	expectedHandle.ExpectedAuthMode = AuthModePassphrase
-	expectedHandle.ExpectedGeneration = KeyDataGeneration
-	expectedHandle.ExpectedKDFAlg = KDFAlg
 
 	if kdfOptions == nil {
 		var defaultOptions Argon2Options
@@ -411,7 +416,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedLegacyFields(c *C, j map[string
 	c.Check(digest, HasLen, h.Size())
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{}, creationParams *KeyParams, nmodels int) {
+func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{}, creationParams *KeyParams) {
 	c.Check(j["platform_name"], Equals, creationParams.PlatformName)
 
 	expectedHandle, ok := creationParams.Handle.(*mockPlatformKeyDataHandle)
@@ -426,16 +431,25 @@ func (s *keyDataTestBase) checkKeyDataJSONCommon(c *C, j map[string]interface{},
 	c.Check(handle.Key, DeepEquals, expectedHandle.Key)
 	c.Check(handle.IV, DeepEquals, expectedHandle.IV)
 
-	_, ok = j["kdf_alg"].(string)
+	kdf, ok := j["kdf_alg"].(string)
 	c.Check(ok, testutil.IsTrue)
+	expectedKdfJSON, err := json.Marshal(HashAlg(creationParams.KDFAlg))
+	c.Assert(err, IsNil)
+	var expectedKdf string
+	c.Assert(json.Unmarshal(expectedKdfJSON, &expectedKdf), IsNil)
+	c.Check(kdf, Equals, expectedKdf)
+
+	role, ok := j["role"].(string)
+	c.Check(ok, testutil.IsTrue)
+	c.Check(role, Equals, creationParams.Role)
 
 	generation, ok := j["generation"].(float64)
 	c.Check(ok, testutil.IsTrue)
 	c.Check(generation, Equals, float64(expectedHandle.ExpectedGeneration))
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModeNone(c *C, j map[string]interface{}, creationParams *KeyParams, nmodels int) {
-	s.checkKeyDataJSONCommon(c, j, creationParams, nmodels)
+func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModeNone(c *C, j map[string]interface{}, creationParams *KeyParams) {
+	s.checkKeyDataJSONCommon(c, j, creationParams)
 
 	str, ok := j["encrypted_payload"].(string)
 	c.Check(ok, testutil.IsTrue)
@@ -446,16 +460,16 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModeNone(c *C, j map[string
 	c.Check(j, Not(testutil.HasKey), "passphrase_params")
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModeNone(c *C, r io.Reader, creationParams *KeyParams, nmodels int) {
+func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModeNone(c *C, r io.Reader, creationParams *KeyParams) {
 	var j map[string]interface{}
 
 	d := json.NewDecoder(r)
 	c.Check(d.Decode(&j), IsNil)
 
-	s.checkKeyDataJSONDecodedAuthModeNone(c, j, creationParams, nmodels)
+	s.checkKeyDataJSONDecodedAuthModeNone(c, j, creationParams)
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[string]interface{}, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts KDFOptions) {
+func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[string]interface{}, creationParams *KeyWithPassphraseParams, passphrase string, kdfOpts KDFOptions) {
 	if kdfOpts == nil {
 		var def Argon2Options
 		kdfOpts = &def
@@ -464,7 +478,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	kdfParams, err := KDFOptionsKdfParams(kdfOpts, 0)
 	c.Assert(err, IsNil)
 
-	s.checkKeyDataJSONCommon(c, j, &creationParams.KeyParams, nmodels)
+	s.checkKeyDataJSONCommon(c, j, &creationParams.KeyParams)
 
 	p, ok := j["passphrase_params"].(map[string]interface{})
 	c.Check(ok, testutil.IsTrue)
@@ -577,13 +591,13 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 	c.Check(payload, DeepEquals, creationParams.EncryptedPayload)
 }
 
-func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModePassphrase(c *C, r io.Reader, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts KDFOptions) {
+func (s *keyDataTestBase) checkKeyDataJSONFromReaderAuthModePassphrase(c *C, r io.Reader, creationParams *KeyWithPassphraseParams, passphrase string, kdfOpts KDFOptions) {
 	var j map[string]interface{}
 
 	d := json.NewDecoder(r)
 	c.Check(d.Decode(&j), IsNil)
 
-	s.checkKeyDataJSONDecodedAuthModePassphrase(c, j, creationParams, nmodels, passphrase, kdfOpts)
+	s.checkKeyDataJSONDecodedAuthModePassphrase(c, j, creationParams, passphrase, kdfOpts)
 }
 
 type keyDataSuite struct {
@@ -603,18 +617,18 @@ func (s *keyDataSuite) TearDownTest(c *C) {
 
 var _ = Suite(&keyDataSuite{})
 
-func (s *keyDataSuite) checkKeyDataJSONAuthModeNone(c *C, keyData *KeyData, creationParams *KeyParams, nmodels int) {
+func (s *keyDataSuite) checkKeyDataJSONAuthModeNone(c *C, keyData *KeyData, creationParams *KeyParams) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	s.checkKeyDataJSONFromReaderAuthModeNone(c, w.Reader(), creationParams, nmodels)
+	s.checkKeyDataJSONFromReaderAuthModeNone(c, w.Reader(), creationParams)
 }
 
-func (s *keyDataSuite) checkKeyDataJSONAuthModePassphrase(c *C, keyData *KeyData, creationParams *KeyWithPassphraseParams, nmodels int, passphrase string, kdfOpts KDFOptions) {
+func (s *keyDataSuite) checkKeyDataJSONAuthModePassphrase(c *C, keyData *KeyData, creationParams *KeyWithPassphraseParams, passphrase string, kdfOpts KDFOptions) {
 	w := makeMockKeyDataWriter()
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
-	s.checkKeyDataJSONFromReaderAuthModePassphrase(c, w.Reader(), creationParams, nmodels, passphrase, kdfOpts)
+	s.checkKeyDataJSONFromReaderAuthModePassphrase(c, w.Reader(), creationParams, passphrase, kdfOpts)
 }
 
 type testKeyPayloadData struct {
@@ -724,7 +738,7 @@ func (h *keyDataHasher) Commit() error { return nil }
 
 func (s *keyDataSuite) TestKeyDataID(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -739,7 +753,7 @@ func (s *keyDataSuite) TestKeyDataID(c *C) {
 
 func (s *keyDataSuite) TestNewKeyData(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 	keyData, err := NewKeyData(protected)
 	c.Check(keyData, NotNil)
 	c.Check(err, IsNil)
@@ -747,7 +761,7 @@ func (s *keyDataSuite) TestNewKeyData(c *C) {
 
 func (s *keyDataSuite) TestKeyDataPlatformName(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 	c.Check(keyData.PlatformName(), Equals, s.mockPlatformName)
@@ -755,7 +769,7 @@ func (s *keyDataSuite) TestKeyDataPlatformName(c *C) {
 
 func (s *keyDataSuite) TestUnmarshalPlatformHandle(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
@@ -767,7 +781,7 @@ func (s *keyDataSuite) TestUnmarshalPlatformHandle(c *C) {
 
 func (s *keyDataSuite) TestMarshalAndUpdatePlatformHandle(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 
@@ -778,12 +792,12 @@ func (s *keyDataSuite) TestMarshalAndUpdatePlatformHandle(c *C) {
 
 	protected.Handle = handle
 
-	s.checkKeyDataJSONAuthModeNone(c, keyData, protected, 0)
+	s.checkKeyDataJSONAuthModeNone(c, keyData, protected)
 }
 
 func (s *keyDataSuite) TestRecoverKeys(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -797,7 +811,7 @@ func (s *keyDataSuite) TestRecoverKeys(c *C) {
 
 func (s *keyDataSuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	protected.PlatformName = "foo"
 
@@ -811,7 +825,7 @@ func (s *keyDataSuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 
 func (s *keyDataSuite) TestRecoverKeysInvalidData(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	protected.Handle = []byte("\"\"")
 
@@ -827,7 +841,7 @@ func (s *keyDataSuite) testRecoverKeysWithPassphrase(c *C, passphrase string) {
 	s.handler.passphraseSupport = true
 
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, nil, 32, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", nil, 32, crypto.SHA256)
 
 	keyData, err := NewKeyDataWithPassphrase(protected, passphrase)
 	c.Assert(err, IsNil)
@@ -850,7 +864,7 @@ func (s *keyDataSuite) TestRecoverKeysWithPassphrasePBKDF2(c *C) {
 	s.handler.passphraseSupport = true
 
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, &PBKDF2Options{}, 32, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", &PBKDF2Options{}, 32, crypto.SHA256)
 	keyData, err := NewKeyDataWithPassphrase(protected, "passphrase")
 	c.Assert(err, IsNil)
 
@@ -977,7 +991,7 @@ func (s *keyDataSuite) TestRecoverKeysWithPassphraseUnavailableKDF(c *C) {
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseAuthModeNone(c *C) {
 	// Test that RecoverKeyWithPassphrase for a key without a passphrase set fails
 	auxKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, auxKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, auxKey, "", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -991,7 +1005,7 @@ func (s *keyDataSuite) TestNewKeyDataWithPassphraseNotSupported(c *C) {
 	// Test that creation of a new key data with passphrase fails when the
 	// platform handler doesn't have passphrase support.
 	primaryKey := s.newPrimaryKey(c, 32)
-	passphraseParams, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, nil, 32, crypto.SHA256, crypto.SHA256)
+	passphraseParams, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, "", nil, 32, crypto.SHA256)
 
 	_, err := NewKeyDataWithPassphrase(passphraseParams, "passphrase")
 	c.Check(err, ErrorMatches, "cannot set passphrase: not supported")
@@ -1087,14 +1101,14 @@ func (s *keyDataSuite) testChangePassphrase(c *C, data *testChangePassphraseData
 	s.handler.passphraseSupport = true
 
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, data.kdfOptions, 32, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", data.kdfOptions, 32, crypto.SHA256)
 
 	keyData, err := NewKeyDataWithPassphrase(protected, data.passphrase1)
 	c.Check(err, IsNil)
 
 	c.Check(keyData.ChangePassphrase(data.passphrase1, data.passphrase2), IsNil)
 
-	s.checkKeyDataJSONAuthModePassphrase(c, keyData, protected, 0, data.passphrase2, data.kdfOptions)
+	s.checkKeyDataJSONAuthModePassphrase(c, keyData, protected, data.passphrase2, data.kdfOptions)
 }
 
 func (s *keyDataSuite) TestChangePassphrase(c *C) {
@@ -1146,14 +1160,14 @@ func (s *keyDataSuite) TestChangePassphraseWrongPassphrase(c *C) {
 	kdfOptions := &Argon2Options{
 		TargetDuration: 100 * time.Millisecond,
 	}
-	protected, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, kdfOptions, 32, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", kdfOptions, 32, crypto.SHA256)
 
 	keyData, err := NewKeyDataWithPassphrase(protected, "12345678")
 	c.Check(err, IsNil)
 
 	c.Check(keyData.ChangePassphrase("passphrase", "12345678"), Equals, ErrInvalidPassphrase)
 
-	s.checkKeyDataJSONAuthModePassphrase(c, keyData, protected, 0, "12345678", kdfOptions)
+	s.checkKeyDataJSONAuthModePassphrase(c, keyData, protected, "12345678", kdfOptions)
 }
 
 type testWriteAtomicData struct {
@@ -1163,12 +1177,12 @@ type testWriteAtomicData struct {
 }
 
 func (s *keyDataSuite) testWriteAtomic(c *C, data *testWriteAtomicData) {
-	s.checkKeyDataJSONAuthModeNone(c, data.keyData, data.params, data.nmodels)
+	s.checkKeyDataJSONAuthModeNone(c, data.keyData, data.params)
 }
 
 func (s *keyDataSuite) TestWriteAtomic1(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -1204,7 +1218,7 @@ func (s *keyDataSuite) testReadKeyData(c *C, data *testReadKeyDataData) {
 
 func (s *keyDataSuite) TestReadKeyData1(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -1225,7 +1239,7 @@ func (s *keyDataSuite) TestReadKeyData1(c *C) {
 
 func (s *keyDataSuite) TestReadKeyData2(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -1246,7 +1260,7 @@ func (s *keyDataSuite) TestReadKeyData2(c *C) {
 
 func (s *keyDataSuite) TestReadKeyData3(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -1269,7 +1283,7 @@ func (s *keyDataSuite) TestReadKeyData3(c *C) {
 
 func (s *keyDataSuite) TestReadKeyData4(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -1326,7 +1340,7 @@ func (s *keyDataSuite) testLegacyWriteAtomic(c *C, data *testWriteAtomicData) {
 	d := json.NewDecoder(w.Reader())
 	c.Check(d.Decode(&j), IsNil)
 
-	s.checkKeyDataJSONDecodedAuthModeNone(c, j, data.params, data.nmodels)
+	s.checkKeyDataJSONDecodedAuthModeNone(c, j, data.params)
 	s.checkKeyDataJSONDecodedLegacyFields(c, j, data.params, data.nmodels)
 }
 
@@ -1597,7 +1611,7 @@ func (s *keyDataSuite) TestLegacySnapModelAuth6(c *C) {
 
 func (s *keyDataSuite) TestLegacySnapModelAuthErrorHandling(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 	keyData, err := NewKeyData(protected)
 
 	w := makeMockKeyDataWriter()

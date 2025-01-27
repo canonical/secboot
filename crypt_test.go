@@ -421,7 +421,6 @@ func (s *cryptSuite) TearDownSuite(c *C) {
 
 func (s *cryptSuite) SetUpTest(c *C) {
 	s.AddCleanup(MockUnixStat(func(devicePath string, st *unix.Stat_t) error {
-		fmt.Printf("Called mock for %s\n", devicePath)
 		s.requestedStats = append(s.requestedStats, devicePath)
 		foundSt, hasSt := s.deviceStats[devicePath]
 		if !hasSt {
@@ -433,11 +432,11 @@ func (s *cryptSuite) SetUpTest(c *C) {
 
 	s.deviceStats = map[string]unix.Stat_t{
 		"/dev/sda1": unix.Stat_t{
-			Mode: 0600|unix.S_IFBLK,
+			Mode: 0600 | unix.S_IFBLK,
 			Rdev: unix.Mkdev(8, 1),
 		},
 		"/dev/vda2": unix.Stat_t{
-			Mode: 0600|unix.S_IFBLK,
+			Mode: 0600 | unix.S_IFBLK,
 			Rdev: unix.Mkdev(9, 2),
 		},
 	}
@@ -520,7 +519,7 @@ func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expect
 func (s *cryptSuite) newMultipleNamedKeyData(c *C, names ...string) (keyData []*KeyData, keys []DiskUnlockKey, primaryKeys []PrimaryKey) {
 	for _, name := range names {
 		primaryKey := s.newPrimaryKey(c, 32)
-		protected, unlockKey := s.mockProtectKeys(c, primaryKey, crypto.SHA256, crypto.SHA256)
+		protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
 
 		kd, err := NewKeyData(protected)
 		c.Assert(err, IsNil)
@@ -548,7 +547,7 @@ func (s *cryptSuite) newNamedKeyData(c *C, name string) (*KeyData, DiskUnlockKey
 func (s *cryptSuite) newMultipleNamedKeyDataWithPassphrases(c *C, passphrases []string, names ...string) (keyData []*KeyData, keys []DiskUnlockKey, primaryKeys []PrimaryKey) {
 	for i, name := range names {
 		primaryKey := s.newPrimaryKey(c, 32)
-		protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, nil, 32, crypto.SHA256, crypto.SHA256)
+		protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", nil, 32, crypto.SHA256)
 
 		kd, err := NewKeyDataWithPassphrase(protected, passphrases[i])
 		c.Assert(err, IsNil)
@@ -791,7 +790,7 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 	defer MockUnixStat(func(devicePath string, st *unix.Stat_t) error {
 		c.Check(devicePath, Equals, "/dev/sda1")
 		*st = unix.Stat_t{
-			Mode: 0600|unix.S_IFBLK,
+			Mode: 0600 | unix.S_IFBLK,
 			Rdev: unix.Mkdev(8, 1),
 		}
 		return nil
@@ -4011,11 +4010,11 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyDataErrorHandling15(
 func (s *cryptSuite) TestActivateVolumeWithLegacyPaths(c *C) {
 	s.deviceStats = map[string]unix.Stat_t{
 		"/dev/some/path": unix.Stat_t{
-			Mode: 0600|unix.S_IFBLK,
+			Mode: 0600 | unix.S_IFBLK,
 			Rdev: unix.Mkdev(8, 1),
 		},
 		"/dev/some/legacy/path": unix.Stat_t{
-			Mode: 0600|unix.S_IFBLK,
+			Mode: 0600 | unix.S_IFBLK,
 			Rdev: unix.Mkdev(8, 1),
 		},
 	}
@@ -4033,11 +4032,11 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyPaths(c *C) {
 func (s *cryptSuite) TestActivateVolumeWithLegacyPathsError(c *C) {
 	s.deviceStats = map[string]unix.Stat_t{
 		"/dev/some/path": unix.Stat_t{
-			Mode: 0600|unix.S_IFBLK,
+			Mode: 0600 | unix.S_IFBLK,
 			Rdev: unix.Mkdev(8, 1),
 		},
 		"/dev/some/legacy/path": unix.Stat_t{
-			Mode: 0600|unix.S_IFBLK,
+			Mode: 0600 | unix.S_IFBLK,
 			// different node
 			Rdev: unix.Mkdev(8, 2),
 		},
