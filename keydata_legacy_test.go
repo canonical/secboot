@@ -34,7 +34,7 @@ var _ = Suite(&keyDataLegacySuite{})
 func (s *keyDataLegacySuite) SetUpSuite(c *C) {
 	s.handler = &mockPlatformKeyDataHandler{}
 	s.mockPlatformName = "mock-legacy"
-	RegisterPlatformKeyDataHandler(s.mockPlatformName, s.handler)
+	RegisterPlatformKeyDataHandler(s.mockPlatformName, s.handler, 0)
 }
 
 func (s *keyDataLegacySuite) SetUpTest(c *C) {
@@ -43,7 +43,7 @@ func (s *keyDataLegacySuite) SetUpTest(c *C) {
 }
 
 func (s *keyDataLegacySuite) TearDownSuite(c *C) {
-	RegisterPlatformKeyDataHandler(s.mockPlatformName, nil)
+	RegisterPlatformKeyDataHandler(s.mockPlatformName, nil, 0)
 }
 
 func (s *keyDataLegacySuite) newKeyDataKeys(c *C, sz1, sz2 int) (DiskUnlockKey, PrimaryKey) {

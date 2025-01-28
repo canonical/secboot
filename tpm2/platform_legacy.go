@@ -157,5 +157,7 @@ func NewKeyDataFromSealedKeyObjectFile(path string) (*secboot.KeyData, error) {
 }
 
 func init() {
-	secboot.RegisterPlatformKeyDataHandler(legacyPlatformName, &legacyPlatformKeyDataHandler{})
+	// Just use the flags to describe the current version of this platform.
+	flags := secboot.PlatformKeyDataHandlerFlags(0).AddPlatformFlags(2)
+	secboot.RegisterPlatformKeyDataHandler(legacyPlatformName, &legacyPlatformKeyDataHandler{}, flags)
 }

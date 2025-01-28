@@ -478,8 +478,8 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 }
 
 func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string, platformContext any) error {
-	handler := handlers[d.data.PlatformName]
-	if handler == nil {
+	handlerInfo, exists := handlers[d.data.PlatformName]
+	if !exists {
 		return ErrNoPlatformHandlerRegistered
 	}
 
@@ -493,7 +493,7 @@ func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string
 		return fmt.Errorf("unexpected encryption algorithm \"%s\"", d.data.PassphraseParams.Encryption)
 	}
 
-	handle, err := handler.ChangeAuthKey(d.platformKeyData(), oldAuthKey, authKey, platformContext)
+	handle, err := handlerInfo.handler.ChangeAuthKey(d.platformKeyData(), oldAuthKey, authKey, platformContext)
 	if err != nil {
 		return err
 	}
@@ -658,12 +658,12 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, PrimaryKey, error) {
 		return nil, nil, errors.New("cannot recover key without authorization")
 	}
 
-	handler := handlers[d.data.PlatformName]
-	if handler == nil {
+	handlerInfo, exists := handlers[d.data.PlatformName]
+	if !exists {
 		return nil, nil, ErrNoPlatformHandlerRegistered
 	}
 
-	c, err := handler.RecoverKeys(d.platformKeyData(), d.data.EncryptedPayload)
+	c, err := handlerInfo.handler.RecoverKeys(d.platformKeyData(), d.data.EncryptedPayload)
 	if err != nil {
 		return nil, nil, processPlatformHandlerError(err)
 	}
@@ -676,8 +676,8 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, P
 		return nil, nil, errors.New("cannot recover key with passphrase")
 	}
 
-	handler := handlers[d.data.PlatformName]
-	if handler == nil {
+	handlerInfo, exists := handlers[d.data.PlatformName]
+	if !exists {
 		return nil, nil, ErrNoPlatformHandlerRegistered
 	}
 
@@ -686,7 +686,7 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, P
 		return nil, nil, err
 	}
 
-	c, err := handler.RecoverKeysWithAuthKey(d.platformKeyData(), payload, key)
+	c, err := handlerInfo.handler.RecoverKeysWithAuthKey(d.platformKeyData(), payload, key)
 	if err != nil {
 		return nil, nil, processPlatformHandlerError(err)
 	}

@@ -995,7 +995,7 @@ type keyDataScopeSuite struct {
 
 func (s *keyDataScopeSuite) SetUpTest(c *C) {
 	s.handler = &mockPlatformKeyDataHandler{}
-	RegisterPlatformKeyDataHandler("mock-scope", s.handler)
+	RegisterPlatformKeyDataHandler("mock-scope", s.handler, 0)
 	s.handler.scopes = nil
 }
 
