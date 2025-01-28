@@ -176,6 +176,18 @@ func (d *pcrPolicyData_v3) executeRevocationCheck(tpm *tpm2.TPMContext, counter 
 	operandB := make([]byte, 8)
 	binary.BigEndian.PutUint64(operandB, d.PolicySequence)
 
+	// We create a new policy session in order to authorize running TPM2_PolicyNV
+	// against the PCR policy counter NV index, which has a policy branch that
+	// permits using TPM2_PolicyNV without any additional authorization or requirements
+	// (it only contains a TPM2_PolicyCommandCode assertion).
+	// In the future, when policies are executed with policyutil.Policy.Execute,
+	// having branches that permit TPM2_PolicyNV and TPM2_NV_Read without any extra
+	// authorization aids in the automatic branch selection.
+	//
+	// The TPM2_PolicyNV assertion is executed on and updates the main policy session
+	// supplied to this function - this extra policy session is just to permit the
+	// TPM2_PolicyNV assertion to be executed against the NV counter index.
+	//
 	// XXX(chrisccoulson): This is the 3rd session we open here, with all 3 loaded
 	// on the TPM. PC Client TPMs are only guaranteed to support 3 loaded sessions,
 	// so we're pushing things a bit close to the wire here. This code does execute
