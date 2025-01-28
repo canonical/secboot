@@ -102,13 +102,15 @@ func (s *policyV3SuiteNoTPM) TestPCRPolicyCounterHandle(c *C) {
 
 func (s *policyV3SuiteNoTPM) TestPCRPolicySequence(c *C) {
 	var data KeyDataPolicy = &KeyDataPolicy_v3{
-		PCRData: &PcrPolicyData_v3{
-			PolicySequence: 10}}
+		PCRData: NewPcrPolicyData_v3(
+			&PcrPolicyData_v2{
+				PolicySequence: 10})}
 	c.Check(data.PCRPolicySequence(), Equals, uint64(10))
 
 	data = &KeyDataPolicy_v3{
-		PCRData: &PcrPolicyData_v3{
-			PolicySequence: 500}}
+		PCRData: NewPcrPolicyData_v3(
+			&PcrPolicyData_v2{
+				PolicySequence: 500})}
 	c.Check(data.PCRPolicySequence(), Equals, uint64(500))
 }
 

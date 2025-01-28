@@ -745,8 +745,9 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 			StaticData: &StaticPolicyData_v3{
 				AuthPublicKey:          key,
 				PCRPolicyCounterHandle: index},
-			PCRData: &PcrPolicyData_v3{
-				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}
+			PCRData: NewPcrPolicyData_v3(
+				&PcrPolicyData_v2{
+					AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}})}
 
 		mockPolicyDigest = make([]byte, alg.Size())
 		rand.Read(mockPolicyDigest)

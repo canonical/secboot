@@ -90,16 +90,17 @@ func (s *keyDataV3Suite) newMockKeyData(c *C, pcrPolicyCounterHandle tpm2.Handle
 
 	template.AuthPolicy = policyDigest
 
-	policyData.(*KeyDataPolicy_v3).PCRData = &PcrPolicyData_v3{
-		PolicySequence:   policyCount,
-		AuthorizedPolicy: make(tpm2.Digest, 32),
-		AuthorizedPolicySignature: &tpm2.Signature{
-			SigAlg: tpm2.SigSchemeAlgECDSA,
-			Signature: &tpm2.SignatureU{
-				ECDSA: &tpm2.SignatureECDSA{
-					Hash:       tpm2.HashAlgorithmSHA256,
-					SignatureR: make(tpm2.ECCParameter, 32),
-					SignatureS: make(tpm2.ECCParameter, 32)}}}}
+	policyData.(*KeyDataPolicy_v3).PCRData = NewPcrPolicyData_v3(
+		&PcrPolicyData_v2{
+			PolicySequence:   policyCount,
+			AuthorizedPolicy: make(tpm2.Digest, 32),
+			AuthorizedPolicySignature: &tpm2.Signature{
+				SigAlg: tpm2.SigSchemeAlgECDSA,
+				Signature: &tpm2.SignatureU{
+					ECDSA: &tpm2.SignatureECDSA{
+						Hash:       tpm2.HashAlgorithmSHA256,
+						SignatureR: make(tpm2.ECCParameter, 32),
+						SignatureS: make(tpm2.ECCParameter, 32)}}}})
 
 	sensitive := tpm2.SensitiveCreate{Data: secret}
 
@@ -130,18 +131,19 @@ func (s *keyDataV3Suite) newMockImportableKeyData(c *C, role string, requireAuth
 
 	pub.AuthPolicy = policy
 
-	policyData.(*KeyDataPolicy_v3).PCRData = &PcrPolicyData_v3{
-		Selection:        tpm2.PCRSelectionList{},
-		OrData:           PolicyOrData_v0{},
-		PolicySequence:   0,
-		AuthorizedPolicy: make(tpm2.Digest, 32),
-		AuthorizedPolicySignature: &tpm2.Signature{
-			SigAlg: tpm2.SigSchemeAlgECDSA,
-			Signature: &tpm2.SignatureU{
-				ECDSA: &tpm2.SignatureECDSA{
-					Hash:       tpm2.HashAlgorithmSHA256,
-					SignatureR: make(tpm2.ECCParameter, 32),
-					SignatureS: make(tpm2.ECCParameter, 32)}}}}
+	policyData.(*KeyDataPolicy_v3).PCRData = NewPcrPolicyData_v3(
+		&PcrPolicyData_v2{
+			Selection:        tpm2.PCRSelectionList{},
+			OrData:           PolicyOrData_v0{},
+			PolicySequence:   0,
+			AuthorizedPolicy: make(tpm2.Digest, 32),
+			AuthorizedPolicySignature: &tpm2.Signature{
+				SigAlg: tpm2.SigSchemeAlgECDSA,
+				Signature: &tpm2.SignatureU{
+					ECDSA: &tpm2.SignatureECDSA{
+						Hash:       tpm2.HashAlgorithmSHA256,
+						SignatureR: make(tpm2.ECCParameter, 32),
+						SignatureS: make(tpm2.ECCParameter, 32)}}}})
 
 	srkPub, _, _, err := s.TPM().ReadPublic(s.primary)
 	c.Assert(err, IsNil)

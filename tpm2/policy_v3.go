@@ -167,88 +167,9 @@ type policyOrData_v3 = policyOrData_v0
 // executing a policy session, and can be updated. It has the same format
 // as version 2.
 type pcrPolicyData_v3 struct {
-	Selection                 tpm2.PCRSelectionList
-	OrData                    policyOrData_v3
-	PolicySequence            uint64
-	AuthorizedPolicy          tpm2.Digest
-	AuthorizedPolicySignature *tpm2.Signature
-}
-
-func (d *pcrPolicyData_v3) addPcrAssertions(alg tpm2.HashAlgorithmId, pcrs tpm2.PCRSelectionList, digests tpm2.DigestList) (*policyutil.PolicyBuilder, error) {
-	// Compute the policy digest that would result from a TPM2_PolicyPCR assertion for each condition
-	var orDigests tpm2.DigestList
-
-	d.Selection = pcrs
-
-	for i, digest := range digests {
-		builder := policyutil.NewPolicyBuilder(alg)
-		builder.RootBranch().PolicyPCRDigest(digest, d.Selection)
-		orDigest, err := builder.Digest()
-		if err != nil {
-			return nil, fmt.Errorf("cannot compute OR digest for PCR digest %d: %w", i, err)
-		}
-		orDigests = append(orDigests, orDigest)
-
-	}
-
-	orTree, rootDigests, err := newPolicyOrTree(alg, orDigests)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot create tree for PolicyOR digests: %w", err)
-	}
-	d.OrData = newPolicyOrDataV0(orTree)
-
-	builder := policyutil.NewPolicyBuilder(alg)
-	builder.RootBranch().PolicyOR(rootDigests...)
-
-	return builder, nil
-}
-
-func (d *pcrPolicyData_v3) addRevocationCheck(builder *policyutil.PolicyBuilder, policyCounter *tpm2.NVPublic, policySequence uint64) {
-	operandB := make([]byte, 8)
-	binary.BigEndian.PutUint64(operandB, policySequence)
-	builder.RootBranch().PolicyNV(policyCounter, operandB, 0, tpm2.OpUnsignedLE)
-	d.PolicySequence = policySequence
-}
-
-func (d *pcrPolicyData_v3) authorizePolicy(approvedPolicy tpm2.Digest, authKey *tpm2.Public, policyRef tpm2.Nonce, signer crypto.Signer, opts crypto.SignerOpts) error {
-	d.AuthorizedPolicy = approvedPolicy
-
-	auth, err := policyutil.SignPolicyAuthorization(rand.Reader, approvedPolicy, authKey, policyRef, signer, opts)
-	if err != nil {
-		return err
-	}
-	d.AuthorizedPolicySignature = auth.Signature
-	return nil
-}
-
-func (d *pcrPolicyData_v3) executePcrAssertions(tpm *tpm2.TPMContext, session tpm2.SessionContext) error {
-	if err := tpm.PolicyPCR(session, nil, d.Selection); err != nil {
-		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyPCR, 2) {
-			return policyDataError{errors.New("invalid PCR selection")}
-		}
-		return err
-	}
-
-	tree, err := d.OrData.resolve()
-	if err != nil {
-		return policyDataError{xerrors.Errorf("cannot resolve PolicyOR tree: %w", err)}
-	}
-	if err := tree.executeAssertions(tpm, session); err != nil {
-		err = xerrors.Errorf("cannot execute PolicyOR assertions: %w", err)
-		switch {
-		case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyOR, 1):
-			// A digest list in the tree is invalid.
-			return policyDataError{errors.New("cannot execute PolicyOR assertions: invalid data")}
-		case xerrors.Is(err, errSessionDigestNotFound):
-			// Current session digest does not appear in any leaf node.
-			return policyDataError{err}
-		default:
-			// Unexpected error
-			return err
-		}
-	}
-
-	return nil
+	// This is mostly the same as v0-v2, with the only difference being
+	// how the call to executeRevocationCheck works.
+	pcrPolicyData_v2
 }
 
 func (d *pcrPolicyData_v3) executeRevocationCheck(tpm *tpm2.TPMContext, counter tpm2.ResourceContext, updateKey *tpm2.Public, policySession tpm2.SessionContext) error {
