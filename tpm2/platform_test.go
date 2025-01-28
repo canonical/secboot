@@ -282,7 +282,7 @@ func (s *platformSuite) testRecoverKeysNoValidSRK(c *C, prepareSrk func()) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
-		Role:                   "",
+		Role:                   "foo",
 	}
 
 	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
@@ -296,6 +296,7 @@ func (s *platformSuite) testRecoverKeysNoValidSRK(c *C, prepareSrk func()) {
 	var handler PlatformKeyDataHandler
 	payload, err := handler.RecoverKeys(&secboot.PlatformKeyData{
 		Generation:    k.Generation(),
+		Role:          "foo",
 		EncodedHandle: platformHandle,
 		KDFAlg:        crypto.Hash(crypto.SHA256)},
 		s.lastEncryptedPayload)
@@ -408,15 +409,20 @@ func (s *platformSuite) TestRecoverKeysNoTPMConnection(c *C) {
 	c.Check(err, ErrorMatches, "no TPM2 device is available")
 }
 
-func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*secboot.KeyData, secboot.PrimaryKey)) error {
+func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*secboot.KeyData, secboot.PrimaryKey) string) error {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0)}
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "foo"}
 
 	k, primaryKey, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
-	prepare(k, primaryKey)
+	role := params.Role
+	updatedRole := prepare(k, primaryKey)
+	if updatedRole != "" {
+		role = updatedRole
+	}
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
@@ -425,7 +431,7 @@ func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*s
 	_, err = handler.RecoverKeys(&secboot.PlatformKeyData{
 		Generation:    k.Generation(),
 		AuthMode:      secboot.AuthModeNone,
-		Role:          "foo",
+		Role:          role,
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		EncodedHandle: platformHandle},
 		s.lastEncryptedPayload)
@@ -433,9 +439,10 @@ func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*s
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingInvalidPCRProfile(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) string {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
+		return ""
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidData)
@@ -444,7 +451,7 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingInvalidPCRProfile(c *C
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(k *secboot.KeyData, primaryKey secboot.PrimaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(k *secboot.KeyData, primaryKey secboot.PrimaryKey) string {
 		w := newMockKeyDataWriter()
 		c.Check(k.WriteAtomic(w), IsNil)
 
@@ -456,6 +463,8 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
 		// Increment NV counter
 		c.Check(skd.UpdatePCRProtectionPolicy(s.TPM(), primaryKey, nil, NewPCRPolicyVersion), IsNil)
 		c.Check(skd.RevokeOldPCRProtectionPolicies(s.TPM(), primaryKey), IsNil)
+
+		return ""
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidData)
@@ -464,8 +473,9 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingRevokedPolicy(c *C) {
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingSealedKeyAccessLocked(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) string {
 		c.Check(BlockPCRProtectionPolicies(s.TPM(), []int{23}), IsNil)
+		return ""
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidData)
@@ -474,16 +484,26 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingSealedKeyAccessLocked(
 }
 
 func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingProvisioningError(c *C) {
-	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) string {
 		srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 		c.Assert(err, IsNil)
 		s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
 		s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
+		return ""
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorUninitialized)
 	c.Check(err, ErrorMatches, "the TPM is not correctly provisioned")
+}
+
+func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingInvalidRole(c *C) {
+	err := s.testRecoverKeysUnsealErrorHandling(c, func(_ *secboot.KeyData, _ secboot.PrimaryKey) string {
+		return "bar"
+	})
+	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
+	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidData)
+	c.Check(err, ErrorMatches, "cannot recover encrypted payload: cipher: message authentication failed")
 }
 
 type daKeySealer struct {
@@ -562,6 +582,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 	newPlatformKeyData := &secboot.PlatformKeyData{
 		Generation:    k.Generation(),
 		EncodedHandle: newHandle,
+		Role:          "foo",
 		KDFAlg:        crypto.Hash(crypto.SHA256),
 		AuthMode:      k.AuthMode(),
 	}

@@ -672,6 +672,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 
 	aad, err := mu.MarshalToBytes(&AdditionalData_v3{
 		Generation: uint32(kd.Generation()),
+		Role:       []byte(data.Role),
 		KDFAlg:     tpm2.HashAlgorithmSHA256,
 		AuthMode:   kd.AuthMode(),
 	})

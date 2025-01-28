@@ -112,6 +112,6 @@ func (d *keyData_v2) Policy() keyDataPolicy {
 	return d.PolicyData
 }
 
-func (d *keyData_v2) Decrypt(key, payload []byte, baseVersion uint32, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
+func (d *keyData_v2) Decrypt(key, payload []byte, baseVersion uint32, role []byte, kdfAlg tpm2.HashAlgorithmId, authMode secboot.AuthMode) ([]byte, error) {
 	return nil, errors.New("not supported")
 }
