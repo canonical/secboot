@@ -74,7 +74,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 			Type: secboot.PlatformHandlerErrorUnavailable,
 			Err:  err}
 	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+		return nil, fmt.Errorf("cannot connect to TPM: %w", err)
 	}
 	defer tpm.Close()
 
@@ -120,17 +120,26 @@ func (h *platformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.PlatformKe
 	return h.recoverKeysCommon(data, encryptedPayload, key)
 }
 
-func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte) ([]byte, error) {
-	tpm, err := ConnectToDefaultTPM()
-	switch {
-	case err == ErrNoTPM2Device:
-		return nil, &secboot.PlatformHandlerError{
-			Type: secboot.PlatformHandlerErrorUnavailable,
-			Err:  err}
-	case err != nil:
-		return nil, xerrors.Errorf("cannot connect to TPM: %w", err)
+func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte, context any) ([]byte, error) {
+	var tpm *Connection
+	switch c := context.(type) {
+	case *Connection:
+		tpm = c
 	}
-	defer tpm.Close()
+
+	if tpm == nil {
+		var err error
+		tpm, err = ConnectToDefaultTPM()
+		switch {
+		case err == ErrNoTPM2Device:
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorUnavailable,
+				Err:  err}
+		case err != nil:
+			return nil, fmt.Errorf("cannot connect to TPM: %w", err)
+		}
+		defer tpm.Close()
+	}
 
 	var k *SealedKeyData
 	if err := json.Unmarshal(data.EncodedHandle, &k); err != nil {
@@ -148,7 +157,7 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	}
 
 	// Validate the initial key data
-	_, err = k.validateData(tpm.TPMContext, data.Role)
+	_, err := k.validateData(tpm.TPMContext, data.Role)
 	switch {
 	case isKeyDataError(err):
 		return nil, &secboot.PlatformHandlerError{
@@ -231,5 +240,5 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 }
 
 func init() {
-	secboot.RegisterPlatformKeyDataHandler(platformName, &platformKeyDataHandler{})
+	secboot.RegisterPlatformKeyDataHandler(platformName, new(platformKeyDataHandler))
 }

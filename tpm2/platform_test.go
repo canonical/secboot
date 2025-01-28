@@ -82,6 +82,8 @@ func (s *platformSuite) TestRecoverKeysIntegrated(c *C) {
 	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
+	s.AddCleanup(s.CloseMockConnection(c))
+
 	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeys()
 	c.Check(err, IsNil)
 	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
@@ -101,6 +103,8 @@ func (s *platformSuite) TestRecoverKeysWithPassphraseIntegrated(c *C) {
 
 	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
 	c.Check(err, IsNil)
@@ -122,6 +126,8 @@ func (s *platformSuite) TestRecoverKeysWithPassphraseIntegratedPBKDF2(c *C) {
 
 	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
 	c.Check(err, IsNil)
@@ -146,6 +152,8 @@ func (s *platformSuite) TestRecoverKeysWithBadPassphraseIntegrated(c *C) {
 	k, _, _, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
 
+	s.AddCleanup(s.CloseMockConnection(c))
+
 	_, _, err = k.RecoverKeysWithPassphrase("1234")
 	c.Check(err, Equals, secboot.ErrInvalidPassphrase)
 }
@@ -163,6 +171,8 @@ func (s *platformSuite) TestChangePassphraseIntegrated(c *C) {
 
 	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	c.Check(k.ChangePassphrase("passphrase", "1234"), IsNil)
 
@@ -185,6 +195,8 @@ func (s *platformSuite) TestChangePassphraseWithBadPassphraseIntegrated(c *C) {
 
 	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
 	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	c.Check(k.ChangePassphrase("1234", "1234"), Equals, secboot.ErrInvalidPassphrase)
 
@@ -210,6 +222,8 @@ func (s *platformSuite) verifyASN1(c *C, data []byte) (primaryKey, unique []byte
 func (s *platformSuite) testRecoverKeys(c *C, params *ProtectKeyParams) {
 	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
@@ -290,6 +304,8 @@ func (s *platformSuite) testRecoverKeysNoValidSRK(c *C, prepareSrk func()) {
 
 	prepareSrk()
 
+	s.AddCleanup(s.CloseMockConnection(c))
+
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
@@ -344,6 +360,8 @@ func (s *platformSuite) testRecoverKeysImportable(c *C, params *ProtectKeyParams
 
 	k, primaryKey, unlockKey, err := NewExternalTPMProtectedKey(srkPub, params)
 	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
@@ -423,6 +441,8 @@ func (s *platformSuite) testRecoverKeysUnsealErrorHandling(c *C, prepare func(*s
 	if updatedRole != "" {
 		role = updatedRole
 	}
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
@@ -564,6 +584,8 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
+	s.AddCleanup(s.CloseMockConnection(c))
+
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
@@ -576,7 +598,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKey(c *C) {
 	}
 
 	var handler PlatformKeyDataHandler
-	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4}, nil)
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
@@ -650,6 +672,8 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 	k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
+	s.AddCleanup(s.CloseMockConnection(c))
+
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
@@ -661,7 +685,7 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 	}
 
 	var handler PlatformKeyDataHandler
-	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4}, nil)
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
@@ -729,6 +753,8 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 	k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
+	s.AddCleanup(s.CloseMockConnection(c))
+
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
 
@@ -740,7 +766,7 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 	}
 
 	var handler PlatformKeyDataHandler
-	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4})
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4}, nil)
 	c.Check(err, IsNil)
 
 	newPlatformKeyData := &secboot.PlatformKeyData{
@@ -750,7 +776,7 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 		AuthMode:      k.AuthMode(),
 	}
 
-	_, err = handler.ChangeAuthKey(newPlatformKeyData, nil, []byte{5, 6, 7, 8})
+	_, err = handler.ChangeAuthKey(newPlatformKeyData, nil, []byte{5, 6, 7, 8}, nil)
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidAuthKey)
 	c.Check(err, ErrorMatches, "TPM returned an error for session 1 whilst executing command TPM_CC_ObjectChangeAuth: "+
@@ -809,6 +835,8 @@ func (s *platformSuite) TestRecoverKeysWithAuthKeyTPMLockout(c *C) {
 
 	k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	var platformHandle json.RawMessage
 	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)

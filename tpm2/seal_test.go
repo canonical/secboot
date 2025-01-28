@@ -85,13 +85,27 @@ func (s *sealSuite) SetUpTest(c *C) {
 	s.primaryKeyMixin.tpmTest = &s.TPMTest.TPMTest
 	c.Assert(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
 		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+	origKdf := secboot.SetArgon2KDF(&testutil.MockArgon2KDF{})
+	s.AddCleanup(func() { secboot.SetArgon2KDF(origKdf) })
 }
 
 var _ = Suite(&sealSuite{})
 
 func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
+	s.AddCleanup(MockSecbootNewKeyData(func(keyParams *secboot.KeyParams) (*secboot.KeyData, error) {
+		c.Check(keyParams.Role, Equals, params.Role)
+		c.Check(keyParams.PlatformName, Equals, "tpm2")
+		c.Check(keyParams.KDFAlg, Equals, crypto.SHA256)
+
+		// TODO: Check EncryptedPayload and Handle fields
+
+		return secboot.NewKeyData(keyParams)
+	}))
+
 	k, primaryKey, unlockKey, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
+
+	c.Check(k.AuthMode(), Equals, secboot.AuthModeNone)
 
 	skd, err := NewSealedKeyData(k)
 	c.Assert(err, IsNil)
@@ -117,12 +131,15 @@ func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
 	c.Assert(err, IsNil)
 
 	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(skd.Data().Public().Attrs, Equals, tpm2.AttrFixedTPM|tpm2.AttrFixedParent|tpm2.AttrNoDA)
 	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, expectedPolicyDigest)
 	c.Check(skd.Data().Policy().(*KeyDataPolicy_v3).StaticData, tpm2_testutil.TPMValueDeepEquals, expectedPolicyData.(*KeyDataPolicy_v3).StaticData)
 
 	if params.PrimaryKey != nil {
 		c.Check(primaryKey, DeepEquals, params.PrimaryKey)
 	}
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeys()
 	c.Check(err, IsNil)
@@ -391,6 +408,129 @@ func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidRole(c *C) {
 	c.Check(err, ErrorMatches, `cannot create initial policy data: invalid role: too large`)
 }
 
+func (s *sealSuite) testPassphraseProtectKeyWithTPM(c *C, params *PassphraseProtectKeyParams, passphrase string) {
+	s.AddCleanup(MockSecbootNewKeyDataWithPassphrase(func(keyParams *secboot.KeyWithPassphraseParams, keyPassphrase string) (*secboot.KeyData, error) {
+		c.Check(keyParams.Role, Equals, params.Role)
+		c.Check(keyParams.PlatformName, Equals, "tpm2")
+		c.Check(keyParams.KDFAlg, Equals, crypto.SHA256)
+		c.Check(keyParams.KDFOptions, DeepEquals, params.KDFOptions)
+		c.Check(keyParams.AuthKeySize, Equals, 32)
+		c.Check(keyPassphrase, Equals, passphrase)
+
+		// TODO: Check EncryptedPayload and Handle fields
+
+		return secboot.NewKeyDataWithPassphrase(keyParams, keyPassphrase)
+	}))
+
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), params, passphrase)
+	c.Assert(err, IsNil)
+
+	c.Check(k.AuthMode(), Equals, secboot.AuthModePassphrase)
+
+	skd, err := NewSealedKeyData(k)
+	c.Assert(err, IsNil)
+	c.Check(skd.Validate(s.TPM().TPMContext, primaryKey), IsNil)
+
+	c.Check(skd.Version(), Equals, uint32(3))
+	c.Check(skd.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
+
+	policyAuthPublicKey, err := NewPolicyAuthPublicKey(primaryKey)
+	c.Assert(err, IsNil)
+
+	var pcrPolicyCounterPub *tpm2.NVPublic
+	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
+		index, err := s.TPM().CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
+		c.Assert(err, IsNil)
+
+		pcrPolicyCounterPub, _, err = s.TPM().NVReadPublic(index)
+		c.Check(err, IsNil)
+
+	}
+
+	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, params.Role, pcrPolicyCounterPub, true)
+	c.Assert(err, IsNil)
+
+	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(skd.Data().Public().Attrs, Equals, tpm2.AttrFixedTPM|tpm2.AttrFixedParent)
+	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, expectedPolicyDigest)
+	c.Check(skd.Data().Policy().(*KeyDataPolicy_v3).StaticData, tpm2_testutil.TPMValueDeepEquals, expectedPolicyData.(*KeyDataPolicy_v3).StaticData)
+
+	if params.PrimaryKey != nil {
+		c.Check(primaryKey, DeepEquals, params.PrimaryKey)
+	}
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase(passphrase)
+	c.Check(err, IsNil)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+
+	if params.PCRProfile != nil {
+		// Verify that the key is sealed with the supplied PCR profile by changing
+		// the PCR values.
+		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
+		c.Check(err, IsNil)
+		_, _, err = k.RecoverKeysWithPassphrase(passphrase)
+		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+	}
+
+	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
+		c.Check(s.TPM().DoesHandleExist(params.PCRPolicyCounterHandle), testutil.IsTrue)
+	}
+}
+
+func (s *sealSuite) TestPassphraseProtectKeyWithTPM(c *C) {
+	s.testPassphraseProtectKeyWithTPM(c, &PassphraseProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+		},
+	}, "Jg4zg4GF9WGL")
+}
+
+func (s *sealSuite) TestPassphraseProtectKeyWithTPMSuppliedKDFOptions(c *C) {
+	s.testPassphraseProtectKeyWithTPM(c, &PassphraseProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+		},
+		KDFOptions: &secboot.Argon2Options{
+			Mode:            secboot.Argon2id,
+			MemoryKiB:       32 * 1024,
+			ForceIterations: 4,
+			Parallel:        4,
+		},
+	}, "Jg4zg4GF9WGL")
+}
+
+func (s *sealSuite) TestPassphraseProtectKeyWithTPMDifferentSuppliedKDFOptions(c *C) {
+	s.testPassphraseProtectKeyWithTPM(c, &PassphraseProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+		},
+		KDFOptions: &secboot.PBKDF2Options{
+			ForceIterations: 100000,
+			HashAlg:         crypto.SHA256,
+		},
+	}, "Jg4zg4GF9WGL")
+}
+
+func (s *sealSuite) TestPassphraseProtectKeyWithTPMDifferentPassphrase(c *C) {
+	s.testPassphraseProtectKeyWithTPM(c, &PassphraseProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+		},
+	}, "uWjzz3MURKUS")
+}
+
 func (s *sealSuite) testProtectKeyWithExternalStorageKey(c *C, params *ProtectKeyParams) {
 	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)
@@ -424,6 +564,8 @@ func (s *sealSuite) testProtectKeyWithExternalStorageKey(c *C, params *ProtectKe
 	if params.PrimaryKey != nil {
 		c.Check(primaryKey, DeepEquals, params.PrimaryKey)
 	}
+
+	s.AddCleanup(s.CloseMockConnection(c))
 
 	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeys()
 	c.Check(err, IsNil)

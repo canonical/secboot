@@ -116,7 +116,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *secboot.Plat
 	return nil, fmt.Errorf("passphrase authentication is not supported for the %s platform", legacyPlatformName)
 }
 
-func (h *legacyPlatformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte) ([]byte, error) {
+func (h *legacyPlatformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte, context any) ([]byte, error) {
 	return nil, fmt.Errorf("passphrase authentication is not supported for the %s platform", legacyPlatformName)
 }
 

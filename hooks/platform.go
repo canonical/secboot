@@ -126,7 +126,7 @@ func (*hooksPlatform) RecoverKeysWithAuthKey(data *secboot.PlatformKeyData, encr
 	return nil, errors.New("unsupported action")
 }
 
-func (*hooksPlatform) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte) ([]byte, error) {
+func (*hooksPlatform) ChangeAuthKey(data *secboot.PlatformKeyData, old, new []byte, context any) ([]byte, error) {
 	return nil, errors.New("unsupported action")
 }
 
