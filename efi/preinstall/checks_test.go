@@ -119,7 +119,6 @@ func (s *runChecksSuite) testRunChecks(c *C, params *testRunChecksParams) (warni
 	c.Assert(dev, testutil.ConvertibleTo, &tpm2_testutil.TransportBackedDevice{})
 	c.Check(dev.(*tpm2_testutil.TransportBackedDevice).NumberOpen(), Equals, 0)
 
-	c.Logf("%v", result.Warnings)
 	return result.Warnings, nil
 }
 
@@ -315,7 +314,7 @@ C7E003CB
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
 			efitest.WithMockVars(efitest.MockVars{
@@ -332,20 +331,20 @@ C7E003CB
 			tpm2.PropertyPSFamilyIndicator: 1,
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1},
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
-				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				digest:   testutil.DecodeHexString(c, "25b4e4624ea1f2144a90d7de7aff87b23de0457d"),
 				signatures: []*efi.WinCertificateAuthenticode{
 					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 				},
 			},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "1dc8bcbdb8b5ee60e87281e36161ec1f923f53b7")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "fc7840d38322a595e50a6b477685fdd2244f9292")},
 		},
 		flags:                     PermitWeakPCRBanks,
-		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA1,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
@@ -2358,13 +2357,13 @@ C7E003CB
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
-				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				digest:   testutil.DecodeHexString(c, "25b4e4624ea1f2144a90d7de7aff87b23de0457d"),
 				signatures: []*efi.WinCertificateAuthenticode{
 					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 				},
 			},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "1dc8bcbdb8b5ee60e87281e36161ec1f923f53b7")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "fc7840d38322a595e50a6b477685fdd2244f9292")},
 		},
 	})
 	c.Check(err, ErrorMatches, `error with TCG log: no suitable PCR algorithm available:
