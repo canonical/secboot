@@ -113,6 +113,7 @@ func (s *runChecksSuite) testRunChecks(c *C, params *testRunChecksParams) (warni
 	for i, ca := range result.UsedSecureBootCAs {
 		c.Check(ca, DeepEquals, params.expectedUsedSecureBootCAs[i])
 	}
+	c.Check(result.Flags, Equals, params.expectedFlags)
 
 	dev, err := params.env.TPMDevice()
 	c.Assert(err, IsNil)
