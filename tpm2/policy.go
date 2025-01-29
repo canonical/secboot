@@ -363,9 +363,10 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role str
 			PCRPolicyCounterHandle: pcrPolicyCounterHandle,
 			RequireAuthValue:       requireAuthValue},
 		PCRData: &pcrPolicyData_v3{
-			// Set AuthorizedPolicySignature here because this object needs to be
-			// serializable before the initial signature is created.
-			AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}, policyDigest, nil
+			pcrPolicyData_v2: pcrPolicyData_v2{
+				// Set AuthorizedPolicySignature here because this object needs to be
+				// serializable before the initial signature is created.
+				AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull}}}}, policyDigest, nil
 }
 
 // newKeyDataPolicyLegacy creates a keyDataPolicy for legacy sealed key files containing a static

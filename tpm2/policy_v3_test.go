@@ -102,13 +102,15 @@ func (s *policyV3SuiteNoTPM) TestPCRPolicyCounterHandle(c *C) {
 
 func (s *policyV3SuiteNoTPM) TestPCRPolicySequence(c *C) {
 	var data KeyDataPolicy = &KeyDataPolicy_v3{
-		PCRData: &PcrPolicyData_v3{
-			PolicySequence: 10}}
+		PCRData: NewPcrPolicyData_v3(
+			&PcrPolicyData_v2{
+				PolicySequence: 10})}
 	c.Check(data.PCRPolicySequence(), Equals, uint64(10))
 
 	data = &KeyDataPolicy_v3{
-		PCRData: &PcrPolicyData_v3{
-			PolicySequence: 500}}
+		PCRData: NewPcrPolicyData_v3(
+			&PcrPolicyData_v2{
+				PolicySequence: 500})}
 	c.Check(data.PCRPolicySequence(), Equals, uint64(500))
 }
 
@@ -1330,8 +1332,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthPublicKey(c 
 		},
 	})
 	c.Check(IsPolicyDataError(err), testutil.IsTrue)
-	c.Check(err, ErrorMatches, "public area of dynamic authorization policy signing key is invalid: TPM returned an error for parameter 2 whilst executing command TPM_CC_LoadExternal: "+
-		"TPM_RC_HASH \\(hash algorithm not supported or not appropriate\\)")
+	c.Check(err, ErrorMatches, "cannot compute auth policies for PCR policy counter: could not build policy: encountered an error when calling PolicySigned: invalid authKey")
 }
 
 func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicySignature(c *C) {

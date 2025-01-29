@@ -137,6 +137,10 @@ func NewPcrPolicyParams(key secboot.PrimaryKey, pcrs tpm2.PCRSelectionList, pcrD
 	}
 }
 
+func NewPcrPolicyData_v3(v2 *PcrPolicyData_v2) *PcrPolicyData_v3 {
+	return &PcrPolicyData_v3{pcrPolicyData_v2: *v2}
+}
+
 type PlatformKeyDataHandler = platformKeyDataHandler
 type SealedKeyDataBase = sealedKeyDataBase
 type SnapModelHasher = snapModelHasher
