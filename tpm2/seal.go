@@ -59,6 +59,8 @@ type ProtectKeyParams struct {
 	PCRPolicyCounterHandle tpm2.Handle
 
 	PrimaryKey secboot.PrimaryKey
+
+	NameAlg tpm2.HashAlgorithmId
 }
 
 type PassphraseProtectKeyParams struct {
@@ -102,6 +104,7 @@ type makeSealedKeyDataParams struct {
 	PcrPolicyCounterHandle tpm2.Handle
 	PrimaryKey             secboot.PrimaryKey
 	AuthMode               secboot.AuthMode
+	NameAlg                tpm2.HashAlgorithmId
 }
 
 // makeSealedKeyData makes a sealed key data using the supplied parameters, keySealer implementation,
@@ -111,6 +114,11 @@ type makeSealedKeyDataParams struct {
 // used for authenticating the storage hierarchy in order to avoid trasmitting the cleartext authorization
 // value.
 var makeSealedKeyData = func(tpm *tpm2.TPMContext, params *makeSealedKeyDataParams, sealer keySealer, constructor keyDataConstructor, session tpm2.SessionContext) (*secboot.KeyData, secboot.PrimaryKey, secboot.DiskUnlockKey, error) {
+	// Make sure the requested name algorithm is available.
+	if !params.NameAlg.Available() {
+		return nil, nil, nil, xerrors.Errorf("chosen name algorithm %v is not available", params.NameAlg)
+	}
+
 	// Create a primary key, if required.
 	primaryKey := params.PrimaryKey
 	if primaryKey == nil {
@@ -146,10 +154,9 @@ var makeSealedKeyData = func(tpm *tpm2.TPMContext, params *makeSealedKeyDataPara
 	}
 
 	// Create the initial policy data.
-	nameAlg := tpm2.HashAlgorithmSHA256
 	requireAuthValue := params.AuthMode != secboot.AuthModeNone
 
-	policyData, authPolicyDigest, err := newKeyDataPolicy(nameAlg, authPublicKey, params.Role, pcrPolicyCounterPub, requireAuthValue)
+	policyData, authPolicyDigest, err := newKeyDataPolicy(params.NameAlg, authPublicKey, params.Role, pcrPolicyCounterPub, requireAuthValue)
 	if err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot create initial policy data: %w", err)
 	}
@@ -163,7 +170,7 @@ var makeSealedKeyData = func(tpm *tpm2.TPMContext, params *makeSealedKeyDataPara
 	// Seal the symmetric key and nonce. The final boolean argument is set to true in order
 	// to disable dictionary attack protection (ie, adding the noDA attribute). We want this
 	// when no user auth value is required.
-	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], nameAlg, authPolicyDigest, !requireAuthValue)
+	priv, pub, importSymSeed, err := sealer.CreateSealedObject(symKey[:], params.NameAlg, authPolicyDigest, !requireAuthValue)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -253,6 +260,7 @@ func NewExternalTPMProtectedKey(tpmKey *tpm2.Public, params *ProtectKeyParams) (
 		AuthMode:               secboot.AuthModeNone,
 		Role:                   params.Role,
 		PcrProfile:             params.PCRProfile,
+		NameAlg:                params.NameAlg,
 	}, sealer, makeKeyDataNoAuth, nil)
 }
 
@@ -291,6 +299,7 @@ func NewTPMProtectedKey(tpm *Connection, params *ProtectKeyParams) (protectedKey
 		PcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
 		PrimaryKey:             params.PrimaryKey,
 		AuthMode:               secboot.AuthModeNone,
+		NameAlg:                params.NameAlg,
 	}, sealer, makeKeyDataNoAuth, tpm.HmacSession())
 }
 
@@ -308,5 +317,6 @@ func NewTPMPassphraseProtectedKey(tpm *Connection, params *PassphraseProtectKeyP
 		AuthMode:               secboot.AuthModePassphrase,
 		Role:                   params.Role,
 		PcrProfile:             params.PCRProfile,
+		NameAlg:                params.NameAlg,
 	}, sealer, makeKeyDataWithPassphraseConstructor(tpm, params.KDFOptions, passphrase), tpm.HmacSession())
 }

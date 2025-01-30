@@ -69,7 +69,8 @@ func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRPro
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 7, testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
 		PCRPolicyCounterHandle: data.pcrPolicyCounterHandle,
 		PrimaryKey:             data.primaryKey,
-		Role:                   "foo"}
+		Role:                   "foo",
+		NameAlg:                tpm2.HashAlgorithmSHA256}
 	k, primaryKey, _, err := NewTPMProtectedKey(s.TPM(), params)
 	c.Assert(err, IsNil)
 
@@ -170,14 +171,16 @@ func (s *updateSuite) testRevokeOldPCRProtectionPolicies(c *C, params *ProtectKe
 func (s *updateSuite) TestRevokeOldPCRProtectionPoliciesWithPCRPolicyCounter(c *C) {
 	err := s.testRevokeOldPCRProtectionPolicies(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }
 
 func (s *updateSuite) TestRevokeOldPCRProtectionPoliciesWithoutPCRPolicyCounter(c *C) {
 	err := s.testRevokeOldPCRProtectionPolicies(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 	c.Check(err, IsNil)
 }
 
@@ -191,6 +194,7 @@ func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy(c *C) {
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 		PrimaryKey:             primaryKey,
 		Role:                   "bar",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	}
 
 	var keys []*secboot.KeyData
