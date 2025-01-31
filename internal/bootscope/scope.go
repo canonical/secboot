@@ -22,6 +22,7 @@ package bootscope
 import (
 	"sync/atomic"
 
+	"github.com/snapcore/secboot/internal/testenv"
 	"github.com/snapcore/snapd/asserts"
 )
 
@@ -52,13 +53,7 @@ func SetModel(model SnapModel) {
 	currentModel.Store(model)
 }
 
-var (
-	EnableUnsafeClearModelForTesting = false
-)
-
 func UnsafeClearModelForTesting() {
-	if !EnableUnsafeClearModelForTesting {
-		panic("can only be called in test binaries")
-	}
+	testenv.MustBeTestBinary()
 	currentModel = atomic.Value{}
 }

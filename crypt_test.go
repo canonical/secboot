@@ -411,12 +411,10 @@ var _ = Suite(&cryptSuite{})
 func (s *cryptSuite) SetUpSuite(c *C) {
 	s.keyDataTestBase.SetUpSuite(c)
 	s.KeyringTestBase.SetUpSuite(c)
-	internal_bootscope.EnableUnsafeClearModelForTesting = true
 }
 
 func (s *cryptSuite) TearDownSuite(c *C) {
 	s.keyDataTestBase.TearDownSuite(c)
-	internal_bootscope.EnableUnsafeClearModelForTesting = false
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {

@@ -37,9 +37,7 @@ var (
 )
 
 func ClearBootModeAndModel() {
-	internal_bootscope.EnableUnsafeClearModelForTesting = true
 	internal_bootscope.UnsafeClearModelForTesting()
-	internal_bootscope.EnableUnsafeClearModelForTesting = false
 	currentBootMode = atomic.Value{}
 }
 
