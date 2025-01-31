@@ -401,9 +401,7 @@ var runArgon2OutOfProcessRequest = RunArgon2OutOfProcessRequest
 // from [WaitForAndRunArgon2OutOfProcessRequest]. This can only be used in test binaries, and
 // will panic otherwise.
 func MockRunArgon2OutOfProcessRequestForTest(fn func(*Argon2OutOfProcessRequest) (*Argon2OutOfProcessResponse, func())) (restore func()) {
-	if !testenv.IsTestBinary() {
-		panic("not a test binary")
-	}
+	testenv.MustBeTestBinary()
 	orig := runArgon2OutOfProcessRequest
 	runArgon2OutOfProcessRequest = fn
 	return func() {

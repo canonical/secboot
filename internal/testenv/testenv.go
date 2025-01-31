@@ -21,10 +21,12 @@ package testenv
 
 var testBinary string = ""
 
-// IsTestBinary returns whether the current binary is a test binary. To
-// define something as a test binary and make this return true, pass
-// "-ldflags '-X github.com/snapcore/secboot/internal/testenv.testBinary=enabled'"
+// MustBeTestBinary asserts that the current binary is a test binary, and
+// will panic if it isn't. To define something as a test binary and make this
+// not panic, pass "-ldflags '-X github.com/snapcore/secboot/internal/testenv.testBinary=enabled'"
 // to "go build" or "go test".
-func IsTestBinary() bool {
-	return testBinary == "enabled"
+func MustBeTestBinary() {
+	if testBinary != "enabled" {
+		panic("not a test binary")
+	}
 }
