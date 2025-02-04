@@ -313,7 +313,12 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				// from anything that runs as part of the static OS (only applicable to
 				// discrete TPMs that can be reset independently of the host CPU, which
 				// isn't really meant to be possible).
-				result.Flags |= StartupLocalityNotProtected
+				switch {
+				case flags&PermitNoDiscreteTPMResetMitigation > 0:
+					result.Flags |= StartupLocalityNotProtected
+				default:
+					mainErr.addErr(ErrTPMStartupLocalityNotProtected)
+				}
 			case 3:
 				// TPM2_Startup occurred from locality 3. Mark PCR0 as reconstructible
 				// from anything that runs as part of the static OS for the reasons stated
