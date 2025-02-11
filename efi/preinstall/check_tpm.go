@@ -21,6 +21,7 @@ package preinstall
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -67,6 +68,54 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		savedTpm.Close()
 	}()
 
+	// Make sure that the TPM is not in failure mode, else the following GetCapability calls
+	// will fail due to the wrong property being returned (TPM2_GetCapability is usable in
+	// failure mode, but only to fetch information about the manufacturer, firmware version
+	// and vendor information, and it may round up the supplied property to match one of these).
+	// In addition to using TPM2_GetCapability to fetch this limited set of properties, only
+	// the TPM2_GetTestResult command is usable when the TPM is in failure mode.
+	// Trigger a self test of untested functionality (note that the platform firmware might
+	// have already done this, which is good because it will mean there's nothing to test).
+	err = tpm.SelfTest(false)
+	switch {
+	case tpm2.IsTPMWarning(err, tpm2.WarningTesting, tpm2.CommandSelfTest):
+		// This is an implementation that performs the remaining self tests after the
+		// command completes. We need to wait around to get a test result.
+		tick := time.NewTicker(100 * time.Millisecond)
+		for {
+			_, rc, err := tpm.GetTestResult()
+			if err != nil {
+				return nil, false, fmt.Errorf("cannot obtain self test results: %w", err)
+			}
+			if rc == tpm2.ResponseSuccess {
+				// All executed tests completed successfully.
+				break
+			}
+			switch rc {
+			case tpm2.ResponseFailure:
+				// One or more tests failed and the TPM is now in failure mode.
+				return nil, false, ErrTPMFailure
+			case tpm2.ResponseTesting:
+				// The tests are still running. We need to wait for a bit and
+				// then try again.
+			default:
+				return nil, false, fmt.Errorf("unexpected self test result: %#x", rc)
+			}
+			<-tick.C
+		}
+	case tpm2.IsTPMError(err, tpm2.ErrorFailure, tpm2.CommandSelfTest):
+		// Either previously executed tests failed, or this is an implementation that
+		// runs the remaining self tests before the command completes, and one or more
+		// of them failed. In any case, the TPM is in failure mode.
+		return nil, false, ErrTPMFailure
+	case err != nil:
+		return nil, false, fmt.Errorf("cannot perform partial self test: %w", err)
+	default:
+		// This is either an implementation that performs the self tests before the
+		// command completes, and everything tested is ok, or all tests have already
+		// been performed successfully.
+	}
+
 	// Make sure that the TPM is enabled. The firmware disables the TPM by disabling the
 	// storage and endorsement hierarchies. Of course, user-space can do this as well, although
 	// it requires a TPM reset to restore them anyway.
@@ -76,12 +125,7 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	}
 	const enabledMask = tpm2.AttrShEnable | tpm2.AttrEhEnable
 	if tpm2.StartupClearAttributes(sc)&enabledMask != enabledMask {
-		return nil, false, ErrTPMDisabled
-	}
-
-	perm, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
-	if err != nil {
-		return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_PERMANENT: %w", err)
+		return nil, true, ErrTPMDisabled
 	}
 
 	// Check TPM2 device class. The class is associated with a TPM Profile (PTP) spec
@@ -137,25 +181,49 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 
 	if flags&checkTPM2DevicePostInstall == 0 {
 		// Perform some checks only during pre-install.
-
-		// Make sure that the DA lockout mode is not activated.
-		if tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0 {
-			return nil, false, ErrTPMLockout
+		perm, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+		if err != nil {
+			return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_PERMANENT: %w", err)
 		}
+
+		// Make sure that the TPM isn't owned
+		ownedErr := new(TPM2OwnedHierarchiesError)
 
 		// Make sure the lockout hierarchy auth value is not set.
 		if tpm2.PermanentAttributes(perm)&tpm2.AttrLockoutAuthSet > 0 {
-			return nil, false, &TPM2HierarchyOwnedError{Hierarchy: tpm2.HandleLockout}
+			ownedErr.addAuthValue(tpm2.HandleLockout)
 		}
 
 		// Make sure the owner hierarchy authorization value is not set.
 		if tpm2.PermanentAttributes(perm)&(tpm2.AttrOwnerAuthSet) > 0 {
-			return nil, false, &TPM2HierarchyOwnedError{Hierarchy: tpm2.HandleOwner}
+			ownedErr.addAuthValue(tpm2.HandleOwner)
 		}
 
 		// Make sure the endorsement hierarchy authorization value is not set.
 		if tpm2.PermanentAttributes(perm)&(tpm2.AttrEndorsementAuthSet) > 0 {
-			return nil, false, &TPM2HierarchyOwnedError{Hierarchy: tpm2.HandleEndorsement}
+			ownedErr.addAuthValue(tpm2.HandleEndorsement)
+		}
+
+		// Make sure that none of the hierarchies have an authorization policy.
+		for _, handle := range []tpm2.Handle{tpm2.HandleLockout, tpm2.HandleOwner, tpm2.HandleEndorsement} {
+			ta, err := tpm.GetCapabilityAuthPolicy(handle)
+			if err != nil {
+				return nil, false, fmt.Errorf("cannot determine if %v hierarchy has an authorization policy: %w", handle, err)
+			}
+			if ta.HashAlg != tpm2.HashAlgorithmNull {
+				ownedErr.addAuthPolicy(handle)
+			}
+		}
+
+		if !ownedErr.isEmpty() {
+			return nil, false, ownedErr
+		}
+
+		// If no hierarchies are owned, make sure that the DA lockout mode is not activated.
+		// We check this afterwards because it's easy to fix if we know that the authorization
+		// value for the lockout hierarchy is empty.
+		if tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0 {
+			return nil, false, ErrTPMLockout
 		}
 
 		// Make sure we have enough NV counters for PCR policy revocation. We need at least 2 (1 normally, and
