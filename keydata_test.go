@@ -281,7 +281,7 @@ type keyDataTestBase struct {
 func (s *keyDataTestBase) SetUpSuite(c *C) {
 	s.handler = &mockPlatformKeyDataHandler{}
 	s.mockPlatformName = "mock"
-	RegisterPlatformKeyDataHandler(s.mockPlatformName, s.handler)
+	RegisterPlatformKeyDataHandler(s.mockPlatformName, s.handler, 0)
 }
 
 func (s *keyDataTestBase) SetUpTest(c *C) {
@@ -303,7 +303,7 @@ func (s *keyDataTestBase) TearDownTest(c *C) {
 }
 
 func (s *keyDataTestBase) TearDownSuite(c *C) {
-	RegisterPlatformKeyDataHandler(s.mockPlatformName, nil)
+	RegisterPlatformKeyDataHandler(s.mockPlatformName, nil, 0)
 }
 
 func (s *keyDataTestBase) newPrimaryKey(c *C, sz1 int) PrimaryKey {

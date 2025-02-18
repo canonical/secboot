@@ -19,7 +19,11 @@
 
 package secboot
 
-import "crypto"
+import (
+	"crypto"
+	"fmt"
+	"sort"
+)
 
 // PlatformHandlerErrorType indicates the type of error that
 // PlatformHandlerError is associated with.
@@ -74,6 +78,38 @@ type PlatformKeyData struct {
 	AuthMode AuthMode
 }
 
+// PlatformKeyDataHandlerFlags can be used to describe features supported
+// by a registered platform.
+//
+// The lower 40 bits are for use and defined by the platform, and the
+// platform can choose to use them however it wants to (eg, it may use some
+// bits as a version number). This package does not use or interpret these
+// 40 bits.
+//
+// The upper 24 bits are reserved for common flags defined by this package,
+// although there aren't any defined right now.
+type PlatformKeyDataHandlerFlags uint64
+
+const platformKeyDataHandlerCommonFlagsMask uint64 = 0xffffff0000000000
+
+// AddPlatformFlags adds the platform defined flags to the common flags,
+// returning a new flags value. This package doesn't define the meaning of
+// the specified flags and it does not use or interpret them in any way.
+//
+// This will panic if it uses any of the upper 24 bits reserved for common
+// flags defined by this package.
+func (f PlatformKeyDataHandlerFlags) AddPlatformFlags(flags uint64) PlatformKeyDataHandlerFlags {
+	if flags&platformKeyDataHandlerCommonFlagsMask > 0 {
+		panic(fmt.Sprintf("platform is using flag bits reserved for common flags: %#x", flags&platformKeyDataHandlerCommonFlagsMask))
+	}
+	return f | PlatformKeyDataHandlerFlags(flags)
+}
+
+type platformKeyDataHandlerInfo struct {
+	handler PlatformKeyDataHandler
+	flags   PlatformKeyDataHandlerFlags
+}
+
 // PlatormKeyDataHandler is the interface that this go package uses to
 // interact with a platform's secure device for the purpose of recovering keys.
 type PlatformKeyDataHandler interface {
@@ -104,9 +140,45 @@ type PlatformKeyDataHandler interface {
 	ChangeAuthKey(data *PlatformKeyData, old, new []byte, context any) ([]byte, error)
 }
 
-var handlers = make(map[string]PlatformKeyDataHandler)
+var handlers = make(map[string]platformKeyDataHandlerInfo)
 
 // RegisterPlatformKeyDataHandler registers a handler for the specified platform name.
-func RegisterPlatformKeyDataHandler(name string, handler PlatformKeyDataHandler) {
-	handlers[name] = handler
+// The platform can also specify a set of feature flags.
+//
+// Supplying a nil handler will unregister the handler for the specified platform name,
+// if one exists.
+func RegisterPlatformKeyDataHandler(name string, handler PlatformKeyDataHandler, flags PlatformKeyDataHandlerFlags) {
+	if handler == nil {
+		delete(handlers, name)
+		return
+	}
+
+	handlers[name] = platformKeyDataHandlerInfo{
+		handler: handler,
+		flags:   flags,
+	}
+}
+
+// RegisteredPlatformKeyDataHandler returns the handler and its flags, for the
+// specified platform name.
+//
+// If no platform with the specified name is registered, a ErrNoPlatformHandlerRegistered
+// error will be returned.
+func RegisteredPlatformKeyDataHandler(name string) (handler PlatformKeyDataHandler, flags PlatformKeyDataHandlerFlags, err error) {
+	handlerInfo, exists := handlers[name]
+	if !exists {
+		return nil, 0, ErrNoPlatformHandlerRegistered
+	}
+	return handlerInfo.handler, handlerInfo.flags, nil
+}
+
+// ListRegisteredKeyDataPlatforms returns a list of the names of all
+// of the registered PlatformKeyDataHandlers.
+func ListRegisteredKeyDataPlatforms() []string {
+	var platforms []string
+	for k := range handlers {
+		platforms = append(platforms, k)
+	}
+	sort.Strings(platforms)
+	return platforms
 }
