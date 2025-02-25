@@ -360,12 +360,18 @@ func (n JsonNumber) Uint64() (uint64, error) {
 	return strconv.ParseUint(string(n), 10, 64)
 }
 
+// Requirements corresponds to the requirements object in the JSON metadata of
+// a LUKS2 volume.
+type Requirements struct {
+	Mandatory []string // mandatory requirements. This is the only field currently defined by cryptsetup
+}
+
 // Config corresponds to a config object in the JSON metadata of a LUKS2 volume.
 type Config struct {
-	JSONSize     uint64   // Size of the JSON area, in bytes
-	KeyslotsSize uint64   // Size of the keyslots area, in bytes
-	Flags        []string // Optional flags
-	Requirements []string // Optional required features
+	JSONSize     uint64        // Size of the JSON area, in bytes
+	KeyslotsSize uint64        // Size of the keyslots area, in bytes
+	Flags        []string      // Optional flags
+	Requirements *Requirements // Optional required features
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
@@ -373,7 +379,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		JSONSize     JsonNumber `json:"json_size"`
 		KeyslotsSize JsonNumber `json:"keyslots_size"`
 		Flags        []string
-		Requirements []string
+		Requirements *Requirements
 	}
 	if err := json.Unmarshal(data, &d); err != nil {
 		return err
@@ -547,8 +553,8 @@ func (d *Digest) UnmarshalJSON(data []byte) error {
 // and details the data integrity parameters for a segment.
 type Integrity struct {
 	Type              string // Integirty type in dm-crypt notation
-	JournalEncryption string
-	JournalIntegrity  string
+	JournalEncryption string `json:"journal_encryption"`
+	JournalIntegrity  string `json:"journal_integrity"`
 }
 
 // Segment corresponds to a segment object in the JSON metadata of a LUKS2 volume,
@@ -560,7 +566,7 @@ type Segment struct {
 	DynamicSize bool       // The size is the size of the underlying device
 	IVTweak     uint64     // The starting offset of the IV tweak
 	Encryption  string     // The encryption algorithm for this segment in dm-crypt notation
-	SectorSize  int        // The sector size for this segment, in bytes
+	SectorSize  uint32     // The sector size for this segment, in bytes
 	Integrity   *Integrity // Data integrity parameters for this segment (optional)
 	Flags       []string   // Additional options for this segment
 }
@@ -572,7 +578,7 @@ func (s *Segment) UnmarshalJSON(data []byte) error {
 		Size       JsonNumber
 		IVTweak    JsonNumber `json:"iv_tweak"`
 		Encryption string
-		SectorSize int `json:"sector_size"`
+		SectorSize uint32 `json:"sector_size"`
 		Integrity  *Integrity
 		Flags      []string
 	}
