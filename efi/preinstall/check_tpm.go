@@ -117,21 +117,34 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		}
 	}
 
-	// Determine whether we have a discrete TPM by querying the manufacturer.
-	// Assume that Intel is firmware (ie, Intel PTT) and everything else is discrete
-	// unless we are in a VM.
-	// TODO: Investigate whether this is the best way to detect a discrete TPM.
-	//  There may be more than Intel PTT in the firmware world, eg, AMD might have
-	//  its own and ARM devices with UEFI firmware implementations may have
-	//  firmware based TPMs running in a TEE. I suspect this is not the best way to
-	//  do this but is ok for an initial implementation.
-	manufacturer, err := tpm.GetManufacturer()
-	if err != nil {
-		return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_MANUFACTURER: %w", err)
-	}
-
-	discreteTPM = manufacturer != tpm2.TPMManufacturerINTC
-	if flags&checkTPM2DeviceInVM > 0 {
+	// Determine whether we have a discrete TPM.
+	// This isn't exposed via the TPM device itself, but instead platforms seem to expose
+	// this in a vendor specific manner.
+	if flags&checkTPM2DeviceInVM == 0 {
+		// On a physical device, by default we assume the TPM is discrete unless proven otherwise.
+		isTpmDiscrete := func() bool {
+			amd64Env, err := env.AMD64()
+			if err != nil {
+				return true
+			}
+			cpuVendor, err := determineCPUVendor(amd64Env)
+			if err != nil {
+				return true
+			}
+			switch cpuVendor {
+			case cpuVendorIntel:
+				discreteTPM, err := checkIsTpmDiscreteIntel(amd64Env)
+				if err != nil {
+					return true
+				}
+				return discreteTPM
+			default:
+				return true
+			}
+		}
+		discreteTPM = isTpmDiscrete()
+	} else {
+		// vTPM is not discrete
 		discreteTPM = false
 	}
 
