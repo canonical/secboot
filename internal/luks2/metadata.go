@@ -379,6 +379,10 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		JSONSize     JsonNumber `json:"json_size"`
 		KeyslotsSize JsonNumber `json:"keyslots_size"`
 		Flags        []string
+
+		// The LUKS2 on disk header format defines this as an array of strings, but it has
+		// always been implemented in cryptsetup as an object:
+		// See https://gitlab.com/cryptsetup/cryptsetup/-/blob/v2.0.0/lib/luks2/luks2_json_metadata.c?ref_type=tags#L1281
 		Requirements *Requirements
 	}
 	if err := json.Unmarshal(data, &d); err != nil {
