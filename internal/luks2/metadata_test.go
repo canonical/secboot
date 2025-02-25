@@ -288,6 +288,9 @@ type testReadHeaderData struct {
 	hdrSize          uint64
 	keyslotsSize     uint64
 	keyslot2Priority SlotPriority
+	segmentOffset    uint64
+	sectorSize       uint32
+	requirements     []string
 	stderr           string
 }
 
@@ -340,10 +343,10 @@ func (s *metadataSuite) testReadHeader(c *C, data *testReadHeaderData) {
 
 	c.Assert(hdr.Metadata.Segments, HasLen, 1)
 	c.Check(hdr.Metadata.Segments[0].Type, Equals, "crypt")
-	c.Check(hdr.Metadata.Segments[0].Offset, Equals, uint64(0))
+	c.Check(hdr.Metadata.Segments[0].Offset, Equals, data.segmentOffset)
 	c.Check(hdr.Metadata.Segments[0].DynamicSize, Equals, true)
 	c.Check(hdr.Metadata.Segments[0].Encryption, Equals, "aes-xts-plain64")
-	c.Check(hdr.Metadata.Segments[0].SectorSize, Equals, 512)
+	c.Check(hdr.Metadata.Segments[0].SectorSize, Equals, data.sectorSize)
 	c.Check(hdr.Metadata.Segments[0].Integrity, IsNil)
 
 	c.Assert(hdr.Metadata.Tokens, HasLen, 1)
@@ -363,6 +366,12 @@ func (s *metadataSuite) testReadHeader(c *C, data *testReadHeaderData) {
 
 	c.Check(hdr.Metadata.Config.JSONSize, Equals, data.hdrSize-4096)
 	c.Check(hdr.Metadata.Config.KeyslotsSize, Equals, data.keyslotsSize)
+	if len(data.requirements) == 0 {
+		c.Check(hdr.Metadata.Config.Requirements, IsNil)
+	} else {
+		c.Check(hdr.Metadata.Config.Requirements, NotNil)
+		c.Check(hdr.Metadata.Config.Requirements.Mandatory, DeepEquals, data.requirements)
+	}
 
 	c.Check(stderr.String(), Matches, data.stderr)
 }
@@ -374,6 +383,20 @@ func (s *metadataSuite) TestReadHeaderValid(c *C) {
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityNormal,
+		sectorSize:       512,
+	})
+}
+
+func (s *metadataSuite) TestReadHeaderValidICE(c *C) {
+	// Test a valid header
+	s.testReadHeader(c, &testReadHeaderData{
+		path:             "testdata/luks2-valid-hdr-ice.img",
+		hdrSize:          16384,
+		keyslotsSize:     16744448,
+		keyslot2Priority: SlotPriorityNormal,
+		sectorSize:       4096,
+		segmentOffset:    0x1000000,
+		requirements:     []string{"x-ubuntu-inline-crypto-engine"},
 	})
 }
 
@@ -385,6 +408,7 @@ func (s *metadataSuite) TestReadHeaderInvalidPrimary(c *C) {
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityNormal,
+		sectorSize:       512,
 		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr-invalid-checksum0.img is invalid: invalid header checksum\n",
 	})
 }
@@ -397,6 +421,7 @@ func (s *metadataSuite) TestReadHeaderInvalidSecondary(c *C) {
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityNormal,
+		sectorSize:       512,
 		stderr:           "luks2.ReadHeader: secondary header for /.*/luks2-hdr-invalid-checksum1.img is invalid: invalid header checksum\n",
 	})
 }
@@ -408,6 +433,7 @@ func (s *metadataSuite) TestReadHeaderCustomMetadataSize(c *C) {
 		hdrSize:          65536,
 		keyslotsSize:     8257536,
 		keyslot2Priority: SlotPriorityNormal,
+		sectorSize:       512,
 	})
 }
 
@@ -420,6 +446,7 @@ func (s *metadataSuite) TestReadHeaderCustomMetadataSizeInvalidPrimary(c *C) {
 		hdrSize:          65536,
 		keyslotsSize:     8257536,
 		keyslot2Priority: SlotPriorityNormal,
+		sectorSize:       512,
 		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr2-invalid-checksum0.img is invalid: invalid header checksum\n",
 	})
 }
@@ -432,6 +459,7 @@ func (s *metadataSuite) TestReadHeaderObsoletePrimary(c *C) {
 		hdrSize:          16384,
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityIgnore,
+		sectorSize:       512,
 		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr-obsolete0.img is obsolete\n",
 	})
 }
