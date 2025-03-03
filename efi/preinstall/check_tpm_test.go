@@ -109,7 +109,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersD
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (2 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -128,7 +129,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersF
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -148,7 +150,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMFiniteCountersDis
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (2 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -168,7 +171,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMCountersCheckSki
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (2 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -210,7 +214,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutCheckSkip
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 10000, 10000, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -232,7 +237,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutOwnedChec
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.LockoutHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -254,7 +260,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnerOwnedCheckS
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.OwnerHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -276,7 +283,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMEndorsmentOwnedC
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.EndorsementHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -315,7 +323,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout(c *C) {
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 10000, 10000, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	_, _, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, Equals, ErrTPMLockout)
 	c.Check(dev.NumberOpen(), Equals, int(0))
@@ -331,7 +340,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedLockout(c *C) {
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.LockoutHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	_, _, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `TPM lockout hierarchy is currently owned`)
 	var he *TPM2HierarchyOwnedError
@@ -349,7 +359,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedOwner(c *C) {
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.OwnerHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	_, _, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `TPM owner hierarchy is currently owned`)
 	var he *TPM2HierarchyOwnedError
@@ -367,7 +378,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsement(c *C) {
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.EndorsementHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	_, _, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `TPM endorsement hierarchy is currently owned`)
 	var he *TPM2HierarchyOwnedError
@@ -407,7 +419,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPreInstall(c 
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
+		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (2 << 1)}))
 	_, _, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, Equals, ErrTPMInsufficientNVCounters)
 	c.Check(dev.NumberOpen(), Equals, int(0))
