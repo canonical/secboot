@@ -83,7 +83,8 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	// testing - the important detail is that this statement only applies to full self-tests, which
 	// we aren't requesting here (and don't want to - we only want to test functionality that hasn't
 	// been tested yet). For now, we'll assume that the same statement applies also to
-	// TPM2_SelfTest(NO) and only support the case where it runs the tests synchronously - we can
+	// TPM2_SelfTest(NO) (there's no good reason why an implementation would implement both cases
+	// differently) and only support the case where it runs the tests synchronously - we can
 	// uncomment the other path later on if we come across implementations that need it, perhaps
 	// with some sort of timeout.
 	err = tpm.SelfTest(false)
