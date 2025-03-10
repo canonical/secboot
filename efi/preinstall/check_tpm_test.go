@@ -282,7 +282,6 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCounters(c 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCountersWithSWTPMWorkaround(c *C) {
 	// Test the good case for pre-install on a VM with a swtpm that has
 	// infinite NV counters, using the workaround for invalid TPM_PT_PS_FAMILY_INDICATOR.
-
 	family, err := s.TPM.GetCapabilityTPMProperty(tpm2.PropertyFamilyIndicator)
 	c.Check(err, IsNil)
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
@@ -303,77 +302,78 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCountersWit
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersDiscreteTPMWithBackgroundSelfTest(c *C) {
-	// Test the good case for pre-install on bare-metal with a discrete TPM and
-	// infinite NV counters, mocking a TPM that performs self tests in the
-	// background.
-	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyNVCountersMax:     0,
-		tpm2.PropertyPSFamilyIndicator: 1,
-		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
-	})
-
-	// The above call relies on this.
-	origIntercept := s.Transport.ResponseIntercept
-	getTestResultLooped := false
-	s.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
-		switch cmdCode {
-		case tpm2.CommandSelfTest:
-			// Unpack the response
-			rc, _, _, err := tpm2.ReadResponsePacket(bytes.NewReader(rsp.Bytes()), nil)
-			c.Assert(err, IsNil)
-			if rc != tpm2.ResponseSuccess {
-				// Do nothing if the TPM didn't return success
-				return
-			}
-
-			// Return a response indicating that the tests are running in the background.
-			rsp.Reset()
-			c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseTesting, nil, nil, nil), IsNil)
-
-		case tpm2.CommandGetTestResult:
-			// Unpack the response
-			rc, rpBytes, _, err := tpm2.ReadResponsePacket(bytes.NewReader(rsp.Bytes()), nil)
-			c.Assert(err, IsNil)
-			if rc != tpm2.ResponseSuccess {
-				// Do nothing if the TPM didn't return success
-				return
-			}
-
-			var outData tpm2.MaxBuffer
-			var testResult tpm2.ResponseCode
-			_, err = mu.UnmarshalFromBytes(rpBytes, &outData, &testResult)
-			if testResult != tpm2.ResponseSuccess {
-				// Do nothing if the tests actully failed
-				return
-			}
-
-			testResult = tpm2.ResponseSuccess
-			if !getTestResultLooped {
-				testResult = tpm2.ResponseTesting
-				getTestResultLooped = true
-			}
-
-			rsp.Reset()
-			rpBytes = mu.MustMarshalToBytes(outData, testResult)
-			c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseSuccess, nil, rpBytes, nil), IsNil)
-
-		default:
-			origIntercept(cmdCode, cmdHandles, cmdAuthArea, cpBytes, rsp)
-		}
-	}
-
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
-	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, IsNil)
-	c.Assert(tpm, NotNil)
-	var tmpl tpm2_testutil.TransportWrapper
-	c.Assert(tpm.Transport(), Implements, &tmpl)
-	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
-	c.Check(discreteTPM, testutil.IsTrue)
-	c.Check(dev.NumberOpen(), Equals, int(1))
-}
+// XXX: See the commented out TPM2_SelfTest result handling code in check_tpm.go
+//func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersDiscreteTPMWithBackgroundSelfTest(c *C) {
+//	// Test the good case for pre-install on bare-metal with a discrete TPM and
+//	// infinite NV counters, mocking a TPM that performs self tests in the
+//	// background.
+//	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+//		tpm2.PropertyNVCountersMax:     0,
+//		tpm2.PropertyPSFamilyIndicator: 1,
+//		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
+//	})
+//
+//	// The above call relies on this.
+//	origIntercept := s.Transport.ResponseIntercept
+//	getTestResultLooped := false
+//	s.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+//		switch cmdCode {
+//		case tpm2.CommandSelfTest:
+//			// Unpack the response
+//			rc, _, _, err := tpm2.ReadResponsePacket(bytes.NewReader(rsp.Bytes()), nil)
+//			c.Assert(err, IsNil)
+//			if rc != tpm2.ResponseSuccess {
+//				// Do nothing if the TPM didn't return success
+//				return
+//			}
+//
+//			// Return a response indicating that the tests are running in the background.
+//			rsp.Reset()
+//			c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseTesting, nil, nil, nil), IsNil)
+//
+//		case tpm2.CommandGetTestResult:
+//			// Unpack the response
+//			rc, rpBytes, _, err := tpm2.ReadResponsePacket(bytes.NewReader(rsp.Bytes()), nil)
+//			c.Assert(err, IsNil)
+//			if rc != tpm2.ResponseSuccess {
+//				// Do nothing if the TPM didn't return success
+//				return
+//			}
+//
+//			var outData tpm2.MaxBuffer
+//			var testResult tpm2.ResponseCode
+//			_, err = mu.UnmarshalFromBytes(rpBytes, &outData, &testResult)
+//			if testResult != tpm2.ResponseSuccess {
+//				// Do nothing if the tests actully failed
+//				return
+//			}
+//
+//			testResult = tpm2.ResponseSuccess
+//			if !getTestResultLooped {
+//				testResult = tpm2.ResponseTesting
+//				getTestResultLooped = true
+//			}
+//
+//			rsp.Reset()
+//			rpBytes = mu.MustMarshalToBytes(outData, testResult)
+//			c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseSuccess, nil, rpBytes, nil), IsNil)
+//
+//		default:
+//			origIntercept(cmdCode, cmdHandles, cmdAuthArea, cpBytes, rsp)
+//		}
+//	}
+//
+//	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+//	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+//	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, 0)
+//	c.Check(err, IsNil)
+//	c.Assert(tpm, NotNil)
+//	var tmpl tpm2_testutil.TransportWrapper
+//	c.Assert(tpm.Transport(), Implements, &tmpl)
+//	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
+//	c.Check(discreteTPM, testutil.IsTrue)
+//	c.Check(dev.NumberOpen(), Equals, int(1))
+//}
 
 // Error cases begin here.
 
@@ -395,16 +395,15 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceFailureMode(c *C) {
 	c.Check(dev.NumberOpen(), Equals, int(0))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceFailureModeBackgroundTest(c *C) {
-	// Test the case where the TPM is in failure mode, and it performs self-tests
-	// in the background (we have to mock this behaviour because the simulator
-	// doesn't work like this).
-	getTestResultLooped := false
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceWithBackgroundSelfTest(c *C) {
+	// This case should fail for now because the code that handles it is
+	// commented out.
+	// XXX: See the commented out TPM2_SelfTest result handling code in check_tpm.go
 	s.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
 		switch cmdCode {
 		case tpm2.CommandSelfTest:
 			// Unpack the response
-			rc, _, _, err := tpm2.ReadResponsePacket(rsp, nil)
+			rc, _, _, err := tpm2.ReadResponsePacket(bytes.NewReader(rsp.Bytes()), nil)
 			c.Assert(err, IsNil)
 			if rc != tpm2.ResponseSuccess {
 				// Do nothing if the TPM didn't return success
@@ -414,42 +413,72 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceFailureModeBackgroundTest(c *C) {
 			// Return a response indicating that the tests are running in the background.
 			rsp.Reset()
 			c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseTesting, nil, nil, nil), IsNil)
-
-		case tpm2.CommandGetTestResult:
-			// Unpack the response
-			rc, rpBytes, _, err := tpm2.ReadResponsePacket(rsp, nil)
-			c.Assert(err, IsNil)
-			if rc != tpm2.ResponseSuccess {
-				// Do nothing if the TPM didn't return success
-				return
-			}
-
-			var outData tpm2.MaxBuffer
-			var testResult tpm2.ResponseCode
-			_, err = mu.UnmarshalFromBytes(rpBytes, &outData, &testResult)
-			if testResult != tpm2.ResponseSuccess {
-				// Do nothing if the tests actully failed
-				return
-			}
-
-			testResult = tpm2.ResponseFailure
-			if !getTestResultLooped {
-				testResult = tpm2.ResponseTesting
-				getTestResultLooped = true
-			}
-
-			rsp.Reset()
-			rpBytes = mu.MustMarshalToBytes(outData, testResult)
-			c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseSuccess, nil, rpBytes, nil), IsNil)
 		}
 	}
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
 	_, _, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, Equals, ErrTPMFailure)
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(err, ErrorMatches, `cannot perform partial self test: TPM returned a warning whilst executing command TPM_CC_SelfTest: TPM_RC_TESTING \(TPM is performing self-tests\)`)
+	c.Check(tpm2.IsTPMWarning(err, tpm2.WarningTesting, tpm2.CommandSelfTest), testutil.IsTrue)
 }
+
+// XXX: See the commented out TPM2_SelfTest result handling code in check_tpm.go
+//func (s *tpmSuite) TestOpenAndCheckTPM2DeviceFailureModeBackgroundTest(c *C) {
+//	// Test the case where the TPM is in failure mode, and it performs self-tests
+//	// in the background (we have to mock this behaviour because the simulator
+//	// doesn't work like this).
+//	getTestResultLooped := false
+//	s.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+//		switch cmdCode {
+//		case tpm2.CommandSelfTest:
+//			// Unpack the response
+//			rc, _, _, err := tpm2.ReadResponsePacket(rsp, nil)
+//			c.Assert(err, IsNil)
+//			if rc != tpm2.ResponseSuccess {
+//				// Do nothing if the TPM didn't return success
+//				return
+//			}
+//
+//			// Return a response indicating that the tests are running in the background.
+//			rsp.Reset()
+//			c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseTesting, nil, nil, nil), IsNil)
+//
+//		case tpm2.CommandGetTestResult:
+//			// Unpack the response
+//			rc, rpBytes, _, err := tpm2.ReadResponsePacket(rsp, nil)
+//			c.Assert(err, IsNil)
+//			if rc != tpm2.ResponseSuccess {
+//				// Do nothing if the TPM didn't return success
+//				return
+//			}
+//
+//			var outData tpm2.MaxBuffer
+//			var testResult tpm2.ResponseCode
+//			_, err = mu.UnmarshalFromBytes(rpBytes, &outData, &testResult)
+//			if testResult != tpm2.ResponseSuccess {
+//				// Do nothing if the tests actully failed
+//				return
+//			}
+//
+//			testResult = tpm2.ResponseFailure
+//			if !getTestResultLooped {
+//				testResult = tpm2.ResponseTesting
+//				getTestResultLooped = true
+//			}
+//
+//			rsp.Reset()
+//			rpBytes = mu.MustMarshalToBytes(outData, testResult)
+//			c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseSuccess, nil, rpBytes, nil), IsNil)
+//		}
+//	}
+//
+//	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+//	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+//	_, _, err := OpenAndCheckTPM2Device(env, 0)
+//	c.Check(err, Equals, ErrTPMFailure)
+///	c.Check(dev.NumberOpen(), Equals, int(0))
+//}
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceIsNotPCClient(c *C) {
 	// Test for not having a PC Client TPM2 device.

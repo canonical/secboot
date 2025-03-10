@@ -21,7 +21,6 @@ package preinstall
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -76,33 +75,51 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	// the TPM2_GetTestResult command is usable when the TPM is in failure mode.
 	// Trigger a self test of untested functionality (note that the platform firmware might
 	// have already done this, which is good because it will mean there's nothing to test).
+	//
+	// The reference library spec says that TPM2_SelfTest implementations can either run tests
+	// synchronously - returning the result directly, or can run tests in the background after the
+	// command completes, with the results having to be fetched with TPM2_GetTestResult. It does
+	// say that there are no PC-Client devices that implements TPM2_SelfTest(YES) using background
+	// testing - the important detail is that this statement only applies to full self-tests, which
+	// we aren't requesting here (and don't want to - we only want to test functionality that hasn't
+	// been tested yet). For now, we'll assume that the same statement applies also to
+	// TPM2_SelfTest(NO) and only support the case where it runs the tests synchronously - we can
+	// uncomment the other path later on if we come across implementations that need it, perhaps
+	// with some sort of timeout.
 	err = tpm.SelfTest(false)
 	switch {
-	case tpm2.IsTPMWarning(err, tpm2.WarningTesting, tpm2.CommandSelfTest):
-		// This is an implementation that performs the remaining self tests after the
-		// command completes. We need to wait around to get a test result.
-		tick := time.NewTicker(100 * time.Millisecond)
-		for {
-			_, rc, err := tpm.GetTestResult()
-			if err != nil {
-				return nil, false, fmt.Errorf("cannot obtain self test results: %w", err)
-			}
-			if rc == tpm2.ResponseSuccess {
-				// All executed tests completed successfully.
-				break
-			}
-			switch rc {
-			case tpm2.ResponseFailure:
-				// One or more tests failed and the TPM is now in failure mode.
-				return nil, false, ErrTPMFailure
-			case tpm2.ResponseTesting:
-				// The tests are still running. We need to wait for a bit and
-				// then try again.
-			default:
-				return nil, false, fmt.Errorf("unexpected self test result: %#x", rc)
-			}
-			<-tick.C
-		}
+	//case tpm2.IsTPMWarning(err, tpm2.WarningTesting, tpm2.CommandSelfTest):
+	// This is an implementation that performs the remaining self tests after the
+	// command completes. We need to wait around to get a test result. Poll it every
+	// 100ms.
+	// XXX(chrisccoulson): Uncomment this code path if needed, and the corresponding
+	// tests:
+	// - tpmSuite.TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCountersDiscreteTPMWithBackgroundSelfTest
+	// - tpmSuite.TestOpenAndCheckTPM2DeviceFailureModeBackgroundTest
+	// ... and remove this test:
+	// - tpmSuite.TestOpenAndCheckTPM2DeviceWithBackgroundSelfTest
+	//tick := time.NewTicker(100 * time.Millisecond)
+	//for {
+	//	_, rc, err := tpm.GetTestResult()
+	//	if err != nil {
+	//		return nil, false, fmt.Errorf("cannot obtain self test results: %w", err)
+	//	}
+	//	if rc == tpm2.ResponseSuccess {
+	//		// All executed tests completed successfully.
+	//		break
+	//	}
+	//	switch rc {
+	//	case tpm2.ResponseFailure:
+	//		// One or more tests failed and the TPM is now in failure mode.
+	//		return nil, false, ErrTPMFailure
+	//	case tpm2.ResponseTesting:
+	//		// The tests are still running. We need to wait for a bit and
+	//		// then try again.
+	//	default:
+	//		return nil, false, fmt.Errorf("unexpected self test result: %#x", rc)
+	//	}
+	//	<-tick.C
+	//}
 	case tpm2.IsTPMError(err, tpm2.ErrorFailure, tpm2.CommandSelfTest):
 		// Either previously executed tests failed, or this is an implementation that
 		// runs the remaining self tests before the command completes, and one or more
