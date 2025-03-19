@@ -24,8 +24,8 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/go-tpm2"
 	"github.com/canonical/cpuid"
+	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot/efi/preinstall"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
