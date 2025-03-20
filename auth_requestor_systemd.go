@@ -22,25 +22,18 @@ package secboot
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"text/template"
 
 	"golang.org/x/xerrors"
 )
 
-type askPasswordMsgParams struct {
-	VolumeName       string
-	SourceDevicePath string
-	// PartLabel string
-	// LUKS2Label string
-}
-
 type systemdAuthRequestor struct {
-	passphraseTmpl  *template.Template
-	recoveryKeyTmpl *template.Template
+	passphraseTmpl  string
+	recoveryKeyTmpl string
 }
 
 func (r *systemdAuthRequestor) askPassword(sourceDevicePath, msg string) (string, error) {
@@ -64,29 +57,13 @@ func (r *systemdAuthRequestor) askPassword(sourceDevicePath, msg string) (string
 }
 
 func (r *systemdAuthRequestor) RequestPassphrase(volumeName, sourceDevicePath string) (string, error) {
-	params := askPasswordMsgParams{
-		VolumeName:       volumeName,
-		SourceDevicePath: sourceDevicePath}
-
-	msg := new(bytes.Buffer)
-	if err := r.passphraseTmpl.Execute(msg, params); err != nil {
-		return "", xerrors.Errorf("cannot execute message template: %w", err)
-	}
-
-	return r.askPassword(sourceDevicePath, msg.String())
+	msg := fmt.Sprintf(r.passphraseTmpl, volumeName, sourceDevicePath)
+	return r.askPassword(sourceDevicePath, msg)
 }
 
 func (r *systemdAuthRequestor) RequestRecoveryKey(volumeName, sourceDevicePath string) (RecoveryKey, error) {
-	params := askPasswordMsgParams{
-		VolumeName:       volumeName,
-		SourceDevicePath: sourceDevicePath}
-
-	msg := new(bytes.Buffer)
-	if err := r.recoveryKeyTmpl.Execute(msg, params); err != nil {
-		return RecoveryKey{}, xerrors.Errorf("cannot execute message template: %w", err)
-	}
-
-	passphrase, err := r.askPassword(sourceDevicePath, msg.String())
+	msg := fmt.Sprintf(r.recoveryKeyTmpl, volumeName, sourceDevicePath)
+	passphrase, err := r.askPassword(sourceDevicePath, msg)
 	if err != nil {
 		return RecoveryKey{}, err
 	}
@@ -100,23 +77,13 @@ func (r *systemdAuthRequestor) RequestRecoveryKey(volumeName, sourceDevicePath s
 }
 
 // NewSystemdAuthRequestor creates an implementation of AuthRequestor that
-// delegates to the systemd-ask-password binary. The supplied templates are
+// delegates to the systemd-ask-password binary. The supplied foramt strings are
 // used to compose the messages that will be displayed when requesting a
-// credential. The template will be executed with the following parameters:
-// - .VolumeName: The name that the LUKS container will be mapped to.
-// - .SourceDevicePath: The device path of the LUKS container.
-func NewSystemdAuthRequestor(passphraseTmpl, recoveryKeyTmpl string) (AuthRequestor, error) {
-	pt, err := template.New("passphraseMsg").Parse(passphraseTmpl)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot parse passphrase message template: %w", err)
-	}
-
-	rkt, err := template.New("recoveryKeyMsg").Parse(recoveryKeyTmpl)
-	if err != nil {
-		return nil, xerrors.Errorf("cannot parse recovery key message template: %w", err)
-	}
-
+// credential. The format strings will be interpreted with the following parameters:
+// - %[1]s: The name that the LUKS container will be mapped to.
+// - %[2]s: The device path of the LUKS container.
+func NewSystemdAuthRequestor(passphraseTmpl, recoveryKeyTmpl string) AuthRequestor {
 	return &systemdAuthRequestor{
-		passphraseTmpl:  pt,
-		recoveryKeyTmpl: rkt}, nil
+		passphraseTmpl:  passphraseTmpl,
+		recoveryKeyTmpl: recoveryKeyTmpl}
 }

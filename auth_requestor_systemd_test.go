@@ -69,8 +69,7 @@ type testRequestPassphraseData struct {
 func (s *authRequestorSystemdSuite) testRequestPassphrase(c *C, data *testRequestPassphraseData) {
 	s.setPassphrase(c, data.passphrase)
 
-	requestor, err := NewSystemdAuthRequestor(data.tmpl, "")
-	c.Assert(err, IsNil)
+	requestor := NewSystemdAuthRequestor(data.tmpl, "")
 
 	passphrase, err := requestor.RequestPassphrase(data.volumeName, data.sourceDevicePath)
 	c.Check(err, IsNil)
@@ -84,7 +83,7 @@ func (s *authRequestorSystemdSuite) testRequestPassphrase(c *C, data *testReques
 func (s *authRequestorSystemdSuite) TestRequestPassphrase(c *C) {
 	s.testRequestPassphrase(c, &testRequestPassphraseData{
 		passphrase:       "password",
-		tmpl:             "Enter passphrase for {{.SourceDevicePath}}:",
+		tmpl:             "Enter passphrase for %[2]s:",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		expectedMsg:      "Enter passphrase for /dev/sda1:"})
@@ -93,7 +92,7 @@ func (s *authRequestorSystemdSuite) TestRequestPassphrase(c *C) {
 func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentPassphrase(c *C) {
 	s.testRequestPassphrase(c, &testRequestPassphraseData{
 		passphrase:       "1234",
-		tmpl:             "Enter passphrase for {{.SourceDevicePath}}:",
+		tmpl:             "Enter passphrase for %[2]s:",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		expectedMsg:      "Enter passphrase for /dev/sda1:"})
@@ -102,7 +101,7 @@ func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentPassphrase(c *
 func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentSourceDevice(c *C) {
 	s.testRequestPassphrase(c, &testRequestPassphraseData{
 		passphrase:       "password",
-		tmpl:             "Enter passphrase for {{.SourceDevicePath}}:",
+		tmpl:             "Enter passphrase for %[2]s:",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/nvme0n1p1",
 		expectedMsg:      "Enter passphrase for /dev/nvme0n1p1:"})
@@ -111,7 +110,7 @@ func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentSourceDevice(c
 func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentMsg(c *C) {
 	s.testRequestPassphrase(c, &testRequestPassphraseData{
 		passphrase:       "password",
-		tmpl:             "Enter passphrase for {{.VolumeName}}:",
+		tmpl:             "Enter passphrase for %[1]s:",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		expectedMsg:      "Enter passphrase for data:"})
@@ -120,7 +119,7 @@ func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentMsg(c *C) {
 func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentVolumeName(c *C) {
 	s.testRequestPassphrase(c, &testRequestPassphraseData{
 		passphrase:       "password",
-		tmpl:             "Enter passphrase for {{.VolumeName}}:",
+		tmpl:             "Enter passphrase for %[1]s:",
 		volumeName:       "foo",
 		sourceDevicePath: "/dev/sda1",
 		expectedMsg:      "Enter passphrase for foo:"})
@@ -129,18 +128,16 @@ func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentVolumeName(c *
 func (s *authRequestorSystemdSuite) TestRequestPassphraseInvalidResponse(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor, err := NewSystemdAuthRequestor("", "")
-	c.Assert(err, IsNil)
+	requestor := NewSystemdAuthRequestor("", "")
 
-	_, err = requestor.RequestPassphrase("data", "/dev/sda1")
+	_, err := requestor.RequestPassphrase("data", "/dev/sda1")
 	c.Check(err, ErrorMatches, "systemd-ask-password output is missing terminating newline")
 }
 
 func (s *authRequestorSystemdSuite) TestRequestPassphraseFailure(c *C) {
-	requestor, err := NewSystemdAuthRequestor("", "")
-	c.Assert(err, IsNil)
+	requestor := NewSystemdAuthRequestor("", "")
 
-	_, err = requestor.RequestPassphrase("data", "/dev/sda1")
+	_, err := requestor.RequestPassphrase("data", "/dev/sda1")
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
 }
 
@@ -159,8 +156,7 @@ type testRequestRecoveryKeyData struct {
 func (s *authRequestorSystemdSuite) testRequestRecoveryKey(c *C, data *testRequestRecoveryKeyData) {
 	s.setPassphrase(c, data.passphrase)
 
-	requestor, err := NewSystemdAuthRequestor("", data.tmpl)
-	c.Assert(err, IsNil)
+	requestor := NewSystemdAuthRequestor("", data.tmpl)
 
 	key, err := requestor.RequestRecoveryKey(data.volumeName, data.sourceDevicePath)
 	c.Check(err, IsNil)
@@ -180,7 +176,7 @@ func (s *authRequestorSystemdSuite) TestRequestRecoveryKey(c *C) {
 
 	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
 		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for {{.SourceDevicePath}}:",
+		tmpl:             "Enter recovery key for %[2]s:",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		expectedKey:      key,
@@ -196,7 +192,7 @@ func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentKey(c *C) {
 
 	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
 		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for {{.SourceDevicePath}}:",
+		tmpl:             "Enter recovery key for %[2]s:",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		expectedKey:      key,
@@ -212,7 +208,7 @@ func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentSourceDevice(
 
 	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
 		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for {{.SourceDevicePath}}:",
+		tmpl:             "Enter recovery key for %[2]s:",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/vdb1",
 		expectedKey:      key,
@@ -228,7 +224,7 @@ func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentMsg(c *C) {
 
 	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
 		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for {{.VolumeName}}:",
+		tmpl:             "Enter recovery key for %[1]s:",
 		volumeName:       "data",
 		sourceDevicePath: "/dev/sda1",
 		expectedKey:      key,
@@ -244,7 +240,7 @@ func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentVolumeName(c 
 
 	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
 		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for {{.VolumeName}}:",
+		tmpl:             "Enter recovery key for %[1]s:",
 		volumeName:       "bar",
 		sourceDevicePath: "/dev/sda1",
 		expectedKey:      key,
@@ -254,27 +250,24 @@ func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentVolumeName(c 
 func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyInvalidResponse(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor, err := NewSystemdAuthRequestor("", "")
-	c.Assert(err, IsNil)
+	requestor := NewSystemdAuthRequestor("", "")
 
-	_, err = requestor.RequestRecoveryKey("data", "/dev/sda1")
+	_, err := requestor.RequestRecoveryKey("data", "/dev/sda1")
 	c.Check(err, ErrorMatches, "systemd-ask-password output is missing terminating newline")
 }
 
 func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyInvalidFormat(c *C) {
 	s.setPassphrase(c, "foo")
 
-	requestor, err := NewSystemdAuthRequestor("", "")
-	c.Assert(err, IsNil)
+	requestor := NewSystemdAuthRequestor("", "")
 
-	_, err = requestor.RequestRecoveryKey("data", "/dev/sda1")
+	_, err := requestor.RequestRecoveryKey("data", "/dev/sda1")
 	c.Check(err, ErrorMatches, "cannot parse recovery key: incorrectly formatted: insufficient characters")
 }
 
 func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyFailure(c *C) {
-	requestor, err := NewSystemdAuthRequestor("", "")
-	c.Assert(err, IsNil)
+	requestor := NewSystemdAuthRequestor("", "")
 
-	_, err = requestor.RequestRecoveryKey("data", "/dev/sda1")
+	_, err := requestor.RequestRecoveryKey("data", "/dev/sda1")
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
 }
