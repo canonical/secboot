@@ -388,7 +388,7 @@ const (
 	// the secure boot configuration is being measured.
 	// tcglogPhasePreOSBeforeMeasureSecureBootConfig transitions to this phase by the
 	// first non EV_SEPARATOR event in PCR7.
-	tcglogPhasePreOSMeasuringSecureBootConfig tcglogPhase = iota
+	tcglogPhasePreOSMeasuringSecureBootConfig
 
 	// tcglogPhasePreOSAfterMeasureSecureBootConfig is the pre-OS phase of the log after
 	// measuring the secure boot configuration and which may contain authentication and
