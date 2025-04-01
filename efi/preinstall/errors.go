@@ -299,14 +299,13 @@ func (e *TPM2OwnedHierarchiesError) isEmpty() bool {
 
 var (
 	// ErrPCRBankMissingFromLog may be returned wrapped by NoSuitablePCRAlgorithmError
-	// in the event where a PCR bank does not exist in the TCG log. It may be obtained from
-	// the BankErrs field.
+	// in the event where a PCR bank does not exist in the TCG log.
 	ErrPCRBankMissingFromLog = errors.New("the PCR bank is missing from the TCG log")
 )
 
-// PCRValueMismatchError may be returned wrapped by NoSuitablePCRAlgorithmError for a specific
-// PCR in the event where there is a mismatch between the actual PCR value and the value reconstructed
-// from the TCG log. It may be obtained from the PCRErrs field.
+// PCRValueMismatchError may be returned, indirectly wrapped (via a PCR-specific error type) by
+// NoSuitablePCRAlgorithmError for a specific PCR, in the case where there is a mismatch between
+// the actual PCR value and the value reconstructed from the TCG log.
 type PCRValueMismatchError struct {
 	PCRValue tpm2.Digest // The PCR value obtained from the TPM.
 	LogValue tpm2.Digest // The expected value reconstructed from the TCG log.
@@ -362,57 +361,47 @@ func (e *EmptyPCRBanksError) Error() string {
 	return fmt.Sprintf("the PCR %s missing from the TCG log but active and with one or more empty PCRs on the TPM", s)
 }
 
-// NoSuitablePCRAlgorithmError is returned wrapped in [TCGLogError] if there is no suitable PCR
-// bank where the log matches the TPM values when reconstructed. As multiple errors can occur
-// during testing (multiple banks and multiple PCRs), this error wraps each individual error
-// that occurred and provides access to them.
+// NoSuitablePCRAlgorithmError is returned wrapped in [TCGLogError] if it wasn't possible to
+// select a suitable PCR bank, which may happen under the following conditions:
+//   - The TCG log doesn't contain digests for a supported digest algorithm (SHA-256, SHA-384
+//     or SHA-512).
+//   - The TCG log is inconsistent with the TPM values when the log is reconstructed for one
+//     or more mandatory PCRs, for all algorithms in the log.
+//   - PCR 0 is mandatory and there is an issue with the way that the startup locality event
+//     (if present) is recorded.
+//   - There is a problem with the sequence of measurements that isn't specific to a PCR or
+//     a PCR bank, and which is incompatible with predicting PCR policies.
+//
+// As multiple errors can occur during testing, this error wraps each individual error that
+// occurred and provides access to them.
 type NoSuitablePCRAlgorithmError struct {
-	// BankErrs apply to an entire PCR bank. This field is only populated
-	// if it is not possible to check any PCR in this bank.
-	BankErrs map[tpm2.HashAlgorithmId]error
+	Errs map[tpm2.HashAlgorithmId][]error
+}
 
-	// PCRErrs contain errors associated with specific PCRs in a specific bank.
-	PCRErrs map[tpm2.HashAlgorithmId]map[tpm2.Handle]error
+func newNoSuitablePCRAlgorithmError() *NoSuitablePCRAlgorithmError {
+	return &NoSuitablePCRAlgorithmError{
+		Errs: make(map[tpm2.HashAlgorithmId][]error),
+	}
 }
 
 func (e *NoSuitablePCRAlgorithmError) Error() string {
 	w := new(bytes.Buffer)
 	fmt.Fprintf(w, "no suitable PCR algorithm available:\n")
 
-	// Note that this function iterates over the supportedAlgs and supportedPcrs
-	// slices rather than the maps directly to ensure consistent ordering (which
-	// go maps don't guarantee when iterating over keys).
+	// Note that this function iterates over the supportedAlgs slice rather than
+	// the map directly to ensure consistent ordering (which go maps don't guarantee
+	// when iterating over keys).
 	for _, alg := range supportedAlgs {
-		// Print error for this PCR bank first, if there is one.
-		if err, isErr := e.BankErrs[alg]; isErr {
-			// We have a general error for this PCR bank
+		for _, err := range e.Errs[alg] {
 			fmt.Fprintf(w, "- %v: %v.\n", alg, err)
-		}
-
-		// Then print errors associated with individual PCRs in this bank.
-		pcrErrs, hasPcrErrs := e.PCRErrs[alg]
-		if !hasPcrErrs {
-			// We have no individual PCR errors for this bank
-			continue
-		}
-		for _, pcr := range supportedPcrs {
-			if err, isErr := pcrErrs[pcr]; isErr {
-				// We have an error for this PCR
-				fmt.Fprintf(w, "- %v(PCR%d): %v.\n", alg, pcr, err)
-			}
 		}
 	}
 	return w.String()
 }
 
-// setBankErr sets an error for an entire PCR bank
-func (e *NoSuitablePCRAlgorithmError) setBankErr(alg tpm2.HashAlgorithmId, err error) {
-	e.BankErrs[alg] = err
-}
-
-// setPcrErrs sets errors for individual PCRs associated with a bank
-func (e *NoSuitablePCRAlgorithmError) setPcrErrs(results *pcrBankResults) {
-	e.PCRErrs[results.Alg] = results.pcrErrs()
+// addErr adds an error for the specified PCR bank
+func (e *NoSuitablePCRAlgorithmError) addErr(alg tpm2.HashAlgorithmId, err error) {
+	e.Errs[alg] = append(e.Errs[alg], err)
 }
 
 // TCGLogError is returned unwrapped from [RunChecks] if there is a general issue with the
@@ -431,14 +420,18 @@ func (e *TCGLogError) Unwrap() error {
 
 // Errors related to platform firmware PCR checks
 
-// PlatformFirmwarePCRError is returned as a warning in [CheckResult] if the
-// PlatformFirmwareProfileSupportRequired flag is not supplied to [RunChecks],
-// to indicate that [github.com/snapcore/secboot/efi.WithPlatformFirmwareProfile]
-// cannot be used to add a profile for PCR 0.
+// PlatformFirmwarePCRError may be returned if the PCR 0 value is inconsistent with
+// the value reconstructed from the TCG log or there is an issue with the way the
+// startup locality event (if present) is recorded.
 //
-// If the PlatformFirmwareProfileSupportRequiredflag is supplied to [RunChecks],
-// an alternative error will be returned via [NoSuitablePCRAlgorithmError] instead
-// if the PCR 0 value is inconsistent with the reconstructed TCG log value.
+// If an error occurs, this error will be returned as a warning in [CheckResult] if
+// the PlatformFirmwareProfileSupportRequired flag is not supplied to [RunChecks],
+// to indicate that [github.com/snapcore/secboot/efi.WithPlatformFirmwareProfile]
+// cannot be used to generate profiles for PCR 0.
+//
+// If an error occurs, this error will be returned wrapped in
+// [NoSuitablePCRAlgorithmError] if the PlatformFirmwareProfileSupportRequired flag
+// is supplied to [RunChecks].
 type PlatformFirmwarePCRError struct {
 	err error
 }
@@ -453,17 +446,22 @@ func (e *PlatformFirmwarePCRError) Unwrap() error {
 
 // Errors related to platform config PCR checks
 
-// PlatformConfigPCRError is returned wrapped in [RunChecksErrors] if the
-// PlatformConfigProfileSupportRequired flag is supplied to [RunChecks],
-// because there currently is no support in [github.com/snapcore/secboot/efi]
-// for generating profiles for PCR 1.
+// PlatformConfigPCR may be returned if the PCR 1 value is inconsistent with the
+// value reconstructed from the TCG log.
 //
-// It is returned as a warning in [CheckResult] instead if the
-// PlatformConfigProfileSupportRequired flag is not supplied to [RunChecks].
+// This error will currently always be returned as a warning in [CheckResult] if
+// the PlatformConfigProfileSupportRequired flag is not supplied to [RunChecks],
+// because there is currently no support in [github.com/snapcore/secboot/efi] for
+// generating profiles for PCR 1.
 //
-// If the PlatformConfigProfileSupportRequiredflag is supplied to [RunChecks],
-// an alternative error will be returned via [NoSuitablePCRAlgorithmError] instead
-// if the PCR 1 value is inconsistent with the reconstructed TCG log value.
+// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
+// if the PlatformConfigProfileSupportRequired flag is supplied to [RunChecks]
+// and the PCR 1 value is inconsistent with the value recorded from the TCG log.
+//
+// This error will otherwise currently always be returned wrapped in
+// [RunChecksErrors] if the PlatformConfigProfileSupportRequired flag is supplied
+// to [RunChecks] because there is currently no support in
+// [github.com/snapcore/secboot/efi] for generating profiles for PCR 1.
 type PlatformConfigPCRError struct {
 	err error
 }
@@ -478,14 +476,17 @@ func (e *PlatformConfigPCRError) Unwrap() error {
 
 // Errors related to drivers and apps PCR checks.
 
-// DriversAndAppsPCRError is returned as a warning in [CheckResult] if the
-// DriversAndAppsProfileSupportRequired flag is not supplied to [RunChecks],
-// to indicate that [github.com/snapcore/secboot/efi.WithPlatformFirmwareProfile]
-// cannot be used to add a profile for PCR 2.
+// DriversAndAppsError may be returned if the PCR 2 value is inconsistent with the
+// value reconstructed from the TCG log.
 //
-// If the DriversAndAppsProfileSupportRequiredflag is supplied to [RunChecks],
-// an alternative error will be returned via [NoSuitablePCRAlgorithmError] instead
-// if the PCR 2 value is inconsistent with the reconstructed TCG log value.
+// If an error occurs, this error will be returned as a warning in [CheckResult] if
+// the DriversAndAppsProfileSupportRequired flag is not supplied to [RunChecks],
+// to indicate that [github.com/snapcore/secboot/efi.WithDriversAndAppsProfile]
+// cannot be used to generate profiles for PCR 2.
+//
+// If an error occurs, this error will be returned wrapped in
+// [NoSuitablePCRAlgorithmError] if the DriversAndAppsProfileSupportRequired flag
+// is supplied to [RunChecks].
 type DriversAndAppsPCRError struct {
 	err error
 }
@@ -508,17 +509,23 @@ var (
 
 // Errors related to drivers and apps config PCR checks
 
-// DriversAndAppsConfigPCRError is returned wrapped in [RunChecksErrors] if the
-// DriversAndAppsConfigProfileSupportRequired flag is supplied to [RunChecks],
-// because there currently is no support in [github.com/snapcore/secboot/efi]
-// for generating profiles for PCR 3.
+// DriversAndAppsConfigPCRError may be returned if the PCR 3 value is inconsistent
+// with the value reconstructed from the TCG log.
 //
-// It is returned as a warning in [CheckResult] instead if the
-// DriversAndAppsConfigProfileSupportRequired flag is not supplied to [RunChecks].
+// This error will currently always be returned as a warning in [CheckResult] if
+// the DriversAndAppsConfigProfileSupportRequired flag is not supplied to
+// [RunChecks], because there is currently no support in
+// [github.com/snapcore/secboot/efi] for generating profiles for PCR 3.
 //
-// If the DriversAndAppsConfigProfileSupportRequiredflag is supplied to [RunChecks],
-// an alternative error may be returned via [NoSuitablePCRAlgorithmError] instead
-// if the PCR 3 value is inconsistent with the reconstructed TCG log value.
+// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
+// if the DriversAndAppsConfigProfileSupportRequired flag is supplied to
+// [RunChecks] and the PCR 3 value is inconsistent with the value recorded from
+// the TCG log.
+//
+// This error will otherwise currently always be returned wrapped in
+// [RunChecksErrors] if the DriversAndAppsConfigProfileSupportRequired flag is
+// supplied to [RunChecks] because there is currently no support in
+// [github.com/snapcore/secboot/efi] for generating profiles for PCR 3.
 type DriversAndAppsConfigPCRError struct {
 	err error
 }
@@ -533,18 +540,40 @@ func (e *DriversAndAppsConfigPCRError) Unwrap() error {
 
 // Errors related to boot manager code PCR checks
 
-// BootManagerCodePCRError is returned wrapped in [RunChecksErrors] if the
-// BootManagerCodeProfileSupportRequired flag is supplied to [RunChecks]
-// and an error occurs that means that
-// [github.com/snapcore/secboot/efi.WithBootManagerCodeProfile] cannot be
-// used to generate profiles for PCR 4.
+// BootManagerCodePCRError may be returned if the PCR 4 value is inconsistent with
+// the value reconstructed from the TCG log, or if there are any other errors with
+// the way that measurements are performed to PCR 4, or any errors occur when
+// checking the measurements performed to PCR 4, eg:
+//   - Errors that occur when trying to read required EFI variables.
+//   - Event data decode errors from PCR 4 events in the TCG log.
+//   - Duplicated EV_OMIT_BOOT_DEVICE_EVENTS event.
+//   - Unexpected or misplaced EV_EFI_ACTION events.
+//   - EV_EFI_BOOT_SERVICES_APPLICATION events that occur before secure boot policy
+//     is measured.
+//   - Unexpected event types before the OS-present phase.
+//   - The presence of system prepartion apps when the firmware indicates they are
+//     not supported.
+//   - EV_EFI_BOOT_SERVICES_APPLICATION events that occur in the OS-present phase
+//     but aren't associated with the OS launch or Absolute.
+//   - Duplicated EV_EFI_BOOT_SERVICES_APPLICATION events associated with Absolute.
+//   - It wasn't possible to check the EV_EFI_BOOT_SERVICES_APPLICATION event digests
+//     are consistent with the current IBL (initial boot loader) and SBL (secondary
+//     boot loader) because they were not supplied to [RunChecks].
+//   - The EV_EFI_BOOT_SERVICES_APPLICATION event digests are not consistent with
+//     the Authenticode digests of the current boot applications, as supplied to
+//     [RunChecks].
 //
-// It is returned as a warning in [CheckResult] instead if the
-// BootManagerCodeProfileSupportRequired flag is not supplied to [RunChecks].
+// If an error occurs, this error will be returned as a warning in [CheckResult] if
+// the BootManagerCodeProfileSupportRequired flag is not supplied to [RunChecks],
+// to indicate that [github.com/snapcore/secboot/efi.WithBootManagerCodeProfile]
+// cannot be used to generate profiles for PCR 4.
 //
-// If the BootManagerCodeProfileSupportRequiredflag is supplied to [RunChecks],
-// an alternative error will be returned via [NoSuitablePCRAlgorithmError] instead
-// if the PCR 4 value is inconsistent with the reconstructed TCG log value.
+// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
+// if the BootManagerCodeProfileSupportRequired flag is supplied to [RunChecks]
+// and the PCR 4 value is inconsistent with the value recorded from the TCG log.
+//
+// If any other error occurs and the BootManagerCodeProfileSupportRequired flag is
+// supplied to [RunChecks], this error will be returned wrapped in [RunChecksErrors].
 type BootManagerCodePCRError struct {
 	err error
 }
@@ -582,17 +611,22 @@ var (
 
 // Errors related to boot manager config PCR checks
 
-// BootManagerConfigPCRError is returned wrapped in [RunChecksErrors] if the
-// BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks],
-// because there currently is no support in [github.com/snapcore/secboot/efi] for
-// generating profiles for PCR 5.
+// BootManagerConfigPCRError may be returned if the PCR 5 value is inconsistent
+// with the value reconstructed from the TCG log.
 //
-// It is returned as a warning in [CheckResult] instead if the
-// BootManagerConfigProfileSupportRequired flag is not supplied to [RunChecks].
+// This error will currently always be returned as a warning in [CheckResult] if
+// the BootManagerConfigProfileSupportRequired flag is not supplied to [RunChecks],
+// because there is currently no support in [github.com/snapcore/secboot/efi]
+// for generating profiles for PCR 5.
 //
-// If the BootManagerConfigProfileSupportRequiredflag is supplied to [RunChecks],
-// an alternative error will be returned via [NoSuitablePCRAlgorithmError] instead
-// if the PCR 5 value is inconsistent with the reconstructed TCG log value.
+// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
+// if the BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks]
+// and the PCR 5 value is inconsistent with the value recorded from the TCG log.
+//
+// This error will otherwise currently always be returned wrapped in
+// [RunChecksErrors] if the BootManagerConfigProfileSupportRequired flag is
+// supplied to [RunChecks] because there is currently no support in
+// [github.com/snapcore/secboot/efi] for generating profiles for PCR 5.
 type BootManagerConfigPCRError struct {
 	err error
 }
@@ -607,18 +641,61 @@ func (e *BootManagerConfigPCRError) Unwrap() error {
 
 // Errors related to secure boot policy PCR checks.
 
-// SecureBootPolicyPCRError is returned wrapped in [RunChecksErrors] if the
-// SecureBootPolicyProfileSupportRequired flag is supplied to [RunChecks]
-// and an error occurs that means that
-// [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile] cannot be
-// used to generate profiles for PCR 7.
+// SecureBootPolicyPCRError may be returned if the PCR 7 value is inconsistent with
+// the value reconstructed from the TCG log, or if there are any other errors with
+// the way that measurements are performed to PCR 7, or any errors occur when
+// checking the measurements performed to PCR 7, eg:
+//   - Errors that occur when trying to read required EFI variables.
+//   - Event data decode errors from PCR 7 events in the TCG log.
+//   - The IBL (initial boot loader) for the current boot was not supplied to
+//     [RunChecks].
+//   - Secure boot is not enabled, or if supported, the system is not in deployed
+//     mode, as [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile] only
+//     generates profiles compatible with deployed mode.
+//   - The firmware supports timestamp revocation or OS recovery, as these result
+//     in additional measurements that are not yet supported by
+//     [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile].
+//   - There are insufficient, unexpected or out-of-order secure boot configuration
+//     measurements.
+//   - Measurement digests are not the tagged hash of the event data where that is
+//     required.
+//   - The variable data part of the event data for secure boot configuration events
+//     is incorrectly formed (eg, SecureBoot is not a valid boolean, PK does not
+//     contain a single X.509 EFI_SIGNATURE_LIST, other measurements do not contain
+//     a valid signature database).
+//   - Unexpected event types such as EV_EFI_ACTION events with the strings "UEFI
+//     Debug Mode" (to indicate the presence of a firmware debugging endpoint) or
+//     "DMA Protection Disabled" (to indicate that pre-boot DMA remapping was
+//     disabled).
+//   - Misplaced EV_EFI_VARIABLE_DRIVER_CONFIG or EV_EFI_VARIABLE_AUTHORITY events.
+//   - The variable data part of the event data for secure boot verification events
+//     is incorrectly formed (ie, not an EFI_SIGNATURE_DATA structure).
+//   - There are EV_EFI_VARIABLE_AUTHORITY events measured by the firmware with
+//     duplicate digests.
+//   - There are EV_EFI_VARIABLE_AUTHORITY events measured by the firmware with
+//     signatures that aren't present in the UEFI authorized signature database.
+//   - There are EV_EFI_VARIABLE_AUTHORITY events measured by the firmware with
+//     sources other than the UEFI authorized signature database.
+//   - There is an EV_EFI_VARIABLE_AUTHORITY event during OS-present that isn't
+//     followed immediately by an EV_EFI_BOOT_SERVICES_APPLICATION in PCR 4 for
+//     the IBL launch.
+//   - The secure boot signature attached to the IBL doesn't chain to a trust
+//     anchor associated with an EV_EFI_VARIABLE_AUTHORITY event previously measured
+//     by the firmware.
+//   - There are EVI_EFI_VARIABLE_AUTHORITY events during OS-present that are
+//     related to non X.509 EFI_SIGNATURE_LISTs.
 //
-// It is returned as a warning in [CheckResult] instead if the
-// SecureBootPolicyProfileSupportRequired flag is not supplied to [RunChecks].
+// If an error occurs, this error will be returned as a warning in [CheckResult] if
+// the SecureBootPolicyProfileSupportRequired flag is not supplied to [RunChecks],
+// to indicate that [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile]
+// cannot be used to generate profiles for PCR 7.
 //
-// If the SecureBootPolicyProfileSupportRequiredflag is supplied to [RunChecks],
-// an alternative error will be returned via [NoSuitablePCRAlgorithmError] instead
-// if the PCR 7 value is inconsistent with the reconstructed TCG log value.
+// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
+// if the SecureBootPolicyProfileSupportRequired flag is supplied to [RunChecks]
+// and the PCR 7 value is inconsistent with the value recorded from the TCG log.
+//
+// If any other error occurs and the SecureBootPolicyProfileSupportRequired flag is
+// supplied to [RunChecks], this error will be returned wrapped in [RunChecksErrors].
 type SecureBootPolicyPCRError struct {
 	err error
 }
@@ -662,6 +739,29 @@ var (
 	// to RunChecks.
 	ErrPreOSVerificationUsingDigests = errors.New("some pre-OS components were authenticated from the authorized signature database using an Authenticode digest")
 )
+
+// wrapPCRError wraps the supplied error with an error type for the specified PCR.
+// This will panic if PCR isn't 0-5 or 7.
+func wrapPCRError(pcr tpm2.Handle, err error) error {
+	switch pcr {
+	case 0:
+		return &PlatformFirmwarePCRError{err}
+	case 1:
+		return &PlatformConfigPCRError{err}
+	case 2:
+		return &DriversAndAppsPCRError{err}
+	case 3:
+		return &DriversAndAppsConfigPCRError{err}
+	case 4:
+		return &BootManagerCodePCRError{err}
+	case 5:
+		return &BootManagerConfigPCRError{err}
+	case 7:
+		return &SecureBootPolicyPCRError{err}
+	default:
+		panic("invalid PCR")
+	}
+}
 
 // UnsupportedReqiredPCRsError is returned from methods of [PCRProfileAutoEnablePCRsOption]
 // when a valid PCR configuration cannot be created based on the supplied [PCRProfileOptionsFlags]
