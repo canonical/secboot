@@ -628,6 +628,24 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 		return nil, errors.New("invalid log spec")
 	}
 
+	// Make sure that the log is well formed and has well defined phases and that there are no measurements
+	// to non-TCG defined PCRs until OS-present.
+	phaseTracker := newTcgLogPhaseTracker()
+	for _, ev := range log.Events {
+		phase, err := phaseTracker.processEvent(ev)
+		if err != nil {
+			return nil, err
+		}
+		if phase == tcglogPhaseOSPresent {
+			// We've hit OS-present - we don't care about the rest of the log at
+			// this stage
+			break
+		}
+	}
+	if !phaseTracker.reachedOSPresent() {
+		return nil, errors.New("reached the end of the log without seeing EV_SEPARATOR events in all TCG defined PCRs")
+	}
+
 	// Chose the best PCR bank, ordered from SHA-512, SHA-384 to SHA-256. We're most
 	// likely to get SHA-256 here - it's only in very recent devices that we have TPMs with
 	// SHA-384 support and corresponding firmware integration.
@@ -699,24 +717,6 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 	if chosenResults == nil {
 		// No suitable PCR bank was found, so return an error that's hopefully useful :(
 		return nil, mainErr
-	}
-
-	// Make sure that the log is well formed and has well defined phases and that there are no measurements
-	// to non-TCG defined PCRs until OS-present.
-	phaseTracker := newTcgLogPhaseTracker()
-	for _, ev := range log.Events {
-		phase, err := phaseTracker.processEvent(ev)
-		if err != nil {
-			return nil, err
-		}
-		if phase == tcglogPhaseOSPresent {
-			// We've hit OS-present - we don't care about the rest of the log at
-			// this stage
-			break
-		}
-	}
-	if !phaseTracker.reachedOSPresent() {
-		return nil, errors.New("reached the end of the log without seeing EV_SEPARATOR events in all TCG defined PCRs")
 	}
 
 	// At this point, we've selected a PCR bank where the TCG log is consistent with the PCR values for

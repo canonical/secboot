@@ -492,7 +492,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedStartupLocal
 
 	c.Check(e.Errs[tpm2.HashAlgorithmSHA256][0], ErrorMatches, `error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\)`)
 	var pfe *PlatformFirmwarePCRError
-	c.Check(errors.As(e.Errs[tpm2.HashAlgorithmSHA256][0], &pfe), testutil.IsTrue)
+	c.Assert(errors.As(e.Errs[tpm2.HashAlgorithmSHA256][0], &pfe), testutil.IsTrue)
 	var mismatchErr *PCRValueMismatchError
 	c.Check(errors.As(pfe, &mismatchErr), testutil.IsTrue)
 
@@ -822,6 +822,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPreOSMeasurementToNonT
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 	})
+	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
 
 	var eventsCopy []*tcglog.Event
 	events := log.Events
@@ -843,7 +844,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPreOSMeasurementToNonT
 		eventsCopy = append(eventsCopy, ev)
 	}
 	log.Events = eventsCopy
-	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
 
 	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil, 0)
 	c.Check(err, ErrorMatches, `measurements were made by firmware from pre-OS environment to non-TCG defined PCR 8`)
@@ -1168,4 +1168,41 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankBadSHA1(c *C) {
 	c.Check(e.Errs[tpm2.HashAlgorithmSHA512], DeepEquals, []error{ErrPCRBankMissingFromLog})
 	c.Check(e.Errs[tpm2.HashAlgorithmSHA384], DeepEquals, []error{ErrPCRBankMissingFromLog})
 	c.Check(e.Errs[tpm2.HashAlgorithmSHA256], DeepEquals, []error{ErrPCRBankMissingFromLog})
+}
+
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankChecksLogBeforePCRValues(c *C) {
+	// Check that if we have a log with mismatched digests and which is malformed,
+	// that we return an error for the malformed log first.
+	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		StartupLocality: 3,
+	})
+	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
+
+	// Create a log where the reconstructed PCR0 value doesn't match what was measured.
+	log = efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+	})
+
+	// Inject an error separator event into the log, which should be picked up before
+	// the incorrect PCR0 value.
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		if ev.EventType != tcglog.EventTypeSeparator {
+			continue
+		}
+
+		ev.Data = &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventErrorValue, ErrorInfo: []byte{1, 2, 3, 4}}
+		break
+	}
+
+	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, tpm2.HandleList{
+		internal_efi.PlatformFirmwarePCR,
+	}, 0)
+	c.Check(err, ErrorMatches, `EV_SEPARATOR event for PCR 7 indicates an error occurred \(error code in log: 67305985\)`)
 }
