@@ -628,6 +628,24 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 		return nil, errors.New("invalid log spec")
 	}
 
+	// Make sure that the log is well formed and has well defined phases and that there are no measurements
+	// to non-TCG defined PCRs until OS-present.
+	phaseTracker := newTcgLogPhaseTracker()
+	for _, ev := range log.Events {
+		phase, err := phaseTracker.processEvent(ev)
+		if err != nil {
+			return nil, err
+		}
+		if phase == tcglogPhaseOSPresent {
+			// We've hit OS-present - we don't care about the rest of the log at
+			// this stage
+			break
+		}
+	}
+	if !phaseTracker.reachedOSPresent() {
+		return nil, errors.New("reached the end of the log without seeing EV_SEPARATOR events in all TCG defined PCRs")
+	}
+
 	// Chose the best PCR bank, ordered from SHA-512, SHA-384 to SHA-256. We're most
 	// likely to get SHA-256 here - it's only in very recent devices that we have TPMs with
 	// SHA-384 support and corresponding firmware integration.
@@ -635,10 +653,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 
 	// Instantiate and maintain an instance of NoSuitablePCRAlgorithmError
 	// to return later if appropriate.
-	mainErr := &NoSuitablePCRAlgorithmError{
-		BankErrs: make(map[tpm2.HashAlgorithmId]error),
-		PCRErrs:  make(map[tpm2.HashAlgorithmId]map[tpm2.Handle]error),
-	}
+	mainErr := newNoSuitablePCRAlgorithmError()
 
 	// Instantiate and maintain an instance of EmptyPCRBanks to return later
 	// if approriate.
@@ -670,7 +685,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 			fallthrough
 		case err != nil:
 			// This entire bank is bad
-			mainErr.setBankErr(alg, err)
+			mainErr.addErr(alg, err)
 		case results.Ok() && chosenResults == nil:
 			// This will be the best PCR bank
 			chosenResults = results
@@ -680,7 +695,14 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 		default:
 			// This isn't a good PCR bank because some mandatory PCRs
 			// failed. Record the individual PCR errors.
-			mainErr.setPcrErrs(results)
+			errs := results.pcrErrs()
+			for _, pcr := range supportedPcrs {
+				err, exists := errs[pcr]
+				if !exists {
+					continue
+				}
+				mainErr.addErr(alg, wrapPCRError(pcr, err))
+			}
 		}
 	}
 
@@ -695,24 +717,6 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 	if chosenResults == nil {
 		// No suitable PCR bank was found, so return an error that's hopefully useful :(
 		return nil, mainErr
-	}
-
-	// Make sure that the log is well formed and has well defined phases and that there are no measurements
-	// to non-TCG defined PCRs until OS-present.
-	phaseTracker := newTcgLogPhaseTracker()
-	for _, ev := range log.Events {
-		phase, err := phaseTracker.processEvent(ev)
-		if err != nil {
-			return nil, err
-		}
-		if phase == tcglogPhaseOSPresent {
-			// We've hit OS-present - we don't care about the rest of the log at
-			// this stage
-			break
-		}
-	}
-	if !phaseTracker.reachedOSPresent() {
-		return nil, errors.New("reached the end of the log without seeing EV_SEPARATOR events in all TCG defined PCRs")
 	}
 
 	// At this point, we've selected a PCR bank where the TCG log is consistent with the PCR values for
