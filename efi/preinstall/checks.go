@@ -299,7 +299,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		protectedLocalities, err := checkPlatformFirmwareProtections(runChecksEnv, log)
 		switch {
 		case err != nil:
-			mainErr.addErr(&PlatformFirmwareProtectionError{err})
+			mainErr.addErr(&HostSecurityError{err})
 		case discreteTPM:
 			switch logResults.StartupLocality {
 			case 0:
