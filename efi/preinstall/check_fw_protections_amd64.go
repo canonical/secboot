@@ -23,9 +23,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/canonical/cpuid"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
-	"github.com/canonical/cpuid"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 

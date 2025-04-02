@@ -479,23 +479,26 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedStartupLocal
 	c.Check(err, ErrorMatches, `no suitable PCR algorithm available:
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256\(PCR0\): PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
-- TPM_ALG_SHA256\(PCR1\): unexpected StartupLocality event \(should be in PCR0\).
+- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
+- TPM_ALG_SHA256: error with platform config \(PCR1\) measurements: unexpected StartupLocality event \(should be in PCR0\).
 `)
 	var e *NoSuitablePCRAlgorithmError
 	c.Assert(errors.As(err, &e), testutil.IsTrue)
 
 	// Test that we can access individual errors.
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA512], Equals, ErrPCRBankMissingFromLog)
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA384], Equals, ErrPCRBankMissingFromLog)
-	c.Check(e.PCRErrs[tpm2.HashAlgorithmSHA384][internal_efi.PlatformFirmwarePCR], IsNil)
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA256], IsNil)
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA512], DeepEquals, []error{ErrPCRBankMissingFromLog})
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA384], DeepEquals, []error{ErrPCRBankMissingFromLog})
+	c.Assert(e.Errs[tpm2.HashAlgorithmSHA256], HasLen, 2)
 
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA256][0], ErrorMatches, `error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\)`)
+	var pfe *PlatformFirmwarePCRError
+	c.Assert(errors.As(e.Errs[tpm2.HashAlgorithmSHA256][0], &pfe), testutil.IsTrue)
 	var mismatchErr *PCRValueMismatchError
-	c.Check(e.PCRErrs[tpm2.HashAlgorithmSHA256][internal_efi.PlatformFirmwarePCR], ErrorMatches, `PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\)`)
-	c.Check(errors.As(e.PCRErrs[tpm2.HashAlgorithmSHA256][internal_efi.PlatformFirmwarePCR], &mismatchErr), testutil.IsTrue)
-	c.Check(e.PCRErrs[tpm2.HashAlgorithmSHA256][internal_efi.PlatformConfigPCR], ErrorMatches, `unexpected StartupLocality event \(should be in PCR0\)`)
-	c.Check(e.PCRErrs[tpm2.HashAlgorithmSHA256][internal_efi.DriversAndAppsPCR], IsNil)
+	c.Check(errors.As(pfe, &mismatchErr), testutil.IsTrue)
+
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA256][1], ErrorMatches, `error with platform config \(PCR1\) measurements: unexpected StartupLocality event \(should be in PCR0\)`)
+	var pce *PlatformConfigPCRError
+	c.Check(errors.As(e.Errs[tpm2.HashAlgorithmSHA256][1], &pce), testutil.IsTrue)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankOutOfPlaceStartupLocality(c *C) {
@@ -558,7 +561,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankOutOfPlaceStartupLocal
 	c.Check(err, ErrorMatches, `no suitable PCR algorithm available:
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256\(PCR0\): unexpected StartupLocality event after measurements already made.
+- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: unexpected StartupLocality event after measurements already made.
 `)
 	var e *NoSuitablePCRAlgorithmError
 	c.Check(errors.As(err, &e), testutil.IsTrue)
@@ -601,7 +604,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankInvalidStartupLocality
 	c.Check(err, ErrorMatches, `no suitable PCR algorithm available:
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256\(PCR0\): invalid StartupLocality value 2 - TPM2_Startup is only permitted from locality 0 or 3, or PCR0 can be initialized from locality 4 by a H-CRTM event before TPM2_Startup is called.
+- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: invalid StartupLocality value 2 - TPM2_Startup is only permitted from locality 0 or 3, or PCR0 can be initialized from locality 4 by a H-CRTM event before TPM2_Startup is called.
 `)
 	var e *NoSuitablePCRAlgorithmError
 	c.Check(errors.As(err, &e), testutil.IsTrue)
@@ -627,7 +630,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPCRMismatchMandatory(c
 	c.Check(err, ErrorMatches, `no suitable PCR algorithm available:
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256\(PCR0\): PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
+- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
 `)
 	var e *NoSuitablePCRAlgorithmError
 	c.Check(errors.As(err, &e), testutil.IsTrue)
@@ -819,6 +822,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPreOSMeasurementToNonT
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 	})
+	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
 
 	var eventsCopy []*tcglog.Event
 	events := log.Events
@@ -840,7 +844,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPreOSMeasurementToNonT
 		eventsCopy = append(eventsCopy, ev)
 	}
 	log.Events = eventsCopy
-	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
 
 	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, nil, 0)
 	c.Check(err, ErrorMatches, `measurements were made by firmware from pre-OS environment to non-TCG defined PCR 8`)
@@ -1162,7 +1165,44 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankBadSHA1(c *C) {
 	c.Assert(errors.As(err, &e), testutil.IsTrue)
 
 	// Test that we can access individual errors.
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA512], Equals, ErrPCRBankMissingFromLog)
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA384], Equals, ErrPCRBankMissingFromLog)
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA256], Equals, ErrPCRBankMissingFromLog)
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA512], DeepEquals, []error{ErrPCRBankMissingFromLog})
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA384], DeepEquals, []error{ErrPCRBankMissingFromLog})
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA256], DeepEquals, []error{ErrPCRBankMissingFromLog})
+}
+
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankChecksLogBeforePCRValues(c *C) {
+	// Check that if we have a log with mismatched digests and which is malformed,
+	// that we return an error for the malformed log first.
+	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		StartupLocality: 3,
+	})
+	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
+
+	// Create a log where the reconstructed PCR0 value doesn't match what was measured.
+	log = efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+	})
+
+	// Inject an error separator event into the log, which should be picked up before
+	// the incorrect PCR0 value.
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		if ev.EventType != tcglog.EventTypeSeparator {
+			continue
+		}
+
+		ev.Data = &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventErrorValue, ErrorInfo: []byte{1, 2, 3, 4}}
+		break
+	}
+
+	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, tpm2.HandleList{
+		internal_efi.PlatformFirmwarePCR,
+	}, 0)
+	c.Check(err, ErrorMatches, `EV_SEPARATOR event for PCR 7 indicates an error occurred \(error code in log: 67305985\)`)
 }
