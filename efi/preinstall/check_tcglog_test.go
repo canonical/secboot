@@ -1096,7 +1096,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksError(c *
 
 	s.TPMSimulatorTest.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
 		if cmdCode != tpm2.CommandGetCapability {
-			// The only TPM2_GetCapability call is to obtain informatio
+			// The only TPM2_GetCapability call is to obtain information
 			// about active PCR banks.
 			return
 		}
@@ -1124,13 +1124,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksError(c *
 		},
 		0,
 	)
-	c.Check(err, ErrorMatches, `one or more errors detected when trying to determine whether PCR banks missing from the TCG log are enabled with empty PCRs:
-- cannot determine whether PCR bank TPM_ALG_SHA512 is active but empty on the TPM: cannot obtain active PCRs: TPM returned a TPM_RC_BAD_TAG error whilst executing command TPM_CC_GetCapability
-- cannot determine whether PCR bank TPM_ALG_SHA384 is active but empty on the TPM: cannot obtain active PCRs: TPM returned a TPM_RC_BAD_TAG error whilst executing command TPM_CC_GetCapability
-`)
-
-	var emptyPCRErr *EmptyPCRBanksError
-	c.Check(errors.As(err, &emptyPCRErr), testutil.IsTrue)
+	c.Check(err, ErrorMatches, `cannot determine whether PCR bank TPM_ALG_SHA512 is active but empty on the TPM: cannot obtain active PCRs: TPM returned a TPM_RC_BAD_TAG error whilst executing command TPM_CC_GetCapability`)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankBadSHA1(c *C) {
