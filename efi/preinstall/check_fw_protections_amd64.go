@@ -29,38 +29,6 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-const (
-	ia32DebugInterfaceMSR = 0xc80
-
-	ia32DebugEnable uint64 = 1 << 0
-	ia32DebugLock   uint64 = 1 << 30
-)
-
-func checkCPUDebuggingLockedMSR(env internal_efi.HostEnvironmentAMD64) error {
-	// Check for "Silicon Debug Interface", returned in bit 11 of %ecx when calling
-	// cpuid with %eax=1.
-	debugSupported := env.HasCPUIDFeature(cpuid.SDBG)
-	if !debugSupported {
-		return nil
-	}
-
-	vals, err := env.ReadMSRs(ia32DebugInterfaceMSR)
-	if err != nil {
-		return err
-	}
-	if len(vals) == 0 {
-		return errors.New("no MSR values returned")
-	}
-
-	for _, val := range vals {
-		if val&ia32DebugEnable > 0 || val&ia32DebugLock == 0 {
-			return ErrCPUDebuggingNotLocked
-		}
-	}
-
-	return nil
-}
-
 type cpuVendor int
 
 const (
@@ -98,6 +66,9 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 		if err := checkPlatformFirmwareProtectionsIntelMEI(env); err != nil {
 			return 0, fmt.Errorf("encountered an error when determining platform firmware protections using Intel MEI: %w", err)
 		}
+		if err := checkCPUDebuggingLockedMSR(amd64Env); err != nil {
+			return 0, fmt.Errorf("encountered an error when determining CPU debugging configuration from MSRs: %w", err)
+		}
 		if amd64Env.HasCPUIDFeature(cpuid.SMX) {
 			// The Intel TXT spec says that locality 4 is basically only available
 			// to microcode, and is locked before handing over to an ACM which
@@ -126,9 +97,5 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 	if err := checkForKernelIOMMU(env); err != nil {
 		return 0, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
 	}
-	if err := checkCPUDebuggingLockedMSR(amd64Env); err != nil {
-		return 0, fmt.Errorf("encountered an error when determining CPU debugging configuration from MSRs: %w", err)
-	}
-
 	return protectedStartupLocalities, nil
 }

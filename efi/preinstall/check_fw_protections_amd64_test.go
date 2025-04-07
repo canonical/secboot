@@ -36,54 +36,6 @@ type fwProtectionsAMD64Suite struct{}
 
 var _ = Suite(&fwProtectionsAMD64Suite{})
 
-func (s *fwProtectionsAMD64Suite) TestCheckCPUDebuggingLockedMSRDisabledCPUID(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0xc80: 0}))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), IsNil)
-}
-
-func (s *fwProtectionsAMD64Suite) TestCheckCPUDebuggingLockedMSRDisabledMSR(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), IsNil)
-}
-
-func (s *fwProtectionsAMD64Suite) TestCheckCPUDebuggingLockedMSRDisabledAvailable(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0}))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), Equals, ErrCPUDebuggingNotLocked)
-}
-
-func (s *fwProtectionsAMD64Suite) TestCheckCPUDebuggingLockedMSREnabled(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 1}))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), Equals, ErrCPUDebuggingNotLocked)
-}
-
-func (s *fwProtectionsAMD64Suite) TestCheckCPUDebuggingLockedMSRErrMissingMSR(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{}))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), ErrorMatches, `MSR does not exist`)
-}
-
-func (s *fwProtectionsAMD64Suite) TestCheckCPUDebuggingLockedMSRErrNoMSRValues(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 0, map[uint32]uint64{0xc80: 0x40000000}))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), ErrorMatches, `no MSR values returned`)
-}
-
 func (s *fwProtectionsAMD64Suite) TestDetermineCPUVendorIntel(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil))
 	amd64Env, err := env.AMD64()
