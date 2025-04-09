@@ -94,6 +94,11 @@ func makeIndentedListItem(indentation int, marker, str string) string {
 // of errors found during the process of running various tests on the platform.
 // It provides a mechanism to access each individual error. This is used as an alternative
 // to aborting early, in order for the caller to gather as much information as possible.
+// Where an error is related to a specific PCR, the error will be wrapped by one of the
+// PCR-specific error types: [PlatformFirmwarePCRError] (0), [PlatformConfigPCRError] (1),
+// [DriversAndAppsPCRError] (2), [DriversAndAppsConfigPCRError] (3),
+// [BootManagerCodePCRError] (4), [BootManagerConfigPCRError] (5), or
+// [SecureBootPolicyPCRError] (7).
 type RunChecksErrors struct {
 	Errs []error // All of the errors collected during the execution of RunChecks.
 }
@@ -373,7 +378,11 @@ func (e *EmptyPCRBanksError) Error() string {
 //     a PCR bank, and which is incompatible with predicting PCR policies.
 //
 // As multiple errors can occur during testing, this error wraps each individual error that
-// occurred and provides access to them.
+// occurred and provides access to them, keyed by the PCR bank. Where an error is related to
+// a specific PCR, the error will be wrapped by one of the PCR-specific error types:
+// [PlatformFirmwarePCRError] (0), [PlatformConfigPCRError] (1), [DriversAndAppsPCRError] (2),
+// [DriversAndAppsConfigPCRError] (3), [BootManagerCodePCRError] (4), [BootManagerConfigPCRError]
+// (5), or [SecureBootPolicyPCRError] (7).
 type NoSuitablePCRAlgorithmError struct {
 	Errs map[tpm2.HashAlgorithmId][]error
 }
