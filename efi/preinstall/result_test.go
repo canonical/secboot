@@ -325,13 +325,11 @@ func (s *resultSuite) TestCheckResultStringWithWarnings(c *C) {
 		PCRAlg:            tpm2.HashAlgorithmSHA256,
 		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | VARDriversPresent | AbsoluteComputraceActive,
-		Warnings: &RunChecksErrors{
-			Errs: []error{
-				errors.New("some error 1"),
-				errors.New(`some error 2
+		Warnings: JoinErrors(
+			errors.New("some error 1"),
+			errors.New(`some error 2
 across more than one line`),
-			},
-		},
+		).(CompoundError),
 	}
 	c.Check(result.String(), Equals, `
 EFI based TPM protected FDE test support results:
