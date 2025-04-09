@@ -48,8 +48,10 @@ func determineCPUVendor(env internal_efi.HostEnvironmentAMD64) (cpuVendor, error
 	}
 }
 
-// checkPlatformFirmwareProtections is the main entry point for verifying that platform firmware
-// protections are sufficient.
+// checkPlatformFirmwareProtections is the main entry point for verifying that the host security
+// is sufficient. Errors that can't be resolved or which should prevent further checks from running
+// are returned immediately and without any wrapping. Errors that can be resolved and which shouldn't
+// prevent further checks from running are returned wrapped in [joinError].
 func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcglog.Log) (protectedStartupLocalities tpm2.Locality, err error) {
 	amd64Env, err := env.AMD64()
 	if err != nil {
@@ -60,6 +62,8 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 	if err != nil {
 		return 0, fmt.Errorf("cannot determine CPU vendor: %w", err)
 	}
+
+	var errs []error
 
 	switch cpuVendor {
 	case cpuVendorIntel:
@@ -92,10 +96,24 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 	}
 
 	if err := checkSecureBootPolicyPCRForDegradedFirmwareSettings(log); err != nil {
-		return 0, fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
+		var ce CompoundError
+		if !errors.As(err, &ce) {
+			return 0, fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
+		}
+		errs = append(errs, ce.Unwrap()...)
 	}
 	if err := checkForKernelIOMMU(env); err != nil {
-		return 0, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
+		switch {
+		case errors.Is(err, ErrNoKernelIOMMU):
+			errs = append(errs, err)
+		default:
+			return 0, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
+		}
 	}
+
+	if len(errs) > 0 {
+		return protectedStartupLocalities, joinErrors(errs...)
+	}
+
 	return protectedStartupLocalities, nil
 }

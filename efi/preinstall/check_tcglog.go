@@ -657,7 +657,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 
 	// Instantiate and maintain an instance of EmptyPCRBanks to return later
 	// if approriate.
-	emptyBanksErr := new(EmptyPCRBanksError)
+	var emptyBanks []tpm2.HashAlgorithmId
 
 	testAlgs := make([]tpm2.HashAlgorithmId, len(supportedAlgs))
 	copy(testAlgs, supportedAlgs)
@@ -681,7 +681,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 				case err != nil:
 					return nil, fmt.Errorf("cannot determine whether PCR bank %v is active but empty on the TPM: %w", alg, err)
 				case len(emptyPcrs) > 0:
-					emptyBanksErr.Algs = append(emptyBanksErr.Algs, alg)
+					emptyBanks = append(emptyBanks, alg)
 				}
 			}
 			fallthrough
@@ -708,17 +708,16 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 		}
 	}
 
-	// Bail early if there are any active but empty TPM PCR banks that are missing
-	// from the log, or if we encountered any errors whilst checking for this, in
-	// order to prioritise this error. We return this even if we found a good PCR
-	// bank.
-	if len(emptyBanksErr.Algs) > 0 {
-		return nil, emptyBanksErr
-	}
-
 	if chosenResults == nil {
 		// No suitable PCR bank was found, so return an error that's hopefully useful :(
 		return nil, mainErr
+	}
+
+	if len(emptyBanks) > 0 {
+		// There are active TPM PCR banks that are empty and missing from the log.
+		// As we were still able to select a PCR bank, it's possible to continue
+		// testing, so we return the results along with the error in this case.
+		return chosenResults, &EmptyPCRBanksError{Algs: emptyBanks}
 	}
 
 	// At this point, we've selected a PCR bank where the TCG log is consistent with the PCR values for

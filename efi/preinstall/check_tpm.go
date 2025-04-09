@@ -45,7 +45,9 @@ const (
 
 // openAndCheckTPM2Device opens the default TPM device for the associated environment and
 // performs some checks on it. It returns an open TPMContext and whether the TPM is a discrete
-// TPM if these checks are successful.
+// TPM if these checks are successful. This may return some errors immediately, where those
+// errors can't be resolved or prevent further use of the TPM. For errors that can be resolved
+// and don't prevent further use of the TPM, the errors will be returned wrapped in [joinError].
 func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2DeviceFlags) (tpm *tpm2.TPMContext, discreteTPM bool, err error) {
 	// Get a device from the supplied environment
 	device, err := env.TPMDevice()
@@ -208,13 +210,15 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	}
 
 	if flags&checkTPM2DevicePostInstall == 0 {
+		var errs []error
+
 		// Perform some checks only during pre-install.
 		perm, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
 		if err != nil {
 			return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_PERMANENT: %w", err)
 		}
 
-		// Make sure that the TPM isn't owned
+		// First of all, make sure that the TPM isn't owned.
 		ownedErr := new(TPM2OwnedHierarchiesError)
 
 		// Make sure the lockout hierarchy auth value is not set.
@@ -244,18 +248,18 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		}
 
 		if !ownedErr.isEmpty() {
-			return nil, false, ownedErr
+			errs = append(errs, ownedErr)
 		}
 
-		// If no hierarchies are owned, make sure that the DA lockout mode is not activated.
-		// We check this afterwards because it's easy to fix if we know that the authorization
-		// value for the lockout hierarchy is empty.
+		// Make sure that the DA lockout mode is not activated. This is easy to fix if the
+		// authorization value for the lockout hierarchy is empty.
 		if tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0 {
-			return nil, false, ErrTPMLockout
+			errs = append(errs, ErrTPMLockout)
 		}
 
-		// Make sure we have enough NV counters for PCR policy revocation. We need at least 2 (1 normally, and
-		// an extra 1 during reprovision). The platform firmware may use up some of the allocation.
+		// Make sure we have enough NV counters for PCR policy revocation. We need at least 2
+		// (1 normally, and an extra 1 during reprovision). The platform firmware may use up
+		// some of the allocation.
 		nvCountersMax, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyNVCountersMax)
 		if err != nil {
 			return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
@@ -269,8 +273,12 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 				return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
 			}
 			if (nvCountersMax - nvCounters) < 2 {
-				return nil, false, ErrTPMInsufficientNVCounters
+				errs = append(errs, ErrTPMInsufficientNVCounters)
 			}
+		}
+
+		if len(errs) > 0 {
+			return tpm, discreteTPM, joinErrors(errs...)
 		}
 	}
 

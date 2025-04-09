@@ -219,13 +219,17 @@ C7E003CB
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithSysfsDevices(devices),
-		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}),
+		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 
-	_, err := CheckPlatformFirmwareProtections(env, log)
-	c.Check(err, ErrorMatches, `encountered an error whilst checking the TCG log for degraded firmware settings: the platform firmware contains a debugging endpoint enabled`)
-	c.Check(errors.Is(err, ErrUEFIDebuggingEnabled), testutil.IsTrue)
+	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
+	c.Check(err, ErrorMatches, `the platform firmware contains a debugging endpoint enabled`)
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled})
+	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
+	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
 func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsNoIOMMU(c *C) {
@@ -249,13 +253,52 @@ C7E003CB
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithSysfsDevices(devices),
-		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}),
+		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	_, err := CheckPlatformFirmwareProtections(env, log)
-	c.Check(err, ErrorMatches, `encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: no kernel IOMMU support was detected`)
-	c.Check(errors.Is(err, ErrNoKernelIOMMU), testutil.IsTrue)
+	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
+	c.Check(err, ErrorMatches, `no kernel IOMMU support was detected`)
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrNoKernelIOMMU})
+	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
+	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
+}
+
+func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsSecureBootPolicyFirmwareDebuggingAndNoIOMMU(c *C) {
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(devices),
+		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
+	)
+	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
+
+	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
+	c.Check(err, ErrorMatches, `the platform firmware contains a debugging endpoint enabled
+no kernel IOMMU support was detected`)
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled, ErrNoKernelIOMMU})
+	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
+	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
 func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsCPUDebuggingUnlocked(c *C) {
