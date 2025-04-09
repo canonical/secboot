@@ -30,21 +30,19 @@ type errorsSuite struct{}
 
 var _ = Suite(&errorsSuite{})
 
-func (s *errorsSuite) TestRunChecksErrorsError(c *C) {
-	err := &RunChecksErrors{
-		Errs: []error{
-			errors.New("some error 1"),
-			errors.New(`some error 2
+func (s *errorsSuite) TestJoinError(c *C) {
+	err := JoinErrors(
+		errors.New("some error 1"),
+		errors.New(`some error 2
 across more than one line`),
-			errors.New("some error 3"),
-			errors.New(`some error 4
+		errors.New("some error 3"),
+		errors.New(`some error 4
 which also spans across
 multiple lines
 `),
-		},
-	}
+	)
 
-	c.Check(err.Error(), Equals, `one or more errors detected:
+	c.Check(err.Error(), Equals, `4 errors detected:
 - some error 1
 - some error 2
   across more than one line
@@ -53,4 +51,9 @@ multiple lines
   which also spans across
   multiple lines
 `)
+}
+
+func (s *errorsSuite) TestJoinErrorOneError(c *C) {
+	err := JoinErrors(errors.New("some error"))
+	c.Check(err.Error(), Equals, `some error`)
 }

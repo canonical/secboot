@@ -292,8 +292,10 @@ C7E003CB
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 
 	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
-	c.Check(err, ErrorMatches, `the platform firmware contains a debugging endpoint enabled
-no kernel IOMMU support was detected`)
+	c.Check(err, ErrorMatches, `2 errors detected:
+- the platform firmware contains a debugging endpoint enabled
+- no kernel IOMMU support was detected
+`)
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled, ErrNoKernelIOMMU})

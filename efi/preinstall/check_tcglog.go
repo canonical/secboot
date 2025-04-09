@@ -651,12 +651,12 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 	// SHA-384 support and corresponding firmware integration.
 	// We try to keep all errors enountered during selection here.
 
-	// Instantiate and maintain an instance of NoSuitablePCRAlgorithmError
-	// to return later if appropriate.
-	mainErr := newNoSuitablePCRAlgorithmError()
+	// Maintain a map of errors associated with each PCR bank, to return as
+	// NoSuitablePCRAlgorithmError later on.
+	bankErrs := make(map[tpm2.HashAlgorithmId][]error)
 
-	// Instantiate and maintain an instance of EmptyPCRBanks to return later
-	// if approriate.
+	// Maintain a list of PCR banks that are active but empty, to return as
+	// EmptyPCRBanksError later on.
 	var emptyBanks []tpm2.HashAlgorithmId
 
 	testAlgs := make([]tpm2.HashAlgorithmId, len(supportedAlgs))
@@ -687,7 +687,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 			fallthrough
 		case err != nil:
 			// This entire bank is bad
-			mainErr.addErr(alg, err)
+			bankErrs[alg] = append(bankErrs[alg], err)
 		case results.Ok() && chosenResults == nil:
 			// This will be the best PCR bank
 			chosenResults = results
@@ -703,14 +703,14 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 				if !exists {
 					continue
 				}
-				mainErr.addErr(alg, wrapPCRError(pcr, err))
+				bankErrs[alg] = append(bankErrs[alg], wrapPCRError(pcr, err))
 			}
 		}
 	}
 
 	if chosenResults == nil {
 		// No suitable PCR bank was found, so return an error that's hopefully useful :(
-		return nil, mainErr
+		return nil, &NoSuitablePCRAlgorithmError{bankErrs}
 	}
 
 	if len(emptyBanks) > 0 {
