@@ -274,27 +274,21 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	// Record errors for non-mandatory PCRs as warnings.
 	for pcr, err := range logResults.pcrErrs() {
+		err = wrapPCRError(pcr, err)
 		switch pcr {
 		case 0:
-			err = &PlatformFirmwarePCRError{err}
 			result.Flags |= NoPlatformFirmwareProfileSupport
 		case 1:
-			err = &PlatformConfigPCRError{err}
 			result.Flags |= NoPlatformConfigProfileSupport
 		case 2:
-			err = &DriversAndAppsPCRError{err}
 			result.Flags |= NoDriversAndAppsProfileSupport
 		case 3:
-			err = &DriversAndAppsConfigPCRError{err}
 			result.Flags |= NoDriversAndAppsConfigProfileSupport
 		case 4:
-			err = &BootManagerCodePCRError{err}
 			result.Flags |= NoBootManagerCodeProfileSupport
 		case 5:
-			err = &BootManagerConfigPCRError{err}
 			result.Flags |= NoBootManagerConfigProfileSupport
 		case 7:
-			err = &SecureBootPolicyPCRError{err}
 			result.Flags |= NoSecureBootPolicyProfileSupport
 		}
 		result.Warnings.addErr(err)

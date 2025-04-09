@@ -635,10 +635,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 
 	// Instantiate and maintain an instance of NoSuitablePCRAlgorithmError
 	// to return later if appropriate.
-	mainErr := &NoSuitablePCRAlgorithmError{
-		BankErrs: make(map[tpm2.HashAlgorithmId]error),
-		PCRErrs:  make(map[tpm2.HashAlgorithmId]map[tpm2.Handle]error),
-	}
+	mainErr := newNoSuitablePCRAlgorithmError()
 
 	// Instantiate and maintain an instance of EmptyPCRBanks to return later
 	// if approriate.
@@ -670,7 +667,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 			fallthrough
 		case err != nil:
 			// This entire bank is bad
-			mainErr.setBankErr(alg, err)
+			mainErr.addErr(alg, err)
 		case results.Ok() && chosenResults == nil:
 			// This will be the best PCR bank
 			chosenResults = results
@@ -680,7 +677,14 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 		default:
 			// This isn't a good PCR bank because some mandatory PCRs
 			// failed. Record the individual PCR errors.
-			mainErr.setPcrErrs(results)
+			errs := results.pcrErrs()
+			for _, pcr := range supportedPcrs {
+				err, exists := errs[pcr]
+				if !exists {
+					continue
+				}
+				mainErr.addErr(alg, wrapPCRError(pcr, err))
+			}
 		}
 	}
 

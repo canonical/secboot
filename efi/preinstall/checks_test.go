@@ -2161,7 +2161,7 @@ func (s *runChecksSuite) TestRunChecksBadInvalidPCR0Value(c *C) {
 	c.Check(err, ErrorMatches, `error with TCG log: no suitable PCR algorithm available:
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256\(PCR0\): PCR value mismatch \(actual from TPM 0xe9995745ca25279ec699688b70488116fe4d9f053cb0991dd71e82e7edfa66b5, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
+- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xe9995745ca25279ec699688b70488116fe4d9f053cb0991dd71e82e7edfa66b5, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
 `)
 	var te *TCGLogError
 	c.Assert(errors.As(err, &te), testutil.IsTrue)
@@ -2192,7 +2192,7 @@ func (s *runChecksSuite) TestRunChecksBadInvalidPCR2Value(c *C) {
 	c.Check(err, ErrorMatches, `error with TCG log: no suitable PCR algorithm available:
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256\(PCR2\): PCR value mismatch \(actual from TPM 0xfa734a6a4d262d7405d47d48c0a1b127229ca808032555ad919ed5dd7c1f6519, reconstructed from log 0x3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969\).
+- TPM_ALG_SHA256: error with drivers and apps \(PCR2\) measurements: PCR value mismatch \(actual from TPM 0xfa734a6a4d262d7405d47d48c0a1b127229ca808032555ad919ed5dd7c1f6519, reconstructed from log 0x3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969\).
 `)
 	var te *TCGLogError
 	c.Assert(errors.As(err, &te), testutil.IsTrue)
@@ -2223,7 +2223,7 @@ func (s *runChecksSuite) TestRunChecksBadInvalidPCR4Value(c *C) {
 	c.Check(err, ErrorMatches, `error with TCG log: no suitable PCR algorithm available:
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256\(PCR4\): PCR value mismatch \(actual from TPM 0x1c93930d6b26232e061eaa33ecf6341fae63ce598a0c6a26ee96a0828639c044, reconstructed from log 0x4bc74f3ffe49b4dd275c9f475887b68193e2db8348d72e1c3c9099c2dcfa85b0\).
+- TPM_ALG_SHA256: error with boot manager code \(PCR4\) measurements: PCR value mismatch \(actual from TPM 0x1c93930d6b26232e061eaa33ecf6341fae63ce598a0c6a26ee96a0828639c044, reconstructed from log 0x4bc74f3ffe49b4dd275c9f475887b68193e2db8348d72e1c3c9099c2dcfa85b0\).
 `)
 	var te *TCGLogError
 	c.Assert(errors.As(err, &te), testutil.IsTrue)
@@ -2254,7 +2254,7 @@ func (s *runChecksSuite) TestRunChecksBadInvalidPCR7Value(c *C) {
 	c.Check(err, ErrorMatches, `error with TCG log: no suitable PCR algorithm available:
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256\(PCR7\): PCR value mismatch \(actual from TPM 0xdf7b5d709755f1bd7142dd2f8c2d1195fc6b4dab5c78d41daf5c795da55db5f2, reconstructed from log 0xafc99bd8b298ea9b70d2796cb0ca22fe2b70d784691a1cae2aa3ba55edc365dc\).
+- TPM_ALG_SHA256: error with secure boot policy \(PCR7\) measurements: PCR value mismatch \(actual from TPM 0xdf7b5d709755f1bd7142dd2f8c2d1195fc6b4dab5c78d41daf5c795da55db5f2, reconstructed from log 0xafc99bd8b298ea9b70d2796cb0ca22fe2b70d784691a1cae2aa3ba55edc365dc\).
 `)
 	var te *TCGLogError
 	c.Assert(errors.As(err, &te), testutil.IsTrue)
@@ -2381,9 +2381,9 @@ C7E003CB
 	c.Assert(errors.As(err, &e), testutil.IsTrue)
 
 	// Test that we can access individual errors.
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA512], Equals, ErrPCRBankMissingFromLog)
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA384], Equals, ErrPCRBankMissingFromLog)
-	c.Check(e.BankErrs[tpm2.HashAlgorithmSHA256], Equals, ErrPCRBankMissingFromLog)
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA512], DeepEquals, []error{ErrPCRBankMissingFromLog})
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA384], DeepEquals, []error{ErrPCRBankMissingFromLog})
+	c.Check(e.Errs[tpm2.HashAlgorithmSHA256], DeepEquals, []error{ErrPCRBankMissingFromLog})
 }
 
 func (s *runChecksSuite) TestRunChecksBadMandatoryPCR1(c *C) {
