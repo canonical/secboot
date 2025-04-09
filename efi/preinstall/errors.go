@@ -100,7 +100,7 @@ func makeIndentedListItem(indentation int, marker, str string) string {
 // [BootManagerCodePCRError] (4), [BootManagerConfigPCRError] (5), or
 // [SecureBootPolicyPCRError] (7).
 type RunChecksErrors struct {
-	Errs []error // All of the errors collected during the execution of RunChecks.
+	Errs []error // All of the errors collected during the execution of RunChecks
 }
 
 func (e *RunChecksErrors) Error() string {
@@ -114,6 +114,43 @@ func (e *RunChecksErrors) Error() string {
 
 func (e *RunChecksErrors) addErr(err error) {
 	e.Errs = append(e.Errs, err)
+}
+
+// CompoundError is an interface for accessing wrapped errors from an error type that
+// wraps more than one error.
+type CompoundError interface {
+	Unwrap() []error
+}
+
+// joinError is a simple implementation of the type of the same name from the
+// errors package in go 1.20.
+type joinError struct {
+	errs []error
+}
+
+func joinErrors(errs ...error) error {
+	return &joinError{errs: errs}
+}
+
+func (e *joinError) Error() string {
+	switch {
+	case len(e.errs) == 0:
+		return ""
+	case len(e.errs) == 1:
+		return e.errs[0].Error()
+	default:
+		var b strings.Builder
+		io.WriteString(&b, e.errs[0].Error())
+		for _, err := range e.errs[1:] {
+			io.WriteString(&b, "\n")
+			io.WriteString(&b, err.Error())
+		}
+		return b.String()
+	}
+}
+
+func (e *joinError) Unwrap() []error {
+	return e.errs
 }
 
 var (
@@ -402,6 +439,10 @@ func (e *NoSuitablePCRAlgorithmError) Error() string {
 // addErr adds an error for the specified PCR bank
 func (e *NoSuitablePCRAlgorithmError) addErr(alg tpm2.HashAlgorithmId, err error) {
 	e.Errs[alg] = append(e.Errs[alg], err)
+}
+
+func (e *NoSuitablePCRAlgorithmError) isEmpty() bool {
+	return len(e.Errs) == 0
 }
 
 // MeasuredBootError is returned unwrapped from [RunChecks] if there is a general issue with
