@@ -659,7 +659,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 				emptyPcrs, err := checkPCRBankNotEnabledAndEmpty(tpm, alg)
 				switch {
 				case err != nil:
-					emptyBanksErr.Errs = append(emptyBanksErr.Errs, fmt.Errorf("cannot determine whether PCR bank %v is active but empty on the TPM: %w", alg, err))
+					return nil, fmt.Errorf("cannot determine whether PCR bank %v is active but empty on the TPM: %w", alg, err)
 				case len(emptyPcrs) > 0:
 					emptyBanksErr.Algs = append(emptyBanksErr.Algs, alg)
 				}
@@ -692,7 +692,7 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 	// from the log, or if we encountered any errors whilst checking for this, in
 	// order to prioritise this error. We return this even if we found a good PCR
 	// bank.
-	if len(emptyBanksErr.Algs) > 0 || len(emptyBanksErr.Errs) > 0 {
+	if len(emptyBanksErr.Algs) > 0 {
 		return nil, emptyBanksErr
 	}
 
