@@ -125,26 +125,25 @@ var (
 
 // Errors related to checking platform firmware protections.
 
-// PlatformFirmwareProtectionError is returned wrapped in [RunChecksError] if there
-// is an issue with how the platform firmware is protected. This won't be returned
-// if the PermitVirtualMachine flag is supplied to [RunChecks] and the current
-// environment is a virtual machine.
-type PlatformFirmwareProtectionError struct {
+// HostSecurityError is returned wrapped in [RunChecksError] if there is an issue with
+// the security properties of the system. This won't be returned if the PermitVirtualMachine
+// flag is supplied to [RunChecks] and the current environment is a virtual machine.
+type HostSecurityError struct {
 	err error
 }
 
-func (e *PlatformFirmwareProtectionError) Error() string {
-	return "error with platform firmware protection configuration: " + e.err.Error()
+func (e *HostSecurityError) Error() string {
+	return "error with system security: " + e.err.Error()
 }
 
-func (e *PlatformFirmwareProtectionError) Unwrap() error {
+func (e *HostSecurityError) Unwrap() error {
 	return e.err
 }
 
-// NoHardwareRootOfTrustError is returned wrapped in [PlatformFirmwareProtectionError]
-// if the platform firmware is not protected by a properly configured hardware root-of-trust.
-// This won't be returned if the PermitVirtualMachine flag is supplied to [RunChecks] and the
-// current environment is a virtual machine.
+// NoHardwareRootOfTrustError is returned wrapped in [HostSecurityError] if the platform
+// firmware is not protected by a properly configured hardware root-of-trust. This won't
+// be returned if the PermitVirtualMachine flag is supplied to [RunChecks] and the current
+// environment is a virtual machine.
 type NoHardwareRootOfTrustError struct {
 	err error
 }
@@ -157,10 +156,9 @@ func (e *NoHardwareRootOfTrustError) Unwrap() error {
 	return e.err
 }
 
-// UnsupportedPlatformError is returned wrapped in [PlatformFirmwareProtectionError]
-// if this platform is not supported for FDE. This won't be returned if the
-// PermitVirtualMachine flag is supplied to [RunChecks] and the current environment
-// is a virtual machine.
+// UnsupportedPlatformError is returned wrapped in [HostSecurityError] if this platform
+// is not supported for FDE. This won't be returned if the PermitVirtualMachine flag is
+// supplied to [RunChecks] and the current environment is a virtual machine.
 type UnsupportedPlatformError struct {
 	err error
 }
@@ -174,27 +172,26 @@ func (e *UnsupportedPlatformError) Unwrap() error {
 }
 
 var (
-	// ErrCPUDebuggingNotLocked is returned wrapped in PlatformFirmwareProtectionError
-	// if the CPU has silicon debugging features but these have not been disabled and
-	// locked by the platform firmware. This won't be returned if the PermitVirtualMachine
-	// flag is supplied to RunChecks and the current environment is a virtual machine.
+	// ErrCPUDebuggingNotLocked is returned wrapped in HostSecurityError if the CPU has
+	// silicon debugging features but these have not been disabled and locked by the
+	// platform firmware. This won't be returned if the PermitVirtualMachine flag is
+	// supplied to RunChecks and the current environment is a virtual machine.
 	ErrCPUDebuggingNotLocked = errors.New("CPU debugging features are not disabled and locked")
 
-	// ErrInsufficientDMAProtection is returned wrapped in PlatformFirmwareProtectionError
-	// if the platform firmware indicates that I/O DMA protection was disabled at some point.
-	// This won't be returned if the PermitVirtualMachine flag is supplied to RunChecks and
-	// the current environment is a virtual machine.
+	// ErrInsufficientDMAProtection is returned wrapped in HostSecurityError if the platform
+	// firmware indicates that I/O DMA protection was disabled at some point. This won't be
+	// returned if the PermitVirtualMachine flag is supplied to RunChecks and the current
+	// environment is a virtual machine.
 	ErrInsufficientDMAProtection = errors.New("the platform firmware indicates that DMA protections are insufficient")
 
-	// ErrNoKernelIOMMU is returned wrapped in PlatformFirmwareProtectionError if there is
-	// no IOMMU active. This won't be returned if the PermitVirtualMachine flag is supplied
-	// to RunChecks and the current environment is a virtual machine.
+	// ErrNoKernelIOMMU is returned wrapped in HostSecurityError if there is no IOMMU active.
+	// This won't be returned if the PermitVirtualMachine flag is supplied to RunChecks and
+	// the current environment is a virtual machine.
 	ErrNoKernelIOMMU = errors.New("no kernel IOMMU support was detected")
 
-	// ErrUEFIDebuggingEnabled is returned wrapped in PlatformFirmwareProtectionError if the
-	// platform firmware has a debugging endpoint enabled. This won't be returned if the
-	// PermitVirtualMachine flag is supplied to RunChecks and the current environment is a
-	// virtual machine.
+	// ErrUEFIDebuggingEnabled is returned wrapped in HostSecurityError if the platform
+	// firmware has a debugging endpoint enabled. This won't be returned if the PermitVirtualMachine
+	// flag is supplied to RunChecks and the current environment is a virtual machine.
 	ErrUEFIDebuggingEnabled = errors.New("the platform firmware contains a debugging endpoint enabled")
 
 	// ErrTPMStartupLocalityNotProtected is returned wrapped in RunChecksErrors if access to

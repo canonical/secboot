@@ -2302,15 +2302,15 @@ C7E003CB
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 	})
 	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with platform firmware protection configuration: encountered an error when determining platform firmware protections using Intel MEI: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled
+- error with system security: encountered an error when determining platform firmware protections using Intel MEI: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled
 `)
 	var rce *RunChecksErrors
 	c.Assert(errors.As(err, &rce), testutil.IsTrue)
 	c.Assert(rce.Errs, HasLen, 1)
 
 	err = rce.Errs[0]
-	var pfe *PlatformFirmwareProtectionError
-	c.Check(errors.As(err, &pfe), testutil.IsTrue)
+	var hse *HostSecurityError
+	c.Check(errors.As(err, &hse), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadSHA1(c *C) {
