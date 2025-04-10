@@ -326,26 +326,13 @@ func (e *PCRValueMismatchError) Error() string {
 // If a PCR bank is missing from the TCG log but is enabled on the TPM with empty PCRs, the bank
 // will be recorded to the Algs field.
 //
-// This might also indicate one or more errors that occur whilst checking for this condition.
-// These will be stored in the Errs field.
-//
 // This error can be ignored by passing the PermitEmptyPCRBanks flag to [RunChecks]. This is
 // generally ok, as long as the device is not going to be used for any kind of remote attestation.
 type EmptyPCRBanksError struct {
-	Algs []tpm2.HashAlgorithmId // The PCR banks that have empty PCRs in the TCG defined range.
-	Errs []error                // Any errors that occurred when trying to determine whether a bank missing from the log has any empty PCRs.
+	Algs []tpm2.HashAlgorithmId
 }
 
 func (e *EmptyPCRBanksError) Error() string {
-	if len(e.Errs) > 0 {
-		w := new(bytes.Buffer)
-		fmt.Fprintf(w, "one or more errors detected when trying to determine whether PCR banks missing from the TCG log are enabled with empty PCRs:\n")
-		for _, err := range e.Errs {
-			io.WriteString(w, makeIndentedListItem(0, "-", err.Error()))
-		}
-		return w.String()
-	}
-
 	var algs []string
 	for _, alg := range e.Algs {
 		algs = append(algs, fmt.Sprintf("%v", alg))
