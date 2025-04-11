@@ -169,7 +169,7 @@ var (
 // is best to supply all images that executed before ExitBootServices, in the correct order.
 //
 // This can return many types of errors. Some errors are returned immediately, such as [ErrVirtualMachineDetected],
-// *[TPM2DeviceError] and *[TCGLogError]. Other errors aren't returned immediately and instead are collected
+// *[TPM2DeviceError] and *[MeasuredBootError]. Other errors aren't returned immediately and instead are collected
 // whilst the checks continue to execute, and are returned wrapped in a *[RunChecksErrors].
 //
 // Success doesn't guarantee that it's possible to select a safe combination of profiles for sealing - the
@@ -219,7 +219,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	// Grab the TCG log.
 	log, err := runChecksEnv.ReadEventLog()
 	if err != nil {
-		return nil, &TCGLogError{err}
+		return nil, &MeasuredBootError{err}
 	}
 
 	// Build a list of mandatory PCRs based on the supplied flags. The call to
@@ -260,13 +260,11 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	switch {
 	case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode):
 		return nil, &TPM2DeviceError{err}
+	case isEmptyPCRBanksError(err):
+		// Return this unwrapped
+		return nil, err
 	case err != nil:
-		var pcrBanksErr *EmptyPCRBanksError
-		if errors.As(err, &pcrBanksErr) {
-			// return this one unwrapped
-			return nil, err
-		}
-		return nil, &TCGLogError{err}
+		return nil, &MeasuredBootError{err}
 	}
 
 	// Record the chosen PCR algorithm.
@@ -311,7 +309,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				case flags&PermitNoDiscreteTPMResetMitigation > 0:
 					result.Flags |= StartupLocalityNotProtected
 				default:
-					mainErr.addErr(ErrTPMStartupLocalityNotProtected)
+					mainErr.addErr(&HostSecurityError{ErrTPMStartupLocalityNotProtected})
 				}
 			case 3:
 				// TPM2_Startup occurred from locality 3. Mark PCR0 as reconstructible
@@ -321,7 +319,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				case protectedLocalities&tpm2.LocalityThree == 0 && flags&PermitNoDiscreteTPMResetMitigation > 0:
 					result.Flags |= StartupLocalityNotProtected
 				case protectedLocalities&tpm2.LocalityThree == 0:
-					mainErr.addErr(ErrTPMStartupLocalityNotProtected)
+					mainErr.addErr(&HostSecurityError{ErrTPMStartupLocalityNotProtected})
 				}
 			case 4:
 				// There were H-CRTM events.  Mark PCR0 as reconstructible from anything that
@@ -331,7 +329,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				case protectedLocalities&tpm2.LocalityFour == 0 && flags&PermitNoDiscreteTPMResetMitigation > 0:
 					result.Flags |= StartupLocalityNotProtected
 				case protectedLocalities&tpm2.LocalityFour == 0:
-					mainErr.addErr(ErrTPMStartupLocalityNotProtected)
+					mainErr.addErr(&HostSecurityError{ErrTPMStartupLocalityNotProtected})
 				}
 			}
 		}
@@ -404,7 +402,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			}
 			if result.Flags&NotAllBootManagerCodeDigestsVerified > 0 && flags&PermitNotVerifyingAllBootManagerCodeDigests == 0 {
 				// Not all boot manager code launch digests were verified, and this was not allowed.
-				mainErr.addErr(ErrNotAllBootManagerCodeDigestsVerified)
+				// As we can't verify that this PCR is ok to be used, wrap this in BootManagerCodePCRError.
+				mainErr.addErr(&BootManagerCodePCRError{ErrNotAllBootManagerCodeDigestsVerified})
 			}
 		}
 	}

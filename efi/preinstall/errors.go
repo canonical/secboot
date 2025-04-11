@@ -125,9 +125,11 @@ var (
 
 // Errors related to checking platform firmware protections.
 
-// HostSecurityError is returned wrapped in [RunChecksError] if there is an issue with
-// the security properties of the system. This won't be returned if the PermitVirtualMachine
-// flag is supplied to [RunChecks] and the current environment is a virtual machine.
+// HostSecurityError may be returned unwrapped or wrapped in [RunChecksError] if there is
+// an issue with the security properties of the system. This won't be returned if the
+// PermitVirtualMachine flag is supplied to [RunChecks] and the current environment is a
+// virtual machine. This will only be returned unwrapped for errors that can't be
+// resolved or which prevent execution of the remaining checks.
 type HostSecurityError struct {
 	err error
 }
@@ -194,7 +196,7 @@ var (
 	// flag is supplied to RunChecks and the current environment is a virtual machine.
 	ErrUEFIDebuggingEnabled = errors.New("the platform firmware contains a debugging endpoint enabled")
 
-	// ErrTPMStartupLocalityNotProtected is returned wrapped in RunChecksErrors if access to
+	// ErrTPMStartupLocalityNotProtected is returned wrapped in HostSecurityError if access to
 	// the TPM's startup locality is available to platform firmware or privileged code. This
 	// means that it's not possible to provide a mitigation against reseet attacks (see the
 	// description of DiscreteTPMDetected). This error is only relevant for discrete TPMs.
@@ -205,7 +207,7 @@ var (
 // Errors related to checking the TPM device.
 
 // TPM2DeviceError is returned unwrapped from [RunChecks] if there is an issue with
-// the TPM device.
+// the TPM device, or any TPM commands fail unexpectedly.
 type TPM2DeviceError struct {
 	err error
 }
@@ -350,7 +352,12 @@ func (e *EmptyPCRBanksError) Error() string {
 	return fmt.Sprintf("the PCR %s missing from the TCG log but active and with one or more empty PCRs on the TPM", s)
 }
 
-// NoSuitablePCRAlgorithmError is returned wrapped in [TCGLogError] if it wasn't possible to
+func isEmptyPCRBanksError(err error) bool {
+	var e *EmptyPCRBanksError
+	return errors.As(err, &e)
+}
+
+// NoSuitablePCRAlgorithmError is returned wrapped in [MeasuredBootError] if it wasn't possible to
 // select a suitable PCR bank, which may happen under the following conditions:
 //   - The TCG log doesn't contain digests for a supported digest algorithm (SHA-256, SHA-384
 //     or SHA-512).
@@ -397,17 +404,17 @@ func (e *NoSuitablePCRAlgorithmError) addErr(alg tpm2.HashAlgorithmId, err error
 	e.Errs[alg] = append(e.Errs[alg], err)
 }
 
-// TCGLogError is returned unwrapped from [RunChecks] if there is a general issue with the
-// TCG log supplied by the firmware.
-type TCGLogError struct {
+// MeasuredBootError is returned unwrapped from [RunChecks] if there is a general issue with
+// or detected from the TCG measurement log supplied by the firmware.
+type MeasuredBootError struct {
 	err error
 }
 
-func (e *TCGLogError) Error() string {
-	return "error with TCG log: " + e.err.Error()
+func (e *MeasuredBootError) Error() string {
+	return "error with or detected from measurement log: " + e.err.Error()
 }
 
-func (e *TCGLogError) Unwrap() error {
+func (e *MeasuredBootError) Unwrap() error {
 	return e.err
 }
 
@@ -593,12 +600,12 @@ var (
 	// to RunChecks.
 	ErrAbsoluteComputraceActive = errors.New("Absolute was detected to be active and it is advised that this is disabled")
 
-	// ErrNotAllBootManagerCodeDigestsVerified is returned wrapped in RunChecksErrors
+	// ErrNotAllBootManagerCodeDigestsVerified is returned wrapped in BootManagerCodePCRError
 	// if it wasn't possible to verify the launch digest for every
 	// EV_EFI_BOOT_SERVICES_APPLICATION event against a supplied set of launch applications
-	// for the current boot.
-	// This error can be bypassed by supplying the PermitNotVerifyingAllBootManagerCodeDigests
-	// flag to RunChecks.
+	// for the current boot. This is generally an error with the way the RunChecks is used
+	// because the caller should supply each image for the current boot. This error can be
+	// bypassed by supplying the PermitNotVerifyingAllBootManagerCodeDigests flag to RunChecks.
 	ErrNotAllBootManagerCodeDigestsVerified = errors.New("not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified")
 )
 
