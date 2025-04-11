@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/canonical/cpuid"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
@@ -329,4 +330,36 @@ func checkIsTpmDiscreteIntel(env internal_efi.HostEnvironmentAMD64) (discreteTPM
 		panic("executing unreachable code")
 	}
 	return discreteTPM, nil
+}
+
+const (
+	ia32DebugInterfaceMSR = 0xc80
+
+	ia32DebugEnable uint64 = 1 << 0
+	ia32DebugLock   uint64 = 1 << 30
+)
+
+func checkCPUDebuggingLockedMSR(env internal_efi.HostEnvironmentAMD64) error {
+	// Check for "Silicon Debug Interface", returned in bit 11 of %ecx when calling
+	// cpuid with %eax=1.
+	debugSupported := env.HasCPUIDFeature(cpuid.SDBG)
+	if !debugSupported {
+		return nil
+	}
+
+	vals, err := env.ReadMSRs(ia32DebugInterfaceMSR)
+	if err != nil {
+		return err
+	}
+	if len(vals) == 0 {
+		return errors.New("no MSR values returned")
+	}
+
+	for _, val := range vals {
+		if val&ia32DebugEnable > 0 || val&ia32DebugLock == 0 {
+			return ErrCPUDebuggingNotLocked
+		}
+	}
+
+	return nil
 }
