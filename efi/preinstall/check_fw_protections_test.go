@@ -59,7 +59,8 @@ func (s *fwProtectionsSuite) TestCheckForKernelIOMMUPresent(c *C) {
 
 func (s *fwProtectionsSuite) TestCheckForKernelIOMMUPresentErr(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
-	c.Check(CheckForKernelIOMMU(env), ErrorMatches, `nil devices`)
+	err := CheckForKernelIOMMU(env)
+	c.Check(err, ErrorMatches, `nil devices`)
 }
 
 func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedFirmwareSettingsOk(c *C) {
@@ -69,17 +70,37 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedFirmwareSett
 
 func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmwareDebuggingEnabled(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
-	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), Equals, ErrUEFIDebuggingEnabled)
+	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled})
 }
 
 func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabled1(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{DMAProtectionDisabled: efitest.DMAProtectionDisabled})
-	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), Equals, ErrInsufficientDMAProtection)
+	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrInsufficientDMAProtection})
 }
 
 func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabled2(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{DMAProtectionDisabled: efitest.DMAProtectionDisabledNullTerminated})
-	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), Equals, ErrInsufficientDMAProtection)
+	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrInsufficientDMAProtection})
+}
+
+func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmwareDebuggingEnabledAndDMAProtectionDisabled(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		FirmwareDebugger:      true,
+		DMAProtectionDisabled: efitest.DMAProtectionDisabled,
+	})
+	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled, ErrInsufficientDMAProtection})
 }
 
 func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedData(c *C) {
@@ -91,7 +112,8 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrU
 		ev.Data = tcglog.EFICallingEFIApplicationEvent
 		break
 	}
-	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), ErrorMatches, `unexpected EV_EFI_ACTION event data in PCR7 event: \"Calling EFI Application from Boot Option\"`)
+	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event data in PCR7 event: \"Calling EFI Application from Boot Option\"`)
 }
 
 func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedType(c *C) {
@@ -104,4 +126,6 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrU
 		break
 	}
 	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), ErrorMatches, `unexpected event type \(EV_ACTION\) in PCR7`)
+	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
+	c.Check(err, ErrorMatches, `unexpected event type \(EV_ACTION\) in PCR7`)
 }
