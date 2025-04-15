@@ -2540,6 +2540,7 @@ C7E003CB
 			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:       []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				StartupLocality:  3,
 				FirmwareDebugger: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
@@ -2553,6 +2554,7 @@ C7E003CB
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
+	c.Logf("%v", errs)
 	c.Assert(errs, HasLen, 2)
 	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUEFIDebuggingEnabled, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))

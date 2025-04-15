@@ -84,6 +84,8 @@ var (
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
+	IsTPMDiscrete                                         = isTPMDiscrete
+	IsTPMDiscreteFromIntelBootGuard                       = isTPMDiscreteFromIntelBootGuard
 	JoinErrors                                            = joinErrors
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
