@@ -215,7 +215,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	if flags&PostInstallChecks > 0 {
 		checkTPMFlags |= checkTPM2DevicePostInstall
 	}
-	tpm, discreteTPM, err := openAndCheckTPM2Device(runChecksEnv, checkTPMFlags)
+	tpm, err := openAndCheckTPM2Device(runChecksEnv, checkTPMFlags)
 	if err != nil {
 		var ce CompoundError
 		if !errors.As(err, &ce) {
@@ -227,10 +227,6 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		}
 	}
 	defer tpm.Close()
-	if discreteTPM {
-		// Note that a discrete TPM was detected.
-		result.Flags |= DiscreteTPMDetected
-	}
 
 	// Grab the TCG log.
 	log, err := runChecksEnv.ReadEventLog()
@@ -310,11 +306,12 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		warnings = append(warnings, err)
 	}
 
+	discreteTPM := false
+
 	if virtMode == detectVirtNone {
 		// Only run platform firmware protection checks if we are not in a VM
 		protectedLocalities, err := checkPlatformFirmwareProtections(runChecksEnv, log)
-		switch {
-		case err != nil:
+		if err != nil {
 			var ce CompoundError
 			if !errors.As(err, &ce) {
 				return nil, &HostSecurityError{err}
@@ -322,7 +319,14 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			for _, e := range ce.Unwrap() {
 				deferredErrs = append(deferredErrs, &HostSecurityError{e})
 			}
-		case discreteTPM:
+		}
+
+		discreteTPM, err = isTPMDiscrete(runChecksEnv)
+		if err != nil {
+			return nil, &TPM2DeviceError{err}
+		}
+
+		if discreteTPM {
 			switch logResults.StartupLocality {
 			case 0:
 				// TPM2_Startup occurred from locality 0. Mark PCR0 as reconstructible
@@ -357,6 +361,11 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				}
 			}
 		}
+	}
+
+	if discreteTPM {
+		// Note that a discrete TPM was detected.
+		result.Flags |= DiscreteTPMDetected
 	}
 
 	if logResults.Lookup(internal_efi.PlatformConfigPCR).Ok() {
