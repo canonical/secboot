@@ -28,16 +28,16 @@ import (
 	"github.com/snapcore/secboot/internal/efitest"
 )
 
-type fwProtectionsSuite struct{}
+type hostSecuritySuite struct{}
 
-var _ = Suite(&fwProtectionsSuite{})
+var _ = Suite(&hostSecuritySuite{})
 
-func (s *fwProtectionsSuite) TestCheckForKernelIOMMUNotPresent1(c *C) {
+func (s *hostSecuritySuite) TestCheckForKernelIOMMUNotPresent1(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(make(map[string][]internal_efi.SysfsDevice)))
 	c.Check(CheckForKernelIOMMU(env), Equals, ErrNoKernelIOMMU)
 }
 
-func (s *fwProtectionsSuite) TestCheckForKernelIOMMUNotPresent2(c *C) {
+func (s *hostSecuritySuite) TestCheckForKernelIOMMUNotPresent2(c *C) {
 	devices := map[string][]internal_efi.SysfsDevice{
 		"iommu": []internal_efi.SysfsDevice{
 			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "foo", nil),
@@ -47,7 +47,7 @@ func (s *fwProtectionsSuite) TestCheckForKernelIOMMUNotPresent2(c *C) {
 	c.Check(CheckForKernelIOMMU(env), Equals, ErrNoKernelIOMMU)
 }
 
-func (s *fwProtectionsSuite) TestCheckForKernelIOMMUPresent(c *C) {
+func (s *hostSecuritySuite) TestCheckForKernelIOMMUPresent(c *C) {
 	devices := map[string][]internal_efi.SysfsDevice{
 		"iommu": []internal_efi.SysfsDevice{
 			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
@@ -57,18 +57,18 @@ func (s *fwProtectionsSuite) TestCheckForKernelIOMMUPresent(c *C) {
 	c.Check(CheckForKernelIOMMU(env), IsNil)
 }
 
-func (s *fwProtectionsSuite) TestCheckForKernelIOMMUPresentErr(c *C) {
+func (s *hostSecuritySuite) TestCheckForKernelIOMMUPresentErr(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
 	err := CheckForKernelIOMMU(env)
 	c.Check(err, ErrorMatches, `nil devices`)
 }
 
-func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedFirmwareSettingsOk(c *C) {
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedFirmwareSettingsOk(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), IsNil)
 }
 
-func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmwareDebuggingEnabled(c *C) {
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmwareDebuggingEnabled(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
 	var tmpl CompoundError
@@ -76,7 +76,7 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirm
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled})
 }
 
-func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabled1(c *C) {
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabled1(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{DMAProtectionDisabled: efitest.DMAProtectionDisabled})
 	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
 	var tmpl CompoundError
@@ -84,7 +84,7 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAP
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrInsufficientDMAProtection})
 }
 
-func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabled2(c *C) {
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabled2(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{DMAProtectionDisabled: efitest.DMAProtectionDisabledNullTerminated})
 	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
 	var tmpl CompoundError
@@ -92,7 +92,7 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAP
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrInsufficientDMAProtection})
 }
 
-func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmwareDebuggingEnabledAndDMAProtectionDisabled(c *C) {
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmwareDebuggingEnabledAndDMAProtectionDisabled(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		FirmwareDebugger:      true,
 		DMAProtectionDisabled: efitest.DMAProtectionDisabled,
@@ -103,7 +103,7 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirm
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled, ErrInsufficientDMAProtection})
 }
 
-func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedData(c *C) {
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedData(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 	for _, ev := range log.Events {
 		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
@@ -116,7 +116,7 @@ func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrU
 	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event data in PCR7 event: \"Calling EFI Application from Boot Option\"`)
 }
 
-func (s *fwProtectionsSuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedType(c *C) {
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedType(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 	for _, ev := range log.Events {
 		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {

@@ -33,9 +33,9 @@ import (
 	"github.com/snapcore/secboot/internal/efitest"
 )
 
-type fwProtectionsIntelSuite struct{}
+type hostSecurityIntelSuite struct{}
 
-var _ = Suite(&fwProtectionsIntelSuite{})
+var _ = Suite(&hostSecurityIntelSuite{})
 
 type mockMEISysfsDevice struct {
 	fwVer    []byte
@@ -70,7 +70,7 @@ func regPtrs(regs *[6]uint32) (out [6]*uint32) {
 	return out
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfs1(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfs1(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwStatus: []byte(`94000245
 09F10506
@@ -94,7 +94,7 @@ C7E003CB
 	})
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfs2(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfs2(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwStatus: []byte(`94000245
 09F10506
@@ -118,7 +118,7 @@ C7E0034B
 	})
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrNoAttr(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrNoAttr(c *C) {
 	dev := &mockMEISysfsDevice{}
 
 	var regs [6]uint32
@@ -126,7 +126,7 @@ func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrNoAt
 	c.Check(err, ErrorMatches, `device attribute does not exist`)
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrTooMany(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrTooMany(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwStatus: []byte(`94000245
 09F10506
@@ -143,7 +143,7 @@ C7E003CB
 	c.Check(err, ErrorMatches, `invalid fw_status format: too many entries`)
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrInvalidLineLen(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrInvalidLineLen(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwStatus: []byte(`94000245
 09F10506
@@ -159,7 +159,7 @@ func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrInva
 	c.Check(err, ErrorMatches, `invalid fw_status format: unexpected line length for line 5 \(7 chars\)`)
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrInvalidLine(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrInvalidLine(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwStatus: []byte(`94000245
 09F10506
@@ -175,7 +175,7 @@ G7E003CB
 	c.Check(err, ErrorMatches, `invalid fw_status format: cannot scan line 5: expected integer`)
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrNotEnough(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrNotEnough(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwStatus: []byte(`94000245
 09F10506
@@ -190,7 +190,7 @@ func (s *fwProtectionsIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrNotE
 	c.Check(err, ErrorMatches, `invalid fw_status format: not enough entries`)
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelMeVersionFromMEISysfs1(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelMeVersionFromMEISysfs1(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwVer: []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -209,7 +209,7 @@ func (s *fwProtectionsIntelSuite) TestReadIntelMeVersionFromMEISysfs1(c *C) {
 	})
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelMeVersionFromMEISysfs2(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelMeVersionFromMEISysfs2(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwVer: []byte(`0:8.1.65.1586
 0:8.1.65.1586
@@ -228,13 +228,13 @@ func (s *fwProtectionsIntelSuite) TestReadIntelMeVersionFromMEISysfs2(c *C) {
 	})
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelMeVersionFromMEISysfsErrNoAttr(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelMeVersionFromMEISysfsErrNoAttr(c *C) {
 	dev := &mockMEISysfsDevice{}
 	_, err := ReadIntelMEVersionFromMEISysfs(dev)
 	c.Check(err, ErrorMatches, `device attribute does not exist`)
 }
 
-func (s *fwProtectionsIntelSuite) TestReadIntelMeVersionFromMEISysfsErrInvalidVer(c *C) {
+func (s *hostSecurityIntelSuite) TestReadIntelMeVersionFromMEISysfsErrInvalidVer(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwVer: []byte(`0:16.1.27
 0:16.1.27.2176
@@ -245,31 +245,31 @@ func (s *fwProtectionsIntelSuite) TestReadIntelMeVersionFromMEISysfsErrInvalidVe
 	c.Check(err, ErrorMatches, `invalid fw_ver: unexpected EOF`)
 }
 
-func (s *fwProtectionsIntelSuite) TestCalculateIntelMEFamilyCSME(c *C) {
+func (s *hostSecurityIntelSuite) TestCalculateIntelMEFamilyCSME(c *C) {
 	c.Check(CalculateIntelMEFamily(MeVersion{Major: 11}, 0x94000245), Equals, MeFamilyCsme)
 }
 
-func (s *fwProtectionsIntelSuite) TestCalculateIntelMEFamilyME(c *C) {
+func (s *hostSecurityIntelSuite) TestCalculateIntelMEFamilyME(c *C) {
 	c.Check(CalculateIntelMEFamily(MeVersion{Major: 9}, 0x94000245), Equals, MeFamilyMe)
 }
 
-func (s *fwProtectionsIntelSuite) TestCalculateIntelMEFamilyTXE1(c *C) {
+func (s *hostSecurityIntelSuite) TestCalculateIntelMEFamilyTXE1(c *C) {
 	c.Check(CalculateIntelMEFamily(MeVersion{Major: 5}, 0x94000245), Equals, MeFamilyTxe)
 }
 
-func (s *fwProtectionsIntelSuite) TestCalculateIntelMEFamilyTXE2(c *C) {
+func (s *hostSecurityIntelSuite) TestCalculateIntelMEFamilyTXE2(c *C) {
 	c.Check(CalculateIntelMEFamily(MeVersion{Major: 4}, 0x94000245), Equals, MeFamilyTxe)
 }
 
-func (s *fwProtectionsIntelSuite) TestCalculateIntelMEFamilySPS(c *C) {
+func (s *hostSecurityIntelSuite) TestCalculateIntelMEFamilySPS(c *C) {
 	c.Check(CalculateIntelMEFamily(MeVersion{Major: 4}, 0x940F0245), Equals, MeFamilySps)
 }
 
-func (s *fwProtectionsIntelSuite) TestCalculateIntelMEFamilyUnkown(c *C) {
+func (s *hostSecurityIntelSuite) TestCalculateIntelMEFamilyUnkown(c *C) {
 	c.Check(CalculateIntelMEFamily(MeVersion{Major: 0}, 0x940F0245), Equals, MeFamilyUnknown)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIGoodCSME(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodCSME(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -289,11 +289,11 @@ C7E003CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, IsNil)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIGoodME(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodME(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:8.1.65.1586
 0:8.1.65.1586
@@ -313,11 +313,11 @@ C7E003CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, IsNil)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIGoodSPS(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodSPS(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:4.1.4.54
 0:4.1.4.54
@@ -337,23 +337,23 @@ C7E003CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, IsNil)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrNoDevices(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoDevices(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `cannot obtain devices with \"mei\" class: nil devices`)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrNoMEIDevice(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEIDevice(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(make(map[string][]internal_efi.SysfsDevice)))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no MEI device available`)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrHFSTSRegisters(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrHFSTSRegisters(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -366,11 +366,11 @@ func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrHFST
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `cannot read HFSTS registers from sysfs: device attribute does not exist`)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrFwVer(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFwVer(c *C) {
 	attrs := map[string][]byte{
 		"fw_status": []byte(`94000245
 09F10506
@@ -386,11 +386,11 @@ C7E003CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `cannot obtain ME version from sysfs: device attribute does not exist`)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrMfgMode(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrMfgMode(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -410,12 +410,12 @@ C7E003CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrOperationMode(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrOperationMode(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -435,12 +435,12 @@ C7E003CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid ME operation mode: checks for software tampering may be disabled`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrInvalidFamily(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrInvalidFamily(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:3.1.70.0
 0:3.1.70.0
@@ -460,12 +460,12 @@ C7E003CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard unsupported on TXE ME family`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrBootGuardDisable(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrBootGuardDisable(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -485,12 +485,12 @@ D7E003CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard is disabled`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrNoForceBootGuardACM(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoForceBootGuardACM(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -510,12 +510,12 @@ C7E003CA
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: the BootGuard ACM is not forced to execute - the CPU can execute arbitrary code from the legacy reset vector if BootGuard cannot be successfully loaded`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrNoVerifiedBoot(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoVerifiedBoot(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -535,12 +535,12 @@ C7E001CB
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard verified boot mode is not enabled - this allows arbitrary firmware that doesn't have a valid signature to be executed`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrEnforcementPolicy(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrEnforcementPolicy(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -560,12 +560,12 @@ C7E0034B
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard does not have an appropriate error enforcement policy`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrNoProtectBIOSEnv(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoProtectBIOSEnv(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -585,12 +585,12 @@ C7E003C3
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: the \"Protect BIOS Environment\" feature is not enabled`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrNoFPFSOCLock(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoFPFSOCLock(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -610,55 +610,55 @@ func (s *fwProtectionsIntelSuite) TestCheckPlatformFirmwareProtectionsMEIErrNoFP
 		},
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckPlatformFirmwareProtectionsIntelMEI(env)
+	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard OTP fuses are not locked`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckCPUDebuggingLockedMSRDisabledCPUID(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledCPUID(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0xc80: 0}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), IsNil)
+	c.Check(CheckHostSecurityIntelCPUDebuggingLocked(amd64Env), IsNil)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckCPUDebuggingLockedMSRDisabledMSR(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledMSR(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), IsNil)
+	c.Check(CheckHostSecurityIntelCPUDebuggingLocked(amd64Env), IsNil)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckCPUDebuggingLockedMSRDisabledAvailable(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledAvailable(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), Equals, ErrCPUDebuggingNotLocked)
+	c.Check(CheckHostSecurityIntelCPUDebuggingLocked(amd64Env), Equals, ErrCPUDebuggingNotLocked)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckCPUDebuggingLockedMSREnabled(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedEnabled(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 1}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), Equals, ErrCPUDebuggingNotLocked)
+	c.Check(CheckHostSecurityIntelCPUDebuggingLocked(amd64Env), Equals, ErrCPUDebuggingNotLocked)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckCPUDebuggingLockedMSRErrMissingMSR(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrMissingMSR(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), ErrorMatches, `MSR does not exist`)
+	c.Check(CheckHostSecurityIntelCPUDebuggingLocked(amd64Env), ErrorMatches, `cannot read MSRs: MSR does not exist`)
 }
 
-func (s *fwProtectionsIntelSuite) TestCheckCPUDebuggingLockedMSRErrNoMSRValues(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrNoMSRValues(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 0, map[uint32]uint64{0xc80: 0x40000000}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
-	c.Check(CheckCPUDebuggingLockedMSR(amd64Env), ErrorMatches, `no MSR values returned`)
+	c.Check(CheckHostSecurityIntelCPUDebuggingLocked(amd64Env), ErrorMatches, `no MSR values returned`)
 }

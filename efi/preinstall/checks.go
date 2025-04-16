@@ -309,8 +309,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	discreteTPM := false
 
 	if virtMode == detectVirtNone {
-		// Only run platform firmware protection checks if we are not in a VM
-		protectedLocalities, err := checkPlatformFirmwareProtections(runChecksEnv, log)
+		// Only run host security checks if we are not in a VM
+		protectedLocalities, err := checkHostSecurity(runChecksEnv, log)
 		if err != nil {
 			var ce CompoundError
 			if !errors.As(err, &ce) {
