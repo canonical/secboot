@@ -25,9 +25,10 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 )
 
-func checkPlatformFirmwareProtections(env HostEnvironment, log *tcglog.Log) (result firmwareProtectionResultFlags, err error) {
-	return 0, &UnsupportedPlatformError{fmt.Errorf("checking platform firmware protections is not implemented on %s", runtime.GOARCH)}
+func checkHostSecurity(env HostEnvironment, log *tcglog.Log) (protectedStartupLocalities tpm2.Locality, err error) {
+	return 0, &UnsupportedPlatformError{fmt.Errorf("checking host security is not implemented on %s", runtime.GOARCH)}
 }

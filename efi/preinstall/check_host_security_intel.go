@@ -191,7 +191,7 @@ func calculateIntelMEFamily(vers meVersion, hfsts1Reg hfsts1) meFamily {
 	}
 }
 
-func checkPlatformFirmwareProtectionsIntelMEI(env internal_efi.HostEnvironment) error {
+func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
 	devices, err := env.DevicesForClass("mei")
 	if err != nil {
 		return fmt.Errorf("cannot obtain devices with \"mei\" class: %w", err)
@@ -307,7 +307,7 @@ const (
 	ia32DebugLock   uint64 = 1 << 30
 )
 
-func checkCPUDebuggingLockedMSR(env internal_efi.HostEnvironmentAMD64) error {
+func checkHostSecurityIntelCPUDebuggingLocked(env internal_efi.HostEnvironmentAMD64) error {
 	// Check for "Silicon Debug Interface", returned in bit 11 of %ecx when calling
 	// cpuid with %eax=1.
 	debugSupported := env.HasCPUIDFeature(cpuid.SDBG)
@@ -317,7 +317,7 @@ func checkCPUDebuggingLockedMSR(env internal_efi.HostEnvironmentAMD64) error {
 
 	vals, err := env.ReadMSRs(ia32DebugInterfaceMSR)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot read MSRs: %w", err)
 	}
 	if len(vals) == 0 {
 		return errors.New("no MSR values returned")

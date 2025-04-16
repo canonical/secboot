@@ -32,11 +32,11 @@ import (
 	"github.com/snapcore/secboot/internal/testutil"
 )
 
-type fwProtectionsAMD64Suite struct{}
+type hostSecurityAMD64Suite struct{}
 
-var _ = Suite(&fwProtectionsAMD64Suite{})
+var _ = Suite(&hostSecurityAMD64Suite{})
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsGood(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityGood(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -65,13 +65,13 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
+	protectedStartupLocalities, err := CheckHostSecurity(env, log)
 	c.Check(err, IsNil)
 	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
 	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsNoTXT(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityNoTXT(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -100,46 +100,46 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
+	protectedStartupLocalities, err := CheckHostSecurity(env, log)
 	c.Check(err, IsNil)
 	c.Check(protectedStartupLocalities, Equals, tpm2.Locality(0))
 	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8(nil))
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrNotAMD64(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrNotAMD64(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
 
-	_, err := CheckPlatformFirmwareProtections(env, nil)
+	_, err := CheckHostSecurity(env, nil)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: not a AMD64 host`)
 
 	var upe *UnsupportedPlatformError
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrUnrecognizedCpuVendor(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrUnrecognizedCpuVendor(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithAMD64Environment("GenuineInte", nil, 0, nil),
 	)
 
-	_, err := CheckPlatformFirmwareProtections(env, nil)
+	_, err := CheckHostSecurity(env, nil)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
 
 	var upe *UnsupportedPlatformError
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrAMDNotSupportedYet(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrAMDNotSupportedYet(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
 	)
 
-	_, err := CheckPlatformFirmwareProtections(env, nil)
-	c.Check(err, ErrorMatches, `unsupported platform: checking platform firmware protections is not yet implemented for AMD`)
+	_, err := CheckHostSecurity(env, nil)
+	c.Check(err, ErrorMatches, `unsupported platform: checking host security is not yet implemented for AMD`)
 	var upe *UnsupportedPlatformError
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrMEI(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrMEI(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -163,15 +163,15 @@ C7E003CB
 		efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil),
 	)
 
-	_, err := CheckPlatformFirmwareProtections(env, nil)
-	c.Check(err, ErrorMatches, `encountered an error when determining platform firmware protections using Intel MEI: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
+	_, err := CheckHostSecurity(env, nil)
+	c.Check(err, ErrorMatches, `encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
 
 	var nhrotErr *NoHardwareRootOfTrustError
 	c.Check(errors.As(err, &nhrotErr), testutil.IsTrue)
 	c.Check(nhrotErr, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsSecureBootPolicyFirmwareDebugging(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecuritySecureBootPolicyFirmwareDebugging(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -200,7 +200,7 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 
-	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
+	protectedStartupLocalities, err := CheckHostSecurity(env, log)
 	c.Check(err, ErrorMatches, `the platform firmware contains a debugging endpoint enabled`)
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
@@ -209,7 +209,7 @@ C7E003CB
 	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsNoIOMMU(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityNoIOMMU(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -234,7 +234,7 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
+	protectedStartupLocalities, err := CheckHostSecurity(env, log)
 	c.Check(err, ErrorMatches, `no kernel IOMMU support was detected`)
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
@@ -243,7 +243,7 @@ C7E003CB
 	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsSecureBootPolicyFirmwareDebuggingAndNoIOMMU(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecuritySecureBootPolicyFirmwareDebuggingAndNoIOMMU(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -268,7 +268,7 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 
-	protectedStartupLocalities, err := CheckPlatformFirmwareProtections(env, log)
+	protectedStartupLocalities, err := CheckHostSecurity(env, log)
 	c.Check(err, ErrorMatches, `2 errors detected:
 - the platform firmware contains a debugging endpoint enabled
 - no kernel IOMMU support was detected
@@ -280,7 +280,7 @@ C7E003CB
 	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
-func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsCPUDebuggingUnlocked(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityCPUDebuggingUnlocked(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -309,7 +309,7 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	_, err := CheckPlatformFirmwareProtections(env, log)
-	c.Check(err, ErrorMatches, `encountered an error when determining CPU debugging configuration from MSRs: CPU debugging features are not disabled and locked`)
+	_, err := CheckHostSecurity(env, log)
+	c.Check(err, ErrorMatches, `encountered an error when checking Intel CPU debugging configuration: CPU debugging features are not disabled and locked`)
 	c.Check(errors.Is(err, ErrCPUDebuggingNotLocked), testutil.IsTrue)
 }

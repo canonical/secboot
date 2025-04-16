@@ -73,12 +73,12 @@ const (
 var (
 	CalculateIntelMEFamily                                = calculateIntelMEFamily
 	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
-	CheckCPUDebuggingLockedMSR                            = checkCPUDebuggingLockedMSR
 	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
 	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
 	CheckForKernelIOMMU                                   = checkForKernelIOMMU
-	CheckPlatformFirmwareProtections                      = checkPlatformFirmwareProtections
-	CheckPlatformFirmwareProtectionsIntelMEI              = checkPlatformFirmwareProtectionsIntelMEI
+	CheckHostSecurity                                     = checkHostSecurity
+	CheckHostSecurityIntelBootGuard                       = checkHostSecurityIntelBootGuard
+	CheckHostSecurityIntelCPUDebuggingLocked              = checkHostSecurityIntelCPUDebuggingLocked
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
 	DetectVirtualization                                  = detectVirtualization
