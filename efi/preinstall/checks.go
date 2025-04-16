@@ -489,6 +489,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	}
 
 	if len(deferredErrs) > 0 {
+		// If we are returning one or more error, then append any warnings
+		// to the returned errors as well.
+		deferredErrs = append(deferredErrs, warnings...)
 		return nil, joinErrors(deferredErrs...)
 	}
 
