@@ -2376,7 +2376,7 @@ C7E003CB
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 	})
-	c.Check(err, ErrorMatches, `error with system security: encountered an error when determining platform firmware protections using Intel MEI: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
+	c.Check(err, ErrorMatches, `error with system security: encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
 
 	var hse *HostSecurityError
 	c.Assert(errors.As(err, &hse), testutil.IsTrue)
