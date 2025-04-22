@@ -114,82 +114,6 @@ const (
 	// reset attack mitigation has to be opted into with the PermitNoDiscreteTPMResetMitigation flag to
 	// RunChecks.
 	StartupLocalityNotProtected
-
-	// VARDriversPresent indicates that value-added-retailer drivers were present, either
-	// because there are Driver#### load options and/or DriverOrder global variable, or
-	// because one or more was loaded from an option ROM contained on a PCI device. These
-	// are included in a PCR policy when using efi.WithDriversAndAppsProfile. Support for
-	// including value-added-retailer drivers has to be opted into with the
-	// PermitVARSuppliedDrivers flag to RunChecks.
-	// This check may not run if the NoDriversAndAppsProfileSupport flag is set.
-	//
-	// Note that this flag is not persisted when serializing the results.
-	VARDriversPresent
-
-	// SysPrepApplicationsPresent indicates that system preparation applications were
-	// running as part of the pre-OS environment because there are SysPrep#### and
-	// SysPrepOrder global variables defined. As these aren't under the control of the OS,
-	// these can increase the fragility of profiles that include efi.WithBootManagerCodeProfile.
-	// Support for including system preparation applications has to be opted into with the
-	// PermitSysPrepApplications flag to RunChecks.
-	// This check may not run if the NoBootManagerCodeProfileSupport flag is set.
-	//
-	// Note that this flag is not persisted when serializing the results.
-	SysPrepApplicationsPresent
-
-	// AbsoluteComputeActive indicates that the platform firmware is executing an endpoint
-	// management application called "Absolute" using the LoadImage API. If it is, this is
-	// measured to PCR4 as part of the OS-present environment before the OS is loaded.
-	// As this is a firmware component, this increases the fragility of profiles that include
-	// efi.WithBootManagerCodeProfile. Where possible, this firmware should be disabled. Support
-	// for including Absolute has to be opted into with the PermitAbsoluteComputrace flag to
-	// RunChecks.
-	// This check may not run if the NoBootManagerCodeProfileSupport flag is set.
-	//
-	// Note that this flag is not persisted when serializing the results.
-	AbsoluteComputraceActive
-
-	// NotAllBootManagerCodeDigestsVerified indicates that the checks for efi.WithBootManagerCodeProfile
-	// was not able to verify all of the EV_EFI_BOOT_SERVICES_APPLICATION digests that appear in the
-	// log to ensure that they contain an Authenticode digest that matches a boot component used during
-	// the current boot. If this is set, it means that not all boot components were supplied to RunChecks.
-	// Support for not verifying all EV_EFI_BOOT_SERVICES_APPLICATION digests has to opted into with the
-	// PermitNotVerifyingAllBootManagerCodeDigests flag to RunChecks.
-	// This check may not run if the NoBootManagerCodeProfileSupport flag is set.
-	//
-	// Note that this flag is not persisted when serializing the results.
-	NotAllBootManagerCodeDigestsVerified
-
-	// RunningInVirtualMachine indicates that the OS is running in a virtual machine. As parts
-	// of the TCB, such as the initial firmware code and the vTPM are under the control of the host
-	// environment, this configuration offers little benefit other than for testing - particularly
-	// in CI environments. If this is set, no checks for platform firmware protections were
-	// performed. Support for virtual machines has to be opted into with the PermitVirtualMachine flag
-	// to RunChecks.
-	//
-	// Note that this flag is not persisted when serializing the results.
-	RunningInVirtualMachine
-
-	// WeakSecureBootAlgorithms indicates that weak algorithms were detected during secure boot verification,
-	// such as authenticating a pre-OS binary with SHA1, or with a CA with a 1024-bit RSA public key, or because
-	// the signing key used to sign the initial boot loader uses a 1024-bit RSA key. This does have some
-	// limitations because the TCG log doesn't indicate the properties of the actual signing certificate of
-	// the algorithms used to sign each binary, so it's not possible to verify the signing keys for components
-	// outside of the OS control. Support for weak secure boot algorithms has to be opted into with the
-	// PermitWeakSecureBootAlgorithms flag to RunChecks.
-	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
-	//
-	// Note that this flag is not persisted when serializing the results.
-	WeakSecureBootAlgorithmsDetected
-
-	// PreOSVerificationUsingDigestDetected indicates that pre-OS components were verified by the
-	// use of a digest hardcoded in the authorized signature database as opposed to a X.509 certificate.
-	// Support for this has to be opted into with the PermitPreOSVerificationUsingDigests flag to
-	// RunChecks, as it implies that db has to change with each update to certain firmware components.
-	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
-	//
-	// Note that this flag is not persisted when serializing the results.
-	PreOSVerificationUsingDigestsDetected
 )
 
 var checkResultFlagToIDStringMap = map[CheckResultFlags]string{
@@ -202,16 +126,6 @@ var checkResultFlagToIDStringMap = map[CheckResultFlags]string{
 	NoSecureBootPolicyProfileSupport:     "no-secure-boot-policy-profile-support",
 	DiscreteTPMDetected:                  "discrete-tpm-detected",
 	StartupLocalityNotProtected:          "startup-locality-not-protected",
-}
-
-var checkNonPersistentResultFlagToIDStringMap = map[CheckResultFlags]string{
-	VARDriversPresent:                     "var-drivers-present",
-	SysPrepApplicationsPresent:            "sysprep-apps-present",
-	AbsoluteComputraceActive:              "absolute-active",
-	NotAllBootManagerCodeDigestsVerified:  "not-all-boot-manager-code-digests-verified",
-	RunningInVirtualMachine:               "running-in-vm",
-	WeakSecureBootAlgorithmsDetected:      "weak-secure-boot-algs-detected",
-	PreOSVerificationUsingDigestsDetected: "pre-os-verification-using-digests-detected",
 }
 
 var checkResultFlagFromIDStringMap = map[string]CheckResultFlags{
@@ -314,9 +228,6 @@ func (r CheckResult) String() string {
 	for i := 0; i < 64; i++ {
 		if r.Flags&CheckResultFlags(1<<i) > 0 {
 			str, exists := checkResultFlagToIDStringMap[CheckResultFlags(1<<i)]
-			if !exists {
-				str, exists = checkNonPersistentResultFlagToIDStringMap[CheckResultFlags(1<<i)]
-			}
 			if !exists {
 				str = fmt.Sprintf("%016x", 1<<i)
 			}
