@@ -191,7 +191,7 @@ func calculateIntelMEFamily(vers meVersion, hfsts1Reg hfsts1) meFamily {
 	}
 }
 
-func checkPlatformFirmwareProtectionsIntelMEI(env internal_efi.HostEnvironment) error {
+func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
 	devices, err := env.DevicesForClass("mei")
 	if err != nil {
 		return fmt.Errorf("cannot obtain devices with \"mei\" class: %w", err)
@@ -300,38 +300,6 @@ func checkPlatformFirmwareProtectionsIntelMEI(env internal_efi.HostEnvironment) 
 	return nil
 }
 
-const bootGuardStatusMsr = 0x13a
-
-const (
-	bootGuardStatusTpmMask uint64 = (3 << 1)
-	bootGuardStatusTpmNone uint64 = (0 << 1)
-	bootGuardStatusTpm12   uint64 = (1 << 1)
-	bootGuardStatusTpm2    uint64 = (2 << 1)
-	bootGuardStatusTpmPtt  uint64 = (3 << 1)
-)
-
-func checkIsTpmDiscreteIntel(env internal_efi.HostEnvironmentAMD64) (discreteTPM bool, err error) {
-	bootGuardStatus, err := env.ReadMSRs(bootGuardStatusMsr)
-	if err != nil {
-		return false, fmt.Errorf("failed to read BootGuard status: %w", err)
-	}
-	// NOTE: bootGuardStatus[0] is fine because BootGuard status MSR has the same value across all CPUs
-	switch bootGuardStatus[0] & bootGuardStatusTpmMask {
-	// System has no TPM or unsupported TPM 1.2 device
-	case bootGuardStatusTpmNone, bootGuardStatusTpm12:
-		return false, ErrNoTPM2Device
-	// System has a discrete TPM 2.0 device
-	case bootGuardStatusTpm2:
-		discreteTPM = true
-	// System has a PTT firmware TPM
-	case bootGuardStatusTpmPtt:
-		discreteTPM = false
-	default:
-		panic("executing unreachable code")
-	}
-	return discreteTPM, nil
-}
-
 const (
 	ia32DebugInterfaceMSR = 0xc80
 
@@ -339,7 +307,7 @@ const (
 	ia32DebugLock   uint64 = 1 << 30
 )
 
-func checkCPUDebuggingLockedMSR(env internal_efi.HostEnvironmentAMD64) error {
+func checkHostSecurityIntelCPUDebuggingLocked(env internal_efi.HostEnvironmentAMD64) error {
 	// Check for "Silicon Debug Interface", returned in bit 11 of %ecx when calling
 	// cpuid with %eax=1.
 	debugSupported := env.HasCPUIDFeature(cpuid.SDBG)
@@ -349,7 +317,7 @@ func checkCPUDebuggingLockedMSR(env internal_efi.HostEnvironmentAMD64) error {
 
 	vals, err := env.ReadMSRs(ia32DebugInterfaceMSR)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot read MSRs: %w", err)
 	}
 	if len(vals) == 0 {
 		return errors.New("no MSR values returned")
