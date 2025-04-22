@@ -242,6 +242,7 @@ func (s *tcglogSuite) testCheckFirmwareLogAndChoosePCRBank(c *C, params *testChe
 	c.Assert(err, IsNil)
 	c.Check(result.Alg, Equals, params.expectedAlg)
 	c.Check(result.StartupLocality, Equals, params.startupLocality)
+	c.Check(result.Ok(), testutil.IsTrue)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA256(c *C) {
@@ -482,6 +483,8 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankUnexpectedStartupLocal
 - TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
 - TPM_ALG_SHA256: error with platform config \(PCR1\) measurements: unexpected StartupLocality event \(should be in PCR0\).
 `)
+	c.Check(err, testutil.ConvertibleTo, &NoSuitablePCRAlgorithmError{})
+
 	var e *NoSuitablePCRAlgorithmError
 	c.Assert(errors.As(err, &e), testutil.IsTrue)
 
@@ -563,6 +566,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankOutOfPlaceStartupLocal
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: unexpected StartupLocality event after measurements already made.
 `)
+	c.Check(err, testutil.ConvertibleTo, &NoSuitablePCRAlgorithmError{})
 	var e *NoSuitablePCRAlgorithmError
 	c.Check(errors.As(err, &e), testutil.IsTrue)
 }
@@ -606,6 +610,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankInvalidStartupLocality
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: invalid StartupLocality value 2 - TPM2_Startup is only permitted from locality 0 or 3, or PCR0 can be initialized from locality 4 by a H-CRTM event before TPM2_Startup is called.
 `)
+	c.Check(err, testutil.ConvertibleTo, &NoSuitablePCRAlgorithmError{})
 	var e *NoSuitablePCRAlgorithmError
 	c.Check(errors.As(err, &e), testutil.IsTrue)
 }
@@ -632,6 +637,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPCRMismatchMandatory(c
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
 `)
+	c.Check(err, testutil.ConvertibleTo, &NoSuitablePCRAlgorithmError{})
 	var e *NoSuitablePCRAlgorithmError
 	c.Check(errors.As(err, &e), testutil.IsTrue)
 }
@@ -704,6 +710,8 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPCRMismatchMandatoryIn
 	)
 	c.Assert(err, IsNil)
 	c.Check(results.Alg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(results.StartupLocality, Equals, uint8(3))
+	c.Check(results.Ok(), testutil.IsTrue)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPCRMismatchNonMandatoryInOneBank(c *C) {
@@ -740,6 +748,8 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPCRMismatchNonMandator
 	)
 	c.Assert(err, IsNil)
 	c.Check(results.Alg, Equals, tpm2.HashAlgorithmSHA384)
+	c.Check(results.StartupLocality, Equals, uint8(3))
+	c.Check(results.Ok(), testutil.IsTrue)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSecureBootConfigJumpsToOSPresent(c *C) {
@@ -799,6 +809,8 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSecureBootConfigJumpsT
 	)
 	c.Assert(err, IsNil)
 	c.Check(results.Alg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(results.StartupLocality, Equals, uint8(0))
+	c.Check(results.Ok(), testutil.IsTrue)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankBadSpec(c *C) {
@@ -1013,8 +1025,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankTruncatedLog(c *C) {
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksNotAllowed(c *C) {
-	// Test that EmptyPCRBanksError works and that it takes precedence over
-	// NoSuitablePCRAlgoithmError by making PCR0 mandatory and invalid for one bank.
+	// Test that we get EmptyPCRBanksError when one PCR bank is empty.
 	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384)
 
@@ -1024,11 +1035,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksNotAllowe
 	})
 	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
 
-	// This will make the PCR 0 calculation wrong
-	log = efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-	})
-	_, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log,
+	results, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log,
 		tpm2.HandleList{
 			internal_efi.PlatformConfigPCR,
 			internal_efi.DriversAndAppsPCR,
@@ -1041,16 +1048,58 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksNotAllowe
 		0,
 	)
 	c.Check(err, ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
+	c.Check(err, testutil.ConvertibleTo, &EmptyPCRBanksError{})
 
 	var emptyPCRErr *EmptyPCRBanksError
 	c.Check(errors.As(err, &emptyPCRErr), testutil.IsTrue)
+
+	c.Assert(results, NotNil)
+	c.Check(results.Alg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(results.StartupLocality, Equals, uint8(3))
+	c.Check(results.Ok(), testutil.IsTrue)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleEmptyPCRBanksNotAllowed(c *C) {
-	// Test that EmptyPCRBanksError for multiple PCRs works. In this case, there
-	// is a good bank, but this error takes precedence.
+	// Test that EmptyPCRBanksError for multiple PCRs works.
 	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA1, tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384)
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		StartupLocality: 3,
+	})
+	s.resetTPMAndReplayLog(c, log, tpm2.HashAlgorithmSHA256)
+
+	results, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log,
+		tpm2.HandleList{
+			internal_efi.PlatformFirmwarePCR,
+			internal_efi.PlatformConfigPCR,
+			internal_efi.DriversAndAppsPCR,
+			internal_efi.DriversAndAppsConfigPCR,
+			internal_efi.BootManagerCodePCR,
+			internal_efi.BootManagerConfigPCR,
+			internal_efi.PlatformManufacturerPCR,
+			internal_efi.SecureBootPolicyPCR,
+		},
+		CheckFirmwareLogPermitWeakPCRBanks,
+	)
+	c.Check(err, ErrorMatches, `the PCR banks for TPM_ALG_SHA384, TPM_ALG_SHA1 are missing from the TCG log but active and with one or more empty PCRs on the TPM`)
+	c.Check(err, testutil.ConvertibleTo, &EmptyPCRBanksError{})
+
+	var emptyPCRErr *EmptyPCRBanksError
+	c.Check(errors.As(err, &emptyPCRErr), testutil.IsTrue)
+
+	c.Assert(results, NotNil)
+	c.Check(results.Alg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(results.StartupLocality, Equals, uint8(3))
+	c.Check(results.Ok(), testutil.IsTrue)
+}
+
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankIgnoreEmptyPCRBanksWhenNoSuitableBank(c *C) {
+	// Test that we only get a NoSuitablePCRAlgorithmError if there are no suitable
+	// PCR banks and there is an empty PCR bank.
+	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
+	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384)
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
 		Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
@@ -1073,12 +1122,17 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleEmptyPCRBanksN
 			internal_efi.PlatformManufacturerPCR,
 			internal_efi.SecureBootPolicyPCR,
 		},
-		CheckFirmwareLogPermitWeakPCRBanks,
+		0,
 	)
-	c.Check(err, ErrorMatches, `the PCR banks for TPM_ALG_SHA384, TPM_ALG_SHA1 are missing from the TCG log but active and with one or more empty PCRs on the TPM`)
+	c.Check(err, ErrorMatches, `no suitable PCR algorithm available:
+- TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
+- TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
+- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
+`)
+	c.Check(err, testutil.ConvertibleTo, &NoSuitablePCRAlgorithmError{})
 
-	var emptyPCRErr *EmptyPCRBanksError
-	c.Check(errors.As(err, &emptyPCRErr), testutil.IsTrue)
+	var e *NoSuitablePCRAlgorithmError
+	c.Assert(errors.As(err, &e), testutil.IsTrue)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksError(c *C) {
@@ -1154,6 +1208,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankBadSHA1(c *C) {
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: the PCR bank is missing from the TCG log.
 `)
+	c.Check(err, testutil.ConvertibleTo, &NoSuitablePCRAlgorithmError{})
 
 	var e *NoSuitablePCRAlgorithmError
 	c.Assert(errors.As(err, &e), testutil.IsTrue)
