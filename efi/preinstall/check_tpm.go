@@ -45,18 +45,21 @@ const (
 
 // openAndCheckTPM2Device opens the default TPM device for the associated environment and
 // performs some checks on it. It returns an open TPMContext and whether the TPM is a discrete
-// TPM if these checks are successful.
-func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2DeviceFlags) (tpm *tpm2.TPMContext, discreteTPM bool, err error) {
+// TPM if these checks are successful. This may return some errors immediately, where those
+// errors can't be resolved or prevent further use of the TPM. For errors that can be resolved
+// and don't prevent further use of the TPM, the errors will be returned wrapped in a type
+// that implements [CompoundError].
+func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2DeviceFlags) (tpm *tpm2.TPMContext, err error) {
 	// Get a device from the supplied environment
 	device, err := env.TPMDevice()
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	// Open it!
 	tpm, err = tpm2.OpenTPMDevice(device)
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot open TPM device: %w", err)
+		return nil, fmt.Errorf("cannot open TPM device: %w", err)
 	}
 	savedTpm := tpm
 	defer func() {
@@ -125,9 +128,9 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		// Either previously executed tests failed, or this is an implementation that
 		// runs the remaining self tests before the command completes, and one or more
 		// of them failed. In any case, the TPM is in failure mode.
-		return nil, false, ErrTPMFailure
+		return nil, ErrTPMFailure
 	case err != nil:
-		return nil, false, fmt.Errorf("cannot perform partial self test: %w", err)
+		return nil, fmt.Errorf("cannot perform partial self test: %w", err)
 	default:
 		// This is either an implementation that performs the self tests before the
 		// command completes, and everything tested is ok, or all tests have already
@@ -139,11 +142,11 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	// it requires a TPM reset to restore them anyway.
 	sc, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyStartupClear)
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_STARTUP_CLEAR: %w", err)
+		return nil, fmt.Errorf("cannot obtain value for TPM_PT_STARTUP_CLEAR: %w", err)
 	}
 	const enabledMask = tpm2.AttrShEnable | tpm2.AttrEhEnable
 	if tpm2.StartupClearAttributes(sc)&enabledMask != enabledMask {
-		return nil, true, ErrTPMDisabled
+		return nil, ErrTPMDisabled
 	}
 
 	// Check TPM2 device class. The class is associated with a TPM Profile (PTP) spec
@@ -153,7 +156,7 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	// just in case.
 	psFamily, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPSFamilyIndicator)
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_PS_FAMILY_INDICATOR: %w", err)
+		return nil, fmt.Errorf("cannot obtain value for TPM_PT_PS_FAMILY_INDICATOR: %w", err)
 	}
 	if psFamily != pcClientClass {
 		// swtpm sets TPM_PT_PS_FAMILY_INDICATOR to the same value as TPM_PT_FAMILY_INDICATOR,
@@ -163,58 +166,32 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		// implementation and should be 1 for PC-Client. Permit this bug if we are running in a VM.
 		if flags&checkTPM2DeviceInVM == 0 {
 			// We're not in a VM, so expect the proper PC-Client value.
-			return nil, false, ErrNoPCClientTPM
+			return nil, ErrNoPCClientTPM
 		}
 		// In a VM, make sure that the value of TPM_PT_PS_FAMILY_INDICATOR == TPM_PT_FAMILY_INDICATOR.
 		// I think that this is always the case, but we might need to add additional VM-specific quirks here.
 		family, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyFamilyIndicator)
 		if err != nil {
-			return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_FAMILY_INDICATOR: %w", err)
+			return nil, fmt.Errorf("cannot obtain value for TPM_PT_FAMILY_INDICATOR: %w", err)
 		}
 		if family != psFamily {
 			// This doesn't have the swtpm quirk, so we have no idea what sort of vTPM we have
 			// at this point - just return an error because we aren't going to check for every
 			// individual TPM feature.
-			return nil, false, ErrNoPCClientTPM
-		}
-	}
-
-	// Determine whether we have a discrete TPM.
-	// This isn't exposed via the TPM device itself, but instead platforms seem to expose
-	// this in a vendor specific manner.
-	switch {
-	case flags&checkTPM2DeviceInVM > 0:
-		// We're in a VM. A vTPM is not discrete
-		discreteTPM = false
-	default:
-		// On a physical device, by default we assume the TPM is discrete unless proven otherwise.
-		amd64Env, err := env.AMD64()
-		if err != nil {
-			return nil, false, err
-		}
-		cpuVendor, err := determineCPUVendor(amd64Env)
-		if err != nil {
-			return nil, false, err
-		}
-		switch cpuVendor {
-		case cpuVendorIntel:
-			discreteTPM, err = checkIsTpmDiscreteIntel(amd64Env)
-			if err != nil {
-				return nil, false, err
-			}
-		default:
-			return nil, false, fmt.Errorf("cannot determine TPM discreteness for CPU vendor %v", cpuVendor)
+			return nil, ErrNoPCClientTPM
 		}
 	}
 
 	if flags&checkTPM2DevicePostInstall == 0 {
+		var errs []error
+
 		// Perform some checks only during pre-install.
 		perm, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
 		if err != nil {
-			return nil, false, fmt.Errorf("cannot obtain value for TPM_PT_PERMANENT: %w", err)
+			return nil, fmt.Errorf("cannot obtain value for TPM_PT_PERMANENT: %w", err)
 		}
 
-		// Make sure that the TPM isn't owned
+		// First of all, make sure that the TPM isn't owned.
 		ownedErr := new(TPM2OwnedHierarchiesError)
 
 		// Make sure the lockout hierarchy auth value is not set.
@@ -236,7 +213,7 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		for _, handle := range []tpm2.Handle{tpm2.HandleLockout, tpm2.HandleOwner, tpm2.HandleEndorsement} {
 			ta, err := tpm.GetCapabilityAuthPolicy(handle)
 			if err != nil {
-				return nil, false, fmt.Errorf("cannot determine if %v hierarchy has an authorization policy: %w", handle, err)
+				return nil, fmt.Errorf("cannot determine if %v hierarchy has an authorization policy: %w", handle, err)
 			}
 			if ta.HashAlg != tpm2.HashAlgorithmNull {
 				ownedErr.addAuthPolicy(handle)
@@ -244,21 +221,21 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		}
 
 		if !ownedErr.isEmpty() {
-			return nil, false, ownedErr
+			errs = append(errs, ownedErr)
 		}
 
-		// If no hierarchies are owned, make sure that the DA lockout mode is not activated.
-		// We check this afterwards because it's easy to fix if we know that the authorization
-		// value for the lockout hierarchy is empty.
+		// Make sure that the DA lockout mode is not activated. This is easy to fix if the
+		// authorization value for the lockout hierarchy is empty.
 		if tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0 {
-			return nil, false, ErrTPMLockout
+			errs = append(errs, ErrTPMLockout)
 		}
 
-		// Make sure we have enough NV counters for PCR policy revocation. We need at least 2 (1 normally, and
-		// an extra 1 during reprovision). The platform firmware may use up some of the allocation.
+		// Make sure we have enough NV counters for PCR policy revocation. We need at least 2
+		// (1 normally, and an extra 1 during reprovision). The platform firmware may use up
+		// some of the allocation.
 		nvCountersMax, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyNVCountersMax)
 		if err != nil {
-			return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
+			return nil, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
 		}
 		if nvCountersMax > 0 {
 			// If the TPM returns 0, there are no limits to the number of counters other than
@@ -266,13 +243,17 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 			// of active counters.
 			nvCounters, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyNVCounters)
 			if err != nil {
-				return nil, false, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
+				return nil, fmt.Errorf("cannot obtain value for TPM_NV_COUNTERS_MAX: %w", err)
 			}
 			if (nvCountersMax - nvCounters) < 2 {
-				return nil, false, ErrTPMInsufficientNVCounters
+				errs = append(errs, ErrTPMInsufficientNVCounters)
 			}
+		}
+
+		if len(errs) > 0 {
+			return tpm, joinErrors(errs...)
 		}
 	}
 
-	return tpm, discreteTPM, nil
+	return tpm, nil
 }
