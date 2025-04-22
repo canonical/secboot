@@ -326,7 +326,16 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			return nil, &TPM2DeviceError{err}
 		}
 
-		if discreteTPM {
+		switch {
+		case discreteTPM && !logResults.Lookup(internal_efi.PlatformFirmwarePCR).Ok():
+			// We can't use PCR0 to enable the reset attack mitigation.
+			switch {
+			case flags&PermitNoDiscreteTPMResetMitigation > 0:
+				result.Flags |= StartupLocalityNotProtected
+			default:
+				deferredErrs = append(deferredErrs, &HostSecurityError{ErrTPMStartupLocalityNotProtected})
+			}
+		case discreteTPM:
 			switch logResults.StartupLocality {
 			case 0:
 				// TPM2_Startup occurred from locality 0. Mark PCR0 as reconstructible
@@ -380,16 +389,13 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		}
 	}
 
-	if logResults.Lookup(internal_efi.DriversAndAppsPCR).Ok() {
-		// Only run PCR2 checks if we established earlier that the PCR value matches
-		// the reconstructed log value.
-		pcr2Results := checkDriversAndAppsMeasurements(log)
-		switch {
-		case pcr2Results == driversAndAppsPresent && flags&PermitVARSuppliedDrivers == 0:
-			deferredErrs = append(deferredErrs, ErrVARSuppliedDriversPresent)
-		case pcr2Results == driversAndAppsPresent:
-			result.Flags |= VARDriversPresent
-		}
+	// Check PCR2 for value-added-retailer supplied drivers.
+	pcr2Results := checkDriversAndAppsMeasurements(log)
+	switch {
+	case pcr2Results == driversAndAppsPresent && flags&PermitVARSuppliedDrivers == 0:
+		deferredErrs = append(deferredErrs, ErrVARSuppliedDriversPresent)
+	case pcr2Results == driversAndAppsPresent:
+		result.Flags |= VARDriversPresent
 	}
 
 	if logResults.Lookup(internal_efi.DriversAndAppsConfigPCR).Ok() {
@@ -404,40 +410,38 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		}
 	}
 
-	if logResults.Lookup(internal_efi.BootManagerCodePCR).Ok() {
-		// Only run PCR4 checks if we established earlier that the PCR value matches
-		// the reconstructed log value.
-		pcr4Result, err := checkBootManagerCodeMeasurements(ctx, runChecksEnv, log, result.PCRAlg, loadedImages)
-		switch {
-		case err != nil && flags&PermitNoBootManagerCodeProfileSupport == 0:
-			deferredErrs = append(deferredErrs, &BootManagerCodePCRError{err})
-		case err != nil:
-			result.Flags |= NoBootManagerCodeProfileSupport
-			warnings = append(warnings, &BootManagerCodePCRError{err})
-		default:
-			if pcr4Result&bootManagerCodeSysprepAppsPresent > 0 {
-				result.Flags |= SysPrepApplicationsPresent
-			}
-			if pcr4Result&bootManagerCodeAbsoluteComputraceRunning > 0 {
-				result.Flags |= AbsoluteComputraceActive
-			}
-			if pcr4Result&bootManagerCodeNotAllLaunchDigestsVerified > 0 {
-				result.Flags |= NotAllBootManagerCodeDigestsVerified
-			}
+	pcr4Result, err := checkBootManagerCodeMeasurements(ctx, runChecksEnv, log, result.PCRAlg, loadedImages)
+	switch {
+	case err != nil && !logResults.Lookup(internal_efi.BootManagerCodePCR).Ok():
+		// Don't record another error for this PCR
+	case err != nil && flags&PermitNoBootManagerCodeProfileSupport == 0:
+		deferredErrs = append(deferredErrs, &BootManagerCodePCRError{err})
+	case err != nil:
+		result.Flags |= NoBootManagerCodeProfileSupport
+		warnings = append(warnings, &BootManagerCodePCRError{err})
+	default:
+		if pcr4Result&bootManagerCodeSysprepAppsPresent > 0 {
+			result.Flags |= SysPrepApplicationsPresent
+		}
+		if pcr4Result&bootManagerCodeAbsoluteComputraceRunning > 0 {
+			result.Flags |= AbsoluteComputraceActive
+		}
+		if pcr4Result&bootManagerCodeNotAllLaunchDigestsVerified > 0 {
+			result.Flags |= NotAllBootManagerCodeDigestsVerified
+		}
 
-			if result.Flags&SysPrepApplicationsPresent > 0 && flags&PermitSysPrepApplications == 0 {
-				// SysPrep applications were detected but these are not permitted.
-				deferredErrs = append(deferredErrs, ErrSysPrepApplicationsPresent)
-			}
-			if result.Flags&AbsoluteComputraceActive > 0 && flags&PermitAbsoluteComputrace == 0 {
-				// Absolute was detected but this is not permitted.
-				deferredErrs = append(deferredErrs, ErrAbsoluteComputraceActive)
-			}
-			if result.Flags&NotAllBootManagerCodeDigestsVerified > 0 && flags&PermitNotVerifyingAllBootManagerCodeDigests == 0 {
-				// Not all boot manager code launch digests were verified, and this was not allowed.
-				// As we can't verify that this PCR is ok to be used, wrap this in BootManagerCodePCRError.
-				deferredErrs = append(deferredErrs, &BootManagerCodePCRError{ErrNotAllBootManagerCodeDigestsVerified})
-			}
+		if result.Flags&SysPrepApplicationsPresent > 0 && flags&PermitSysPrepApplications == 0 {
+			// SysPrep applications were detected but these are not permitted.
+			deferredErrs = append(deferredErrs, ErrSysPrepApplicationsPresent)
+		}
+		if result.Flags&AbsoluteComputraceActive > 0 && flags&PermitAbsoluteComputrace == 0 {
+			// Absolute was detected but this is not permitted.
+			deferredErrs = append(deferredErrs, ErrAbsoluteComputraceActive)
+		}
+		if result.Flags&NotAllBootManagerCodeDigestsVerified > 0 && flags&PermitNotVerifyingAllBootManagerCodeDigests == 0 {
+			// Not all boot manager code launch digests were verified, and this was not allowed.
+			// As we can't verify that this PCR is ok to be used, wrap this in BootManagerCodePCRError.
+			deferredErrs = append(deferredErrs, &BootManagerCodePCRError{ErrNotAllBootManagerCodeDigestsVerified})
 		}
 	}
 
@@ -453,38 +457,36 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		}
 	}
 
-	if logResults.Lookup(internal_efi.SecureBootPolicyPCR).Ok() {
-		// Only run PCR7 checks if we established earlier that the PCR value matches
-		// the reconstructed log value.
-		var iblImage secboot_efi.Image
-		if len(loadedImages) > 0 {
-			iblImage = loadedImages[0]
+	var iblImage secboot_efi.Image
+	if len(loadedImages) > 0 {
+		iblImage = loadedImages[0]
+	}
+	pcr7Result, err := checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx, runChecksEnv, log, result.PCRAlg, iblImage)
+	switch {
+	case err != nil && !logResults.Lookup(internal_efi.SecureBootPolicyPCR).Ok():
+		// Don't record another error for this PCR
+	case err != nil && flags&PermitNoSecureBootPolicyProfileSupport == 0:
+		deferredErrs = append(deferredErrs, &SecureBootPolicyPCRError{err})
+	case err != nil:
+		result.Flags |= NoSecureBootPolicyProfileSupport
+		warnings = append(warnings, &SecureBootPolicyPCRError{err})
+	default:
+		if pcr7Result.Flags&secureBootIncludesWeakAlg > 0 {
+			result.Flags |= WeakSecureBootAlgorithmsDetected
 		}
-		pcr7Result, err := checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx, runChecksEnv, log, result.PCRAlg, iblImage)
-		switch {
-		case err != nil && flags&PermitNoSecureBootPolicyProfileSupport == 0:
-			deferredErrs = append(deferredErrs, &SecureBootPolicyPCRError{err})
-		case err != nil:
-			result.Flags |= NoSecureBootPolicyProfileSupport
-			warnings = append(warnings, &SecureBootPolicyPCRError{err})
-		default:
-			if pcr7Result.Flags&secureBootIncludesWeakAlg > 0 {
-				result.Flags |= WeakSecureBootAlgorithmsDetected
-			}
-			if pcr7Result.Flags&secureBootPreOSVerificationIncludesDigest > 0 {
-				result.Flags |= PreOSVerificationUsingDigestsDetected
-			}
-			result.UsedSecureBootCAs = pcr7Result.UsedAuthorities
+		if pcr7Result.Flags&secureBootPreOSVerificationIncludesDigest > 0 {
+			result.Flags |= PreOSVerificationUsingDigestsDetected
+		}
+		result.UsedSecureBootCAs = pcr7Result.UsedAuthorities
 
-			// Only return these errors if PCR7 is required.
-			if result.Flags&WeakSecureBootAlgorithmsDetected > 0 && flags&PermitWeakSecureBootAlgorithms == 0 {
-				// We don't support weak secure boot verification algorithms
-				deferredErrs = append(deferredErrs, ErrWeakSecureBootAlgorithmDetected)
-			}
-			if result.Flags&PreOSVerificationUsingDigestsDetected > 0 && flags&PermitPreOSVerificationUsingDigests == 0 {
-				// We don't support the verification of pre-OS components using digests
-				deferredErrs = append(deferredErrs, ErrPreOSVerificationUsingDigests)
-			}
+		// Only return these errors if PCR7 is required.
+		if result.Flags&WeakSecureBootAlgorithmsDetected > 0 && flags&PermitWeakSecureBootAlgorithms == 0 {
+			// We don't support weak secure boot verification algorithms
+			deferredErrs = append(deferredErrs, ErrWeakSecureBootAlgorithmDetected)
+		}
+		if result.Flags&PreOSVerificationUsingDigestsDetected > 0 && flags&PermitPreOSVerificationUsingDigests == 0 {
+			// We don't support the verification of pre-OS components using digests
+			deferredErrs = append(deferredErrs, ErrPreOSVerificationUsingDigests)
 		}
 	}
 
