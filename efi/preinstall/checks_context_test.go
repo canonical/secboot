@@ -1160,9 +1160,10 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | VARDriversPresent,
-		expectedWarningsMatch: `3 errors detected:
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- value added retailer supplied drivers were detected to be running
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 `,
@@ -1240,10 +1241,11 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | SysPrepApplicationsPresent,
-		expectedWarningsMatch: `3 errors detected:
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- system preparation applications were detected to be running
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 `,
 	})
@@ -1319,10 +1321,11 @@ C7E003CB
 		},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | AbsoluteComputraceActive,
-		expectedWarningsMatch: `3 errors detected:
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- Absolute was detected to be active and it is advised that this is disabled
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 `,
 	})
@@ -1479,11 +1482,13 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | VARDriversPresent | PreOSVerificationUsingDigestsDetected,
-		expectedWarningsMatch: `3 errors detected:
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `5 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- value added retailer supplied drivers were detected to be running
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1560,11 +1565,14 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | VARDriversPresent | PreOSVerificationUsingDigestsDetected | WeakSecureBootAlgorithmsDetected,
-		expectedWarningsMatch: `3 errors detected:
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- value added retailer supplied drivers were detected to be running
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- a weak cryptographic algorithm was detected during secure boot verification
+- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -3339,7 +3347,7 @@ C7E003CB
 		actions:        []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 4)
-	c.Check(errs[0], ErrorMatches, `error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified`)
+	c.Check(errs[0], ErrorMatches, `error with boot manager code \(PCR4\) measurements: cannot verify the correctness of all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch event digests`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(4), []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -3734,7 +3742,7 @@ C7E003CB
 		errs[0].Unwrap(),
 	))
 
-	c.Check(errs[1], ErrorMatches, `error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified`)
+	c.Check(errs[1], ErrorMatches, `error with boot manager code \(PCR4\) measurements: cannot verify the correctness of all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch event digests`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(4), []Action{ActionContactOEM}, errs[1].Unwrap()))
 }
 
