@@ -38,6 +38,7 @@ type (
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
 	CpuVendor                             = cpuVendor
 	DetectVirtResult                      = detectVirtResult
+	JoinError                             = joinError
 	MeVersion                             = meVersion
 	SecureBootPolicyResult                = secureBootPolicyResult
 	SecureBootPolicyResultFlags           = secureBootPolicyResultFlags
@@ -82,12 +83,16 @@ var (
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
+	IsTPMDiscrete                                         = isTPMDiscrete
+	IsTPMDiscreteFromIntelBootGuard                       = isTPMDiscreteFromIntelBootGuard
+	JoinErrors                                            = joinErrors
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
 	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
 	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
 	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
+	UnwrapCompoundError                                   = unwrapCompoundError
 )
 
 func MockEfiComputePeImageDigest(fn func(crypto.Hash, io.ReaderAt, int64) ([]byte, error)) (restore func()) {
@@ -127,5 +132,19 @@ func MockRunChecksEnv(env internal_efi.HostEnvironment) (restore func()) {
 	runChecksEnv = env
 	return func() {
 		runChecksEnv = orig
+	}
+}
+
+func NewErrorKindAndActions(kind ErrorKind, args []byte, actions []Action, err error) *ErrorKindAndActions {
+	if len(args) == 0 {
+		// encoding/json marshals an empty json.RawMessage to this already,
+		// but we need to do this to use the DeepEqual checker.
+		args = []byte("null")
+	}
+	return &ErrorKindAndActions{
+		ErrorKind: kind,
+		ErrorArgs: args,
+		Actions:   actions,
+		err:       err,
 	}
 }
