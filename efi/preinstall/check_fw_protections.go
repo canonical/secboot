@@ -29,7 +29,8 @@ import (
 
 // checkForKernelIOMMU checks that the kernel has enabled some sort of DMA protection.
 // On Intel devices, the domains are defined by the DMAR ACPI table. The check is quite
-// simple, and based on the fwupd HSI checks.
+// simple, and based on the fwupd HSI checks. If it is not enabled, a [ErrNoKernelIOMMU]
+// error is returned.
 // XXX: Figure out whether this is genuinely sufficient, eg:
 //   - Should we only mandate this if there are externally facing ports, or internal ports
 //     that are accessible to the user
@@ -58,10 +59,14 @@ func checkForKernelIOMMU(env internal_efi.HostEnvironment) error {
 // checkSecureBootPolicyPCRForDegradedFirmwareSettings checks PCR7 for the indication of degraded
 // firmware settings:
 //   - Whether a debugging endpoint is enabled, via the presence of a EV_EFI_ACTION event with the
-//     "UEFI Debug Mode" string. This is defined in the TCG PC-Client PFP spec.
+//     "UEFI Debug Mode" string. This is defined in the TCG PC-Client PFP spec. If one is detected,
+//     a [ErrUEFIDebuggingEnabled] error is returned, wrapped in [joinError].
 //   - Whether DMA protection was disabled at some point, via the presence of a EV_EFI_ACTION event
-//     with the "DMA Protection Disabled" string. This is a Windows requirement.
+//     with the "DMA Protection Disabled" string. This is a Windows requirement. If disabled, a
+//     [ErrInsufficientDMAProtection] error is returned, wrapped in [joinError].
 func checkSecureBootPolicyPCRForDegradedFirmwareSettings(log *tcglog.Log) error {
+	var errs []error
+
 	events := log.Events
 	for len(events) > 0 {
 		// Pop next event
@@ -74,26 +79,28 @@ func checkSecureBootPolicyPCRForDegradedFirmwareSettings(log *tcglog.Log) error 
 
 		switch event.EventType {
 		case tcglog.EventTypeEFIAction:
-			if event.Data == tcglog.FirmwareDebuggerEvent {
+			switch {
+			case event.Data == tcglog.FirmwareDebuggerEvent:
 				// Debugger enabled
-				return ErrUEFIDebuggingEnabled
-			}
-			if event.Data == tcglog.DMAProtectionDisabled {
+				errs = append(errs, ErrUEFIDebuggingEnabled)
+			case event.Data == tcglog.DMAProtectionDisabled:
 				// DMA protection was disabled bt the firmware at some point
-				return ErrInsufficientDMAProtection
+				errs = append(errs, ErrInsufficientDMAProtection)
+			case bytes.Equal(event.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00)):
+				// XXX: My Dell NULL terminates this string which causes decoding to fail,
+				//  as the TCG PC Client Platform Firmware Profile spec says that the event
+				//  data in EV_EFI_ACTION events should not be NULL terminated.
+				errs = append(errs, ErrInsufficientDMAProtection)
+			default:
+				// Unexpected data
+				return fmt.Errorf("unexpected EV_EFI_ACTION event data in PCR7 event: %q", event.Data)
 			}
-			// XXX: My Dell NULL terminates this string which causes decoding to fail,
-			//  as the TCG PC Client Platform Firmware Profile spec says that the event
-			//  data in EV_EFI_ACTION events should not be NULL terminated.
-			if bytes.Equal(event.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00)) {
-				// DMA protection was disabled bt the firmware at some point
-				return ErrInsufficientDMAProtection
-			}
-			// Unexpected data
-			return fmt.Errorf("unexpected EV_EFI_ACTION event data in PCR7 event: %q", event.Data)
 		case tcglog.EventTypeEFIVariableDriverConfig, tcglog.EventTypeSeparator:
 			// ok
 		case tcglog.EventTypeEFIVariableAuthority:
+			if len(errs) > 0 {
+				return joinErrors(errs...)
+			}
 			return nil
 		default:
 			// Unexpected event type

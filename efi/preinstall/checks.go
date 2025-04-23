@@ -180,7 +180,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	result = &CheckResult{
 		Warnings: new(RunChecksErrors),
 	}
-	mainErr := new(RunChecksErrors)
+	mainErr := new(RunChecksErrors) // Non-fatal errors to return at the end of this function
 
 	virtMode, err := detectVirtualization(runChecksEnv)
 	if err != nil {
@@ -208,7 +208,14 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	}
 	tpm, discreteTPM, err := openAndCheckTPM2Device(runChecksEnv, checkTPMFlags)
 	if err != nil {
-		return nil, &TPM2DeviceError{err}
+		var ce CompoundError
+		if !errors.As(err, &ce) {
+			// Return this error immediately.
+			return nil, &TPM2DeviceError{err}
+		}
+		for _, e := range ce.Unwrap() {
+			mainErr.addErr(&TPM2DeviceError{e})
+		}
 	}
 	defer tpm.Close()
 	if discreteTPM {
@@ -261,8 +268,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode):
 		return nil, &TPM2DeviceError{err}
 	case isEmptyPCRBanksError(err):
-		// Return this unwrapped
-		return nil, err
+		// Save this error and return it unwrapped when the checks complete
+		mainErr.addErr(err)
 	case err != nil:
 		return nil, &MeasuredBootError{err}
 	}
@@ -297,7 +304,13 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		protectedLocalities, err := checkPlatformFirmwareProtections(runChecksEnv, log)
 		switch {
 		case err != nil:
-			mainErr.addErr(&HostSecurityError{err})
+			var ce CompoundError
+			if !errors.As(err, &ce) {
+				return nil, &HostSecurityError{err}
+			}
+			for _, e := range ce.Unwrap() {
+				mainErr.addErr(&HostSecurityError{e})
+			}
 		case discreteTPM:
 			switch logResults.StartupLocality {
 			case 0:
