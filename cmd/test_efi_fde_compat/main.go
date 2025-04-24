@@ -35,6 +35,8 @@ type options struct {
 		NoDiscreteTPMResetMitigation   bool `long:"no-discrete-tpm-reset-mitigation" description:"Disable mitigations against discrete TPM reset attacks where appropriate"`
 	} `group:"PCR profile options"`
 
+	Action preinstall.Action `long:"action" description:"What action to run"`
+
 	Positional struct {
 		BootImages []string `positional-arg-name:"ordered paths to the EFI boot components for the current boot"`
 	} `positional-args:"true"`
@@ -118,7 +120,13 @@ func run() error {
 
 	ctx := preinstall.NewRunChecksContext(checkFlags, bootImages, pcrFlags)
 	result, err := ctx.Run(context.Background(), preinstall.ActionNone)
-	if err != nil {
+	switch {
+	case err != nil && opts.Action != preinstall.ActionNone:
+		result, err = ctx.Run(context.Background(), opts.Action)
+		if err != nil {
+			return err
+		}
+	case err != nil:
 		return err
 	}
 
