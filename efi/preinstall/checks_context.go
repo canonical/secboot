@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/ppi"
 	secboot_efi "github.com/snapcore/secboot/efi"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
@@ -54,27 +55,35 @@ func init() {
 			ActionContactOEM,
 		},
 		ErrorKindTPMDeviceDisabled: []Action{
-			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable the TPM
-			// TODO: Add actions to enable the TPM via the PPI
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to enable the TPM
+			ActionEnableTPMViaFirmware,         // suggest enabling the TPM via the PPI
+			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
 		},
 		ErrorKindTPMHierarchiesOwned: []Action{
-			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
-			// TODO: Add actions to clear the TPM, either directly if possible or via the PPI
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
+			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
+			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
+			// TODO: Add action to clear the TPM directly.
 			// TODO: Add action to clear the authorization values / policies
 		},
 		ErrorKindTPMDeviceLockout: []Action{
-			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
-			// TODO: Add actions to clear the TPM, either directly if possible or via the PPI
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
+			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
+			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
+			// TODO: Add action to clear the TPM directly.
 			// TODO: Add action to clear the lockout.
 		},
 		ErrorKindTPMDeviceLockoutLockedOut: []Action{
-			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
-			// TODO: Add actions to clear the TPM via the PPI - there will be no option to clear it directly because the lockout hierarchy is unavailable.
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
+			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
+			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
 			// There will be no option to clear the lockout as there isn't a mechanism to do this.
 		},
 		ErrorKindInsufficientTPMStorage: []Action{
-			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
-			// TODO: Add actions to clear the TPM, either directly if possible or via the PPI
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
+			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
+			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
+			// TODO: Add action to clear the TPM directly.
 		},
 		ErrorKindNoSuitablePCRBank: []Action{
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable other PCR banks
@@ -202,7 +211,12 @@ func (c *RunChecksContext) testActionAvailable(action Action) error {
 	available := false
 
 	switch action {
-	// TODO: Populate with actions to test as we add them later on.
+	case ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMViaFirmware:
+		var err error
+		available, err = isPPIActionAvailable(c.env, action)
+		if err != nil {
+			return err
+		}
 	}
 
 	c.availableActions[action] = available
@@ -495,6 +509,30 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 	case ActionNone:
 		// ok, do nothing
 		return nil
+	case ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMViaFirmware: // PPI actions
+		result, err := runPPIAction(c.env, action)
+		if err != nil {
+			return NewWithKindAndActionsError(
+				ErrorKindActionFailed,
+				nil, nil, // args, actions
+				err,
+			)
+		}
+
+		// TODO: This uses an error to indicate partial success where a shutdown
+		//  or reboot is required to complete the action. It needs a bit more
+		//  thought because an error doesn't feel appropriate.
+		var kind ErrorKind
+		switch result {
+		case ppi.StateTransitionShutdownRequired:
+			kind = ErrorKindShutdownRequired
+			err = errors.New("a shutdown is required to complete the action")
+		case ppi.StateTransitionRebootRequired:
+			kind = ErrorKindRebootRequired
+			err = errors.New("a reboot is required to complete the action")
+		}
+
+		return NewWithKindAndActionsError(kind, nil, errorKindToActions[kind], err)
 	default:
 		return NewWithKindAndActionsError(
 			ErrorKindUnexpectedAction,

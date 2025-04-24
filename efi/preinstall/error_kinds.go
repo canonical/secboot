@@ -65,6 +65,10 @@ const (
 	// - "reason": A string indicating the reason - invalid "type" or "value".
 	ErrorKindInvalidArgument ErrorKind = "invalid-argument"
 
+	// ErrorKindActionFailed indicates that the supplied action did not
+	// succeed for some reason.
+	ErrorKindActionFailed ErrorKind = "action-failed"
+
 	// ErrorKindRunningInVM indicates that the current environment is a
 	// virtal machine.
 	ErrorKindRunningInVM ErrorKind = "running-in-vm"
