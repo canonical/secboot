@@ -90,40 +90,18 @@ func makeIndentedListItem(indentation int, marker, str string) string {
 	return w.String()
 }
 
-// RunChecksErrors may be returned unwrapped from [RunChecks] containing a collection
-// of errors found during the process of running various tests on the platform.
-// It provides a mechanism to access each individual error. This is used as an alternative
-// to aborting early, in order for the caller to gather as much information as possible.
-// Where an error is related to a specific PCR, the error will be wrapped by one of the
-// PCR-specific error types: [PlatformFirmwarePCRError] (0), [PlatformConfigPCRError] (1),
-// [DriversAndAppsPCRError] (2), [DriversAndAppsConfigPCRError] (3),
-// [BootManagerCodePCRError] (4), [BootManagerConfigPCRError] (5), or
-// [SecureBootPolicyPCRError] (7).
-type RunChecksErrors struct {
-	Errs []error // All of the errors collected during the execution of RunChecks
-}
-
-func (e *RunChecksErrors) Error() string {
-	w := new(bytes.Buffer)
-	fmt.Fprintf(w, "one or more errors detected:\n")
-	for _, err := range e.Errs {
-		io.WriteString(w, makeIndentedListItem(0, "-", err.Error()))
-	}
-	return w.String()
-}
-
-func (e *RunChecksErrors) addErr(err error) {
-	e.Errs = append(e.Errs, err)
-}
-
 // CompoundError is an interface for accessing wrapped errors from an error type that
-// wraps more than one error.
+// wraps more than one error. The [RunChecks] API may return multiple errors that are
+// wrapped by a type implementing this interface, as an alternative to aborting early
+// and returning individual errors as the occur. This is to ensure as much information
+// is gathered as possible.
 type CompoundError interface {
 	Unwrap() []error
 }
 
 // joinError is a simple implementation of the type of the same name from the
-// errors package in go 1.20.
+// errors package in go 1.20, with slightly nicer formatting in the Error
+// implementation.
 type joinError struct {
 	errs []error
 }
@@ -135,18 +113,17 @@ func joinErrors(errs ...error) error {
 func (e *joinError) Error() string {
 	switch {
 	case len(e.errs) == 0:
-		return ""
+		return "internal error: empty joinError"
 	case len(e.errs) == 1:
 		return e.errs[0].Error()
-	default:
-		var b strings.Builder
-		io.WriteString(&b, e.errs[0].Error())
-		for _, err := range e.errs[1:] {
-			io.WriteString(&b, "\n")
-			io.WriteString(&b, err.Error())
-		}
-		return b.String()
 	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d errors detected:\n", len(e.errs))
+	for _, err := range e.errs {
+		io.WriteString(&b, makeIndentedListItem(0, "-", err.Error()))
+	}
+	return b.String()
 }
 
 func (e *joinError) Unwrap() []error {
@@ -378,7 +355,7 @@ func (e *EmptyPCRBanksError) Error() string {
 	}
 
 	var s string
-	switch len(e.Algs) {
+	switch len(algs) {
 	case 0:
 		return "internal error: invalid EmptyPCRBanksError"
 	case 1:
@@ -415,12 +392,6 @@ type NoSuitablePCRAlgorithmError struct {
 	Errs map[tpm2.HashAlgorithmId][]error
 }
 
-func newNoSuitablePCRAlgorithmError() *NoSuitablePCRAlgorithmError {
-	return &NoSuitablePCRAlgorithmError{
-		Errs: make(map[tpm2.HashAlgorithmId][]error),
-	}
-}
-
 func (e *NoSuitablePCRAlgorithmError) Error() string {
 	w := new(bytes.Buffer)
 	fmt.Fprintf(w, "no suitable PCR algorithm available:\n")
@@ -434,15 +405,6 @@ func (e *NoSuitablePCRAlgorithmError) Error() string {
 		}
 	}
 	return w.String()
-}
-
-// addErr adds an error for the specified PCR bank
-func (e *NoSuitablePCRAlgorithmError) addErr(alg tpm2.HashAlgorithmId, err error) {
-	e.Errs[alg] = append(e.Errs[alg], err)
-}
-
-func (e *NoSuitablePCRAlgorithmError) isEmpty() bool {
-	return len(e.Errs) == 0
 }
 
 // MeasuredBootError is returned unwrapped from [RunChecks] if there is a general issue with
@@ -499,9 +461,9 @@ func (e *PlatformFirmwarePCRError) Unwrap() error {
 // if the PlatformConfigProfileSupportRequired flag is supplied to [RunChecks]
 // and the PCR 1 value is inconsistent with the value recorded from the TCG log.
 //
-// This error will otherwise currently always be returned wrapped in
-// [RunChecksErrors] if the PlatformConfigProfileSupportRequired flag is supplied
-// to [RunChecks] because there is currently no support in
+// This error will otherwise currently always be returned wrapped in a type that
+// implements [CompoundError] if the PlatformConfigProfileSupportRequired flag is
+// supplied to [RunChecks] because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 1.
 type PlatformConfigPCRError struct {
 	err error
@@ -541,10 +503,10 @@ func (e *DriversAndAppsPCRError) Unwrap() error {
 }
 
 var (
-	// ErrVARSuppliedDriversPresent is returned wrapped in RunChecksErrors
-	// if value-added-retailer drivers are detected to be running.
-	// These can be permitted by supplying the PermitVARSuppliedDrivers flag
-	// to RunChecks.
+	// ErrVARSuppliedDriversPresent is returned wrapped in a type that
+	// implements CompoundError if value-added-retailer drivers are detected
+	// to be running. These can be permitted by supplying the
+	// PermitVARSuppliedDrivers flag to RunChecks.
 	ErrVARSuppliedDriversPresent = errors.New("value added retailer supplied drivers were detected to be running")
 )
 
@@ -563,9 +525,9 @@ var (
 // [RunChecks] and the PCR 3 value is inconsistent with the value recorded from
 // the TCG log.
 //
-// This error will otherwise currently always be returned wrapped in
-// [RunChecksErrors] if the DriversAndAppsConfigProfileSupportRequired flag is
-// supplied to [RunChecks] because there is currently no support in
+// This error will otherwise currently always be returned wrapped in a type that
+// implements [CompoundError] if the DriversAndAppsConfigProfileSupportRequired flag
+// is supplied to [RunChecks] because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 3.
 type DriversAndAppsConfigPCRError struct {
 	err error
@@ -614,7 +576,8 @@ func (e *DriversAndAppsConfigPCRError) Unwrap() error {
 // and the PCR 4 value is inconsistent with the value recorded from the TCG log.
 //
 // If any other error occurs and the BootManagerCodeProfileSupportRequired flag is
-// supplied to [RunChecks], this error will be returned wrapped in [RunChecksErrors].
+// supplied to [RunChecks], this error will be returned wrapped in a type that
+// implements [CompoundError].
 type BootManagerCodePCRError struct {
 	err error
 }
@@ -628,15 +591,15 @@ func (e *BootManagerCodePCRError) Unwrap() error {
 }
 
 var (
-	// ErrSysPrepApplicationsPresent is returned wrapped in RunChecksErrors
-	// if system preparation applications were detected to be running.
+	// ErrSysPrepApplicationsPresent is returned wrapped in a type that implements
+	// CompoundError if system preparation applications were detected to be running.
 	// These can be permitted by supplying the PermitSysPrepApplications flag
 	// to RunChecks.
 	ErrSysPrepApplicationsPresent = errors.New("system preparation applications were detected to be running")
 
-	// ErrAbsoluteComputraceActive is returned wrapped in RunChecksErrors
-	// if Absolute was detected to be active. It is advised that this firmware
-	// is disabled if possible.
+	// ErrAbsoluteComputraceActive is returned wrapped in a type that implements
+	// CompoundError if Absolute was detected to be active. It is advised that this
+	// firmware is disabled if possible.
 	// This can be permitted by supplying the PermitAbsoluteComputrace flag
 	// to RunChecks.
 	ErrAbsoluteComputraceActive = errors.New("Absolute was detected to be active and it is advised that this is disabled")
@@ -665,9 +628,10 @@ var (
 // and the PCR 5 value is inconsistent with the value recorded from the TCG log.
 //
 // This error will otherwise currently always be returned wrapped in
-// [RunChecksErrors] if the BootManagerConfigProfileSupportRequired flag is
-// supplied to [RunChecks] because there is currently no support in
-// [github.com/snapcore/secboot/efi] for generating profiles for PCR 5.
+// a type that implements [CompoundError] if the
+// BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks] because
+// there is currently no support in [github.com/snapcore/secboot/efi] for generating
+// profiles for PCR 5.
 type BootManagerConfigPCRError struct {
 	err error
 }
@@ -736,7 +700,8 @@ func (e *BootManagerConfigPCRError) Unwrap() error {
 // and the PCR 7 value is inconsistent with the value recorded from the TCG log.
 //
 // If any other error occurs and the SecureBootPolicyProfileSupportRequired flag is
-// supplied to [RunChecks], this error will be returned wrapped in [RunChecksErrors].
+// supplied to [RunChecks], this error will be returned wrapped in a type that
+// implements [CompoundError].
 type SecureBootPolicyPCRError struct {
 	err error
 }
@@ -760,22 +725,23 @@ var (
 	// mode, but this is not the case today.
 	ErrNoDeployedMode = errors.New("deployed mode should be enabled in order to generate secure boot profiles")
 
-	// ErrWeakSecureBootAlgorithmDetected is returned wrapped in RunChecksErrors and
-	// indicates that weak algorithms were detected during secure boot verification,
-	// such as authenticating a binary with SHA-1, or a CA with a 1024-bit RSA public key,
-	// or the signer of the initial boot loader having a 1024-bit RSA public key. This does
-	// have some limitations because the TCG log doesn't indicate the properties of the
-	// actual signing certificates or the algorithms used to sign each binary, so it's
-	// not possible to determine whether signing certificates for non-OS components are
-	// strong enough.
+	// ErrWeakSecureBootAlgorithmDetected is returned wrapped in a type that implements
+	// CompoundError and indicates that weak algorithms were detected during secure
+	// boot verification, such as authenticating a binary with SHA-1, or a CA with a
+	// 1024-bit RSA public key, or the signer of the initial boot loader having a 1024-bit
+	// RSA public key. This does have some limitations because the TCG log doesn't
+	// indicate the properties of the actual signing certificates or the algorithms used
+	// to sign each binary, so it's not possible to determine whether signing certificates
+	// for non-OS components are strong enough.
 	// This can be bypassed by supplying the PermitWeakSecureBootAlgorithms flag to
 	// RunChecks.
 	ErrWeakSecureBootAlgorithmDetected = errors.New("a weak cryptographic algorithm was detected during secure boot verification")
 
-	// ErrPreOSVerificationUsingDigests is returned wrapped in RunChecksErrors and
-	// indicates that pre-OS components were authenticated using Authenticode digests
-	// rather than a X.509 certificate. This makes PCR7 inherently fragile with regards
-	// to firmware updates because db has to be changed accordingly each time.
+	// ErrPreOSVerificationUsingDigests is returned wrapped in a type that implements
+	// CompoundError and indicates that pre-OS components were authenticated using
+	// Authenticode digests rather than a X.509 certificate. This makes PCR7 inherently
+	// fragile with regards to firmware updates because db has to be changed accordingly
+	// each time
 	// This can be bypassed by supplying the PermitPreOSVeriricationUsingDigests flag
 	// to RunChecks.
 	ErrPreOSVerificationUsingDigests = errors.New("some pre-OS components were authenticated from the authorized signature database using an Authenticode digest")

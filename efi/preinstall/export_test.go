@@ -38,6 +38,7 @@ type (
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
 	CpuVendor                             = cpuVendor
 	DetectVirtResult                      = detectVirtResult
+	JoinError                             = joinError
 	MeVersion                             = meVersion
 	SecureBootPolicyResult                = secureBootPolicyResult
 	SecureBootPolicyResultFlags           = secureBootPolicyResultFlags
@@ -82,6 +83,7 @@ var (
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
+	JoinErrors                                            = joinErrors
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
 	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog

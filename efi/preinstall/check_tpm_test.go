@@ -788,10 +788,11 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceCombinedHierarchyOwnershipAndLockou
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev),
 		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}))
 	tpm, discreteTPM, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, ErrorMatches, `one or more of the TPM hierarchies is already owned:
-- TPM_RH_OWNER has an authorization value
-
-TPM is in DA lockout mode`)
+	c.Check(err, ErrorMatches, `2 errors detected:
+- one or more of the TPM hierarchies is already owned:
+  - TPM_RH_OWNER has an authorization value
+- TPM is in DA lockout mode
+`)
 
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)

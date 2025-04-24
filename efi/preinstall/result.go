@@ -20,7 +20,6 @@
 package preinstall
 
 import (
-	"bytes"
 	"crypto"
 	"encoding/json"
 	"errors"
@@ -298,17 +297,17 @@ type CheckResult struct {
 	// Warnings contains any non-fatal errors that were detected when running the tests
 	// on the current platform with the specified configuration. Note that this field is
 	// not serialized.
-	Warnings *RunChecksErrors
+	Warnings CompoundError
 }
 
 // String implements [fmt.Stringer].
 func (r CheckResult) String() string {
-	w := new(bytes.Buffer)
-	fmt.Fprintf(w, "\nEFI based TPM protected FDE test support results:\n")
-	io.WriteString(w, makeIndentedListItem(0, "-", fmt.Sprintf("Best PCR algorithm: %v\n", r.PCRAlg)))
-	io.WriteString(w, makeIndentedListItem(0, "-", fmt.Sprintf("Secure boot CAs used for verification:\n")))
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nEFI based TPM protected FDE test support results:\n")
+	io.WriteString(&b, makeIndentedListItem(0, "-", fmt.Sprintf("Best PCR algorithm: %v\n", r.PCRAlg)))
+	io.WriteString(&b, makeIndentedListItem(0, "-", fmt.Sprintf("Secure boot CAs used for verification:\n")))
 	for i, ca := range r.UsedSecureBootCAs {
-		io.WriteString(w, makeIndentedListItem(2, strconv.Itoa(i+1)+":", fmt.Sprintf("subject=%v, SKID=%#x, pubkeyAlg=%v, issuer=%v, AKID=%#x, sigAlg=%v\n",
+		io.WriteString(&b, makeIndentedListItem(2, strconv.Itoa(i+1)+":", fmt.Sprintf("subject=%v, SKID=%#x, pubkeyAlg=%v, issuer=%v, AKID=%#x, sigAlg=%v\n",
 			ca.Subject(), ca.SubjectKeyId(), ca.PublicKeyAlgorithm(), ca.Issuer(), ca.AuthorityKeyId(), ca.SignatureAlgorithm())))
 	}
 	var flags []string
@@ -324,14 +323,15 @@ func (r CheckResult) String() string {
 			flags = append(flags, str)
 		}
 	}
-	io.WriteString(w, makeIndentedListItem(0, "-", fmt.Sprintf("Flags: %s\n", strings.Join(flags, ","))))
-	if r.Warnings != nil && len(r.Warnings.Errs) > 0 {
-		io.WriteString(w, makeIndentedListItem(0, "-", "Warnings:\n"))
-		for i := 0; i < len(r.Warnings.Errs); i++ {
-			io.WriteString(w, makeIndentedListItem(2, "-", fmt.Sprintf("%v\n", r.Warnings.Errs[i])))
+	io.WriteString(&b, makeIndentedListItem(0, "-", fmt.Sprintf("Flags: %s\n", strings.Join(flags, ","))))
+	if r.Warnings != nil {
+		warnings := r.Warnings.Unwrap()
+		io.WriteString(&b, makeIndentedListItem(0, "-", "Warnings:\n"))
+		for _, warning := range warnings {
+			io.WriteString(&b, makeIndentedListItem(2, "-", fmt.Sprintf("%v\n", warning)))
 		}
 	}
-	return w.String()
+	return b.String()
 }
 
 // MarshalJSON implements [json.Marshaler].

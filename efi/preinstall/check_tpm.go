@@ -47,7 +47,8 @@ const (
 // performs some checks on it. It returns an open TPMContext and whether the TPM is a discrete
 // TPM if these checks are successful. This may return some errors immediately, where those
 // errors can't be resolved or prevent further use of the TPM. For errors that can be resolved
-// and don't prevent further use of the TPM, the errors will be returned wrapped in [joinError].
+// and don't prevent further use of the TPM, the errors will be returned wrapped in a type
+// that implements [CompoundError].
 func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2DeviceFlags) (tpm *tpm2.TPMContext, discreteTPM bool, err error) {
 	// Get a device from the supplied environment
 	device, err := env.TPMDevice()

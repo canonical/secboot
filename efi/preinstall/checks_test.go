@@ -69,7 +69,7 @@ type testRunChecksParams struct {
 	expectedFlags             CheckResultFlags
 }
 
-func (s *runChecksSuite) testRunChecks(c *C, params *testRunChecksParams) (warnings *RunChecksErrors, err error) {
+func (s *runChecksSuite) testRunChecks(c *C, params *testRunChecksParams) (warnings []error, err error) {
 	s.allocatePCRBanks(c, params.enabledBanks...)
 	log, err := params.env.ReadEventLog()
 	c.Assert(err, IsNil)
@@ -120,7 +120,7 @@ func (s *runChecksSuite) testRunChecks(c *C, params *testRunChecksParams) (warni
 	c.Assert(dev, testutil.ConvertibleTo, &tpm2_testutil.TransportBackedDevice{})
 	c.Check(dev.(*tpm2_testutil.TransportBackedDevice).NumberOpen(), Equals, 0)
 
-	return result.Warnings, nil
+	return result.Warnings.Unwrap(), nil
 }
 
 func (s *runChecksSuite) TestRunChecksGood(c *C) {
@@ -185,19 +185,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -269,19 +269,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -350,19 +350,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -431,19 +431,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -513,19 +513,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -569,19 +569,19 @@ func (s *runChecksSuite) TestRunChecksGoodVirtualMachine1(c *C) {
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RunningInVirtualMachine,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -628,19 +628,19 @@ func (s *runChecksSuite) TestRunChecksGoodVirtualMachine2(c *C) {
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RunningInVirtualMachine,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -709,19 +709,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | StartupLocalityNotProtected,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -792,19 +792,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -876,19 +876,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | StartupLocalityNotProtected,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -959,19 +959,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1043,19 +1043,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | StartupLocalityNotProtected,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1127,28 +1127,30 @@ C7E003CB
 		expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 4)
+	c.Assert(warnings, HasLen, 4)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xe9995745ca25279ec699688b70488116fe4d9f053cb0991dd71e82e7edfa66b5, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\)`)
 	var pfe *PlatformFirmwarePCRError
 	c.Check(errors.As(warning, &pfe), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[3]
+	warning = warnings[3]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
+
+// TODO: Good test case for invalid PCR1 when we support it.
 
 func (s *runChecksSuite) TestRunChecksGoodInvalidPCR2Value(c *C) {
 	meiAttrs := map[string][]byte{
@@ -1216,28 +1218,30 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 4)
+	c.Assert(warnings, HasLen, 4)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with drivers and apps \(PCR2\) measurements: PCR value mismatch \(actual from TPM 0xfa734a6a4d262d7405d47d48c0a1b127229ca808032555ad919ed5dd7c1f6519, reconstructed from log 0x3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969\)`)
 	var de *DriversAndAppsPCRError
 	c.Check(errors.As(warning, &de), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[3]
+	warning = warnings[3]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
+
+// TODO: Good test case for invalid PCR3 when we support it.
 
 func (s *runChecksSuite) TestRunChecksGoodInvalidPCR4Value(c *C) {
 	meiAttrs := map[string][]byte{
@@ -1305,28 +1309,30 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 4)
+	c.Assert(warnings, HasLen, 4)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with boot manager code \(PCR4\) measurements: PCR value mismatch \(actual from TPM 0x1c93930d6b26232e061eaa33ecf6341fae63ce598a0c6a26ee96a0828639c044, reconstructed from log 0x4bc74f3ffe49b4dd275c9f475887b68193e2db8348d72e1c3c9099c2dcfa85b0\)`)
 	var bme *BootManagerCodePCRError
 	c.Check(errors.As(warning, &bme), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[3]
+	warning = warnings[3]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
+
+// TODO: Good test case for invalid PCR5 when we support it.
 
 func (s *runChecksSuite) TestRunChecksGoodInvalidPCR7Value(c *C) {
 	meiAttrs := map[string][]byte{
@@ -1393,24 +1399,24 @@ C7E003CB
 		expectedFlags:  NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 4)
+	c.Assert(warnings, HasLen, 4)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with secure boot policy \(PCR7\) measurements: PCR value mismatch \(actual from TPM 0xdf7b5d709755f1bd7142dd2f8c2d1195fc6b4dab5c78d41daf5c795da55db5f2, reconstructed from log 0xafc99bd8b298ea9b70d2796cb0ca22fe2b70d784691a1cae2aa3ba55edc365dc\)`)
 	var sbe *SecureBootPolicyPCRError
 	c.Check(errors.As(warning, &sbe), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[3]
+	warning = warnings[3]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1482,19 +1488,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | VARDriversPresent,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1566,19 +1572,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | SysPrepApplicationsPresent,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1650,19 +1656,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | AbsoluteComputraceActive,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1732,19 +1738,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NotAllBootManagerCodeDigestsVerified,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1817,24 +1823,24 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 4)
+	c.Assert(warnings, HasLen, 4)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager code \(PCR4\) measurements: log contains unexpected EV_EFI_BOOT_SERVICES_APPLICATION digest for OS-present application mock image: log digest matches flat file digest \(0xd5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0\) which suggests an image loaded outside of the LoadImage API and firmware lacking support for the EFI_TCG2_PROTOCOL and\/or the PE_COFF_IMAGE flag`)
 	var bme *BootManagerCodePCRError
 	c.Check(errors.As(warning, &bme), testutil.IsTrue)
 
-	warning = warnings.Errs[3]
+	warning = warnings[3]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1907,19 +1913,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | VARDriversPresent | PreOSVerificationUsingDigestsDetected,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -1992,19 +1998,19 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | VARDriversPresent | PreOSVerificationUsingDigestsDetected | WeakSecureBootAlgorithmsDetected,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 3)
+	c.Assert(warnings, HasLen, 3)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
@@ -2071,24 +2077,24 @@ C7E003CB
 		expectedFlags:  NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(warnings.Errs, HasLen, 4)
+	c.Assert(warnings, HasLen, 4)
 
-	warning := warnings.Errs[0]
+	warning := warnings[0]
 	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
-	warning = warnings.Errs[1]
+	warning = warnings[1]
 	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
-	warning = warnings.Errs[2]
+	warning = warnings[2]
 	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 
-	warning = warnings.Errs[3]
+	warning = warnings[3]
 	c.Check(warning, ErrorMatches, `error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles`)
 	c.Check(errors.Is(warning, ErrNoDeployedMode), testutil.IsTrue)
 }
@@ -2104,7 +2110,7 @@ func (s *runChecksSuite) TestRunChecksBadVirtualMachine(c *C) {
 	c.Check(err, Equals, ErrVirtualMachineDetected)
 }
 
-func (s *runChecksSuite) TestRunChecksBadTPM2DeviceError(c *C) {
+func (s *runChecksSuite) TestRunChecksBadTPM2DeviceDisabled(c *C) {
 	_, err := s.testRunChecks(c, &testRunChecksParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
@@ -2439,17 +2445,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-`)
+	c.Check(err, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	err = rce.Errs[0]
 	var pce *PlatformConfigPCRError
-	c.Check(errors.As(err, &pce), testutil.IsTrue)
+	c.Check(errors.As(errs[0], &pce), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadMandatoryPCR3(c *C) {
@@ -2512,17 +2517,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-`)
+	c.Check(err, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	err = rce.Errs[0]
 	var dce *DriversAndAppsConfigPCRError
-	c.Check(errors.As(err, &dce), testutil.IsTrue)
+	c.Check(errors.As(errs[0], &dce), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadMandatoryPCR5(c *C) {
@@ -2585,17 +2589,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
-`)
+	c.Check(err, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	err = rce.Errs[0]
 	var bmce *BootManagerConfigPCRError
-	c.Check(errors.As(err, &bmce), testutil.IsTrue)
+	c.Check(errors.As(errs[0], &bmce), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadVARDriversPresent(c *C) {
@@ -2660,16 +2663,15 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- value added retailer supplied drivers were detected to be running
-`)
+	c.Check(err, ErrorMatches, `value added retailer supplied drivers were detected to be running`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	err = rce.Errs[0]
-	c.Check(errors.Is(err, ErrVARSuppliedDriversPresent), testutil.IsTrue)
+	c.Check(errors.Is(errs[0], ErrVARSuppliedDriversPresent), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadSysPrepAppsPresent(c *C) {
@@ -2734,16 +2736,15 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- system preparation applications were detected to be running
-`)
+	c.Check(err, ErrorMatches, `system preparation applications were detected to be running`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	err = rce.Errs[0]
-	c.Check(errors.Is(err, ErrSysPrepApplicationsPresent), testutil.IsTrue)
+	c.Check(errors.Is(errs[0], ErrSysPrepApplicationsPresent), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadAbsoluteActive(c *C) {
@@ -2808,16 +2809,15 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- Absolute was detected to be active and it is advised that this is disabled
-`)
+	c.Check(err, ErrorMatches, `Absolute was detected to be active and it is advised that this is disabled`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	err = rce.Errs[0]
-	c.Check(errors.Is(err, ErrAbsoluteComputraceActive), testutil.IsTrue)
+	c.Check(errors.Is(errs[0], ErrAbsoluteComputraceActive), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadNotAllBootManagerCodeDigestsVerified(c *C) {
@@ -2880,18 +2880,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified
-`)
+	c.Check(err, ErrorMatches, `error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
-
-	err = rce.Errs[0]
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
 	var bme *BootManagerCodePCRError
-	c.Assert(errors.As(err, &bme), testutil.IsTrue)
+	c.Assert(errors.As(errs[0], &bme), testutil.IsTrue)
 	c.Check(errors.Is(bme, ErrNotAllBootManagerCodeDigestsVerified), testutil.IsTrue)
 }
 
@@ -2959,17 +2957,19 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
+	c.Check(err, ErrorMatches, `2 errors detected:
 - a weak cryptographic algorithm was detected during secure boot verification
 - some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
 `)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 2)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 2)
 
-	c.Check(errors.Is(rce.Errs[0], ErrWeakSecureBootAlgorithmDetected), testutil.IsTrue)
-	c.Check(errors.Is(rce.Errs[1], ErrPreOSVerificationUsingDigests), testutil.IsTrue)
+	c.Check(errors.Is(errs[0], ErrWeakSecureBootAlgorithmDetected), testutil.IsTrue)
+	c.Check(errors.Is(errs[1], ErrPreOSVerificationUsingDigests), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadPreOSVerificationUsingDigests(c *C) {
@@ -3036,15 +3036,15 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
-`)
+	c.Check(err, ErrorMatches, `some pre-OS components were authenticated from the authorized signature database using an Authenticode digest`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	c.Check(errors.Is(rce.Errs[0], ErrPreOSVerificationUsingDigests), testutil.IsTrue)
+	c.Check(errors.Is(errs[0], ErrPreOSVerificationUsingDigests), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadNoBootManagerCodeProfileSupport(c *C) {
@@ -3112,17 +3112,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with boot manager code \(PCR4\) measurements: log contains unexpected EV_EFI_BOOT_SERVICES_APPLICATION digest for OS-present application mock image: log digest matches flat file digest \(0xd5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0\) which suggests an image loaded outside of the LoadImage API and firmware lacking support for the EFI_TCG2_PROTOCOL and\/or the PE_COFF_IMAGE flag
-`)
+	c.Check(err, ErrorMatches, `error with boot manager code \(PCR4\) measurements: log contains unexpected EV_EFI_BOOT_SERVICES_APPLICATION digest for OS-present application mock image: log digest matches flat file digest \(0xd5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0\) which suggests an image loaded outside of the LoadImage API and firmware lacking support for the EFI_TCG2_PROTOCOL and\/or the PE_COFF_IMAGE flag`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	err = rce.Errs[0]
 	var bce *BootManagerCodePCRError
-	c.Check(errors.As(err, &bce), testutil.IsTrue)
+	c.Check(errors.As(errs[0], &bce), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadNoSecureBootPolicyProfileSupport(c *C) {
@@ -3185,17 +3184,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles
-`)
+	c.Check(err, ErrorMatches, `error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
-	err = rce.Errs[0]
 	var sbe *SecureBootPolicyPCRError
-	c.Check(errors.As(err, &sbe), testutil.IsTrue)
+	c.Assert(errors.As(errs[0], &sbe), testutil.IsTrue)
 	c.Check(errors.Is(sbe, ErrNoDeployedMode), testutil.IsTrue)
 }
 
@@ -3258,18 +3256,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks
-`)
+	c.Check(err, ErrorMatches, `error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
-
-	err = rce.Errs[0]
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
 	var hse *HostSecurityError
-	c.Assert(errors.As(err, &hse), testutil.IsTrue)
+	c.Assert(errors.As(errs[0], &hse), testutil.IsTrue)
 	c.Check(errors.Is(hse, ErrTPMStartupLocalityNotProtected), testutil.IsTrue)
 }
 
@@ -3335,18 +3331,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks
-`)
+	c.Check(err, ErrorMatches, `error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
-
-	err = rce.Errs[0]
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
 	var hse *HostSecurityError
-	c.Assert(errors.As(err, &hse), testutil.IsTrue)
+	c.Assert(errors.As(errs[0], &hse), testutil.IsTrue)
 	c.Check(errors.Is(hse, ErrTPMStartupLocalityNotProtected), testutil.IsTrue)
 }
 
@@ -3412,18 +3406,16 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `one or more errors detected:
-- error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks
-`)
+	c.Check(err, ErrorMatches, `error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
-
-	err = rce.Errs[0]
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
 	var hse *HostSecurityError
-	c.Assert(errors.As(err, &hse), testutil.IsTrue)
+	c.Assert(errors.As(errs[0], &hse), testutil.IsTrue)
 	c.Check(errors.Is(hse, ErrTPMStartupLocalityNotProtected), testutil.IsTrue)
 }
 
@@ -3488,18 +3480,16 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
-	c.Assert(err, ErrorMatches, `one or more errors detected:
-- the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM
-`)
+	c.Assert(err, ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 1)
-
-	err = rce.Errs[0]
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 1)
 
 	var be *EmptyPCRBanksError
-	c.Check(errors.As(err, &be), testutil.IsTrue)
+	c.Check(errors.As(errs[0], &be), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadTPMHierarchiesOwnedAndNoSecureBootPolicySupport(c *C) {
@@ -3567,23 +3557,25 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
-	c.Assert(err, ErrorMatches, `one or more errors detected:
+	c.Assert(err, ErrorMatches, `2 errors detected:
 - error with TPM2 device: one or more of the TPM hierarchies is already owned:
   - TPM_RH_LOCKOUT has an authorization value
 - error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles
 `)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 2)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 2)
 
 	var te *TPM2DeviceError
-	c.Assert(errors.As(rce.Errs[0], &te), testutil.IsTrue)
+	c.Assert(errors.As(errs[0], &te), testutil.IsTrue)
 	var ohe *TPM2OwnedHierarchiesError
 	c.Check(errors.As(te, &ohe), testutil.IsTrue)
 
 	var sbpe *SecureBootPolicyPCRError
-	c.Check(errors.As(rce.Errs[1], &sbpe), testutil.IsTrue)
+	c.Check(errors.As(errs[1], &sbpe), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadTPMEmptyPCRBankAndNoBootManagerCodeProfileSupport(c *C) {
@@ -3649,20 +3641,22 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
-	c.Assert(err, ErrorMatches, `one or more errors detected:
+	c.Assert(err, ErrorMatches, `2 errors detected:
 - the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM
 - error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified
 `)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 2)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 2)
 
 	var be *EmptyPCRBanksError
-	c.Check(errors.As(rce.Errs[0], &be), testutil.IsTrue)
+	c.Check(errors.As(errs[0], &be), testutil.IsTrue)
 
 	var bme *BootManagerCodePCRError
-	c.Assert(errors.As(rce.Errs[1], &bme), testutil.IsTrue)
+	c.Assert(errors.As(errs[1], &bme), testutil.IsTrue)
 	c.Check(errors.Is(bme, ErrNotAllBootManagerCodeDigestsVerified), testutil.IsTrue)
 }
 
@@ -3725,19 +3719,21 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
-	c.Assert(err, ErrorMatches, `one or more errors detected:
+	c.Assert(err, ErrorMatches, `2 errors detected:
 - the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM
 - error with system security: no kernel IOMMU support was detected
 `)
 
-	var rce *RunChecksErrors
-	c.Assert(errors.As(err, &rce), testutil.IsTrue)
-	c.Assert(rce.Errs, HasLen, 2)
+	var ce CompoundError
+	c.Assert(err, Implements, &ce)
+	ce = err.(CompoundError)
+	errs := ce.Unwrap()
+	c.Assert(errs, HasLen, 2)
 
 	var be *EmptyPCRBanksError
-	c.Check(errors.As(rce.Errs[0], &be), testutil.IsTrue)
+	c.Check(errors.As(errs[0], &be), testutil.IsTrue)
 
 	var hse *HostSecurityError
-	c.Assert(errors.As(rce.Errs[1], &hse), testutil.IsTrue)
+	c.Assert(errors.As(errs[1], &hse), testutil.IsTrue)
 	c.Check(errors.Is(hse, ErrNoKernelIOMMU), testutil.IsTrue)
 }
