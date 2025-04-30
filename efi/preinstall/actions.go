@@ -67,13 +67,13 @@ const (
 	ActionContactOSVendor Action = "contact-os-vendor"
 )
 
-// IsPseudoAction will return true if the action cannot actually be executed by
+// IsExternalAction will return true if the action cannot actually be executed by
 // [RunChecksContext.Run], but the action is expected to be performed by the caller
 // (eg, snapd or the installer) instead.
 //
 // TODO: Add extra actions that can be performed by this package by passing the
 // action to [RunChecksContext.Run].
-func (a Action) IsPseudoAction() bool {
+func (a Action) IsExternalAction() bool {
 	switch a {
 	case ActionReboot, ActionShutdown, ActionRebootToFWSettings, ActionContactOEM, ActionContactOSVendor:
 		return true

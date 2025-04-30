@@ -431,7 +431,7 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 		}
 	}
 
-	if action.IsPseudoAction() {
+	if action.IsExternalAction() {
 		return &WithKindAndActionsError{
 			Kind: ErrorKindUnexpectedAction,
 			err:  errors.New("specified action is not implemented directly by this package"),
