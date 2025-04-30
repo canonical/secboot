@@ -425,16 +425,16 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 
 func (c *RunChecksContext) runAction(action Action, args ...any) error {
 	if !c.isActionExpected(action) {
-		return &ErrorKindAndActions{
-			ErrorKind: ErrorKindUnexpectedAction,
-			err:       errors.New("specified action is not expected"),
+		return &WithKindAndActionsError{
+			Kind: ErrorKindUnexpectedAction,
+			err:  errors.New("specified action is not expected"),
 		}
 	}
 
 	if action.IsPseudoAction() {
-		return &ErrorKindAndActions{
-			ErrorKind: ErrorKindUnexpectedAction,
-			err:       errors.New("specified action is not implemented directly by this package"),
+		return &WithKindAndActionsError{
+			Kind: ErrorKindUnexpectedAction,
+			err:  errors.New("specified action is not implemented directly by this package"),
 		}
 	}
 
@@ -443,9 +443,9 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 		// ok, do nothing
 		return nil
 	default:
-		return &ErrorKindAndActions{
-			ErrorKind: ErrorKindUnexpectedAction,
-			err:       errors.New("specified action is invalid"),
+		return &WithKindAndActionsError{
+			Kind: ErrorKindUnexpectedAction,
+			err:  errors.New("specified action is invalid"),
 		}
 	}
 }
@@ -470,7 +470,7 @@ func (c *RunChecksContext) Result() *CheckResult {
 // Run will run the specified action, and if that completes successfully will run another
 // iteration of [RunChecks] and test the result against the preferred [WithAutoTCGPCRProfile]
 // configuration. On success, this will return the CheckResult. On failure, this will return
-// an error which will either be a single ErrorKindAndActions, or multiple ErrorKindAndActions
+// an error which will either be a single WithKindAndActionsError, or multiple WithKindAndActionsError
 // wrapped by an error type that implements the [CompoundError] interface. If there are any
 // actions associated with an error, the install environment may try one or more of them in
 // order to try to resolve the issue that caused the error. In some cases, it may be appropriate
@@ -506,36 +506,36 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 			// Reset the list of expected actions
 			c.expectedActions = nil
 
-			// Convert each error into ErrorKindAndActions
+			// Convert each error into WithKindAndActionsError
 			for _, e := range unwrapCompoundError(err) {
 				kind, args, err := c.classifyRunChecksError(e)
 				if err != nil {
-					return nil, &ErrorKindAndActions{
-						ErrorKind: ErrorKindInternal,
-						err:       fmt.Errorf("cannot classify error %v: %w", e, err),
+					return nil, &WithKindAndActionsError{
+						Kind: ErrorKindInternal,
+						err:  fmt.Errorf("cannot classify error %v: %w", e, err),
 					}
 				}
 				jsonArgs, err := json.Marshal(args)
 				if err != nil {
-					return nil, &ErrorKindAndActions{
-						ErrorKind: ErrorKindInternal,
-						err:       fmt.Errorf("cannot serialize error arguments: %w", err),
+					return nil, &WithKindAndActionsError{
+						Kind: ErrorKindInternal,
+						err:  fmt.Errorf("cannot serialize error arguments: %w", err),
 					}
 				}
 				actions := errorKindToActions[kind]
 				actions, err = c.filterUnavailableActions(actions)
 				if err != nil {
-					return nil, &ErrorKindAndActions{
-						ErrorKind: ErrorKindInternal,
-						err:       fmt.Errorf("cannot filter unavailable actions: %w", err),
+					return nil, &WithKindAndActionsError{
+						Kind: ErrorKindInternal,
+						err:  fmt.Errorf("cannot filter unavailable actions: %w", err),
 					}
 				}
 
-				errs = append(errs, &ErrorKindAndActions{
-					ErrorKind: kind,
-					ErrorArgs: jsonArgs,
-					Actions:   actions,
-					err:       e,
+				errs = append(errs, &WithKindAndActionsError{
+					Kind:    kind,
+					Args:    jsonArgs,
+					Actions: actions,
+					err:     e,
 				})
 				c.expectedActions = append(c.expectedActions, actions...)
 			}
@@ -548,9 +548,9 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 		// PCRs we're lacking support for.
 		var requiredPCRsErr *UnsupportedRequiredPCRsError
 		if !errors.As(profileErr, &requiredPCRsErr) {
-			return nil, &ErrorKindAndActions{
-				ErrorKind: ErrorKindInternal,
-				err:       fmt.Errorf("cannot test whether a PCR combination can be generated: %w", err),
+			return nil, &WithKindAndActionsError{
+				Kind: ErrorKindInternal,
+				err:  fmt.Errorf("cannot test whether a PCR combination can be generated: %w", err),
 			}
 		}
 

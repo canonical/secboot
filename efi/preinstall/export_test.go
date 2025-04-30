@@ -133,16 +133,16 @@ func MockRunChecksEnv(env internal_efi.HostEnvironment) (restore func()) {
 	}
 }
 
-func NewErrorKindAndActions(kind ErrorKind, args []byte, actions []Action, err error) *ErrorKindAndActions {
+func NewWithKindAndActionsError(kind ErrorKind, args []byte, actions []Action, err error) *WithKindAndActionsError {
 	if len(args) == 0 {
 		// encoding/json marshals an empty json.RawMessage to this already,
 		// but we need to do this to use the DeepEqual checker.
 		args = []byte("null")
 	}
-	return &ErrorKindAndActions{
-		ErrorKind: kind,
-		ErrorArgs: args,
-		Actions:   actions,
-		err:       err,
+	return &WithKindAndActionsError{
+		Kind:    kind,
+		Args:    args,
+		Actions: actions,
+		err:     err,
 	}
 }

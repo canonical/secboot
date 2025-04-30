@@ -824,17 +824,17 @@ func (e *UnsupportedRequiredPCRsError) Error() string {
 	}
 }
 
-// ErrorKindAndActions is an error type that can be serialized to JSON, represented by
+// WithKindAndActionsError is an error type that can be serialized to JSON, represented by
 // an error kind, associated arguments and a set of potential remedial actions.
-type ErrorKindAndActions struct {
-	ErrorKind ErrorKind       `json:"kind"`    // The error kind
-	ErrorArgs json.RawMessage `json:"args"`    // The arguments associated with the error, as a slice. See the documentation for the ErrorKind for the meaning of these.
-	Actions   []Action        `json:"actions"` // Potential remedial actions. This may be empty. Note that not all actions can be supplied to RunChecksContext.Run.
+type WithKindAndActionsError struct {
+	Kind    ErrorKind       `json:"kind"`    // The error kind
+	Args    json.RawMessage `json:"args"`    // The arguments associated with the error, as a slice. See the documentation for the ErrorKind for the meaning of these.
+	Actions []Action        `json:"actions"` // Potential remedial actions. This may be empty. Note that not all actions can be supplied to RunChecksContext.Run.
 
 	err error `json:"-"` // The original error. This is not serialized to JSON.
 }
 
-func (e *ErrorKindAndActions) Error() string {
+func (e *WithKindAndActionsError) Error() string {
 	data, err := json.Marshal(e)
 	if err != nil {
 		data = []byte(fmt.Sprintf("cannot serialize error: %v", err))
@@ -842,6 +842,6 @@ func (e *ErrorKindAndActions) Error() string {
 	return fmt.Sprintf("%v %s", e.err, string(data))
 }
 
-func (e *ErrorKindAndActions) Unwrap() error {
+func (e *WithKindAndActionsError) Unwrap() error {
 	return e.err
 }
