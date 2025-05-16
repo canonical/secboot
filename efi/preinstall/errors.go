@@ -835,11 +835,10 @@ type WithKindAndActionsError struct {
 }
 
 func (e *WithKindAndActionsError) Error() string {
-	data, err := json.Marshal(e)
-	if err != nil {
-		data = []byte(fmt.Sprintf("cannot serialize error: %v", err))
+	if e.err == nil {
+		return "<nil>"
 	}
-	return fmt.Sprintf("%v %s", e.err, string(data))
+	return e.err.Error()
 }
 
 func (e *WithKindAndActionsError) Unwrap() error {

@@ -1465,7 +1465,7 @@ func (s *runChecksContextSuite) TestRunBadVirtualMachine(c *C) {
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Assert(errs[0], ErrorMatches, `virtual machine environment detected {"kind":"running-in-vm","args":null,"actions":null}`)
+	c.Assert(errs[0], ErrorMatches, `virtual machine environment detected`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRunningInVM, nil, nil, ErrVirtualMachineDetected))
 }
 
@@ -1480,7 +1480,7 @@ func (s *runChecksContextSuite) TestRunBadNoTPM2Device(c *C) {
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with TPM2 device: no TPM2 device is available {"kind":"no-suitable-tpm2-device","args":null,"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: no TPM2 device is available`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitableTPM2Device, nil, nil, errs[0].Unwrap()))
 }
 
@@ -1502,7 +1502,7 @@ func (s *runChecksContextSuite) TestRunBadTPMDeviceFailure(c *C) {
 		actions: []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is in failure mode {"kind":"tpm-device-failure","args":null,"actions":\["reboot","contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is in failure mode`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceFailure, nil, []Action{ActionReboot, ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -1522,7 +1522,7 @@ func (s *runChecksContextSuite) TestRunBadNoPCClientTPMDevice(c *C) {
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but it is not a PC-Client TPM {"kind":"no-suitable-tpm2-device","args":null,"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but it is not a PC-Client TPM`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitableTPM2Device, nil, nil, errs[0].Unwrap()))
 }
 
@@ -1544,7 +1544,7 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabled(c *C) {
 		actions: []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but is currently disabled by the platform firmware {"kind":"tpm-device-disabled","args":null,"actions":\["reboot-to-fw-settings"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but is currently disabled by the platform firmware`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
@@ -1608,7 +1608,7 @@ C7E003CB
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
 - TPM_RH_LOCKOUT has an authorization value
 - TPM_RH_OWNER has an authorization policy
- {"kind":"tpm-hierarchies-owned","args":\[{"hierarchy":1073741834,"type":"auth-value"},{"hierarchy":1073741825,"type":"auth-policy"}\],"actions":\["reboot-to-fw-settings"\]}`)
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		[]byte(`[{"hierarchy":1073741834,"type":"auth-value"},{"hierarchy":1073741825,"type":"auth-policy"}]`),
@@ -1697,7 +1697,7 @@ C7E003CB
 		actions: []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM is in DA lockout mode {"kind":"tpm-device-lockout","args":\[7200000000000,230400000000000\],"actions":\["reboot-to-fw-settings"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM is in DA lockout mode`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceLockout, []byte(`[7200000000000,230400000000000]`), []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
@@ -1753,7 +1753,7 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with TPM2 device: insufficient NV counters available {"kind":"insufficient-tpm-storage","args":null,"actions":\["reboot-to-fw-settings"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: insufficient NV counters available`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindInsufficientTPMStorage, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
@@ -1843,7 +1843,7 @@ C7E003CB
 
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
 - TPM_RH_LOCKOUT has an authorization value
- {"kind":"tpm-hierarchies-owned","args":\[{"hierarchy":1073741834,"type":"auth-value"}\],"actions":\["reboot-to-fw-settings"\]}`)
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		[]byte(`[{"hierarchy":1073741834,"type":"auth-value"}]`),
@@ -1851,7 +1851,7 @@ C7E003CB
 		errs[0].Unwrap(),
 	))
 
-	c.Check(errs[1], ErrorMatches, `error with TPM2 device: TPM is in DA lockout mode {"kind":"tpm-device-lockout","args":\[7200000000000,230400000000000\],"actions":\["reboot-to-fw-settings"\]}`)
+	c.Check(errs[1], ErrorMatches, `error with TPM2 device: TPM is in DA lockout mode`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMDeviceLockout,
 		[]byte(`[7200000000000,230400000000000]`),
@@ -1877,7 +1877,7 @@ func (s *runChecksContextSuite) TestRunBadTCGLog(c *C) {
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with or detected from measurement log: nil log {"kind":"measured-boot","args":null,"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `error with or detected from measurement log: nil log`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindMeasuredBoot, nil, nil, errs[0].Unwrap()))
 }
 
@@ -1956,7 +1956,7 @@ C7E003CB
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0x420bd3899738e6b41dccd18253a556e152e2b107559b89cbf0cbf1661ff6ee55, reconstructed from log 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef\).
- {"kind":"no-suitable-pcr-bank","args":null,"actions":\["reboot-to-fw-settings","contact-oem"\]}`)
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitablePCRBank, nil, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -2032,7 +2032,7 @@ C7E003CB
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: error with drivers and apps \(PCR2\) measurements: PCR value mismatch \(actual from TPM 0xfa734a6a4d262d7405d47d48c0a1b127229ca808032555ad919ed5dd7c1f6519, reconstructed from log 0x3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969\).
- {"kind":"no-suitable-pcr-bank","args":null,"actions":\["reboot-to-fw-settings","contact-oem"\]}`)
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitablePCRBank, nil, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -2108,7 +2108,7 @@ C7E003CB
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: error with boot manager code \(PCR4\) measurements: PCR value mismatch \(actual from TPM 0x1c93930d6b26232e061eaa33ecf6341fae63ce598a0c6a26ee96a0828639c044, reconstructed from log 0x4bc74f3ffe49b4dd275c9f475887b68193e2db8348d72e1c3c9099c2dcfa85b0\).
- {"kind":"no-suitable-pcr-bank","args":null,"actions":\["reboot-to-fw-settings","contact-oem"\]}`)
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitablePCRBank, nil, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -2185,7 +2185,7 @@ C7E003CB
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: error with secure boot policy \(PCR7\) measurements: PCR value mismatch \(actual from TPM 0xdf7b5d709755f1bd7142dd2f8c2d1195fc6b4dab5c78d41daf5c795da55db5f2, reconstructed from log 0xafc99bd8b298ea9b70d2796cb0ca22fe2b70d784691a1cae2aa3ba55edc365dc\).
- {"kind":"no-suitable-pcr-bank","args":null,"actions":\["reboot-to-fw-settings","contact-oem"\]}`)
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitablePCRBank, nil, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -2236,7 +2236,7 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled {"kind":"uefi-debugging-enabled","args":null,"actions":\["contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUEFIDebuggingEnabled, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -2285,7 +2285,7 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware indicates that DMA protections are insufficient {"kind":"insufficient-dma-protection","args":null,"actions":\["reboot-to-fw-settings"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware indicates that DMA protections are insufficient`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindInsufficientDMAProtection, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
@@ -2327,7 +2327,7 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with system security: no kernel IOMMU support was detected {"kind":"no-kernel-iommu","args":null,"actions":\["contact-os-vendor"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with system security: no kernel IOMMU support was detected`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoKernelIOMMU, nil, []Action{ActionContactOSVendor}, errs[0].Unwrap()))
 }
 
@@ -2374,7 +2374,7 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks {"kind":"tpm-startup-locality-not-protected","args":null,"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMStartupLocalityNotProtected, nil, nil, errs[0].Unwrap()))
 }
 
@@ -2419,10 +2419,10 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 2)
-	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled {"kind":"uefi-debugging-enabled","args":null,"actions":\["contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUEFIDebuggingEnabled, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
 
-	c.Check(errs[1], ErrorMatches, `error with system security: no kernel IOMMU support was detected {"kind":"no-kernel-iommu","args":null,"actions":\["contact-os-vendor"\]}`)
+	c.Check(errs[1], ErrorMatches, `error with system security: no kernel IOMMU support was detected`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindNoKernelIOMMU, nil, []Action{ActionContactOSVendor}, errs[1].Unwrap()))
 }
 
@@ -2469,7 +2469,7 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with system security: encountered an error when determining platform firmware protections using Intel MEI: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled {"kind":"host-security","args":null,"actions":\["contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with system security: encountered an error when determining platform firmware protections using Intel MEI: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindHostSecurity, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -2541,7 +2541,7 @@ C7E003CB
 - TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
 - TPM_ALG_SHA256: the PCR bank is missing from the TCG log.
- {"kind":"no-suitable-pcr-bank","args":null,"actions":\["reboot-to-fw-settings","contact-oem"\]}`)
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitablePCRBank, nil, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -2610,13 +2610,13 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 3)
-	c.Check(errs[0], ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet {"kind":"tpm-pcr-unsupported","args":\[1,"https://github.com/canonical/secboot/issues/322"\],"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, []byte("[1,\"https://github.com/canonical/secboot/issues/322\"]"), nil, errs[0].Unwrap()))
 
-	c.Check(errs[1], ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet {"kind":"tpm-pcr-unsupported","args":\[3,"https://github.com/canonical/secboot/issues/341"\],"actions":null}`)
+	c.Check(errs[1], ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, []byte("[3,\"https://github.com/canonical/secboot/issues/341\"]"), nil, errs[1].Unwrap()))
 
-	c.Check(errs[2], ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet {"kind":"tpm-pcr-unsupported","args":\[5,"https://github.com/canonical/secboot/issues/323"\],"actions":null}`)
+	c.Check(errs[2], ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, []byte("[5,\"https://github.com/canonical/secboot/issues/323\"]"), nil, errs[2].Unwrap()))
 }
 
@@ -2690,13 +2690,13 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 3)
-	c.Check(errs[0], ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet {"kind":"tpm-pcr-unsupported","args":\[1,"https://github.com/canonical/secboot/issues/322"\],"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, []byte("[1,\"https://github.com/canonical/secboot/issues/322\"]"), nil, errs[0].Unwrap()))
 
-	c.Check(errs[1], ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet {"kind":"tpm-pcr-unsupported","args":\[3,"https://github.com/canonical/secboot/issues/341"\],"actions":null}`)
+	c.Check(errs[1], ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, []byte("[3,\"https://github.com/canonical/secboot/issues/341\"]"), nil, errs[1].Unwrap()))
 
-	c.Check(errs[2], ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet {"kind":"tpm-pcr-unsupported","args":\[5,"https://github.com/canonical/secboot/issues/323"\],"actions":null}`)
+	c.Check(errs[2], ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
 	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, []byte("[5,\"https://github.com/canonical/secboot/issues/323\"]"), nil, errs[2].Unwrap()))
 }
 
@@ -2766,7 +2766,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM {"kind":"empty-pcr-banks","args":\[12\],"actions":\["reboot-to-fw-settings","contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindEmptyPCRBanks,
 		[]byte("[12]"),
@@ -2842,7 +2842,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `value added retailer supplied drivers were detected to be running {"kind":"var-supplied-drivers-present","args":null,"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `value added retailer supplied drivers were detected to be running`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindVARSuppliedDriversPresent, nil, nil, ErrVARSuppliedDriversPresent))
 }
 
@@ -2913,7 +2913,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `system preparation applications were detected to be running {"kind":"sys-prep-applications-present","args":null,"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `system preparation applications were detected to be running`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindSysPrepApplicationsPresent, nil, nil, ErrSysPrepApplicationsPresent))
 }
 
@@ -2984,7 +2984,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `Absolute was detected to be active and it is advised that this is disabled {"kind":"absolute-present","args":null,"actions":\["contact-oem","reboot-to-fw-settings"\]}`)
+	c.Check(errs[0], ErrorMatches, `Absolute was detected to be active and it is advised that this is disabled`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindAbsolutePresent, nil, []Action{ActionContactOEM, ActionRebootToFWSettings}, ErrAbsoluteComputraceActive))
 }
 
@@ -3056,7 +3056,7 @@ C7E003CB
 		actions:        []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified {"kind":"tpm-pcr-unusable","args":\[4\],"actions":\["contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, []byte("[4]"), []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -3127,7 +3127,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles {"kind":"invalid-secure-boot-mode","args":null,"actions":\["reboot-to-fw-settings"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindInvalidSecureBootMode, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
@@ -3215,7 +3215,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event: all expected secure boot variable have been measured {"kind":"tpm-pcr-unusable","args":\[7\],"actions":\["contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event: all expected secure boot variable have been measured`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, []byte("[7]"), []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -3288,13 +3288,13 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(errs, HasLen, 3)
-	c.Check(errs[0], ErrorMatches, `value added retailer supplied drivers were detected to be running {"kind":"var-supplied-drivers-present","args":null,"actions":null}`)
+	c.Check(errs[0], ErrorMatches, `value added retailer supplied drivers were detected to be running`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindVARSuppliedDriversPresent, nil, nil, ErrVARSuppliedDriversPresent))
 
-	c.Check(errs[1], ErrorMatches, `a weak cryptographic algorithm was detected during secure boot verification {"kind":"weak-secure-boot-algorithms-detected","args":null,"actions":null}`)
+	c.Check(errs[1], ErrorMatches, `a weak cryptographic algorithm was detected during secure boot verification`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindWeakSecureBootAlgorithmsDetected, nil, nil, ErrWeakSecureBootAlgorithmDetected))
 
-	c.Check(errs[2], ErrorMatches, `some pre-OS components were authenticated from the authorized signature database using an Authenticode digest {"kind":"pre-os-digest-verification-detected","args":null,"actions":null}`)
+	c.Check(errs[2], ErrorMatches, `some pre-OS components were authenticated from the authorized signature database using an Authenticode digest`)
 	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPreOSDigestVerificationDetected, nil, nil, ErrPreOSVerificationUsingDigests))
 }
 
@@ -3370,10 +3370,10 @@ C7E003CB
 
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
 - TPM_RH_LOCKOUT has an authorization value
- {"kind":"tpm-hierarchies-owned","args":\[{"hierarchy":1073741834,"type":"auth-value"}\],"actions":\["reboot-to-fw-settings"\]}`)
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMHierarchiesOwned, []byte(`[{"hierarchy":1073741834,"type":"auth-value"}]`), []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
 
-	c.Check(errs[1], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles {"kind":"invalid-secure-boot-mode","args":null,"actions":\["reboot-to-fw-settings"\]}`)
+	c.Check(errs[1], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindInvalidSecureBootMode, nil, []Action{ActionRebootToFWSettings}, errs[1].Unwrap()))
 }
 
@@ -3444,7 +3444,7 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 2)
 
-	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM {"kind":"empty-pcr-banks","args":\[12\],"actions":\["reboot-to-fw-settings","contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindEmptyPCRBanks,
 		[]byte(`[12]`),
@@ -3452,7 +3452,7 @@ C7E003CB
 		errs[0].Unwrap(),
 	))
 
-	c.Check(errs[1], ErrorMatches, `error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified {"kind":"tpm-pcr-unusable","args":\[4\],"actions":\["contact-oem"\]}`)
+	c.Check(errs[1], ErrorMatches, `error with boot manager code \(PCR4\) measurements: not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindPCRUnusable,
 		[]byte(`[4]`),
@@ -3523,9 +3523,9 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 2)
 
-	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM {"kind":"empty-pcr-banks","args":\[12\],"actions":\["reboot-to-fw-settings","contact-oem"\]}`)
+	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindEmptyPCRBanks, []byte(`[12]`), []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
 
-	c.Check(errs[1], ErrorMatches, `error with system security: no kernel IOMMU support was detected {"kind":"no-kernel-iommu","args":null,"actions":\["contact-os-vendor"\]}`)
+	c.Check(errs[1], ErrorMatches, `error with system security: no kernel IOMMU support was detected`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindNoKernelIOMMU, nil, []Action{ActionContactOSVendor}, errs[1].Unwrap()))
 }
