@@ -567,6 +567,128 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
+func (s *runChecksContextSuite) TestRunGoodPreAndPostInstall(c *C) {
+	// Test good pre-install and post-install scenario on a fTPM.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     6,
+			tpm2.PropertyNVCounters:        4,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts:               PCRProfileOptionsDefault,
+		actions:                   []actionAndArgs{{action: ActionNone}},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `3 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Check(errs, HasLen, 0)
+
+	errs = s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     6,
+			tpm2.PropertyNVCounters:        5,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+			tpm2.PropertyPermanent:         uint32(tpm2.AttrLockoutAuthSet),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		initialFlags: PostInstallChecks,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts:               PCRProfileOptionsDefault,
+		actions:                   []actionAndArgs{{action: ActionNone}},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `3 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
 // TODO: Test a good case with a VM setup when we have an action to turn on the PermitVirtualMachine flag.
 //
 // TODO: Test a good case with a discrete TPM where the startup locality is 0, when we have an action to turn on the PermitNoDiscreteTPMResetMitigation flag.
