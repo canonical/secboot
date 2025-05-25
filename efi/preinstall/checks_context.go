@@ -142,6 +142,10 @@ type RunChecksContext struct {
 	lastErr error
 	result  *CheckResult
 
+	// availableActions stores one of 3 states:
+	// - untested (a lack of value), meaning that a test of availability needs to be performed.
+	// - unavailable (a value of false).
+	// - available (a value of true).
 	availableActions map[Action]bool
 	expectedActions  []Action
 }
