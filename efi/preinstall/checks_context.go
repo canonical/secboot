@@ -31,6 +31,9 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
+// errorKindToActions maps an error kinds to one or more possible actions. The
+// slice of actions is an OR in the sense that any one of these actions can
+// be eecuted to attempt to resolve the associated error kind.
 var errorKindToActions map[ErrorKind][]Action
 
 func init() {
