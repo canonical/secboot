@@ -175,7 +175,6 @@ func NewRunChecksContext(initialFlags CheckFlags, loadedImages []secboot_efi.Ima
 			ActionContactOEM:         true,
 			ActionContactOSVendor:    true,
 		},
-		expectedActions: []Action{ActionNone},
 	}
 }
 
@@ -217,6 +216,10 @@ func (c *RunChecksContext) filterUnavailableActions(actions []Action) (out []Act
 // isActionExpected determines if the supplied action is an expected
 // response to the last call to [RunChecksContext.Run].
 func (c *RunChecksContext) isActionExpected(action Action) bool {
+	if action == ActionNone {
+		// ActionNone is always expected.
+		return true
+	}
 	for _, expected := range c.expectedActions {
 		if expected == action {
 			return true
@@ -483,7 +486,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 		return nil, err
 	}
 
-	c.expectedActions = []Action{ActionNone}
+	c.expectedActions = nil
 	var errs []error
 	for {
 		result, err := RunChecks(ctx, c.flags, c.loadedImages)
