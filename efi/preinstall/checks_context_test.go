@@ -1574,6 +1574,17 @@ C7E003CB
 
 // **End of good cases ** //
 
+func (s *runChecksContextSuite) TestRunBadUnexpexctedAction(c *C) {
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env:         efitest.NewMockHostEnvironmentWithOpts(),
+		profileOpts: PCRProfileOptionsDefault,
+		actions:     []actionAndArgs{{action: "fake-action"}},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Assert(errs[0], ErrorMatches, `specified action is not expected`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUnexpectedAction, nil, nil, errs[0].Unwrap()))
+}
+
 func (s *runChecksContextSuite) TestRunBadVirtualMachine(c *C) {
 	// Test the error case where a virtualized environment
 	// is detected.

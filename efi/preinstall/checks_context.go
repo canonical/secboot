@@ -437,6 +437,7 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 	if !c.isActionExpected(action) {
 		return &WithKindAndActionsError{
 			Kind: ErrorKindUnexpectedAction,
+			Args: []byte("null"),
 			err:  errors.New("specified action is not expected"),
 		}
 	}
@@ -444,6 +445,7 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 	if action.IsExternalAction() {
 		return &WithKindAndActionsError{
 			Kind: ErrorKindUnexpectedAction,
+			Args: []byte("null"),
 			err:  errors.New("specified action is not implemented directly by this package"),
 		}
 	}
@@ -455,6 +457,7 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 	default:
 		return &WithKindAndActionsError{
 			Kind: ErrorKindUnexpectedAction,
+			Args: []byte("null"),
 			err:  errors.New("specified action is invalid"),
 		}
 	}
@@ -487,6 +490,8 @@ func (c *RunChecksContext) Result() *CheckResult {
 // to ask permission from the user to perform an action.
 func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) (*CheckResult, error) {
 	if err := c.runAction(action, args...); err != nil {
+		c.lastErr = err
+		c.errs = append(c.errs, err)
 		return nil, err
 	}
 
@@ -522,6 +527,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 				if err != nil {
 					return nil, &WithKindAndActionsError{
 						Kind: ErrorKindInternal,
+						Args: []byte("null"),
 						err:  fmt.Errorf("cannot classify error %v: %w", e, err),
 					}
 				}
@@ -529,6 +535,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 				if err != nil {
 					return nil, &WithKindAndActionsError{
 						Kind: ErrorKindInternal,
+						Args: []byte("null"),
 						err:  fmt.Errorf("cannot serialize error arguments: %w", err),
 					}
 				}
@@ -537,6 +544,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 				if err != nil {
 					return nil, &WithKindAndActionsError{
 						Kind: ErrorKindInternal,
+						Args: []byte("null"),
 						err:  fmt.Errorf("cannot filter unavailable actions: %w", err),
 					}
 				}
