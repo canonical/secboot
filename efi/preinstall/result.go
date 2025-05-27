@@ -114,6 +114,12 @@ const (
 	// reset attack mitigation has to be opted into with the PermitNoDiscreteTPMResetMitigation flag to
 	// RunChecks.
 	StartupLocalityNotProtected
+
+	// InsufficientDMAProtectionDetected indicates that DMA remapping was disabled in the pre-OS environment.
+	// This weakens security because it allows pre-OS DMA attacks to compromise system integrity.
+	// Support for this has to be opted into with the PermitInsufficientDMAProtection flag to RunChecks.
+	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
+	InsufficientDMAProtectionDetected
 )
 
 var checkResultFlagToIDStringMap = map[CheckResultFlags]string{
@@ -126,6 +132,7 @@ var checkResultFlagToIDStringMap = map[CheckResultFlags]string{
 	NoSecureBootPolicyProfileSupport:     "no-secure-boot-policy-profile-support",
 	DiscreteTPMDetected:                  "discrete-tpm-detected",
 	StartupLocalityNotProtected:          "startup-locality-not-protected",
+	InsufficientDMAProtectionDetected:    "insufficient-dma-protection-detected",
 }
 
 var checkResultFlagFromIDStringMap = map[string]CheckResultFlags{
@@ -138,6 +145,7 @@ var checkResultFlagFromIDStringMap = map[string]CheckResultFlags{
 	"no-secure-boot-policy-profile-support":      NoSecureBootPolicyProfileSupport,
 	"discrete-tpm-detected":                      DiscreteTPMDetected,
 	"startup-locality-not-protected":             StartupLocalityNotProtected,
+	"insufficient-dma-protection-detected":       InsufficientDMAProtectionDetected,
 }
 
 type checkResultJSON struct {
