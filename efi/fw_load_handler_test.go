@@ -52,13 +52,14 @@ type testFwMeasureImageStartData struct {
 	alg            tpm2.HashAlgorithmId
 	pcrs           PcrFlags
 	expectedEvents []*mockPcrBranchEvent
+	loadParams     *LoadParams
 }
 
 func (s *fwLoadHandlerSuite) testMeasureImageStart(c *C, data *testFwMeasureImageStartData) *FwContext {
 	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(data.vars, nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
 		alg:  data.alg,
-		pcrs: data.pcrs}, nil, collector.Next())
+		pcrs: data.pcrs}, data.loadParams, collector.Next())
 
 	handler := NewFwLoadHandler(efitest.NewLog(c, data.logOptions))
 	c.Check(handler.MeasureImageStart(ctx), IsNil)
@@ -766,5 +767,88 @@ func (s *fwLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyAndBootManagerC
 			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "bf6b6dfdb1f6435a81e4808db7f846d86d170566e4753d4384fdab6504be4fb9")},
 		},
 		verificationDigest: verificationDigest,
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartAllowInsufficientDMAProtection(c *C) {
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
+			DMAProtectionDisabled:             efitest.DMAProtectionDisabled,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"allow_insufficient_dma_protection":   true,
+			"include_insufficient_dma_protection": false,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartIncludeInsufficientDMAProtection(c *C) {
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
+			DMAProtectionDisabled:             efitest.DMAProtectionDisabled,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"allow_insufficient_dma_protection":   true,
+			"include_insufficient_dma_protection": true,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "019537eeff4f1858181e09d26faa59a5ad3a9d8eef3d1bbbb35288e0e16d656c")}, // "DMA Protection Disabled"
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartIncludeInsufficientDMAProtectionNul(c *C) {
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
+			DMAProtectionDisabled:             efitest.DMAProtectionDisabledNullTerminated,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"allow_insufficient_dma_protection":   true,
+			"include_insufficient_dma_protection": true,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "5b2b1f0c5470397d4efa2fe23110c8b6f61e299b9fa2c098f834ff06416196c3")}, // "DMA Protection Disabled\0"
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
 	})
 }
