@@ -307,8 +307,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	if virtMode == detectVirtNone {
 		// Only run platform firmware protection checks if we are not in a VM
 		protectedLocalities, err := checkPlatformFirmwareProtections(runChecksEnv, log)
-		switch {
-		case err != nil:
+		if err != nil {
 			var ce CompoundError
 			if !errors.As(err, &ce) {
 				return nil, &HostSecurityError{err}
@@ -316,7 +315,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			for _, e := range ce.Unwrap() {
 				deferredErrs = append(deferredErrs, &HostSecurityError{e})
 			}
-		case discreteTPM:
+		}
+		if discreteTPM {
 			switch logResults.StartupLocality {
 			case 0:
 				// TPM2_Startup occurred from locality 0. Mark PCR0 as reconstructible
