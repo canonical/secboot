@@ -234,6 +234,10 @@ type pcrProfileGenerator struct {
 
 	// log is the host TCG log, which is read from the associated env.
 	log *tcglog.Log
+
+	// allowInsufficientDMAProtection is used to allow for the "DMA Protection Disabled"
+	// string in PCR7.
+	allowInsufficientDMAProtection bool
 }
 
 func newPcrProfileGenerator(pcrAlg tpm2.HashAlgorithmId, loadSequences *ImageLoadSequences, options ...PCRProfileOption) (*pcrProfileGenerator, error) {
@@ -300,7 +304,7 @@ func (g *pcrProfileGenerator) addPCRProfileBranchForVars(bp *secboot_tpm2.PCRPro
 func (g *pcrProfileGenerator) addOnePCRProfileBranch(bp *secboot_tpm2.PCRProtectionProfileBranchPoint, rootVars *varBranch, params *loadParams) error {
 	rootBranch := newRootPcrBranchCtx(g, bp.AddBranch(), params, rootVars)
 
-	handler := newFwLoadHandler(g.log)
+	handler := newFwLoadHandler(g.log, g.allowInsufficientDMAProtection)
 	if err := handler.MeasureImageStart(rootBranch); err != nil {
 		return xerrors.Errorf("cannot measure pre-OS: %w", err)
 	}
@@ -334,6 +338,11 @@ func (g *pcrProfileGenerator) SetEnvironment(env HostEnvironment) {
 // AddInitialVariablesModifier implements [internal_efi.PCRProfileOptionVisitor.AddInitialVariablesModifier]
 func (g *pcrProfileGenerator) AddInitialVariablesModifier(fn internal_efi.InitialVariablesModifier) {
 	g.varModifiers = append(g.varModifiers, fn)
+}
+
+// SetAllowInsufficientDMAProtection implements [internal_efi.PCRProfileOptionVisitor.SetAllowInsufficientDMAProtection]
+func (g *pcrProfileGenerator) SetAllowInsufficientDMAProtection(allow bool) {
+	g.allowInsufficientDMAProtection = allow
 }
 
 // PCRAlg implements pcrProfileContext.PCRAlg.
