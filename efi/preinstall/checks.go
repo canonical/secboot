@@ -29,10 +29,14 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-// CheckFlags can be used to customize the behaviour or [RunChecks].
+// CheckFlags can be used to customize the behaviour or [RunChecks] and [NewRunChecksContext].
 type CheckFlags int
 
 const (
+	// CheckFlagsDefault is the default flags for RunChecks and
+	// NewRunChecksContext if no other flags are supplied.
+	CheckFlagsDefault CheckFlags = 0
+
 	// PlatformFirmwareProfileSupportRequired indicates that support for
 	// [secboot_efi.WithPlatformFirmwareProfile] to generate profiles for
 	// PCR 0 is not optional.
