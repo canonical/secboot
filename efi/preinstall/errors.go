@@ -466,9 +466,9 @@ func (e *PlatformFirmwarePCRError) Unwrap() error {
 // because there is currently no support in [github.com/snapcore/secboot/efi] for
 // generating profiles for PCR 1.
 //
-// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
-// if the PlatformConfigProfileSupportRequired flag is supplied to [RunChecks]
-// and the PCR 1 value is inconsistent with the value recorded from the TCG log.
+// This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
+// PlatformConfigProfileSupportRequired flag is supplied to [RunChecks] and the
+// PCR 1 value is inconsistent with the value recorded from the TCG log.
 //
 // This error will otherwise currently always be returned wrapped in a type that
 // implements [CompoundError] if the PlatformConfigProfileSupportRequired flag is
@@ -529,10 +529,9 @@ var (
 // [RunChecks], because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 3.
 //
-// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
-// if the DriversAndAppsConfigProfileSupportRequired flag is supplied to
-// [RunChecks] and the PCR 3 value is inconsistent with the value recorded from
-// the TCG log.
+// This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
+// DriversAndAppsConfigProfileSupportRequired flag is supplied to [RunChecks] and
+// the PCR 3 value is inconsistent with the value recorded from the TCG log.
 //
 // This error will otherwise currently always be returned wrapped in a type that
 // implements [CompoundError] if the DriversAndAppsConfigProfileSupportRequired flag
@@ -580,9 +579,9 @@ func (e *DriversAndAppsConfigPCRError) Unwrap() error {
 // to indicate that [github.com/snapcore/secboot/efi.WithBootManagerCodeProfile]
 // cannot be used to generate profiles for PCR 4.
 //
-// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
-// if the BootManagerCodeProfileSupportRequired flag is supplied to [RunChecks]
-// and the PCR 4 value is inconsistent with the value recorded from the TCG log.
+// This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
+// BootManagerCodeProfileSupportRequired flag is supplied to [RunChecks] and the
+// PCR 4 value is inconsistent with the value recorded from the TCG log.
 //
 // If any other error occurs and the BootManagerCodeProfileSupportRequired flag is
 // supplied to [RunChecks], this error will be returned wrapped in a type that
@@ -632,9 +631,9 @@ var (
 // because there is currently no support in [github.com/snapcore/secboot/efi]
 // for generating profiles for PCR 5.
 //
-// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
-// if the BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks]
-// and the PCR 5 value is inconsistent with the value recorded from the TCG log.
+// This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
+// BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks] and the
+// PCR 5 value is inconsistent with the value recorded from the TCG log.
 //
 // This error will otherwise currently always be returned wrapped in
 // a type that implements [CompoundError] if the
@@ -704,9 +703,9 @@ func (e *BootManagerConfigPCRError) Unwrap() error {
 // to indicate that [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile]
 // cannot be used to generate profiles for PCR 7.
 //
-// This error will be returned wrapped wrapped in [NoSuitablePCRAlgorithmError]
-// if the SecureBootPolicyProfileSupportRequired flag is supplied to [RunChecks]
-// and the PCR 7 value is inconsistent with the value recorded from the TCG log.
+// This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
+// SecureBootPolicyProfileSupportRequired flag is supplied to [RunChecks] and the
+// PCR 7 value is inconsistent with the value recorded from the TCG log.
 //
 // If any other error occurs and the SecureBootPolicyProfileSupportRequired flag is
 // supplied to [RunChecks], this error will be returned wrapped in a type that
