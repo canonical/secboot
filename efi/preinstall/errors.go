@@ -779,7 +779,7 @@ func wrapPCRError(pcr tpm2.Handle, err error) error {
 	}
 }
 
-// UnsupportedReqiredPCRsError is returned from methods of [PCRProfileAutoEnablePCRsOption]
+// UnsupportedRequiredPCRsError is returned from methods of [PCRProfileAutoEnablePCRsOption]
 // when a valid PCR configuration cannot be created based on the supplied [PCRProfileOptionsFlags]
 // and [CheckResult].
 type UnsupportedRequiredPCRsError struct {
