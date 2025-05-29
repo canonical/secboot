@@ -21,6 +21,7 @@ package preinstall
 
 import (
 	"crypto"
+	"encoding/json"
 	"io"
 
 	efi "github.com/canonical/go-efilib"
@@ -133,12 +134,7 @@ func MockRunChecksEnv(env internal_efi.HostEnvironment) (restore func()) {
 	}
 }
 
-func NewWithKindAndActionsError(kind ErrorKind, args []byte, actions []Action, err error) *WithKindAndActionsError {
-	if len(args) == 0 {
-		// encoding/json marshals an empty json.RawMessage to this already,
-		// but we need to do this to use the DeepEqual checker.
-		args = []byte("null")
-	}
+func NewWithKindAndActionsErrorForTest(kind ErrorKind, args map[string]json.RawMessage, actions []Action, err error) *WithKindAndActionsError {
 	return &WithKindAndActionsError{
 		Kind:    kind,
 		Args:    args,

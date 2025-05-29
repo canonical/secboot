@@ -21,7 +21,6 @@ package preinstall
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -235,7 +234,7 @@ func (c *RunChecksContext) isActionExpected(action Action) bool {
 // classifyRunChecksError converts the supplied error which is returned from
 // [RunChecks] into an [ErrorKind] and associated arguments where applicable
 // (see the documentation for each error kind).
-func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, error) {
+func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, error) {
 	if errors.Is(err, ErrVirtualMachineDetected) {
 		return ErrorKindRunningInVM, nil, nil
 	}
@@ -251,20 +250,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 
 	var ownershipErr *TPM2OwnedHierarchiesError
 	if errors.As(err, &ownershipErr) {
-		var args []any
-		for _, hierarchy := range ownershipErr.WithAuthValue {
-			args = append(args, TPMHierarchyOwnershipInfo{
-				Hierarchy: hierarchy,
-				Type:      TPMHierarchyOwnershipAuthValue,
-			})
-		}
-		for _, hierarchy := range ownershipErr.WithAuthPolicy {
-			args = append(args, TPMHierarchyOwnershipInfo{
-				Hierarchy: hierarchy,
-				Type:      TPMHierarchyOwnershipAuthPolicy,
-			})
-		}
-		return ErrorKindTPMHierarchiesOwned, args, nil
+		return ErrorKindTPMHierarchiesOwned, ownershipErr, nil
 	}
 
 	if errors.Is(err, ErrTPMLockout) {
@@ -284,17 +270,24 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 		}
 		defer tpm.Close()
 
-		var vals []uint32
-		for _, prop := range []tpm2.Property{tpm2.PropertyLockoutCounter, tpm2.PropertyLockoutInterval} {
-			val, err := tpm.GetCapabilityTPMProperty(prop)
+		for _, prop := range []struct {
+			Prop   tpm2.Property
+			Target *uint32
+		}{
+			{Prop: tpm2.PropertyLockoutCounter, Target: &lockoutCounter},
+			{Prop: tpm2.PropertyLockoutInterval, Target: &lockoutInterval},
+		} {
+			val, err := tpm.GetCapabilityTPMProperty(prop.Prop)
 			if err != nil {
-				return ErrorKindNone, nil, fmt.Errorf("cannot read property %d: %w", prop, err)
+				return ErrorKindNone, nil, fmt.Errorf("cannot read property %v: %w", prop.Prop, err)
 			}
-			vals = append(vals, val)
+			*prop.Target = val
 		}
-		lockoutCounter = vals[0]
-		lockoutInterval = vals[1]
-		return ErrorKindTPMDeviceLockout, []any{time.Duration(lockoutInterval) * time.Second, time.Duration(lockoutInterval) * time.Second * time.Duration(lockoutCounter)}, nil
+
+		return ErrorKindTPMDeviceLockout, &TPMDeviceLockoutArgs{
+			IntervalDuration: time.Duration(lockoutInterval) * time.Second,
+			TotalDuration:    time.Duration(lockoutInterval) * time.Second * time.Duration(lockoutCounter),
+		}, nil
 	}
 
 	if errors.Is(err, ErrTPMInsufficientNVCounters) {
@@ -323,7 +316,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 		switch {
 		case isTpmErr:
 			// TODO: Test this case
-			return ErrorKindTPMCommandFailed, []any{tpmRsp}, nil
+			return ErrorKindTPMCommandFailed, tpmRsp, nil
 		case isInvalidTPMResponse(err):
 			// TODO: Test this case
 			return ErrorKindInvalidTPMResponse, nil, nil
@@ -335,11 +328,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 
 	var emptyPcrsErr *EmptyPCRBanksError
 	if errors.As(err, &emptyPcrsErr) {
-		var args []any
-		for _, alg := range emptyPcrsErr.Algs {
-			args = append(args, alg)
-		}
-		return ErrorKindEmptyPCRBanks, args, nil
+		return ErrorKindEmptyPCRBanks, emptyPcrsErr, nil
 	}
 
 	var upErr *UnsupportedPlatformError
@@ -375,12 +364,12 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 	var pfPcrErr *PlatformFirmwarePCRError
 	if errors.As(err, &pfPcrErr) {
 		// XXX: It's currently impossible to hit this case
-		return ErrorKindPCRUnusable, []any{internal_efi.PlatformFirmwarePCR}, nil
+		return ErrorKindPCRUnusable, PCRUnusableArg(internal_efi.PlatformFirmwarePCR), nil
 	}
 
 	var pcPcrErr *PlatformConfigPCRError
 	if errors.As(err, &pcPcrErr) {
-		return ErrorKindPCRUnsupported, []any{internal_efi.PlatformConfigPCR, "https://github.com/canonical/secboot/issues/322"}, nil
+		return ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: internal_efi.PlatformConfigPCR, URL: "https://github.com/canonical/secboot/issues/322"}, nil
 	}
 
 	if errors.Is(err, ErrVARSuppliedDriversPresent) {
@@ -390,12 +379,12 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 	var daPcrErr *DriversAndAppsPCRError
 	if errors.As(err, &daPcrErr) {
 		// XXX: It's currently impossible to hit this case
-		return ErrorKindPCRUnusable, []any{internal_efi.DriversAndAppsPCR}, nil
+		return ErrorKindPCRUnusable, PCRUnusableArg(internal_efi.DriversAndAppsPCR), nil
 	}
 
 	var dacPcrErr *DriversAndAppsConfigPCRError
 	if errors.As(err, &dacPcrErr) {
-		return ErrorKindPCRUnsupported, []any{internal_efi.DriversAndAppsConfigPCR, "https://github.com/canonical/secboot/issues/341"}, nil
+		return ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: internal_efi.DriversAndAppsConfigPCR, URL: "https://github.com/canonical/secboot/issues/341"}, nil
 	}
 
 	if errors.Is(err, ErrSysPrepApplicationsPresent) {
@@ -407,12 +396,12 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 
 	var bmcPcrErr *BootManagerCodePCRError
 	if errors.As(err, &bmcPcrErr) {
-		return ErrorKindPCRUnusable, []any{internal_efi.BootManagerCodePCR}, nil
+		return ErrorKindPCRUnusable, PCRUnusableArg(internal_efi.BootManagerCodePCR), nil
 	}
 
 	var bmccPcrErr *BootManagerConfigPCRError
 	if errors.As(err, &bmccPcrErr) {
-		return ErrorKindPCRUnsupported, []any{internal_efi.BootManagerConfigPCR, "https://github.com/canonical/secboot/issues/323"}, nil
+		return ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: internal_efi.BootManagerConfigPCR, URL: "https://github.com/canonical/secboot/issues/323"}, nil
 	}
 
 	if errors.Is(err, ErrNoSecureBoot) || errors.Is(err, ErrNoDeployedMode) {
@@ -427,7 +416,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 
 	var sbPcrErr *SecureBootPolicyPCRError
 	if errors.As(err, &sbPcrErr) {
-		return ErrorKindPCRUnusable, []any{internal_efi.SecureBootPolicyPCR}, nil
+		return ErrorKindPCRUnusable, PCRUnusableArg(internal_efi.SecureBootPolicyPCR), nil
 	}
 
 	return ErrorKindInternal, nil, nil
@@ -435,19 +424,19 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, []any, 
 
 func (c *RunChecksContext) runAction(action Action, args ...any) error {
 	if !c.isActionExpected(action) {
-		return &WithKindAndActionsError{
-			Kind: ErrorKindUnexpectedAction,
-			Args: []byte("null"),
-			err:  errors.New("specified action is not expected"),
-		}
+		return NewWithKindAndActionsError(
+			ErrorKindUnexpectedAction,
+			nil, nil, // args, actions
+			errors.New("specified action is not expected"),
+		)
 	}
 
 	if action.IsExternalAction() {
-		return &WithKindAndActionsError{
-			Kind: ErrorKindUnexpectedAction,
-			Args: []byte("null"),
-			err:  errors.New("specified action is not implemented directly by this package"),
-		}
+		return NewWithKindAndActionsError(
+			ErrorKindUnexpectedAction,
+			nil, nil, // args, actions
+			errors.New("specified action is not implemented directly by this package"),
+		)
 	}
 
 	switch action {
@@ -455,11 +444,11 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 		// ok, do nothing
 		return nil
 	default:
-		return &WithKindAndActionsError{
-			Kind: ErrorKindUnexpectedAction,
-			Args: []byte("null"),
-			err:  errors.New("specified action is invalid"),
-		}
+		return NewWithKindAndActionsError(
+			ErrorKindUnexpectedAction,
+			nil, nil, // args, actions
+			errors.New("specified action is invalid"),
+		)
 	}
 }
 
@@ -525,36 +514,23 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 			for _, e := range unwrapCompoundError(err) {
 				kind, args, err := c.classifyRunChecksError(e)
 				if err != nil {
-					return nil, &WithKindAndActionsError{
-						Kind: ErrorKindInternal,
-						Args: []byte("null"),
-						err:  fmt.Errorf("cannot classify error %v: %w", e, err),
-					}
-				}
-				jsonArgs, err := json.Marshal(args)
-				if err != nil {
-					return nil, &WithKindAndActionsError{
-						Kind: ErrorKindInternal,
-						Args: []byte("null"),
-						err:  fmt.Errorf("cannot serialize error arguments: %w", err),
-					}
+					return nil, NewWithKindAndActionsError(
+						ErrorKindInternal,
+						nil, nil, // args, actions
+						fmt.Errorf("cannot classify error %v: %w", e, err),
+					)
 				}
 				actions := errorKindToActions[kind]
 				actions, err = c.filterUnavailableActions(actions)
 				if err != nil {
-					return nil, &WithKindAndActionsError{
-						Kind: ErrorKindInternal,
-						Args: []byte("null"),
-						err:  fmt.Errorf("cannot filter unavailable actions: %w", err),
-					}
+					return nil, NewWithKindAndActionsError(
+						ErrorKindInternal,
+						nil, nil, // args, actions
+						fmt.Errorf("cannot filter unavailable actions: %w", err),
+					)
 				}
 
-				errs = append(errs, &WithKindAndActionsError{
-					Kind:    kind,
-					Args:    jsonArgs,
-					Actions: actions,
-					err:     e,
-				})
+				errs = append(errs, NewWithKindAndActionsError(kind, args, actions, e))
 				c.expectedActions = append(c.expectedActions, actions...)
 			}
 
@@ -566,10 +542,11 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 		// PCRs we're lacking support for.
 		var requiredPCRsErr *UnsupportedRequiredPCRsError
 		if !errors.As(profileErr, &requiredPCRsErr) {
-			return nil, &WithKindAndActionsError{
-				Kind: ErrorKindInternal,
-				err:  fmt.Errorf("cannot test whether a PCR combination can be generated: %w", err),
-			}
+			return nil, NewWithKindAndActionsError(
+				ErrorKindInternal,
+				nil, nil, // args, actions
+				fmt.Errorf("cannot test whether a PCR combination can be generated: %w", err),
+			)
 		}
 
 		// Make any PCRs we're lacking support for mandatory so that they end

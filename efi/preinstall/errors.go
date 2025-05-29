@@ -294,8 +294,8 @@ var (
 // authorization value, then it is trivial to rectify using the TPM2_SetPrimaryPolicy
 // command.
 type TPM2OwnedHierarchiesError struct {
-	WithAuthValue  tpm2.HandleList
-	WithAuthPolicy tpm2.HandleList
+	WithAuthValue  tpm2.HandleList `json:"with-auth-value"`
+	WithAuthPolicy tpm2.HandleList `json:"with-auth-policy"`
 }
 
 func (e *TPM2OwnedHierarchiesError) Error() string {
@@ -354,7 +354,7 @@ func (e *PCRValueMismatchError) Error() string {
 // This error can be ignored by passing the PermitEmptyPCRBanks flag to [RunChecks]. This is
 // generally ok, as long as the device is not going to be used for any kind of remote attestation.
 type EmptyPCRBanksError struct {
-	Algs []tpm2.HashAlgorithmId
+	Algs []tpm2.HashAlgorithmId `json:"algs"`
 }
 
 func (e *EmptyPCRBanksError) Error() string {
@@ -825,13 +825,67 @@ func (e *UnsupportedRequiredPCRsError) Error() string {
 }
 
 // WithKindAndActionsError is an error type that can be serialized to JSON, represented by
-// an error kind, associated arguments and a set of potential remedial actions.
+// an error kind, associated argument map and a set of potential remedial actions.
 type WithKindAndActionsError struct {
-	Kind    ErrorKind       `json:"kind"`    // The error kind
-	Args    json.RawMessage `json:"args"`    // The arguments associated with the error, as a slice. See the documentation for the ErrorKind for the meaning of these.
-	Actions []Action        `json:"actions"` // Potential remedial actions. This may be empty. Note that not all actions can be supplied to RunChecksContext.Run.
+	Kind    ErrorKind                  `json:"kind"`    // The error kind
+	Args    map[string]json.RawMessage `json:"args"`    // A map of arguments associated with the error. See the documentation for the ErrorKind for the meaning of these.
+	Actions []Action                   `json:"actions"` // Potential remedial actions. This may be empty. Note that not all actions can be supplied to RunChecksContext.Run.
 
 	err error `json:"-"` // The original error. This is not serialized to JSON.
+}
+
+// NewWithKindAndActionsError returns a new WithKindAndActionsError for the specified
+// error kind, arguments, actions and error. The arguments must be any value that can
+// be serialized to a JSON map. If an argument cannot be serialized to a JSON map, this
+// will panic with an error that explains why.
+func NewWithKindAndActionsError(kind ErrorKind, args any, actions []Action, err error) *WithKindAndActionsError {
+	// Serialize the supplied arguments to JSON.
+	jsonArgs, jsonErr := json.Marshal(args)
+	if jsonErr != nil {
+		panic(fmt.Errorf("cannot serialize arguments to JSON: %w", jsonErr))
+	}
+
+	// Unserialize the serialized arguments to a JSON map, which
+	// is how it will be stored.
+	var jsonArgsMap map[string]json.RawMessage
+	if jsonErr := json.Unmarshal(jsonArgs, &jsonArgsMap); jsonErr != nil {
+		panic(fmt.Errorf("cannot deserialize arguments JSON to map: %w", jsonErr))
+	}
+
+	return &WithKindAndActionsError{
+		Kind:    kind,
+		Args:    jsonArgsMap,
+		Actions: actions,
+		err:     err,
+	}
+}
+
+// GetArgByName returns the value of the argument with the specified name from the map
+// of arguments. An error will be returned if the argument does not exist or is
+// not valid JSON.
+func (e *WithKindAndActionsError) GetArgByName(name string) (arg any, err error) {
+	argJson, exists := e.Args[name]
+	if !exists {
+		return nil, fmt.Errorf("argument %q does not exist", name)
+	}
+	if err := json.Unmarshal(argJson, &arg); err != nil {
+		return nil, fmt.Errorf("cannot deserialize argument %q from JSON: %w", name, err)
+	}
+	return arg, nil
+}
+
+// GetArgMap returns the arguments for this error as a map of any. An error will be
+// returned if any of the arguments are not valid JSON.
+func (e *WithKindAndActionsError) GetArgMap() (args map[string]any, err error) {
+	args = make(map[string]any)
+	for k, v := range e.Args {
+		var arg any
+		if err := json.Unmarshal(v, &arg); err != nil {
+			return nil, fmt.Errorf("cannot deserialize argument %q from JSON: %w", k, err)
+		}
+		args[k] = arg
+	}
+	return args, nil
 }
 
 func (e *WithKindAndActionsError) Error() string {
@@ -843,4 +897,31 @@ func (e *WithKindAndActionsError) Error() string {
 
 func (e *WithKindAndActionsError) Unwrap() error {
 	return e.err
+}
+
+func zero[T any]() T {
+	var z T
+	return z
+}
+
+// GetWithKindAndActionsErrorArg returns the argument map for a [WithKindAndActionsError]
+// as the specified type. If any values in the argument map cannot be serialized or the
+// serialized argument map cannot be unserialized to the specified type, an error will be
+// returned. This is a global function due to go's restriction of not allowing methods of
+// types to have arbitrary type parameters.
+func GetWithKindAndActionsErrorArg[T any](e *WithKindAndActionsError) (T, error) {
+	// Serialize the argument map to JSON.
+	jsonArgs, err := json.Marshal(e.Args)
+	if err != nil {
+		return zero[T](), fmt.Errorf("cannot serialize argument map to JSON: %w", err)
+	}
+
+	// Unserialize the serialized argument map to the desired type.
+	var arg T
+	dec := json.NewDecoder(bytes.NewReader(jsonArgs))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&arg); err != nil {
+		return zero[T](), fmt.Errorf("cannot deserialize argument map from JSON to type %T: %w", arg, err)
+	}
+	return arg, nil
 }

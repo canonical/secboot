@@ -21,12 +21,12 @@ package preinstall
 
 import (
 	"errors"
+	"time"
 
 	"github.com/canonical/go-tpm2"
 )
 
-// TPMErrorResponse represents a TPM response that can
-// be serialized to JSON.
+// TPMErrorResponse represents a TPM response that can be serialized to JSON.
 type TPMErrorResponse struct {
 	CommandCode  tpm2.CommandCode  `json:"command-code"`
 	ResponseCode tpm2.ResponseCode `json:"response-code"`
@@ -67,16 +67,16 @@ func isTPMCommunicationError(err error) (yes bool) {
 	return errors.As(err, &e)
 }
 
-// TPMHierarchyOwnershipType describes how a hierarchy is owned.
-type TPMHierarchyOwnershipType string
+// TPMDeviceLockoutArgs are the arguments associated with errors with an [ErrorKind]
+// of ErrorKindTPMDeviceLockout.
+type TPMDeviceLockoutArgs struct {
+	// IntervalDuration is the maximum amount of time it will
+	// take for the lockout counter to reduce by one so that the lockout
+	// clears, although it will only take a single authorization failure
+	// to trigger the lockout again.
+	IntervalDuration time.Duration `json:"interval-duration"`
 
-const (
-	TPMHierarchyOwnershipAuthValue  TPMHierarchyOwnershipType = "auth-value"
-	TPMHierarchyOwnershipAuthPolicy TPMHierarchyOwnershipType = "auth-policy"
-)
-
-// TPMHierarchyOwnershipInfo contains information about a hierarchy that is owned.
-type TPMHierarchyOwnershipInfo struct {
-	Hierarchy tpm2.Handle               `json:"hierarchy"`
-	Type      TPMHierarchyOwnershipType `json:"type"`
+	// TotalDuration is the maximum amount of time it will
+	// take for the lockout counter to reduce to zero.
+	TotalDuration time.Duration `json:"total-duration"`
 }

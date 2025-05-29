@@ -19,6 +19,13 @@
 
 package preinstall
 
+import (
+	"encoding/json"
+	"errors"
+
+	"github.com/canonical/go-tpm2"
+)
+
 // ErrorKind describes an error detected during preinstall checks when
 // using the [RunChecksContext] API.
 type ErrorKind string
@@ -52,8 +59,10 @@ const (
 	// ErrorKindInvalidArgument is returned if an action was supplied
 	// that requires one or more arguments, but one or more of the
 	// supplied arguments are of an invalid type of are an invalid value.
-	// This will be supplied with a single argument of type int that
-	// indicates which argument is invalid (and will be zero-indexed).
+	// This will be accompanied with an argument that is a JSON map with 2
+	// entries:
+	// - "index": An int indicating the zero-indexed argument index.
+	// - "reason": A string indicating the reason - invalid "type" or "value".
 	ErrorKindInvalidArgument ErrorKind = "invalid-argument"
 
 	// ErrorKindRunningInVM indicates that the current environment is a
@@ -76,17 +85,17 @@ const (
 
 	// ErrorKindTPMHierarchiesOwned indicates that one or more TPM hierarchy
 	// is currently owned, either because it has an authorization value or policy
-	// set. This will be supplied with one or more arguments of
-	// TPMHierarchyOwnershipInfo structures to indicate which hierarchies are
-	// owned and whether it's because they have an authorization value or a policy.
+	// set. This will be supplied with a TPM2OwnedHierarchiesError as the argument,
+	// detailing which hierarchies are owned and whether they are owned with an
+	// authorization value or an authorization policy. The TPM2OwnedHierarchiesError
+	// describes the JSON format of the argument.
 	ErrorKindTPMHierarchiesOwned ErrorKind = "tpm-hierarchies-owned"
 
 	// ErrorKindTPMDeviceLockout indicates that the TPM's dictionary attack
 	// logic is currently triggered, preventing the use of any DA protected
-	// resources. This will be accompanied with 2 arguments of type time.Duration,
-	// with the first argument being the maximum time that it will take for the
-	// lockout to clear, and the second argument being the maximum time it will
-	// take for the fail count to reach 0.
+	// resources. This will be accompanied with an argument of the type
+	// TPMDeviceLockoutArgs. The TPMDeviceLockoutArgs describes the JSON format
+	// of the argument.
 	ErrorKindTPMDeviceLockout ErrorKind = "tpm-device-lockout"
 
 	// ErrorKindInsufficientTPMStorage indicates that there isn't sufficient
@@ -111,13 +120,14 @@ const (
 	// issue for the FDE use case because we can just select a good bank, it does
 	// break remote attestation from this device, permitting an adversary to spoof
 	// arbitrary trusted platforms by replaying PCR extends from software. This
-	// will be accompanied with a slice of arguments of type tpm2.HashAlgorithmId
-	// to indicate which banks are broken.
+	// will be accompanied with an argument of the type EmptyPCRBanksError. The
+	// EmptyPCRBanksError type describes the JSON format of the arguments.
 	ErrorKindEmptyPCRBanks ErrorKind = "empty-pcr-banks"
 
 	// ErrorKindTPMCommandFailed indicates that an error occurred whilst
-	// executing a TPM command. It will be accompanied with a single argument
-	// of the type TPMErrorResponse.
+	// executing a TPM command. It will be accompanied with an argument of the
+	// type TPMErrorResponse. The TPMErrorResponse type describes the JSON format
+	// of the arguments.
 	ErrorKindTPMCommandFailed ErrorKind = "tpm-command-failed"
 
 	// ErrorKindInvalidTPMResponse indicates that the response from the TPM is
@@ -161,14 +171,15 @@ const (
 
 	// ErrorKindPCRUnusable indicates an error in the way that the platform
 	// firmware performs measurements such that the PCR becomes unusable.
-	// This will include a single tpm2.Handle argument to indicate which PCR
-	// failed.
+	// This will be accompanied by a PCRUnusableArg argument to indicate which PCR
+	// is unusable. The implementation of PCRUnusableArg describes the JSON format
+	// of the argument.
 	ErrorKindPCRUnusable ErrorKind = "tpm-pcr-unusable"
 
-	// ErrorKindPCRUnsupported indicates that a required PCR is currently
-	// unsupported by the efi sub-package. This will include 2 arguments - the
-	// first one being a tpm2.Handle to indicate which PCR is unsupported. The
-	// second argument will be a string containing a URL to a github issue.
+	// ErrorKindPCRUnsupported indicates that a required PCR is currently unsupported
+	// by the efi sub-package. This will be accompanied by a PCRUnsupportedArgs argument to
+	// indicate the unsupported PCR and which contains a URL to a github issue. The
+	// PCRUnsupportedArgs type describes the JSON format of the arguments.
 	ErrorKindPCRUnsupported ErrorKind = "tpm-pcr-unsupported"
 
 	// ErrorKindVARSuppliedDriversPresent indicates that drivers running from value-added-retailer
@@ -214,3 +225,38 @@ const (
 	// launch event from PCR2 or PCR4 to grab the device path and include it as an argument.
 	ErrorKindPreOSDigestVerificationDetected ErrorKind = "pre-os-digest-verification-detected"
 )
+
+// PCRUnusableArg represents an unusable PCR handle that can be
+// serialized to JSON.
+type PCRUnusableArg tpm2.Handle
+
+// MarshalJSON implements [json.Marshaler].
+func (a PCRUnusableArg) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]tpm2.Handle{"pcr": tpm2.Handle(a)})
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (a *PCRUnusableArg) UnmarshalJSON(data []byte) error {
+	var arg map[string]tpm2.Handle
+	if err := json.Unmarshal(data, &arg); err != nil {
+		return err
+	}
+	pcr, exists := arg["pcr"]
+	if !exists {
+		return errors.New("no \"pcr\" field")
+	}
+	*a = (PCRUnusableArg)(pcr)
+	return nil
+}
+
+// PCR returns this argument as a PCR handle.
+func (a PCRUnusableArg) PCR() tpm2.Handle {
+	return tpm2.Handle(a)
+}
+
+// PCRUnsupportedArgs represents an unsupported PCR handle that can be
+// serialized to JSON.
+type PCRUnsupportedArgs struct {
+	PCR tpm2.Handle `json:"pcr"` // The unsupported PCR.
+	URL string      `json:"url"` // A URL to a github issue.
+}
