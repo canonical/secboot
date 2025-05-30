@@ -21,6 +21,7 @@ package preinstall
 
 import (
 	"crypto"
+	"encoding/json"
 	"io"
 
 	efi "github.com/canonical/go-efilib"
@@ -90,6 +91,7 @@ var (
 	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
 	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
+	UnwrapCompoundError                                   = unwrapCompoundError
 )
 
 func MockEfiComputePeImageDigest(fn func(crypto.Hash, io.ReaderAt, int64) ([]byte, error)) (restore func()) {
@@ -129,5 +131,14 @@ func MockRunChecksEnv(env internal_efi.HostEnvironment) (restore func()) {
 	runChecksEnv = env
 	return func() {
 		runChecksEnv = orig
+	}
+}
+
+func NewWithKindAndActionsErrorForTest(kind ErrorKind, args map[string]json.RawMessage, actions []Action, err error) *WithKindAndActionsError {
+	return &WithKindAndActionsError{
+		Kind:    kind,
+		Args:    args,
+		Actions: actions,
+		err:     err,
 	}
 }
