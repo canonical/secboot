@@ -25,9 +25,9 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/canonical/tcglog-parser"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-func checkPlatformFirmwareProtections(env HostEnvironment, log *tcglog.Log) (result firmwareProtectionResultFlags, err error) {
-	return 0, &UnsupportedPlatformError{fmt.Errorf("checking platform firmware protections is not implemented on %s", runtime.GOARCH)}
+func isTPMDiscrete(env internal_efi.HostEnvironment) (bool, error) {
+	return false, &UnsupportedPlatformError{fmt.Errorf("checking for TPM discreteness is not implemented on %s", runtime.GOARCH)}
 }
