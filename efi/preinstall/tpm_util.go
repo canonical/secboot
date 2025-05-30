@@ -20,6 +20,7 @@
 package preinstall
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -79,4 +80,56 @@ type TPMDeviceLockoutArgs struct {
 	// TotalDuration is the maximum amount of time it will
 	// take for the lockout counter to reduce to zero.
 	TotalDuration time.Duration `json:"total-duration"`
+}
+
+// IsValid indicates whether these arguments are valid. In order to be valid,
+// each member must be a modulus of 1 second and not negative
+func (a *TPMDeviceLockoutArgs) IsValid() bool {
+	if a.IntervalDuration%time.Second != 0 || a.IntervalDuration < 0 {
+		return false
+	}
+	return a.TotalDuration%time.Second == 0 && a.TotalDuration >= 0
+}
+
+// TPMDeviceLockoutRecoveryArg is the argument associated with errors with an [ErrorKind]
+// of ErrorKindTPMDeviceLockoutLockedOut.
+type TPMDeviceLockoutRecoveryArg time.Duration
+
+// MarshalJSON implements [json.Marshaler].
+func (r TPMDeviceLockoutRecoveryArg) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]time.Duration{"duration": time.Duration(r)})
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (r *TPMDeviceLockoutRecoveryArg) UnmarshalJSON(data []byte) error {
+	var arg map[string]time.Duration
+	if err := json.Unmarshal(data, &arg); err != nil {
+		return err
+	}
+	duration, exists := arg["duration"]
+	if !exists {
+		return errors.New("no \"duration\" field")
+	}
+	*r = TPMDeviceLockoutRecoveryArg(duration)
+	return nil
+}
+
+// Duration returns the maximum recovery duration for the lockout hierarchy
+// to become available again. If it is zero, then it will become available
+// after the next TPM reset or restart.
+func (r TPMDeviceLockoutRecoveryArg) Duration() time.Duration {
+	return time.Duration(r)
+}
+
+// LockoutClearsOnTPMStartupClear returns true if the lockout clears on the next
+// TPM reset or restart, after which the lockout hierarchy will become available
+// again. This is true if the lockout recovery duration is set to zero.
+func (r TPMDeviceLockoutRecoveryArg) LockoutClearsOnTPMStartupClear() bool {
+	return r.Duration() == time.Duration(0)
+}
+
+// IsValid indicates whether this argument is valid. In order to be valid,
+// it must be a modulus of 1 second and not negative.
+func (r TPMDeviceLockoutRecoveryArg) IsValid() bool {
+	return time.Duration(r)%time.Second == 0 && r >= 0
 }

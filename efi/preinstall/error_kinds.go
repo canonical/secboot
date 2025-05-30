@@ -88,15 +88,27 @@ const (
 	// set. This will be supplied with a TPM2OwnedHierarchiesError as the argument,
 	// detailing which hierarchies are owned and whether they are owned with an
 	// authorization value or an authorization policy. The TPM2OwnedHierarchiesError
-	// describes the JSON format of the argument.
+	// type describes the JSON format of the argument.
 	ErrorKindTPMHierarchiesOwned ErrorKind = "tpm-hierarchies-owned"
 
 	// ErrorKindTPMDeviceLockout indicates that the TPM's dictionary attack
 	// logic is currently triggered, preventing the use of any DA protected
-	// resources. This will be accompanied with an argument of the type
-	// TPMDeviceLockoutArgs. The TPMDeviceLockoutArgs describes the JSON format
+	// resources. This only applies to DA protected resources other than the
+	// lockout hierarchy. This will be accompanied with an argument of the type
+	// TPMDeviceLockoutArgs. The TPMDeviceLockoutArgs type describes the JSON format
 	// of the argument.
 	ErrorKindTPMDeviceLockout ErrorKind = "tpm-device-lockout"
+
+	// ErrorKindTPMDeviceLockoutLockedOut indicates that the TPM's lockout hierarchy
+	// is currently unavailable because it is locked out. This is not the same as
+	// ErrorKindTPMDeviceLockout. As there is no way to test for this other than
+	// by performing an operation that requires authorizing the lockout hierarchy,
+	// the test for this is only performed once verifying that the lockout hierarchy
+	// has no authorization value set, and then an attempt is made to use the lockout
+	// hierarchy with an empty authorization value. This will be accompanied with an
+	// argument of the type TPMDeviceLockoutRecoveryArg. The TPMDeviceLockoutRecoveryArg
+	// type describes the JSON format of the argument.
+	ErrorKindTPMDeviceLockoutLockedOut ErrorKind = "tpm-device-lockout-locked-out"
 
 	// ErrorKindInsufficientTPMStorage indicates that there isn't sufficient
 	// storage space available to support FDE along with reprovisioning in
@@ -245,7 +257,7 @@ func (a *PCRUnusableArg) UnmarshalJSON(data []byte) error {
 	if !exists {
 		return errors.New("no \"pcr\" field")
 	}
-	*a = (PCRUnusableArg)(pcr)
+	*a = PCRUnusableArg(pcr)
 	return nil
 }
 
