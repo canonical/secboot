@@ -132,6 +132,7 @@ func (s *loadOptionUtilSuite) TestReadCurrentBootLoadOptionFromLog(c *C) {
 func (s *loadOptionUtilSuite) TestReadCurrentBootLoadOptionFromLogMissingBootCurrent(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{})),
+		efitest.WithMockVars(efitest.MockVars{}),
 	)
 
 	log, err := env.ReadEventLog()

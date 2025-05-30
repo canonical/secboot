@@ -204,6 +204,10 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		panic("not reached")
 	}
 
+	if err := checkSystemIsEFI(ctx, runChecksEnv); err != nil {
+		return nil, err
+	}
+
 	var checkTPMFlags checkTPM2DeviceFlags
 	if virtMode == detectVirtVM {
 		checkTPMFlags |= checkTPM2DeviceInVM
@@ -419,6 +423,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	pcr4Result, err := checkBootManagerCodeMeasurements(ctx, runChecksEnv, log, result.PCRAlg, loadedImages)
 	switch {
+	case isEFIVariableAccessError(err):
+		// Always return EFI variable access errors.
+		return nil, &EFIVariableAccessError{err: err}
 	case err != nil && !logResults.Lookup(internal_efi.BootManagerCodePCR).Ok():
 		// Don't record another error for this PCR
 	case err != nil && flags&PermitNoBootManagerCodeProfileSupport == 0:
@@ -457,6 +464,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	}
 	pcr7Result, err := checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx, runChecksEnv, log, result.PCRAlg, iblImage)
 	switch {
+	case isEFIVariableAccessError(err):
+		// Always return EFI variable access errors.
+		return nil, &EFIVariableAccessError{err: err}
 	case err != nil && !logResults.Lookup(internal_efi.SecureBootPolicyPCR).Ok():
 		// Don't record another error for this PCR
 	case err != nil && flags&PermitNoSecureBootPolicyProfileSupport == 0:

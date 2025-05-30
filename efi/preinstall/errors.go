@@ -151,6 +151,25 @@ var (
 	ErrVirtualMachineDetected = errors.New("virtual machine environment detected")
 )
 
+// EFIVariableAccessError describes an error that occurred when reading an EFI variable.
+type EFIVariableAccessError struct {
+	err error
+}
+
+func (e *EFIVariableAccessError) Error() string {
+	return fmt.Sprintf("cannot access EFI variable: %v", e.err)
+}
+
+func (e *EFIVariableAccessError) Unwrap() error {
+	return e.err
+}
+
+var (
+	// ErrSystemNotEFI is returned unwrapped from RunChecks if the current host
+	// system does not appear to be an EFI system.
+	ErrSystemNotEFI = errors.New("host system is not a EFI system")
+)
+
 // Errors related to checking platform firmware protections.
 
 // HostSecurityError may be returned unwrapped or wrapped in [RunChecksError] if there is

@@ -81,6 +81,7 @@ var (
 	CheckHostSecurityIntelCPUDebuggingLocked              = checkHostSecurityIntelCPUDebuggingLocked
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
+	CheckSystemIsEFI                                      = checkSystemIsEFI
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
