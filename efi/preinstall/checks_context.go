@@ -255,7 +255,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 
 	if errors.Is(err, ErrTPMLockout) {
 		var (
-			lockoutCounter  uint32
+			maxAuthFail     uint32
 			lockoutInterval uint32
 		)
 		dev, err := c.env.TPMDevice()
@@ -274,7 +274,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 			Prop   tpm2.Property
 			Target *uint32
 		}{
-			{Prop: tpm2.PropertyLockoutCounter, Target: &lockoutCounter},
+			{Prop: tpm2.PropertyMaxAuthFail, Target: &maxAuthFail},
 			{Prop: tpm2.PropertyLockoutInterval, Target: &lockoutInterval},
 		} {
 			val, err := tpm.GetCapabilityTPMProperty(prop.Prop)
@@ -286,7 +286,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 
 		return ErrorKindTPMDeviceLockout, &TPMDeviceLockoutArgs{
 			IntervalDuration: time.Duration(lockoutInterval) * time.Second,
-			TotalDuration:    time.Duration(lockoutInterval) * time.Second * time.Duration(lockoutCounter),
+			TotalDuration:    time.Duration(lockoutInterval) * time.Second * time.Duration(maxAuthFail),
 		}, nil
 	}
 
