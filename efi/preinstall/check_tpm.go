@@ -250,6 +250,22 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 			}
 		}
 
+		if tpm2.PermanentAttributes(perm)&tpm2.AttrLockoutAuthSet == 0 {
+			// If the lockout hierarchy has no authorization value, attempt to use it with an empty
+			// authorization value to check if it is enabled or not. There is no other way to figure
+			// this out other than by using it.
+			tpm.LockoutHandleContext().SetAuthValue(nil)
+			if err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil); err != nil {
+				if !tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandDictionaryAttackLockReset) {
+					return nil, fmt.Errorf("cannot test usage of TPM_RH_LOCKOUT: %w", err)
+				}
+				// The lockout hierarchy is unavailable because it is locked out, either for what is
+				// remaining of the pre-programmed lockoutRecovery time, or until the TPM is cleared
+				// using the platform auth.
+				errs = append(errs, ErrTPMLockoutLockedOut)
+			}
+		}
+
 		if len(errs) > 0 {
 			return tpm, joinErrors(errs...)
 		}

@@ -64,6 +64,11 @@ func init() {
 			// TODO: Add actions to clear the TPM, either directly if possible or via the PPI
 			// TODO: Add action to clear the lockout.
 		},
+		ErrorKindTPMDeviceLockoutLockedOut: []Action{
+			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
+			// TODO: Add actions to clear the TPM via the PPI - there will be no option to clear it directly because the lockout hierarchy is unavailable.
+			// There will be no option to clear the lockout as there isn't a mechanism to do this.
+		},
 		ErrorKindInsufficientTPMStorage: []Action{
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
 			// TODO: Add actions to clear the TPM, either directly if possible or via the PPI
@@ -295,6 +300,27 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 			IntervalDuration: time.Duration(lockoutInterval) * time.Second,
 			TotalDuration:    time.Duration(lockoutInterval) * time.Second * time.Duration(maxAuthFail),
 		}, nil
+	}
+
+	if errors.Is(err, ErrTPMLockoutLockedOut) {
+		dev, err := c.env.TPMDevice()
+		if err != nil {
+			// This shouldn't be possible - we just did some tests against a TPM device.
+			return ErrorKindNone, nil, fmt.Errorf("cannot obtain TPM device: %w", err)
+		}
+		tpm, err := tpm2.OpenTPMDevice(dev)
+		if err != nil {
+			// Likewise, this also shouldn't be possible, for the same reason.
+			return ErrorKindNone, nil, fmt.Errorf("cannot open TPM device: %w", err)
+		}
+		defer tpm.Close()
+
+		val, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
+		if err != nil {
+			return ErrorKindNone, nil, fmt.Errorf("cannot read property %v: %w", tpm2.PropertyLockoutRecovery, err)
+		}
+
+		return ErrorKindTPMDeviceLockoutLockedOut, TPMDeviceLockoutRecoveryArg(time.Duration(val) * time.Second), nil
 	}
 
 	if errors.Is(err, ErrTPMInsufficientNVCounters) {
