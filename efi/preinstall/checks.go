@@ -29,10 +29,14 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-// CheckFlags can be used to customize the behaviour or [RunChecks].
+// CheckFlags can be used to customize the behaviour or [RunChecks] and [NewRunChecksContext].
 type CheckFlags int
 
 const (
+	// CheckFlagsDefault is the default flags for RunChecks and
+	// NewRunChecksContext if no other flags are supplied.
+	CheckFlagsDefault CheckFlags = 0
+
 	// PlatformFirmwareProfileSupportRequired indicates that support for
 	// [secboot_efi.WithPlatformFirmwareProfile] to generate profiles for
 	// PCR 0 is not optional.
@@ -211,7 +215,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	if flags&PostInstallChecks > 0 {
 		checkTPMFlags |= checkTPM2DevicePostInstall
 	}
-	tpm, discreteTPM, err := openAndCheckTPM2Device(runChecksEnv, checkTPMFlags)
+	tpm, err := openAndCheckTPM2Device(runChecksEnv, checkTPMFlags)
 	if err != nil {
 		var ce CompoundError
 		if !errors.As(err, &ce) {
@@ -223,10 +227,6 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		}
 	}
 	defer tpm.Close()
-	if discreteTPM {
-		// Note that a discrete TPM was detected.
-		result.Flags |= DiscreteTPMDetected
-	}
 
 	// Grab the TCG log.
 	log, err := runChecksEnv.ReadEventLog()
@@ -270,7 +270,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	logResults, err := checkFirmwareLogAndChoosePCRBank(tpm, log, mandatoryPcrs, checkLogFlags)
 	switch {
-	case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode):
+	case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode) ||
+		tpm2.IsTPMWarning(err, tpm2.AnyWarningCode, tpm2.AnyCommandCode) ||
+		isInvalidTPMResponse(err) || isTPMCommunicationError(err):
 		return nil, &TPM2DeviceError{err}
 	case isEmptyPCRBanksError(err):
 		// Save this error and return it unwrapped when the checks complete
@@ -304,11 +306,12 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		warnings = append(warnings, err)
 	}
 
+	discreteTPM := false
+
 	if virtMode == detectVirtNone {
 		// Only run platform firmware protection checks if we are not in a VM
 		protectedLocalities, err := checkPlatformFirmwareProtections(runChecksEnv, log)
-		switch {
-		case err != nil:
+		if err != nil {
 			var ce CompoundError
 			if !errors.As(err, &ce) {
 				return nil, &HostSecurityError{err}
@@ -316,7 +319,14 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			for _, e := range ce.Unwrap() {
 				deferredErrs = append(deferredErrs, &HostSecurityError{e})
 			}
-		case discreteTPM:
+		}
+
+		discreteTPM, err = isTPMDiscrete(runChecksEnv)
+		if err != nil {
+			return nil, &TPM2DeviceError{err}
+		}
+
+		if discreteTPM {
 			switch logResults.StartupLocality {
 			case 0:
 				// TPM2_Startup occurred from locality 0. Mark PCR0 as reconstructible
@@ -351,6 +361,11 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				}
 			}
 		}
+	}
+
+	if discreteTPM {
+		// Note that a discrete TPM was detected.
+		result.Flags |= DiscreteTPMDetected
 	}
 
 	if logResults.Lookup(internal_efi.PlatformConfigPCR).Ok() {
@@ -461,6 +476,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			}
 			result.UsedSecureBootCAs = pcr7Result.UsedAuthorities
 
+			// Only return these errors if PCR7 is required.
 			if result.Flags&WeakSecureBootAlgorithmsDetected > 0 && flags&PermitWeakSecureBootAlgorithms == 0 {
 				// We don't support weak secure boot verification algorithms
 				deferredErrs = append(deferredErrs, ErrWeakSecureBootAlgorithmDetected)
