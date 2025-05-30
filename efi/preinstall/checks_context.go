@@ -46,6 +46,9 @@ func init() {
 		ErrorKindRunningInVM: []Action{
 			// TODO: Add action to add PermitVirtualMachine to CheckFlags
 		},
+		ErrorKindEFIVariableAccess: []Action{
+			ActionContactOEM,
+		},
 		ErrorKindTPMDeviceFailure: []Action{
 			ActionReboot,
 			ActionContactOEM,
@@ -249,6 +252,17 @@ func (c *RunChecksContext) isActionExpected(action Action) bool {
 func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, error) {
 	if errors.Is(err, ErrVirtualMachineDetected) {
 		return ErrorKindRunningInVM, nil, nil
+	}
+	if errors.Is(err, ErrSystemNotEFI) {
+		return ErrorKindSystemNotEFI, nil, nil
+	}
+	var efiErr *EFIVariableAccessError
+	if errors.As(err, &efiErr) {
+		arg, ok := MakeEFIVariableAccessErrorArg(efiErr)
+		if !ok {
+			return ErrorKindNone, nil, fmt.Errorf("unrecognized EFI variable access error: %w", err)
+		}
+		return ErrorKindEFIVariableAccess, arg, nil
 	}
 	if errors.Is(err, ErrNoTPM2Device) || errors.Is(err, ErrNoPCClientTPM) {
 		return ErrorKindNoSuitableTPM2Device, nil, nil

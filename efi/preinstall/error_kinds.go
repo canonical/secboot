@@ -69,6 +69,16 @@ const (
 	// virtal machine.
 	ErrorKindRunningInVM ErrorKind = "running-in-vm"
 
+	// ErrorKindSystemNotEFI indicates that the current host system is not
+	// an EFI system.
+	ErrorKindSystemNotEFI ErrorKind = "system-not-efi"
+
+	// ErrorKindEFIVariableAccess indicates that an error occurred when accessing
+	// an EFI variable. This will be supplied with a EFIVariableAccessErrorArg
+	// as the argument, which details exactly what access error occurred. The
+	// EFIVariableAccessErrorArg type describes the JSON format of the argument.
+	ErrorKindEFIVariableAccess ErrorKind = "efi-variable-access"
+
 	// ErrorKindNoSuitableTPM2Device indicates that the device has no
 	// suitable TPM2 device. This is a fatal error. This error means that
 	// full-disk encryption is not supported on this device.
