@@ -129,9 +129,12 @@ func (e *mockHostEnvironmentAMD64) HasCPUIDFeature(feature uint64) bool {
 }
 
 func (e *mockHostEnvironmentAMD64) ReadMSRs(msr uint32) (map[uint32]uint64, error) {
+	if e.msrs == nil || e.cpus == 0 {
+		return nil, internal_efi.ErrNoKernelMSRSupport
+	}
 	val, exists := e.msrs[msr]
 	if !exists {
-		return nil, errors.New("MSR does not exist")
+		return nil, internal_efi.ErrNoMSRSupport
 	}
 	out := make(map[uint32]uint64)
 	for i := uint32(0); i < e.cpus; i++ {
