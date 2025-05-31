@@ -23,6 +23,7 @@ package preinstall_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 
 	. "gopkg.in/check.v1"
@@ -31,6 +32,7 @@ import (
 	. "github.com/snapcore/secboot/efi/preinstall"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 type hostSecurityIntelSuite struct{}
@@ -350,7 +352,8 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoDevices
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEIDevice(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(make(map[string][]internal_efi.SysfsDevice)))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no MEI device available`)
+	c.Check(err, ErrorMatches, `the kernel module "mei_me" must be loaded`)
+	c.Check(err, Equals, MissingKernelModuleError("mei_me"))
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrHFSTSRegisters(c *C) {
@@ -652,13 +655,17 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErr
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
-	c.Check(CheckHostSecurityIntelCPUDebuggingLocked(amd64Env), ErrorMatches, `cannot read MSRs: MSR does not exist`)
+	err = CheckHostSecurityIntelCPUDebuggingLocked(amd64Env)
+	c.Check(err, ErrorMatches, `cannot read MSRs: missing MSR support`)
+	c.Check(errors.Is(err, internal_efi.ErrNoMSRSupport), testutil.IsTrue)
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrNoMSRValues(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 0, map[uint32]uint64{0xc80: 0x40000000}))
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrNoMSRSupport(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 0, nil))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
-	c.Check(CheckHostSecurityIntelCPUDebuggingLocked(amd64Env), ErrorMatches, `no MSR values returned`)
+	err = CheckHostSecurityIntelCPUDebuggingLocked(amd64Env)
+	c.Check(err, ErrorMatches, `the kernel module "msr" must be loaded`)
+	c.Check(err, Equals, MissingKernelModuleError("msr"))
 }

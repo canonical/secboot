@@ -250,6 +250,14 @@ func (c *RunChecksContext) isActionExpected(action Action) bool {
 // [RunChecks] into an [ErrorKind] and associated arguments where applicable
 // (see the documentation for each error kind).
 func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, error) {
+	var me MissingKernelModuleError
+	if errors.As(err, &me) {
+		// A missing kernel module is an internal error because it's an
+		// error with the way that the caller is using the API, and not
+		// something that should be directly exposed to some UI.
+		return ErrorKindInternal, nil, nil
+	}
+
 	if errors.Is(err, ErrVirtualMachineDetected) {
 		return ErrorKindRunningInVM, nil, nil
 	}
