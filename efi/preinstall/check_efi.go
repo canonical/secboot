@@ -1,5 +1,3 @@
-//go:build !amd64
-
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
@@ -22,12 +20,24 @@
 package preinstall
 
 import (
-	"fmt"
-	"runtime"
+	"context"
+	"errors"
 
-	"github.com/canonical/tcglog-parser"
+	efi "github.com/canonical/go-efilib"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-func checkPlatformFirmwareProtections(env HostEnvironment, log *tcglog.Log) (result firmwareProtectionResultFlags, err error) {
-	return 0, &UnsupportedPlatformError{fmt.Errorf("checking platform firmware protections is not implemented on %s", runtime.GOARCH)}
+// checkSystemIsEFI checks if the host system is an EFI system by ensuring that there
+// is a mechanism to read the SecureBoot global variable using go-efilib's variable
+// reading API.
+func checkSystemIsEFI(ctx context.Context, env internal_efi.HostEnvironment) error {
+	_, _, err := efi.ReadVariable(env.VarContext(ctx), "SecureBoot", efi.GlobalVariable)
+	switch {
+	case errors.Is(err, efi.ErrVarsUnavailable):
+		return ErrSystemNotEFI
+	case isEFIVariableAccessError(err):
+		return &EFIVariableAccessError{err: err}
+	default:
+		return err
+	}
 }

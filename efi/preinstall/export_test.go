@@ -21,6 +21,7 @@ package preinstall
 
 import (
 	"crypto"
+	"encoding/json"
 	"io"
 
 	efi "github.com/canonical/go-efilib"
@@ -72,17 +73,20 @@ const (
 var (
 	CalculateIntelMEFamily                                = calculateIntelMEFamily
 	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
-	CheckCPUDebuggingLockedMSR                            = checkCPUDebuggingLockedMSR
 	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
 	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
 	CheckForKernelIOMMU                                   = checkForKernelIOMMU
-	CheckPlatformFirmwareProtections                      = checkPlatformFirmwareProtections
-	CheckPlatformFirmwareProtectionsIntelMEI              = checkPlatformFirmwareProtectionsIntelMEI
+	CheckHostSecurity                                     = checkHostSecurity
+	CheckHostSecurityIntelBootGuard                       = checkHostSecurityIntelBootGuard
+	CheckHostSecurityIntelCPUDebuggingLocked              = checkHostSecurityIntelCPUDebuggingLocked
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
+	CheckSystemIsEFI                                      = checkSystemIsEFI
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
+	IsTPMDiscrete                                         = isTPMDiscrete
+	IsTPMDiscreteFromIntelBootGuard                       = isTPMDiscreteFromIntelBootGuard
 	JoinErrors                                            = joinErrors
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
@@ -90,6 +94,7 @@ var (
 	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
 	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
+	UnwrapCompoundError                                   = unwrapCompoundError
 )
 
 func MockEfiComputePeImageDigest(fn func(crypto.Hash, io.ReaderAt, int64) ([]byte, error)) (restore func()) {
@@ -129,5 +134,14 @@ func MockRunChecksEnv(env internal_efi.HostEnvironment) (restore func()) {
 	runChecksEnv = env
 	return func() {
 		runChecksEnv = orig
+	}
+}
+
+func NewWithKindAndActionsErrorForTest(kind ErrorKind, args map[string]json.RawMessage, actions []Action, err error) *WithKindAndActionsError {
+	return &WithKindAndActionsError{
+		Kind:    kind,
+		Args:    args,
+		Actions: actions,
+		err:     err,
 	}
 }
