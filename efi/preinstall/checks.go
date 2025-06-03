@@ -158,6 +158,17 @@ const (
 	// is generally ok for full-disk encryption, but completely breaks the remote attestation model
 	// because it allows an adversary to trivially spoof an entire trusted platform from software.
 	PermitEmptyPCRBanks
+
+	// PermitInsufficientDMAProtection will prevent RunChecks from returning an error if the firmware
+	// indicates that DMA remapping was disabled in the pre-OS environment.
+	// This weakens security because it allows pre-OS DMA attacks to compromise system integrity.
+	PermitInsufficientDMAProtection
+
+	// PermitNoKernelIOMMMU will prevent RunChecks from returning an error if no kernel IOMMU support
+	// is detected. This could either be because the processor doesn't not have IOMMU capabilities,
+	// or because the IOMMU was disabled by firmware.
+	// This weakens security because it allows DMA attacks to compromise system integrity.
+	PermitNoKernelIOMMMU
 )
 
 var (
@@ -313,16 +324,22 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	if virtMode == detectVirtNone {
 		// Only run platform firmware protection checks if we are not in a VM
 		protectedLocalities, err := checkPlatformFirmwareProtections(runChecksEnv, log)
-		switch {
-		case err != nil:
+		if err != nil {
 			var ce CompoundError
 			if !errors.As(err, &ce) {
 				return nil, &HostSecurityError{err}
 			}
 			for _, e := range ce.Unwrap() {
-				deferredErrs = append(deferredErrs, &HostSecurityError{e})
+				if err == ErrInsufficientDMAProtection && flags&PermitInsufficientDMAProtection > 0 {
+					result.Flags |= InsufficientDMAProtectionDetected
+				} else if err == ErrNoKernelIOMMU && flags&PermitNoKernelIOMMMU > 0 {
+					result.Flags |= NoKernelIOMMMUDetected
+				} else {
+					deferredErrs = append(deferredErrs, &HostSecurityError{e})
+				}
 			}
-		case discreteTPM:
+		}
+		if discreteTPM {
 			switch logResults.StartupLocality {
 			case 0:
 				// TPM2_Startup occurred from locality 0. Mark PCR0 as reconstructible

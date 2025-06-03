@@ -33,17 +33,22 @@ import (
 )
 
 const (
-	sbStateName = "SecureBoot" // Unicode variable name for the EFI secure boot configuration (enabled/disabled)
+	sbStateName           = "SecureBoot"              // Unicode variable name for the EFI secure boot configuration (enabled/disabled)
+	dmaProtectionDisabled = "DMA Protection Disabled" // ASCII string measured to PCR7 if DMA remapping is disabled in the pre-OS environment
 )
 
 // fwLoadHandler is an implementation of imageLoadHandler that measures firmware
 // events (pre-OS events and events related to loading of OS components).
 type fwLoadHandler struct {
 	log *tcglog.Log
+
+	// allowInsufficientDMAProtection is used to allow for the "DMA Protection Disabled"
+	// string in PCR7.
+	allowInsufficientDMAProtection bool
 }
 
-var newFwLoadHandler = func(log *tcglog.Log) imageLoadHandler {
-	return &fwLoadHandler{log: log}
+var newFwLoadHandler = func(log *tcglog.Log, allowInsufficientDMAProtection bool) imageLoadHandler {
+	return &fwLoadHandler{log: log, allowInsufficientDMAProtection: allowInsufficientDMAProtection}
 }
 
 func (h *fwLoadHandler) measureSeparator(ctx pcrBranchContext, pcr tpm2.Handle, event *tcglog.Event) error {
@@ -145,6 +150,12 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			if foundSecureBootSeparator {
 				return errors.New("unexpected configuration event")
 			}
+		case h.allowInsufficientDMAProtection &&
+			e.PCRIndex == internal_efi.SecureBootPolicyPCR &&
+			e.EventType == tcglog.EventTypeAction &&
+			bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)):
+			// Allow for the "DMA Protection Disabled" string in PCR7.
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR:
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:

@@ -190,6 +190,23 @@ const (
 	//
 	// Note that this flag is not persisted when serializing the results.
 	PreOSVerificationUsingDigestsDetected
+
+	// InsufficientDMAProtectionDetected indicates that DMA remapping was disabled in the pre-OS environment.
+	// This weakens security because it allows pre-OS DMA attacks to compromise system integrity.
+	// Support for this has to be opted into with the PermitInsufficientDMAProtection flag to RunChecks.
+	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	InsufficientDMAProtectionDetected
+
+	// NoKernelIOMMMUDetected indicates that no kernel IOMMU support is detected. This could either be because the processor doesn't not have IOMMU capabilities,
+	// or because the IOMMU was disabled by firmware.
+	// This weakens security because it allows DMA attacks to compromise system integrity.
+	// Support for this has to be opted into with the PermitNoKernelIOMMMU flag to RunChecks.
+	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
+	//
+	// Note that this flag is not persisted when serializing the results.
+	NoKernelIOMMMUDetected
 )
 
 var checkResultFlagToIDStringMap = map[CheckResultFlags]string{
@@ -212,6 +229,8 @@ var checkNonPersistentResultFlagToIDStringMap = map[CheckResultFlags]string{
 	RunningInVirtualMachine:               "running-in-vm",
 	WeakSecureBootAlgorithmsDetected:      "weak-secure-boot-algs-detected",
 	PreOSVerificationUsingDigestsDetected: "pre-os-verification-using-digests-detected",
+	InsufficientDMAProtectionDetected:     "insufficient-dma-protection-detected",
+	NoKernelIOMMMUDetected:                "no-kernel-iommu-detected",
 }
 
 var checkResultFlagFromIDStringMap = map[string]CheckResultFlags{
@@ -224,6 +243,8 @@ var checkResultFlagFromIDStringMap = map[string]CheckResultFlags{
 	"no-secure-boot-policy-profile-support":      NoSecureBootPolicyProfileSupport,
 	"discrete-tpm-detected":                      DiscreteTPMDetected,
 	"startup-locality-not-protected":             StartupLocalityNotProtected,
+	"insufficient-dma-protection-detected":       InsufficientDMAProtectionDetected,
+	"no-kernel-iommu-detected":                   NoKernelIOMMMUDetected,
 }
 
 type checkResultJSON struct {
