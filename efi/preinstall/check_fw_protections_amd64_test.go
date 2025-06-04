@@ -36,35 +36,6 @@ type fwProtectionsAMD64Suite struct{}
 
 var _ = Suite(&fwProtectionsAMD64Suite{})
 
-func (s *fwProtectionsAMD64Suite) TestDetermineCPUVendorIntel(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	vendor, err := DetermineCPUVendor(amd64Env)
-	c.Check(err, IsNil)
-	c.Check(vendor, Equals, CpuVendorIntel)
-}
-
-func (s *fwProtectionsAMD64Suite) TestDetermineCPUVendorAMD(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	vendor, err := DetermineCPUVendor(amd64Env)
-	c.Check(err, IsNil)
-	c.Check(vendor, Equals, CpuVendorAMD)
-}
-
-func (s *fwProtectionsAMD64Suite) TestDetermineCPUVendorUnknown(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineInte", nil, 0, nil))
-	amd64Env, err := env.AMD64()
-	c.Assert(err, IsNil)
-
-	_, err = DetermineCPUVendor(amd64Env)
-	c.Check(err, ErrorMatches, `unknown CPU vendor: GenuineInte`)
-}
-
 func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsGood(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
@@ -139,7 +110,10 @@ func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrNotAMD6
 	env := efitest.NewMockHostEnvironmentWithOpts()
 
 	_, err := CheckPlatformFirmwareProtections(env, nil)
-	c.Check(err, ErrorMatches, `cannot obtain AMD64 environment: not a AMD64 host`)
+	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: not a AMD64 host`)
+
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
 func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrUnrecognizedCpuVendor(c *C) {
@@ -148,7 +122,10 @@ func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrUnrecog
 	)
 
 	_, err := CheckPlatformFirmwareProtections(env, nil)
-	c.Check(err, ErrorMatches, `cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
+	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
+
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
 func (s *fwProtectionsAMD64Suite) TestCheckPlatformFirmwareProtectionsErrAMDNotSupportedYet(c *C) {

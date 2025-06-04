@@ -29,41 +29,20 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-type cpuVendor int
-
-const (
-	cpuVendorUnknown cpuVendor = iota
-	cpuVendorIntel
-	cpuVendorAMD
-)
-
-func determineCPUVendor(env internal_efi.HostEnvironmentAMD64) (cpuVendor, error) {
-	switch env.CPUVendorIdentificator() {
-	case "GenuineIntel":
-		return cpuVendorIntel, nil
-	case "AuthenticAMD":
-		return cpuVendorAMD, nil
-	default:
-		return cpuVendorUnknown, fmt.Errorf("unknown CPU vendor: %s", env.CPUVendorIdentificator())
-	}
-}
-
 // checkPlatformFirmwareProtections is the main entry point for verifying that the host security
 // is sufficient. Errors that can't be resolved or which should prevent further checks from running
 // are returned immediately and without any wrapping. Errors that can be resolved and which shouldn't
 // prevent further checks from running are returned wrapped in [joinError].
 func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcglog.Log) (protectedStartupLocalities tpm2.Locality, err error) {
+	cpuVendor, err := determineCPUVendor(env)
+	if err != nil {
+		return 0, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+	}
+
 	amd64Env, err := env.AMD64()
 	if err != nil {
 		return 0, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
 	}
-
-	cpuVendor, err := determineCPUVendor(amd64Env)
-	if err != nil {
-		return 0, fmt.Errorf("cannot determine CPU vendor: %w", err)
-	}
-
-	var errs []error
 
 	switch cpuVendor {
 	case cpuVendorIntel:
@@ -94,6 +73,8 @@ func checkPlatformFirmwareProtections(env internal_efi.HostEnvironment, log *tcg
 	default:
 		panic("not reached")
 	}
+
+	var errs []error
 
 	if err := checkSecureBootPolicyPCRForDegradedFirmwareSettings(log); err != nil {
 		var ce CompoundError
