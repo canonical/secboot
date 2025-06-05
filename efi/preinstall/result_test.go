@@ -1,5 +1,3 @@
-// -*- Mode: Go; indent-tabs-mode: t -*-
-
 /*
  * Copyright (C) 2024 Canonical Ltd
  *
@@ -79,19 +77,6 @@ func (s *resultSuite) TestCheckResultMarshalJSONMultipleCAs(c *C) {
 	data, err := json.Marshal(result)
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("{\"pcr-alg\":\"sha256\",\"used-secure-boot-cas\":[{\"subject\":\"MIGBMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSswKQYDVQQDEyJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVUVGSSBDQSAyMDEx\",\"subject-key-id\":\"E62/Qwm9gnCcjNVPMW7VIpiKG9Q=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MIGRMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTswOQYDVQQDEzJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVGhpcmQgUGFydHkgTWFya2V0cGxhY2UgUm9vdA==\",\"authority-key-id\":\"RWZSQ+F+WBG/1k6eI1UIOzoiaqg=\",\"signature-algorithm\":\"SHA256-RSA\"},{\"subject\":\"ME4xCzAJBgNVBAYTAlVTMR4wHAYDVQQKExVNaWNyb3NvZnQgQ29ycG9yYXRpb24xHzAdBgNVBAMTFk1pY3Jvc29mdCBVRUZJIENBIDIwMjM=\",\"subject-key-id\":\"gaprMkTJNbzg1mKK85gnQh4ySX0=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MFoxCzAJBgNVBAYTAlVTMR4wHAYDVQQKExVNaWNyb3NvZnQgQ29ycG9yYXRpb24xKzApBgNVBAMTIk1pY3Jvc29mdCBSU0EgRGV2aWNlcyBSb290IENBIDIwMjE=\",\"authority-key-id\":\"hESGBgCYPyyqs8WJ86wuyeadCQM=\",\"signature-algorithm\":\"SHA256-RSA\"}],\"flags\":[\"no-platform-config-profile-support\",\"no-drivers-and-apps-config-profile-support\",\"no-boot-manager-config-profile-support\",\"discrete-tpm-detected\"]}"))
-}
-
-func (s *resultSuite) TestCheckResultMarshalJSONWithNonPersistentFlags(c *C) {
-	result := CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags: NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport |
-			DiscreteTPMDetected | VARDriversPresent | SysPrepApplicationsPresent | AbsoluteComputraceActive | NotAllBootManagerCodeDigestsVerified |
-			RunningInVirtualMachine | WeakSecureBootAlgorithmsDetected | PreOSVerificationUsingDigestsDetected,
-	}
-	data, err := json.Marshal(result)
-	c.Check(err, IsNil)
-	c.Check(data, DeepEquals, []byte("{\"pcr-alg\":\"sha256\",\"used-secure-boot-cas\":[{\"subject\":\"MIGBMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSswKQYDVQQDEyJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVUVGSSBDQSAyMDEx\",\"subject-key-id\":\"E62/Qwm9gnCcjNVPMW7VIpiKG9Q=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MIGRMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTswOQYDVQQDEzJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVGhpcmQgUGFydHkgTWFya2V0cGxhY2UgUm9vdA==\",\"authority-key-id\":\"RWZSQ+F+WBG/1k6eI1UIOzoiaqg=\",\"signature-algorithm\":\"SHA256-RSA\"}],\"flags\":[\"no-platform-config-profile-support\",\"no-drivers-and-apps-config-profile-support\",\"no-boot-manager-config-profile-support\",\"discrete-tpm-detected\"]}"))
 }
 
 func (s *resultSuite) TestCheckResultMarshalJSONNoPlatformFirmareProfileSupport(c *C) {
@@ -309,14 +294,14 @@ func (s *resultSuite) TestCheckResultString(c *C) {
 	result := CheckResult{
 		PCRAlg:            tpm2.HashAlgorithmSHA256,
 		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | VARDriversPresent | AbsoluteComputraceActive,
+		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected,
 	}
 	c.Check(result.String(), Equals, `
 EFI based TPM protected FDE test support results:
 - Best PCR algorithm: TPM_ALG_SHA256
 - Secure boot CAs used for verification:
   1: subject=CN=Microsoft Corporation UEFI CA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US, SKID=0x13adbf4309bd82709c8cd54f316ed522988a1bd4, pubkeyAlg=RSA, issuer=CN=Microsoft Corporation Third Party Marketplace Root,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US, AKID=0x45665243e17e5811bfd64e9e2355083b3a226aa8, sigAlg=SHA256-RSA
-- Flags: no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support,discrete-tpm-detected,var-drivers-present,absolute-active
+- Flags: no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support,discrete-tpm-detected
 `)
 }
 
@@ -324,7 +309,7 @@ func (s *resultSuite) TestCheckResultStringWithWarnings(c *C) {
 	result := CheckResult{
 		PCRAlg:            tpm2.HashAlgorithmSHA256,
 		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | VARDriversPresent | AbsoluteComputraceActive,
+		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected,
 		Warnings: JoinErrors(
 			errors.New("some error 1"),
 			errors.New(`some error 2
@@ -336,7 +321,7 @@ EFI based TPM protected FDE test support results:
 - Best PCR algorithm: TPM_ALG_SHA256
 - Secure boot CAs used for verification:
   1: subject=CN=Microsoft Corporation UEFI CA 2011,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US, SKID=0x13adbf4309bd82709c8cd54f316ed522988a1bd4, pubkeyAlg=RSA, issuer=CN=Microsoft Corporation Third Party Marketplace Root,O=Microsoft Corporation,L=Redmond,ST=Washington,C=US, AKID=0x45665243e17e5811bfd64e9e2355083b3a226aa8, sigAlg=SHA256-RSA
-- Flags: no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support,discrete-tpm-detected,var-drivers-present,absolute-active
+- Flags: no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support,discrete-tpm-detected
 - Warnings:
   - some error 1
   - some error 2

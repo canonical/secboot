@@ -518,8 +518,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedLockout(c *C) {
 	c.Check(e.WithAuthPolicy, HasLen, 0)
 
 	c.Check(tpm, NotNil)
-
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedOwner(c *C) {
@@ -548,8 +547,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedOwner(c *C) {
 	c.Check(e.WithAuthPolicy, HasLen, 0)
 
 	c.Check(tpm, NotNil)
-
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsement(c *C) {
@@ -578,8 +576,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsement(c *C) {
 	c.Check(e.WithAuthPolicy, HasLen, 0)
 
 	c.Check(tpm, NotNil)
-
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedLockoutWithPolicy(c *C) {
@@ -608,8 +605,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedLockoutWithPolicy(c *C)
 	c.Check(e.WithAuthPolicy, DeepEquals, tpm2.HandleList{tpm2.HandleLockout})
 
 	c.Check(tpm, NotNil)
-
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedOwnerWithPolicy(c *C) {
@@ -638,8 +634,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedOwnerWithPolicy(c *C) {
 	c.Check(e.WithAuthPolicy, DeepEquals, tpm2.HandleList{tpm2.HandleOwner})
 
 	c.Check(tpm, NotNil)
-
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsementWithPolicy(c *C) {
@@ -668,8 +663,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsementWithPolicy(c
 	c.Check(e.WithAuthPolicy, DeepEquals, tpm2.HandleList{tpm2.HandleEndorsement})
 
 	c.Check(tpm, NotNil)
-
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout(c *C) {
@@ -692,8 +686,63 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout(c *C) {
 	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockout)
 
 	c.Check(tpm, NotNil)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
 
-	c.Check(dev.NumberOpen(), Equals, int(0))
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutLockedOut(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Disable the lockout hierarchy by authorizing it incorrectly
+	s.TPM.LockoutHandleContext().SetAuthValue([]byte("1234"))
+	err := s.TPM.DictionaryAttackLockReset(s.TPM.LockoutHandleContext(), nil)
+	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, err := OpenAndCheckTPM2Device(env, 0)
+
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Assert(err.(CompoundError).Unwrap(), HasLen, 1)
+
+	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockoutLockedOut)
+
+	c.Check(tpm, NotNil)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutLockedOutIgnoredIfAuthValueSet(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Give the lockout hierarchy an authorization value
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+
+	// Disable the lockout hierarchy by authorizing it incorrectly
+	s.TPM.LockoutHandleContext().SetAuthValue([]byte("5678"))
+	err := s.TPM.DictionaryAttackLockReset(s.TPM.LockoutHandleContext(), nil)
+	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, err := OpenAndCheckTPM2Device(env, 0)
+
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Assert(err.(CompoundError).Unwrap(), HasLen, 1)
+
+	var e *TPM2OwnedHierarchiesError
+	c.Check(errors.As(err.(CompoundError).Unwrap()[0], &e), testutil.IsTrue)
+	c.Check(e.WithAuthValue, DeepEquals, tpm2.HandleList{tpm2.HandleLockout})
+	c.Check(e.WithAuthPolicy, HasLen, 0)
+
+	c.Check(tpm, NotNil)
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceCombinedHierarchyOwnershipAndLockout(c *C) {
@@ -728,8 +777,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceCombinedHierarchyOwnershipAndLockou
 	c.Check(err.(CompoundError).Unwrap()[1], Equals, ErrTPMLockout)
 
 	c.Check(tpm, NotNil)
-
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPreInstall(c *C) {
@@ -751,6 +799,5 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPreInstall(c 
 	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMInsufficientNVCounters)
 
 	c.Check(tpm, NotNil)
-
-	c.Check(dev.NumberOpen(), Equals, int(0))
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
