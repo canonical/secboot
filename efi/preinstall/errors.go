@@ -140,9 +140,14 @@ func (e *joinError) Unwrap() []error {
 }
 
 var (
-	// ErrVirtualMachineDetected is returned unwrapped from RunChecks when running
-	// in a virtual machine and the PermitVirtualMachine flag was not supplied.
-	// This error can be bypassed with the PermitVirtualMachine flag.
+	// ErrVirtualMachineDetected is returned unwrapped from RunChecks when the current
+	// OS is running in a virtual machine and the PermitVirtualMachine flag was not supplied.
+	// As parts of the TCB, such as the initial firmware code and the vTPM are under the control
+	// of the host environment, a system running in a virtual machine offers little benefit other
+	// than being useful for testing. This error can be bypassed with the PermitVirtualMachine flag,
+	// in which case it will be returned as a warning via CheckResult. Note that if the
+	// PermitVirtualMachine flag is provided and the current OS is running in a virtual machine,
+	// the host security checks will be skipped.
 	ErrVirtualMachineDetected = errors.New("virtual machine environment detected")
 )
 
@@ -437,13 +442,13 @@ func (e *MeasuredBootError) Unwrap() error {
 // startup locality event (if present) is recorded.
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
-// the PlatformFirmwareProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoPlatformFirmwareProfileSupport flag is supplied to [RunChecks],
 // to indicate that [github.com/snapcore/secboot/efi.WithPlatformFirmwareProfile]
 // cannot be used to generate profiles for PCR 0.
 //
 // If an error occurs, this error will be returned wrapped in
-// [NoSuitablePCRAlgorithmError] if the PlatformFirmwareProfileSupportRequired flag
-// is supplied to [RunChecks].
+// [NoSuitablePCRAlgorithmError] if the PermitNolatformFirmwareProfileSupport flag
+// is not supplied to [RunChecks].
 type PlatformFirmwarePCRError struct {
 	err error
 }
@@ -462,17 +467,17 @@ func (e *PlatformFirmwarePCRError) Unwrap() error {
 // value reconstructed from the TCG log.
 //
 // This error will currently always be returned as a warning in [CheckResult] if
-// the PlatformConfigProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoPlatformConfigProfileSupport flag is supplied to [RunChecks],
 // because there is currently no support in [github.com/snapcore/secboot/efi] for
 // generating profiles for PCR 1.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// PlatformConfigProfileSupportRequired flag is supplied to [RunChecks] and the
+// PermitNoPlatformConfigProfileSupport flag is not supplied to [RunChecks] and the
 // PCR 1 value is inconsistent with the value recorded from the TCG log.
 //
 // This error will otherwise currently always be returned wrapped in a type that
-// implements [CompoundError] if the PlatformConfigProfileSupportRequired flag is
-// supplied to [RunChecks] because there is currently no support in
+// implements [CompoundError] if the PermitNoPlatformConfigProfileSupport flag is
+// not supplied to [RunChecks] because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 1.
 type PlatformConfigPCRError struct {
 	err error
@@ -492,13 +497,13 @@ func (e *PlatformConfigPCRError) Unwrap() error {
 // value reconstructed from the TCG log.
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
-// the DriversAndAppsProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoDriversAndAppsProfileSupport flag is supplied to [RunChecks],
 // to indicate that [github.com/snapcore/secboot/efi.WithDriversAndAppsProfile]
 // cannot be used to generate profiles for PCR 2.
 //
 // If an error occurs, this error will be returned wrapped in
-// [NoSuitablePCRAlgorithmError] if the DriversAndAppsProfileSupportRequired flag
-// is supplied to [RunChecks].
+// [NoSuitablePCRAlgorithmError] if the PermitNoDriversAndAppsProfileSupport flag
+// is not supplied to [RunChecks].
 type DriversAndAppsPCRError struct {
 	err error
 }
@@ -512,10 +517,14 @@ func (e *DriversAndAppsPCRError) Unwrap() error {
 }
 
 var (
-	// ErrVARSuppliedDriversPresent is returned wrapped in a type that
-	// implements CompoundError if value-added-retailer drivers are detected
-	// to be running. These can be permitted by supplying the
-	// PermitVARSuppliedDrivers flag to RunChecks.
+	// ErrVARSuppliedDriversPresent is returned wrapped in a type that implements
+	// CompoundError if value-added-retailer drivers are detected to be running. These
+	// can be running either because they are loaded by BDS by the presence of Driver####
+	// load options and the DriverOrder global variable, or because the firmware finds a
+	// loadable PE image in the ROM area of a connected PCI device. They are included in
+	// a PCR policy when using efi.WithDriversAndAppsProfile.
+	// These can be permitted by supplying the PermitVARSuppliedDrivers flag to RunChecks,
+	// in which case, this error will be returned as a warning via CheckResult.
 	ErrVARSuppliedDriversPresent = errors.New("value added retailer supplied drivers were detected to be running")
 )
 
@@ -525,17 +534,17 @@ var (
 // with the value reconstructed from the TCG log.
 //
 // This error will currently always be returned as a warning in [CheckResult] if
-// the DriversAndAppsConfigProfileSupportRequired flag is not supplied to
+// the PermitNoDriversAndAppsConfigProfileSupport flag is supplied to
 // [RunChecks], because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 3.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// DriversAndAppsConfigProfileSupportRequired flag is supplied to [RunChecks] and
-// the PCR 3 value is inconsistent with the value recorded from the TCG log.
+// PermitNoDriversAndAppsConfigProfileSupport flag is not supplied to [RunChecks]
+// and the PCR 3 value is inconsistent with the value recorded from the TCG log.
 //
 // This error will otherwise currently always be returned wrapped in a type that
-// implements [CompoundError] if the DriversAndAppsConfigProfileSupportRequired flag
-// is supplied to [RunChecks] because there is currently no support in
+// implements [CompoundError] if the PermitNoDriversAndAppsConfigProfileSupport flag
+// is not supplied to [RunChecks] because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 3.
 type DriversAndAppsConfigPCRError struct {
 	err error
@@ -575,16 +584,16 @@ func (e *DriversAndAppsConfigPCRError) Unwrap() error {
 //     [RunChecks].
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
-// the BootManagerCodeProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoBootManagerCodeProfileSupport flag is supplied to [RunChecks],
 // to indicate that [github.com/snapcore/secboot/efi.WithBootManagerCodeProfile]
 // cannot be used to generate profiles for PCR 4.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// BootManagerCodeProfileSupportRequired flag is supplied to [RunChecks] and the
+// PermitNoBootManagerCodeProfileSupport flag is not supplied to [RunChecks] and the
 // PCR 4 value is inconsistent with the value recorded from the TCG log.
 //
-// If any other error occurs and the BootManagerCodeProfileSupportRequired flag is
-// supplied to [RunChecks], this error will be returned wrapped in a type that
+// If any other error occurs and the PermitNoBootManagerCodeProfileSupport flag is
+// not supplied to [RunChecks], this error will be returned wrapped in a type that
 // implements [CompoundError].
 type BootManagerCodePCRError struct {
 	err error
@@ -600,25 +609,29 @@ func (e *BootManagerCodePCRError) Unwrap() error {
 
 var (
 	// ErrSysPrepApplicationsPresent is returned wrapped in a type that implements
-	// CompoundError if system preparation applications were detected to be running.
-	// These can be permitted by supplying the PermitSysPrepApplications flag
-	// to RunChecks.
+	// CompoundError if system preparation applications were detected to be running. These
+	// are loaded by BDS as part of the pre-OS environment because there are SysPrep####
+	// load options and a SysPrepOrder global variable defined. As these aren't under the
+	// control of the OS, these can increase the fragility of profiles that include
+	// efi.WithBootManagerCodeProfile, which includes the measurements of these applications.
+	// These can be permitted by supplying the PermitSysPrepApplications flag to RunChecks,
+	// in which case, this error is returned as a warning via CheckResult.
+	//
+	// The check for system preparation applications may not execute if a
+	// BootManagerCodePCRError error is returned, either as an error or as a warning.
 	ErrSysPrepApplicationsPresent = errors.New("system preparation applications were detected to be running")
 
-	// ErrAbsoluteComputraceActive is returned wrapped in a type that implements
-	// CompoundError if Absolute was detected to be active. It is advised that this
-	// firmware is disabled if possible.
-	// This can be permitted by supplying the PermitAbsoluteComputrace flag
-	// to RunChecks.
+	// ErrAbsoluteComputraceActive is returned wrapped in a type that implements CompoundError
+	// if Absolute was detected to be active. Absolute is an endpoint management component. As
+	// it is a component of the firmware, it increases fragility of profiles that include
+	// efi.WithBootManagerCodeProfile, which includes the measurement of Absolute. Therefore,
+	// it is advised that this is disabled if possible.
+	// This can be permitted by supplying the PermitAbsoluteComputrace flag to RunChecks,
+	// in which case, this error is returned as a warning via CheckResult.
+	//
+	// The check for Absolute may not execute if a BootManagerCodePCRError error is returned,
+	// either as an error or as a warning.
 	ErrAbsoluteComputraceActive = errors.New("Absolute was detected to be active and it is advised that this is disabled")
-
-	// ErrNotAllBootManagerCodeDigestsVerified is returned wrapped in BootManagerCodePCRError
-	// if it wasn't possible to verify the launch digest for every
-	// EV_EFI_BOOT_SERVICES_APPLICATION event against a supplied set of launch applications
-	// for the current boot. This is generally an error with the way the RunChecks is used
-	// because the caller should supply each image for the current boot. This error can be
-	// bypassed by supplying the PermitNotVerifyingAllBootManagerCodeDigests flag to RunChecks.
-	ErrNotAllBootManagerCodeDigestsVerified = errors.New("not all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch digests could be verified")
 )
 
 // Errors related to boot manager config PCR checks
@@ -627,19 +640,18 @@ var (
 // with the value reconstructed from the TCG log.
 //
 // This error will currently always be returned as a warning in [CheckResult] if
-// the BootManagerConfigProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoBootManagerConfigProfileSupport flag is supplied to [RunChecks],
 // because there is currently no support in [github.com/snapcore/secboot/efi]
 // for generating profiles for PCR 5.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks] and the
-// PCR 5 value is inconsistent with the value recorded from the TCG log.
+// PermitNoBootManagerConfigProfileSupport flag is not supplied to [RunChecks] and
+// the PCR 5 value is inconsistent with the value recorded from the TCG log.
 //
-// This error will otherwise currently always be returned wrapped in
-// a type that implements [CompoundError] if the
-// BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks] because
-// there is currently no support in [github.com/snapcore/secboot/efi] for generating
-// profiles for PCR 5.
+// This error will otherwise currently always be returned wrapped in a type that
+// implements [CompoundError] if the PermitNoBootManagerConfigProfileSupport flag
+// is not supplied to [RunChecks] because there is currently no support in
+// [github.com/snapcore/secboot/efi] for generating profiles for PCR 5.
 type BootManagerConfigPCRError struct {
 	err error
 }
@@ -699,16 +711,16 @@ func (e *BootManagerConfigPCRError) Unwrap() error {
 //     related to non X.509 EFI_SIGNATURE_LISTs.
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
-// the SecureBootPolicyProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoSecureBootPolicyProfileSupport flag is supplied to [RunChecks],
 // to indicate that [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile]
 // cannot be used to generate profiles for PCR 7.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// SecureBootPolicyProfileSupportRequired flag is supplied to [RunChecks] and the
-// PCR 7 value is inconsistent with the value recorded from the TCG log.
+// PermitNoSecureBootPolicyProfileSupport flag is not supplied to [RunChecks] and
+// the PCR 7 value is inconsistent with the value recorded from the TCG log.
 //
-// If any other error occurs and the SecureBootPolicyProfileSupportRequired flag is
-// supplied to [RunChecks], this error will be returned wrapped in a type that
+// If any other error occurs and the PermitNoSecureBootPolicyProfileSupport flag is
+// not supplied to [RunChecks], this error will be returned wrapped in a type that
 // implements [CompoundError].
 type SecureBootPolicyPCRError struct {
 	err error
@@ -733,25 +745,29 @@ var (
 	// mode, but this is not the case today.
 	ErrNoDeployedMode = errors.New("deployed mode should be enabled in order to generate secure boot profiles")
 
-	// ErrWeakSecureBootAlgorithmDetected is returned wrapped in a type that implements
-	// CompoundError and indicates that weak algorithms were detected during secure
-	// boot verification, such as authenticating a binary with SHA-1, or a CA with a
-	// 1024-bit RSA public key, or the signer of the initial boot loader having a 1024-bit
-	// RSA public key. This does have some limitations because the TCG log doesn't
-	// indicate the properties of the actual signing certificates or the algorithms used
-	// to sign each binary, so it's not possible to determine whether signing certificates
-	// for non-OS components are strong enough.
-	// This can be bypassed by supplying the PermitWeakSecureBootAlgorithms flag to
-	// RunChecks.
+	// ErrWeakSecureBootAlgorithmDetected is returned wrapped in a type that implements CompoundError and
+	// indicates that weak algorithms were detected during secure boot verification, such as authenticating
+	// a binary with SHA-1, or a CA with a 1024-bit RSA public key, or the signer of the initial boot
+	// loader having a 1024-bit RSA public key. This does have some limitations because the TCG log doesn't
+	// indicate the properties of the actual signing certificates or the algorithms used to sign each
+	// binary, so it's not possible to determine whether signing certificates for non-OS components are
+	// strong enough.
+	// This can be bypassed by supplying the PermitWeakSecureBootAlgorithms flag to RunChecks, in which case,
+	// the error is returned as a warning via CheckResult.
+	//
+	// The check for weak secure boot algorithms may not execute if a SecureBootPolicyPCRError error is
+	// returned, either as an error or as a warning.
 	ErrWeakSecureBootAlgorithmDetected = errors.New("a weak cryptographic algorithm was detected during secure boot verification")
 
-	// ErrPreOSVerificationUsingDigests is returned wrapped in a type that implements
-	// CompoundError and indicates that pre-OS components were authenticated using
-	// Authenticode digests rather than a X.509 certificate. This makes PCR7 inherently
-	// fragile with regards to firmware updates because db has to be changed accordingly
-	// each time
-	// This can be bypassed by supplying the PermitPreOSVeriricationUsingDigests flag
-	// to RunChecks.
+	// ErrPreOSVerificationUsingDigests is returned wrapped in a type that implements CompoundError and
+	// indicates that pre-OS components were authenticated using Authenticode digests rather than a
+	// X.509 certificate. This makes PCR7 inherently fragile with regards to firmware updates because db
+	// has to be changed accordingly each time.
+	// This can be bypassed by supplying the PermitPreOSVeriricationUsingDigests flag to RunChecks, in
+	// which case, the error is returned as a warning via CheckResult.
+	//
+	// The check for pre-OS components authenticated using a digest may not execute if a
+	// SecureBootPolicyPCRError error is returned, either as an error or as a warning.
 	ErrPreOSVerificationUsingDigests = errors.New("some pre-OS components were authenticated from the authorized signature database using an Authenticode digest")
 )
 
