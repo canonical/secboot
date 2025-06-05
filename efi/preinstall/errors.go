@@ -437,13 +437,13 @@ func (e *MeasuredBootError) Unwrap() error {
 // startup locality event (if present) is recorded.
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
-// the PlatformFirmwareProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoPlatformFirmwareProfileSupport flag is supplied to [RunChecks],
 // to indicate that [github.com/snapcore/secboot/efi.WithPlatformFirmwareProfile]
 // cannot be used to generate profiles for PCR 0.
 //
 // If an error occurs, this error will be returned wrapped in
-// [NoSuitablePCRAlgorithmError] if the PlatformFirmwareProfileSupportRequired flag
-// is supplied to [RunChecks].
+// [NoSuitablePCRAlgorithmError] if the PermitNolatformFirmwareProfileSupport flag
+// is not supplied to [RunChecks].
 type PlatformFirmwarePCRError struct {
 	err error
 }
@@ -462,17 +462,17 @@ func (e *PlatformFirmwarePCRError) Unwrap() error {
 // value reconstructed from the TCG log.
 //
 // This error will currently always be returned as a warning in [CheckResult] if
-// the PlatformConfigProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoPlatformConfigProfileSupport flag is supplied to [RunChecks],
 // because there is currently no support in [github.com/snapcore/secboot/efi] for
 // generating profiles for PCR 1.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// PlatformConfigProfileSupportRequired flag is supplied to [RunChecks] and the
+// PermitNoPlatformConfigProfileSupport flag is not supplied to [RunChecks] and the
 // PCR 1 value is inconsistent with the value recorded from the TCG log.
 //
 // This error will otherwise currently always be returned wrapped in a type that
-// implements [CompoundError] if the PlatformConfigProfileSupportRequired flag is
-// supplied to [RunChecks] because there is currently no support in
+// implements [CompoundError] if the PermitNoPlatformConfigProfileSupport flag is
+// not supplied to [RunChecks] because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 1.
 type PlatformConfigPCRError struct {
 	err error
@@ -492,13 +492,13 @@ func (e *PlatformConfigPCRError) Unwrap() error {
 // value reconstructed from the TCG log.
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
-// the DriversAndAppsProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoDriversAndAppsProfileSupport flag is supplied to [RunChecks],
 // to indicate that [github.com/snapcore/secboot/efi.WithDriversAndAppsProfile]
 // cannot be used to generate profiles for PCR 2.
 //
 // If an error occurs, this error will be returned wrapped in
-// [NoSuitablePCRAlgorithmError] if the DriversAndAppsProfileSupportRequired flag
-// is supplied to [RunChecks].
+// [NoSuitablePCRAlgorithmError] if the PermitNoDriversAndAppsProfileSupport flag
+// is not supplied to [RunChecks].
 type DriversAndAppsPCRError struct {
 	err error
 }
@@ -525,17 +525,17 @@ var (
 // with the value reconstructed from the TCG log.
 //
 // This error will currently always be returned as a warning in [CheckResult] if
-// the DriversAndAppsConfigProfileSupportRequired flag is not supplied to
+// the PermitNoDriversAndAppsConfigProfileSupport flag is supplied to
 // [RunChecks], because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 3.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// DriversAndAppsConfigProfileSupportRequired flag is supplied to [RunChecks] and
-// the PCR 3 value is inconsistent with the value recorded from the TCG log.
+// PermitNoDriversAndAppsConfigProfileSupport flag is not supplied to [RunChecks]
+// and the PCR 3 value is inconsistent with the value recorded from the TCG log.
 //
 // This error will otherwise currently always be returned wrapped in a type that
-// implements [CompoundError] if the DriversAndAppsConfigProfileSupportRequired flag
-// is supplied to [RunChecks] because there is currently no support in
+// implements [CompoundError] if the PermitNoDriversAndAppsConfigProfileSupport flag
+// is not supplied to [RunChecks] because there is currently no support in
 // [github.com/snapcore/secboot/efi] for generating profiles for PCR 3.
 type DriversAndAppsConfigPCRError struct {
 	err error
@@ -575,16 +575,16 @@ func (e *DriversAndAppsConfigPCRError) Unwrap() error {
 //     [RunChecks].
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
-// the BootManagerCodeProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoBootManagerCodeProfileSupport flag is supplied to [RunChecks],
 // to indicate that [github.com/snapcore/secboot/efi.WithBootManagerCodeProfile]
 // cannot be used to generate profiles for PCR 4.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// BootManagerCodeProfileSupportRequired flag is supplied to [RunChecks] and the
+// PermitNoBootManagerCodeProfileSupport flag is not supplied to [RunChecks] and the
 // PCR 4 value is inconsistent with the value recorded from the TCG log.
 //
-// If any other error occurs and the BootManagerCodeProfileSupportRequired flag is
-// supplied to [RunChecks], this error will be returned wrapped in a type that
+// If any other error occurs and the PermitNoBootManagerCodeProfileSupport flag is
+// not supplied to [RunChecks], this error will be returned wrapped in a type that
 // implements [CompoundError].
 type BootManagerCodePCRError struct {
 	err error
@@ -627,19 +627,18 @@ var (
 // with the value reconstructed from the TCG log.
 //
 // This error will currently always be returned as a warning in [CheckResult] if
-// the BootManagerConfigProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoBootManagerConfigProfileSupport flag is supplied to [RunChecks],
 // because there is currently no support in [github.com/snapcore/secboot/efi]
 // for generating profiles for PCR 5.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks] and the
-// PCR 5 value is inconsistent with the value recorded from the TCG log.
+// PermitNoBootManagerConfigProfileSupport flag is not supplied to [RunChecks] and
+// the PCR 5 value is inconsistent with the value recorded from the TCG log.
 //
-// This error will otherwise currently always be returned wrapped in
-// a type that implements [CompoundError] if the
-// BootManagerConfigProfileSupportRequired flag is supplied to [RunChecks] because
-// there is currently no support in [github.com/snapcore/secboot/efi] for generating
-// profiles for PCR 5.
+// This error will otherwise currently always be returned wrapped in a type that
+// implements [CompoundError] if the PermitNoBootManagerConfigProfileSupport flag
+// is not supplied to [RunChecks] because there is currently no support in
+// [github.com/snapcore/secboot/efi] for generating profiles for PCR 5.
 type BootManagerConfigPCRError struct {
 	err error
 }
@@ -699,16 +698,16 @@ func (e *BootManagerConfigPCRError) Unwrap() error {
 //     related to non X.509 EFI_SIGNATURE_LISTs.
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
-// the SecureBootPolicyProfileSupportRequired flag is not supplied to [RunChecks],
+// the PermitNoSecureBootPolicyProfileSupport flag is supplied to [RunChecks],
 // to indicate that [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile]
 // cannot be used to generate profiles for PCR 7.
 //
 // This error will be returned wrapped in [NoSuitablePCRAlgorithmError] if the
-// SecureBootPolicyProfileSupportRequired flag is supplied to [RunChecks] and the
-// PCR 7 value is inconsistent with the value recorded from the TCG log.
+// PermitNoSecureBootPolicyProfileSupport flag is not supplied to [RunChecks] and
+// the PCR 7 value is inconsistent with the value recorded from the TCG log.
 //
-// If any other error occurs and the SecureBootPolicyProfileSupportRequired flag is
-// supplied to [RunChecks], this error will be returned wrapped in a type that
+// If any other error occurs and the PermitNoSecureBootPolicyProfileSupport flag is
+// not supplied to [RunChecks], this error will be returned wrapped in a type that
 // implements [CompoundError].
 type SecureBootPolicyPCRError struct {
 	err error

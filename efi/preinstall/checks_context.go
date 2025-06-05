@@ -160,12 +160,19 @@ type RunChecksContext struct {
 // API [RunChecksContext] should be executed again with the new set of flags, should the user wish to
 // change them. In this case, the caller should pass the PostInstallChecks flag as an initial flag.
 //
-// There is no need for the caller to supply any of these *SupportRequired flags as the initial flags,
-// and this may have the effect of limiting the number of devices which pass the checks.
+// There is no need for the caller to specify any of the PermitNo*ProfileSupport flags as the initial
+// flags, and they will be ignored anyway.
 func NewRunChecksContext(initialFlags CheckFlags, loadedImages []secboot_efi.Image, profileOpts PCRProfileOptionsFlags) *RunChecksContext {
+	defaultFlags := PermitNoPlatformFirmwareProfileSupport |
+		PermitNoPlatformConfigProfileSupport |
+		PermitNoDriversAndAppsProfileSupport |
+		PermitNoDriversAndAppsConfigProfileSupport |
+		PermitNoBootManagerCodeProfileSupport |
+		PermitNoBootManagerConfigProfileSupport |
+		PermitNoSecureBootPolicyProfileSupport
 	return &RunChecksContext{
 		env:          runChecksEnv,
-		flags:        initialFlags,
+		flags:        initialFlags | defaultFlags,
 		loadedImages: loadedImages,
 		profileOpts:  profileOpts,
 		// Populate actions that are always available or available by default
@@ -555,19 +562,19 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 		for _, pcr := range requiredPCRsErr.PCRs {
 			switch pcr {
 			case 0:
-				c.flags |= PlatformFirmwareProfileSupportRequired
+				c.flags &^= PermitNoPlatformFirmwareProfileSupport
 			case 1:
-				c.flags |= PlatformConfigProfileSupportRequired
+				c.flags &^= PermitNoPlatformConfigProfileSupport
 			case 2:
-				c.flags |= DriversAndAppsProfileSupportRequired
+				c.flags &^= PermitNoDriversAndAppsProfileSupport
 			case 3:
-				c.flags |= DriversAndAppsConfigProfileSupportRequired
+				c.flags &^= PermitNoDriversAndAppsConfigProfileSupport
 			case 4:
-				c.flags |= BootManagerCodeProfileSupportRequired
+				c.flags &^= PermitNoBootManagerCodeProfileSupport
 			case 5:
-				c.flags |= BootManagerConfigProfileSupportRequired
+				c.flags &^= PermitNoBootManagerConfigProfileSupport
 			case 7:
-				c.flags |= SecureBootPolicyProfileSupportRequired
+				c.flags &^= PermitNoSecureBootPolicyProfileSupport
 			}
 		}
 	}

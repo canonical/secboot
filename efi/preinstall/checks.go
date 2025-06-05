@@ -37,46 +37,46 @@ const (
 	// NewRunChecksContext if no other flags are supplied.
 	CheckFlagsDefault CheckFlags = 0
 
-	// PlatformFirmwareProfileSupportRequired indicates that support for
+	// PermitNoPlatformFirmwareProfileSupport indicates that support for
 	// [secboot_efi.WithPlatformFirmwareProfile] to generate profiles for
-	// PCR 0 is not optional.
-	PlatformFirmwareProfileSupportRequired CheckFlags = 1 << iota
+	// PCR 0 is optional.
+	PermitNoPlatformFirmwareProfileSupport CheckFlags = 1 << iota
 
-	// PlatformConfigProfileSupportRequired indicates that support for
+	// PermitNoPlatformConfigProfileSupportd indicates that support for
 	// generating profiles for PCR 1 is not optional.
 	//
-	// Note that this currently is not supported by the
-	// [github.com/snapcore/secboot/efi] package.
-	PlatformConfigProfileSupportRequired
+	// Note that this is currently mandatory because this profile is not
+	// supported by the [github.com/snapcore/secboot/efi] package.
+	PermitNoPlatformConfigProfileSupport
 
-	// DriversAndAppsProfileSupportRequired indicates that support for
+	// PermitNoDriversAndAppsProfileSupport indicates that support for
 	// [secboot_efi.WithDriversAndAppsProfile] to generate profiles for
-	// PCR 2 is not optional.
-	DriversAndAppsProfileSupportRequired
+	// PCR 2 is optional.
+	PermitNoDriversAndAppsProfileSupport
 
-	// DriversAndAppsConfigProfileSupportRequired indicates that support
-	// for generating profiles for PCR 3 is not optional.
+	// PermitNoDriversAndAppsConfigProfileSupport indicates that support
+	// for generating profiles for PCR 3 is optional.
 	//
-	// Note that this currently is not supported by the
-	// [github.com/snapcore/secboot/efi] package.
-	DriversAndAppsConfigProfileSupportRequired
+	// Note that this is currently mandatory because this profile is not
+	// supported by the [github.com/snapcore/secboot/efi] package.
+	PermitNoDriversAndAppsConfigProfileSupport
 
-	// BootManagerCodeProfileSupportRequired indicates that support for
+	// PermitNoBootManagerCodeProfileSupport indicates that support for
 	// [secboot_efi.WithBootManagerCodeProfile] to generate profiles for
-	// PCR 4 is not optional.
-	BootManagerCodeProfileSupportRequired
+	// PCR 4 is optional.
+	PermitNoBootManagerCodeProfileSupport
 
-	// BootManagerConfigProfileSupportRequired indicates that support
-	// for generating profiles for PCR 5 is not optional.
+	// PermitNoBootManagerConfigProfileSupport indicates that support
+	// for generating profiles for PCR 5 is optional.
 	//
-	// Note that this currently is not supported by the
-	// [github.com/snapcore/secboot/efi] package.
-	BootManagerConfigProfileSupportRequired
+	// Note that this is currently mandatory because this profile is not
+	// supported by the [github.com/snapcore/secboot/efi] package.
+	PermitNoBootManagerConfigProfileSupport
 
-	// SecureBootPolicyProfileSupportRequired indicates that support for
+	// PermitNoSecureBootPolicyProfileSupport indicates that support for
 	// [secboot_efi.WithSecureBootPolicyProfile] to generate profiles for
-	// PCR 7 is not optional.
-	SecureBootPolicyProfileSupportRequired
+	// PCR 7 is optional.
+	PermitNoSecureBootPolicyProfileSupport
 
 	// PermitWeakPCRBanks permits selecting a weak PCR algorithm if
 	// no other valid ones are available. This currently only includes
@@ -238,25 +238,25 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	// checkFirmwareLogAndChoosePCRBank will return an error if any of these PCRs
 	// are inconsistent with the reconstructed log.
 	var mandatoryPcrs tpm2.HandleList
-	if flags&PlatformFirmwareProfileSupportRequired > 0 {
+	if flags&PermitNoPlatformFirmwareProfileSupport == 0 {
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.PlatformFirmwarePCR)
 	}
-	if flags&PlatformConfigProfileSupportRequired > 0 {
+	if flags&PermitNoPlatformConfigProfileSupport == 0 {
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.PlatformConfigPCR)
 	}
-	if flags&DriversAndAppsProfileSupportRequired > 0 {
+	if flags&PermitNoDriversAndAppsProfileSupport == 0 {
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.DriversAndAppsPCR)
 	}
-	if flags&DriversAndAppsConfigProfileSupportRequired > 0 {
+	if flags&PermitNoDriversAndAppsConfigProfileSupport == 0 {
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.DriversAndAppsConfigPCR)
 	}
-	if flags&BootManagerCodeProfileSupportRequired > 0 {
+	if flags&PermitNoBootManagerCodeProfileSupport == 0 {
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.BootManagerCodePCR)
 	}
-	if flags&BootManagerConfigProfileSupportRequired > 0 {
+	if flags&PermitNoBootManagerConfigProfileSupport == 0 {
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.BootManagerConfigPCR)
 	}
-	if flags&SecureBootPolicyProfileSupportRequired > 0 {
+	if flags&PermitNoSecureBootPolicyProfileSupport == 0 {
 		mandatoryPcrs = append(mandatoryPcrs, internal_efi.SecureBootPolicyPCR)
 	}
 
@@ -372,7 +372,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		// PCR1 profiles are not supported yet.
 		err := &PlatformConfigPCRError{errors.New("generating profiles for PCR 1 is not supported yet")}
 		switch {
-		case flags&PlatformConfigProfileSupportRequired > 0:
+		case flags&PermitNoPlatformConfigProfileSupport == 0:
 			deferredErrs = append(deferredErrs, err)
 		default:
 			result.Flags |= NoPlatformConfigProfileSupport
@@ -396,7 +396,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		// PCR3 profiles are not supported yet
 		err := &DriversAndAppsConfigPCRError{errors.New("generating profiles for PCR 3 is not supported yet")}
 		switch {
-		case flags&DriversAndAppsConfigProfileSupportRequired > 0:
+		case flags&PermitNoDriversAndAppsConfigProfileSupport == 0:
 			deferredErrs = append(deferredErrs, err)
 		default:
 			result.Flags |= NoDriversAndAppsConfigProfileSupport
@@ -409,7 +409,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		// the reconstructed log value.
 		pcr4Result, err := checkBootManagerCodeMeasurements(ctx, runChecksEnv, log, result.PCRAlg, loadedImages)
 		switch {
-		case err != nil && flags&BootManagerCodeProfileSupportRequired > 0:
+		case err != nil && flags&PermitNoBootManagerCodeProfileSupport == 0:
 			deferredErrs = append(deferredErrs, &BootManagerCodePCRError{err})
 		case err != nil:
 			result.Flags |= NoBootManagerCodeProfileSupport
@@ -445,7 +445,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		// PCR5 profiles are not supported yet
 		err := &BootManagerConfigPCRError{errors.New("generating profiles for PCR 5 is not supported yet")}
 		switch {
-		case flags&BootManagerConfigProfileSupportRequired > 0:
+		case flags&PermitNoBootManagerConfigProfileSupport == 0:
 			deferredErrs = append(deferredErrs, err)
 		default:
 			result.Flags |= NoBootManagerConfigProfileSupport
@@ -462,7 +462,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		}
 		pcr7Result, err := checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx, runChecksEnv, log, result.PCRAlg, iblImage)
 		switch {
-		case err != nil && flags&SecureBootPolicyProfileSupportRequired > 0:
+		case err != nil && flags&PermitNoSecureBootPolicyProfileSupport == 0:
 			deferredErrs = append(deferredErrs, &SecureBootPolicyPCRError{err})
 		case err != nil:
 			result.Flags |= NoSecureBootPolicyProfileSupport
