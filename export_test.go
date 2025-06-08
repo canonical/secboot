@@ -39,6 +39,7 @@ const (
 var (
 	AcquireArgon2OutOfProcessHandlerSystemLock    = acquireArgon2OutOfProcessHandlerSystemLock
 	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	StorageContainerHandlers                      = storageContainerHandlers
 	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys                        = unmarshalProtectedKeys
 )

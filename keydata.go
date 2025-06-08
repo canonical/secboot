@@ -478,7 +478,7 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 }
 
 func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string, platformContext any) error {
-	handlerInfo, exists := handlers[d.data.PlatformName]
+	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
 	if !exists {
 		return ErrNoPlatformHandlerRegistered
 	}
@@ -658,7 +658,7 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, PrimaryKey, error) {
 		return nil, nil, errors.New("cannot recover key without authorization")
 	}
 
-	handlerInfo, exists := handlers[d.data.PlatformName]
+	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
 	if !exists {
 		return nil, nil, ErrNoPlatformHandlerRegistered
 	}
@@ -676,7 +676,7 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, P
 		return nil, nil, errors.New("cannot recover key with passphrase")
 	}
 
-	handlerInfo, exists := handlers[d.data.PlatformName]
+	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
 	if !exists {
 		return nil, nil, ErrNoPlatformHandlerRegistered
 	}
