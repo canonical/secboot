@@ -27,9 +27,10 @@ import (
 )
 
 var (
-	ErrContainerClosed    = errors.New("storage container reader/writer is already closed")
-	ErrKeyslotNotFound    = errors.New("keyslot not found")
-	ErrNoStorageContainer = errors.New("no storage container for path")
+	ErrStorageContainerClosed    = errors.New("storage container reader/writer is already closed")
+	ErrKeyslotNotFound           = errors.New("keyslot not found")
+	ErrStorageContainerNotActive = errors.New("storage container is not active")
+	ErrNoStorageContainer        = errors.New("no storage container for path")
 )
 
 // ActivateOptionVisitor is used for gathering options (using
@@ -73,7 +74,7 @@ type KeyslotInfo interface {
 // [StorageContainerReadWriter].
 type StorageContainerReader interface {
 	// Container returns the StorageContainer that this reader
-	// was opened from.
+	// was opened from. It can return nil once Close is called.
 	Container() StorageContainer
 
 	// io.Closer is used to close this reader.
