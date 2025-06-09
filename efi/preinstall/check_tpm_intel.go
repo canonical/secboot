@@ -22,6 +22,7 @@
 package preinstall
 
 import (
+	"errors"
 	"fmt"
 
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -51,7 +52,10 @@ func (s bootGuardStatus) tpmStatus() bootGuardTPMStatus {
 
 func isTPMDiscreteFromIntelBootGuard(env internal_efi.HostEnvironmentAMD64) (bool, error) {
 	msrValue, err := env.ReadMSRs(bootGuardStatusMsr)
-	if err != nil {
+	switch {
+	case errors.Is(err, internal_efi.ErrNoKernelMSRSupport):
+		return false, MissingKernelModuleError("msr")
+	case err != nil:
 		return false, fmt.Errorf("cannot read BootGuard status MSR: %w", err)
 	}
 

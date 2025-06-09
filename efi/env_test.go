@@ -251,7 +251,7 @@ func (s *envSuite) TestRootVarsCollectorWriteOne(c *C) {
 func (s *envSuite) TestRootVarsCollectorWriteOneNew(c *C) {
 	// Test that one write in the initial state works and creates one new starting state
 	s.testRootVarsCollector(c, &testRootVarsCollectorData{
-		env: efitest.NewMockHostEnvironment(nil, nil),
+		env: efitest.NewMockHostEnvironment(efitest.MockVars{}, nil),
 		expected: []efitest.MockVars{
 			{
 				{Name: "foo", GUID: testGuid1}: nil,
@@ -557,7 +557,7 @@ func (s *envSuite) TestRootVarsCollectorPeekAll(c *C) {
 }
 
 func (s *envSuite) TestVarBranchReadsUpdate(c *C) {
-	env := efitest.NewMockHostEnvironment(nil, nil)
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)
 
 	collector := NewVariableSetCollector(env)
 	root := collector.Next()
