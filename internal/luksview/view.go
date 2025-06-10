@@ -20,6 +20,7 @@
 package luksview
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -37,12 +38,12 @@ type HeaderSource interface {
 }
 
 type defaultHeaderSource struct {
+	ctx        context.Context
 	devicePath string
-	lockMode   luks2.LockMode
 }
 
 func (s *defaultHeaderSource) ReadHeader() (*luks2.HeaderInfo, error) {
-	return luks2.ReadHeader(s.devicePath, s.lockMode)
+	return luks2.ReadHeader(s.ctx, s.devicePath)
 }
 
 // View provides a read-only view of a LUKS2 header in a way that is useful
@@ -58,10 +59,10 @@ type View struct {
 
 // NewView creates a new View from the LUKS2 container at the specified
 // path, using the specified locking mode.
-func NewView(devicePath string, lockMode luks2.LockMode) (*View, error) {
+func NewView(ctx context.Context, devicePath string) (*View, error) {
 	view := &View{source: &defaultHeaderSource{
-		devicePath: devicePath,
-		lockMode:   lockMode}}
+		ctx:        ctx,
+		devicePath: devicePath}}
 
 	if err := view.Reread(); err != nil {
 		return nil, err

@@ -20,6 +20,7 @@
 package luks2_test
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
@@ -347,7 +348,7 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 		options = new(FormatOptions)
 	}
 
-	info, err := ReadHeader(devicePath, LockModeBlocking)
+	info, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Label, Equals, data.label)
@@ -634,7 +635,7 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 
 	s.cryptsetup.ForgetCalls()
 
-	startInfo, err := ReadHeader(devicePath, LockModeBlocking)
+	startInfo, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 
 	c.Check(AddKey(devicePath, primaryKey, data.key, data.options), IsNil)
@@ -647,7 +648,7 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	}
 	c.Check(s.cryptsetup.Calls()[0][9+len(data.extraArgs):], DeepEquals, []string{devicePath, "-"})
 
-	endInfo, err := ReadHeader(devicePath, LockModeBlocking)
+	endInfo, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 
 	newSlotId := -1
@@ -859,7 +860,7 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 
 	c.Check(AddKey(devicePath, make([]byte, 32), []byte("foo"), nil), ErrorMatches, "cryptsetup failed with: No key available with this passphrase.")
 
-	info, err := ReadHeader(devicePath, LockModeBlocking)
+	info, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
 	_, ok := info.Metadata.Keyslots[0]
@@ -901,7 +902,7 @@ func (s *cryptsetupSuite) testImportToken(c *C, data *testImportTokenData) {
 	}
 	c.Check(s.cryptsetup.Calls()[0][3+len(data.extraArgs)], Equals, devicePath)
 
-	info, err := ReadHeader(devicePath, LockModeBlocking)
+	info, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 
 	id := 0
@@ -1057,7 +1058,7 @@ func (s *cryptsetupSuite) TestReplaceToken(c *C) {
 
 	c.Check(s.cryptsetup.Calls(), DeepEquals, [][]string{{"cryptsetup", "token", "import", "--token-id", "8", "--token-replace", devicePath}})
 
-	info, err := ReadHeader(devicePath, LockModeBlocking)
+	info, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 
 	c.Assert(info.Metadata.Tokens, HasLen, 2)
@@ -1119,7 +1120,7 @@ func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
 	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-foo", TokenKeyslots: []int{0}}, nil), IsNil)
 	c.Assert(ImportToken(devicePath, &GenericToken{TokenType: "secboot-bar", TokenKeyslots: []int{1}}, nil), IsNil)
 
-	info, err := ReadHeader(devicePath, LockModeBlocking)
+	info, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Tokens, HasLen, 2)
 	_, ok := info.Metadata.Tokens[tokenId]
@@ -1133,7 +1134,7 @@ func (s *cryptsetupSuite) testRemoveToken(c *C, tokenId int) {
 		{"cryptsetup", "token", "remove", "--token-id", strconv.Itoa(tokenId), devicePath},
 	})
 
-	info, err = ReadHeader(devicePath, LockModeBlocking)
+	info, err = ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Tokens, HasLen, 1)
 	_, ok = info.Metadata.Tokens[tokenId]
@@ -1161,7 +1162,7 @@ func (s *cryptsetupSuite) TestRemoveNonExistantToken(c *C) {
 
 	c.Check(RemoveToken(devicePath, 10), ErrorMatches, "cryptsetup failed with: Token 10 is not in use.")
 
-	info, err := ReadHeader(devicePath, LockModeBlocking)
+	info, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Tokens, HasLen, 1)
 	_, ok := info.Metadata.Tokens[0]
@@ -1182,7 +1183,7 @@ func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 	c.Assert(Format(devicePath, "", data.key1, &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, data.key1, data.key2, &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
-	info, err := ReadHeader(devicePath, LockModeBlocking)
+	info, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
 	_, ok := info.Metadata.Keyslots[data.slotId]
@@ -1196,7 +1197,7 @@ func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 		{"cryptsetup", "luksKillSlot", "--batch-mode", "--type", "luks2", devicePath, strconv.Itoa(data.slotId)},
 	})
 
-	info, err = ReadHeader(devicePath, LockModeBlocking)
+	info, err = ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 	c.Check(info.Metadata.Keyslots, HasLen, 1)
 	_, ok = info.Metadata.Keyslots[data.slotId]
@@ -1256,7 +1257,7 @@ func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityDat
 	c.Assert(Format(devicePath, "", make([]byte, 32), &FormatOptions{KDFOptions: kdfOptions}), IsNil)
 	c.Assert(AddKey(devicePath, make([]byte, 32), make([]byte, 32), &AddKeyOptions{KDFOptions: kdfOptions, Slot: AnySlot}), IsNil)
 
-	info, err := ReadHeader(devicePath, LockModeBlocking)
+	info, err := ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 	keyslot, ok := info.Metadata.Keyslots[data.slotId]
 	c.Assert(ok, Equals, true)
@@ -1270,7 +1271,7 @@ func (s *cryptsetupSuite) testSetSlotPriority(c *C, data *testSetSlotPriorityDat
 		{"cryptsetup", "config", "--priority", data.priority.String(), "--key-slot", strconv.Itoa(data.slotId), devicePath},
 	})
 
-	info, err = ReadHeader(devicePath, LockModeBlocking)
+	info, err = ReadHeader(context.Background(), devicePath)
 	c.Assert(err, IsNil)
 	keyslot, ok = info.Metadata.Keyslots[data.slotId]
 	c.Assert(ok, Equals, true)
