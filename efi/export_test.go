@@ -31,6 +31,7 @@ import (
 const (
 	GrubChainloaderUsesShimProtocol            = grubChainloaderUsesShimProtocol
 	KernelConfigPCR                            = kernelConfigPCR
+	KernelCommandlineParamKey                  = kernelCommandlineParamKey
 	ShimFixVariableAuthorityEventsMatchSpec    = shimFixVariableAuthorityEventsMatchSpec
 	ShimHasSbatRevocationManagement            = shimHasSbatRevocationManagement
 	ShimHasSbatVerification                    = shimHasSbatVerification
@@ -42,6 +43,7 @@ const (
 	ShimVendorCertIsDb                         = shimVendorCertIsDb
 	SignatureDBUpdateNoFirmwareQuirk           = signatureDBUpdateNoFirmwareQuirk
 	SignatureDBUpdateFirmwareDedupIgnoresOwner = signatureDBUpdateFirmwareDedupIgnoresOwner
+	SnapModelParamKey                          = snapModelParamKey
 )
 
 // Export variables and unexported functions for testing

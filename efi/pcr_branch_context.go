@@ -32,7 +32,7 @@ import (
 // context.
 type pcrBranchContext interface {
 	pcrProfileContext
-	Params() *loadParams       // access the externally supplied parameters for this branch
+	Params() loadParams        // access the externally supplied parameters for this branch
 	Vars() varReadWriter       // access the variable state for this branch
 	FwContext() *fwContext     // access the platform firmware state for this branch
 	ShimContext() *shimContext // access the shim state for this branch
@@ -53,11 +53,11 @@ type pcrBranchCtx struct {
 }
 
 // newRootPcrBranchCtx creates a new root pcrBranchCtx from the supplied arguments.
-func newRootPcrBranchCtx(pc pcrProfileContext, branch *secboot_tpm2.PCRProtectionProfileBranch, params *loadParams, vars *varBranch) *pcrBranchCtx {
+func newRootPcrBranchCtx(pc pcrProfileContext, branch *secboot_tpm2.PCRProtectionProfileBranch, params loadParams, vars *varBranch) *pcrBranchCtx {
 	return &pcrBranchCtx{
 		pcrProfileContext: pc,
 		branch:            branch,
-		params:            *params,
+		params:            params,
 		vars:              *vars}
 }
 
@@ -68,15 +68,15 @@ func newRootPcrBranchCtx(pc pcrProfileContext, branch *secboot_tpm2.PCRProtectio
 // The returned context is based on a copy of this one, with its own copy of the varBranch,
 // fwContext and shimContext fields so that they can be mutated without affecting the state
 // of ancestor branch contexts.
-func (c *pcrBranchCtx) newSubBranch(bp *secboot_tpm2.PCRProtectionProfileBranchPoint, params *loadParams) *pcrBranchCtx {
+func (c *pcrBranchCtx) newSubBranch(bp *secboot_tpm2.PCRProtectionProfileBranchPoint, params loadParams) *pcrBranchCtx {
 	newCtx := *c
 	newCtx.branch = bp.AddBranch()
-	newCtx.params = *params
+	newCtx.params = params
 	return &newCtx
 }
 
-func (c *pcrBranchCtx) Params() *loadParams {
-	return &c.params
+func (c *pcrBranchCtx) Params() loadParams {
+	return c.params
 }
 
 func (c *pcrBranchCtx) Vars() varReadWriter {
@@ -127,6 +127,6 @@ func (c *pcrBranchCtx) AddBranchPoint() *pcrBranchPointCtx {
 
 // AddBranch adds a new branch to this branch point with the supplied parameters, returning
 // a new branch context.
-func (c *pcrBranchPointCtx) AddBranch(params *loadParams) *pcrBranchCtx {
+func (c *pcrBranchPointCtx) AddBranch(params loadParams) *pcrBranchCtx {
 	return c.parentCtx.newSubBranch(c.bp, params)
 }

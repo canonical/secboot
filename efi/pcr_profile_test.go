@@ -128,8 +128,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimple(c *C) {
 	}
 
 	images := []Image{newMockImage(), newMockImage(), newMockImage()}
-	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0])
-	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[1])
+	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[0])
+	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[1])
 	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler()
 
 	sequences := NewImageLoadSequences().Append(
@@ -171,8 +171,8 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimpleWithLeafBranches(c *C) {
 	}
 
 	images := []Image{newMockImage(), newMockImage(), newMockImage(), newMockImage()}
-	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0])
-	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[1], digests[2])
+	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[0])
+	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[1], digests[2])
 	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler()
 	s.mockImageLoadHandlerMap[images[3]] = newMockLoadHandler()
 
@@ -224,9 +224,9 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileSimpleWithBranches(c *C) {
 	}
 
 	images := []Image{newMockImage(), newMockImage(), newMockImage(), newMockImage()}
-	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0], digests[1])
-	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[2])
-	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[2])
+	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[0], digests[1])
+	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[2])
+	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[2])
 	s.mockImageLoadHandlerMap[images[3]] = newMockLoadHandler()
 
 	sequences := NewImageLoadSequences().Append(
@@ -280,13 +280,13 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithParams1(c *C) {
 	}
 
 	images := []Image{newMockImage(), newMockImage(), newMockImage()}
-	params := []*LoadParams{{KernelCommandline: "foo"}, {KernelCommandline: "bar"}}
+	params := []LoadParams{{KernelCommandlineParamKey: "foo"}, {KernelCommandlineParamKey: "bar"}}
 
-	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0], digests[0])
+	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[0], digests[0])
 	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().
-		withExtendPCROnImageLoads(0, digests[1], digests[1]).
-		withCheckParamsOnImageStarts(c, params...)
-	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckParamsOnImageStarts(c, params...)
+		withExtendPCROnImageLoadMulti(0, digests[1], digests[1]).
+		withCheckParamsOnImageStartMulti(c, params...)
+	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckParamsOnImageStartMulti(c, params...)
 
 	sequences := NewImageLoadSequences().Append(
 		NewImageLoadActivity(images[0]).Loads(
@@ -335,13 +335,13 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithParams2(c *C) {
 	}
 
 	images := []Image{newMockImage(), newMockImage(), newMockImage()}
-	params := []*LoadParams{{KernelCommandline: "foo"}, {KernelCommandline: "bar"}}
+	params := []LoadParams{{KernelCommandlineParamKey: "foo"}, {KernelCommandlineParamKey: "bar"}}
 
-	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoads(0, digests[0])
+	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().withExtendPCROnImageLoadMulti(0, digests[0])
 	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().
-		withExtendPCROnImageLoads(0, digests[1], digests[1]).
-		withCheckParamsOnImageStarts(c, new(LoadParams))
-	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckParamsOnImageStarts(c, params...)
+		withExtendPCROnImageLoadMulti(0, digests[1], digests[1]).
+		withCheckParamsOnImageStartMulti(c, LoadParams{})
+	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckParamsOnImageStartMulti(c, params...)
 
 	sequences := NewImageLoadSequences().Append(
 		NewImageLoadActivity(images[0]).Loads(
@@ -389,15 +389,15 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithRootParams(c *C) {
 	}
 
 	images := []Image{newMockImage(), newMockImage(), newMockImage()}
-	params := []*LoadParams{{KernelCommandline: "foo"}, {KernelCommandline: "bar"}}
+	params := []LoadParams{{KernelCommandlineParamKey: "foo"}, {KernelCommandlineParamKey: "bar"}}
 
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().
-		withExtendPCROnImageLoads(0, digests[0], digests[0]).
-		withCheckParamsOnImageStarts(c, params...)
+		withExtendPCROnImageLoadMulti(0, digests[0], digests[0]).
+		withCheckParamsOnImageStartMulti(c, params...)
 	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().
-		withExtendPCROnImageLoads(0, digests[1], digests[1]).
-		withCheckParamsOnImageStarts(c, params...)
-	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckParamsOnImageStarts(c, params...)
+		withExtendPCROnImageLoadMulti(0, digests[1], digests[1]).
+		withCheckParamsOnImageStartMulti(c, params...)
+	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckParamsOnImageStartMulti(c, params...)
 
 	sequences := NewImageLoadSequences(KernelCommandlineParams("foo", "bar")).Append(
 		NewImageLoadActivity(images[0]).Loads(
@@ -448,13 +448,13 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableUpdate(c *C) {
 
 	images := []Image{newMockImage(), newMockImage(), newMockImage()}
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().
-		withExtendPCROnImageLoads(0, digests[0], digests[0]).
-		withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{2}).
+		withExtendPCROnImageLoadMulti(0, digests[0], digests[0]).
+		withCheckVarOnImageStartMulti(c, "foo", testGuid1, []byte{1}, []byte{2}).
 		withSetVarOnImageStart("foo", testGuid1, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess, []byte{2})
 	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().
-		withExtendPCROnImageLoads(0, digests[1], digests[1]).
-		withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{2}, []byte{2})
-	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{2}, []byte{2})
+		withExtendPCROnImageLoadMulti(0, digests[1], digests[1]).
+		withCheckVarOnImageStartMulti(c, "foo", testGuid1, []byte{2}, []byte{2})
+	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckVarOnImageStartMulti(c, "foo", testGuid1, []byte{2}, []byte{2})
 
 	sequences := NewImageLoadSequences().Append(
 		NewImageLoadActivity(images[0]).Loads(
@@ -507,12 +507,12 @@ func (s *pcrProfileMockedSuite) TestAddPCRProfileWithVariableModifier(c *C) {
 	images := []Image{new(mockImage), new(mockImage), new(mockImage)}
 
 	s.mockImageLoadHandlerMap[images[0]] = newMockLoadHandler().
-		withExtendPCROnImageLoads(0, digests[0], digests[0]).
-		withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{2})
+		withExtendPCROnImageLoadMulti(0, digests[0], digests[0]).
+		withCheckVarOnImageStartMulti(c, "foo", testGuid1, []byte{1}, []byte{2})
 	s.mockImageLoadHandlerMap[images[1]] = newMockLoadHandler().
-		withExtendPCROnImageLoads(0, digests[1], digests[1]).
-		withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{2})
-	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckVarOnImageStarts(c, "foo", testGuid1, []byte{1}, []byte{2})
+		withExtendPCROnImageLoadMulti(0, digests[1], digests[1]).
+		withCheckVarOnImageStartMulti(c, "foo", testGuid1, []byte{1}, []byte{2})
+	s.mockImageLoadHandlerMap[images[2]] = newMockLoadHandler().withCheckVarOnImageStartMulti(c, "foo", testGuid1, []byte{1}, []byte{2})
 
 	sequences := NewImageLoadSequences().Append(
 		NewImageLoadActivity(images[0]).Loads(

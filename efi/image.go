@@ -103,11 +103,38 @@ func (p FileImage) Open() (ImageReader, error) {
 	return &fileImageReader{File: f, size: fi.Size()}, nil
 }
 
+type loadParamsKey string
+
+const (
+	kernelCommandlineParamKey loadParamsKey = "kernel_commandline"
+	snapModelParamKey         loadParamsKey = "snap_model"
+)
+
 // loadParams correspond to a set of parameters that apply to a single branch
 // in a PCR profile.
-type loadParams struct {
-	KernelCommandline string
-	SnapModel         secboot.SnapModel
+type loadParams map[loadParamsKey]any
+
+func (p loadParams) clone() loadParams {
+	out := make(loadParams)
+	for k, v := range p {
+		out[k] = v
+	}
+	return out
+}
+
+func applyMultipleOptionsToLoadParams[V any](key loadParamsKey, values []V, params ...loadParams) []loadParams {
+	var out []loadParams
+	for _, v := range values {
+		var newParams []loadParams
+		for _, p := range params {
+			newParams = append(newParams, p.clone())
+		}
+		for _, p := range newParams {
+			p[key] = v
+		}
+		out = append(out, newParams...)
+	}
+	return out
 }
 
 // ImageLoadParams provides one or more values for an external parameter that
@@ -129,16 +156,7 @@ func KernelCommandlineParams(commandlines ...string) ImageLoadParams {
 }
 
 func (p kernelCommandlineParams) applyTo(params ...loadParams) []loadParams {
-	var out []loadParams
-	for _, cmdline := range []string(p) {
-		p := make([]loadParams, len(params))
-		copy(p, params)
-		for i := range p {
-			p[i].KernelCommandline = cmdline
-		}
-		out = append(out, p...)
-	}
-	return out
+	return applyMultipleOptionsToLoadParams[string](kernelCommandlineParamKey, []string(p), params...)
 }
 
 type snapModelParams []secboot.SnapModel
@@ -149,22 +167,13 @@ func SnapModelParams(models ...secboot.SnapModel) ImageLoadParams {
 }
 
 func (p snapModelParams) applyTo(params ...loadParams) []loadParams {
-	var out []loadParams
-	for _, model := range []secboot.SnapModel(p) {
-		p := make([]loadParams, len(params))
-		copy(p, params)
-		for i := range p {
-			p[i].SnapModel = model
-		}
-		out = append(out, p...)
-	}
-	return out
+	return applyMultipleOptionsToLoadParams[secboot.SnapModel](snapModelParamKey, []secboot.SnapModel(p), params...)
 }
 
 type imageLoadParamsSet []ImageLoadParams
 
-func (s imageLoadParamsSet) Resolve(initial *loadParams) []loadParams {
-	params := []loadParams{*initial}
+func (s imageLoadParamsSet) Resolve(initial loadParams) []loadParams {
+	params := []loadParams{initial}
 	for _, p := range s {
 		params = p.applyTo(params...)
 	}

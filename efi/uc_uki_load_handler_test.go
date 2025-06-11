@@ -52,8 +52,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStart(c *C) {
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
-			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
-			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			KernelCommandlineParamKey: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
+			SnapModelParamKey: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 				"authority-id": "fake-brand",
 				"series":       "16",
 				"brand-id":     "fake-brand",
@@ -74,8 +74,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartDifferentCommandline(c *C) 
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
-			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover",
-			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			KernelCommandlineParamKey: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover",
+			SnapModelParamKey: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 				"authority-id": "fake-brand",
 				"series":       "16",
 				"brand-id":     "fake-brand",
@@ -96,8 +96,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartDifferentModel(c *C) {
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
-			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
-			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			KernelCommandlineParamKey: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
+			SnapModelParamKey: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 				"authority-id": "fake-brand",
 				"series":       "16",
 				"brand-id":     "fake-brand",
@@ -117,8 +117,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartNoKernelConfig(c *C) {
 	s.testMeasureImageStart(c, &testUCUKIMeasureImageStartParams{
 		alg: tpm2.HashAlgorithmSHA256,
 		params: LoadParams{
-			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
-			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			KernelCommandlineParamKey: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
+			SnapModelParamKey: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 				"authority-id": "fake-brand",
 				"series":       "16",
 				"brand-id":     "fake-brand",
@@ -134,8 +134,8 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartSHA1(c *C) {
 		alg:  tpm2.HashAlgorithmSHA1,
 		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
-			KernelCommandline: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
-			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			KernelCommandlineParamKey: "console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run",
+			SnapModelParamKey: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 				"authority-id": "fake-brand",
 				"series":       "16",
 				"brand-id":     "fake-brand",
@@ -156,7 +156,7 @@ func (s *ucUkiLoadHandlerSuite) TestMeasureImageStartNoCommandline(c *C) {
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(KernelConfigPCR),
 		params: LoadParams{
-			SnapModel: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+			SnapModelParamKey: testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
 				"authority-id": "fake-brand",
 				"series":       "16",
 				"brand-id":     "fake-brand",
