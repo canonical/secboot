@@ -122,6 +122,21 @@ func (p loadParams) clone() loadParams {
 	return out
 }
 
+func applyMultipleOptionsToLoadParams[V any](key loadParamsKey, values []V, params ...loadParams) []loadParams {
+	var out []loadParams
+	for _, v := range values {
+		var newParams []loadParams
+		for _, p := range params {
+			newParams = append(newParams, p.clone())
+		}
+		for _, p := range newParams {
+			p[key] = v
+		}
+		out = append(out, newParams...)
+	}
+	return out
+}
+
 // ImageLoadParams provides one or more values for an external parameter that
 // is supplied to an image which is loaded during the boot process.
 type ImageLoadParams interface {
@@ -141,18 +156,7 @@ func KernelCommandlineParams(commandlines ...string) ImageLoadParams {
 }
 
 func (p kernelCommandlineParams) applyTo(params ...loadParams) []loadParams {
-	var out []loadParams
-	for _, cmdline := range []string(p) {
-		var newParams []loadParams
-		for _, p := range params {
-			newParams = append(newParams, p.clone())
-		}
-		for _, p := range newParams {
-			p[kernelCommandlineParamKey] = cmdline
-		}
-		out = append(out, newParams...)
-	}
-	return out
+	return applyMultipleOptionsToLoadParams[string](kernelCommandlineParamKey, []string(p), params...)
 }
 
 type snapModelParams []secboot.SnapModel
@@ -163,18 +167,7 @@ func SnapModelParams(models ...secboot.SnapModel) ImageLoadParams {
 }
 
 func (p snapModelParams) applyTo(params ...loadParams) []loadParams {
-	var out []loadParams
-	for _, model := range []secboot.SnapModel(p) {
-		var newParams []loadParams
-		for _, p := range params {
-			newParams = append(newParams, p.clone())
-		}
-		for _, p := range newParams {
-			p[snapModelParamKey] = model
-		}
-		out = append(out, newParams...)
-	}
-	return out
+	return applyMultipleOptionsToLoadParams[secboot.SnapModel](snapModelParamKey, []secboot.SnapModel(p), params...)
 }
 
 type imageLoadParamsSet []ImageLoadParams
