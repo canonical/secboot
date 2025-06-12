@@ -20,7 +20,6 @@
 package luks2test
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -54,10 +53,4 @@ func CreateEmptyDiskImage(c *C, sz int) string {
 
 	c.Assert(f.Truncate(int64(sz)*1024*1024), IsNil)
 	return f.Name()
-}
-
-func CheckLUKS2Passphrase(c *C, devicePath string, key []byte) {
-	cmd := exec.Command("cryptsetup", "open", "--test-passphrase", "--key-file", "-", devicePath)
-	cmd.Stdin = bytes.NewReader(key)
-	c.Check(cmd.Run(), IsNil)
 }

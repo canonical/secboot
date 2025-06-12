@@ -1030,3 +1030,8 @@ func NameLegacyLUKS2ContainerKey(devicePath string, keyslot int, newName string)
 
 	return nil
 }
+
+// Check if key is valid key for LUKS2 container at devicePath.
+func TestLUKS2ContainerKey(devicePath string, key []byte) bool {
+	return luks2.TestContainerKey(devicePath, key)
+}

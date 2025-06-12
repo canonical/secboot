@@ -3114,7 +3114,7 @@ func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *Ini
 	c.Check(keyslot.KDF.Iterations, Equals, 1000)
 	c.Check(keyslot.KDF.Hash, Equals, luks2.HashSHA256)
 
-	luks2test.CheckLUKS2Passphrase(c, path, key)
+	c.Check(TestLUKS2ContainerKey(path, key), testutil.IsTrue)
 }
 
 func (s *cryptSuiteUnmocked) TestInitializeLUKS2Container(c *C) {
@@ -3172,8 +3172,8 @@ func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerUnlockKey(c *C, keyslotNam
 	c.Check(keyslot.KDF.Iterations, Equals, 1000)
 	c.Check(keyslot.KDF.Hash, Equals, luks2.HashSHA256)
 
-	luks2test.CheckLUKS2Passphrase(c, path, newKey)
-	luks2test.CheckLUKS2Passphrase(c, path, key)
+	c.Check(TestLUKS2ContainerKey(path, newKey), testutil.IsTrue)
+	c.Check(TestLUKS2ContainerKey(path, key), testutil.IsTrue)
 }
 
 func (s *cryptSuiteUnmocked) TestAddLUKS2ContainerUnlockKey(c *C) {
@@ -3217,8 +3217,8 @@ func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerRecoveryKey(c *C, keyslotN
 	c.Check(keyslot.KDF.Iterations, Equals, 600000)
 	c.Check(keyslot.KDF.Hash, Equals, luks2.HashSHA256)
 
-	luks2test.CheckLUKS2Passphrase(c, path, recoveryKey[:])
-	luks2test.CheckLUKS2Passphrase(c, path, key)
+	c.Check(TestLUKS2ContainerKey(path, recoveryKey[:]), testutil.IsTrue)
+	c.Check(TestLUKS2ContainerKey(path, key), testutil.IsTrue)
 }
 
 func (s *cryptSuiteUnmockedExpensive) TestAddLUKS2ContainerRecoveryKey(c *C) {

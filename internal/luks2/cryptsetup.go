@@ -501,3 +501,8 @@ func KillSlot(devicePath string, slot int) error {
 func SetSlotPriority(devicePath string, slot int, priority SlotPriority) error {
 	return cryptsetupCmd(nil, "config", "--priority", priority.String(), "--key-slot", strconv.Itoa(slot), devicePath)
 }
+
+// Check if key is valid key for LUKS2 container at devicePath.
+func TestContainerKey(devicePath string, key []byte) bool {
+	return cryptsetupCmd(bytes.NewReader(key), "open", "--test-passphrase", "--key-file", "-", devicePath) == nil
+}
