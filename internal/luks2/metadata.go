@@ -922,6 +922,36 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type BinaryHeaderError struct {
+	err error
+}
+
+func (e *BinaryHeaderError) Error() string {
+	return "error with binary header: " + e.err.Error()
+}
+
+func (e *BinaryHeaderError) Unwrap() error {
+	return e.err
+}
+
+type JSONMetadataError struct {
+	err error
+}
+
+func (e *JSONMetadataError) Error() string {
+	return "error with JSON metadata: " + e.err.Error()
+}
+
+func (e *JSONMetadataError) Unwrap() error {
+	return e.err
+}
+
+var (
+	ErrInvalidMagic = errors.New("invalid magic")
+
+	ErrInvalidChecksum = errors.New("invalid checksum")
+)
+
 // HeaderInfo corresponds to the header (binary header and JSON metadata) for a LUKS2 volume.
 type HeaderInfo struct {
 	HeaderSize uint64   // The total size of the binary header and JSON metadata in bytes
@@ -942,27 +972,30 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 	case primary && bytes.Equal(hdr.Magic[:], []byte("LUKS\xba\xbe")):
 	case !primary && bytes.Equal(hdr.Magic[:], []byte("SKUL\xba\xbe")):
 	default:
-		return nil, nil, errors.New("invalid magic")
+		return nil, nil, &BinaryHeaderError{ErrInvalidMagic}
 	}
 	if hdr.Version != 2 {
-		return nil, nil, errors.New("invalid version")
+		return nil, nil, &BinaryHeaderError{errors.New("invalid version")}
 	}
 	if hdr.HdrSize > uint64(math.MaxInt64) {
-		return nil, nil, errors.New("header size too large")
+		return nil, nil, &BinaryHeaderError{errors.New("header size too large")}
 	}
 	if hdr.HdrOffset > uint64(math.MaxInt64) {
-		return nil, nil, errors.New("header offset too large")
+		return nil, nil, &BinaryHeaderError{errors.New("header offset too large")}
 	}
 	if int64(hdr.HdrOffset) != offset {
-		return nil, nil, errors.New("invalid header offset")
+		return nil, nil, &BinaryHeaderError{errors.New("invalid header offset")}
 	}
 
 	// Verify the header checksum, which includes the JSON metadata
 	csumHash := hdr.CsumAlg.GetHash()
 	if csumHash == 0 {
-		return nil, nil, errors.New("unsupported checksum alg")
+		return nil, nil, &BinaryHeaderError{errors.New("unsupported checksum alg")}
 	}
 
+	if !csumHash.Available() {
+		return nil, nil, errors.New("checksum alg unavailable")
+	}
 	h := csumHash.New()
 
 	// Hash the binary header without the checksum
@@ -976,11 +1009,11 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 	jsonBuffer := new(bytes.Buffer)
 	tr := io.TeeReader(r, jsonBuffer)
 	if _, err := io.CopyN(h, tr, int64(hdr.HdrSize)-int64(binary.Size(hdr))); err != nil {
-		return nil, nil, xerrors.Errorf("cannot calculate checksum, error reading JSON metadata: %w", err)
+		return nil, nil, &JSONMetadataError{xerrors.Errorf("cannot calculate checksum, error reading JSON metadata: %w", err)}
 	}
 
 	if !bytes.Equal(h.Sum(nil), hdr.Csum[0:csumHash.Size()]) {
-		return nil, nil, errors.New("invalid header checksum")
+		return nil, nil, &BinaryHeaderError{ErrInvalidChecksum}
 	}
 
 	// Return the binary header and the memory buffer containing the verified JSON metadata
@@ -1031,7 +1064,7 @@ func ReadHeader(ctx context.Context, path string) (*HeaderInfo, error) {
 	var primaryMetadata Metadata
 	if primaryErr == nil {
 		if err := json.NewDecoder(primaryJSONData).Decode(&primaryMetadata); err != nil {
-			primaryErr = xerrors.Errorf("cannot decode JSON metadata area: %w", err)
+			primaryErr = &JSONMetadataError{err}
 		}
 	}
 
@@ -1055,7 +1088,7 @@ func ReadHeader(ctx context.Context, path string) (*HeaderInfo, error) {
 	var secondaryMetadata Metadata
 	if secondaryErr == nil {
 		if err := json.NewDecoder(secondaryJSONData).Decode(&secondaryMetadata); err != nil {
-			secondaryErr = xerrors.Errorf("cannot decode JSON metadata area: %w", err)
+			secondaryErr = &JSONMetadataError{err}
 		}
 	}
 

@@ -580,7 +580,7 @@ func (s *metadataSuite) TestReadHeaderInvalidPrimary(c *C) {
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityNormal,
 		sectorSize:       512,
-		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr-invalid-checksum0.img is invalid: invalid header checksum\n",
+		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr-invalid-checksum0.img is invalid: error with binary header: invalid checksum\n",
 	})
 }
 
@@ -593,7 +593,7 @@ func (s *metadataSuite) TestReadHeaderInvalidSecondary(c *C) {
 		keyslotsSize:     16744448,
 		keyslot2Priority: SlotPriorityNormal,
 		sectorSize:       512,
-		stderr:           "luks2.ReadHeader: secondary header for /.*/luks2-hdr-invalid-checksum1.img is invalid: invalid header checksum\n",
+		stderr:           "luks2.ReadHeader: secondary header for /.*/luks2-hdr-invalid-checksum1.img is invalid: error with binary header: invalid checksum\n",
 	})
 }
 
@@ -618,7 +618,7 @@ func (s *metadataSuite) TestReadHeaderCustomMetadataSizeInvalidPrimary(c *C) {
 		keyslotsSize:     8257536,
 		keyslot2Priority: SlotPriorityNormal,
 		sectorSize:       512,
-		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr2-invalid-checksum0.img is invalid: invalid header checksum\n",
+		stderr:           "luks2.ReadHeader: primary header for /.*/luks2-hdr2-invalid-checksum0.img is invalid: error with binary header: invalid checksum\n",
 	})
 }
 
@@ -638,13 +638,18 @@ func (s *metadataSuite) TestReadHeaderObsoletePrimary(c *C) {
 func (s *metadataSuite) TestReadHeaderInvalidMagic(c *C) {
 	// Test where both headers have invalid magic values to check we get the right error.
 	_, err := ReadHeader(context.Background(), s.decompress(c, "testdata/luks2-hdr-invalid-magic-both.img"))
-	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: invalid magic")
+	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: error with binary header: invalid magic")
+	var he *BinaryHeaderError
+	c.Assert(errors.As(err, &he), testutil.IsTrue)
+	c.Check(errors.Is(he, ErrInvalidMagic), testutil.IsTrue)
 }
 
 func (s *metadataSuite) TestReadHeaderInvalidVersion(c *C) {
 	// Test where both headers have an invalid version to check we get the right error.
 	_, err := ReadHeader(context.Background(), s.decompress(c, "testdata/luks2-hdr-invalid-version-both.img"))
-	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: invalid version")
+	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: error with binary header: invalid version")
+	var he *BinaryHeaderError
+	c.Check(errors.As(err, &he), testutil.IsTrue)
 }
 
 func (s *metadataSuite) TestReadHeaderWithExternalToken(c *C) {
