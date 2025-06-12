@@ -36,6 +36,10 @@ type PCRProfileOptionVisitor interface {
 	// AddInitialVariablesModifier adds a function that will be called to allow
 	// the initial variable set for profile generation to be modified.
 	AddInitialVariablesModifier(fn InitialVariablesModifier)
+
+	// SetAllowInsufficientDMAProtection sets whether the profile should allow
+	// for the "DMA Protection Disabled" string in PCR7.
+	SetAllowInsufficientDMAProtection(allow bool)
 }
 
 // VariableSet corresponds to a set of EFI variables.
