@@ -127,8 +127,11 @@ type StorageContainer interface {
 
 // NewStorageContainer creates a new StorageContainer from the specified
 // path, probing each of the registered backends to obtain an appropriate
-// instance. If no StorageContainer is found, a ErrNoStorageContainer error
-// is returned.
+// instance. The path may or may not be a path to a block device, depending
+// on the backends that are registered, because not all backends that may
+// exist in the future will make use of block devices for a storage container.
+//
+// If no StorageContainer is found, a ErrNoStorageContainer error is returned.
 //
 // This is safe to call from multiple goroutines.
 func NewStorageContainer(ctx context.Context, path string) (StorageContainer, error) {
