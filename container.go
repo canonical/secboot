@@ -102,10 +102,14 @@ type StorageContainer interface {
 	BackendName() string
 
 	// Activate unlocks this container with the specified key.
-	// The keyslot info can be supplied so that the backend can
-	// map the supplied key to a specific keyslot. If it is empty,
-	// it will iterate and try all keyslots. The caller can specify
-	// one or more options, which may be backend-specific.
+	// The caller can choose to supply the KeyslotInfo instance
+	// related to the keyslot from which the supplied key is
+	// associated with (obtained from StorageContainerReader.ReadKeyslot).
+	// If supplied, the backend can use this to target the supplied
+	// key at a specific keyslot. If keyslotInfo nil is supplied, the
+	// backend will have to test all keyslots with the supplied key.
+	// The caller can specify one or more options, which may be
+	// backend-specific.
 	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ActivateOption) error
 
 	// Deactivate locks this storage container.
