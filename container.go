@@ -27,13 +27,20 @@ import (
 )
 
 var (
+	ErrContainerClosed    = errors.New("storage container reader/writer is already closed")
+	ErrKeyslotNotFound    = errors.New("keyslot not found")
 	ErrNoStorageContainer = errors.New("no storage container for path")
 )
 
+// ActivateOptionVisitor is used for gathering options (using
+// ActivateOption). Each backend shouls provide its own
+// implementation of this.
 type ActivateOptionVisitor interface {
 	Add(key, value any)
 }
 
+// ActivateOption represents an option that can be supplied to
+// StorageContainer.Activate.
 type ActivateOption interface {
 	ApplyTo(ActivateOptionVisitor)
 }
@@ -51,14 +58,24 @@ type KeyslotInfo interface {
 	Type() KeyslotType
 	Name() string
 	Priority() int
-	Data() KeyDataReader
+	Data() KeyDataReader // TODO: This will eventually just be a io.Reader.
 }
 
 // StorageContainerReader provides a mechanism to perform read-only
-// operations on keyslots on a storage container. The backend should
-// permit as many of these to be opened as required, but should never
-// permit one to be opened at the same time as a [StorageContainerWriter].
+// operations on keyslots on a storage container.
+//
+// The implementation does not need to be threadsafe - it should be
+// used from a single goroutine. If access is needed on another
+// goroutine, use the associated [StorageContainer] to open a new one.
+//
+// The backend should permit as many of these to be opened as required,
+// but should never permit one to be opened at the same time as a
+// [StorageContainerReadWriter].
 type StorageContainerReader interface {
+	// Container returns the StorageContainer that this reader
+	// was opened from.
+	Container() StorageContainer
+
 	io.Closer
 
 	// ListKeyslotNames returns a sorted list of keyslot names.
@@ -71,12 +88,17 @@ type StorageContainerReader interface {
 
 // StorageContainer represents some type of storage container that
 // can store keyslots, making the core code in secboot agnostic to
-// the storage backend.
+// the storage backend. Implementation of this should be safe to
+// access from multiple goroutines.
 type StorageContainer interface {
 	Path() string // The path of this storage container.
 
 	// BackendName is the name of the backend that created this
 	// StorageContainer instance.
+	//
+	// XXX: See the comment for RegisterStorageContainerBackend about
+	// using something other than a string for identifying the storage
+	// backend.
 	BackendName() string
 
 	// Activate unlocks this container with the specified key.
@@ -93,8 +115,9 @@ type StorageContainer interface {
 	// operations to keyslots that only require read access. The backend
 	// should permit as many of these to be opened as is requested, but
 	// must not allow a combination of StorageContainerReader and
-	// StorageContainerWriter to be opened (of which there should only
-	// ever be 1 open at a time).
+	// StorageContainerReadWriter (when it exists) to be open at the same
+	// time (and the backend should only permit one StorageContainerReadWriter
+	// to be open at a time).
 	OpenRead(ctx context.Context) (StorageContainerReader, error)
 }
 
@@ -102,6 +125,8 @@ type StorageContainer interface {
 // path, probing each of the registered backends to obtain an appropriate
 // instance. If no StorageContainer is found, a ErrNoStorageContainer error
 // is returned.
+//
+// This is safe to call from multiple goroutines.
 func NewStorageContainer(ctx context.Context, path string) (StorageContainer, error) {
 	for name, backend := range storageContainerHandlers {
 		container, err := backend.Probe(ctx, path)
