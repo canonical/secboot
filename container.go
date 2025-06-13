@@ -76,6 +76,7 @@ type StorageContainerReader interface {
 	// was opened from.
 	Container() StorageContainer
 
+	// io.Closer is used to close this reader.
 	io.Closer
 
 	// ListKeyslotNames returns a sorted list of keyslot names.
