@@ -39,6 +39,10 @@ type StorageContainerBackend interface {
 	// indirect relationship to a storage container.
 	//
 	// Implementations of this must be safe to call from any goroutine.
+	//
+	// The supplied path may or may not be a path to a block device,
+	// depending on how the backend works - there may be backends in the
+	// future that don't use block devices for storage containers.
 	Probe(ctx context.Context, path string) (StorageContainer, error)
 }
 
