@@ -21,6 +21,7 @@ package secboot_test
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"encoding/json"
 	"errors"
@@ -385,8 +386,8 @@ func (l *mockLUKS2) setSlotPriority(devicePath string, slot int, priority luks2.
 	return nil
 }
 
-func (l *mockLUKS2) newLUKSView(devicePath string, lockMode luks2.LockMode) (*luksview.View, error) {
-	l.operations = append(l.operations, fmt.Sprint("newLUKSView(", devicePath, ",", lockMode, ")"))
+func (l *mockLUKS2) newLUKSView(ctx context.Context, devicePath string) (*luksview.View, error) {
+	l.operations = append(l.operations, fmt.Sprint("newLUKSView(", ctx, ",", devicePath, ")"))
 
 	dev, ok := l.devices[devicePath]
 	if !ok {
@@ -935,7 +936,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 	c.Assert(err, IsNil)
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
-		"newLUKSView(" + data.sourceDevicePath + ",0)",
+		"newLUKSView(context.TODO," + data.sourceDevicePath + ")",
 		fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", slot),
 	})
 
@@ -1082,12 +1083,12 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 
 	if data.activateTries > 0 {
 		c.Assert(s.luks2.operations, HasLen, data.activateTries+1)
-		c.Check(s.luks2.operations[0], Equals, "newLUKSView(/dev/sda1,0)")
+		c.Check(s.luks2.operations[0], Equals, "newLUKSView(context.TODO,/dev/sda1)")
 		for _, op := range s.luks2.operations[1:] {
 			c.Check(op, Equals, "Activate(data,/dev/sda1,-1)")
 		}
 	} else if len(s.luks2.operations) == 1 {
-		c.Check(s.luks2.operations[0], Equals, "newLUKSView(/dev/sda1,0)")
+		c.Check(s.luks2.operations[0], Equals, "newLUKSView(context.TODO,/dev/sda1)")
 	} else {
 		c.Check(s.luks2.operations, HasLen, 0)
 	}
@@ -1356,7 +1357,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 	}
 
 	c.Assert(s.luks2.operations, HasLen, len(data.activateSlots)+1)
-	c.Check(s.luks2.operations[0], Equals, "newLUKSView("+data.sourceDevicePath+",0)")
+	c.Check(s.luks2.operations[0], Equals, "newLUKSView(context.TODO,"+data.sourceDevicePath+")")
 	for i, op := range s.luks2.operations[1:] {
 		c.Check(op, Equals, fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", data.activateSlots[i]))
 	}
@@ -1738,12 +1739,12 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 
 	if data.activateTries > 0 {
 		c.Assert(s.luks2.operations, HasLen, data.activateTries+1)
-		c.Check(s.luks2.operations[0], Equals, "newLUKSView(/dev/sda1,0)")
+		c.Check(s.luks2.operations[0], Equals, "newLUKSView(context.TODO,/dev/sda1)")
 		for _, op := range s.luks2.operations[1:] {
 			c.Check(op, Equals, "Activate(data,/dev/sda1,-1)")
 		}
 	} else if len(s.luks2.operations) == 1 {
-		c.Check(s.luks2.operations[0], Equals, "newLUKSView(/dev/sda1,0)")
+		c.Check(s.luks2.operations[0], Equals, "newLUKSView(context.TODO,/dev/sda1)")
 	} else {
 		c.Check(s.luks2.operations, HasLen, 0)
 	}
@@ -2152,7 +2153,7 @@ func (s *cryptSuite) testAddLUKS2ContainerUnlockKey(c *C, data *testAddLUKS2Cont
 	c.Check(AddLUKS2ContainerUnlockKey(data.devicePath, data.keyslotName, data.existingKey, data.key), IsNil)
 
 	c.Assert(s.luks2.operations, HasLen, expected)
-	c.Check(s.luks2.operations[0], Equals, "newLUKSView("+data.devicePath+",0)")
+	c.Check(s.luks2.operations[0], Equals, "newLUKSView(context.TODO,"+data.devicePath+")")
 
 	for i, id := range view.OrphanedTokenIds() {
 		c.Check(s.luks2.operations[1+i], Equals, "RemoveToken("+data.devicePath+","+strconv.Itoa(id)+")")
@@ -2368,8 +2369,8 @@ func (s *cryptSuite) TestListLUKS2ContainerKeyNames(c *C) {
 	c.Check(names, DeepEquals, []string{"recovery"})
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
-		"newLUKSView(/dev/sda1,0)",
-		"newLUKSView(/dev/sda1,0)",
+		"newLUKSView(context.TODO,/dev/sda1)",
+		"newLUKSView(context.TODO,/dev/sda1)",
 	})
 }
 
@@ -2400,7 +2401,7 @@ func (s *cryptSuite) testAddLUKS2ContainerRecoveryKey(c *C, data *testAddLUKS2Co
 	c.Check(AddLUKS2ContainerRecoveryKey(data.devicePath, data.keyslotName, data.existingKey, data.key), IsNil)
 
 	c.Assert(s.luks2.operations, HasLen, expected)
-	c.Check(s.luks2.operations[0], Equals, "newLUKSView("+data.devicePath+",0)")
+	c.Check(s.luks2.operations[0], Equals, "newLUKSView(context.TODO,"+data.devicePath+")")
 
 	for i, id := range view.OrphanedTokenIds() {
 		c.Check(s.luks2.operations[1+i], Equals, "RemoveToken("+data.devicePath+","+strconv.Itoa(id)+")")
@@ -2624,7 +2625,7 @@ func (s *cryptSuite) testDeleteLUKS2ContainerKey(c *C, data *testDeleteLUKS2Cont
 	c.Check(DeleteLUKS2ContainerKey(data.devicePath, data.keyslotName), IsNil)
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
-		"newLUKSView(" + data.devicePath + ",0)",
+		"newLUKSView(context.TODO," + data.devicePath + ")",
 		"KillSlot(" + data.devicePath + "," + strconv.Itoa(data.slot) + ")",
 		"RemoveToken(" + data.devicePath + "," + strconv.Itoa(data.tokenId) + ")",
 	})
@@ -2787,7 +2788,7 @@ func (s *cryptSuite) testRenameLUKS2ContainerKey(c *C, data *testRenameLUKS2Cont
 	c.Check(RenameLUKS2ContainerKey(data.devicePath, data.oldName, data.newName), IsNil)
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
-		"newLUKSView(" + data.devicePath + ",0)",
+		"newLUKSView(context.TODO," + data.devicePath + ")",
 		fmt.Sprint("ImportToken(", data.devicePath, ",", &luks2.ImportTokenOptions{Id: data.tokenId, Replace: true}, ")"),
 	})
 
@@ -2983,7 +2984,7 @@ func (s *cryptSuite) TestCopyAndRemoveLUKS2ContainerKey(c *C) {
 	c.Check(CopyAndRemoveLUKS2ContainerKey(AllowNonAtomicOperation(), "/dev/sda1", "foo", "bar"), IsNil)
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
-		"newLUKSView(/dev/sda1,0)",
+		"newLUKSView(context.TODO,/dev/sda1)",
 		"ImportToken(/dev/sda1,<nil>)",
 		"RemoveToken(/dev/sda1,0)",
 	})
@@ -3076,7 +3077,7 @@ func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *Ini
 		options = &InitializeLUKS2ContainerOptions{}
 	}
 
-	info, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	info, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Label, Equals, "data")
@@ -3153,7 +3154,7 @@ func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerUnlockKey(c *C, keyslotNam
 		expectedName = keyslotName
 	}
 
-	info, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	info, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
@@ -3199,7 +3200,7 @@ func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerRecoveryKey(c *C, keyslotN
 		expectedName = keyslotName
 	}
 
-	info, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	info, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Metadata.Keyslots, HasLen, 2)
@@ -3276,7 +3277,7 @@ func (s *cryptSuiteUnmocked) testDeleteLUKS2ContainerKey(c *C, data *testDeleteL
 	c.Check(err, IsNil)
 	c.Check(names, DeepEquals, data.expectedRecoveryNames)
 
-	info, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	info, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	c.Check(info.Metadata.Tokens, HasLen, 1)
@@ -3345,7 +3346,7 @@ func (s *cryptSuiteUnmocked) testRenameLUKS2ContainerKey(c *C, data *testRenameL
 	c.Check(err, IsNil)
 	c.Check(names, DeepEquals, []string{data.expectedRecoveryName})
 
-	info, err := luks2.ReadHeader(path, luks2.LockModeBlocking)
+	info, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	found := false
@@ -3458,7 +3459,7 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyKeyData3(c *C) {
 	c.Assert(err, IsNil)
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
-		"newLUKSView(" + data.sourceDevicePath + ",0)",
+		"newLUKSView(context.TODO," + data.sourceDevicePath + ")",
 		fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", slot),
 	})
 
