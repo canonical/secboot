@@ -140,7 +140,7 @@ type PlatformKeyDataHandler interface {
 	ChangeAuthKey(data *PlatformKeyData, old, new []byte, context any) ([]byte, error)
 }
 
-var handlers = make(map[string]platformKeyDataHandlerInfo)
+var keyDataHandlers = make(map[string]platformKeyDataHandlerInfo)
 
 // RegisterPlatformKeyDataHandler registers a handler for the specified platform name.
 // The platform can also specify a set of feature flags.
@@ -149,11 +149,11 @@ var handlers = make(map[string]platformKeyDataHandlerInfo)
 // if one exists.
 func RegisterPlatformKeyDataHandler(name string, handler PlatformKeyDataHandler, flags PlatformKeyDataHandlerFlags) {
 	if handler == nil {
-		delete(handlers, name)
+		delete(keyDataHandlers, name)
 		return
 	}
 
-	handlers[name] = platformKeyDataHandlerInfo{
+	keyDataHandlers[name] = platformKeyDataHandlerInfo{
 		handler: handler,
 		flags:   flags,
 	}
@@ -165,7 +165,7 @@ func RegisterPlatformKeyDataHandler(name string, handler PlatformKeyDataHandler,
 // If no platform with the specified name is registered, a ErrNoPlatformHandlerRegistered
 // error will be returned.
 func RegisteredPlatformKeyDataHandler(name string) (handler PlatformKeyDataHandler, flags PlatformKeyDataHandlerFlags, err error) {
-	handlerInfo, exists := handlers[name]
+	handlerInfo, exists := keyDataHandlers[name]
 	if !exists {
 		return nil, 0, ErrNoPlatformHandlerRegistered
 	}
@@ -176,7 +176,7 @@ func RegisteredPlatformKeyDataHandler(name string) (handler PlatformKeyDataHandl
 // of the registered PlatformKeyDataHandlers.
 func ListRegisteredKeyDataPlatforms() []string {
 	var platforms []string
-	for k := range handlers {
+	for k := range keyDataHandlers {
 		platforms = append(platforms, k)
 	}
 	sort.Strings(platforms)

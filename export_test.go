@@ -21,6 +21,7 @@
 package secboot
 
 import (
+	"context"
 	"crypto"
 	"io"
 	"time"
@@ -39,6 +40,7 @@ const (
 var (
 	AcquireArgon2OutOfProcessHandlerSystemLock    = acquireArgon2OutOfProcessHandlerSystemLock
 	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	StorageContainerHandlers                      = storageContainerHandlers
 	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys                        = unmarshalProtectedKeys
 )
@@ -148,7 +150,7 @@ func MockLUKS2SetSlotPriority(fn func(string, int, luks2.SlotPriority) error) (r
 	}
 }
 
-func MockNewLUKSView(fn func(string, luks2.LockMode) (*luksview.View, error)) (restore func()) {
+func MockNewLUKSView(fn func(context.Context, string) (*luksview.View, error)) (restore func()) {
 	origNewLUKSView := newLUKSView
 	newLUKSView = fn
 	return func() {

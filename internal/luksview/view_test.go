@@ -20,6 +20,8 @@
 package luksview_test
 
 import (
+	"context"
+
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
@@ -189,7 +191,7 @@ func (s *viewSuite) TestNewView(c *C) {
 			TokenKeyslot: 0}}
 	c.Check(luks2.ImportToken(path, recoveryToken, nil), IsNil)
 
-	view, err := NewView(path, luks2.LockModeNonBlocking)
+	view, err := NewView(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	c.Check(view.TokenNames(), DeepEquals, []string{"default", "recovery"})
@@ -224,7 +226,7 @@ func (s *viewSuite) TestViewReread(c *C) {
 		Priority: 1}
 	c.Check(luks2.ImportToken(path, token, nil), IsNil)
 
-	view, err := NewView(path, luks2.LockModeNonBlocking)
+	view, err := NewView(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	c.Check(view.TokenNames(), DeepEquals, []string{"default"})
