@@ -38,6 +38,7 @@ import (
 	. "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luks2/luks2test"
 	"github.com/snapcore/secboot/internal/paths/pathstest"
+	"github.com/snapcore/secboot/internal/testutil"
 )
 
 type cryptsetupSuiteBase struct {
@@ -413,7 +414,7 @@ func (s *cryptsetupSuiteBase) testFormat(c *C, data *testFormatData) {
 	// We used to time this to make sure we are supplying the correct parameters to
 	// cryptsetup, but that was unreliable. For now, we rely on the command line
 	// parameters that were tested earlier, and trust that those are correct.
-	luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
+	c.Check(TestContainerKey(devicePath, data.key), testutil.IsTrue)
 }
 
 func (s *cryptsetupSuiteExpensive) TestFormatDefaults(c *C) {
@@ -711,7 +712,7 @@ func (s *cryptsetupSuiteBase) testAddKey(c *C, data *testAddKeyData) {
 	// We used to time this to make sure we are supplying the correct parameters to
 	// cryptsetup, but that was unreliable. For now, we rely on the command line
 	// parameters that were tested earlier, and trust that those are correct.
-	luks2test.CheckLUKS2Passphrase(c, devicePath, data.key)
+	c.Check(TestContainerKey(devicePath, data.key), testutil.IsTrue)
 }
 
 func (s *cryptsetupSuiteExpensive) TestAddKeyDefaults(c *C) {
@@ -864,7 +865,7 @@ func (s *cryptsetupSuite) TestAddKeyWithIncorrectExistingKey(c *C) {
 	_, ok := info.Metadata.Keyslots[0]
 	c.Check(ok, Equals, true)
 
-	luks2test.CheckLUKS2Passphrase(c, devicePath, primaryKey)
+	c.Check(TestContainerKey(devicePath, primaryKey), testutil.IsTrue)
 }
 
 type testImportTokenData struct {
@@ -1201,7 +1202,7 @@ func (s *cryptsetupSuite) testKillSlot(c *C, data *testKillSlotData) {
 	_, ok = info.Metadata.Keyslots[data.slotId]
 	c.Check(ok, Equals, false)
 
-	luks2test.CheckLUKS2Passphrase(c, devicePath, data.testKey)
+	c.Check(TestContainerKey(devicePath, data.testKey), testutil.IsTrue)
 }
 
 func (s *cryptsetupSuite) TestKillSlot1(c *C) {
@@ -1240,7 +1241,7 @@ func (s *cryptsetupSuite) TestKillNonExistantSlot(c *C) {
 
 	c.Check(KillSlot(devicePath, 8), ErrorMatches, "cryptsetup failed with: Keyslot 8 is not active.")
 
-	luks2test.CheckLUKS2Passphrase(c, devicePath, key)
+	c.Check(TestContainerKey(devicePath, key), testutil.IsTrue)
 }
 
 type testSetSlotPriorityData struct {
