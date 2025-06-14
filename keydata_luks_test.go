@@ -121,7 +121,7 @@ func (s *keyDataLuksSuite) testWriter(c *C, data *testKeyDataLuksWriterData) {
 	c.Check(keyData.WriteAtomic(w), IsNil)
 
 	c.Check(s.luks2.operations, DeepEquals, []string{
-		"newLUKSView(" + data.path + ",0)",
+		"newLUKSView(context.TODO," + data.path + ")",
 		fmt.Sprint("ImportToken(", data.path, ",", &luks2.ImportTokenOptions{Id: data.id, Replace: true}, ")"),
 	})
 
@@ -264,7 +264,7 @@ func (s *keyDataLuksSuite) testReader(c *C, data *testKeyDataLuksReaderData) {
 	r, err := NewLUKS2KeyDataReader(data.path, data.name)
 	c.Assert(err, IsNil)
 
-	c.Check(s.luks2.operations, DeepEquals, []string{"newLUKSView(" + data.path + ",0)"})
+	c.Check(s.luks2.operations, DeepEquals, []string{"newLUKSView(context.TODO," + data.path + ")"})
 
 	c.Check(r.ReadableName(), Equals, data.path+":"+data.name)
 	c.Check(r.KeyslotID(), Equals, data.slot)
