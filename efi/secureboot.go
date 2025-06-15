@@ -83,6 +83,20 @@ func WithSignatureDBUpdates(updates ...*SignatureDBUpdate) PCRProfileOption {
 	return signatureDBUpdatesOption(updates)
 }
 
+type allowInsufficientDMAProtectionOption struct{}
+
+func (o allowInsufficientDMAProtectionOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
+	visitor.SetAllowInsufficientDMAProtection(true)
+	return nil
+}
+
+// WithAllowInsufficientDMAProtection can be supplied to AddPCRProfile to allow for
+// PCR7 including the "DMA Protection Disabled" event. While this reduces security,
+// it is required on some devices.
+func WithAllowInsufficientDMAProtection() PCRProfileOption {
+	return allowInsufficientDMAProtectionOption{}
+}
+
 // secureBootAuthority describes the CA that authenticates an image.
 type secureBootAuthority struct {
 	Source    efi.VariableDescriptor
