@@ -369,7 +369,8 @@ func (l *mockLUKS2) newLUKSView(ctx context.Context, devicePath string) (*luksvi
 type cryptSuite struct {
 	cryptTestBase
 	keyDataTestBase
-	testutil.KeyringTestBase
+	snapd_testutil.BaseTest
+	keyringTestMixin
 
 	luks2 *mockLUKS2
 
@@ -381,14 +382,17 @@ var _ = Suite(&cryptSuite{})
 
 func (s *cryptSuite) SetUpSuite(c *C) {
 	s.keyDataTestBase.SetUpSuite(c)
-	s.KeyringTestBase.SetUpSuite(c)
+	s.keyringTestMixin.SetUpSuite(c)
 }
 
 func (s *cryptSuite) TearDownSuite(c *C) {
+	s.keyringTestMixin.TearDownSuite(c)
 	s.keyDataTestBase.TearDownSuite(c)
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+
 	s.AddCleanup(MockUnixStat(func(devicePath string, st *unix.Stat_t) error {
 		s.requestedStats = append(s.requestedStats, devicePath)
 		foundSt, hasSt := s.deviceStats[devicePath]
@@ -411,7 +415,10 @@ func (s *cryptSuite) SetUpTest(c *C) {
 	}
 
 	s.keyDataTestBase.SetUpTest(c)
-	s.KeyringTestBase.SetUpTest(c)
+	s.keyringTestMixin.SetUpTest(c)
+
+	restore := MockKeyringAddKey(s.AddKeyNoCheck)
+	s.AddCleanup(restore)
 
 	s.handler.passphraseSupport = true
 
@@ -430,8 +437,9 @@ func (s *cryptSuite) SetUpTest(c *C) {
 }
 
 func (s *cryptSuite) TearDownTest(c *C) {
+	s.keyringTestMixin.TearDownTest(c)
 	s.keyDataTestBase.TearDownTest(c)
-	s.KeyringTestBase.TearDownTest(c)
+	s.BaseTest.TearDownTest(c)
 }
 
 func (s *cryptSuite) addMockToken(path string, token luks2.Token) int {
@@ -458,24 +466,12 @@ func (s *cryptSuite) addMockKeyslot(path string, key []byte) int {
 }
 
 func (s *cryptSuite) checkRecoveryKeyInKeyring(c *C, prefix, path string, expected RecoveryKey) {
-	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
-	// so far, mark the current test as expected to fail.
-	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
 	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, DiskUnlockKey(expected[:]))
 }
 
 func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey PrimaryKey) {
-	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
-	// so far, mark the current test as expected to fail.
-	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
 	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, expectedKey)

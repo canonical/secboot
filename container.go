@@ -103,6 +103,11 @@ type StorageContainer interface {
 	// backend.
 	BackendName() string
 
+	// CredentialName returns a string that can be used to identify
+	// a credential associated with this container that is passed from
+	// the early boot environment
+	CredentialName() string
+
 	// Activate unlocks this container with the specified key.
 	// The caller can choose to supply the Keyslot instance
 	// related to the keyslot from which the supplied key is
