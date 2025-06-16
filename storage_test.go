@@ -32,15 +32,23 @@ import (
 const mockStorageContainerType = "mock"
 
 type mockStorageContainer struct {
-	path string
+	path           string
+	credentialName string
 }
 
-func newMockStorageContainer(path string) *mockStorageContainer {
-	return &mockStorageContainer{path: path}
+func newMockStorageContainer(path, credentialName string) *mockStorageContainer {
+	return &mockStorageContainer{
+		path:           path,
+		credentialName: credentialName,
+	}
 }
 
 func (c *mockStorageContainer) Path() string {
 	return c.path
+}
+
+func (c *mockStorageContainer) CredentialName() string {
+	return c.credentialName
 }
 
 func (c *mockStorageContainer) BackendName() string {

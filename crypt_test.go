@@ -369,7 +369,8 @@ func (l *mockLUKS2) newLUKSView(ctx context.Context, devicePath string) (*luksvi
 type cryptSuite struct {
 	cryptTestBase
 	keyDataTestBase
-	testutil.KeyringTestBase
+	snapd_testutil.BaseTest
+	keyringTestMixin
 
 	luks2 *mockLUKS2
 
@@ -381,7 +382,6 @@ var _ = Suite(&cryptSuite{})
 
 func (s *cryptSuite) SetUpSuite(c *C) {
 	s.keyDataTestBase.SetUpSuite(c)
-	s.KeyringTestBase.SetUpSuite(c)
 }
 
 func (s *cryptSuite) TearDownSuite(c *C) {
@@ -389,6 +389,8 @@ func (s *cryptSuite) TearDownSuite(c *C) {
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+
 	s.AddCleanup(MockUnixStat(func(devicePath string, st *unix.Stat_t) error {
 		s.requestedStats = append(s.requestedStats, devicePath)
 		foundSt, hasSt := s.deviceStats[devicePath]
@@ -411,7 +413,10 @@ func (s *cryptSuite) SetUpTest(c *C) {
 	}
 
 	s.keyDataTestBase.SetUpTest(c)
-	s.KeyringTestBase.SetUpTest(c)
+	s.keyringTestMixin.SetUpTest(c)
+
+	restore := MockKeyringAddKey(s.AddKeyNoCheck)
+	s.AddCleanup(restore)
 
 	s.handler.passphraseSupport = true
 
@@ -430,8 +435,9 @@ func (s *cryptSuite) SetUpTest(c *C) {
 }
 
 func (s *cryptSuite) TearDownTest(c *C) {
+	s.keyringTestMixin.TearDownTest(c)
 	s.keyDataTestBase.TearDownTest(c)
-	s.KeyringTestBase.TearDownTest(c)
+	s.BaseTest.TearDownTest(c)
 }
 
 func (s *cryptSuite) addMockToken(path string, token luks2.Token) int {
@@ -458,24 +464,12 @@ func (s *cryptSuite) addMockKeyslot(path string, key []byte) int {
 }
 
 func (s *cryptSuite) checkRecoveryKeyInKeyring(c *C, prefix, path string, expected RecoveryKey) {
-	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
-	// so far, mark the current test as expected to fail.
-	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
 	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, DiskUnlockKey(expected[:]))
 }
 
 func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey PrimaryKey) {
-	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
-	// so far, mark the current test as expected to fail.
-	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
 	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, expectedKey)
@@ -553,6 +547,9 @@ type testActivateVolumeWithRecoveryKeyData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
+	restore := s.possessUserKeyring(c)
+	defer restore()
+
 	s.addMockKeyslot(data.sourceDevicePath, data.recoveryKey[:])
 
 	authRequestor := &mockAuthRequestor{responses: data.authResponses}
@@ -859,6 +856,9 @@ type testActivateVolumeWithKeyDataData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolumeWithKeyDataData) {
+	restore := s.possessUserKeyring(c)
+	defer restore()
+
 	var err error
 	var unlockKey DiskUnlockKey
 	var primaryKey PrimaryKey
@@ -1014,6 +1014,9 @@ type testActivateVolumeWithKeyDataErrorHandlingData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *testActivateVolumeWithKeyDataErrorHandlingData) error {
+	restore := s.possessUserKeyring(c)
+	defer restore()
+
 	s.addMockKeyslot("/dev/sda1", data.diskUnlockKey)
 	s.addMockKeyslot("/dev/sda1", data.recoveryKey[:])
 
@@ -1300,6 +1303,9 @@ type testActivateVolumeWithMultipleKeyDataData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActivateVolumeWithMultipleKeyDataData) {
+	restore := s.possessUserKeyring(c)
+	defer restore()
+
 	for _, k := range data.keys {
 		s.addMockKeyslot(data.sourceDevicePath, k)
 	}
@@ -1664,6 +1670,9 @@ type testActivateVolumeWithMultipleKeyDataErrorHandlingData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, data *testActivateVolumeWithMultipleKeyDataErrorHandlingData) error {
+	restore := s.possessUserKeyring(c)
+	defer restore()
+
 	for _, key := range data.keys {
 		s.addMockKeyslot("/dev/sda1", key)
 	}
@@ -3358,6 +3367,9 @@ func (s *cryptSuiteUnmocked) TestRenameLUKS2ContainerRecoveryKey(c *C) {
 
 // Legacy
 func (s *cryptSuite) TestActivateVolumeWithLegacyKeyData3(c *C) {
+	restore := s.possessUserKeyring(c)
+	defer restore()
+
 	var err error
 	var unlockKey DiskUnlockKey
 	var primaryKey PrimaryKey
@@ -3995,6 +4007,9 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyPaths(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithLegacyPathsError(c *C) {
+	restore := s.possessUserKeyring(c)
+	defer restore()
+
 	s.deviceStats = map[string]unix.Stat_t{
 		"/dev/some/path": unix.Stat_t{
 			Mode: 0600 | unix.S_IFBLK,
@@ -4017,7 +4032,7 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyPathsError(c *C) {
 	s.addMockKeyslot("/dev/some/path", unlockKey)
 
 	stderr := new(bytes.Buffer)
-	restore := MockStderr(stderr)
+	restore = MockStderr(stderr)
 	defer restore()
 
 	err := ActivateVolumeWithKeyData("data", "/dev/some/path", authRequestor, options, keyData)
