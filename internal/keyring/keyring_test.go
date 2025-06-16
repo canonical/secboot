@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021 Canonical Ltd
+ * Copyright (C) 2021-2025 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -20,15 +20,18 @@
 package keyring_test
 
 import (
-	"math/rand"
-	"syscall"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"runtime"
 	"testing"
 
 	. "github.com/snapcore/secboot/internal/keyring"
+	"github.com/snapcore/secboot/internal/keyring/keyringtest"
 	"github.com/snapcore/secboot/internal/testutil"
 
 	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
 
 	. "gopkg.in/check.v1"
 )
@@ -36,150 +39,383 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type keyringSuite struct {
-	testutil.KeyringTestBase
-}
-
-func (s *keyringSuite) SetUpSuite(c *C) {
-	s.KeyringTestBase.SetUpSuite(c)
-
-	if !s.ProcessPossessesUserKeyringKeys {
-		c.Skip("Test requires the user keyring to be linked from the process's session keyring")
-	}
+	keyringtest.KeyringTestMixin
 }
 
 var _ = Suite(&keyringSuite{})
 
-type testAddKeyToUserKeyringData struct {
-	key        []byte
-	devicePath string
-	purpose    string
-	prefix     string
-	desc       string
+type testAddKeyParams struct {
+	key       []byte
+	keyType   KeyType
+	desc      string
+	keyringId KeyID
 }
 
-func (s *keyringSuite) testAddKeyToUserKeyring(c *C, data *testAddKeyToUserKeyringData) {
-	c.Check(AddKeyToUserKeyring(data.key, data.devicePath, data.purpose, data.prefix), IsNil)
+func (s *keyringSuite) testAddKey(c *C, params *testAddKeyParams) error {
+	// Call the AddKey API
+	id, err := AddKey(params.key, params.keyType, params.desc, params.keyringId)
+	if err != nil {
+		return err
+	}
+	s.AddKeyToInvalidate(id) // Make sure this key is invalidated during test tear-down.
 
-	id, err := unix.KeyctlSearch(-4, "user", data.desc, 0)
+	// Use the raw syscall to read the payload back and check it is as expected.
+	key := make([]byte, len(params.key))
+	sz, err := unix.KeyctlBuffer(unix.KEYCTL_READ, int(id), key, 0)
+	c.Assert(err, IsNil)
+	c.Check(sz, Equals, len(params.key))
+	c.Check(key, DeepEquals, params.key)
+
+	// Use the raw syscall to check the description of the key is as expected.
+	desc, err := unix.KeyctlString(unix.KEYCTL_DESCRIBE, int(id))
+	c.Assert(err, IsNil)
+	c.Check(desc, Equals, fmt.Sprintf("%s;%d;%d;3f010000;%s", params.keyType, os.Getuid(), os.Getgid(), params.desc))
+
+	s.CheckKeyInKeyring(c, id, params.keyringId)
+
+	return nil
+}
+
+func (s *keyringSuite) TestAddKey(c *C) {
+	err := s.testAddKey(c, &testAddKeyParams{
+		key:       testutil.DecodeHexString(c, "f72a1c45f27c9b12a0374e4ec00ad6702dd4c7a85f0be6577ef5cc67580f5de3"),
+		keyType:   UserKeyType,
+		desc:      "foo",
+		keyringId: ProcessKeyring,
+	})
 	c.Check(err, IsNil)
+}
 
-	buf := make([]byte, len(data.key))
-	sz, err := unix.KeyctlBuffer(unix.KEYCTL_READ, id, buf, 0)
+func (s *keyringSuite) TestAddKeyDifferentKey(c *C) {
+	err := s.testAddKey(c, &testAddKeyParams{
+		key:       testutil.DecodeHexString(c, "0a0927c145175e1b11e236e77acb02104c27f5cf4bf9cecf696d5f22164899c3"),
+		keyType:   UserKeyType,
+		desc:      "foo",
+		keyringId: ProcessKeyring,
+	})
 	c.Check(err, IsNil)
-	c.Check(sz, Equals, len(data.key))
-	c.Check(buf, DeepEquals, data.key)
+}
 
-	desc, err := unix.KeyctlString(unix.KEYCTL_DESCRIBE, id)
+func (s *keyringSuite) TestAddKeyDifferentType(c *C) {
+	err := s.testAddKey(c, &testAddKeyParams{
+		key:       []byte{},
+		keyType:   KeyringKeyType,
+		desc:      "foo",
+		keyringId: ProcessKeyring,
+	})
 	c.Check(err, IsNil)
-	c.Check(desc, Matches, "user;[[:digit:]]+;[[:digit:]]+;3f010000;"+data.desc)
-
-	userKeys := testutil.GetKeyringKeys(c, testutil.UserKeyring)
-	c.Check(id, testutil.InSlice(Equals), userKeys)
 }
 
-func (s *keyringSuite) TestAddKeyToUserKeyring1(c *C) {
-	key := make([]byte, 32)
-	rand.Read(key)
-
-	s.testAddKeyToUserKeyring(c, &testAddKeyToUserKeyringData{
-		key:        key,
-		devicePath: "/dev/sda1",
-		purpose:    "unlock",
-		prefix:     "secboot",
-		desc:       "secboot:/dev/sda1:unlock"})
-}
-
-func (s *keyringSuite) TestAddKeyToUserKeyring2(c *C) {
-	key := make([]byte, 32)
-	rand.Read(key)
-
-	s.testAddKeyToUserKeyring(c, &testAddKeyToUserKeyringData{
-		key:        key,
-		devicePath: "/dev/nvme0n1p1",
-		purpose:    "bar",
-		prefix:     "foo",
-		desc:       "foo:/dev/nvme0n1p1:bar"})
-}
-
-type testGetKeyFromUserKeyringData struct {
-	key        []byte
-	devicePath string
-	purpose    string
-	prefix     string
-}
-
-func (s *keyringSuite) testGetKeyFromUserKeyring(c *C, data *testGetKeyFromUserKeyringData) {
-	c.Check(AddKeyToUserKeyring(data.key, data.devicePath, data.purpose, data.prefix), IsNil)
-
-	key, err := GetKeyFromUserKeyring(data.devicePath, data.purpose, data.prefix)
+func (s *keyringSuite) TestAddKeyDifferentDesc(c *C) {
+	err := s.testAddKey(c, &testAddKeyParams{
+		key:       testutil.DecodeHexString(c, "f72a1c45f27c9b12a0374e4ec00ad6702dd4c7a85f0be6577ef5cc67580f5de3"),
+		keyType:   UserKeyType,
+		desc:      "bar",
+		keyringId: ProcessKeyring,
+	})
 	c.Check(err, IsNil)
-	c.Check(key, DeepEquals, data.key)
 }
 
-func (s *keyringSuite) TestGetKeyFromUserKeyring1(c *C) {
-	key := make([]byte, 32)
-	rand.Read(key)
+func (s *keyringSuite) TestAddKeyDifferentKeyring(c *C) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
-	s.testGetKeyFromUserKeyring(c, &testGetKeyFromUserKeyringData{
-		key:        key,
-		devicePath: "/dev/sda1",
-		purpose:    "unlock",
-		prefix:     "secboot"})
+	err := s.testAddKey(c, &testAddKeyParams{
+		key:       testutil.DecodeHexString(c, "f72a1c45f27c9b12a0374e4ec00ad6702dd4c7a85f0be6577ef5cc67580f5de3"),
+		keyType:   UserKeyType,
+		desc:      "foo",
+		keyringId: ThreadKeyring,
+	})
+	c.Check(err, IsNil)
 }
 
-func (s *keyringSuite) TestGetKeyFromUserKeyring2(c *C) {
-	key := make([]byte, 32)
-	rand.Read(key)
-
-	s.testGetKeyFromUserKeyring(c, &testGetKeyFromUserKeyringData{
-		key:        key,
-		devicePath: "/dev/nvme0n1p1",
-		purpose:    "bar",
-		prefix:     "foo"})
+func (s *keyringSuite) TestAddKeyErr(c *C) {
+	err := s.testAddKey(c, &testAddKeyParams{
+		key:       testutil.DecodeHexString(c, "f72a1c45f27c9b12a0374e4ec00ad6702dd4c7a85f0be6577ef5cc67580f5de3"),
+		keyType:   LogonKeyType,
+		desc:      "foo",
+		keyringId: ProcessKeyring,
+	})
+	c.Check(err, Equals, ErrInvalidArgs)
 }
 
-func (s *keyringSuite) TestGetKeyFromUserKeyringNoKey(c *C) {
-	_, err := GetKeyFromUserKeyring("/dev/sda1", "foo", "bar")
-	c.Check(err, ErrorMatches, "cannot find key: required key not available")
-
-	var e syscall.Errno
-	c.Check(xerrors.As(err, &e), testutil.IsTrue)
-	c.Check(e, Equals, syscall.ENOKEY)
+type testReadKeyParams struct {
+	payload []byte
+	prepare func()
+	ctx     context.Context
 }
 
-type testRemoveKeyFromUserKeyringData struct {
-	devicePath string
-	purpose    string
-	prefix     string
+func (s *keyringSuite) testReadKey(c *C, params *testReadKeyParams) error {
+	// Use the raw syscall to add a user key with a fixed description to the process keyring.
+	id, err := unix.AddKey(string(UserKeyType), "foo", params.payload, int(ProcessKeyring))
+	c.Assert(err, IsNil)
+	s.AddKeyToInvalidate(KeyID(id)) // Make sure this key is invalidated during test tear-down.
+
+	if params.prepare != nil {
+		// Per-test customization
+		params.prepare()
+	}
+
+	ctx := context.Background()
+	if params.ctx != nil {
+		ctx = params.ctx
+	}
+
+	// Test the ReadKey API using the ID of the key we just added
+	// and verify that the returned payload is as expected.
+	key, err := ReadKey(ctx, KeyID(id))
+	if err != nil {
+		return err
+	}
+	c.Check(key, DeepEquals, params.payload)
+
+	return nil
 }
 
-func (s *keyringSuite) testRemoveKeyFromUserKeyring(c *C, data *testRemoveKeyFromUserKeyringData) {
-	c.Check(AddKeyToUserKeyring(make([]byte, 32), data.devicePath, data.purpose, data.prefix), IsNil)
-	c.Check(RemoveKeyFromUserKeyring(data.devicePath, data.purpose, data.prefix), IsNil)
-
-	_, err := GetKeyFromUserKeyring(data.devicePath, data.purpose, data.prefix)
-	c.Check(err, ErrorMatches, "cannot find key: required key not available")
+func (s *keyringSuite) TestReadKey(c *C) {
+	err := s.testReadKey(c, &testReadKeyParams{
+		payload: testutil.DecodeHexString(c, "afd38d2fcaa051337b29b9a2bdec67a9acc112336afdb5d219e2d733e582c467"),
+	})
+	c.Check(err, IsNil)
 }
 
-func (s *keyringSuite) TestRemoveKeyFromUserKeyring1(c *C) {
-	s.testRemoveKeyFromUserKeyring(c, &testRemoveKeyFromUserKeyringData{
-		devicePath: "/dev/sda1",
-		purpose:    "unlock",
-		prefix:     "secboot"})
+func (s *keyringSuite) TestReadKeyDifferentPayload(c *C) {
+	err := s.testReadKey(c, &testReadKeyParams{
+		payload: testutil.DecodeHexString(c, "50724893259edf60aea73f47acd9cb29851e545919b9f0e7145402486e7ecaaa"),
+	})
+	c.Check(err, IsNil)
 }
 
-func (s *keyringSuite) TestRemoveKeyFromUserKeyring2(c *C) {
-	s.testRemoveKeyFromUserKeyring(c, &testRemoveKeyFromUserKeyringData{
-		devicePath: "/dev/nvme0n1p1",
-		purpose:    "bar",
-		prefix:     "foo"})
+func (s *keyringSuite) TestReadKeyErr(c *C) {
+	err := s.testReadKey(c, &testReadKeyParams{
+		payload: testutil.DecodeHexString(c, "afd38d2fcaa051337b29b9a2bdec67a9acc112336afdb5d219e2d733e582c467"),
+		prepare: func() {
+			// Find the key we added and then invalidate it
+			id, err := unix.KeyctlSearch(int(ProcessKeyring), string(UserKeyType), "foo", 0)
+			c.Assert(err, IsNil)
+			_, err = unix.KeyctlInt(unix.KEYCTL_INVALIDATE, id, 0, 0, 0)
+			c.Assert(err, IsNil)
+		},
+	})
+
+	// We could get more than one error here, depending on how quickly the
+	// invalidated key is garbage collected.
+	switch {
+	case errors.Is(err, ErrKeyNotExist):
+		c.Check(err, ErrorMatches, `cannot read key payload with buffer size [[:digit:]]+: cannot complete operation because a specified key does not exist`)
+	case errors.Is(err, ErrPermission):
+		c.Check(err, ErrorMatches, `cannot read key payload with buffer size [[:digit:]]+: cannot complete operation because of insufficient permissions`)
+	default:
+		c.Errorf("unexpected error: %v", err)
+	}
 }
 
-func (s *keyringSuite) TestRemoveKeyFromUserKeyringNoKey(c *C) {
-	err := RemoveKeyFromUserKeyring("/dev/sda1", "foo", "bar")
-	c.Check(err, ErrorMatches, "cannot find key: required key not available")
+func (s *keyringSuite) TestReadKeyCanceledContext(c *C) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
-	var e syscall.Errno
-	c.Check(xerrors.As(err, &e), testutil.IsTrue)
-	c.Check(e, Equals, syscall.ENOKEY)
+	err := s.testReadKey(c, &testReadKeyParams{
+		payload: testutil.DecodeHexString(c, "afd38d2fcaa051337b29b9a2bdec67a9acc112336afdb5d219e2d733e582c467"),
+		ctx:     ctx,
+	})
+	c.Check(err, Equals, context.Canceled)
+}
+
+type testSearchKeyParams struct {
+	keyringId         KeyID
+	keyType           KeyType
+	desc              string
+	payload           []byte
+	destinationRingId KeyID
+}
+
+func (s *keyringSuite) testSearchKey(c *C, params *testSearchKeyParams) error {
+	// Use the raw syscall to add a key.
+	expectedId, err := unix.AddKey(string(params.keyType), params.desc, params.payload, int(params.keyringId))
+	c.Assert(err, IsNil)
+	s.AddKeyToInvalidate(KeyID(expectedId)) // Make sure this key is invalidated during test tear-down.
+
+	// Test the SearchKey API and check it returns the expected key ID.
+	id, err := SearchKey(params.keyringId, params.keyType, params.desc, params.destinationRingId)
+	if err != nil {
+		return err
+	}
+	c.Check(id, Equals, KeyID(expectedId))
+
+	// If a destination keyring ID was specified, read the contents of it to make sure it contains
+	// the ID of the key we created.
+	if params.destinationRingId != 0 {
+		s.CheckKeyInKeyring(c, id, params.destinationRingId)
+	}
+
+	return nil
+}
+
+func (s *keyringSuite) TestSearchKey(c *C) {
+	err := s.testSearchKey(c, &testSearchKeyParams{
+		keyringId: ProcessKeyring,
+		keyType:   UserKeyType,
+		desc:      "foo",
+		payload:   []byte{0},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *keyringSuite) TestSearchKeyDifferentKeyring(c *C) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	err := s.testSearchKey(c, &testSearchKeyParams{
+		keyringId: ThreadKeyring,
+		keyType:   UserKeyType,
+		desc:      "foo",
+		payload:   []byte{0},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *keyringSuite) TestSearchKeyDifferentKeyType(c *C) {
+	err := s.testSearchKey(c, &testSearchKeyParams{
+		keyringId: ProcessKeyring,
+		keyType:   KeyringKeyType,
+		desc:      "foo",
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *keyringSuite) TestSearchKeyDifferentDesc(c *C) {
+	err := s.testSearchKey(c, &testSearchKeyParams{
+		keyringId: ProcessKeyring,
+		keyType:   UserKeyType,
+		desc:      "bar",
+		payload:   []byte{0},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *keyringSuite) TestSearchKeyWithDestination(c *C) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	err := s.testSearchKey(c, &testSearchKeyParams{
+		keyringId:         ProcessKeyring,
+		keyType:           UserKeyType,
+		desc:              "foo",
+		payload:           []byte{0},
+		destinationRingId: ThreadKeyring,
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *keyringSuite) TestSearchKeyError(c *C) {
+	err := s.testSearchKey(c, &testSearchKeyParams{
+		keyringId:         ProcessKeyring,
+		keyType:           UserKeyType,
+		desc:              "foo",
+		payload:           []byte{0},
+		destinationRingId: KeyID(-30),
+	})
+	c.Check(err, Equals, ErrInvalidArgs)
+}
+
+func (s *keyringSuite) testGetKeyringID(c *C, id KeyID) error {
+	// Test the GetKeyringID API andsave the real ID. We
+	// can't really test with create==false because we have no
+	// way of detaching this executables keyrings - we would
+	// need to execute a new process to do these test.
+	realId, err := GetKeyringID(id, true)
+	if err != nil {
+		return err
+	}
+
+	// Use the raw syscall to add a user key with a fixed description and
+	// payload, to the desired keyring ID.
+	keyId, err := unix.AddKey(string(UserKeyType), "foo", []byte{1, 2, 3, 4}, int(id))
+	c.Assert(err, IsNil)
+	s.AddKeyToInvalidate(KeyID(keyId)) // Make sure this key is invalidated during test tear-down.
+
+	// Make sure the key we created is linked to the desired keyring, identified
+	// by both its special ID and real ID.
+	for _, id := range []KeyID{id, realId} {
+		s.CheckKeyInKeyring(c, KeyID(keyId), id)
+	}
+
+	return nil
+}
+
+func (s *keyringSuite) TestGetKeyringID(c *C) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	c.Check(s.testGetKeyringID(c, ThreadKeyring), IsNil)
+}
+
+func (s *keyringSuite) TestGetKeyringIDDifferentID(c *C) {
+	c.Check(s.testGetKeyringID(c, ProcessKeyring), IsNil)
+}
+
+func (s *keyringSuite) TestGetKeyringIDError(c *C) {
+	c.Check(s.testGetKeyringID(c, KeyID(-25)), Equals, ErrInvalidArgs)
+}
+
+func (s *keyringSuite) testLinkKey(c *C, creationKeyringId, linkTargetKeyringId KeyID) error {
+	// Use the raw syscall to add a key with a fixed type, description, payload,
+	// and a specified initial keyring to link it into.
+	id, err := unix.AddKey(string(UserKeyType), "foo", []byte{1, 2, 3, 4}, int(creationKeyringId))
+	c.Assert(err, IsNil)
+	s.AddKeyToInvalidate(KeyID(id)) // Make sure this key is invalidated during test tear-down.
+
+	// Test the LinkKey API.
+	if err := LinkKey(KeyID(id), linkTargetKeyringId); err != nil {
+		return err
+	}
+
+	s.CheckKeyInKeyring(c, KeyID(id), linkTargetKeyringId)
+
+	return nil
+}
+
+func (s *keyringSuite) TestLinkKey1(c *C) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	c.Check(s.testLinkKey(c, ProcessKeyring, ThreadKeyring), IsNil)
+}
+
+func (s *keyringSuite) TestLinkKey2(c *C) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	c.Check(s.testLinkKey(c, ThreadKeyring, ProcessKeyring), IsNil)
+}
+
+func (s *keyringSuite) TestLinkKeyError(c *C) {
+	c.Check(s.testLinkKey(c, ProcessKeyring, KeyID(-40)), Equals, ErrInvalidArgs)
+}
+
+func (s *keyringSuite) testUnlinkKey(c *C, keyringId KeyID) {
+	// Use the raw syscall to add a key with a fixed type, description, payload,
+	// and a specified initial keyring to link it into.
+	id, err := unix.AddKey(string(UserKeyType), "foo", []byte{1, 2, 3, 4}, int(keyringId))
+	c.Assert(err, IsNil)
+	s.AddKeyToInvalidate(KeyID(id)) // Make sure this key is invalidated during test tear-down.
+
+	// Test the LinkKey API.
+	c.Assert(UnlinkKey(KeyID(id), keyringId), IsNil)
+	s.CheckKeyNotInKeyring(c, KeyID(id), keyringId)
+}
+
+func (s *keyringSuite) TestUnlinkKey1(c *C) {
+	s.testUnlinkKey(c, ProcessKeyring)
+}
+
+func (s *keyringSuite) TestUnlinkKey2(c *C) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	s.testUnlinkKey(c, ThreadKeyring)
+}
+
+func (s *keyringSuite) TestUnlinkKeyError(c *C) {
+	c.Check(UnlinkKey(KeyID(UserKeyring), KeyID(ProcessKeyring)), Equals, ErrKeyNotExist)
 }
