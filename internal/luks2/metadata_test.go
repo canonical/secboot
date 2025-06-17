@@ -221,6 +221,62 @@ func (s *metadataSuite) TestFailAcquireSharedLockOnDeviceWithTimeout(c *C) {
 	c.Check(err, ErrorMatches, ".*: no such file or directory")
 }
 
+func (s *metadataSuite) TestAcquireSharedLockOnDeviceWithAlreadyCanceledContext(c *C) {
+	// Test that we get the expected error when trying to acquire a shared lock
+	// on a block device with a context that is already canceled.
+	restore := MockDataDeviceInfo(&unix.Stat_t{Mode: unix.S_IFBLK | 0600, Rdev: unix.Mkdev(8, 0)})
+	defer restore()
+
+	path := filepath.Join(c.MkDir(), "disk")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = AcquireSharedLock(ctx, path)
+	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
+
+	// There shouldn't be a lock file at the expected location.
+	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
+	_, err = os.OpenFile(lockPath, os.O_RDWR, 0)
+	c.Check(os.IsNotExist(err), testutil.IsTrue)
+
+	// It should still work if we try again with a non-canceled context.
+	release, err := AcquireSharedLock(context.Background(), path)
+	c.Assert(err, IsNil)
+	defer release()
+
+	// Check that there exists a lock file at the expected location
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR, 0)
+	c.Assert(err, IsNil)
+	defer lockFile.Close()
+
+	// We shouldn't be able to obtain an exclusive lock.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, ErrorMatches, "resource temporarily unavailable")
+
+	// We should be able to obtain a shared lock.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_SH|unix.LOCK_NB)
+	c.Check(err, IsNil)
+
+	// We need to release our shared lock so that the lock file cleanup
+	// works and can be tested.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
+	c.Assert(err, IsNil)
+
+	release()
+
+	// We should be able to obtain an exclusive lock on our open FD now.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, IsNil)
+
+	// The lock file should have been deleted.
+	_, err = os.Open(lockPath)
+	c.Check(err, ErrorMatches, ".*: no such file or directory")
+}
+
 func (s *metadataSuite) TestAcquireSharedLockOnDeviceAfterWait(c *C) {
 	// Test acquiring a shared lock on a block device after having to wait. We
 	// mock the data device so that it looks like a block device.
