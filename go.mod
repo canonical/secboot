@@ -6,6 +6,7 @@ require (
 	github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb
 	github.com/canonical/go-efilib v1.4.1
 	github.com/canonical/go-kbkdf v0.0.0-20250104172618-3b1308f9acf9
+	github.com/canonical/go-password-validator v0.0.0-20250617132709-1b205303ca54
 	github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3
 	github.com/canonical/go-tpm2 v1.12.2
 	github.com/canonical/tcglog-parser v0.0.0-20240924110432-d15eaf652981
