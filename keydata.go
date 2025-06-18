@@ -119,13 +119,25 @@ type DiskUnlockKey []byte
 // object without having to create a new object.
 type PrimaryKey []byte
 
-// AuthMode corresponds to an authentication mechanism.
+// AuthMode corresponds to an authentication mechanism supported by
+// a KeyData. Only one mode is supported at a time.
 type AuthMode uint8
 
 const (
 	AuthModeNone AuthMode = iota
 	AuthModePassphrase
 )
+
+func (m AuthMode) String() string {
+	switch m {
+	case AuthModeNone:
+		return "none"
+	case AuthModePassphrase:
+		return "passphrase"
+	default:
+		return fmt.Sprintf("unknown(%d)", int(m))
+	}
+}
 
 // KeyParams provides parameters required to create a new KeyData object.
 // It should be produced by a platform implementation.
@@ -600,7 +612,7 @@ func (d *KeyData) UniqueID() (KeyID, error) {
 	return KeyID(h.Sum(nil)), nil
 }
 
-// AuthMode indicates the authentication mechanisms enabled for this key data.
+// AuthMode indicates the authentication mechanism enabled for this key data.
 func (d *KeyData) AuthMode() (out AuthMode) {
 	switch {
 	case d.data.PassphraseParams != nil:

@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 	. "github.com/snapcore/secboot/luks2"
@@ -121,4 +122,23 @@ func (v *mockLuksView) TokenByName(name string) (token luksview.NamedToken, id i
 
 func newMockLuksView(data *mockContainerData) LuksView {
 	return &mockLuksView{data: data}
+}
+
+type mockActivateConfig map[any]any
+
+func makeMockActivateConfigGetter(opts ...secboot.ActivateOption) secboot.ActivateConfigGetter {
+	cfg := make(mockActivateConfig)
+	for _, opt := range opts {
+		opt.ApplyToConfig(cfg)
+	}
+	return cfg
+}
+
+func (c mockActivateConfig) Get(key any) (val any, exists bool) {
+	val, exists = c[key]
+	return val, exists
+}
+
+func (c mockActivateConfig) Set(key, val any) {
+	c[key] = val
 }
