@@ -94,7 +94,12 @@ func acquireSharedLock(ctx context.Context, path string) (release func(), err er
 			return nil, fmt.Errorf("cannot open data device or file %s for reading: %w", path, err)
 		}
 	}
-	defer f.Close()
+	defer func() {
+		if f == nil {
+			return
+		}
+		f.Close()
+	}()
 
 	// Obtain information about the opened device or file.
 	fi, err := f.Stat()
@@ -149,6 +154,10 @@ func acquireSharedLock(ctx context.Context, path string) (release func(), err er
 	default:
 		return nil, errors.New("unsupported file type")
 	}
+
+	// This is no longer needed
+	f.Close()
+	f = nil
 
 	var lockFile *os.File
 	var origSt unix.Stat_t
