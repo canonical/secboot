@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 	. "github.com/snapcore/secboot/luks2"
 	. "gopkg.in/check.v1"
@@ -80,36 +79,22 @@ func (i *mockKeyslot) KeyslotID() int {
 }
 
 type mockLuks2KeyDataReader struct {
-	name     string
-	slot     int
-	priority int
 	*bytes.Reader
 }
 
-func newMockLuks2KeyDataReader(name string, slot, priority int, data []byte) *mockLuks2KeyDataReader {
+func newMockLuks2KeyDataReader(token *luksview.KeyDataToken) *mockLuks2KeyDataReader {
 	return &mockLuks2KeyDataReader{
-		name:     name,
-		slot:     slot,
-		priority: priority,
-		Reader:   bytes.NewReader(data),
+		Reader: bytes.NewReader(token.Data),
 	}
 }
 
 func (r *mockLuks2KeyDataReader) ReadableName() string {
-	return r.name
-}
-
-func (r *mockLuks2KeyDataReader) KeyslotID() int {
-	return r.slot
-}
-
-func (r *mockLuks2KeyDataReader) Priority() int {
-	return r.priority
+	return ""
 }
 
 type mockContainerData struct {
 	recoveryKeyslots map[string]int
-	platformKeyslots map[string]Luks2KeyDataReader
+	platformKeyslots map[string]*luksview.KeyDataToken
 
 	listUnlockKeyNamesErr   error
 	listRecoveryKeyNamesErr error
@@ -119,26 +104,19 @@ type mockContainerData struct {
 func newMockContainerData() *mockContainerData {
 	return &mockContainerData{
 		recoveryKeyslots: make(map[string]int),
-		platformKeyslots: make(map[string]Luks2KeyDataReader),
+		platformKeyslots: make(map[string]*luksview.KeyDataToken),
 	}
 }
 
-type mockToken struct {
-	tokenType luks2.TokenType
-	keyslot   int
-	name      string
-}
-
-func (t *mockToken) Type() luks2.TokenType {
-	return t.tokenType
-}
-
-func (t *mockToken) Keyslots() []int {
-	return []int{t.keyslot}
-}
-
-func (t *mockToken) Name() string {
-	return t.name
+func newKeyDataToken(name string, slot, priority int, data []byte) *luksview.KeyDataToken {
+	return &luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslot: slot,
+			TokenName:    name,
+		},
+		Priority: priority,
+		Data:     data,
+	}
 }
 
 type mockLuksView struct {
@@ -146,22 +124,17 @@ type mockLuksView struct {
 }
 
 func (v *mockLuksView) TokenByName(name string) (token luksview.NamedToken, id int, inUse bool) {
-	id, exists := v.data.recoveryKeyslots[name]
-	if exists {
-		return &mockToken{
-			tokenType: luksview.RecoveryTokenType,
-			keyslot:   id,
-			name:      name,
+	if id, exists := v.data.recoveryKeyslots[name]; exists {
+		return &luksview.RecoveryToken{
+			TokenBase: luksview.TokenBase{
+				TokenKeyslot: id,
+				TokenName:    name,
+			},
 		}, 0, true // We return 0 for all token IDs because the test doesn't use it.
 	}
 
-	r, exists := v.data.platformKeyslots[name]
-	if exists {
-		return &mockToken{
-			tokenType: luksview.KeyDataTokenType,
-			keyslot:   r.KeyslotID(),
-			name:      name,
-		}, 0, true // We return 0 for all token IDs because the test doesn't use it.
+	if token, exists := v.data.platformKeyslots[name]; exists {
+		return token, 0, true // We return 0 for all token IDs because the test doesn't use it.
 	}
 
 	return nil, 0, false

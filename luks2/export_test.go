@@ -26,6 +26,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	VolumeNameKey = volumeNameKey
+)
+
 var (
 	DecodeKernelSysfsUeventAttr = decodeKernelSysfsUeventAttr
 	ErrNotDMBlockDevice         = errNotDMBlockDevice
@@ -35,8 +39,8 @@ var (
 )
 
 type (
+	ActivateConfigKey       = activateConfigKey
 	Luks2Api                = luks2Api
-	Luks2KeyDataReader      = luks2KeyDataReader
 	LuksView                = luksView
 	StorageContainerBackend = storageContainerBackend
 	StorageContainerImpl    = storageContainerImpl

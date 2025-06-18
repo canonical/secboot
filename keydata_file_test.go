@@ -46,7 +46,7 @@ var _ = Suite(&keyDataFileSuite{})
 
 func (s *keyDataFileSuite) TestWriter(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
+	protected, _ := s.mockProtectKeysRand(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -69,7 +69,7 @@ func (s *keyDataFileSuite) TestWriter(c *C) {
 
 func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, _ := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
+	protected, _ := s.mockProtectKeysRand(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
@@ -93,7 +93,7 @@ func (s *keyDataFileSuite) TestWriterIsAtomic(c *C) {
 
 func (s *keyDataFileSuite) TestReader(c *C) {
 	primaryKey := s.newPrimaryKey(c, 32)
-	protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
+	protected, unlockKey := s.mockProtectKeysRand(c, primaryKey, "foo", crypto.SHA256)
 
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)

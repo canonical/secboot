@@ -21,7 +21,6 @@ package luks2
 
 import (
 	"context"
-	"io"
 
 	"github.com/snapcore/secboot"
 	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
@@ -36,14 +35,7 @@ var newLuksView = func(ctx context.Context, path string) (luksView, error) {
 	return luksview.NewView(ctx, path)
 }
 
-type luks2KeyDataReader interface {
-	ReadableName() string
-	KeyslotID() int
-	Priority() int
-	io.Reader
-}
-
-func newLUKS2KeyDataReader(devicePath, name string) (luks2KeyDataReader, error) {
+func newLUKS2KeyDataReader(devicePath, name string) (secboot.KeyDataReader, error) {
 	// TODO: Don't depend on this function.
 	return secboot.NewLUKS2KeyDataReader(devicePath, name)
 }
@@ -54,7 +46,7 @@ type luks2Api struct {
 	Deactivate           func(string) error
 	ListUnlockKeyNames   func(string) ([]string, error)
 	ListRecoveryKeyNames func(string) ([]string, error)
-	NewKeyDataReader     func(string, string) (luks2KeyDataReader, error)
+	NewKeyDataReader     func(string, string) (secboot.KeyDataReader, error)
 }
 
 // luks2Ops is a structure of LUKS2 operations that just delegate to the existing
