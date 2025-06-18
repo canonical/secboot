@@ -50,25 +50,25 @@ type StorageContainer interface {
 	// TODO: Add LUKS2 UUID / label accessors here as well.
 }
 
-type activateOptionKey string
+type activateConfigKey string
 
 const (
-	volumeNameKey activateOptionKey = "volume-name"
+	volumeNameKey activateConfigKey = "volume-name"
 )
 
-type activateOptions map[any]any
+type activateConfig map[any]any
 
-func (o activateOptions) Add(key, value any) {
+func (o activateConfig) Set(key, value any) {
 	o[key] = value
 }
 
 type volumeNameOption string
 
-func (o volumeNameOption) ApplyTo(visitor secboot.ActivateOptionVisitor) {
-	if _, ok := visitor.(activateOptions); !ok {
+func (o volumeNameOption) ApplyToContainerConfig(config secboot.ContainerActivateConfig) {
+	if _, ok := config.(activateConfig); !ok {
 		panic("WithVolumeName can only be used for the luks2 backend")
 	}
-	visitor.Add(volumeNameKey, string(o))
+	config.Set(volumeNameKey, string(o))
 }
 
 // WithVolumeName is used to specify the volume name used to create the
@@ -79,7 +79,7 @@ func (o volumeNameOption) ApplyTo(visitor secboot.ActivateOptionVisitor) {
 // mode where the volume name is created automatically, perhaps based on
 // the UUID of the LUKS2 container. An automatically generated volume name
 // can be retrieved afterwards using [StorageContainer.ActiveVolumeName].
-func WithVolumeName(name string) secboot.ActivateOption {
+func WithVolumeName(name string) secboot.ContainerActivateOption {
 	return volumeNameOption(name)
 }
 
@@ -163,14 +163,14 @@ func (c *storageContainerImpl) BackendName() string {
 }
 
 // Activate implements [secboot.StorageContainer.Activate]
-func (c *storageContainerImpl) Activate(ctx context.Context, ki secboot.KeyslotInfo, key []byte, opts ...secboot.ActivateOption) error {
+func (c *storageContainerImpl) Activate(ctx context.Context, ki secboot.KeyslotInfo, key []byte, opts ...secboot.ContainerActivateOption) error {
 	// TODO: Activate should require a temporary read lock (equivalent to OpenRead).
-	optsCtx := make(activateOptions)
+	cfg := make(activateConfig)
 	for _, opt := range opts {
-		opt.ApplyTo(optsCtx)
+		opt.ApplyToContainerConfig(cfg)
 	}
 
-	vn, exists := optsCtx[volumeNameKey]
+	vn, exists := cfg[volumeNameKey]
 	if !exists {
 		// TODO: Relax this requirement and autogenerate a volume name.
 		return errors.New("missing WithVolumeName option for LUKS2 container")

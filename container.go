@@ -33,17 +33,17 @@ var (
 	ErrNoStorageContainer        = errors.New("no storage container for path")
 )
 
-// ActivateOptionVisitor is used for gathering options (using
-// ActivateOption). Each backend shouls provide its own
-// implementation of this.
-type ActivateOptionVisitor interface {
-	Add(key, value any)
+// ContainerActivateConfig is used for gathering options (using
+// ContainerActivateOption). Each backend should provide its
+// own implementation of this.
+type ContainerActivateConfig interface {
+	Set(key, value any)
 }
 
-// ActivateOption represents an option that can be supplied to
+// ContainerActivateOption represents an option that can be supplied to
 // StorageContainer.Activate.
-type ActivateOption interface {
-	ApplyTo(ActivateOptionVisitor)
+type ContainerActivateOption interface {
+	ApplyToContainerConfig(ContainerActivateConfig)
 }
 
 // KeyslotType describes the type of a keyslot.
@@ -112,7 +112,7 @@ type StorageContainer interface {
 	// backend will have to test all keyslots with the supplied key.
 	// The caller can specify one or more options, which may be
 	// backend-specific.
-	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ActivateOption) error
+	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ContainerActivateOption) error
 
 	// Deactivate locks this storage container.
 	Deactivate(ctx context.Context) error
