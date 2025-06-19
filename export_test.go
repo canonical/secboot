@@ -21,6 +21,7 @@
 package secboot
 
 import (
+	"context"
 	"crypto"
 	"io"
 	"time"
@@ -38,7 +39,10 @@ const (
 
 var (
 	AcquireArgon2OutOfProcessHandlerSystemLock    = acquireArgon2OutOfProcessHandlerSystemLock
+	AddKeyToUserKeyring                           = addKeyToUserKeyring
+	AddKeyToUserKeyringLegacy                     = addKeyToUserKeyringLegacy
 	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	FormatDesc                                    = formatDesc
 	StorageContainerHandlers                      = storageContainerHandlers
 	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys                        = unmarshalProtectedKeys
@@ -82,6 +86,20 @@ func MockArgon2SysLockStderr(w io.Writer) (restore func()) {
 	argon2SysLockStderr = w
 	return func() {
 		argon2SysLockStderr = orig
+	}
+}
+
+func MockFilepathEvalSymlinks(links map[string]string) (restore func()) {
+	orig := filepathEvalSymlinks
+	filepathEvalSymlinks = func(path string) (string, error) {
+		target, exists := links[path]
+		if !exists {
+			return path, nil
+		}
+		return target, nil
+	}
+	return func() {
+		filepathEvalSymlinks = orig
 	}
 }
 
@@ -149,7 +167,7 @@ func MockLUKS2SetSlotPriority(fn func(string, int, luks2.SlotPriority) error) (r
 	}
 }
 
-func MockNewLUKSView(fn func(string, luks2.LockMode) (*luksview.View, error)) (restore func()) {
+func MockNewLUKSView(fn func(context.Context, string) (*luksview.View, error)) (restore func()) {
 	origNewLUKSView := newLUKSView
 	newLUKSView = fn
 	return func() {
