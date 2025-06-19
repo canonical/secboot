@@ -27,22 +27,23 @@ import (
 )
 
 var (
-	ErrContainerClosed    = errors.New("storage container reader/writer is already closed")
-	ErrKeyslotNotFound    = errors.New("keyslot not found")
-	ErrNoStorageContainer = errors.New("no storage container for path")
+	ErrStorageContainerClosed    = errors.New("storage container reader/writer is already closed")
+	ErrKeyslotNotFound           = errors.New("keyslot not found")
+	ErrStorageContainerNotActive = errors.New("storage container is not active")
+	ErrNoStorageContainer        = errors.New("no storage container for path")
 )
 
-// ActivateOptionVisitor is used for gathering options (using
-// ActivateOption). Each backend shouls provide its own
-// implementation of this.
-type ActivateOptionVisitor interface {
-	Add(key, value any)
+// ContainerActivateConfig is used for gathering options (using
+// ContainerActivateOption). Each backend should provide its
+// own implementation of this.
+type ContainerActivateConfig interface {
+	Set(key, value any)
 }
 
-// ActivateOption represents an option that can be supplied to
+// ContainerActivateOption represents an option that can be supplied to
 // StorageContainer.Activate.
-type ActivateOption interface {
-	ApplyTo(ActivateOptionVisitor)
+type ContainerActivateOption interface {
+	ApplyToContainerConfig(ContainerActivateConfig)
 }
 
 // KeyslotType describes the type of a keyslot.
@@ -73,7 +74,7 @@ type KeyslotInfo interface {
 // [StorageContainerReadWriter].
 type StorageContainerReader interface {
 	// Container returns the StorageContainer that this reader
-	// was opened from.
+	// was opened from. It can return nil once Close is called.
 	Container() StorageContainer
 
 	// io.Closer is used to close this reader.
@@ -111,7 +112,7 @@ type StorageContainer interface {
 	// backend will have to test all keyslots with the supplied key.
 	// The caller can specify one or more options, which may be
 	// backend-specific.
-	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ActivateOption) error
+	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ContainerActivateOption) error
 
 	// Deactivate locks this storage container.
 	Deactivate(ctx context.Context) error
