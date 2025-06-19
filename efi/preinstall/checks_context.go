@@ -46,6 +46,9 @@ func init() {
 		ErrorKindRunningInVM: []Action{
 			// TODO: Add action to add PermitVirtualMachine to CheckFlags
 		},
+		ErrorKindEFIVariableAccess: []Action{
+			ActionContactOEM,
+		},
 		ErrorKindTPMDeviceFailure: []Action{
 			ActionReboot,
 			ActionContactOEM,
@@ -63,6 +66,11 @@ func init() {
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
 			// TODO: Add actions to clear the TPM, either directly if possible or via the PPI
 			// TODO: Add action to clear the lockout.
+		},
+		ErrorKindTPMDeviceLockoutLockedOut: []Action{
+			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
+			// TODO: Add actions to clear the TPM via the PPI - there will be no option to clear it directly because the lockout hierarchy is unavailable.
+			// There will be no option to clear the lockout as there isn't a mechanism to do this.
 		},
 		ErrorKindInsufficientTPMStorage: []Action{
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to clear the TPM
@@ -242,8 +250,24 @@ func (c *RunChecksContext) isActionExpected(action Action) bool {
 // [RunChecks] into an [ErrorKind] and associated arguments where applicable
 // (see the documentation for each error kind).
 func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, error) {
+	var me MissingKernelModuleError
+	if errors.As(err, &me) {
+		// A missing kernel module is an internal error because it's an
+		// error with the way that the caller is using the API, and not
+		// something that should be directly exposed to some UI.
+		return ErrorKindInternal, nil, nil
+	}
+
 	if errors.Is(err, ErrVirtualMachineDetected) {
 		return ErrorKindRunningInVM, nil, nil
+	}
+	if errors.Is(err, ErrSystemNotEFI) {
+		return ErrorKindSystemNotEFI, nil, nil
+	}
+	var efiErr *EFIVariableAccessError
+	if errors.As(err, &efiErr) {
+		arg := MakeEFIVariableAccessErrorArg(efiErr)
+		return ErrorKindEFIVariableAccess, arg, nil
 	}
 	if errors.Is(err, ErrNoTPM2Device) || errors.Is(err, ErrNoPCClientTPM) {
 		return ErrorKindNoSuitableTPM2Device, nil, nil
@@ -295,6 +319,27 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 			IntervalDuration: time.Duration(lockoutInterval) * time.Second,
 			TotalDuration:    time.Duration(lockoutInterval) * time.Second * time.Duration(maxAuthFail),
 		}, nil
+	}
+
+	if errors.Is(err, ErrTPMLockoutLockedOut) {
+		dev, err := c.env.TPMDevice()
+		if err != nil {
+			// This shouldn't be possible - we just did some tests against a TPM device.
+			return ErrorKindNone, nil, fmt.Errorf("cannot obtain TPM device: %w", err)
+		}
+		tpm, err := tpm2.OpenTPMDevice(dev)
+		if err != nil {
+			// Likewise, this also shouldn't be possible, for the same reason.
+			return ErrorKindNone, nil, fmt.Errorf("cannot open TPM device: %w", err)
+		}
+		defer tpm.Close()
+
+		val, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
+		if err != nil {
+			return ErrorKindNone, nil, fmt.Errorf("cannot read property %v: %w", tpm2.PropertyLockoutRecovery, err)
+		}
+
+		return ErrorKindTPMDeviceLockoutLockedOut, TPMDeviceLockoutRecoveryArg(time.Duration(val) * time.Second), nil
 	}
 
 	if errors.Is(err, ErrTPMInsufficientNVCounters) {
