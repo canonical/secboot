@@ -21,8 +21,10 @@ package luks2_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -38,6 +40,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	. "gopkg.in/check.v1"
+	"gopkg.in/tomb.v2"
 )
 
 type metadataSuite struct {
@@ -64,52 +67,72 @@ func (s *metadataSuite) decompress(c *C, path string) string {
 var _ = Suite(&metadataSuite{})
 
 func (s *metadataSuite) TestAcquireSharedLockOnFile(c *C) {
+	// Test acquiring a shared lock on a file.
 	path := filepath.Join(c.MkDir(), "disk")
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	release, err := AcquireSharedLock(path, LockModeBlocking)
+	release, err := AcquireSharedLock(context.Background(), path)
 	c.Assert(err, IsNil)
+	defer release()
 
+	// We shouldn't be able to obtain an exclusive lock.
 	err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 	c.Check(err, ErrorMatches, "resource temporarily unavailable")
 
+	// We should be able to obtain a shared lock.
 	err = unix.Flock(int(f.Fd()), unix.LOCK_SH|unix.LOCK_NB)
 	c.Check(err, IsNil)
 
 	release()
 
+	// We should now be able to upgrade our shared lock to an
+	// exclusive lock.
 	err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 	c.Check(err, IsNil)
 }
 
-func (s *metadataSuite) TestTryAcquireSharedLockOnFile(c *C) {
+func (s *metadataSuite) TestFailAcquireSharedLockOnFileWithTimeout(c *C) {
+	// Test trying to acquire a shared lock on a file that already
+	// has an exclusive lock on it, using a context with a 200ms timeout.
 	path := filepath.Join(c.MkDir(), "disk")
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
 	c.Assert(err, IsNil)
 	defer f.Close()
 
+	// Obtain an exclusive lock.
 	err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 	c.Assert(err, IsNil)
 
-	_, err = AcquireSharedLock(path, LockModeNonBlocking)
-	c.Check(err, ErrorMatches, "cannot obtain lock: resource temporarily unavailable")
+	// Trying to acquire a shared lock should timeout after 200ms
+	ctx, _ := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	_, err = AcquireSharedLock(ctx, path)
+	c.Check(err, ErrorMatches, "context deadline exceeded")
+	c.Check(errors.Is(err, context.DeadlineExceeded), testutil.IsTrue)
 
+	// Release our exclusive lock.
 	err = unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	c.Assert(err, IsNil)
 
-	release, err := AcquireSharedLock(path, LockModeNonBlocking)
+	// We should be able acquire a shared lock within the 200ms timeout now.
+	ctx, _ = context.WithTimeout(context.Background(), 200*time.Millisecond)
+	release, err := AcquireSharedLock(ctx, path)
 	c.Assert(err, IsNil)
+
 	release()
 }
 
 func (s *metadataSuite) TestAcquireSharedLockOnUnsupportedFile(c *C) {
-	_, err := AcquireSharedLock("/dev/null", LockModeBlocking)
+	// Test that acquireSharedLock fails on invalid file types - it
+	// should only work for regular files or block devices.
+	_, err := AcquireSharedLock(context.Background(), "/dev/null")
 	c.Check(err, ErrorMatches, "unsupported file type")
 }
 
 func (s *metadataSuite) TestAcquireSharedLockOnDevice(c *C) {
+	// Test acquiring a shared lock on a block device. We mock the
+	// data device so that it looks like a block device.
 	restore := MockDataDeviceInfo(&unix.Stat_t{Mode: unix.S_IFBLK | 0600, Rdev: unix.Mkdev(8, 0)})
 	defer restore()
 
@@ -118,34 +141,44 @@ func (s *metadataSuite) TestAcquireSharedLockOnDevice(c *C) {
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	release, err := AcquireSharedLock(path, LockModeBlocking)
+	release, err := AcquireSharedLock(context.Background(), path)
 	c.Assert(err, IsNil)
 	defer release()
 
+	// Check that there exists a lock file at the expected location
 	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
 	lockFile, err := os.OpenFile(lockPath, os.O_RDWR, 0)
 	c.Assert(err, IsNil)
 	defer lockFile.Close()
 
+	// We shouldn't be able to obtain an exclusive lock.
 	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 	c.Check(err, ErrorMatches, "resource temporarily unavailable")
 
+	// We should be able to obtain a shared lock.
 	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_SH|unix.LOCK_NB)
 	c.Check(err, IsNil)
 
+	// We need to release our shared lock so that the lock file cleanup
+	// works and can be tested.
 	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
 	c.Assert(err, IsNil)
 
 	release()
 
+	// We should be able to obtain an exclusive lock on our open FD now.
 	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 	c.Check(err, IsNil)
 
+	// The lock file should have been deleted.
 	_, err = os.Open(lockPath)
 	c.Check(err, ErrorMatches, ".*: no such file or directory")
 }
 
-func (s *metadataSuite) TestAcquireSharedLockOnDeviceNoCleanup(c *C) {
+func (s *metadataSuite) TestFailAcquireSharedLockOnDeviceWithTimeout(c *C) {
+	// Test trying to acquire a shared lock on a block device that already
+	// has an exclusive lock on it, using a context with a 200ms timeout.
+	// We mock the data device so that it looks like a block device.
 	restore := MockDataDeviceInfo(&unix.Stat_t{Mode: unix.S_IFBLK | 0600, Rdev: unix.Mkdev(8, 0)})
 	defer restore()
 
@@ -154,7 +187,150 @@ func (s *metadataSuite) TestAcquireSharedLockOnDeviceNoCleanup(c *C) {
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	release, err := AcquireSharedLock(path, LockModeBlocking)
+	// Create a lock file to accompany our block device and grab an exclusive lock.
+	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
+	c.Assert(os.Mkdir(filepath.Dir(lockPath), 0700), IsNil)
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer lockFile.Close()
+
+	// Obtain an exclusive lock.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Assert(err, IsNil)
+
+	// We should not be able acquire a shared lock within the 200ms timeout.
+	ctx, _ := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	_, err = AcquireSharedLock(ctx, path)
+	c.Check(err, ErrorMatches, "context deadline exceeded")
+	c.Check(errors.Is(err, context.DeadlineExceeded), testutil.IsTrue)
+
+	// Release our exclusive lock.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
+	c.Assert(err, IsNil)
+
+	// We should be able acquire a shared lock within the 200ms timeout now.
+	ctx, _ = context.WithTimeout(context.Background(), 200*time.Millisecond)
+	release, err := AcquireSharedLock(ctx, path)
+	c.Assert(err, IsNil)
+	defer release()
+
+	release()
+
+	// The lock file should have been deleted.
+	_, err = os.Open(lockPath)
+	c.Check(err, ErrorMatches, ".*: no such file or directory")
+}
+
+func (s *metadataSuite) TestAcquireSharedLockOnDeviceWithAlreadyCanceledContext(c *C) {
+	// Test that we get the expected error when trying to acquire a shared lock
+	// on a block device with a context that is already canceled.
+	restore := MockDataDeviceInfo(&unix.Stat_t{Mode: unix.S_IFBLK | 0600, Rdev: unix.Mkdev(8, 0)})
+	defer restore()
+
+	path := filepath.Join(c.MkDir(), "disk")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = AcquireSharedLock(ctx, path)
+	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
+
+	// There shouldn't be a lock file at the expected location.
+	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
+	_, err = os.OpenFile(lockPath, os.O_RDWR, 0)
+	c.Check(os.IsNotExist(err), testutil.IsTrue)
+
+	// It should still work if we try again with a non-canceled context.
+	release, err := AcquireSharedLock(context.Background(), path)
+	c.Assert(err, IsNil)
+	defer release()
+
+	// Check that there exists a lock file at the expected location
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR, 0)
+	c.Assert(err, IsNil)
+	defer lockFile.Close()
+
+	// We shouldn't be able to obtain an exclusive lock.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, ErrorMatches, "resource temporarily unavailable")
+
+	// We should be able to obtain a shared lock.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_SH|unix.LOCK_NB)
+	c.Check(err, IsNil)
+
+	// We need to release our shared lock so that the lock file cleanup
+	// works and can be tested.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
+	c.Assert(err, IsNil)
+
+	release()
+
+	// We should be able to obtain an exclusive lock on our open FD now.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Check(err, IsNil)
+
+	// The lock file should have been deleted.
+	_, err = os.Open(lockPath)
+	c.Check(err, ErrorMatches, ".*: no such file or directory")
+}
+
+func (s *metadataSuite) TestAcquireSharedLockOnDeviceAfterWait(c *C) {
+	// Test acquiring a shared lock on a block device after having to wait. We
+	// mock the data device so that it looks like a block device.
+	restore := MockDataDeviceInfo(&unix.Stat_t{Mode: unix.S_IFBLK | 0600, Rdev: unix.Mkdev(8, 0)})
+	defer restore()
+
+	path := filepath.Join(c.MkDir(), "disk")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
+
+	// Create the expected lock file.
+	lockPath := filepath.Join(s.runDir, "cryptsetup", "L_8:0")
+	c.Assert(os.Mkdir(filepath.Dir(lockPath), 0700), IsNil)
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer lockFile.Close()
+
+	// Obtain an exclusive lock.
+	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	c.Assert(err, IsNil)
+
+	tmb := new(tomb.Tomb)
+	tmb.Go(func() error {
+		<-time.After(100 * time.Millisecond)
+
+		// Release our exclusive lock.
+		return unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
+	})
+	<-tmb.Dead()
+	c.Check(tmb.Err(), IsNil)
+
+	ctx, _ := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	release, err := AcquireSharedLock(ctx, path)
+	c.Assert(err, IsNil)
+	defer release()
+
+	release()
+
+	// The lock file should have been deleted.
+	_, err = os.Open(lockPath)
+	c.Check(err, ErrorMatches, ".*: no such file or directory")
+}
+
+func (s *metadataSuite) TestAcquireSharedLockOnDeviceNoCleanupLackOfExclusiveLock(c *C) {
+	restore := MockDataDeviceInfo(&unix.Stat_t{Mode: unix.S_IFBLK | 0600, Rdev: unix.Mkdev(8, 0)})
+	defer restore()
+
+	path := filepath.Join(c.MkDir(), "disk")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	c.Assert(err, IsNil)
+	defer f.Close()
+
+	release, err := AcquireSharedLock(context.Background(), path)
 	c.Assert(err, IsNil)
 	defer release()
 
@@ -163,17 +339,12 @@ func (s *metadataSuite) TestAcquireSharedLockOnDeviceNoCleanup(c *C) {
 	c.Assert(err, IsNil)
 	defer lockFile.Close()
 
-	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
-	c.Check(err, ErrorMatches, "resource temporarily unavailable")
-
 	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_SH|unix.LOCK_NB)
 	c.Check(err, IsNil)
 
 	release()
 
-	err = unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB)
-	c.Check(err, IsNil)
-
+	// The lock file shouldn't have been deleted because we have a shared lock on it.
 	lockFile, err = os.Open(lockPath)
 	c.Assert(err, IsNil)
 	defer lockFile.Close()
@@ -190,7 +361,7 @@ func (s *metadataSuite) TestAcquireSharedLockOnDeviceWithExistingLockDir(c *C) {
 	c.Assert(err, IsNil)
 	defer f.Close()
 
-	release, err := AcquireSharedLock(path, LockModeBlocking)
+	release, err := AcquireSharedLock(context.Background(), path)
 	c.Assert(err, IsNil)
 	defer release()
 
@@ -214,7 +385,7 @@ func (s *metadataSuite) TestAcquireManySharedLocksOnDevice(c *C) {
 	routine := func() {
 		defer wg.Done()
 		for i := 0; i < 200; i++ {
-			release, err := AcquireSharedLock(path, LockModeBlocking)
+			release, err := AcquireSharedLock(context.Background(), path)
 			c.Assert(err, IsNil)
 			time.Sleep(time.Duration(rand.Intn(15000)) * time.Microsecond)
 			release()
@@ -298,7 +469,7 @@ func (s *metadataSuite) testReadHeader(c *C, data *testReadHeaderData) {
 	stderr := new(bytes.Buffer)
 	s.AddCleanup(MockStderr(stderr))
 
-	hdr, err := ReadHeader(s.decompress(c, data.path), LockModeBlocking)
+	hdr, err := ReadHeader(context.Background(), s.decompress(c, data.path))
 	c.Assert(err, IsNil)
 
 	c.Check(hdr.HeaderSize, Equals, data.hdrSize)
@@ -466,13 +637,13 @@ func (s *metadataSuite) TestReadHeaderObsoletePrimary(c *C) {
 
 func (s *metadataSuite) TestReadHeaderInvalidMagic(c *C) {
 	// Test where both headers have invalid magic values to check we get the right error.
-	_, err := ReadHeader(s.decompress(c, "testdata/luks2-hdr-invalid-magic-both.img"), LockModeBlocking)
+	_, err := ReadHeader(context.Background(), s.decompress(c, "testdata/luks2-hdr-invalid-magic-both.img"))
 	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: invalid magic")
 }
 
 func (s *metadataSuite) TestReadHeaderInvalidVersion(c *C) {
 	// Test where both headers have an invalid version to check we get the right error.
-	_, err := ReadHeader(s.decompress(c, "testdata/luks2-hdr-invalid-version-both.img"), LockModeBlocking)
+	_, err := ReadHeader(context.Background(), s.decompress(c, "testdata/luks2-hdr-invalid-version-both.img"))
 	c.Check(err, ErrorMatches, "no valid header found, error from decoding primary header: invalid version")
 }
 
@@ -486,7 +657,7 @@ func (s *metadataSuite) TestReadHeaderWithExternalToken(c *C) {
 	})
 	defer RegisterTokenDecoder("secboot-test", nil)
 
-	hdr, err := ReadHeader(s.decompress(c, "testdata/luks2-valid-hdr.img"), LockModeBlocking)
+	hdr, err := ReadHeader(context.Background(), s.decompress(c, "testdata/luks2-valid-hdr.img"))
 	c.Assert(err, IsNil)
 
 	c.Assert(hdr.Metadata.Tokens, HasLen, 1)
