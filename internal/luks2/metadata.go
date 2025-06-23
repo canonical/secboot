@@ -155,7 +155,7 @@ func acquireSharedLock(ctx context.Context, path string) (release func(), err er
 		return nil, errors.New("unsupported file type")
 	}
 
-	// This is no longer needed
+	// f is no longer needed
 	f.Close()
 	f = nil
 
