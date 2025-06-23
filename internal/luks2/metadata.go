@@ -922,6 +922,8 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// BinaryHeaderError is returned from ReadHeader if there is an error associated
+// with the LUKS2 binary header area.
 type BinaryHeaderError struct {
 	err error
 }
@@ -934,6 +936,8 @@ func (e *BinaryHeaderError) Unwrap() error {
 	return e.err
 }
 
+// JSONMetadataError is returned from ReadHeader if there is an error associated
+// with the LUKS2 JSON metadata area.
 type JSONMetadataError struct {
 	err error
 }
@@ -947,8 +951,12 @@ func (e *JSONMetadataError) Unwrap() error {
 }
 
 var (
+	// ErrInvalidMagic is returned from ReadHeader if the storage container does
+	// not being with the LUKS2 magic bytes, making it likely that this is not
+	// a LUKS2 container.
 	ErrInvalidMagic = errors.New("invalid magic")
 
+	// ErrInvalidChecksum is returned from ReadHeader if the header checksum fails.
 	ErrInvalidChecksum = errors.New("invalid checksum")
 )
 
