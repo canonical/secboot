@@ -21,6 +21,7 @@ package secboot
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -462,7 +463,7 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 		candidates = append(candidates, &keyCandidate{KeyData: key, slot: luks2.AnySlot})
 	}
 
-	view, err := newLUKSView(sourceDevicePath, luks2.LockModeBlocking)
+	view, err := newLUKSView(context.TODO(), sourceDevicePath)
 	if err != nil {
 		fmt.Fprintf(osStderr, "secboot: cannot obtain LUKS2 header view: %v\n", err)
 	} else {
@@ -667,7 +668,7 @@ func removeOrphanedTokens(devicePath string, view *luksview.View) {
 
 func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey DiskUnlockKey, options *luks2.KDFOptions,
 	newToken func(base *luksview.TokenBase) luks2.Token, priority luks2.SlotPriority) error {
-	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
 	}
@@ -736,7 +737,7 @@ func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey Di
 }
 
 func listLUKS2ContainerKeyNames(devicePath string, tokenType luks2.TokenType) ([]string, error) {
-	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot obtain LUKS header view: %w", err)
 	}
@@ -854,7 +855,7 @@ func ListLUKS2ContainerRecoveryKeyNames(devicePath string) ([]string, error) {
 // LUKS2 container at the specified path. This will return an error if the container
 // only has a single keyslot remaining.
 func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
-	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
 	}
@@ -902,7 +903,7 @@ func AllowNonAtomicOperation() *nonAtomicOperationAllowedFlag {
 }
 
 func renameLUKS2ContainerKey(nonAtomic *nonAtomicOperationAllowedFlag, devicePath, oldName, newName string, replace bool) error {
-	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
 	}
@@ -985,7 +986,7 @@ var KeyslotAlreadyHasANameErr = errors.New("keyslot already has a name")
 // do nothing. This function is intended to be used to name keys on
 // an old container.
 func NameLegacyLUKS2ContainerKey(devicePath string, keyslot int, newName string) error {
-	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {
 		return xerrors.Errorf("cannot obtain LUKS header view: %w", err)
 	}

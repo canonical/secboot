@@ -21,6 +21,7 @@ package luks2
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	_ "crypto/sha1"
 	_ "crypto/sha256"
@@ -31,11 +32,13 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/snapcore/secboot/internal/paths"
 
@@ -55,45 +58,54 @@ var isBlockDevice = func(mode os.FileMode) bool {
 	return mode&os.ModeDevice > 0 && mode&os.ModeCharDevice == 0
 }
 
-// LockMode defines the locking mode for ReadHeader.
-type LockMode int
-
-const (
-	LockModeBlocking LockMode = iota
-	LockModeNonBlocking
-)
-
 // acquireSharedLock acquires an advisory shared lock on the LUKS volume associated with the
 // specified path. The path can either be a block device or file containing a LUKS2 volume with
 // an integral header, or a detached header file associated with a LUKS device.
 //
-// If the mode parameter is LockModeBlocking, this function will block until the lock can be
-// obtained. If the mode parameter is LockModeNonBlocking, a wrapped syscall.Errno error with
-// the value of syscall.EWOULDBLOCK will be returned if the lock can not be obtained.
+// If the supplied context cannot be canceled or cannot expire, then this function may block
+// forever.
 //
 // A shared lock is for read-only access. There can be multiple parallel shared lock holders.
+// Shared and exclusive locks are mutually exclusive, and there can only ever be a single
+// exclusive lock acqired at any time.
+//
+// This function does not provide a way to acquire an advisory exclusive lock - this would only
+// be required if we add functionality that performs writes to the LUKS header without delegating
+// this to the cryptsetup binary or libcryptsetup via cgo.
 //
 // This function implements the locking logic implemented by libcryptsetup - see
 // lib/utils_device_locking.c from the cryptsetup source code (tag:v2.3.1).
 //
-// On success, a callback is returned which should be called to release the lock.
-func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
-	// Initially open the device or file for reading
+// On success, a callback is returned which should be called to release the lock. If it
+// doesn't acquire a lock before the supplied context is canceled or expires, the reason
+// is returned as an error.
+func acquireSharedLock(ctx context.Context, path string) (release func(), err error) {
+	// Initially open the device or file for reading.
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, xerrors.Errorf("cannot open device: %w", err)
+		switch e := err.(type) {
+		case *os.PathError:
+			// Make it possible to distinguish this open for reading vs the
+			// future open for writing.
+			e.Err = fmt.Errorf("whilst opening data device or file for reading: %w", e.Err)
+			return nil, e
+		default:
+			// We shouldn't really hit this because os.Open should only return *os.PathError.
+			return nil, fmt.Errorf("cannot open data device or file %s for reading: %w", path, err)
+		}
 	}
-	defer f.Close()
+	defer func() {
+		if f == nil {
+			return
+		}
+		f.Close()
+	}()
 
-	how := unix.LOCK_SH
-	if mode == LockModeNonBlocking {
-		how |= unix.LOCK_NB
-	}
-
-	// Obtain information about the opened device or file
+	// Obtain information about the opened device or file.
 	fi, err := f.Stat()
 	if err != nil {
-		return nil, xerrors.Errorf("cannot obtain file info: %w", err)
+		// This should only be *os.PathError, so not much need for us to add context.
+		return nil, err
 	}
 
 	var lockPath string
@@ -106,14 +118,32 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 
 		// Don't assume that the lock directory exists.
 		if err := os.Mkdir(cryptsetupLockDir(), 0700); err != nil && !os.IsExist(err) {
-			return nil, xerrors.Errorf("cannot create lock directory: %w", err)
+			// This should only be *os.PathError, so not much need for us to add context.
+			return nil, err
 		}
 
 		// Obtain information about the opened block device using the fstat syscall,
 		// where we get more information.
+		//
+		// XXX: do we need the call to unix.Fstat in this case? Can't we obtain a
+		// *syscall.Stat_t from the implementaton of os.FileInfo.Sys that was returned
+		// earlier for this opened file?
+		sc, err := f.SyscallConn()
+		if err != nil {
+			return nil, fmt.Errorf("cannot obtain syscall.RawConn implementation for data device or file %s: %w", f.Name(), err)
+		}
+
 		var st unix.Stat_t
-		if err := dataDeviceFstat(int(f.Fd()), &st); err != nil {
-			return nil, xerrors.Errorf("cannot obtain device info: %w", err)
+		if cErr := sc.Control(func(fd uintptr) {
+			if e := dataDeviceFstat(int(fd), &st); e != nil {
+				err = &os.PathError{Op: "raw-fstat", Path: f.Name(), Err: e}
+			}
+		}); cErr != nil {
+			return nil, fmt.Errorf("cannot complete syscall.RawConn.Control call on data device or file %s: %w", f.Name(), cErr)
+		}
+		if err != nil {
+			// unix.Fstat failed.
+			return nil, err
 		}
 		lockPath = filepath.Join(cryptsetupLockDir(), fmt.Sprintf("L_%d:%d", unix.Major(st.Rdev), unix.Minor(st.Rdev)))
 		openFlags = os.O_RDWR | os.O_CREATE
@@ -125,19 +155,36 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		return nil, errors.New("unsupported file type")
 	}
 
+	// f is no longer needed
+	f.Close()
+	f = nil
+
 	var lockFile *os.File
 	var origSt unix.Stat_t
 
 	// Define a mechanism to release the lock.
-	release = func() {
+	internalRelease := func() {
 		// Ensure multiple calls are benign
 		if lockFile == nil {
 			return
 		}
 
-		// Release the lock
-		unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
+		sc, err := lockFile.SyscallConn()
+		if err != nil {
+			fmt.Fprintf(stderr, "luks2.acquireSharedLock release: cannot obtain syscall.RawConn implementation for lock file %s: %v", lockFile.Name(), err)
+			return
+		}
+
+		// Release the shared lock
+		if cErr := sc.Control(func(fd uintptr) {
+			if e := unix.Flock(int(fd), unix.LOCK_UN); e != nil {
+				fmt.Fprintf(stderr, "luks2.acquireSharedLock release: %v\n", &os.PathError{Op: "raw-flock(un)", Path: lockFile.Name(), Err: e})
+			}
+		}); cErr != nil {
+			fmt.Fprintf(stderr, "luks2.acquireSharedLock release: cannot perform control action on locked lock file FD: %v\n", cErr)
+		}
 		defer func() {
+			// Ensure that the lock file is closed and cleared when the function exits.
 			lockFile.Close()
 			lockFile = nil
 		}()
@@ -164,13 +211,26 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 
 		// First of all, attempt to acquire an exclusive lock on the same inode we had a lock
 		// on previously, without blocking.
-		if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-			if errno, ok := err.(syscall.Errno); !ok || errno != syscall.EWOULDBLOCK {
-				fmt.Fprintf(stderr, "luks2.acquireSharedLock: cannot acquire exclusive lock for cleanup: %v\n", err)
+		hasExclusiveLock := false
+		if cErr := sc.Control(func(fd uintptr) {
+			if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+				// We failed to acquire an exclusive lock. Only log the error in the case
+				// where the error isn't EWOULDBLOCK, as this is not an unexpected error.
+				if errno, ok := err.(syscall.Errno); !ok || errno != syscall.EWOULDBLOCK {
+					fmt.Fprintf(stderr, "luks2.acquireSharedLock release: %v\n", &os.PathError{Op: "raw-flock(ex|nb)", Path: lockFile.Name(), Err: err})
+				}
+				return
 			}
-			// Another process has grabbed a lock since we released the lock. There's
-			// nothing else for us to do - the new lock owner is now responsible for
-			// cleaning up the lock file.
+			hasExclusiveLock = true
+		}); cErr != nil {
+			fmt.Fprintf(stderr, "luks2.acquireSharedLock release: cannot perform control action on unlocked lock file FD: %v\n", err)
+		}
+
+		if !hasExclusiveLock {
+			// We can't acquire an exclusive lock on the inode we originally had a lock
+			// on. This means that another process has acquired a lock on it since we
+			// released the shared lock. There's nothing else for us to do - the new
+			// lock owner is now responsible for cleaning up the lock file.
 			return
 		}
 
@@ -179,7 +239,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		var st unix.Stat_t
 		if err := unix.Stat(lockPath, &st); err != nil {
 			if errno, ok := err.(syscall.Errno); !ok || errno != syscall.ENOENT {
-				fmt.Fprintf(stderr, "luks2.acquireSharedLock: cannot stat() lock file: %v\n", err)
+				fmt.Fprintf(stderr, "luks2.acquireSharedLock release: %v\n", &os.PathError{Op: "stat", Path: lockPath, Err: err})
 			}
 			// The lock file we opened has been cleaned up by another process, which acquired
 			// and released it in between us releasing the lock at the start of this function,
@@ -192,7 +252,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 			// us releasing the lock at the start of this function, and then acquiring an
 			// exclusive lock again. Another process has since created a new lock file. There's
 			// nothing else for us to do - the new process is responsible for cleaning up the new
-			// lock file.
+			// lock file. Erasing this lock file would create a potentially dangerous race condition.
 			return
 		}
 
@@ -200,39 +260,101 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		// have an exclusive lock on it again. As other processes participating in locking require
 		// an exclusive lock for cleaning it up, it os now safe to unlink it.
 		if err := os.Remove(lockPath); err != nil {
-			fmt.Fprintf(stderr, "luks2.acquireSharedLock: cannot unlink lock file: %v\n", err)
+			fmt.Fprintf(stderr, "luks2.acquireSharedLock release: %v\n", err)
 		}
 	}
 
-	for {
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		// Make sure the lock is released if we return an error.
+		internalRelease()
+	}()
+
+	// Loop whilst the context is active.
+	for ctx.Err() == nil {
 		// Attempt to open the lock file for writing.
 		lockFile, err = os.OpenFile(lockPath, openFlags, 0600)
 		if err != nil {
-			return nil, xerrors.Errorf("cannot open lock file for writing: %w", err)
+			switch e := err.(type) {
+			case *os.PathError:
+				// Make it possible to distinguish this open for writing vs the
+				// previous open for reading.
+				e.Err = fmt.Errorf("whilst opening lock file for writing: %w", e.Err)
+				return nil, e
+			default:
+				// We shouldn't really hit this because os.Open should only return *os.PathError.
+				return nil, fmt.Errorf("cannot open lock file %s for writing: %w", lockPath, err)
+			}
 		}
 
-		// Obtain and save information about the opened lock file.
-		if err := unix.Fstat(int(lockFile.Fd()), &origSt); err != nil {
-			lockFile.Close()
-			return nil, xerrors.Errorf("cannot obtain lock file info: %w", err)
+		// XXX: do we need the direct call to unix.Fstat in this case? Can't we obtain and
+		// use a *syscall.Stat_t from the implementaton of os.FileInfo.Sys that can be obtained
+		// by calling os.File.Stat on lockFile?
+		sc, err := lockFile.SyscallConn()
+		if err != nil {
+			return nil, fmt.Errorf("cannot obtain syscall.RawConn implementation for lock file %s: %w", lockFile.Name(), err)
 		}
 
-		// Attempt to acquire the requested lock.
-		if err := unix.Flock(int(lockFile.Fd()), how); err != nil {
-			release()
-			return nil, xerrors.Errorf("cannot obtain lock: %w", err)
+		if cErr := sc.Control(func(fd uintptr) {
+			// Obtain and save information about the opened lock file.
+			if e := unix.Fstat(int(fd), &origSt); e != nil {
+				err = &os.PathError{Op: "raw-fstat", Path: lockFile.Name(), Err: e}
+			}
+		}); cErr != nil {
+			return nil, fmt.Errorf("cannot complete syscall.RawConn.Control call on unlocked lock file %s: %w", lockFile.Name(), cErr)
 		}
+		if err != nil {
+			// unix.Fstat failed.
+			return nil, err
+		}
+
+		// Attempt to acquire the requested lock in non-blocking mode in a loop as there is no
+		// way for us to unblock a blocking flock call if the supplied context is canceled
+		// or expires. We introduce some randomness to the retry timeout.
+		for {
+			if cErr := sc.Control(func(fd uintptr) {
+				err = unix.Flock(int(fd), unix.LOCK_SH|unix.LOCK_NB)
+			}); cErr != nil {
+				return nil, fmt.Errorf("cannot complete syscall.RawConn.Control call on unlocked lock file %s: %w", lockFile.Name(), cErr)
+			}
+			if err == nil {
+				// We have acquired the lock
+				break
+			}
+			if errno, ok := err.(syscall.Errno); !ok || errno != syscall.EWOULDBLOCK {
+				// We failed to acquire the lock for an unexpected reason.
+				return nil, &os.PathError{Op: "raw-flock(sh)", Path: lockFile.Name(), Err: err}
+			}
+
+			// Have another go with a pseudorandom delay between 5ms and 100ms,
+			// or until the context is canceled or expires.
+			n := rand.Intn(95)
+			select {
+			case <-time.After((time.Millisecond * time.Duration(n)) + (time.Millisecond * 5)):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		// We have acquired the lock at this point.
 
 		if isBlockDevice(fi.Mode()) {
 			// If we are attempting to acquire a lock on a block device, make sure that we
 			// aren't racing with a previous lock holder or a new lock holder.
 			//
 			// Obtain information about the inode that the lock file path currently points to.
+			//
+			// XXX: do we need the direct call to unix.Stat in this case? Can't we obtain and
+			// use a *syscall.Stat_t from the implementaton of os.FileInfo.Sys that can be
+			// obtained by calling os.Stat with lockPath?
 			var st unix.Stat_t
 			if err := unix.Stat(lockPath, &st); err != nil {
 				// The lock file we opened was unlinked by another lock owner between us
 				// opening the file and acquiring the lock. We need to try again.
-				release()
+				internalRelease()
 				continue
 			}
 
@@ -240,7 +362,7 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 				// The lock file we opened was unlinked by another lock owner between us
 				// opening the file and acquiring the lock, and another process has created a
 				// new lock file. We need to try again.
-				release()
+				internalRelease()
 				continue
 			}
 
@@ -250,8 +372,10 @@ func acquireSharedLock(path string, mode LockMode) (release func(), err error) {
 		}
 
 		// We've successfully acquired the requested lock - return the release callback.
-		return release, nil
+		return internalRelease, nil
 	}
+
+	return nil, ctx.Err()
 }
 
 // KDFType corresponds to a key derivation function.
@@ -886,11 +1010,11 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 // modifications to the header.
 //
 // This function requires an advisory shared lock on the LUKS container associated with the
-// specified path. If the mode parameter is LockModeBlocking, this function will block until the
-// lock can be obtained. If the mode parameter is LockModeNonBlocking, a wrapped syscall.Errno
-// error with the value of syscall.EWOULDBLOCK will be returned if the lock can not be obtained.
-func ReadHeader(path string, lockMode LockMode) (*HeaderInfo, error) {
-	releaseLock, err := acquireSharedLock(path, lockMode)
+// specified path, and will block until it acquires one. The supplied context can be used to set
+// a deadline of provide a mechanism for cancellation. If a lock isn't acquired before the supplied
+// context is canceled or expires, the reason is returned as an error.
+func ReadHeader(ctx context.Context, path string) (*HeaderInfo, error) {
+	releaseLock, err := acquireSharedLock(ctx, path)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot acquire shared lock: %w", err)
 	}

@@ -21,6 +21,7 @@ package secboot
 
 import (
 	"bytes"
+	"context"
 	"errors"
 
 	"golang.org/x/xerrors"
@@ -40,7 +41,7 @@ type LUKS2KeyDataReader struct {
 // NewLUKS2KeyDataReader is used to read a LUKS2 token containing key data with
 // the specified name on the specified LUKS2 container.
 func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error) {
-	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot obtain LUKS2 header view: %w", err)
 	}
@@ -101,7 +102,7 @@ type LUKS2KeyDataWriter struct {
 // name. The initial token is bootstrapped by InitializeLUKS2Container or
 // SetLUKS2ContainerUnlockKey.
 func NewLUKS2KeyDataWriter(devicePath, name string) (*LUKS2KeyDataWriter, error) {
-	view, err := newLUKSView(devicePath, luks2.LockModeBlocking)
+	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot obtain LUKS2 header view: %w", err)
 	}

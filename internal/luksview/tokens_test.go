@@ -20,6 +20,7 @@
 package luksview_test
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 
@@ -124,7 +125,7 @@ func (s *tokenSuite) TestDecodeRecoveryToken(c *C) {
 			TokenKeyslot: 0}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 
-	header, err := luks2.ReadHeader(path, luks2.LockModeNonBlocking)
+	header, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	token, ok := header.Metadata.Tokens[0].(*RecoveryToken)
@@ -149,7 +150,7 @@ func (s *tokenSuite) TestDecodeOrphanedRecoveryToken(c *C) {
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 	c.Check(luks2.KillSlot(path, 0), IsNil)
 
-	header, err := luks2.ReadHeader(path, luks2.LockModeNonBlocking)
+	header, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	token, ok := header.Metadata.Tokens[0].(*OrphanedToken)
@@ -174,7 +175,7 @@ func (s *tokenSuite) TestDecodeInvalidRecoveryToken(c *C) {
 			TokenKeyslot: 0}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 
-	header, err := luks2.ReadHeader(path, luks2.LockModeNonBlocking)
+	header, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	token, ok := header.Metadata.Tokens[0].(*luks2.GenericToken)
@@ -281,7 +282,7 @@ func (s *tokenSuite) TestDecodeKeyDataToken(c *C) {
 		Data:     json.RawMessage(`{"key1":"foo","key2":542}`)}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 
-	header, err := luks2.ReadHeader(path, luks2.LockModeNonBlocking)
+	header, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	token, ok := header.Metadata.Tokens[0].(*KeyDataToken)
@@ -306,7 +307,7 @@ func (s *tokenSuite) TestDecodeOrphanedKeyDataToken(c *C) {
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 	c.Check(luks2.KillSlot(path, 0), IsNil)
 
-	header, err := luks2.ReadHeader(path, luks2.LockModeNonBlocking)
+	header, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	token, ok := header.Metadata.Tokens[0].(*OrphanedToken)
@@ -331,7 +332,7 @@ func (s *tokenSuite) TestDecodeInvalidKeyDataToken(c *C) {
 			TokenKeyslot: 0}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 
-	header, err := luks2.ReadHeader(path, luks2.LockModeNonBlocking)
+	header, err := luks2.ReadHeader(context.Background(), path)
 	c.Assert(err, IsNil)
 
 	token, ok := header.Metadata.Tokens[0].(*luks2.GenericToken)
