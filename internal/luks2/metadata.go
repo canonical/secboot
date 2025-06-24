@@ -951,12 +951,13 @@ func (e *JSONMetadataError) Unwrap() error {
 }
 
 var (
-	// ErrInvalidMagic is returned from ReadHeader if the storage container does
-	// not being with the LUKS2 magic bytes, making it likely that this is not
-	// a LUKS2 container.
+	// ErrInvalidMagic is returned wrapped in BinaryHeaderError from ReadHeader
+	// if the storage container does not begin with the LUKS2 magic bytes, making
+	// it likely that this is not a LUKS2 container.
 	ErrInvalidMagic = errors.New("invalid magic")
 
-	// ErrInvalidChecksum is returned from ReadHeader if the header checksum fails.
+	// ErrInvalidChecksum is returned wrapped in BinaryHeaderError from ReadHeader
+	// if the header checksum fails.
 	ErrInvalidChecksum = errors.New("invalid checksum")
 )
 
