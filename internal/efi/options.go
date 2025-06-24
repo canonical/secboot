@@ -24,6 +24,18 @@ import (
 	"github.com/canonical/go-tpm2"
 )
 
+type LoadParamsKey string
+
+type LoadParams map[LoadParamsKey]any
+
+func (p LoadParams) Clone() LoadParams {
+	out := make(LoadParams)
+	for k, v := range p {
+		out[k] = v
+	}
+	return out
+}
+
 type InitialVariablesModifier func(VariableSet) error
 
 type PCRProfileOptionVisitor interface {
@@ -36,6 +48,8 @@ type PCRProfileOptionVisitor interface {
 	// AddInitialVariablesModifier adds a function that will be called to allow
 	// the initial variable set for profile generation to be modified.
 	AddInitialVariablesModifier(fn InitialVariablesModifier)
+
+	AddImageLoadParams(func(...LoadParams) []LoadParams)
 }
 
 // VariableSet corresponds to a set of EFI variables.

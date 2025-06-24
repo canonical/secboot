@@ -25,6 +25,7 @@ import (
 	"os"
 
 	"github.com/snapcore/secboot"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/snapd/snap"
 )
 
@@ -103,7 +104,7 @@ func (p FileImage) Open() (ImageReader, error) {
 	return &fileImageReader{File: f, size: fi.Size()}, nil
 }
 
-type loadParamsKey string
+type loadParamsKey = internal_efi.LoadParamsKey
 
 const (
 	kernelCommandlineParamKey loadParamsKey = "kernel_commandline"
@@ -112,22 +113,14 @@ const (
 
 // loadParams correspond to a set of parameters that apply to a single branch
 // in a PCR profile.
-type loadParams map[loadParamsKey]any
-
-func (p loadParams) clone() loadParams {
-	out := make(loadParams)
-	for k, v := range p {
-		out[k] = v
-	}
-	return out
-}
+type loadParams = internal_efi.LoadParams
 
 func applyMultipleOptionsToLoadParams[V any](key loadParamsKey, values []V, params ...loadParams) []loadParams {
 	var out []loadParams
 	for _, v := range values {
 		var newParams []loadParams
 		for _, p := range params {
-			newParams = append(newParams, p.clone())
+			newParams = append(newParams, p.Clone())
 		}
 		for _, p := range newParams {
 			p[key] = v

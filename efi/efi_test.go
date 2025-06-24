@@ -758,6 +758,7 @@ type mockPcrProfileOptionVisitor struct {
 	pcrs         tpm2.HandleList
 	env          HostEnvironment
 	varModifiers []internal_efi.InitialVariablesModifier
+	loadParams   []LoadParams
 }
 
 func (v *mockPcrProfileOptionVisitor) AddPCRs(pcrs ...tpm2.Handle) {
@@ -770,6 +771,10 @@ func (v *mockPcrProfileOptionVisitor) SetEnvironment(env HostEnvironment) {
 
 func (v *mockPcrProfileOptionVisitor) AddInitialVariablesModifier(fn internal_efi.InitialVariablesModifier) {
 	v.varModifiers = append(v.varModifiers, fn)
+}
+
+func (v *mockPcrProfileOptionVisitor) AddImageLoadParams(f func(...LoadParams) []LoadParams) {
+	v.loadParams = f(v.loadParams...)
 }
 
 type mockVarReader struct {

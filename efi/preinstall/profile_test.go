@@ -49,6 +49,10 @@ func (*mockPcrProfileOptionVisitor) AddInitialVariablesModifier(fn internal_efi.
 	panic("not reached")
 }
 
+func (v *mockPcrProfileOptionVisitor) AddImageLoadParams(f func(...internal_efi.LoadParams) []internal_efi.LoadParams) {
+	panic("not reached")
+}
+
 func (s *profileSuite) TestWithAutoTCGPCRProfileDefault(c *C) {
 	result := &CheckResult{
 		PCRAlg:            tpm2.HashAlgorithmSHA256,
