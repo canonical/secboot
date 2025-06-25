@@ -39,5 +39,10 @@ const (
 // XXX: This will eventually be part of the serialized [ActivateState].
 type DeactivationReason string
 
+type ContainerActivateState struct {
+}
+
 type ActivateState struct {
+	PrimaryKeyID int                               `json:"primary-key-id"`
+	Activations  map[string]ContainerActivateState `json:"activations"`
 }

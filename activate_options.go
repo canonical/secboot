@@ -120,6 +120,9 @@ const (
 	// container unlocking.
 	keyringDescPrefixKey activateConfigKey = "keyring-desc-prefix"
 
+	// nonFatalContainerBindingKey is used by WithNonFatalContainerBindingFailure.
+	nonFatalContainerBindingFailureKey = "non-fatal-container-binding-failure"
+
 	recoveryKeyTriesKey activateConfigKey = "recovery-key-tries"
 
 	// stderrLoggerKey is used by WithStderrLogger to provide a way to override
@@ -187,6 +190,23 @@ func (withExternalKeyDataOption) PerContainer() bool {
 // to supply extra key metadata that is not part of the associated [StorageContainer].
 func WithExternalKeyData(keys ...*ExternalKeyData) ActivateOption {
 	return withExternalKeyDataOption(keys)
+}
+
+// WithNonFatalContainerBindingFailure can be passed to [ActivateContext.ActivatePath]
+// in order to permit unlocking of storage containers that are not "bound" as part of
+// the same install. In this case, the container will be unlocked but a
+// ErrContainerBindingFailure error will be returned.
+//
+// This option must not be used in run mode.
+//
+// It may be useful in a recovery mode, but if the ErrContainerBindingFailure error
+// is returned from [ActivateContext.ActivatePath], then credentials that permit
+// access to the system must not be trusted by the recovery system.
+func WithNonFatalContainerBindingFailure() ActivateOption {
+	return &genericOption[struct{}]{
+		key:          nonFatalContainerBindingFailureKey,
+		perContainer: true,
+	}
 }
 
 // WithKeyringDescriptionPrefix permits the prefix in the description for keys
