@@ -490,10 +490,12 @@ type testAddKeyToUserKeyringParams struct {
 }
 
 func (s *keyringSuite) testAddKeyToUserKeyring(c *C, params *testAddKeyToUserKeyringParams) {
-	c.Check(AddKeyToUserKeyring(params.key, params.container, params.purpose, params.prefix), IsNil)
+	id, err := AddKeyToUserKeyring(params.key, params.container, params.purpose, params.prefix)
+	c.Check(err, IsNil)
 
 	c.Assert(s.AddedKeys, HasLen, 1)
 	addedId := s.AddedKeys[0]
+	c.Check(id, Equals, addedId)
 
 	// Check the added key description
 	desc, err := keyring.DescribeKey(addedId)
@@ -559,17 +561,17 @@ func (s *keyringSuite) TestAddKeyToUserKeyringDifferentPrefix(c *C) {
 }
 
 func (s *keyringSuite) TestAddKeyToUserKeyringInvalidPrefix(c *C) {
-	err := AddKeyToUserKeyring(nil, newMockStorageContainer(withStorageContainerCredentialName("/dev/sda1")), KeyringKeyPurposeUnlock, "ubuntu:fde")
+	_, err := AddKeyToUserKeyring(nil, newMockStorageContainer(withStorageContainerCredentialName("/dev/sda1")), KeyringKeyPurposeUnlock, "ubuntu:fde")
 	c.Check(err, ErrorMatches, `invalid prefix`)
 }
 
 func (s *keyringSuite) TestAddKeyToUserKeyringInvalidPurpose(c *C) {
-	err := AddKeyToUserKeyring(nil, newMockStorageContainer(withStorageContainerCredentialName("/dev/sda1")), "unlock:foo", "ubuntu-fde")
+	_, err := AddKeyToUserKeyring(nil, newMockStorageContainer(withStorageContainerCredentialName("/dev/sda1")), "unlock:foo", "ubuntu-fde")
 	c.Check(err, ErrorMatches, `invalid purpose`)
 }
 
 func (s *keyringSuite) TestAddKeyToUserKeyringAddKeyErr(c *C) {
-	err := AddKeyToUserKeyring(nil, newMockStorageContainer(withStorageContainerCredentialName("/dev/sda1")), KeyringKeyPurposeUnlock, "ubuntu-fde")
+	_, err := AddKeyToUserKeyring(nil, newMockStorageContainer(withStorageContainerCredentialName("/dev/sda1")), KeyringKeyPurposeUnlock, "ubuntu-fde")
 	c.Check(err, ErrorMatches, `cannot complete operation because one or more arguments is invalid`)
 	c.Check(errors.Is(err, keyring.ErrInvalidArgs), testutil.IsTrue)
 }
@@ -587,15 +589,13 @@ func (s *keyringSuite) testGetKeyFromKernel(c *C, params *testGetKeyFromKernelPa
 		prefix = "ubuntu-fde"
 	}
 
-	c.Check(AddKeyToUserKeyring(params.key, params.container, params.purpose, prefix), IsNil)
-
-	c.Assert(s.AddedKeys, HasLen, 1)
-	addedId := s.AddedKeys[0]
+	id, err := AddKeyToUserKeyring(params.key, params.container, params.purpose, prefix)
+	c.Check(err, IsNil)
 
 	key, err := GetKeyFromKernel(context.Background(), params.container, params.purpose, params.prefix)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, params.key)
-	keyringtest.CheckKeyInKeyring(c, addedId, keyring.UserKeyring)
+	keyringtest.CheckKeyInKeyring(c, id, keyring.UserKeyring)
 }
 
 func (s *keyringSuite) TestGetKeyFromKernel(c *C) {
@@ -645,9 +645,10 @@ func (s *keyringSuite) TestGetKeyFromKernelCanceledContext(c *C) {
 
 	container := newMockStorageContainer(withStorageContainerCredentialName("/dev/sda1"))
 
-	c.Check(AddKeyToUserKeyring([]byte{1}, container, KeyringKeyPurposeUnlock, "ubuntu-fde"), IsNil)
+	_, err := AddKeyToUserKeyring([]byte{1}, container, KeyringKeyPurposeUnlock, "ubuntu-fde")
+	c.Check(err, IsNil)
 
-	_, err := GetKeyFromKernel(ctx, container, KeyringKeyPurposeUnlock, "")
+	_, err = GetKeyFromKernel(ctx, container, KeyringKeyPurposeUnlock, "")
 	c.Check(err, ErrorMatches, `context canceled`)
 	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
 }
@@ -702,12 +703,13 @@ func (s *keyringSuite) TestGetKeyFromKernelNotFound3(c *C) {
 
 func (s *keyringSuite) TestGetKeyFromKernelNotFound4(c *C) {
 	// Add a key with a different name, where the name is a path that points to a block device.
-	c.Check(AddKeyToUserKeyring([]byte{1}, newMockStorageContainer(withStorageContainerCredentialName("/dev/nvme0n1p3")), KeyringKeyPurposeUnlock, "ubuntu-fde"), IsNil)
+	_, err := AddKeyToUserKeyring([]byte{1}, newMockStorageContainer(withStorageContainerCredentialName("/dev/nvme0n1p3")), KeyringKeyPurposeUnlock, "ubuntu-fde")
+	c.Check(err, IsNil)
 
 	s.addFileInfo("/dev/sda1", &unix.Stat_t{Rdev: unix.Mkdev(8, 1), Mode: unix.S_IFBLK})
 	s.addFileInfo("/dev/nvme0n1p3", &unix.Stat_t{Rdev: unix.Mkdev(259, 2), Mode: unix.S_IFBLK})
 
-	_, err := GetKeyFromKernel(
+	_, err = GetKeyFromKernel(
 		context.Background(),
 		newMockStorageContainer(
 			withStorageContainerPath("/dev/sda1"),
@@ -722,11 +724,12 @@ func (s *keyringSuite) TestGetKeyFromKernelNotFound4(c *C) {
 
 func (s *keyringSuite) TestGetKeyFromKernelNotFound5(c *C) {
 	// Add a key with a different name, where the name is a path that doesn't point to anything.
-	c.Check(AddKeyToUserKeyring([]byte{1}, newMockStorageContainer(withStorageContainerPath("/dev/nvme0n1p3")), KeyringKeyPurposeUnlock, "ubuntu-fde"), IsNil)
+	_, err := AddKeyToUserKeyring([]byte{1}, newMockStorageContainer(withStorageContainerPath("/dev/nvme0n1p3")), KeyringKeyPurposeUnlock, "ubuntu-fde")
+	c.Check(err, IsNil)
 
 	s.addFileInfo("/dev/sda1", &unix.Stat_t{Rdev: unix.Mkdev(8, 1), Mode: unix.S_IFBLK})
 
-	_, err := GetKeyFromKernel(
+	_, err = GetKeyFromKernel(
 		context.Background(),
 		newMockStorageContainer(
 			withStorageContainerPath("/dev/sda1"),
@@ -741,12 +744,13 @@ func (s *keyringSuite) TestGetKeyFromKernelNotFound5(c *C) {
 
 func (s *keyringSuite) TestGetKeyFromKernelNotFound6(c *C) {
 	// Add a key with a different name, where the name is a path that doesn't point to a block device.
-	c.Check(AddKeyToUserKeyring([]byte{1}, newMockStorageContainer(withStorageContainerCredentialName("/")), KeyringKeyPurposeUnlock, "ubuntu-fde"), IsNil)
+	_, err := AddKeyToUserKeyring([]byte{1}, newMockStorageContainer(withStorageContainerCredentialName("/")), KeyringKeyPurposeUnlock, "ubuntu-fde")
+	c.Check(err, IsNil)
 
 	s.addFileInfo("/dev/sda1", &unix.Stat_t{Rdev: unix.Mkdev(8, 1), Mode: unix.S_IFBLK})
 	s.addFileInfo("/", &unix.Stat_t{Mode: unix.S_IFDIR})
 
-	_, err := GetKeyFromKernel(
+	_, err = GetKeyFromKernel(
 		context.Background(),
 		newMockStorageContainer(
 			withStorageContainerPath("/dev/sda1"),
@@ -766,11 +770,12 @@ func (s *keyringSuite) TestGetKeyFromKernelNotFound7(c *C) {
 	)
 
 	// Add a key with a different purpose.
-	c.Check(AddKeyToUserKeyring([]byte{1}, container, KeyringKeyPurposePrimary, "ubuntu-fde"), IsNil)
+	_, err := AddKeyToUserKeyring([]byte{1}, container, KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
 
 	s.addFileInfo("/dev/sda1", &unix.Stat_t{Rdev: unix.Mkdev(8, 1), Mode: unix.S_IFBLK})
 
-	_, err := GetKeyFromKernel(context.Background(), container, KeyringKeyPurposeUnlock, "")
+	_, err = GetKeyFromKernel(context.Background(), container, KeyringKeyPurposeUnlock, "")
 	c.Check(err, ErrorMatches, `cannot find key in kernel keyring`)
 	c.Check(errors.Is(err, ErrKernelKeyNotFound), testutil.IsTrue)
 }
@@ -783,11 +788,12 @@ func (s *keyringSuite) TestGetKeyFromKernelNotFound8(c *C) {
 
 	// Add a key with a different purpose, but test that legacy behaviour
 	// where a request for "primary" is tested against legacy keys with "aux"
-	c.Check(AddKeyToUserKeyring([]byte{1}, container, KeyringKeyPurposeUnlock, "ubuntu-fde"), IsNil)
+	_, err := AddKeyToUserKeyring([]byte{1}, container, KeyringKeyPurposeUnlock, "ubuntu-fde")
+	c.Check(err, IsNil)
 
 	s.addFileInfo("/dev/sda1", &unix.Stat_t{Rdev: unix.Mkdev(8, 1), Mode: unix.S_IFBLK})
 
-	_, err := GetKeyFromKernel(context.Background(), container, KeyringKeyPurposePrimary, "")
+	_, err = GetKeyFromKernel(context.Background(), container, KeyringKeyPurposePrimary, "")
 	c.Check(err, ErrorMatches, `cannot find key in kernel keyring`)
 	c.Check(errors.Is(err, ErrKernelKeyNotFound), testutil.IsTrue)
 }
@@ -799,10 +805,11 @@ func (s *keyringSuite) TestGetKeyFromKernelNotFound9(c *C) {
 	)
 
 	// Add a key with a different prefix.
-	c.Check(AddKeyToUserKeyring([]byte{1}, container, KeyringKeyPurposeUnlock, "foo"), IsNil)
+	_, err := AddKeyToUserKeyring([]byte{1}, container, KeyringKeyPurposeUnlock, "foo")
+	c.Check(err, IsNil)
 
 	s.addFileInfo("/dev/sda1", &unix.Stat_t{Rdev: unix.Mkdev(8, 1), Mode: unix.S_IFBLK})
-	_, err := GetKeyFromKernel(context.Background(), container, KeyringKeyPurposeUnlock, "")
+	_, err = GetKeyFromKernel(context.Background(), container, KeyringKeyPurposeUnlock, "")
 	c.Check(err, ErrorMatches, `cannot find key in kernel keyring`)
 	c.Check(errors.Is(err, ErrKernelKeyNotFound), testutil.IsTrue)
 }

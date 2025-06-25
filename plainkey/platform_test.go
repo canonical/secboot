@@ -229,6 +229,12 @@ func (s *platformSuite) TestRecoverKeysCannotOpen(c *C) {
 	c.Check(phe.Type, Equals, secboot.PlatformHandlerErrorInvalidData)
 }
 
+func (s *platformSuiteIntegrated) TestPlatformRegistrationFlags(c *C) {
+	_, flags, err := secboot.RegisteredPlatformKeyDataHandler(PlatformName)
+	c.Check(err, IsNil)
+	c.Check(flags, Equals, secboot.PlatformProtectedByStorageContainer.AddPlatformFlags(1))
+}
+
 type platformSuiteIntegrated struct{}
 
 var _ = Suite(&platformSuiteIntegrated{})

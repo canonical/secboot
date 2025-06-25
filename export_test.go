@@ -82,12 +82,38 @@ func (c *ActivateContext) Config() ActivateConfigGetter {
 	return c.cfg
 }
 
+func (c *ActivateContext) PrimaryKey() PrimaryKey {
+	return c.primaryKey
+}
+
+func (s *ActivateState) Copy() *ActivateState {
+	out := &ActivateState{
+		PrimaryKeyID: s.PrimaryKeyID,
+	}
+	if s.Activations != nil {
+		out.Activations = make(map[string]*ContainerActivateState)
+	}
+	for k, v := range s.Activations {
+		vc := *v
+		out.Activations[k] = &vc
+	}
+	return out
+}
+
 func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
 	return o.kdfParams(keyLen)
 }
 
 func (o *PBKDF2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
 	return o.kdfParams(keyLen)
+}
+
+func MockAddKeyToUserKeyring(fn func([]byte, StorageContainer, KeyringKeyPurpose, string) (keyring.KeyID, error)) (restore func()) {
+	orig := addKeyToUserKeyring
+	addKeyToUserKeyring = fn
+	return func() {
+		addKeyToUserKeyring = orig
+	}
 }
 
 func MockArgon2OutOfProcessHandlerSystemLockPath(path string) (restore func()) {
