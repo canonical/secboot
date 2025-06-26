@@ -57,6 +57,9 @@ func MakeMockVars() MockVars {
 
 // Get implements [efi.VarsBackend.Get].
 func (v MockVars) Get(name string, guid efi.GUID) (efi.VariableAttributes, []byte, error) {
+	if v == nil {
+		return 0, nil, efi.ErrVarsUnavailable
+	}
 	entry, found := v[efi.VariableDescriptor{Name: name, GUID: guid}]
 	if !found {
 		return 0, nil, efi.ErrVarNotExist
@@ -66,11 +69,17 @@ func (v MockVars) Get(name string, guid efi.GUID) (efi.VariableAttributes, []byt
 
 // Set implements [efi.VarsBackend.Set].
 func (v MockVars) Set(name string, guid efi.GUID, attrs efi.VariableAttributes, data []byte) error {
+	if v == nil {
+		return efi.ErrVarsUnavailable
+	}
 	return errors.New("not implemented")
 }
 
 // List implements [efi.VarsBackend.List].
 func (v MockVars) List() ([]efi.VariableDescriptor, error) {
+	if v == nil {
+		return nil, efi.ErrVarsUnavailable
+	}
 	return nil, errors.New("not implemented")
 }
 

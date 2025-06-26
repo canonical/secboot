@@ -132,6 +132,7 @@ func (s *loadOptionUtilSuite) TestReadCurrentBootLoadOptionFromLog(c *C) {
 func (s *loadOptionUtilSuite) TestReadCurrentBootLoadOptionFromLogMissingBootCurrent(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{})),
+		efitest.WithMockVars(efitest.MockVars{}),
 	)
 
 	log, err := env.ReadEventLog()
@@ -172,7 +173,7 @@ func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGood(c *C) {
 				Device:   0x0},
 			&efi.NVMENamespaceDevicePathNode{
 				NamespaceID:   0x1,
-				NamespaceUUID: 0x0},
+				NamespaceUUID: efi.EUI64{}},
 			&efi.HardDriveDevicePathNode{
 				PartitionNumber: 1,
 				PartitionStart:  0x800,
@@ -200,7 +201,7 @@ func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGood(c *C) {
 					Device:   0x0},
 				&efi.NVMENamespaceDevicePathNode{
 					NamespaceID:   0x1,
-					NamespaceUUID: 0x0},
+					NamespaceUUID: efi.EUI64{}},
 				&efi.HardDriveDevicePathNode{
 					PartitionNumber: 1,
 					PartitionStart:  0x800,
@@ -249,7 +250,7 @@ func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGoodShortFormOpt(c *C)
 					Device:   0x0},
 				&efi.NVMENamespaceDevicePathNode{
 					NamespaceID:   0x1,
-					NamespaceUUID: 0x0},
+					NamespaceUUID: efi.EUI64{}},
 				&efi.HardDriveDevicePathNode{
 					PartitionNumber: 1,
 					PartitionStart:  0x800,
@@ -535,7 +536,7 @@ func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionNotActive(c *C) {
 					Device:   0x0},
 				&efi.NVMENamespaceDevicePathNode{
 					NamespaceID:   0x1,
-					NamespaceUUID: 0x0},
+					NamespaceUUID: efi.EUI64{}},
 				&efi.HardDriveDevicePathNode{
 					PartitionNumber: 1,
 					PartitionStart:  0x800,

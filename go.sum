@@ -3,6 +3,8 @@ github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb/go.mod h1:6j8Sw3dw
 github.com/canonical/go-efilib v0.0.0-20210909101908-41435fa545d4/go.mod h1:9Sr9kd7IhQPYqaU5nut8Ky97/CtlhHDzQncQnrULgDM=
 github.com/canonical/go-efilib v1.4.1 h1:/VMNCypz+iVmnNuMcsm7WvmDMI1ObkEP2W1h8Ls7OyM=
 github.com/canonical/go-efilib v1.4.1/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
+github.com/canonical/go-efilib v1.6.0 h1:0ZFcIclzoMBl6sAaHrSO98YVPUvKAPfXm6kjofhlHHw=
+github.com/canonical/go-efilib v1.6.0/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
 github.com/canonical/go-kbkdf v0.0.0-20250104172618-3b1308f9acf9 h1:Twk1ZSTWRClfGShP16ePf2JIiayqWS4ix1rkAR6baag=
 github.com/canonical/go-kbkdf v0.0.0-20250104172618-3b1308f9acf9/go.mod h1:IneQ5/yQcfPXrGekEXpR6yeea55ZD24N5+kHzeDseOM=
 github.com/canonical/go-password-validator v0.0.0-20250617132709-1b205303ca54 h1:JO3wAsxjrvQDf/X3q4RLIdzDCWrFjzhwUmCKrhnrIO8=
@@ -13,6 +15,8 @@ github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3/go.mod
 github.com/canonical/go-tpm2 v0.0.0-20210827151749-f80ff5afff61/go.mod h1:vG41hdbBjV4+/fkubTT1ENBBqSkLwLr7mCeW9Y6kpZY=
 github.com/canonical/go-tpm2 v1.12.2 h1:7sWef6xVlWwBAn7hsY+3j62ANzoAO+GZvrltMHXq9RQ=
 github.com/canonical/go-tpm2 v1.12.2/go.mod h1:zK+qESVwu78XyX+NPhiBdN+zwPPDoKk4rYlQ7VUsRp4=
+github.com/canonical/go-tpm2 v1.13.0 h1:Ka9VmUVwoz9pJef5JXP6Gd4CIhxFE70X26K8x3LeGtI=
+github.com/canonical/go-tpm2 v1.13.0/go.mod h1:P50xMwC7y5/uxPikzWdK4d9pW9orKi8+ZL5sBifxoBQ=
 github.com/canonical/tcglog-parser v0.0.0-20210824131805-69fa1e9f0ad2/go.mod h1:QoW2apR2tBl6T/4czdND/EHjL1Ia9cCmQnIj9Xe0Kt8=
 github.com/canonical/tcglog-parser v0.0.0-20240924110432-d15eaf652981 h1:vrUzSfbhl8mzdXPzjxq4jXZPCCNLv18jy6S7aVTS2tI=
 github.com/canonical/tcglog-parser v0.0.0-20240924110432-d15eaf652981/go.mod h1:ywdPBqUGkuuiitPpVWCfilf2/gq+frhq4CNiNs9KyHU=
