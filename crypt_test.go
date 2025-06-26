@@ -66,64 +66,34 @@ func (ctb *cryptTestBase) newRecoveryKey() RecoveryKey {
 }
 
 type mockAuthRequestor struct {
-	passphraseResponses []interface{}
-	passphraseRequests  []struct {
-		volumeName       string
-		sourceDevicePath string
-	}
-
-	recoveryKeyResponses []interface{}
-	recoveryKeyRequests  []struct {
-		volumeName       string
-		sourceDevicePath string
+	responses []interface{}
+	requests  []struct {
+		name      string
+		path      string
+		authTypes UserAuthType
 	}
 }
 
-func (r *mockAuthRequestor) RequestPassphrase(volumeName, sourceDevicePath string) (string, error) {
-	r.passphraseRequests = append(r.passphraseRequests, struct {
-		volumeName       string
-		sourceDevicePath string
+func (r *mockAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error) {
+	r.requests = append(r.requests, struct {
+		name      string
+		path      string
+		authTypes UserAuthType
 	}{
-		volumeName:       volumeName,
-		sourceDevicePath: sourceDevicePath,
+		name:      name,
+		path:      path,
+		authTypes: authTypes,
 	})
-
-	if len(r.passphraseResponses) == 0 {
-		return "", errors.New("empty response")
-	}
-	response := r.passphraseResponses[0]
-	r.passphraseResponses = r.passphraseResponses[1:]
+	response := r.responses[0]
+	r.responses = r.responses[1:]
 
 	switch rsp := response.(type) {
 	case string:
 		return rsp, nil
+	case RecoveryKey:
+		return rsp.String(), nil
 	case error:
 		return "", rsp
-	default:
-		panic("invalid type")
-	}
-}
-
-func (r *mockAuthRequestor) RequestRecoveryKey(volumeName, sourceDevicePath string) (RecoveryKey, error) {
-	r.recoveryKeyRequests = append(r.recoveryKeyRequests, struct {
-		volumeName       string
-		sourceDevicePath string
-	}{
-		volumeName:       volumeName,
-		sourceDevicePath: sourceDevicePath,
-	})
-
-	if len(r.recoveryKeyResponses) == 0 {
-		return RecoveryKey{}, errors.New("empty response")
-	}
-	response := r.recoveryKeyResponses[0]
-	r.recoveryKeyResponses = r.recoveryKeyResponses[1:]
-
-	switch rsp := response.(type) {
-	case RecoveryKey:
-		return rsp, nil
-	case error:
-		return RecoveryKey{}, rsp
 	default:
 		panic("invalid type")
 	}
@@ -585,15 +555,16 @@ type testActivateVolumeWithRecoveryKeyData struct {
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
 	s.addMockKeyslot(data.sourceDevicePath, data.recoveryKey[:])
 
-	authRequestor := &mockAuthRequestor{recoveryKeyResponses: data.authResponses}
+	authRequestor := &mockAuthRequestor{responses: data.authResponses}
 	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries, KeyringPrefix: data.keyringPrefix}
 
 	c.Assert(ActivateVolumeWithRecoveryKey(data.volumeName, data.sourceDevicePath, authRequestor, &options), IsNil)
 
-	c.Check(authRequestor.recoveryKeyRequests, HasLen, len(data.authResponses))
-	for _, rsp := range authRequestor.recoveryKeyRequests {
-		c.Check(rsp.volumeName, Equals, data.volumeName)
-		c.Check(rsp.sourceDevicePath, Equals, data.sourceDevicePath)
+	c.Check(authRequestor.requests, HasLen, len(data.authResponses))
+	for _, rsp := range authRequestor.requests {
+		c.Check(rsp.name, Equals, data.volumeName)
+		c.Check(rsp.path, Equals, data.sourceDevicePath)
+		c.Check(rsp.authTypes, Equals, UserAuthTypeRecoveryKey)
 	}
 
 	c.Assert(s.luks2.operations, HasLen, data.activateTries)
@@ -802,17 +773,18 @@ func (s *cryptSuite) testActivateVolumeWithRecoveryKeyErrorHandling(c *C, data *
 	var numResponses int
 	if data.authRequestor != nil {
 		authRequestor = data.authRequestor
-		numResponses = len(data.authRequestor.recoveryKeyResponses)
+		numResponses = len(data.authRequestor.responses)
 	}
 
 	options := ActivateVolumeOptions{RecoveryKeyTries: data.tries}
 	err := ActivateVolumeWithRecoveryKey("data", "/dev/sda1", authRequestor, &options)
 
 	if data.authRequestor != nil {
-		c.Check(data.authRequestor.recoveryKeyRequests, HasLen, numResponses)
-		for _, rsp := range data.authRequestor.recoveryKeyRequests {
-			c.Check(rsp.volumeName, Equals, "data")
-			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
+		c.Check(data.authRequestor.requests, HasLen, numResponses)
+		for _, rsp := range data.authRequestor.requests {
+			c.Check(rsp.name, Equals, "data")
+			c.Check(rsp.path, Equals, "/dev/sda1")
+			c.Check(rsp.authTypes, Equals, UserAuthTypeRecoveryKey)
 		}
 	}
 
@@ -851,7 +823,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling4(c *C) {
 	// Test with the auth requestor returning an error.
 	c.Check(s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:         1,
-		authRequestor: &mockAuthRequestor{recoveryKeyResponses: []interface{}{errors.New("some error")}},
+		authRequestor: &mockAuthRequestor{responses: []interface{}{errors.New("some error")}},
 	}), ErrorMatches, "cannot obtain recovery key: some error")
 }
 
@@ -859,7 +831,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling5(c *C) {
 	// Test with the wrong recovery key.
 	c.Check(s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:         1,
-		authRequestor: &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}}},
+		authRequestor: &mockAuthRequestor{responses: []interface{}{RecoveryKey{}}},
 		activateTries: 1,
 	}), ErrorMatches, "cannot activate volume: systemd-cryptsetup failed with: exit status 1")
 }
@@ -868,7 +840,7 @@ func (s *cryptSuite) TestActivateVolumeWithRecoveryKeyErrorHandling6(c *C) {
 	// Test that the last error is returned when there are consecutive failures for different reasons.
 	c.Check(s.testActivateVolumeWithRecoveryKeyErrorHandling(c, &testActivateVolumeWithRecoveryKeyErrorHandlingData{
 		tries:         2,
-		authRequestor: &mockAuthRequestor{recoveryKeyResponses: []interface{}{errors.New("some error"), errors.New("another error")}},
+		authRequestor: &mockAuthRequestor{responses: []interface{}{errors.New("some error"), errors.New("another error")}},
 		activateTries: 0,
 	}), ErrorMatches, "cannot obtain recovery key: another error")
 }
@@ -898,7 +870,7 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 	}
 	slot := s.addMockKeyslot(data.sourceDevicePath, unlockKey)
 
-	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
+	authRequestor := &mockAuthRequestor{responses: data.authResponses}
 
 	model := data.model
 	if model == nil {
@@ -940,10 +912,11 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 		fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", slot),
 	})
 
-	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
-	for _, rsp := range authRequestor.passphraseRequests {
-		c.Check(rsp.volumeName, Equals, data.volumeName)
-		c.Check(rsp.sourceDevicePath, Equals, data.sourceDevicePath)
+	c.Check(authRequestor.requests, HasLen, len(data.authResponses))
+	for _, rsp := range authRequestor.requests {
+		c.Check(rsp.name, Equals, data.volumeName)
+		c.Check(rsp.path, Equals, data.sourceDevicePath)
+		c.Check(rsp.authTypes, Equals, UserAuthTypePassphrase)
 	}
 
 	// This should be done last because it may fail in some circumstances.
@@ -1025,7 +998,8 @@ type testActivateVolumeWithKeyDataErrorHandlingData struct {
 	diskUnlockKey DiskUnlockKey
 	recoveryKey   RecoveryKey
 
-	authRequestor *mockAuthRequestor
+	authRequestor          *mockAuthRequestor
+	numPassphraseResponses int
 
 	passphraseTries  int
 	recoveryKeyTries int
@@ -1044,12 +1018,10 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 	s.addMockKeyslot("/dev/sda1", data.recoveryKey[:])
 
 	var authRequestor AuthRequestor
-	var numPassphraseResponses int
-	var numRecoveryResponses int
+	var numAuthResponses int
 	if data.authRequestor != nil {
 		authRequestor = data.authRequestor
-		numPassphraseResponses = len(data.authRequestor.passphraseResponses)
-		numRecoveryResponses = len(data.authRequestor.recoveryKeyResponses)
+		numAuthResponses = len(data.authRequestor.responses)
 	}
 
 	c.Assert(data.model != nil && data.noModel, testutil.IsFalse)
@@ -1068,16 +1040,15 @@ func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *test
 	err := ActivateVolumeWithKeyData("data", "/dev/sda1", authRequestor, options, data.keyData)
 
 	if data.authRequestor != nil {
-		c.Check(data.authRequestor.passphraseRequests, HasLen, numPassphraseResponses)
-		for _, rsp := range data.authRequestor.passphraseRequests {
-			c.Check(rsp.volumeName, Equals, "data")
-			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
-		}
-
-		c.Check(data.authRequestor.recoveryKeyRequests, HasLen, numRecoveryResponses)
-		for _, rsp := range data.authRequestor.recoveryKeyRequests {
-			c.Check(rsp.volumeName, Equals, "data")
-			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
+		c.Check(data.authRequestor.requests, HasLen, numAuthResponses)
+		for i, rsp := range data.authRequestor.requests {
+			c.Check(rsp.name, Equals, "data")
+			c.Check(rsp.path, Equals, "/dev/sda1")
+			if i >= data.numPassphraseResponses {
+				c.Check(rsp.authTypes, Equals, UserAuthTypeRecoveryKey)
+			} else {
+				c.Check(rsp.authTypes, Equals, UserAuthTypePassphrase)
+			}
 		}
 	}
 
@@ -1121,7 +1092,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling2(c *C) {
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		keyData:          keyData,
 		activateTries:    1,
@@ -1138,7 +1109,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling3(c *C) {
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		keyData:          keyData,
 		activateTries:    1,
@@ -1152,7 +1123,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling4(c *C) {
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		recoveryKey:      recoveryKey,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		keyData:          keyData,
 		activateTries:    2,
@@ -1189,7 +1160,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling6(c *C) {
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{RecoveryKey{}}},
 		recoveryKeyTries: 1,
 		keyData:          keyData,
 		activateTries:    1,
@@ -1211,7 +1182,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling7(c *C) {
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}, recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{RecoveryKey{}, recoveryKey}},
 		recoveryKeyTries: 2,
 		keyData:          keyData,
 		activateTries:    2,
@@ -1228,7 +1199,7 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling8(c *C) {
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
 		diskUnlockKey:    key,
 		recoveryKey:      recoveryKey,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{errors.New("some error"), recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{errors.New("some error"), recoveryKey}},
 		recoveryKeyTries: 2,
 		keyData:          keyData,
 		activateTries:    1,
@@ -1252,15 +1223,14 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling10(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		diskUnlockKey: key,
-		recoveryKey:   recoveryKey,
-		authRequestor: &mockAuthRequestor{
-			passphraseResponses:  []interface{}{"incorrect", "invalid"},
-			recoveryKeyResponses: []interface{}{recoveryKey}},
-		passphraseTries:  2,
-		recoveryKeyTries: 2,
-		keyData:          keyData,
-		activateTries:    1})
+		diskUnlockKey:          key,
+		recoveryKey:            recoveryKey,
+		authRequestor:          &mockAuthRequestor{responses: []interface{}{"incorrect", "invalid", recoveryKey}},
+		numPassphraseResponses: 2,
+		passphraseTries:        2,
+		recoveryKeyTries:       2,
+		keyData:                keyData,
+		activateTries:          1})
 }
 
 func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling11(c *C) {
@@ -1280,15 +1250,14 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling13(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		diskUnlockKey: key,
-		recoveryKey:   recoveryKey,
-		authRequestor: &mockAuthRequestor{
-			passphraseResponses:  []interface{}{""},
-			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
-		passphraseTries:  1,
-		recoveryKeyTries: 1,
-		keyData:          keyData,
-		activateTries:    1,
+		diskUnlockKey:          key,
+		recoveryKey:            recoveryKey,
+		authRequestor:          &mockAuthRequestor{responses: []interface{}{"", RecoveryKey{}}},
+		numPassphraseResponses: 1,
+		passphraseTries:        1,
+		recoveryKeyTries:       1,
+		keyData:                keyData,
+		activateTries:          1,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
 		"- bar: cannot recover key: the supplied passphrase is incorrect\n"+
 		"and activation with recovery key failed: cannot activate volume: "+
@@ -1301,15 +1270,14 @@ func (s *cryptSuite) TestActivateVolumeWithKeyDataErrorHandling16(c *C) {
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithKeyDataErrorHandling(c, &testActivateVolumeWithKeyDataErrorHandlingData{
-		diskUnlockKey: key,
-		recoveryKey:   recoveryKey,
-		authRequestor: &mockAuthRequestor{
-			passphraseResponses:  []interface{}{errors.New("")},
-			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
-		passphraseTries:  1,
-		recoveryKeyTries: 1,
-		keyData:          keyData,
-		activateTries:    1,
+		diskUnlockKey:          key,
+		recoveryKey:            recoveryKey,
+		authRequestor:          &mockAuthRequestor{responses: []interface{}{errors.New(""), RecoveryKey{}}},
+		numPassphraseResponses: 1,
+		passphraseTries:        1,
+		recoveryKeyTries:       1,
+		keyData:                keyData,
+		activateTries:          1,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
 		"- cannot obtain passphrase: \n"+
 		"and activation with recovery key failed: cannot activate volume: "+
@@ -1336,7 +1304,7 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 		s.addMockKeyslot(data.sourceDevicePath, k)
 	}
 
-	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
+	authRequestor := &mockAuthRequestor{responses: data.authResponses}
 
 	model := data.model
 	if model == nil {
@@ -1350,10 +1318,11 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActiv
 	err := ActivateVolumeWithKeyData(data.volumeName, data.sourceDevicePath, authRequestor, options, data.keyData...)
 	c.Assert(err, IsNil)
 
-	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
-	for _, rsp := range authRequestor.passphraseRequests {
-		c.Check(rsp.volumeName, Equals, data.volumeName)
-		c.Check(rsp.sourceDevicePath, Equals, data.sourceDevicePath)
+	c.Check(authRequestor.requests, HasLen, len(data.authResponses))
+	for _, rsp := range authRequestor.requests {
+		c.Check(rsp.name, Equals, data.volumeName)
+		c.Check(rsp.path, Equals, data.sourceDevicePath)
+		c.Check(rsp.authTypes, Equals, UserAuthTypePassphrase)
 	}
 
 	c.Assert(s.luks2.operations, HasLen, len(data.activateSlots)+1)
@@ -1681,7 +1650,8 @@ type testActivateVolumeWithMultipleKeyDataErrorHandlingData struct {
 	recoveryKey RecoveryKey
 	keyData     []*KeyData
 
-	authRequestor *mockAuthRequestor
+	authRequestor          *mockAuthRequestor
+	numPassphraseResponses int
 
 	passphraseTries  int
 	recoveryKeyTries int
@@ -1700,12 +1670,10 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 	s.addMockKeyslot("/dev/sda1", data.recoveryKey[:])
 
 	var authRequestor AuthRequestor
-	var numPassphraseResponses int
-	var numRecoveryResponses int
+	var numAuthResponses int
 	if data.authRequestor != nil {
 		authRequestor = data.authRequestor
-		numPassphraseResponses = len(data.authRequestor.passphraseResponses)
-		numRecoveryResponses = len(data.authRequestor.recoveryKeyResponses)
+		numAuthResponses = len(data.authRequestor.responses)
 	}
 
 	c.Assert(data.model != nil && data.noModel, testutil.IsFalse)
@@ -1724,16 +1692,15 @@ func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, da
 	err := ActivateVolumeWithKeyData("data", "/dev/sda1", authRequestor, options, data.keyData...)
 
 	if data.authRequestor != nil {
-		c.Check(data.authRequestor.passphraseRequests, HasLen, numPassphraseResponses)
-		for _, rsp := range data.authRequestor.passphraseRequests {
-			c.Check(rsp.volumeName, Equals, "data")
-			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
-		}
-
-		c.Check(data.authRequestor.recoveryKeyRequests, HasLen, numRecoveryResponses)
-		for _, rsp := range data.authRequestor.recoveryKeyRequests {
-			c.Check(rsp.volumeName, Equals, "data")
-			c.Check(rsp.sourceDevicePath, Equals, "/dev/sda1")
+		c.Check(data.authRequestor.requests, HasLen, numAuthResponses)
+		for i, rsp := range data.authRequestor.requests {
+			c.Check(rsp.name, Equals, "data")
+			c.Check(rsp.path, Equals, "/dev/sda1")
+			if i >= data.numPassphraseResponses {
+				c.Check(rsp.authTypes, Equals, UserAuthTypeRecoveryKey)
+			} else {
+				c.Check(rsp.authTypes, Equals, UserAuthTypePassphrase)
+			}
 		}
 	}
 
@@ -1778,7 +1745,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling2(c *C) {
 		keys:             keys,
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1795,7 +1762,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling3(c *C) {
 		keys:             keys,
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1809,7 +1776,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling4(c *C) {
 	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{recoveryKey}},
 		recoveryKeyTries: 1,
 		activateTries:    3,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1848,7 +1815,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling6(c *C) {
 		keys:             keys,
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{RecoveryKey{}}},
 		recoveryKeyTries: 1,
 		activateTries:    1,
 	}), ErrorMatches,
@@ -1872,7 +1839,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling7(c *C) {
 		keys:             keys,
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{RecoveryKey{}, recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{RecoveryKey{}, recoveryKey}},
 		recoveryKeyTries: 2,
 		activateTries:    2,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1889,7 +1856,7 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling8(c *C) {
 		keys:             keys,
 		recoveryKey:      recoveryKey,
 		keyData:          keyData,
-		authRequestor:    &mockAuthRequestor{recoveryKeyResponses: []interface{}{errors.New("some error"), recoveryKey}},
+		authRequestor:    &mockAuthRequestor{responses: []interface{}{errors.New("some error"), recoveryKey}},
 		recoveryKeyTries: 2,
 		activateTries:    1,
 	}), Equals, ErrRecoveryKeyUsed)
@@ -1913,15 +1880,14 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling10(c *C) 
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
-		keys:        keys,
-		recoveryKey: recoveryKey,
-		keyData:     keyData,
-		authRequestor: &mockAuthRequestor{
-			passphraseResponses:  []interface{}{"incorrect", "invalid"},
-			recoveryKeyResponses: []interface{}{recoveryKey}},
-		passphraseTries:  2,
-		recoveryKeyTries: 1,
-		activateTries:    1,
+		keys:                   keys,
+		recoveryKey:            recoveryKey,
+		keyData:                keyData,
+		authRequestor:          &mockAuthRequestor{responses: []interface{}{"incorrect", "invalid", recoveryKey}},
+		numPassphraseResponses: 2,
+		passphraseTries:        2,
+		recoveryKeyTries:       1,
+		activateTries:          1,
 	}), Equals, ErrRecoveryKeyUsed)
 }
 
@@ -1943,15 +1909,14 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyDataErrorHandling13(c *C) 
 	recoveryKey := s.newRecoveryKey()
 
 	c.Check(s.testActivateVolumeWithMultipleKeyDataErrorHandling(c, &testActivateVolumeWithMultipleKeyDataErrorHandlingData{
-		keys:        keys,
-		recoveryKey: recoveryKey,
-		keyData:     keyData,
-		authRequestor: &mockAuthRequestor{
-			passphraseResponses:  []interface{}{""},
-			recoveryKeyResponses: []interface{}{RecoveryKey{}}},
-		passphraseTries:  1,
-		recoveryKeyTries: 1,
-		activateTries:    1,
+		keys:                   keys,
+		recoveryKey:            recoveryKey,
+		keyData:                keyData,
+		authRequestor:          &mockAuthRequestor{responses: []interface{}{"", RecoveryKey{}}},
+		numPassphraseResponses: 1,
+		passphraseTries:        1,
+		recoveryKeyTries:       1,
+		activateTries:          1,
 	}), ErrorMatches, "cannot activate with platform protected keys:\n"+
 		"- foo: cannot recover key: the supplied passphrase is incorrect\n"+
 		"- bar: cannot recover key: the supplied passphrase is incorrect\n"+
@@ -3445,7 +3410,7 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyKeyData3(c *C) {
 
 	slot := s.addMockKeyslot(data.sourceDevicePath, unlockKey)
 
-	authRequestor := &mockAuthRequestor{passphraseResponses: data.authResponses}
+	authRequestor := &mockAuthRequestor{responses: data.authResponses}
 
 	bootscope.SetModel(model)
 
@@ -3463,10 +3428,11 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyKeyData3(c *C) {
 		fmt.Sprintf("Activate("+data.volumeName+","+data.sourceDevicePath+",%d)", slot),
 	})
 
-	c.Check(authRequestor.passphraseRequests, HasLen, len(data.authResponses))
-	for _, rsp := range authRequestor.passphraseRequests {
-		c.Check(rsp.volumeName, Equals, data.volumeName)
-		c.Check(rsp.sourceDevicePath, Equals, data.sourceDevicePath)
+	c.Check(authRequestor.requests, HasLen, len(data.authResponses))
+	for _, rsp := range authRequestor.requests {
+		c.Check(rsp.name, Equals, data.volumeName)
+		c.Check(rsp.path, Equals, data.sourceDevicePath)
+		c.Check(rsp.authTypes, Equals, UserAuthTypePassphrase)
 	}
 
 	// This should be done last because it may fail in some circumstances.
