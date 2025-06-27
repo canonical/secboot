@@ -84,6 +84,21 @@ func (e *InvalidKeyDataError) Unwrap() error {
 	return e.err
 }
 
+// IncompatibleKeyDataRoleError is returned from KeyData methods when
+// trying to recover keys if the data that associates the metadata with
+// a role is invalid or incompatible with the current boot settings.
+type IncompatibleKeyDataRoleError struct {
+	err error
+}
+
+func (e *IncompatibleKeyDataRoleError) Error() string {
+	return fmt.Sprintf("incompatible key data role or invalid data: %v", e.err)
+}
+
+func (e *IncompatibleKeyDataRoleError) Unwrap() error {
+	return e.err
+}
+
 // PlatformUninitializedError is returned from KeyData methods if the
 // platform's secure device has not been initialized properly.
 type PlatformUninitializedError struct {
@@ -137,6 +152,23 @@ func (m AuthMode) String() string {
 	default:
 		return fmt.Sprintf("unknown(%d)", int(m))
 	}
+}
+
+type keyDataError struct {
+	err error
+}
+
+func (e keyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e keyDataError) Unwrap() error {
+	return e.err
+}
+
+func isKeyDataError(err error) bool {
+	var e keyDataError
+	return errors.As(err, &e)
 }
 
 // KeyParams provides parameters required to create a new KeyData object.
@@ -378,6 +410,8 @@ func processPlatformHandlerError(err error) error {
 			return &PlatformDeviceUnavailableError{pe.Err}
 		case PlatformHandlerErrorInvalidAuthKey:
 			return ErrInvalidPassphrase
+		case PlatformHandlerErrorIncompatibleRole:
+			return &IncompatibleKeyDataRoleError{pe.Err}
 		}
 	}
 
@@ -393,25 +427,28 @@ type KeyData struct {
 
 func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte, err error) {
 	if d.data.PassphraseParams == nil {
-		return nil, nil, nil, errors.New("no passphrase params")
+		return nil, nil, nil, keyDataError{errors.New("no passphrase params")}
 	}
 
 	params := d.data.PassphraseParams
 	if params.DerivedKeySize < 0 {
-		return nil, nil, nil, fmt.Errorf("invalid derived key size (%d bytes)", params.DerivedKeySize)
+		return nil, nil, nil, keyDataError{fmt.Errorf("invalid derived key size (%d bytes)", params.DerivedKeySize)}
 	}
 	if params.EncryptionKeySize < 0 || params.EncryptionKeySize > 32 {
 		// The key size can't be larger than 32 with the supported cipher
-		return nil, nil, nil, fmt.Errorf("invalid encryption key size (%d bytes)", params.EncryptionKeySize)
+		return nil, nil, nil, keyDataError{fmt.Errorf("invalid encryption key size (%d bytes)", params.EncryptionKeySize)}
 	}
 	if params.AuthKeySize < 0 {
-		return nil, nil, nil, fmt.Errorf("invalid auth key size (%d bytes)", params.AuthKeySize)
+		return nil, nil, nil, keyDataError{fmt.Errorf("invalid auth key size (%d bytes)", params.AuthKeySize)}
 	}
 	if params.KDF.Time < 0 {
-		return nil, nil, nil, fmt.Errorf("invalid KDF time (%d)", params.KDF.Time)
+		return nil, nil, nil, keyDataError{fmt.Errorf("invalid KDF time (%d)", params.KDF.Time)}
 	}
 
 	kdfAlg := d.data.KDFAlg
+	if kdfAlg == nilHash {
+		return nil, nil, nil, keyDataError{errors.New("invalid leaf KDF digest algorithm")}
+	}
 	if !hashAlgAvailable(&kdfAlg) {
 		return nil, nil, nil, fmt.Errorf("unavailable leaf KDF digest algorithm %v", kdfAlg)
 	}
@@ -429,7 +466,7 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 	})
 	salt, err := builder.Bytes()
 	if err != nil {
-		return nil, nil, nil, xerrors.Errorf("cannot serialize salt: %w", err)
+		return nil, nil, nil, keyDataError{xerrors.Errorf("cannot serialize salt: %w", err)}
 	}
 
 	var derived []byte
@@ -437,10 +474,10 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 	switch params.KDF.Type {
 	case string(Argon2i), string(Argon2id):
 		if params.KDF.Memory < 0 {
-			return nil, nil, nil, fmt.Errorf("invalid argon2 memory (%d)", params.KDF.Memory)
+			return nil, nil, nil, keyDataError{fmt.Errorf("invalid argon2 memory (%d)", params.KDF.Memory)}
 		}
 		if params.KDF.CPUs < 0 {
-			return nil, nil, nil, fmt.Errorf("invalid argon2 threads (%d)", params.KDF.CPUs)
+			return nil, nil, nil, keyDataError{fmt.Errorf("invalid argon2 threads (%d)", params.KDF.CPUs)}
 		}
 
 		mode := Argon2Mode(params.KDF.Type)
@@ -465,7 +502,7 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 			return nil, nil, nil, xerrors.Errorf("cannot derive key from passphrase: %w", err)
 		}
 	default:
-		return nil, nil, nil, fmt.Errorf("unexpected intermediate KDF type \"%s\"", params.KDF.Type)
+		return nil, nil, nil, keyDataError{fmt.Errorf("unexpected intermediate KDF type \"%s\"", params.KDF.Type)}
 	}
 
 	key = make([]byte, params.EncryptionKeySize)
@@ -502,17 +539,22 @@ func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string
 
 	if d.data.PassphraseParams.Encryption != passphraseEncryption {
 		// Only AES-CFB is supported
-		return fmt.Errorf("unexpected encryption algorithm \"%s\"", d.data.PassphraseParams.Encryption)
+		return keyDataError{fmt.Errorf("unexpected encryption algorithm \"%s\"", d.data.PassphraseParams.Encryption)}
 	}
 
 	handle, err := handlerInfo.handler.ChangeAuthKey(d.platformKeyData(), oldAuthKey, authKey, platformContext)
 	if err != nil {
-		return err
+		return processPlatformHandlerError(err)
 	}
 
 	c, err := aes.NewCipher(key)
 	if err != nil {
-		return xerrors.Errorf("cannot create cipher: %w", err)
+		err = xerrors.Errorf("cannot create cipher: %w", err)
+		var kse aes.KeySizeError
+		if errors.As(err, &kse) {
+			err = keyDataError{err}
+		}
+		return err
 	}
 
 	d.data.PlatformHandle = handle
@@ -532,14 +574,19 @@ func (d *KeyData) openWithPassphrase(passphrase string) (payload []byte, authKey
 
 	if d.data.PassphraseParams.Encryption != passphraseEncryption {
 		// Only AES-CFB is supported
-		return nil, nil, fmt.Errorf("unexpected encryption algorithm \"%s\"", d.data.PassphraseParams.Encryption)
+		return nil, nil, keyDataError{fmt.Errorf("unexpected encryption algorithm \"%s\"", d.data.PassphraseParams.Encryption)}
 	}
 
 	payload = make([]byte, len(d.data.EncryptedPayload))
 
 	c, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("cannot create cipher: %w", err)
+		err = xerrors.Errorf("cannot create cipher: %w", err)
+		var kse aes.KeySizeError
+		if errors.As(err, &kse) {
+			err = keyDataError{err}
+		}
+		return nil, nil, err
 	}
 	stream := cipher.NewCFBDecrypter(c, iv)
 	stream.XORKeyStream(payload, d.data.EncryptedPayload)
@@ -575,7 +622,7 @@ func (d *KeyData) recoverKeysCommon(data []byte) (DiskUnlockKey, PrimaryKey, err
 		}
 		return pk.unlockKey(crypto.Hash(d.data.KDFAlg)), pk.Primary, nil
 	default:
-		return nil, nil, fmt.Errorf("invalid keydata generation %d", d.Generation())
+		return nil, nil, &InvalidKeyDataError{fmt.Errorf("invalid keydata generation %d", d.Generation())}
 	}
 }
 
@@ -695,6 +742,9 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, P
 
 	payload, key, err := d.openWithPassphrase(passphrase)
 	if err != nil {
+		if isKeyDataError(err) {
+			return nil, nil, &InvalidKeyDataError{err}
+		}
 		return nil, nil, err
 	}
 
@@ -718,11 +768,17 @@ func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string) error {
 
 	payload, oldKey, err := d.openWithPassphrase(oldPassphrase)
 	if err != nil {
+		if isKeyDataError(err) {
+			return &InvalidKeyDataError{err}
+		}
 		return err
 	}
 
 	if err := d.updatePassphrase(payload, oldKey, newPassphrase, nil); err != nil {
-		return processPlatformHandlerError(err)
+		if isKeyDataError(err) {
+			return &InvalidKeyDataError{err}
+		}
+		return err
 	}
 
 	return nil

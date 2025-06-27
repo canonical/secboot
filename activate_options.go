@@ -19,7 +19,10 @@
 
 package secboot
 
-import "io"
+import (
+	"encoding/json"
+	"io"
+)
 
 // ActivateConfigGetter provides read-only access to configuration options
 // that were added to [ActivateConfig] from [ActivateOption]s.
@@ -103,6 +106,11 @@ func ActivateConfigGet[V any, K comparable](c ActivateConfigGetter, key K) (val 
 type activateConfigKey string
 
 const (
+	// activateStateCustomDataKey is used by WithActivateStateCustomData to
+	// provide a way for the user of the activation API to supply arbitrary
+	// JSON data.
+	activateStateCustomDataKey activateConfigKey = "activate-state-custom-data"
+
 	// externalKeyDataKey is used by WithExternalKeyDataOption to supply extra
 	// key metadata that isn't part of the container header
 	authRequestorKey activateConfigKey = "auth-requestor"
@@ -145,6 +153,17 @@ func (o *genericOption[T]) PerContainer() bool {
 	return o.perContainer
 }
 
+// WithActivateStateCustomData can be supplied to [ActivateContext.ActivatePath] to
+// permit the caller to supply arbitrary data that will appear in the
+// [ContainerActivateState] associated with an activation.
+func WithActivateStateCustomData(data json.RawMessage) ActivateOption {
+	return &genericOption[json.RawMessage]{
+		key:          activateStateCustomDataKey,
+		val:          data,
+		perContainer: true,
+	}
+}
+
 type withAuthRequestorOption struct {
 	req AuthRequestor
 }
@@ -159,8 +178,7 @@ func (*withAuthRequestorOption) PerContainer() bool {
 
 // WithAuthRequestor allows the caller to specify an instance of [AuthRequestor]
 // when using the [ActivateContext] API. Without this, functionality that requires
-// asking for user credentials will not work. This can be supplied to
-// [NewActivateContext] or [ActivateContext.ActivatePath].
+// asking for user credentials will not work.
 func WithAuthRequestor(req AuthRequestor) ActivateOption {
 	return &withAuthRequestorOption{req: req}
 }

@@ -22,6 +22,7 @@ package secboot
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -47,6 +48,8 @@ var (
 
 	errInvalidPrimaryKey = errors.New("invalid primary key")
 	errNoPrimaryKey      = errors.New("no primary key was obtained during activation")
+
+	errInvalidRecoveryKey = errors.New("the supplied recovery key is incorrect")
 )
 
 type errorKeyslotInfo struct {
@@ -82,7 +85,31 @@ func (r *keyslotAttemptRecord) usable() bool {
 	if r.err == nil {
 		return true
 	}
-	return errors.Is(r.err, ErrInvalidPassphrase)
+
+	// In general, a keyslot that has encountered an error becomes unusable,
+	// with one exception being that if the error is a result of the user
+	// supplying an incorrect credential (passphrase, PIN, or recovery key),
+	// it should remain usable.
+	var expectedUserAuthErr error
+	switch {
+	case r.info.Type() == KeyslotTypeRecovery:
+		// Recovery keyslot
+		expectedUserAuthErr = errInvalidRecoveryKey
+	case r.info.Type() == KeyslotTypePlatform && r.data != nil && r.data.AuthMode() == AuthModePassphrase:
+		// Passphrase keyslot
+		expectedUserAuthErr = ErrInvalidPassphrase
+	case r.info.Type() == KeyslotTypePlatform && r.data != nil && r.data.AuthMode() == AuthModeNone:
+		// Automatic keyslot requiring no credential is unusable with any error
+		return false
+	default:
+		// XXX: We should never reach here - I'm not sure whether we
+		// should return an error, panic with an error or write
+		// something to stderr. For now, returning that the keyslot
+		// is unusable is the safe thing to do.
+		return false
+	}
+
+	return errors.Is(r.err, expectedUserAuthErr)
 }
 
 type keyslotAttemptRecordSlice []*keyslotAttemptRecord
@@ -498,7 +525,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 
 		}
 
-		if m.status == ActivationIncomplete {
+		if m.status == activationIncomplete {
 			// We haven't unlocked yet, so try again.
 			continue
 		}
@@ -543,7 +570,7 @@ func (m *activateOneContainerStateMachine) tryRecoveryKeyslots(ctx context.Conte
 
 		// The most likely failure here is an invalid key, so set the error for this keyslot
 		// as such so that it will be communicated via ActivateState in the future.
-		slot.err = ErrInvalidPassphrase
+		slot.err = errInvalidRecoveryKey
 	}
 
 	// We were unable to unlock with any recovery keyslot.
@@ -593,6 +620,34 @@ func (m *activateOneContainerStateMachine) primaryKeyInfo() (PrimaryKey, keyring
 	return m.primaryKey, m.primaryKeyID, nil
 }
 
+func (m *activateOneContainerStateMachine) activationState() (ContainerActivateState, error) {
+	if m.hasMoreWork() {
+		return ContainerActivateState{}, errors.New("state machine has not finished")
+	}
+
+	state := ContainerActivateState{
+		Status:        m.status,
+		KeyslotErrors: make(map[string]KeyslotErrorType),
+	}
+
+	// Did the caller use the WithActivateStateCustomData option?
+	customData, exists := ActivateConfigGet[json.RawMessage](m.cfg, activateStateCustomDataKey)
+	if exists {
+		state.CustomData = customData
+	}
+
+	// If unlocked, retrieve the name of the keyslot used.
+	if m.status == ActivationSucceededWithPlatformKey || m.status == ActivationSucceededWithRecoveryKey {
+		state.Keyslot = m.activationKeyslot.Name()
+	}
+
+	for name, rec := range m.keyslotRecords {
+		state.KeyslotErrors[name] = errorToKeyslotError(rec.err)
+	}
+
+	return state, nil
+}
+
 func (m *activateOneContainerStateMachine) hasMoreWork() bool {
 	return m.next.fn != nil && m.err == nil
 }
@@ -614,7 +669,7 @@ func (m *activateOneContainerStateMachine) runNextTask(ctx context.Context) erro
 	if err := current.fn(ctx); err != nil {
 		err = fmt.Errorf("cannot complete state %q: %w", current.name, err)
 		m.err = err
-		if m.status != ActivationIncomplete {
+		if m.status != activationIncomplete {
 			panic(fmt.Sprintf("unexpected status %q on error %v", m.status, err))
 		}
 		m.status = ActivationFailed
@@ -674,6 +729,8 @@ func NewActivateContext(ctx context.Context, state *ActivateState, opts ...Activ
 		}
 		out.primaryKey = PrimaryKey(key)
 	}
+
+	// Ensure we have a map of states for each storage container.
 	if state.Activations == nil {
 		state.Activations = make(map[string]ContainerActivateState)
 	}
@@ -681,31 +738,35 @@ func NewActivateContext(ctx context.Context, state *ActivateState, opts ...Activ
 	return out, nil
 }
 
-func (c *ActivateContext) updateState(sm *activateOneContainerStateMachine) {
+func (c *ActivateContext) updateStateOnActivationAttempt(sm *activateOneContainerStateMachine) {
+	// We don't return errors from here because if we get to this
+	// point, we have already successfully unlocked the storage
+	// container. If we experience an error here, all this means
+	// is that we fail to populate the primary key on the context
+	// which will force activation of subsequent containers to
+	// only use a "plainkey" key slot (see the documentation for
+	// ActivatePath).
+
 	if len(c.primaryKey) == 0 {
 		primaryKey, primaryKeyID, err := sm.primaryKeyInfo()
-
-		// We don't return errors from here because if we get to this
-		// point, we have already successfully unlocked the storage
-		// container. If we experience an error here, all this means
-		// is that we fail to populate the primary key on the context
-		// which will force activation of subsequent containers to
-		// only use a "plainkey" key slot (see the documentation for
-		// ActivatePath).
 		switch {
 		case errors.Is(err, errNoPrimaryKey):
 			// The activation either failed or used a recovery key.
 			// Don't log this.
 		case err != nil:
 			// Log an unexpected error.
-			fmt.Fprintf(c.stderr, "Cannot obtain primary key information: %v\n", err)
+			fmt.Fprintf(c.stderr, "Cannot obtain primary key information when unlocking %s: %v\n", sm.container.Path(), err)
 		default:
 			c.primaryKey = primaryKey
 			c.state.PrimaryKeyID = int(primaryKeyID)
 		}
 	}
 
-	c.state.Activations[sm.container.Path()] = ContainerActivateState{}
+	state, err := sm.activationState()
+	if err != nil {
+		fmt.Fprintf(c.stderr, "Cannot obtain activation state associated with unlocking %s: %v\n", sm.container.Path(), err)
+	}
+	c.state.Activations[sm.container.Path()] = state
 }
 
 // ActivatePath unlocks the [StorageContainer] at the specified path. The caller can
@@ -762,12 +823,21 @@ func (c *ActivateContext) ActivatePath(ctx context.Context, path string, opts ..
 	// Create and run a state machine for this activation
 	isFirst := len(c.state.Activations) == 0
 	sm := newActivateOneContainerStateMachine(container, cfg, c.stderr, c.primaryKey, isFirst)
+
+	var activateErr error
 	for sm.hasMoreWork() {
-		if err := sm.runNextTask(ctx); err != nil {
-			return err
+		activateErr = sm.runNextTask(ctx)
+		if activateErr != nil {
+			break
 		}
 	}
-	c.updateState(sm)
+
+	c.updateStateOnActivationAttempt(sm)
+
+	if activateErr != nil {
+		return activateErr
+	}
+
 	if !sm.isContainerBindingFailureFatal() {
 		// Make sure the activation keyslot didn't fail the
 		// primary key cross-check.
@@ -788,6 +858,19 @@ func (c *ActivateContext) ActivatePath(ctx context.Context, path string, opts ..
 	return nil
 }
 
+func (c *ActivateContext) updateStateOnDeactivation(container StorageContainer, reason DeactivationReason) {
+	state, exists := c.state.Activations[container.Path()]
+	if !exists {
+		fmt.Fprintf(c.stderr, "No state for previously activated container %q\n", container.Path())
+		return
+	}
+
+	state.Status = ActivationDeactivated
+	state.DeactivateReason = reason
+
+	c.state.Activations[container.Path()] = state
+}
+
 func (c *ActivateContext) DeactivatePath(ctx context.Context, path string, reason DeactivationReason) error {
 	// Obtain a StorageContainer from whatever backend handles
 	// the suppied path.
@@ -801,8 +884,17 @@ func (c *ActivateContext) DeactivatePath(ctx context.Context, path string, reaso
 		return fmt.Errorf("cannot create StorageContainer instance: %w", err)
 	}
 
-	// TODO: When we retain activation state, mark the attempt for this storage
-	// container as "deactivated" and record the supplied reason.
+	if err := container.Deactivate(ctx); err != nil {
+		return fmt.Errorf("cannot deactivate container: %w", err)
+	}
+	c.updateStateOnDeactivation(container, reason)
 
-	return container.Deactivate(ctx)
+	return nil
+}
+
+// State returns a pointer to the current state. Note that this is a pointer
+// to the state object used by this context, so it will be updated by calls
+// to ActivatePath and DeactivatePath.
+func (c *ActivateContext) State() *ActivateState {
+	return c.state
 }

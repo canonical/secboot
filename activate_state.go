@@ -19,11 +19,17 @@
 
 package secboot
 
+import (
+	"encoding/json"
+	"errors"
+)
+
 // ActivationStatus describes the activation status for a storage container.
 type ActivationStatus string
 
 const (
-	ActivationIncomplete               ActivationStatus = ""
+	activationIncomplete ActivationStatus = ""
+
 	ActivationFailed                   ActivationStatus = "failed"       // The container could not be unlocked
 	ActivationSucceededWithPlatformKey ActivationStatus = "platform-key" // The container was unlocked with a normal platform key
 	ActivationSucceededWithRecoveryKey ActivationStatus = "recovery-key" // The container was unlocked with a recovery key
@@ -35,14 +41,64 @@ const (
 // on a successfully unlocked storage container. This is intended to
 // be used like an enum, with the user of the [ActivateContext] API
 // defining the values.
-//
-// XXX: This will eventually be part of the serialized [ActivateState].
 type DeactivationReason string
 
+// KeyslotErrorType describes the reason a keyslot failed when it was attempted.
+type KeyslotErrorType string
+
+func errorToKeyslotError(err error) KeyslotErrorType {
+	if errors.Is(err, errInvalidPrimaryKey) {
+		return KeyslotErrorInvalidPrimaryKey
+	}
+
+	var ikdErr *InvalidKeyDataError
+	if errors.As(err, &ikdErr) {
+		return KeyslotErrorInvalidKeyData
+	}
+
+	var ikdrErr *IncompatibleKeyDataRoleError
+	if errors.As(err, &ikdrErr) {
+		return KeyslotErrorIncompatibleRole
+	}
+
+	// XXX: Add the incorrect PIN error here as well.
+	if errors.Is(err, ErrInvalidPassphrase) || errors.Is(err, errInvalidRecoveryKey) {
+		return KeyslotErrorIncorrectUserAuth
+	}
+
+	var (
+		puErr  *PlatformUninitializedError
+		pduErr *PlatformDeviceUnavailableError
+	)
+	if errors.As(err, &puErr) || errors.As(err, &pduErr) {
+		return KeyslotErrorPlatformFailure
+	}
+
+	return KeyslotErrorUnknown
+}
+
+const (
+	KeyslotErrorIncompatibleRole  KeyslotErrorType = "incompatible-role"
+	KeyslotErrorInvalidKeyData    KeyslotErrorType = "invalid-key-data"
+	KeyslotErrorInvalidPrimaryKey KeyslotErrorType = "invalid-primary-key"
+	KeyslotErrorIncorrectUserAuth KeyslotErrorType = "incorrect-user-auth"
+	KeyslotErrorPlatformFailure   KeyslotErrorType = "platform-failure"
+	KeyslotErrorUnknown           KeyslotErrorType = "unknown"
+)
+
 type ContainerActivateState struct {
+	Status           ActivationStatus            `json:"status"`                      // The overall activation status for this storage container.
+	Keyslot          string                      `json:"keyslot,omitempty"`           // If the container was activated, the name of the keyslot used.
+	DeactivateReason DeactivationReason          `json:"deactivate-reason,omitempty"` // An argument supplied to ActivateContext.DeactivatePath.
+	KeyslotErrors    map[string]KeyslotErrorType `json:"keyslot-errors"`              // A map of errors for tried keyslots, keyed by name.
+
+	// CustomData provides a way for the user of the [ActivateContext] API
+	// to save arbitrary custom JSON data, using the
+	// [WithCustomActivateStateData] option.
+	CustomData json.RawMessage `json:"custom-data,omitempty"`
 }
 
 type ActivateState struct {
-	PrimaryKeyID int                               `json:"primary-key-id"`
-	Activations  map[string]ContainerActivateState `json:"activations"`
+	PrimaryKeyID int                               `json:"primary-key-id"` // Used to propagate the key between ActivateContexts, without storing it in the state.
+	Activations  map[string]ContainerActivateState `json:"activations"`    // A map of activation state, keyed by container path
 }
