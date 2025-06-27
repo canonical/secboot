@@ -23,6 +23,7 @@ package secboot
 import (
 	"context"
 	"crypto"
+	"encoding/json"
 	"io"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 )
 
 const (
+	ActivateStateCustomDataKey      = activateStateCustomDataKey
 	AuthRequestorKey                = authRequestorKey
 	AuthRequestorUserVisibleNameKey = authRequestorUserVisibleNameKey
 	ExternalKeyDataKey              = externalKeyDataKey
@@ -51,6 +53,9 @@ var (
 	AddKeyToUserKeyring                           = addKeyToUserKeyring
 	AddKeyToUserKeyringLegacy                     = addKeyToUserKeyringLegacy
 	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	ErrInvalidPrimaryKey                          = errInvalidPrimaryKey
+	ErrInvalidRecoveryKey                         = errInvalidRecoveryKey
+	ErrorToKeyslotError                           = errorToKeyslotError
 	FormatKeyringKeyDesc                          = formatKeyringKeyDesc
 	ParseKeyringKeyDesc                           = parseKeyringKeyDesc
 	StorageContainerHandlers                      = storageContainerHandlers
@@ -73,11 +78,6 @@ func (c activateConfig) Len() int {
 	return len(c)
 }
 
-// XXX: This will eventually be part of the ActivateContext API.
-func (c *ActivateContext) State() *ActivateState {
-	return c.state
-}
-
 func (c *ActivateContext) Config() ActivateConfigGetter {
 	return c.cfg
 }
@@ -92,10 +92,28 @@ func (s *ActivateState) Copy() *ActivateState {
 	}
 	if s.Activations != nil {
 		out.Activations = make(map[string]*ContainerActivateState)
+		for k, v := range s.Activations {
+			out.Activations[k] = v.Copy()
+		}
 	}
-	for k, v := range s.Activations {
-		vc := *v
-		out.Activations[k] = &vc
+	return out
+}
+
+func (s *ContainerActivateState) Copy() *ContainerActivateState {
+	out := &ContainerActivateState{
+		Status:           s.Status,
+		Keyslot:          s.Keyslot,
+		DeactivateReason: s.DeactivateReason,
+	}
+	if s.KeyslotErrors != nil {
+		out.KeyslotErrors = make(map[string]KeyslotErrorType)
+		for k, v := range s.KeyslotErrors {
+			out.KeyslotErrors[k] = v
+		}
+	}
+	if s.CustomData != nil {
+		out.CustomData = make(json.RawMessage, len(s.CustomData))
+		copy(out.CustomData, s.CustomData)
 	}
 	return out
 }
@@ -274,4 +292,20 @@ func MockUnixStat(f func(devicePath string, st *unix.Stat_t) error) (restore fun
 	return func() {
 		unixStat = old
 	}
+}
+
+func NewInvalidKeyDataError(err error) *InvalidKeyDataError {
+	return &InvalidKeyDataError{err: err}
+}
+
+func NewIncompatibleKeyDataRoleParamsError(err error) *IncompatibleKeyDataRoleParamsError {
+	return &IncompatibleKeyDataRoleParamsError{err: err}
+}
+
+func NewPlatformUninitializedError(err error) *PlatformUninitializedError {
+	return &PlatformUninitializedError{err: err}
+}
+
+func NewPlatformDeviceUnavailableError(err error) *PlatformDeviceUnavailableError {
+	return &PlatformDeviceUnavailableError{err: err}
 }
