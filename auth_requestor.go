@@ -19,14 +19,32 @@
 
 package secboot
 
+import "context"
+
+// UserAuthType describes a user authentication type that can be
+// requested via [AuthRequestor].
+type UserAuthType int
+
+const (
+	// UserAuthTypePassphrase indicates that a passphase is
+	// being requested.
+	UserAuthTypePassphrase UserAuthType = 1 << iota
+
+	// UserAuthTypePIN indicates that a PIN is being requested.
+	UserAuthTypePIN
+
+	// UserAuthTypeRecoveryKey indicates that a recovery key
+	// is being requesteed.
+	UserAuthTypeRecoveryKey
+)
+
 // AuthRequestor is an interface for requesting credentials.
 type AuthRequestor interface {
-	// RequestPassphrase is used to request the passphrase for a platform
-	// protected key that is being used to unlock the container at the
-	// specified sourceDevicePath.
-	RequestPassphrase(volumeName, sourceDevicePath string) (string, error)
-
-	// RequestRecoveryKey is used to request the recovery key to unlock the
-	// container at the specified sourceDevicePath.
-	RequestRecoveryKey(volumeName, sourceDevicePath string) (RecoveryKey, error)
+	// RequestUserCredential is used to request a user credential that is
+	// required to unlock the container at the specified path. The optional
+	// name argument permits the caller to supply a more human friendly name,
+	// and can be supplied via the ActivateContext API using the
+	// WithAuthRequestorUserVisibleName option. The authTypes argument is used
+	// to indicate what types of credential are being requested.
+	RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error)
 }
