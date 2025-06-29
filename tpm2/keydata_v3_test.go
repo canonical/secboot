@@ -225,6 +225,19 @@ func (s *keyDataV3Suite) TestValidateOK3(c *C) {
 	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
 }
 
+func (s *keyDataV3Suite) TestValidateOK4(c *C) {
+	role := "foo"
+	data, pcrPolicyCounterName := s.newMockKeyData(c, s.NextAvailableHandle(c, 0x0180ff00), role, false)
+
+	// An invalid PCR policy ref shouldn't trigger an error because it will be
+	// corrected when updating the PCR policy.
+	data.(*KeyData_v3).PolicyData.StaticData.PCRPolicyRef = []byte("1234")
+
+	pcrPolicyCounter, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
+	c.Check(err, IsNil)
+	c.Check(pcrPolicyCounter.Name(), DeepEquals, pcrPolicyCounterName)
+}
+
 func (s *keyDataV3Suite) TestValidateImportedOK(c *C) {
 	role := "foo"
 	data := s.newMockImportableKeyData(c, role, false)
@@ -351,7 +364,7 @@ func (s *keyDataV3Suite) TestValidateWrongPolicyCounter1(c *C) {
 
 	_, err = data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "unexpected PCR policy ref")
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
 func (s *keyDataV3Suite) TestValidateWrongPolicyCounter2(c *C) {
@@ -362,7 +375,7 @@ func (s *keyDataV3Suite) TestValidateWrongPolicyCounter2(c *C) {
 
 	_, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "unexpected PCR policy ref")
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
 func (s *keyDataV3Suite) TestValidateWrongPolicyCounter3(c *C) {
@@ -379,7 +392,7 @@ func (s *keyDataV3Suite) TestValidateWrongPolicyCounter3(c *C) {
 
 	_, err := data.ValidateData(s.TPM().TPMContext, []byte(role))
 	c.Check(err, testutil.ConvertibleTo, KeyDataError{})
-	c.Check(err, ErrorMatches, "unexpected PCR policy ref")
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
 func (s *keyDataV3Suite) TestSerialization(c *C) {
@@ -399,7 +412,7 @@ func (s *keyDataV3Suite) TestValidateInvalidRole(c *C) {
 	data, _ := s.newMockKeyData(c, tpm2.HandleNull, authRole, false)
 
 	_, err := data.ValidateData(s.TPM().TPMContext, []byte(validationRole))
-	c.Check(err, ErrorMatches, "unexpected PCR policy ref")
+	c.Check(err, ErrorMatches, "the sealed key object's authorization policy is inconsistent with the associated metadata or persistent TPM resources")
 }
 
 func (s *keyDataV3Suite) TestValidateWrongAuthValueRequirement(c *C) {

@@ -20,6 +20,7 @@
 package tpm2
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
@@ -169,6 +170,8 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []
 	if err := k.data.Policy().ExecutePCRPolicy(tpm, policySession, hmacSession); err != nil {
 		err = xerrors.Errorf("cannot complete authorization policy assertions: %w", err)
 		switch {
+		case isPCRPolicyDataError(err):
+			return nil, &PCRPolicyDataError{err}
 		case isPolicyDataError(err):
 			return nil, InvalidKeyDataError{err.Error()}
 		case tpm2.IsResourceUnavailableError(err, lockNVHandle):
@@ -183,7 +186,7 @@ func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []
 	case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandUnseal):
 		return nil, ErrTPMLockout
 	case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, 1):
-		return nil, InvalidKeyDataError{"the authorization policy check failed during unsealing"}
+		return nil, &PCRPolicyDataError{errors.New("the authorization policy check failed during unsealing")}
 	case err != nil:
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
 	}
