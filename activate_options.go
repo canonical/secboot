@@ -131,6 +131,7 @@ const (
 	// nonFatalContainerBindingKey is used by WithNonFatalContainerBindingFailure.
 	nonFatalContainerBindingFailureKey = "non-fatal-container-binding-failure"
 
+	passphraseTriesKey  activateConfigKey = "passphrase-tries"
 	recoveryKeyTriesKey activateConfigKey = "recovery-key-tries"
 
 	// stderrLoggerKey is used by WithStderrLogger to provide a way to override
@@ -275,6 +276,15 @@ func WithStderrLogger(w io.Writer) ActivateOption {
 // WithDiscardStderrLogger is a shortcut for WithStderrLogger(io.Discard).
 func WithDiscardStderrLogger() ActivateOption {
 	return WithStderrLogger(io.Discard)
+}
+
+// WithPassphraseTries defines how many attempts the user has to enter a
+// correct passphrase.
+func WithPassphraseTries(n uint) ActivateOption {
+	return &genericOption[uint]{
+		key: passphraseTriesKey,
+		val: n,
+	}
 }
 
 // WithRecoveryKeyTries defines how many attempts the user has to enter a

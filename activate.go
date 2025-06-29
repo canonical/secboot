@@ -140,6 +140,15 @@ func (s keyslotAttemptRecordSlice) Swap(i, j int) {
 	s[i] = tmp
 }
 
+func (s keyslotAttemptRecordSlice) hasUsable() bool {
+	for _, slot := range s {
+		if slot.usable() {
+			return true
+		}
+	}
+	return false
+}
+
 // activateOneContainerStateMachineTask describes a state of
 // the state machine, including a readable name and a callback function.
 type activateOneContainerStateMachineTask struct {
@@ -417,7 +426,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 	}
 
 	var (
-		//passphraseSlots keyslotAttemptRecordSlice
+		passphraseSlots keyslotAttemptRecordSlice
 		//pinSlots        keyslotAttemptRecordSlice
 		recoverySlots keyslotAttemptRecordSlice
 	)
@@ -446,7 +455,8 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		switch slot.data.AuthMode() {
 		case AuthModeNone:
 			// Skip as we've already tried these
-		//case AuthModePassphrase:
+		case AuthModePassphrase:
+			passphraseSlots = append(passphraseSlots, slot)
 		// TODO: passphrase support
 		//case AuthModePIN:
 		// TODO: PIN support
@@ -457,7 +467,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 	}
 
 	// Sort everything by priority.
-	//sort.Sort(passphraseSlots)
+	sort.Sort(passphraseSlots)
 	//sort.Sort(pinSlots)
 	sort.Sort(recoverySlots)
 
@@ -466,8 +476,9 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 
 	// Get the value of WithRecoveryKeyTries. This must be supplied and not zero
 	// in order to use recovery keys.
+	passphraseTries, _ := ActivateConfigGet[uint](m.cfg, passphraseTriesKey)
 	recoveryKeyTries, _ := ActivateConfigGet[uint](m.cfg, recoveryKeyTriesKey)
-	// TODO: Get the equivalent values for PIN and passphrase
+	// TODO: Get the equivalent value for PIN.
 
 	// TODO: Obtain values for PIN, passphrase ratelimiting from options when this
 	// is implemented. Rate limiting is tricky because it relies on us temporarily
@@ -485,19 +496,31 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 	// something that fits this user experience better in the future.
 
 	var authType UserAuthType
+	if len(passphraseSlots) > 0 {
+		authType |= UserAuthTypePassphrase
+	}
 	if len(recoverySlots) > 0 {
 		authType |= UserAuthTypeRecoveryKey
 	}
 	// TODO: Update authType for PIN / passphrase
 
-	for recoveryKeyTries > 0 {
+	for passphraseTries > 0 || recoveryKeyTries > 0 {
+		// Don't try a method where there are no more usable keyslots.
+		if !passphraseSlots.hasUsable() {
+			passphraseTries = 0
+		}
+
 		// Update authTypeFlags
-		// XXX: This code will make more sense once support for passphrases and PINs is in,
-		// as what we're doing here is removing an auth type once the number of tries has
-		// expired so that the user prompt can be updated.
+		if passphraseTries == 0 {
+			// No more passphrase key tries are left.
+			authType &^= UserAuthTypePassphrase
+		}
 		if recoveryKeyTries == 0 {
-			// No more recovery key tries are left,
+			// No more recovery key tries are left.
 			authType &^= UserAuthTypeRecoveryKey
+		}
+		if authType == UserAuthType(0) {
+			break
 		}
 
 		cred, err := authRequestor.RequestUserCredential(ctx, name, m.container.Path(), authType)
@@ -506,23 +529,43 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		}
 
 		// We have a user credential.
-		// 1) TODO: Try it against every keyslot with a passphrase.
+		// 1) Try it against every keyslot with a passphrase.
 		// 2) TODO: See if it decodes as a PIN and try it against every keyslot with a passphrase.
 		// 3) See if it decodes as a recovery key, and try it against every recovery keyslot.
 		//
 		// XXX: Remember that for PIN and passphrase keyslots, a primary key check must be
 		// performed.
 
-		recoveryKey, err := ParseRecoveryKey(cred)
-		if err == nil {
-			// This is a valid recovery key
-			recoveryKeyTries -= 1
-			if slot := m.tryRecoveryKeyslots(ctx, recoverySlots, recoveryKey); slot != nil {
-				// Success!
-				m.status = ActivationSucceededWithRecoveryKey
-				m.activationKeyslot = slot
-			}
+		var (
+			unlockKey  DiskUnlockKey
+			primaryKey PrimaryKey
+		)
 
+		if passphraseTries > 0 {
+			passphraseTries -= 1
+			if uk, pk, slot := m.tryPassphraseKeyslots(ctx, passphraseSlots, cred); slot != nil {
+				// Success!
+				m.status = ActivationSucceededWithPlatformKey
+				m.activationKeyslot = slot
+
+				unlockKey = uk
+				primaryKey = pk
+			}
+		}
+
+		if m.status == activationIncomplete && recoveryKeyTries > 0 {
+			recoveryKey, err := ParseRecoveryKey(cred)
+			if err == nil {
+				// This is a valid recovery key
+				recoveryKeyTries -= 1
+				if slot := m.tryRecoveryKeyslots(ctx, recoverySlots, recoveryKey); slot != nil {
+					// Success!
+					m.status = ActivationSucceededWithRecoveryKey
+					m.activationKeyslot = slot
+
+					unlockKey = DiskUnlockKey(recoveryKey[:])
+				}
+			}
 		}
 
 		if m.status == activationIncomplete {
@@ -532,7 +575,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 
 		// We have unlocked successfully.
 		m.next.fn = func(ctx context.Context) error {
-			return m.addKeyringKeys(ctx, DiskUnlockKey(recoveryKey[:]), PrimaryKey(nil))
+			return m.addKeyringKeys(ctx, unlockKey, primaryKey)
 		}
 		m.next.name = "add-keyring-keys"
 		return nil
@@ -543,6 +586,55 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 	m.next.name = ""
 
 	return ErrCannotActivate
+}
+
+func (m *activateOneContainerStateMachine) tryPassphraseKeyslots(ctx context.Context, slots keyslotAttemptRecordSlice, passphrase string) (DiskUnlockKey, PrimaryKey, KeyslotInfo) {
+	for _, slot := range slots {
+		name := slot.info.Name()
+
+		unlockKey, primaryKey, err := slot.data.RecoverKeysWithPassphrase(passphrase)
+		if err != nil {
+			slot.err = fmt.Errorf("cannot recover keys from keyslot: %w", err)
+			// XXX: Is it really appropriate to log this? Maybe as an alternative
+			// to making it possible to override stderr, we should make it possible
+			// for the application to provide a logger where we can log messages at
+			// different levels.
+			if !errors.Is(slot.err, ErrInvalidPassphrase) {
+				fmt.Fprintf(m.stderr, "Error with keyslot %q: %v\n", name, slot.err)
+			}
+			continue
+		}
+
+		if !m.checkPrimaryKeyValid(primaryKey) {
+			slot.err = &InvalidKeyDataError{errInvalidPrimaryKey}
+			fmt.Fprintf(m.stderr, "Error with keyslot %q: %v\n", name, slot.err)
+			if m.isContainerBindingFailureFatal() {
+				continue
+			}
+		}
+
+		if err := m.container.Activate(ctx, slot.info, unlockKey, m.cfg); err != nil {
+			// XXX: This could fail for any number of reasons, such as invalid supplied parameters,
+			// but the current API doesn't have a way of communicating this and in the luks2
+			// backend, systemd-cryptsetup only gives us an exit code of 1 regardless of whether
+			// the key is wrong or an already active volume name is supplied, so we just assume
+			// invalid data for now. I'd really like to do better than this though and distinguish
+			// between the key being wrong or the caller providing incorrect options. Given how
+			// little of systemd-cryptsetup's functionality we use, perhaps in the future we could
+			// replace it by a simple C application that makes use of libcryptsetup and returns
+			// useful information back to us via a combination of JSON output on stdout and / or
+			// exit codes.
+			slot.err = &InvalidKeyDataError{fmt.Errorf("cannot activate container with key recovered from keyslot metadata: %w", err)}
+			fmt.Fprintf(m.stderr, "Error with keyslot %q: %v\n", name, slot.err)
+			continue
+		}
+
+		// Unlocking succeeded with this keyslot
+		return unlockKey, primaryKey, slot.info
+	}
+
+	// We were unable to unlock with any passphrase keyslot
+	return nil, nil, nil
 }
 
 func (m *activateOneContainerStateMachine) tryRecoveryKeyslots(ctx context.Context, slots keyslotAttemptRecordSlice, recoveryKey RecoveryKey) KeyslotInfo {
