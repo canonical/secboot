@@ -70,7 +70,7 @@ const (
 //
 // If k.data.policy().pcrPolicyCounterHandle() is not tpm2.HandleNull, then counterPub
 // must be supplied, and it must correspond to the public area associated with that handle.
-func (k *sealedKeyDataBase) updatePCRProtectionPolicyNoValidate(tpm *tpm2.TPMContext, key secboot.PrimaryKey,
+func (k *sealedKeyDataBase) updatePCRProtectionPolicyNoValidate(tpm *tpm2.TPMContext, key secboot.PrimaryKey, role string,
 	counterPub *tpm2.NVPublic, profile *PCRProtectionProfile, policyVersionOption pcrPolicyVersionOption) error {
 	var policySequence uint64
 	if counterPub != nil {
@@ -150,6 +150,7 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicyNoValidate(tpm *tpm2.TPMCon
 
 	params := &pcrPolicyParams{
 		key:            key,
+		role:           []byte(role),
 		pcrs:           pcrs,
 		pcrDigests:     pcrDigests,
 		policyCounter:  counterPub,
@@ -223,7 +224,7 @@ func (k *sealedKeyDataBase) updatePCRProtectionPolicy(tpm *tpm2.TPMContext, auth
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	return k.updatePCRProtectionPolicyNoValidate(tpm, authKey, pcrPolicyCounterPub, pcrProfile, policyVersionOption)
+	return k.updatePCRProtectionPolicyNoValidate(tpm, authKey, role, pcrPolicyCounterPub, pcrProfile, policyVersionOption)
 }
 
 // PCRPolicyVersionOption describes how to set the version for a new PCR policy.

@@ -117,11 +117,14 @@ func (s *policyV3SuiteNoTPM) TestPCRPolicySequence(c *C) {
 type testV3UpdatePCRPolicyData struct {
 	policyCounterHandle tpm2.Handle
 	authKeyNameAlg      tpm2.HashAlgorithmId
-	expectedCount       uint64
 
-	alg        tpm2.HashAlgorithmId
-	pcrs       tpm2.PCRSelectionList
-	pcrDigests tpm2.DigestList
+	initialPolicyRef tpm2.Nonce
+
+	alg            tpm2.HashAlgorithmId
+	role           []byte
+	pcrs           tpm2.PCRSelectionList
+	pcrDigests     tpm2.DigestList
+	policySequence uint64
 
 	expectedPolicy tpm2.Digest
 }
@@ -132,21 +135,34 @@ func (s *policyV3SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV3UpdatePCRPoli
 
 	authPublicKey := s.newPolicyAuthPublicKey(c, data.authKeyNameAlg, key)
 
-	var policyCounterPub *tpm2.NVPublic
+	var (
+		policyCounterPub  *tpm2.NVPublic
+		policyCounterName tpm2.Name
+	)
 	if data.policyCounterHandle != tpm2.HandleNull {
 		policyCounterPub = &tpm2.NVPublic{
 			Index:   data.policyCounterHandle,
 			NameAlg: tpm2.HashAlgorithmSHA256,
 			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVPolicyRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 			Size:    8}
+		policyCounterName = policyCounterPub.Name()
+	}
+
+	policyRef := ComputeV3PcrPolicyRef(data.alg, data.role, policyCounterName)
+
+	initialPolicyRef := policyRef
+	if data.initialPolicyRef != nil {
+		initialPolicyRef = data.initialPolicyRef
 	}
 
 	var policyData KeyDataPolicy = &KeyDataPolicy_v3{
 		StaticData: &StaticPolicyData_v3{
-			AuthPublicKey: authPublicKey},
+			AuthPublicKey: authPublicKey,
+			PCRPolicyRef:  initialPolicyRef,
+		},
 	}
 
-	params := NewPcrPolicyParams(key, data.pcrs, data.pcrDigests, policyCounterPub, 1)
+	params := NewPcrPolicyParams(key, data.role, data.pcrs, data.pcrDigests, policyCounterPub, data.policySequence)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	c.Check(policyData.(*KeyDataPolicy_v3).PCRData.Selection, tpm2_testutil.TPMValueDeepEquals, data.pcrs)
@@ -163,7 +179,9 @@ func (s *policyV3SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV3UpdatePCRPoli
 	}
 	s.checkPolicyOrTree(c, data.alg, digests, orTree)
 
-	c.Check(policyData.(*KeyDataPolicy_v3).PCRData.PolicySequence, Equals, data.expectedCount)
+	c.Check(policyData.(*KeyDataPolicy_v3).StaticData.PCRPolicyRef, DeepEquals, policyRef)
+
+	c.Check(policyData.(*KeyDataPolicy_v3).PCRData.PolicySequence, Equals, data.policySequence)
 
 	c.Check(policyData.(*KeyDataPolicy_v3).PCRData.AuthorizedPolicy, DeepEquals, data.expectedPolicy)
 
@@ -172,7 +190,7 @@ func (s *policyV3SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV3UpdatePCRPoli
 
 	digest := policyutil.ComputePolicyAuthorizationTBSDigest(data.authKeyNameAlg.GetHash(),
 		policyData.(*KeyDataPolicy_v3).PCRData.AuthorizedPolicy,
-		policyData.(*KeyDataPolicy_v3).StaticData.PCRPolicyRef)
+		policyRef)
 	c.Check(err, IsNil)
 	ok, err := cryptutil.VerifySignature(authPublicKey.Public(), digest, policyData.(*KeyDataPolicy_v3).PCRData.AuthorizedPolicySignature)
 	c.Check(err, IsNil)
@@ -183,10 +201,11 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicy(c *C) {
 	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		expectedCount:       1,
 		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
+		policySequence:      1,
 		expectedPolicy:      testutil.DecodeHexString(c, "214063f761968beacf47ed3cfa692480aaba7981e3a4f95f606da88cc45182f3")})
 }
 
@@ -194,8 +213,8 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyDepth1(c *C) {
 	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		expectedCount:       1,
 		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests: tpm2.DigestList{
 			hash(crypto.SHA256, "1"),
@@ -203,6 +222,7 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyDepth1(c *C) {
 			hash(crypto.SHA256, "3"),
 			hash(crypto.SHA256, "4"),
 			hash(crypto.SHA256, "5")},
+		policySequence: 1,
 		expectedPolicy: testutil.DecodeHexString(c, "0ced4fca4da1c7a3c7342e37a7e5c0f40a9c4d19d53eb3c4c63371fba54e4bac")})
 }
 
@@ -210,9 +230,10 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyDepth2(c *C) {
 	data := &testV3UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		expectedCount:       1,
 		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
+		policySequence:      1,
 		expectedPolicy:      testutil.DecodeHexString(c, "e51cd2aa2f8f6b872c2f3e3e98f6093591928af6deeaceae191e5b3ade3290f1")}
 	for i := 1; i < 26; i++ {
 		data.pcrDigests = append(data.pcrDigests, hash(crypto.SHA256, strconv.Itoa(i)))
@@ -224,10 +245,11 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyDifferentCounter(c *C) {
 	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
 		policyCounterHandle: 0x0180ffff,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		expectedCount:       1,
 		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
+		policySequence:      1,
 		expectedPolicy:      testutil.DecodeHexString(c, "e08a219a6a7fdbaf52e64f9f3fb7208948ed3994997be53cc79be4464bd6405f")})
 }
 
@@ -235,8 +257,8 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyNoCounter(c *C) {
 	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
 		policyCounterHandle: tpm2.HandleNull,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		expectedCount:       0,
 		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
 		expectedPolicy:      testutil.DecodeHexString(c, "830c1432cbdc2f3dc2c1c83430df4fe0f5c2c6b1437b01071ddfd6f70fe33a90")})
@@ -246,10 +268,11 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicySHA1AuthKey(c *C) {
 	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA1,
-		expectedCount:       1,
 		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
+		policySequence:      1,
 		expectedPolicy:      testutil.DecodeHexString(c, "214063f761968beacf47ed3cfa692480aaba7981e3a4f95f606da88cc45182f3")})
 }
 
@@ -257,21 +280,23 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyDifferentSequence(c *C) {
 	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		expectedCount:       1,
 		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
-		expectedPolicy:      testutil.DecodeHexString(c, "214063f761968beacf47ed3cfa692480aaba7981e3a4f95f606da88cc45182f3")})
+		policySequence:      50,
+		expectedPolicy:      testutil.DecodeHexString(c, "95a0abac2bcdfd0150dc1317062602c9c0540eaba0acbb31b21cbaf6a3da94c5")})
 }
 
 func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicySHA1Policy(c *C) {
 	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		expectedCount:       1,
 		alg:                 tpm2.HashAlgorithmSHA1,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA1, "1")},
+		policySequence:      1,
 		expectedPolicy:      testutil.DecodeHexString(c, "e537ec1e4b1d4ec5bae9a3644194e8d1a9181bf1")})
 }
 
@@ -279,11 +304,37 @@ func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyDifferentPCRs(c *C) {
 	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
 		policyCounterHandle: 0x01800000,
 		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
-		expectedCount:       1,
 		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
 		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA1, Select: []int{4, 7, 12}}},
 		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
+		policySequence:      1,
 		expectedPolicy:      testutil.DecodeHexString(c, "ce6e3eb8ecd88ef2e21327ad58c77b21a8b563b5b373f1eab08dcc8296c6ee56")})
+}
+
+func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyIncorrectInitialPolicyRef(c *C) {
+	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
+		policyCounterHandle: 0x01800000,
+		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
+		initialPolicyRef:    []byte("1234"),
+		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("foo"),
+		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
+		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
+		policySequence:      1,
+		expectedPolicy:      testutil.DecodeHexString(c, "214063f761968beacf47ed3cfa692480aaba7981e3a4f95f606da88cc45182f3")})
+}
+
+func (s *policyV3SuiteNoTPM) TestUpdatePCRPolicyDifferentRole(c *C) {
+	s.testUpdatePCRPolicy(c, &testV3UpdatePCRPolicyData{
+		policyCounterHandle: 0x01800000,
+		authKeyNameAlg:      tpm2.HashAlgorithmSHA256,
+		alg:                 tpm2.HashAlgorithmSHA256,
+		role:                []byte("bar"),
+		pcrs:                tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
+		pcrDigests:          tpm2.DigestList{hash(crypto.SHA256, "1")},
+		policySequence:      1,
+		expectedPolicy:      testutil.DecodeHexString(c, "214063f761968beacf47ed3cfa692480aaba7981e3a4f95f606da88cc45182f3")})
 }
 
 func (s *policyV3SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
@@ -301,7 +352,7 @@ func (s *policyV3SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 			AuthPublicKey: s.newPolicyAuthPublicKey(c, tpm2.HashAlgorithmSHA256, key)},
 	}
 
-	params := NewPcrPolicyParams(key,
+	params := NewPcrPolicyParams(key, nil,
 		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		tpm2.DigestList{hash(crypto.SHA256, "1"), hash(crypto.SHA256, "2")},
 		policyCounterPub, 5000)
@@ -358,7 +409,7 @@ func (s *policyV3Suite) testExecutePCRPolicy(c *C, data *testV3ExecutePCRPolicyD
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(primaryKey, data.pcrs, digests, policyCounterPub, policyCount)
+	params := NewPcrPolicyParams(primaryKey, nil, data.pcrs, digests, policyCounterPub, policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -719,7 +770,7 @@ func (s *policyV3Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV3Exec
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(primaryKey, data.pcrs, digests, policyCounterPub, policyCount)
+	params := NewPcrPolicyParams(primaryKey, nil, data.pcrs, digests, policyCounterPub, policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -782,7 +833,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection1(c *C)
 			data.PCRData.Selection = tpm2.PCRSelectionList{}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -823,7 +874,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection2(c *C)
 			data.PCRData.Selection = tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{50}}}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: invalid PCR selection")
 }
 
@@ -864,7 +915,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree1(c *C) {
 			data.PCRData.OrData = PolicyOrData_v0{}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot resolve PolicyOR tree: no nodes")
 }
 
@@ -905,7 +956,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree2(c *C) {
 			data.PCRData.OrData[0].Next = 10
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot resolve PolicyOR tree: index 10 out of range")
 }
 
@@ -950,7 +1001,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree3(c *C) {
 			copy(data.PCRData.OrData[4].Digests[0], make(tpm2.Digest, 32))
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: invalid data")
 }
 
@@ -1005,7 +1056,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree4(c *C) {
 			data.PCRData.OrData = NewPolicyOrDataV0(orData)
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy is invalid")
 }
 
@@ -1046,7 +1097,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidPolicySequence(c
 			data.PCRData.PolicySequence += 10
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy is invalid")
 }
 
@@ -1087,7 +1138,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingPCRMismatch(c *C) {
 		},
 		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -1216,7 +1267,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounter
 			data.StaticData.PCRPolicyCounterHandle = tpm2.HandleNull
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy is invalid")
 }
 
@@ -1273,7 +1324,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 			policyCounterPub, err := EnsurePcrPolicyCounter(s.TPM().TPMContext, s.NextAvailableHandle(c, 0x01800000), authKeyPublic, s.TPM().HmacSession())
 			c.Assert(err, IsNil)
 
-			params := NewPcrPolicyParams(primaryKey, pcrs, digests, policyCounterPub, target+1)
+			params := NewPcrPolicyParams(primaryKey, nil, pcrs, digests, policyCounterPub, target+1)
 			data.UpdatePCRPolicy(alg, params)
 
 			context, err := data.PCRPolicyCounterContext(s.TPM().TPMContext, pub)
@@ -1290,7 +1341,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 			}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy is invalid")
 }
 
@@ -1372,7 +1423,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 			copy(data.PCRData.AuthorizedPolicy, make(tpm2.Digest, 32))
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot verify PCR policy signature: TPM returned an error for parameter 2 whilst executing command TPM_CC_VerifySignature: TPM_RC_SIGNATURE \\(the signature is not valid\\)")
 }
 
