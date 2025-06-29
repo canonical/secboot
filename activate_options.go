@@ -139,6 +139,10 @@ const (
 	// compatibility with older snapd versions.
 	legacyKeyringKeyDescPathsKey activateConfigKey = "legacy-keyring-key-desc-paths"
 
+	// passphraseTriesKey is used by WithPassphraseTries to specify the maximum
+	// number of passphrase attempts.
+	passphraseTriesKey activateConfigKey = "passphrase-tries"
+
 	// recoveryKeyTriesKey is used by WithRecoveryKeyTries to specify the maximum
 	// number of recovery key attempts.
 	recoveryKeyTriesKey activateConfigKey = "recovery-key-tries"
@@ -265,6 +269,17 @@ func WithStderrLogger(w io.Writer) ActivateContextOption {
 // WithDiscardStderrLogger is a shortcut for WithStderrLogger(io.Discard).
 func WithDiscardStderrLogger() ActivateContextOption {
 	return WithStderrLogger(io.Discard)
+}
+
+// WithPassphraseTries defines how many attempts the user has to enter a
+// correct passphrase.
+func WithPassphraseTries(n uint) ActivateContextOption {
+	return &genericContextOption[uint]{
+		genericOption: genericOption[uint]{
+			key: passphraseTriesKey,
+			val: n,
+		},
+	}
 }
 
 // WithRecoveryKeyTries defines how many attempts the user has to enter a
