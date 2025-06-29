@@ -132,6 +132,7 @@ const (
 	nonFatalContainerBindingFailureKey = "non-fatal-container-binding-failure"
 
 	passphraseTriesKey  activateConfigKey = "passphrase-tries"
+	pinTriesKey         activateConfigKey = "pin-tries"
 	recoveryKeyTriesKey activateConfigKey = "recovery-key-tries"
 
 	// stderrLoggerKey is used by WithStderrLogger to provide a way to override
@@ -283,6 +284,14 @@ func WithDiscardStderrLogger() ActivateOption {
 func WithPassphraseTries(n uint) ActivateOption {
 	return &genericOption[uint]{
 		key: passphraseTriesKey,
+		val: n,
+	}
+}
+
+// WithPINTries defines how many attempts the user has to enter a correct PIN.
+func WithPINTries(n uint) ActivateOption {
+	return &genericOption[uint]{
+		key: pinTriesKey,
 		val: n,
 	}
 }
