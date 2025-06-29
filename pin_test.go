@@ -94,7 +94,7 @@ func (s *pinSuite) TestPINTooLong(c *C) {
 
 func (s *pinSuite) TestPINInvalidChars(c *C) {
 	_, err := ParsePIN("1234abc")
-	c.Check(err, ErrorMatches, `invalid PIN: unexpected character 'c'`)
+	c.Check(err, ErrorMatches, `invalid PIN: unexpected character`)
 }
 
 func (s *pinSuite) TestPINStringError(c *C) {
