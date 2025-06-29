@@ -81,6 +81,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 	symKey, err := k.unsealDataFromTPM(tpm.TPMContext, authKey, tpm.HmacSession())
 	if err != nil {
 		var e InvalidKeyDataError
+		var p *PCRPolicyDataError
 		switch {
 		case xerrors.As(err, &e):
 			return nil, &secboot.PlatformHandlerError{
@@ -97,6 +98,10 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 		case tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1):
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidAuthKey,
+				Err:  err}
+		case errors.As(err, &p):
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorIncompatibleRole,
 				Err:  err}
 		}
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
