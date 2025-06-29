@@ -44,6 +44,7 @@ const (
 	KeyringKeyPurposeAuxiliary      = keyringKeyPurposeAuxiliary
 	LegacyKeyringKeyDescPathsKey    = legacyKeyringKeyDescPathsKey
 	NilHash                         = nilHash
+	PassphraseTriesKey              = passphraseTriesKey
 	RecoveryKeyTriesKey             = recoveryKeyTriesKey
 	StderrLoggerKey                 = stderrLoggerKey
 )
