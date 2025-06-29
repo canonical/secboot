@@ -462,6 +462,39 @@ func (*activateOptionsSuite) TestWithPassphraseTriesContext(c *C) {
 	c.Check(v, Equals, uint(3))
 }
 
+func (*activateOptionsSuite) TestWithPINTries1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPINTries(3)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PinTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(3))
+}
+
+func (*activateOptionsSuite) TestWithPINTries2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPINTries(5)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PinTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(5))
+}
+
+func (*activateOptionsSuite) TestWithPINTriesContext(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPINTries(3)
+	opt.ApplyContextOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PinTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(3))
+}
+
 func (*activateOptionsSuite) TestWithRecoveryKeyTries1(c *C) {
 	cfg := make(mockActivateConfig)
 

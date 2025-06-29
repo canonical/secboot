@@ -128,6 +128,19 @@ func (s *activateSuite) makeKeyDataBlobWithPassphrase(c *C, primaryKey PrimaryKe
 	return w.Bytes(), unlockKey
 }
 
+func (s *activateSuite) makeKeyDataBlobWithPIN(c *C, primaryKey PrimaryKey, uniqueKey []byte, role string, pin PIN) (blob []byte, unlockKey DiskUnlockKey) {
+	var params *KeyWithPINParams
+	params, unlockKey = s.mockProtectKeysWithPIN(c, primaryKey, uniqueKey, role, nil, 32, crypto.SHA256)
+
+	kd, err := NewKeyDataWithPIN(params, pin)
+	c.Assert(err, IsNil)
+
+	w := makeMockKeyDataWriter()
+	c.Check(kd.WriteAtomic(w), IsNil)
+
+	return w.Bytes(), unlockKey
+}
+
 var _ = Suite(&activateSuite{})
 
 func (s *activateSuite) TestNewActivateContext(c *C) {
@@ -1480,6 +1493,7 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithRecoveryKeyTries(c *
 		responses: []any{
 			makeRecoveryKey(c, incorrectRecoveryKey),
 			makeRecoveryKey(c, incorrectRecoveryKey),
+			"foo", // Shouldn't count
 			makeRecoveryKey(c, incorrectRecoveryKey),
 		},
 	}
@@ -1498,6 +1512,8 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithRecoveryKeyTries(c *
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
+		expectedStderr: `Cannot parse recovery key: incorrectly formatted: insufficient characters
+`,
 		expectedTryKeys:         [][]byte{incorrectRecoveryKey, incorrectRecoveryKey, incorrectRecoveryKey},
 		expectedAuthRequestName: "data",
 		expectedAuthRequestPath: "/dev/sda1",
@@ -2909,7 +2925,7 @@ func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAuthModeNon
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
 		),
 		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
-Error with keyslot "default-fallback": invalid key data: invalid primary key
+Error with keyslot "default-fallback": invalid primary key
 Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
 		expectedState: &ContainerActivateState{
@@ -3620,7 +3636,7 @@ func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAfterPlatfo
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
 		),
 		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
-Error with keyslot "default-fallback": invalid key data: invalid primary key
+Error with keyslot "default-fallback": invalid primary key
 Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
 		expectedState: &ContainerActivateState{
@@ -4692,8 +4708,8 @@ func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAuthModePas
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("save"),
 		},
-		expectedStderr: `Error with keyslot "default-fallback": invalid key data: invalid primary key
-Error with keyslot "default": invalid key data: invalid primary key
+		expectedStderr: `Error with keyslot "default-fallback": invalid primary key
+Error with keyslot "default": invalid primary key
 `,
 		expectedAuthRequestName: "save",
 		expectedAuthRequestPath: "/dev/sda2",
@@ -4704,6 +4720,591 @@ Error with keyslot "default": invalid key data: invalid primary key
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			PassphraseTriesKey:              uint(3),
+			AuthRequestorUserVisibleNameKey: "save",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorInvalidPrimaryKey,
+				"default-fallback": KeyslotErrorInvalidPrimaryKey,
+			},
+			KeyslotErrorsOrder: []string{"default-fallback", "default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePIN(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{"1234"},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypePIN},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey1,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINRetryAfterIncorrectPIN(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth. The first PIN
+	// is incorrect for both keyslots, but we should get another attempt.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"0000",
+			"1234",
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN,
+			UserAuthTypePIN,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey1,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINSecondKey(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth. Unlocking happens
+	// with the second tested keyslot.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{"5678"},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypePIN},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey2,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINWithPINTries(c *C) {
+	// Test the integration of WithPINTries.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"0000",
+			"0000",
+			"foo", // Shouldn't count.
+			"0000",
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedStderr: `Cannot parse PIN: invalid PIN: unexpected character
+`,
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN,
+			UserAuthTypePIN,
+			UserAuthTypePIN,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINWithDifferentPINTries(c *C) {
+	// Test the integration of WithPINTries.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"0000",
+			"0000",
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(2),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN,
+			UserAuthTypePIN,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(2),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINWithRecoveryKeyFallback(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth and a recovery
+	// keyslot. Unlocking happens with a recovery keyslot after entering
+	// an incorrect PIN.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"000000",
+			makeRecoveryKey(c, recoveryKey),
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINBecomesUnavailableWithRecoveryKeyFallback(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth and a recovery
+	// keyslot. Unlocking happens with a recovery keyslot after the 2
+	// platform keyslots fail with errors. The last credential request
+	// should only be for a recovery key. This also test unlocking
+	// errors with PIN keyslots, as well as PIN keyslots becoming unusable.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"1234",
+			"5678",
+			makeRecoveryKey(c, recoveryKey),
+		},
+	}
+
+	s.handler.permittedRoles = []string{"run+recover"}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", nil, KeyslotTypePlatform, 0, kd1),                 // Configured to fail.
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2), // Not permitted.
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot activate container with key recovered from keyslot metadata: invalid key
+Error with keyslot "default-fallback": cannot recover keys from keyslot: incompatible key data role params: permission denied
+`,
+		expectedTryKeys: [][]byte{
+			unlockKey1,
+			recoveryKey,
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorInvalidKeyData,
+				"default-fallback": KeyslotErrorIncompatibleRoleParams,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINWithRecoveryKeyFallbackAfterPINTriesExhausted(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth and a recovery
+	// keyslot. Unlocking happens with a recovery keyslot after all
+	// PIN tries are exhausted.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"0000",
+			"000000",
+			"0000",
+			makeRecoveryKey(c, recoveryKey),
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINAfterRecoveryKeyFallbackTriesExhausted(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth and
+	// a recovery keyslot. Unlocking happens with a PIN keyslot
+	// after all recovery key tries are exhausted.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+	incorrectRecoveryKey := testutil.DecodeHexString(c, "c9654970edbf1c8005f4f0c38ab6b300")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			makeRecoveryKey(c, incorrectRecoveryKey),
+			makeRecoveryKey(c, incorrectRecoveryKey),
+			makeRecoveryKey(c, incorrectRecoveryKey),
+			"5678",
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(5),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedTryKeys: [][]byte{
+			incorrectRecoveryKey,
+			incorrectRecoveryKey,
+			incorrectRecoveryKey,
+			unlockKey2,
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypePIN,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(5),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey2,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-recovery": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default-recovery", "default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAuthModePINAfterPlatformKeyUsed(c *C) {
+	primaryKey1 := testutil.DecodeHexString(c, "990e0742eaa152b5c2bcc3aaf94c9dae58df62a46c13ab569a3e7b4afebb7e1d")
+
+	id, err := AddKeyToUserKeyring(primaryKey1, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	primaryKey2 := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey2, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey2, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"5678",
+			"1234",
+		},
+	}
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("save"),
+		},
+		expectedStderr: `Error with keyslot "default-fallback": invalid primary key
+Error with keyslot "default": invalid primary key
+`,
+		expectedAuthRequestName: "save",
+		expectedAuthRequestPath: "/dev/sda2",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN,
+			UserAuthTypePIN,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
 			AuthRequestorUserVisibleNameKey: "save",
 		},
 		expectedState: &ContainerActivateState{

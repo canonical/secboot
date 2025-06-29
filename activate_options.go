@@ -147,6 +147,9 @@ const (
 	// number of passphrase attempts.
 	passphraseTriesKey activateConfigKey = "passphrase-tries"
 
+	// pinTriesKey is used by WithPINTries to specify the maximum number of PIN attempts.
+	pinTriesKey activateConfigKey = "pin-tries"
+
 	// recoveryKeyTriesKey is used by WithRecoveryKeyTries to specify the maximum
 	// number of recovery key attempts.
 	recoveryKeyTriesKey activateConfigKey = "recovery-key-tries"
@@ -372,6 +375,16 @@ func WithPassphraseTries(n uint) ActivateContextOption {
 	return &genericContextOption[uint]{
 		genericOption: genericOption[uint]{
 			key: passphraseTriesKey,
+			val: n,
+		},
+	}
+}
+
+// WithPINTries defines how many attempts the user has to enter a correct PIN.
+func WithPINTries(n uint) ActivateContextOption {
+	return &genericContextOption[uint]{
+		genericOption: genericOption[uint]{
+			key: pinTriesKey,
 			val: n,
 		},
 	}
