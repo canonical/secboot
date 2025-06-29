@@ -914,7 +914,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection1(c *C)
 			data.PCRData.Selection = tpm2.PCRSelectionList{}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -955,7 +955,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection2(c *C)
 			data.PCRData.Selection = tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{50}}}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: invalid PCR selection")
 }
 
@@ -996,7 +996,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree1(c *C) {
 			data.PCRData.OrData = PolicyOrData_v0{}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot resolve PolicyOR tree: no nodes")
 }
 
@@ -1037,7 +1037,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree2(c *C) {
 			data.PCRData.OrData[0].Next = 10
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot resolve PolicyOR tree: index 10 out of range")
 }
 
@@ -1082,7 +1082,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree3(c *C) {
 			copy(data.PCRData.OrData[4].Digests[0], make(tpm2.Digest, 32))
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: invalid data")
 }
 
@@ -1219,7 +1219,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingPCRMismatch(c *C) {
 		},
 		fn: func(data *KeyDataPolicy_v0, _ *rsa.PrivateKey) {},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -1405,7 +1405,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 			}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy has been revoked")
 }
 
