@@ -76,8 +76,8 @@ func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRPro
 	restore := s.CloseMockConnection(c)
 
 	_, _, err = k.RecoverKeys()
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
-		"cannot execute PolicyOR assertions: current session digest not found in policy data")
+	c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization "+
+		"policy assertions: cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 
 	restore()
 
@@ -95,8 +95,8 @@ func (s *updateSuite) testUpdatePCRProtectionPolicy(c *C, data *testUpdatePCRPro
 	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 	c.Check(err, IsNil)
 	_, _, err = k.RecoverKeys()
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
-		"cannot execute PolicyOR assertions: current session digest not found in policy data")
+	c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization "+
+		"policy assertions: cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
 func (s *updateSuite) TestUpdatePCRProtectionPolicyWithPCRPolicyCounter(c *C) {
@@ -200,8 +200,8 @@ func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy(c *C) {
 
 		restore := s.CloseMockConnection(c)
 		_, _, err = k.RecoverKeys()
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
-			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization "+
+			"policy assertions: cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 		restore()
 
 		keys = append(keys, k)
@@ -222,7 +222,7 @@ func (s *updateSuite) TestUpdateKeyDataPCRProtectionPolicy(c *C) {
 
 	for _, k := range keys {
 		_, _, err := k.RecoverKeys()
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
-			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization "+
+			"policy assertions: cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }
