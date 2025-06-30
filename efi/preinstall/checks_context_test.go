@@ -852,7 +852,7 @@ C7E003CB
 // TODO: Test a good case with a discrete TPM where there is a HCRTM event but startup locality is 4 is not protected, when we have an action to turn on the PermitNoDiscreteTPMResetMitigation flag.
 
 func (s *runChecksContextSuite) TestRunGoodInvalidPCR0Value(c *C) {
-	// Test a good case where the value of PCR0 is inconsistenw with the log,
+	// Test a good case where the value of PCR0 is inconsistent with the log,
 	// but in a configuration where PCR0 isn't required because the system is
 	// configured with verified boot and there is a fTPM.
 	meiAttrs := map[string][]byte{
@@ -2016,7 +2016,7 @@ func (s *runChecksContextSuite) TestRunBadTCGLog(c *C) {
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindMeasuredBoot, nil, nil, errs[0].Unwrap()))
 }
 
-func (s *runChecksContextSuite) TestRunBadInvalidPCR0Value(c *C) {
+func (s *runChecksContextSuite) TestRunBadInvalidPCR0ValueDiscreteTPM(c *C) {
 	// Test the error case where PCR0 is inconsistent for the log, but it
 	// gets marked as mandatory because we have a dTPM.
 	meiAttrs := map[string][]byte{
@@ -2087,13 +2087,14 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with or detected from measurement log: no suitable PCR algorithm available:
-- TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
-- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0x420bd3899738e6b41dccd18253a556e152e2b107559b89cbf0cbf1661ff6ee55, reconstructed from log 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef\).
-`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitablePCRBank, nil, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
+
+	c.Check(errs[0], ErrorMatches, `error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMStartupLocalityNotProtected, nil, nil, errs[0].Unwrap()))
 }
+
+// TODO: Test another bad case where PCR0 is mandatory but unusable, but is mandatory
+// because the firmware is only protected with measured boot (this isn't supported yet,
+// but it would result in the "no-suitable-pcr-bank" error kind).
 
 func (s *runChecksContextSuite) TestRunBadInvalidPCR2Value(c *C) {
 	// Test the error case where PCR2 is inconsistent with the log, but it
