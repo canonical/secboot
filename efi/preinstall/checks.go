@@ -89,12 +89,12 @@ const (
 	PostInstallChecks
 
 	// PermitVirtualMachine will prevent RunChecks from returning an error if the
-	// code is detected to be running in a virtual machine. As parts of the TCB, such
-	// as the initial firmware code and the vTPM implementation are under control of
+	// current OS is detected to be running in a virtual machine. As parts of the TCB,
+	// such as the initial firmware code and the vTPM implementation are under control of
 	// the host environment and there isn't a proper hardware root-of-trust, this
 	// configuration offers little benefit, but may be useful for testing - particularly
-	// in CI environments. If a virtual machine is detected, the checks for platform
-	// firmware protections are skipped entirely.
+	// in CI environments. If a virtual machine is detected, the host security checks
+	// are skipped entirely.
 	PermitVirtualMachine
 
 	// PermitNoDiscreteTPMResetMitigation will prevent RunChecks from returning an error
@@ -125,15 +125,6 @@ const (
 	// presence of this is included in profiles that use [secboot_efi.WithBootManagerCodeProfile].
 	// In general, it is better to disable this component entirely.
 	PermitAbsoluteComputrace
-
-	// PermitNotVerifyingAllBootManagerCodeDigests permits the checks for
-	// [secboot_efi.WithBootManagerCodeProfile] to not verify all of the EV_EFI_BOOT_SERVICES_APPLICATION
-	// digests that appear in the log to ensure that they contain an Authenticode digest that matches a
-	// boot component associated with the current boot. Note that the checks must at least verify the
-	// first OS component, so the location of this must be supplied to RunChecks. This isn't generally
-	// advisable - the results of testing are more accurate if the caller to RunChecks supplies the
-	// sequence of all EFI applications that executed before ExitBootServices for the current boot.
-	PermitNotVerifyingAllBootManagerCodeDigests
 
 	// PermitWeakSecureBootAlgorithms will prevent RunChecks from returning an error if any secure boot
 	// verification events on the current boot indicate the presence of weak algorithms, such as
@@ -167,10 +158,9 @@ var (
 // RunChecks performs checks on the current host environment in order to determine if it's suitable for FDE.
 // This is only intended to work on EFI systems. The supplied context is used as the parent context to which
 // to attach the backend for reading from EFI variables. The behaviour can be customized by the supplied flags.
-// For [secboot_efi.WithBootManagerCodeProfile] and [secboot_efi.WithSecureBootPolicyProfile] support, the
-// caller must supply at least the initial boot loader for the current boot via loadedImages, although note
-// that [secboot_efi.WithBootManagerCodeProfile] also requires the secondary boot loader to be supplied to. It
-// is best to supply all images that executed before ExitBootServices, in the correct order.
+// For [secboot_efi.WithSecureBootPolicyProfile] support, the caller must supply at least the initial boot
+// loader for the current boot via loadedImages. For [secboot_efi.WithBootManagerCodeProfile] support, the
+// caller must supply all images that executed before ExitBootServices, in the correct order.
 //
 // This can return many types of errors. Some errors may be returned immediately, such as
 // [ErrVirtualMachineDetected], *[TPM2DeviceError] and *[MeasuredBootError]. Other errors aren't returned
@@ -203,7 +193,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		return nil, ErrVirtualMachineDetected
 	case virtMode == detectVirtVM:
 		// VM detected and permitted. Note that we are running in a VM.
-		result.Flags |= RunningInVirtualMachine
+		warnings = append(warnings, ErrVirtualMachineDetected)
 	default:
 		panic("not reached")
 	}
@@ -377,6 +367,14 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		result.Flags |= DiscreteTPMDetected
 	}
 
+	addDeferredErrorOrWarning := func(err error, permitFlag CheckFlags) {
+		if flags&permitFlag == 0 {
+			deferredErrs = append(deferredErrs, err)
+		} else {
+			warnings = append(warnings, err)
+		}
+	}
+
 	if logResults.Lookup(internal_efi.PlatformConfigPCR).Ok() {
 		// PCR1 profiles are not supported yet.
 		err := &PlatformConfigPCRError{errors.New("generating profiles for PCR 1 is not supported yet")}
@@ -391,11 +389,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	// Check PCR2 for value-added-retailer supplied drivers.
 	pcr2Results := checkDriversAndAppsMeasurements(log)
-	switch {
-	case pcr2Results == driversAndAppsPresent && flags&PermitVARSuppliedDrivers == 0:
-		deferredErrs = append(deferredErrs, ErrVARSuppliedDriversPresent)
-	case pcr2Results == driversAndAppsPresent:
-		result.Flags |= VARDriversPresent
+	if pcr2Results == driversAndAppsPresent {
+		addDeferredErrorOrWarning(ErrVARSuppliedDriversPresent, PermitVARSuppliedDrivers)
 	}
 
 	if logResults.Lookup(internal_efi.DriversAndAppsConfigPCR).Ok() {
@@ -421,27 +416,14 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		warnings = append(warnings, &BootManagerCodePCRError{err})
 	default:
 		if pcr4Result&bootManagerCodeSysprepAppsPresent > 0 {
-			result.Flags |= SysPrepApplicationsPresent
+			addDeferredErrorOrWarning(ErrSysPrepApplicationsPresent, PermitSysPrepApplications)
 		}
 		if pcr4Result&bootManagerCodeAbsoluteComputraceRunning > 0 {
-			result.Flags |= AbsoluteComputraceActive
+			addDeferredErrorOrWarning(ErrAbsoluteComputraceActive, PermitAbsoluteComputrace)
 		}
 		if pcr4Result&bootManagerCodeNotAllLaunchDigestsVerified > 0 {
-			result.Flags |= NotAllBootManagerCodeDigestsVerified
-		}
-
-		if result.Flags&SysPrepApplicationsPresent > 0 && flags&PermitSysPrepApplications == 0 {
-			// SysPrep applications were detected but these are not permitted.
-			deferredErrs = append(deferredErrs, ErrSysPrepApplicationsPresent)
-		}
-		if result.Flags&AbsoluteComputraceActive > 0 && flags&PermitAbsoluteComputrace == 0 {
-			// Absolute was detected but this is not permitted.
-			deferredErrs = append(deferredErrs, ErrAbsoluteComputraceActive)
-		}
-		if result.Flags&NotAllBootManagerCodeDigestsVerified > 0 && flags&PermitNotVerifyingAllBootManagerCodeDigests == 0 {
-			// Not all boot manager code launch digests were verified, and this was not allowed.
-			// As we can't verify that this PCR is ok to be used, wrap this in BootManagerCodePCRError.
-			deferredErrs = append(deferredErrs, &BootManagerCodePCRError{ErrNotAllBootManagerCodeDigestsVerified})
+			// TODO: Return this error from checkBootManagerCodeMeasurements
+			deferredErrs = append(deferredErrs, &BootManagerCodePCRError{errors.New("cannot verify the correctness of all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch event digests")})
 		}
 	}
 
@@ -472,22 +454,12 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		warnings = append(warnings, &SecureBootPolicyPCRError{err})
 	default:
 		if pcr7Result.Flags&secureBootIncludesWeakAlg > 0 {
-			result.Flags |= WeakSecureBootAlgorithmsDetected
+			addDeferredErrorOrWarning(ErrWeakSecureBootAlgorithmDetected, PermitWeakSecureBootAlgorithms)
 		}
 		if pcr7Result.Flags&secureBootPreOSVerificationIncludesDigest > 0 {
-			result.Flags |= PreOSVerificationUsingDigestsDetected
+			addDeferredErrorOrWarning(ErrPreOSVerificationUsingDigests, PermitPreOSVerificationUsingDigests)
 		}
 		result.UsedSecureBootCAs = pcr7Result.UsedAuthorities
-
-		// Only return these errors if PCR7 is required.
-		if result.Flags&WeakSecureBootAlgorithmsDetected > 0 && flags&PermitWeakSecureBootAlgorithms == 0 {
-			// We don't support weak secure boot verification algorithms
-			deferredErrs = append(deferredErrs, ErrWeakSecureBootAlgorithmDetected)
-		}
-		if result.Flags&PreOSVerificationUsingDigestsDetected > 0 && flags&PermitPreOSVerificationUsingDigests == 0 {
-			// We don't support the verification of pre-OS components using digests
-			deferredErrs = append(deferredErrs, ErrPreOSVerificationUsingDigests)
-		}
 	}
 
 	if len(deferredErrs) > 0 {
