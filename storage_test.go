@@ -69,13 +69,16 @@ func (c *mockStorageContainerWithProbeContext) probeContext() context.Context {
 }
 
 type mockStorageContainerBackend struct {
-	containers map[string]*mockStorageContainer
-	probeErr   error
+	containers          map[string]*mockStorageContainer
+	activatedContainers map[string]*mockStorageContainer
+	probeErr            error
+	probeActivatedErr   error
 }
 
 func newMockStorageContainerBackend() *mockStorageContainerBackend {
 	return &mockStorageContainerBackend{
-		containers: make(map[string]*mockStorageContainer),
+		containers:          make(map[string]*mockStorageContainer),
+		activatedContainers: make(map[string]*mockStorageContainer),
 	}
 }
 
@@ -99,12 +102,47 @@ func (b *mockStorageContainerBackend) clearProbeErr() {
 	b.probeErr = nil
 }
 
+func (b *mockStorageContainerBackend) addActivatedContainer(path string, container *mockStorageContainer) {
+	if container == nil {
+		delete(b.activatedContainers, path)
+		return
+	}
+	b.activatedContainers[path] = container
+}
+
+func (b *mockStorageContainerBackend) deleteActivatedContainer(path string) {
+	delete(b.activatedContainers, path)
+}
+
+func (b *mockStorageContainerBackend) setProbeActivatedErr(err error) {
+	b.probeActivatedErr = err
+}
+
+func (b *mockStorageContainerBackend) clearProbeActivatedErr() {
+	b.probeActivatedErr = nil
+}
+
 func (b *mockStorageContainerBackend) Probe(ctx context.Context, path string) (StorageContainer, error) {
 	if b.probeErr != nil {
 		return nil, b.probeErr
 	}
 
 	container, exists := b.containers[path]
+	if !exists {
+		return nil, nil
+	}
+	return &mockStorageContainerWithProbeContext{
+		backendProbeCtx:      ctx,
+		mockStorageContainer: container,
+	}, nil
+}
+
+func (b *mockStorageContainerBackend) ProbeActivated(ctx context.Context, path string) (StorageContainer, error) {
+	if b.probeActivatedErr != nil {
+		return nil, b.probeActivatedErr
+	}
+
+	container, exists := b.activatedContainers[path]
 	if !exists {
 		return nil, nil
 	}
