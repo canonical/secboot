@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 	. "github.com/snapcore/secboot/luks2"
@@ -30,6 +31,25 @@ import (
 )
 
 func Test(t *testing.T) { TestingT(t) }
+
+type mockExternalKeyslotInfo struct {
+}
+
+func (*mockExternalKeyslotInfo) Type() secboot.KeyslotType {
+	return secboot.KeyslotTypePlatform
+}
+
+func (*mockExternalKeyslotInfo) Name() string {
+	return "mock external keyslot"
+}
+
+func (*mockExternalKeyslotInfo) Priority() int {
+	return 0
+}
+
+func (*mockExternalKeyslotInfo) Data() secboot.KeyDataReader {
+	return nil
+}
 
 type mockLuks2KeyDataReader struct {
 	name     string

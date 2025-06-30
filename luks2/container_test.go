@@ -257,6 +257,18 @@ func (s *containerSuite) TestContainerActivatePlatformNoKeyslotInfo(c *C) {
 	})
 }
 
+func (s *containerSuite) TestContainerActivatePlatformUnrecognizedKeyslotInfoType(c *C) {
+	// Test the StorageContainer.Activate implementation with a KeyslotInfo implementation
+	// other than the LUKS2 one. This will test the "external key data file" case with
+	// the eventual new activation API, as these will get their own KeyslotInfo type.
+	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
+	key := testutil.DecodeHexString(c, "a7bfa9a642b897bc13c58b84cf8237d7d1b224b2e63cb3dc10414ff1f9052c56")
+	err := container.Activate(context.Background(), new(mockExternalKeyslotInfo), key, WithVolumeName("data"))
+	c.Check(err, IsNil)
+	c.Check(s.commands, DeepEquals, []string{
+		"Activate(data,/dev/nvme0n1p3,a7bfa9a642b897bc13c58b84cf8237d7d1b224b2e63cb3dc10414ff1f9052c56,-1)",
+	})
+}
 func (s *containerSuite) TestContainerActivateRecovery(c *C) {
 	// Test the StorageContainer.Activate implementation with a recovery keyslot type.
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))

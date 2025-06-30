@@ -182,11 +182,9 @@ func (c *storageContainerImpl) Activate(ctx context.Context, ki secboot.KeyslotI
 
 	slot := luks2.AnySlot
 	if ki != nil {
-		lki, ok := ki.(*keyslotInfoImpl)
-		if !ok {
-			return errors.New("invalid keyslotInfo type")
+		if lki, ok := ki.(*keyslotInfoImpl); ok {
+			slot = lki.keyslotId
 		}
-		slot = lki.keyslotId
 	}
 
 	if err := luks2Ops.Activate(volumeName, c.path, key, slot); err != nil {
