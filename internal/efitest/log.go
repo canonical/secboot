@@ -425,7 +425,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 					Device:   0x0},
 				&efi.NVMENamespaceDevicePathNode{
 					NamespaceID:   0x1,
-					NamespaceUUID: 0x0},
+					NamespaceUUID: efi.EUI64{}},
 				&efi.HardDriveDevicePathNode{
 					PartitionNumber: 1,
 					PartitionStart:  0x800,
@@ -646,7 +646,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 					Device:   0x0},
 				&efi.NVMENamespaceDevicePathNode{
 					NamespaceID:   0x1,
-					NamespaceUUID: 0x0},
+					NamespaceUUID: efi.EUI64{}},
 				&efi.HardDriveDevicePathNode{
 					PartitionNumber: 1,
 					PartitionStart:  0x800,

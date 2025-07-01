@@ -91,7 +91,7 @@ func (s *absoluteSuite) TestIsAbsoluteAgentLaunchFalseNotFirmwareVolume(c *C) {
 				&efi.ACPIDevicePathNode{HID: hid, UID: 0},
 				&efi.PCIDevicePathNode{Function: 0, Device: 6},
 				&efi.PCIDevicePathNode{Function: 0, Device: 0},
-				&efi.NVMENamespaceDevicePathNode{NamespaceID: 1, NamespaceUUID: 0},
+				&efi.NVMENamespaceDevicePathNode{NamespaceID: 1, NamespaceUUID: efi.EUI64{}},
 				&efi.HardDriveDevicePathNode{
 					PartitionNumber: 1,
 					PartitionStart:  0x800,

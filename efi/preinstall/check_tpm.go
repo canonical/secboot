@@ -63,8 +63,8 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	}
 	savedTpm := tpm
 	defer func() {
-		// Make sure it gets closed again if we return an error
-		if err == nil {
+		// Make sure it gets closed again if we return an error and no TPM context.
+		if tpm != nil {
 			return
 		}
 		savedTpm.Close()
