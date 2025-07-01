@@ -170,7 +170,7 @@ func (s *backendSuite) TestBackendProbeCryptDeviceSymlink(c *C) {
 	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx})
 }
 
-func (s *backendSuite) TestBackendProbeNoCryptOrDMDevice(c *C) {
+func (s *backendSuite) TestBackendProbeNoCrypt(c *C) {
 	// Test Probe with a device node that is not a LUKS2 or DM device.
 	ctx := context.Background()
 	container, err := s.backend.Probe(ctx, "/dev/sda1")
@@ -180,31 +180,31 @@ func (s *backendSuite) TestBackendProbeNoCryptOrDMDevice(c *C) {
 	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx})
 }
 
-func (s *backendSuite) TestBackendProbeDMDeviceWithUnrecognizedTarget(c *C) {
+func (s *backendSuite) TestBackendProbeActivatedDMDeviceWithUnrecognizedTarget(c *C) {
 	// Test Probe with a device node that is a DM device with an unrecognized target type
 	s.addDMDeviceErr("/dev/dm-0", ErrUnsupportedTargetType)
 
 	ctx := context.Background()
-	container, err := s.backend.Probe(ctx, "/dev/dm-0")
+	container, err := s.backend.ProbeActivated(ctx, "/dev/dm-0")
 	c.Assert(err, IsNil)
 	c.Assert(container, IsNil)
 
-	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx})
+	c.Check(s.probeCtxs, DeepEquals, []context.Context(nil))
 }
 
-func (s *backendSuite) TestBackendProbeUnexpectedSourceDeviceFromDMDeviceError(c *C) {
+func (s *backendSuite) TestBackendProbeActivatedUnexpectedSourceDeviceFromDMDeviceError(c *C) {
 	// Test Probe with a device node that is not a LUKS2 or DM device
 	// and an unexpected error is returned from sourceDeviceFromDMDevice.
 	s.addDMDeviceErr("/dev/dm-1", errors.New("some error"))
 
 	ctx := context.Background()
-	_, err := s.backend.Probe(ctx, "/dev/dm-1")
+	_, err := s.backend.ProbeActivated(ctx, "/dev/dm-1")
 	c.Check(err, ErrorMatches, `cannot obtain source device for dm device /dev/dm-1: some error`)
 
-	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx})
+	c.Check(s.probeCtxs, DeepEquals, []context.Context(nil))
 }
 
-func (s *backendSuite) TestBackendProbeMappedCryptDevice(c *C) {
+func (s *backendSuite) TestBackendProbeActivatedMappedCryptDevice(c *C) {
 	// Test Probe by passing a path to DM device that is backed by
 	// a LUKS2 device.
 	s.addLUKS2Device("/dev/nvme0n1p3")
@@ -212,7 +212,7 @@ func (s *backendSuite) TestBackendProbeMappedCryptDevice(c *C) {
 	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	ctx := context.Background()
-	container, err := s.backend.Probe(ctx, "/dev/dm-0")
+	container, err := s.backend.ProbeActivated(ctx, "/dev/dm-0")
 	c.Assert(err, IsNil)
 	c.Assert(container, NotNil)
 	c.Check(container.Path(), Equals, "/dev/nvme0n1p3")
@@ -220,11 +220,10 @@ func (s *backendSuite) TestBackendProbeMappedCryptDevice(c *C) {
 	c.Assert(container, Implements, &tmpl)
 	c.Check(container.(StorageContainer).Dev(), Equals, unix.Mkdev(259, 3))
 
-	ctx2 := context.WithValue(ctx, ProbeDepthKey, uint(1))
-	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx, ctx2})
+	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx})
 }
 
-func (s *backendSuite) TestBackendProbeMappedNestedLinearAndCryptDevice(c *C) {
+func (s *backendSuite) TestBackendProbeActivatedMappedNestedLinearAndCryptDevice(c *C) {
 	// Test Probe by passing a path to DM device that is backed by
 	// a LUKS2 device - in this case, using linear inside a crypt device.
 	s.addLUKS2Device("/dev/nvme0n1p3")
@@ -233,7 +232,7 @@ func (s *backendSuite) TestBackendProbeMappedNestedLinearAndCryptDevice(c *C) {
 	s.addDMDevice("/dev/dm-1", "/dev/dm-0")
 
 	ctx := context.Background()
-	container, err := s.backend.Probe(ctx, "/dev/dm-1")
+	container, err := s.backend.ProbeActivated(ctx, "/dev/dm-1")
 	c.Assert(err, IsNil)
 	c.Assert(container, NotNil)
 	c.Check(container.Path(), Equals, "/dev/nvme0n1p3")
@@ -241,13 +240,11 @@ func (s *backendSuite) TestBackendProbeMappedNestedLinearAndCryptDevice(c *C) {
 	c.Assert(container, Implements, &tmpl)
 	c.Check(container.(StorageContainer).Dev(), Equals, unix.Mkdev(259, 3))
 
-	ctx2 := context.WithValue(ctx, ProbeDepthKey, uint(1))
-	ctx3 := context.WithValue(ctx2, ProbeDepthKey, uint(2))
-	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx, ctx2, ctx3})
+	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx, ctx})
 }
 
 func (s *backendSuite) TestBackendProbeReturnsCachedDevice(c *C) {
-	// Test that Probe always returns the same container for the same
+	// Test that Probe and ProbeActivated always returns the same container for the same
 	// device, regardless of how the container is addressed.
 	s.addLUKS2Device("/dev/nvme0n1p3")
 	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
@@ -264,7 +261,7 @@ func (s *backendSuite) TestBackendProbeReturnsCachedDevice(c *C) {
 	c.Assert(err, IsNil)
 	c.Check(container2, Equals, container)
 
-	container3, err := s.backend.Probe(ctx, "/dev/dm-0")
+	container3, err := s.backend.ProbeActivated(ctx, "/dev/dm-0")
 	c.Assert(err, IsNil)
 	c.Check(container3, Equals, container)
 }

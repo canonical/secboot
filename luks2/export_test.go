@@ -31,7 +31,6 @@ var (
 	ErrNotDMBlockDevice        = errNotDMBlockDevice
 	ErrUnsupportedTargetType   = errUnsupportedTargetType
 	NewStorageContainerBackend = newStorageContainerBackend
-	ProbeDepthKey              = probeDepthKey
 	SourceDeviceFromDMDevice   = sourceDeviceFromDMDevice
 )
 

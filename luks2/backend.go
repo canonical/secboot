@@ -32,11 +32,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type probeDepthKeyType struct{}
-
 var (
-	probeDepthKey = probeDepthKeyType{}
-
 	devRoot              = "/dev"
 	filepathEvalSymlinks = filepath.EvalSymlinks
 	osStat               = os.Stat
@@ -62,53 +58,25 @@ func newStorageContainerBackend() *storageContainerBackend {
 
 // Probe implements [secboot.StorageContainerBackend.Probe].
 //
-// The path can be the path to the LUKS2 source device, or a symbolic link to it, or it can
-// be a path to an open DM volume that is backed by a LUKS2 storage device - this function
-// will walk the DM tables in this case to find the underlying source device. It identifies
-// a [StorageContainer] by its device number, and so it will always return the same instance
-// for any paths that reference the same container, regardless of what type of path is supplied.
+// The path can be the path to the LUKS2 source device, or a symbolic link to one.
+//
+// It identifies a [StorageContainer] by its device number, and it will always return
+// the same instance for any paths that reference the same container, regardless of
+// what path is supplied.
 func (b *storageContainerBackend) Probe(ctx context.Context, path string) (secboot.StorageContainer, error) {
 	// Use the luksview package to test if the supplied path is
 	// a device or file containing a LUKS2 container.
 	_, err := newLuksView(ctx, path)
-	if err != nil {
-		if errors.Is(err, internal_luks2.ErrInvalidMagic) {
-			// We expect this error if the supplied path genuinely doesn't reference
-			// a LUKS2 container. It's possible we were supplied a path to a DM
-			// device, so walk the tree of tables to obtain a source device.
-			sourcePath, err := sourceDeviceFromDMDevice(ctx, path)
-			switch {
-			case errors.Is(err, errNotDMBlockDevice):
-				// Not a DM block device, so ignore this.
-				return nil, nil
-			case errors.Is(err, errUnsupportedTargetType):
-				// Ignore DM block devices with unrecognized target types.
-				return nil, nil
-			case err != nil:
-				// Any other type of error is unexpected, so return this.
-				return nil, fmt.Errorf("cannot obtain source device for dm device %s: %w", path, err)
-			default:
-				// The supplied path is a DM device and we have a source path - try
-				// again to see if we can find a LUKS2 header on the new source path.
-				// Apply a depth limit here to avoid too much recursion. The permitted
-				// depth here should be sufficient for lvm (linear) inside crypt or
-				// the stack of DM devices associated with an in-progress reencrypt.
-				var depth uint
-				if d := ctx.Value(probeDepthKey); d != nil {
-					depth = d.(uint)
-					if depth > 10 {
-						return nil, errors.New("path to dm device that is too deeply nested")
-					}
-				}
-				ctx := context.WithValue(ctx, probeDepthKey, depth+1)
-				return b.Probe(ctx, sourcePath)
-			}
-		}
-
-		// The supplied device begins with what looks like a LUKS2 header,
-		// but the header failed to parse for some reason. Treat the supplied
-		// path as a path to a LUKS2 container and return an error in this
-		// case.
+	switch {
+	case errors.Is(err, internal_luks2.ErrInvalidMagic):
+		// We expect this error if the supplied path genuinely doesn't reference
+		// a LUKS2 container. Return nothing in this case.
+		return nil, nil
+	case err != nil:
+		// This error may indicate that the supplied device begins with what
+		// looks like a LUKS2 header, but the header failed to parse for some
+		// reason. Or it could be any other unexpected error. We'll return the
+		// error in this case.
 		return nil, err
 	}
 
@@ -140,6 +108,51 @@ func (b *storageContainerBackend) Probe(ctx context.Context, path string) (secbo
 	}
 
 	return container, nil
+}
+
+// ProbeActivated implements [secboot.StorageContainerBackend.ProbeActivated].
+//
+// The path can be the path to a DM device that is backed by a LUKS2 container, or
+// a symbolic link to one.
+//
+// It identifies a [StorageContainer] by its device number, and it will always return
+// the same instance for any paths that reference the same container, regardless of
+// what path is supplied.
+func (b *storageContainerBackend) ProbeActivated(ctx context.Context, path string) (secboot.StorageContainer, error) {
+	// If we have a path to a DM device, walk the tables to find the
+	// source LUKS2 container.
+	for path != "" {
+		sourcePath, err := sourceDeviceFromDMDevice(ctx, path)
+		switch {
+		case errors.Is(err, errNotDMBlockDevice):
+			// Not a DM block device, so ignore this.
+			return nil, nil
+		case errors.Is(err, errUnsupportedTargetType):
+			// Ignore DM block devices with unrecognized target types.
+			return nil, nil
+		case err != nil:
+			// Any other type of error is unexpected, so return this.
+			return nil, fmt.Errorf("cannot obtain source device for dm device %s: %w", path, err)
+		}
+
+		// The current path is a DM device and we have a source path
+		// for it. Try using this with Probe.
+		container, err := b.Probe(ctx, sourcePath)
+		if err != nil {
+			// We don't expect an error.
+			return nil, err
+		}
+
+		if container != nil {
+			// We've found the source LUKS2 storage container.
+			return container, nil
+		}
+
+		// Try again
+		path = sourcePath
+	}
+
+	return nil, nil
 }
 
 func init() {
