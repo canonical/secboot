@@ -33,7 +33,6 @@ import (
 	"golang.org/x/xerrors"
 
 	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
-	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 )
@@ -206,11 +205,11 @@ func (s *activateWithKeyDataState) tryActivateWithRecoveredKey(key DiskUnlockKey
 			return
 		}
 
-		if err := keyring.AddKeyToUserKeyring(key, devicePath, keyringPurposeDiskUnlock, s.keyringPrefix); err != nil {
+		if err := addKeyToUserKeyringLegacy(key, devicePath, KeyringKeyPurposeUnlock, s.keyringPrefix); err != nil {
 			fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
 		}
 
-		if err := keyring.AddKeyToUserKeyring(auxKey, devicePath, keyringPurposeAuxiliary, s.keyringPrefix); err != nil {
+		if err := addKeyToUserKeyringLegacy(auxKey, devicePath, keyringKeyPurposeAuxiliary, s.keyringPrefix); err != nil {
 			fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
 		}
 	}
@@ -277,7 +276,7 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 		// a maximum of 2 keys with passphrases enabled (Ubuntu Core based desktop on
 		// a UEFI+TPM platform with run+recovery and recovery-only protectors for
 		// ubuntu-data).
-		passphrase, err := s.authRequestor.RequestPassphrase(s.volumeName, s.sourceDevicePath)
+		passphrase, err := s.authRequestor.RequestUserCredential(context.Background(), s.volumeName, s.sourceDevicePath, UserAuthTypePassphrase)
 		if err != nil {
 			passphraseErr = xerrors.Errorf("cannot obtain passphrase: %w", err)
 			continue
@@ -330,9 +329,15 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor 
 	for ; tries > 0; tries-- {
 		lastErr = nil
 
-		key, err := authRequestor.RequestRecoveryKey(volumeName, sourceDevicePath)
+		keyString, err := authRequestor.RequestUserCredential(context.Background(), volumeName, sourceDevicePath, UserAuthTypeRecoveryKey)
 		if err != nil {
 			lastErr = xerrors.Errorf("cannot obtain recovery key: %w", err)
+			continue
+		}
+
+		key, err := ParseRecoveryKey(keyString)
+		if err != nil {
+			lastErr = xerrors.Errorf("invalid recovery key: %w", err)
 			continue
 		}
 
@@ -341,7 +346,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor 
 			continue
 		}
 
-		if err := keyring.AddKeyToUserKeyring(key[:], sourceDevicePath, keyringPurposeDiskUnlock, keyringPrefixOrDefault(keyringPrefix)); err != nil {
+		if err := addKeyToUserKeyringLegacy(key[:], sourceDevicePath, KeyringKeyPurposeUnlock, keyringPrefixOrDefault(keyringPrefix)); err != nil {
 			fmt.Fprintf(os.Stderr, "secboot: Cannot add key to user keyring: %v\n", err)
 		}
 
