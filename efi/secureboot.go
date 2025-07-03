@@ -272,3 +272,46 @@ func applySignatureDBUpdate(vars varReadWriter, update *SignatureDBUpdate, quirk
 
 	return vars.WriteVar(update.Name.Name, update.Name.GUID, attrs, updateData)
 }
+
+const (
+	// allowInsufficientDMAProtectionParamKey is used to allow for the "DMA Protection Disabled"
+	// string in PCR7.
+	allowInsufficientDMAProtectionParamKey loadParamsKey = "allow_insufficient_dma_protection"
+
+	// includeInsufficientDMAProtectionParamKey is used to signal whether the "DMA Protection Disabled"
+	// string should be reflected in the produced PCR profile.
+	// this is ignored if allowInsufficientDMAProtection is false, as the presence of the event
+	// will lead to an error in that case.
+	includeInsufficientDMAProtectionParamKey = "include_insufficient_dma_protection"
+)
+
+type allowInsufficientDmaProtectionOption struct{}
+
+func (o allowInsufficientDmaProtectionOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
+	visitor.AddImageLoadParams(func(params ...loadParams) []loadParams {
+		var out []loadParams
+		for _, v := range []bool{false, true} {
+			var newParams []loadParams
+			for _, p := range params {
+				newParams = append(newParams, p.Clone())
+			}
+			for _, p := range newParams {
+				p[allowInsufficientDMAProtectionParamKey] = true
+				p[includeInsufficientDMAProtectionParamKey] = v
+			}
+			out = append(out, newParams...)
+		}
+		return out
+	})
+	return nil
+}
+
+// WithAllowInsufficientDMAProtection can be supplied to AddPCRProfile to allow for
+// PCR7 including the "DMA Protection Disabled" event. While this reduces security,
+// it is required on some devices.
+// If this string is present in the event log, this option results in a creation of a
+// branched PCR profile that has two branches at the Firmware load stage one including
+// the event with the string, the another not.
+func WithAllowInsufficientDmaProtection() PCRProfileOption {
+	return allowInsufficientDmaProtectionOption{}
+}

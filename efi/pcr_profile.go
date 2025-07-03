@@ -336,6 +336,18 @@ func (g *pcrProfileGenerator) AddInitialVariablesModifier(fn internal_efi.Initia
 	g.varModifiers = append(g.varModifiers, fn)
 }
 
+type firmwareImageLoadParams struct {
+	fn func(...loadParams) []loadParams
+}
+
+func (p *firmwareImageLoadParams) applyTo(params ...loadParams) []loadParams {
+	return p.fn(params...)
+}
+
+func (g *pcrProfileGenerator) AddImageLoadParams(fn func(...loadParams) []loadParams) {
+	g.loadSequences.params = append(g.loadSequences.params, &firmwareImageLoadParams{fn: fn})
+}
+
 // PCRAlg implements pcrProfileContext.PCRAlg.
 func (g *pcrProfileGenerator) PCRAlg() tpm2.HashAlgorithmId {
 	return g.pcrAlg

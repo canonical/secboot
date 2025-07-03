@@ -149,6 +149,12 @@ const (
 	// is generally ok for full-disk encryption, but completely breaks the remote attestation model
 	// because it allows an adversary to trivially spoof an entire trusted platform from software.
 	PermitEmptyPCRBanks
+
+	// PermitInsufficientDMAProtection will prevent RunChecks from returning an error if
+	// the firmware indicates that DMA remapping was disabled in the pre-OS environment,
+	// and/or if no kernel IOMMU support was detected.
+	// This weakens security because it allows DMA attacks to compromise system integrity.
+	PermitInsufficientDMAProtection
 )
 
 var (
@@ -307,7 +313,13 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				return nil, &HostSecurityError{err}
 			}
 			for _, e := range ce.Unwrap() {
-				deferredErrs = append(deferredErrs, &HostSecurityError{e})
+				if errors.Is(err, ErrInsufficientDMAProtection) && flags&PermitInsufficientDMAProtection > 0 {
+					result.Flags |= InsufficientDMAProtectionDetected
+				} else if errors.Is(err, ErrNoKernelIOMMU) && flags&PermitInsufficientDMAProtection > 0 {
+					warnings = append(warnings, err)
+				} else {
+					deferredErrs = append(deferredErrs, &HostSecurityError{e})
+				}
 			}
 		}
 

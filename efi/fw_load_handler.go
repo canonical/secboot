@@ -33,7 +33,9 @@ import (
 )
 
 const (
-	sbStateName = "SecureBoot" // Unicode variable name for the EFI secure boot configuration (enabled/disabled)
+	sbStateName              = "SecureBoot"                  // Unicode variable name for the EFI secure boot configuration (enabled/disabled)
+	dmaProtectionDisabled    = "DMA Protection Disabled"     // ASCII string measured to PCR7 if DMA remapping is disabled in the pre-OS environment
+	dmaProtectionDisabledNul = "DMA Protection Disabled\x00" // TCG PC Client Profile spec says no NUL-terminator, but some firmware is buggy
 )
 
 // fwLoadHandler is an implementation of imageLoadHandler that measures firmware
@@ -145,6 +147,18 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			if foundSecureBootSeparator {
 				return errors.New("unexpected configuration event")
 			}
+		case boolParamOrFalse(ctx.Params(), allowInsufficientDMAProtectionParamKey) &&
+			e.PCRIndex == internal_efi.SecureBootPolicyPCR &&
+			e.EventType == tcglog.EventTypeEFIAction &&
+			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) ||
+				bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))):
+			// The "DMA Protection Disabled" string is allowed to appear in PCR7.
+			// Now we use the includeInsufficientDMAProtection flag to determine if
+			// this run of fwLoadHandler should really measure it to the profile as
+			// well.
+			if boolParamOrFalse(ctx.Params(), includeInsufficientDMAProtectionParamKey) {
+				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
+			}
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR:
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:
@@ -160,6 +174,14 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		return errors.New("missing separator")
 	}
 	return nil
+}
+
+func boolParamOrFalse(loadParams loadParams, key loadParamsKey) bool {
+	val, ok := loadParams[key]
+	if !ok {
+		return false
+	}
+	return val.(bool)
 }
 
 func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
