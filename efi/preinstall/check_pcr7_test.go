@@ -1015,7 +1015,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 		},
 	})
-	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"DMA Protection Disabled\" whilst measuring verification`)
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"DMA Protection Disabled\" whilst measuring config`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadMissingSecureBoot(c *C) {
