@@ -336,7 +336,7 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
 			// PCRData.AuthorizedPolicySignature is invalid.
-			return policyDataError{xerrors.Errorf("cannot verify PCR policy signature: %w", err)}
+			return pcrPolicyDataError{xerrors.Errorf("cannot verify PCR policy signature: %w", err)}
 		}
 		return err
 	}
@@ -345,7 +345,7 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
 			// d.PCRData.AuthorizedPolicy is invalid or the auth key isn't associated with
 			// this object.
-			return policyDataError{errors.New("the PCR policy is invalid")}
+			return pcrPolicyDataError{errors.New("the PCR policy is invalid")}
 		}
 		return err
 	}

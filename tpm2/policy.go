@@ -500,6 +500,23 @@ func isPolicyDataError(err error) bool {
 	return xerrors.As(err, &e)
 }
 
+type pcrPolicyDataError struct {
+	err error
+}
+
+func (e pcrPolicyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e pcrPolicyDataError) Unwrap() error {
+	return e.err
+}
+
+func isPCRPolicyDataError(err error) bool {
+	var e pcrPolicyDataError
+	return errors.As(err, &e)
+}
+
 var errSessionDigestNotFound = errors.New("current session digest not found in policy data")
 
 // executeAssertions executes one or more PolicyOR assertions in order to support

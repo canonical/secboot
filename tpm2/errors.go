@@ -92,3 +92,15 @@ func isInvalidKeyDataError(err error) bool {
 	var e InvalidKeyDataError
 	return xerrors.As(err, &e)
 }
+
+type PCRPolicyDataError struct {
+	err error
+}
+
+func (e *PCRPolicyDataError) Error() string {
+	return fmt.Sprintf("invalid PCR policy data: %v", e.err)
+}
+
+func (e *PCRPolicyDataError) Unwrap() error {
+	return e.err
+}

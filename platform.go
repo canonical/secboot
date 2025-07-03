@@ -49,6 +49,11 @@ const (
 	// be performed by PlatformKeyDataHandler because the supplied
 	// authorization key was incorrect.
 	PlatformHandlerErrorInvalidAuthKey
+
+	// PlatformHandlerErrorIncompatibleRole indicates that an action could
+	// not be performed by PlatformKeyDataHandler because they key data's
+	// role is incompatible with the current boot configuration.
+	PlatformHandlerErrorIncompatibleRole
 )
 
 // PlatformHandlerError is returned from a PlatformKeyDataHandler implementation when
