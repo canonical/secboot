@@ -171,7 +171,7 @@ func WithAutoTCGPCRProfile(r *CheckResult, opts PCRProfileOptionsFlags) PCRProfi
 	return out
 }
 
-func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnablePCRsOption, error) {
+func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnablePCRsOption, error) {
 	switch {
 	case o.opts&PCRProfileOptionMostSecure > 0:
 		if o.opts != PCRProfileOptionMostSecure {
@@ -304,13 +304,18 @@ func (o *pcrProfileAutoSetPcrsOption) options() ([]secboot_efi.PCRProfileEnableP
 
 // ApplyOptionTo implements [secboot_efi.PCRProfileOption].
 func (o *pcrProfileAutoSetPcrsOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
-	opts, err := o.options()
+	pcrOpts, err := o.pcrOptions()
 	if err != nil {
 		return fmt.Errorf("cannot select an appropriate set of TCG defined PCRs with the current options: %w", err)
 	}
-	for i, opt := range opts {
-		if err := opt.ApplyOptionTo(visitor); err != nil {
+	for i, pcrOpt := range pcrOpts {
+		if err := pcrOpt.ApplyOptionTo(visitor); err != nil {
 			return fmt.Errorf("cannot add PCR profile option %d: %w", i, err)
+		}
+	}
+	if o.result.Flags&InsufficientDMAProtectionDetected != 0 {
+		if err := secboot_efi.WithAllowInsufficientDmaProtection().ApplyOptionTo(visitor); err != nil {
+			return fmt.Errorf("cannot add DMA allow insufficient protection profile option: %w", err)
 		}
 	}
 	return nil
@@ -322,14 +327,14 @@ func (o *pcrProfileAutoSetPcrsOption) Options(opts PCRProfileOptionsFlags) PCRPr
 
 // PCRs implements [secboot_efi.PCRProfileEnablePCRsOption.PCRs].
 func (o *pcrProfileAutoSetPcrsOption) PCRs() (tpm2.HandleList, error) {
-	opts, err := o.options()
+	pcrOpts, err := o.pcrOptions()
 	if err != nil {
 		return nil, fmt.Errorf("cannot select an appropriate set of TCG defined PCRs with the current options: %w", err)
 	}
 
 	var out tpm2.HandleList
-	for i, opt := range opts {
-		pcrs, err := opt.PCRs()
+	for i, pcrOpt := range pcrOpts {
+		pcrs, err := pcrOpt.PCRs()
 		if err != nil {
 			return nil, fmt.Errorf("cannot add PCRs from profile option %d: %w", i, err)
 		}

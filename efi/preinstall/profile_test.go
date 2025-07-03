@@ -34,7 +34,8 @@ type profileSuite struct{}
 var _ = Suite(&profileSuite{})
 
 type mockPcrProfileOptionVisitor struct {
-	pcrs tpm2.HandleList
+	pcrs            tpm2.HandleList
+	imageLoadParams []internal_efi.LoadParams
 }
 
 func (v *mockPcrProfileOptionVisitor) AddPCRs(pcrs ...tpm2.Handle) {
@@ -50,7 +51,7 @@ func (*mockPcrProfileOptionVisitor) AddInitialVariablesModifier(fn internal_efi.
 }
 
 func (v *mockPcrProfileOptionVisitor) AddImageLoadParams(f func(...internal_efi.LoadParams) []internal_efi.LoadParams) {
-	panic("not reached")
+	v.imageLoadParams = f(v.imageLoadParams...)
 }
 
 func (s *profileSuite) TestWithAutoTCGPCRProfileDefault(c *C) {
@@ -528,4 +529,30 @@ func (s *profileSuite) TestWithAutoTCGPCRProfileOptions(c *C) {
 
 	expectedProfile := WithAutoTCGPCRProfile(result, PCRProfileOptionTrustCAsForBootCode|PCRProfileOptionTrustCAsForVARSuppliedDrivers)
 	c.Check(profile, DeepEquals, expectedProfile)
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRInsufficientDMAProtection(c *C) {
+	result := &CheckResult{
+		PCRAlg:            tpm2.HashAlgorithmSHA256,
+		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		Flags:             InsufficientDMAProtectionDetected,
+	}
+	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
+
+	profile = profile.Options(PCRProfileOptionsDefault)
+
+	visitor := &mockPcrProfileOptionVisitor{
+		imageLoadParams: []internal_efi.LoadParams{{}},
+	}
+	c.Check(profile.ApplyOptionTo(visitor), IsNil)
+	c.Check(visitor.imageLoadParams, DeepEquals, []internal_efi.LoadParams{
+		{
+			"allow_insufficient_dma_protection":   true,
+			"include_insufficient_dma_protection": false,
+		},
+		{
+			"allow_insufficient_dma_protection":   true,
+			"include_insufficient_dma_protection": true,
+		},
+	})
 }
