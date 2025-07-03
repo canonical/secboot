@@ -39,7 +39,7 @@ func (s *keyDataLegacySuite) SetUpSuite(c *C) {
 
 func (s *keyDataLegacySuite) SetUpTest(c *C) {
 	s.handler.state = mockPlatformDeviceStateOK
-	s.handler.passphraseSupport = false
+	s.handler.userAuthSupport = false
 }
 
 func (s *keyDataLegacySuite) TearDownSuite(c *C) {
@@ -201,7 +201,7 @@ func (s *keyDataLegacySuite) TestRecoverKeysWithPassphraseAuthModeNone(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeysWithPassphrase("")
-	c.Check(err, ErrorMatches, "cannot recover key with passphrase")
+	c.Check(err, ErrorMatches, "cannot recover key with passphrase - user auth required: none")
 	c.Check(recoveredKey, IsNil)
 	c.Check(recoveredAuxKey, IsNil)
 }
