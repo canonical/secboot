@@ -54,7 +54,6 @@ type KeyslotInfo interface {
 	secboot.KeyslotInfo
 
 	// KeyslotID returns the LUKS2 keyslot ID associated
-	// with this secboot keyslot. This will currently always
-	// return -1 for recovery keys.
+	// with this secboot keyslot.
 	KeyslotID() int
 }

@@ -25,6 +25,7 @@ import (
 	"sort"
 
 	"github.com/snapcore/secboot"
+	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
 )
 
 // storageContainerReadWriterImpl is the main implementation that backs
@@ -32,7 +33,18 @@ import (
 // interfaces.
 type storageContainerReadWriterImpl struct {
 	container *storageContainerImpl
-	keyslots  map[string]*keyslotInfoImpl
+
+	// keyslots is a cache of the keyslot metadata for this storage
+	// container. We keep this here under the assumption that no other
+	// processes are messing with this information, and that we will
+	// ensure that whilst there is no limit on the number of goroutines
+	// permitted to have read access to this container, we won't permit
+	// the following:
+	// - a goroutine to have read/write access whilst there are are readers.
+	// - go routines to have read access whilst there is a goroutine with
+	//   read/write access.
+	// - more than one goroutine at a time to have read/write access.
+	keyslots map[string]*keyslotInfoImpl
 }
 
 func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
@@ -50,6 +62,7 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 		keyslots[name] = &keyslotInfoImpl{
 			keyslotType: secboot.KeyslotTypePlatform,
 			keyslotName: name,
+			keyslotId:   internal_luks2.AnySlot, // use AnySlot to indicate we haven't filled this KeyslotInfo yet.
 		}
 	}
 
@@ -64,10 +77,60 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 		keyslots[name] = &keyslotInfoImpl{
 			keyslotType: secboot.KeyslotTypeRecovery,
 			keyslotName: name,
+			keyslotId:   internal_luks2.AnySlot, // use AnySlot to indicate we haven't filled this KeyslotInfo yet.
 		}
 	}
 
 	s.keyslots = keyslots
+	return nil
+}
+
+func (s *storageContainerReadWriterImpl) ensureKeyslotInfo(ctx context.Context, name string) error {
+	if err := s.ensureKeyslotNames(); err != nil {
+		return err
+	}
+
+	info, exists := s.keyslots[name]
+	if !exists {
+		return secboot.ErrKeyslotNotFound
+	}
+
+	if info.keyslotId != internal_luks2.AnySlot {
+		// We already have everything for this keyslot.
+		return nil
+	}
+
+	switch info.keyslotType {
+	case secboot.KeyslotTypeRecovery:
+		// The existing secboot API doesn't expose the LUKS2 keyslot ID for recovery
+		// keys, so we use the luksview package directly, via a bit of an abstraction
+		// so that it can be mocked in unit tests. This will all be cleaned up
+		// eventually once all of this functionality is implemented natively in this
+		// package.
+		//
+		// The new unlocking API will test a recovery key separately against each
+		// individual recovery keyslot, so we know which keyslot is used for unlocking.
+		view, err := newLuksView(ctx, s.container.Path())
+		if err != nil {
+			return fmt.Errorf("cannot obtain new luksview.View: %w", err)
+		}
+		token, _, inUse := view.TokenByName(name)
+		if !inUse {
+			return fmt.Errorf("no metadata for keyslot %q", name)
+		}
+		info.keyslotId = token.Keyslots()[0] // luksview guarantees there is always 1 keyslot here.
+	case secboot.KeyslotTypePlatform:
+		r, err := luks2Ops.NewKeyDataReader(s.container.Path(), name)
+		if err != nil {
+			return fmt.Errorf("cannot obtain reader for %q: %w", name, err)
+		}
+		info.keyslotId = r.KeyslotID()
+		info.keyslotPriority = r.Priority()
+		info.keyslotData = r
+	default:
+		panic("not reached")
+	}
+
 	return nil
 }
 
@@ -96,43 +159,11 @@ func (s *storageContainerReadWriterImpl) ListKeyslotNames(ctx context.Context) (
 }
 
 func (s *storageContainerReadWriterImpl) ReadKeyslot(ctx context.Context, name string) (secboot.KeyslotInfo, error) {
-	if err := s.ensureKeyslotNames(); err != nil {
+	if err := s.ensureKeyslotInfo(ctx, name); err != nil {
 		return nil, err
 	}
 
-	info, exists := s.keyslots[name]
-	if !exists {
-		return nil, secboot.ErrKeyslotNotFound
-	}
-
-	switch info.keyslotType {
-	case secboot.KeyslotTypeRecovery:
-		// The existing secboot API doesn't expose the LUKS2 keyslot ID so we
-		// use the luksview package directly, via a bit of an abstraction so that
-		// it can be mocked in unit tests. This will all be cleaned up eventually
-		// once all of this functionality is implemented natively in this package.
-		view, err := newLuksView(ctx, s.container.Path())
-		if err != nil {
-			return nil, fmt.Errorf("cannot obtain new luksview.View: %w", err)
-		}
-		token, _, inUse := view.TokenByName(name)
-		if !inUse {
-			return nil, fmt.Errorf("no metadata for keyslot %q", name)
-		}
-		info.keyslotId = token.Keyslots()[0] // luksview guarantees there is always 1 keyslot here.
-	case secboot.KeyslotTypePlatform:
-		r, err := luks2Ops.NewKeyDataReader(s.container.Path(), name)
-		if err != nil {
-			return nil, fmt.Errorf("cannot obtain reader for %q: %w", name, err)
-		}
-		info.keyslotId = r.KeyslotID()
-		info.keyslotPriority = r.Priority()
-		info.keyslotData = r
-	default:
-		panic("not reached")
-	}
-
-	return info, nil
+	return s.keyslots[name], nil
 }
 
 // closedStorageContainerReadWriterImpl is an implementation of StorageContainerReader
