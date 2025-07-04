@@ -113,7 +113,10 @@ func (b *storageContainerBackend) Probe(ctx context.Context, path string) (secbo
 // ProbeActivated implements [secboot.StorageContainerBackend.ProbeActivated].
 //
 // The path can be the path to a DM device that is backed by a LUKS2 container, or
-// a symbolic link to one.
+// a symbolic link to one. Using the supplied path, it will walk up the stack of
+// DM devices until it finds a block device containing a LUKS2 container. It
+// supports nesting of DM devices, although it currently only has support for the
+// crypt and linear targets.
 //
 // It identifies a [StorageContainer] by its device number, and it will always return
 // the same instance for any paths that reference the same container, regardless of
