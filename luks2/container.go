@@ -85,8 +85,12 @@ func WithVolumeName(name string) secboot.ActivateOption {
 
 // storageContainerImpl is an implementation of [secboot.StorageContainer].
 type storageContainerImpl struct {
+	// path is the canonical path of the device node for this
+	// storage container.
 	path string
-	dev  uint64
+
+	// dev is the unix device number for this storage container.
+	dev uint64
 }
 
 // Dev implements [StorageContainer.Dev].
