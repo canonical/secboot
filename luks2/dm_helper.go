@@ -20,6 +20,7 @@
 package luks2
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -36,13 +37,36 @@ var (
 	errUnsupportedTargetType = errors.New("unsupported target type")
 )
 
+// decodeKernelSysfsUeventAttr decodes the uevent attributes for the device associated
+// with the supplied sysfs path (which will be relative to sysfsRoot), and returns a
+// map of variables.
+func decodeKernelSysfsUeventAttr(devPath string) (env map[string]string, err error) {
+	data, err := os.ReadFile(filepath.Join(sysfsRoot, devPath, "uevent"))
+	if err != nil {
+		return nil, err
+	}
+
+	entries := bytes.Split(data, []byte("\n"))
+
+	env = make(map[string]string)
+	for i, entry := range entries[:len(entries)-1] {
+		v := bytes.Split(entry, []byte("="))
+		if len(v) != 2 {
+			return nil, fmt.Errorf("invalid entry %d: %q", i, entry)
+		}
+		env[string(v[0])] = string(v[1])
+	}
+
+	return env, nil
+}
+
 // sourceDeviceFromDMDevice obtains the path of the source device that backs
 // the supplied DM device, if the supplied path references a DM device. If
 // the supplied path is not a DM device or block device, this function returns
 // ("", nil). It only supports walking linear and crypt tables, which should be
 // sufficient for our requirements for now.
 //
-// TODO: Make sur that this works with the layout of DM devices that we have
+// TODO: Make sure that this works with the layout of DM devices that we have
 // during re-encryption.
 //
 // TODO: Replace this with a package that talks directly to /dev/mapper/control.
@@ -111,12 +135,18 @@ var sourceDeviceFromDMDevice = func(ctx context.Context, path string) (string, e
 
 	// XXX: Is the device always identified by device number? Can it be referenced
 	// by its device node path (in which case, this code needs some readjustment)?
-	// Resolve the sysfs path using the device number.
-	resolvedDev, err := filepathEvalSymlinks(filepath.Join(sysfsRoot, "dev/block", dev))
+	devPath := filepath.Join("dev/block", dev)
+	env, err := decodeKernelSysfsUeventAttr(devPath)
 	if err != nil {
-		return "", fmt.Errorf("cannot resolve symlink for block device %s: %w", dev, err)
+		return "", fmt.Errorf("cannot decode uevent attrs for %s: %w", devPath, err)
 	}
 
-	// Return the device node path, which uses the basename of the sysfs dir.
-	return filepath.Join("/dev", filepath.Base(resolvedDev)), nil
+	// Obtain the DEVNAME variable
+	devName, exists := env["DEVNAME"]
+	if !exists {
+		return "", fmt.Errorf("no DEVNAME variable for %s", devPath)
+	}
+
+	// Return the device node path.
+	return filepath.Join(devRoot, devName), nil
 }

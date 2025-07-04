@@ -28,10 +28,11 @@ import (
 )
 
 var (
-	ErrNotDMBlockDevice        = errNotDMBlockDevice
-	ErrUnsupportedTargetType   = errUnsupportedTargetType
-	NewStorageContainerBackend = newStorageContainerBackend
-	SourceDeviceFromDMDevice   = sourceDeviceFromDMDevice
+	DecodeKernelSysfsUeventAttr = decodeKernelSysfsUeventAttr
+	ErrNotDMBlockDevice         = errNotDMBlockDevice
+	ErrUnsupportedTargetType    = errUnsupportedTargetType
+	NewStorageContainerBackend  = newStorageContainerBackend
+	SourceDeviceFromDMDevice    = sourceDeviceFromDMDevice
 )
 
 type (
