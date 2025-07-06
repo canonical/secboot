@@ -29,7 +29,6 @@ import (
 	"syscall"
 
 	"github.com/snapcore/secboot"
-	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/testutil"
 	. "github.com/snapcore/secboot/luks2"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
@@ -123,7 +122,7 @@ func (s *containerSuite) deactivate(volumeName string) error {
 }
 
 func (s *containerSuite) addDMDeviceErr(c *C, num int, e error) {
-	// Create the DM volume device node
+	// Create the DM volume device node, relative to the mock /dev location.
 	path := filepath.Join(s.devRoot, fmt.Sprintf("dm-%d", num))
 	f, err := os.Create(path)
 	c.Assert(err, IsNil)
@@ -133,7 +132,7 @@ func (s *containerSuite) addDMDeviceErr(c *C, num int, e error) {
 }
 
 func (s *containerSuite) addDMDevice(c *C, num int, volumeName, sourceDevicePath string) {
-	// Create the DM volume device node
+	// Create the DM volume device node, relative to the mock /dev location.
 	path := filepath.Join(s.devRoot, fmt.Sprintf("dm-%d", num))
 	f, err := os.Create(path)
 	c.Assert(err, IsNil)
@@ -143,10 +142,10 @@ func (s *containerSuite) addDMDevice(c *C, num int, volumeName, sourceDevicePath
 	s.dmDevices[path] = sourceDevicePath
 
 	// Create a unix.Stat_t for the DM volume.
-	//s.info[path] = unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(252, num)}
+	s.info[path] = unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(252, uint32(num))}
 
 	// Create a mapping of DM volume to volume name in sysfs
-	dir := filepath.Join(s.sysfsRoot, "devices/virtual/block", fmt.Sprintf("dm-%d", num), "dm")
+	dir := filepath.Join(s.sysfsRoot, "dev/block", fmt.Sprintf("252:%d", num), "dm")
 	c.Assert(os.MkdirAll(dir, 0755), IsNil)
 	c.Assert(os.WriteFile(filepath.Join(dir, "name"), []byte(volumeName+"\n"), 0644), IsNil)
 }
@@ -269,14 +268,15 @@ func (s *containerSuite) TestContainerActivatePlatformUnrecognizedKeyslotInfoTyp
 		"Activate(data,/dev/nvme0n1p3,a7bfa9a642b897bc13c58b84cf8237d7d1b224b2e63cb3dc10414ff1f9052c56,-1)",
 	})
 }
+
 func (s *containerSuite) TestContainerActivateRecovery(c *C) {
 	// Test the StorageContainer.Activate implementation with a recovery keyslot type.
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	key := testutil.DecodeHexString(c, "4e4dcf55c272e78b5141f43d76b6beb3")
-	err := container.Activate(context.Background(), NewKeyslotInfo(secboot.KeyslotTypeRecovery, "foo", internal_luks2.AnySlot, 0, nil), key, WithVolumeName("data"))
+	err := container.Activate(context.Background(), NewKeyslotInfo(secboot.KeyslotTypeRecovery, "foo", 3, 0, nil), key, WithVolumeName("data"))
 	c.Check(err, IsNil)
 	c.Check(s.commands, DeepEquals, []string{
-		"Activate(data,/dev/nvme0n1p3,4e4dcf55c272e78b5141f43d76b6beb3,-1)",
+		"Activate(data,/dev/nvme0n1p3,4e4dcf55c272e78b5141f43d76b6beb3,3)",
 	})
 }
 

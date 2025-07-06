@@ -137,7 +137,13 @@ func (c *storageContainerImpl) ActiveVolumeName(ctx context.Context) (string, er
 
 		// We've found a DM volume that is backed by this StorageContainer. Obtain
 		// the name of the volume from sysfs.
-		name, err := os.ReadFile(filepath.Join(sysfsRoot, "devices/virtual/block", filepath.Base(path), "dm/name"))
+
+		// Obtain the device number for the mapper device first.
+		if err := unixStat(path, &st); err != nil {
+			return "", &os.PathError{Op: "stat", Path: path, Err: err}
+		}
+
+		name, err := os.ReadFile(filepath.Join(sysfsRoot, "dev/block", fmt.Sprintf("%d:%d", unix.Major(st.Rdev), unix.Minor(st.Rdev)), "dm/name"))
 		if err != nil {
 			return "", fmt.Errorf("cannot read volume name for %s: %w", path, err)
 		}
