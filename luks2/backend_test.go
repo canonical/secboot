@@ -171,7 +171,7 @@ func (s *backendSuite) TestBackendProbeCryptDeviceSymlink(c *C) {
 }
 
 func (s *backendSuite) TestBackendProbeNoCrypt(c *C) {
-	// Test Probe with a device node that is not a LUKS2 or DM device.
+	// Test Probe with a device node that is not a LUKS2 container.
 	ctx := context.Background()
 	container, err := s.backend.Probe(ctx, "/dev/sda1")
 	c.Assert(err, IsNil)
@@ -180,32 +180,8 @@ func (s *backendSuite) TestBackendProbeNoCrypt(c *C) {
 	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx})
 }
 
-func (s *backendSuite) TestBackendProbeActivatedDMDeviceWithUnrecognizedTarget(c *C) {
-	// Test Probe with a device node that is a DM device with an unrecognized target type
-	s.addDMDeviceErr("/dev/dm-0", ErrUnsupportedTargetType)
-
-	ctx := context.Background()
-	container, err := s.backend.ProbeActivated(ctx, "/dev/dm-0")
-	c.Assert(err, IsNil)
-	c.Assert(container, IsNil)
-
-	c.Check(s.probeCtxs, DeepEquals, []context.Context(nil))
-}
-
-func (s *backendSuite) TestBackendProbeActivatedUnexpectedSourceDeviceFromDMDeviceError(c *C) {
-	// Test Probe with a device node that is not a LUKS2 or DM device
-	// and an unexpected error is returned from sourceDeviceFromDMDevice.
-	s.addDMDeviceErr("/dev/dm-1", errors.New("some error"))
-
-	ctx := context.Background()
-	_, err := s.backend.ProbeActivated(ctx, "/dev/dm-1")
-	c.Check(err, ErrorMatches, `cannot obtain source device for dm device /dev/dm-1: some error`)
-
-	c.Check(s.probeCtxs, DeepEquals, []context.Context(nil))
-}
-
 func (s *backendSuite) TestBackendProbeActivatedMappedCryptDevice(c *C) {
-	// Test Probe by passing a path to DM device that is backed by
+	// Test ProbeActivated by passing a path to DM device that is backed by
 	// a LUKS2 device.
 	s.addLUKS2Device("/dev/nvme0n1p3")
 	s.addDMDevice("/dev/dm-0", "/dev/nvme0n1p3")
@@ -224,7 +200,7 @@ func (s *backendSuite) TestBackendProbeActivatedMappedCryptDevice(c *C) {
 }
 
 func (s *backendSuite) TestBackendProbeActivatedMappedNestedLinearAndCryptDevice(c *C) {
-	// Test Probe by passing a path to DM device that is backed by
+	// Test ProbeActivated by passing a path to DM device that is backed by
 	// a LUKS2 device - in this case, using linear inside a crypt device.
 	s.addLUKS2Device("/dev/nvme0n1p3")
 	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
@@ -264,4 +240,41 @@ func (s *backendSuite) TestBackendProbeReturnsCachedDevice(c *C) {
 	container3, err := s.backend.ProbeActivated(ctx, "/dev/dm-0")
 	c.Assert(err, IsNil)
 	c.Check(container3, Equals, container)
+}
+
+func (s *backendSuite) TestBackendProbeActivatedDMDeviceWithUnrecognizedTarget(c *C) {
+	// Test ProbeActivated with a device node that is a DM device with an unrecognized target type
+	s.addDMDeviceErr("/dev/dm-0", ErrUnsupportedTargetType)
+
+	ctx := context.Background()
+	container, err := s.backend.ProbeActivated(ctx, "/dev/dm-0")
+	c.Check(err, IsNil)
+	c.Check(container, IsNil)
+
+	c.Check(s.probeCtxs, DeepEquals, []context.Context(nil))
+}
+
+func (s *backendSuite) TestBackendProbeActivatedUnexpectedSourceDeviceFromDMDeviceError(c *C) {
+	// Test ProbeActivated with a device node that causes an unexpected error to be
+	// returned from sourceDeviceFromDMDevice.
+	s.addDMDeviceErr("/dev/dm-1", errors.New("some error"))
+
+	ctx := context.Background()
+	_, err := s.backend.ProbeActivated(ctx, "/dev/dm-1")
+	c.Check(err, ErrorMatches, `cannot obtain source device for dm device /dev/dm-1: some error`)
+
+	c.Check(s.probeCtxs, DeepEquals, []context.Context(nil))
+}
+
+func (s *backendSuite) TestBackendProbeActivatedNotLUKS2(c *C) {
+	// Test ProbeActivated by passing a path to DM device that is not backed by
+	// a LUKS2 container.
+	s.addDMDevice("/dev/dm-0", "/dev/nvme0n1p3")
+
+	ctx := context.Background()
+	container, err := s.backend.ProbeActivated(ctx, "/dev/dm-0")
+	c.Check(err, IsNil)
+	c.Check(container, IsNil)
+
+	c.Check(s.probeCtxs, DeepEquals, []context.Context{ctx})
 }
