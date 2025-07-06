@@ -51,6 +51,34 @@ func (*mockExternalKeyslotInfo) Data() secboot.KeyDataReader {
 	return nil
 }
 
+type mockKeyslotInfo struct {
+	keyslotType     secboot.KeyslotType
+	keyslotName     string
+	keyslotPriority int
+	keyslotData     secboot.KeyDataReader
+	keyslotId       int
+}
+
+func (i *mockKeyslotInfo) Type() secboot.KeyslotType {
+	return i.keyslotType
+}
+
+func (i *mockKeyslotInfo) Name() string {
+	return i.keyslotName
+}
+
+func (i *mockKeyslotInfo) Priority() int {
+	return i.keyslotPriority
+}
+
+func (i *mockKeyslotInfo) Data() secboot.KeyDataReader {
+	return i.keyslotData
+}
+
+func (i *mockKeyslotInfo) KeyslotID() int {
+	return i.keyslotId
+}
+
 type mockLuks2KeyDataReader struct {
 	name     string
 	slot     int

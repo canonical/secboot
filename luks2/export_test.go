@@ -23,7 +23,6 @@ import (
 	"context"
 	"os"
 
-	"github.com/snapcore/secboot"
 	"golang.org/x/sys/unix"
 )
 
@@ -36,7 +35,6 @@ var (
 )
 
 type (
-	KeyslotInfoImpl         = keyslotInfoImpl
 	Luks2Api                = luks2Api
 	Luks2KeyDataReader      = luks2KeyDataReader
 	LuksView                = luksView
@@ -112,16 +110,6 @@ func MockUnixStat(fn func(string, *unix.Stat_t) error) (restore func()) {
 	unixStat = fn
 	return func() {
 		unixStat = orig
-	}
-}
-
-func NewKeyslotInfo(keyslotType secboot.KeyslotType, name string, slot, priority int, data secboot.KeyDataReader) *KeyslotInfoImpl {
-	return &keyslotInfoImpl{
-		keyslotType:     keyslotType,
-		keyslotName:     name,
-		keyslotId:       slot,
-		keyslotPriority: priority,
-		keyslotData:     data,
 	}
 }
 

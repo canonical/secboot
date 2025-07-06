@@ -28,7 +28,6 @@ import (
 
 	"github.com/snapcore/secboot"
 	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
-	"github.com/snapcore/secboot/internal/testutil"
 	. "github.com/snapcore/secboot/luks2"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 	"golang.org/x/sys/unix"
@@ -262,8 +261,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatform(c *C) {
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentName(c *C) {
@@ -288,8 +285,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentName(c *C) 
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentDevice(c *C) {
@@ -313,8 +308,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentDevice(c *C
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotRecovery(c *C) {
@@ -336,8 +329,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecovery(c *C) {
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 1)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryDifferentKeyslotID(c *C) {
@@ -359,8 +350,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryDifferentKeyslotID(c
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 3)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentPriority(c *C) {
@@ -384,8 +373,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentPriority(c 
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentKeyslotID(c *C) {
@@ -410,8 +397,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentKeyslotID(c
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 1)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentData(c *C) {
@@ -436,8 +421,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentData(c *C) 
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
@@ -461,8 +444,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 
 	restore := MockLUKS2Ops(&Luks2Api{
 		ListUnlockKeyNames: func(_ string) ([]string, error) {
@@ -504,8 +485,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryCached(c *C) {
 	var tmpl KeyslotInfo
 	c.Assert(ki, Implements, &tmpl)
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 1)
-
-	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
 
 	restore := MockLUKS2Ops(&Luks2Api{
 		ListUnlockKeyNames: func(_ string) ([]string, error) {
