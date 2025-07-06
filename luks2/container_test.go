@@ -150,7 +150,7 @@ func (s *containerSuite) addDMDevice(c *C, num int, volumeName, sourceDevicePath
 	c.Assert(os.WriteFile(filepath.Join(dir, "name"), []byte(volumeName+"\n"), 0644), IsNil)
 }
 
-func (s *containerSuite) addFile(path string, st unix.Stat_t) {
+func (s *containerSuite) addFileInfo(path string, st unix.Stat_t) {
 	s.info[path] = st
 }
 
@@ -303,7 +303,7 @@ func (s *containerSuite) TestContainerActivateError(c *C) {
 func (s *containerSuite) TestContainerActiveVolumeName(c *C) {
 	// Test that StorageContainer.ActiveVolumeName works.
 	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	name, err := container.ActiveVolumeName(context.Background())
@@ -315,7 +315,7 @@ func (s *containerSuite) TestContainerActiveVolumeNameDifferentName(c *C) {
 	// Test that StorageContainer.ActiveVolumeName works with
 	// a different volume name.
 	s.addDMDevice(c, 0, "save", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	name, err := container.ActiveVolumeName(context.Background())
@@ -327,7 +327,7 @@ func (s *containerSuite) TestContainerActiveVolumeNameDifferentDMDevice(c *C) {
 	// Test that StorageContainer.ActiveVolumeName works with
 	// a different DM volume path
 	s.addDMDevice(c, 1, "data", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	name, err := container.ActiveVolumeName(context.Background())
@@ -339,8 +339,8 @@ func (s *containerSuite) TestContainerActiveVolumeNameIgnoreUnrelatedDMDevice1(c
 	// Test that StorageContainer.ActivateVolumeName ignores unrelated DM volumes.
 	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
 	s.addDMDevice(c, 1, "bar", "/dev/sda1")
-	s.addFile("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	name, err := container.ActiveVolumeName(context.Background())
@@ -352,8 +352,8 @@ func (s *containerSuite) TestContainerActiveVolumeNameIgnoreUnrelatedDMDevices2(
 	// Test that StorageContainer.ActivateVolumeName ignores unrelated DM volumes.
 	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
 	s.addDMDevice(c, 1, "bar", "/dev/sda1")
-	s.addFile("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	name, err := container.ActiveVolumeName(context.Background())
@@ -366,7 +366,7 @@ func (s *containerSuite) TestContainerActiveVolumeNameSourceDeviceforDMDeviceUne
 	// if sourceDeviceForDMDevice returns an unexpected error.
 	s.addDMDeviceErr(c, 0, errors.New("some error"))
 	s.addDMDevice(c, 1, "data", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	_, err := container.ActiveVolumeName(context.Background())
@@ -378,7 +378,7 @@ func (s *containerSuite) TestContainerActiveVolumeNameSourceDeviceforDMDeviceUns
 	// that indicate an unrecognized target type.
 	s.addDMDeviceErr(c, 0, ErrUnsupportedTargetType)
 	s.addDMDevice(c, 1, "data", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	name, err := container.ActiveVolumeName(context.Background())
@@ -390,7 +390,7 @@ func (s *containerSuite) TestContainerActiveVolumeNameInactive(c *C) {
 	// Test that StorageContainer.ActiveVolumeName returns an appropriate
 	// error if it isn't active.
 	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	_, err := container.ActiveVolumeName(context.Background())
@@ -400,7 +400,7 @@ func (s *containerSuite) TestContainerActiveVolumeNameInactive(c *C) {
 func (s *containerSuite) TestContainerDeactivate(c *C) {
 	// Test that StorageContainer.Deactivate works.
 	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	c.Check(container.Deactivate(context.Background()), IsNil)
@@ -412,7 +412,7 @@ func (s *containerSuite) TestContainerDeactivate(c *C) {
 func (s *containerSuite) TestContainerDeactivateDifferentVolumeName(c *C) {
 	// Test that StorageContainer.Deactivate works with a different volume name
 	s.addDMDevice(c, 0, "save", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	c.Check(container.Deactivate(context.Background()), IsNil)
@@ -426,9 +426,9 @@ func (s *containerSuite) TestContainerDeactivateNoActiveDevice(c *C) {
 	// if there is nothing to deactivate.
 	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
 	s.addDMDevice(c, 1, "bar", "/dev/sda1")
-	s.addFile("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-	s.addFile("/dev/nvme0n1p2", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 2)})
+	s.addFileInfo("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p2", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 2)})
 
 	container := NewStorageContainer("/dev/nvme0n1p2", unix.Mkdev(259, 2))
 	err := container.Deactivate(context.Background())
@@ -442,7 +442,7 @@ func (s *containerSuite) TestContainerDeactivateActiveVolumeNameErr(c *C) {
 	// error if ActiveVolumeName fails.
 	s.addDMDeviceErr(c, 0, errors.New("some error"))
 	s.addDMDevice(c, 1, "data", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	c.Check(container.Deactivate(context.Background()), ErrorMatches, `cannot obtain volume name: cannot obtain source device path for dm volume /.*/dm-0: some error`)
@@ -451,7 +451,7 @@ func (s *containerSuite) TestContainerDeactivateActiveVolumeNameErr(c *C) {
 
 func (s *containerSuite) TestContainerDeactivateErr(c *C) {
 	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 	s.deactivateErr = errors.New("some error")
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))

@@ -129,7 +129,7 @@ func (s *backendSuite) addSymlink(target, link string) {
 	s.symlinks[link] = target
 }
 
-func (s *backendSuite) addFile(path string, st unix.Stat_t) {
+func (s *backendSuite) addFileInfo(path string, st unix.Stat_t) {
 	s.info[path] = st
 }
 
@@ -138,7 +138,7 @@ var _ = Suite(&backendSuite{})
 func (s *backendSuite) TestBackendProbeCryptDevice(c *C) {
 	// Test Probe with the device node for the LUKS2 container.
 	s.addLUKS2Device("/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	ctx := context.Background()
 	container, err := s.backend.Probe(ctx, "/dev/nvme0n1p3")
@@ -155,7 +155,7 @@ func (s *backendSuite) TestBackendProbeCryptDevice(c *C) {
 func (s *backendSuite) TestBackendProbeCryptDeviceSymlink(c *C) {
 	// Test Probe with a symlink to the device node for the LUKS2 container.
 	s.addLUKS2Device("/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 	s.addSymlink("/dev/nvme0n1p3", "/dev/disk/by-path/pci-0000:00:0e.0-pci-10000:e1:00.0-nvme-1-part3")
 
 	ctx := context.Background()
@@ -209,7 +209,7 @@ func (s *backendSuite) TestBackendProbeActivatedMappedCryptDevice(c *C) {
 	// a LUKS2 device.
 	s.addLUKS2Device("/dev/nvme0n1p3")
 	s.addDMDevice("/dev/dm-0", "/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 
 	ctx := context.Background()
 	container, err := s.backend.ProbeActivated(ctx, "/dev/dm-0")
@@ -227,7 +227,7 @@ func (s *backendSuite) TestBackendProbeActivatedMappedNestedLinearAndCryptDevice
 	// Test Probe by passing a path to DM device that is backed by
 	// a LUKS2 device - in this case, using linear inside a crypt device.
 	s.addLUKS2Device("/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 	s.addDMDevice("/dev/dm-0", "/dev/nvme0n1p3")
 	s.addDMDevice("/dev/dm-1", "/dev/dm-0")
 
@@ -247,7 +247,7 @@ func (s *backendSuite) TestBackendProbeReturnsCachedDevice(c *C) {
 	// Test that Probe and ProbeActivated always returns the same container for the same
 	// device, regardless of how the container is addressed.
 	s.addLUKS2Device("/dev/nvme0n1p3")
-	s.addFile("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
+	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
 	s.addSymlink("/dev/nvme0n1p3", "/dev/disk/by-path/pci-0000:00:0e.0-pci-10000:e1:00.0-nvme-1-part3")
 	s.addDMDevice("/dev/dm-0", "/dev/nvme0n1p3")
 
