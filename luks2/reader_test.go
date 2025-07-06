@@ -200,6 +200,36 @@ func (s *readerSuite) TestContainerReaderListKeyslotNamesDifferentNames(c *C) {
 	c.Check(names, DeepEquals, []string{"normal-1", "normal-2", "recovery-1"})
 }
 
+func (s *readerSuite) TestContainerReaderListKeyslotNamesCached(c *C) {
+	s.addRecoveryKeyslot("/dev/sda1", "default-recovery", 2)
+	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", "default-fallback", newMockLuks2KeyDataReader("", 1, 0, []byte("dummy keyslot metadata2")))
+
+	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
+	r, err := container.OpenRead(context.Background())
+	c.Assert(err, IsNil)
+
+	names, err := r.ListKeyslotNames(context.Background())
+	c.Check(err, IsNil)
+	c.Check(names, DeepEquals, []string{"default", "default-fallback", "default-recovery"})
+
+	restore := MockLUKS2Ops(&Luks2Api{
+		ListUnlockKeyNames: func(_ string) ([]string, error) {
+			c.Error("call not expected")
+			return nil, errors.New("call not expected")
+		},
+		ListRecoveryKeyNames: func(_ string) ([]string, error) {
+			c.Error("call not expected")
+			return nil, errors.New("call not expected")
+		},
+	})
+	defer restore()
+
+	names, err = r.ListKeyslotNames(context.Background())
+	c.Check(err, IsNil)
+	c.Check(names, DeepEquals, []string{"default", "default-fallback", "default-recovery"})
+}
+
 func (s *readerSuite) TestContainerReaderListKeyslotNamesClosed(c *C) {
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -238,7 +268,7 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatform(c *C) {
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentName(c *C) {
 	s.addUnlockKeyslot("/dev/sda1", "default-fallback", newMockLuks2KeyDataReader("/dev/sda1:default-fallback", 0, 0, []byte("dummy keyslot metadata1")))
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default-", 1, 0, []byte("dummy keyslot metadata2")))
+	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 1, 0, []byte("dummy keyslot metadata2")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -408,6 +438,105 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentData(c *C) 
 	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
 
 	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
+}
+
+func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
+	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+
+	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
+	r, err := container.OpenRead(context.Background())
+	c.Assert(err, IsNil)
+
+	ki, err := r.ReadKeyslot(context.Background(), "default")
+	c.Assert(err, IsNil)
+	c.Check(ki.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ki.Name(), Equals, "default")
+	c.Check(ki.Priority(), Equals, 0)
+
+	c.Check(ki.Data().ReadableName(), Equals, "/dev/sda1:default")
+	data, err := io.ReadAll(ki.Data())
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
+
+	var tmpl KeyslotInfo
+	c.Assert(ki, Implements, &tmpl)
+	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
+
+	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
+
+	restore := MockLUKS2Ops(&Luks2Api{
+		ListUnlockKeyNames: func(_ string) ([]string, error) {
+			c.Error("call not expected")
+			return nil, errors.New("call not expected")
+		},
+		ListRecoveryKeyNames: func(_ string) ([]string, error) {
+			c.Error("call not expected")
+			return nil, errors.New("call not expected")
+		},
+		NewKeyDataReader: func(_, _ string) (Luks2KeyDataReader, error) {
+			c.Error("call not expected")
+			return nil, errors.New("call not expected")
+		},
+	})
+	defer restore()
+
+	ki2, err := r.ReadKeyslot(context.Background(), "default")
+	c.Check(err, IsNil)
+	c.Check(ki2, Equals, ki)
+}
+
+func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryCached(c *C) {
+	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addRecoveryKeyslot("/dev/sda1", "default-recovery", 1)
+
+	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
+	r, err := container.OpenRead(context.Background())
+	c.Assert(err, IsNil)
+
+	ki, err := r.ReadKeyslot(context.Background(), "default-recovery")
+	c.Assert(err, IsNil)
+	c.Check(ki.Type(), Equals, secboot.KeyslotTypeRecovery)
+	c.Check(ki.Name(), Equals, "default-recovery")
+	c.Check(ki.Priority(), Equals, 0)
+
+	c.Check(ki.Data(), IsNil)
+
+	var tmpl KeyslotInfo
+	c.Assert(ki, Implements, &tmpl)
+	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 1)
+
+	c.Check(ki, testutil.ConvertibleTo, &KeyslotInfoImpl{})
+
+	restore := MockLUKS2Ops(&Luks2Api{
+		ListUnlockKeyNames: func(_ string) ([]string, error) {
+			c.Error("call not expected")
+			return nil, errors.New("call not expected")
+		},
+		ListRecoveryKeyNames: func(_ string) ([]string, error) {
+			c.Error("call not expected")
+			return nil, errors.New("call not expected")
+		},
+		NewKeyDataReader: func(_, _ string) (Luks2KeyDataReader, error) {
+			c.Error("call not expected")
+			return nil, errors.New("call not expected")
+		},
+	})
+	defer restore()
+
+	ki2, err := r.ReadKeyslot(context.Background(), "default-recovery")
+	c.Check(err, IsNil)
+	c.Check(ki2, Equals, ki)
+}
+
+func (s *readerSuite) TestContainerReaderReadKeyslotNotFound(c *C) {
+	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+
+	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
+	r, err := container.OpenRead(context.Background())
+	c.Assert(err, IsNil)
+
+	_, err = r.ReadKeyslot(context.Background(), "default-recovery")
+	c.Check(err, Equals, secboot.ErrKeyslotNotFound)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotClosed(c *C) {
