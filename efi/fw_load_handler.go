@@ -93,6 +93,55 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// This hard-codes a profile that will only work on devices with secure boot enabled,
 	// deployed mode on (where UEFI >= 2.5), without a UEFI debugger enabled and which
 	// measure events in the correct order.
+	//
+	// We do permit the presence of a EV_EFI_ACTION event that indicates that pre-boot DMA
+	// protection was disabled if the appropriate options are supplied. However, this event
+	// is poorly documented so we don't really know where in the measurement order it's
+	// meant to be. The only place this is documented is in the tianocore documentation,
+	// but there's not a reference implementation in the EDK2 source code and we've seen 2
+	// different devices with different measurement orders, so we'll have to acommodate all
+	// possible measurement ordering. Ideally we wouldn't be supporting poorly documented
+	// events such as this, because, in addition to weakening security, it also makes this
+	// code more complicated.
+
+	events := h.log.Events
+	allowInsufficientDMAProtection := boolParamOrFalse(ctx.Params(), allowInsufficientDMAProtectionParamKey)
+	includeInsufficientDMAProtection := boolParamOrFalse(ctx.Params(), includeInsufficientDMAProtectionParamKey)
+
+	// Wind the log forward to the first EV_EFI_VARIABLE_DRIVER_CONFIG event, including
+	// the EV_EFI_ACTION "DMA Protection Disabled" event if one exists and the supplied
+	// options permit it.
+	for len(events) > 0 {
+		e := events[0]
+		events = events[1:]
+
+		if e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
+			break
+		}
+
+		switch {
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
+			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
+			allowInsufficientDMAProtection:
+			// The "DMA Protection Disabled" string is allowed to appear in PCR7.
+			// In this case, it is before the secure boot configuration measurements.
+			// Now we use the includeInsufficientDMAProtection flag to determine if
+			// this run of fwLoadHandler should really measure it to the profile as
+			// well, which means the profile has a branch that allows the firmware
+			// setting to be corrected so that future runs can drop the option to
+			// permit it.
+			if includeInsufficientDMAProtection {
+				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
+			}
+			allowInsufficientDMAProtection = false // Only allow this event to appear once
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType != tcglog.EventTypeEFIVariableDriverConfig:
+			return fmt.Errorf("unexpected event type (%v) found in log, before config", e.EventType)
+		default:
+			// we don't care about this event.
+		}
+	}
+
+	// Measure the secure boot configuration.
 	ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, sbStateName, []byte{1})
 	if _, err := h.readAndMeasureSignatureDb(ctx, PK); err != nil {
 		return xerrors.Errorf("cannot measure PK: %w", err)
@@ -108,10 +157,10 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	}
 	// TODO: Support optional dbt/dbr databases
 
-	// Retain any verification events associated with pre-OS components such as UEFI drivers
-	// or system preparation applications. Note that these make a profile inherently fragile.
+	// Wind the log further forwards, retaining any verification events associated with
+	// third party code executed from the pre-OS environment such as UEFI drivers or
+	// system preparation applications. Note that these make a profile inherently fragile.
 	// See the comment in measureBootManagerCodePreOS regarding event ordering.
-	events := h.log.Events
 	foundOsPresent := false
 	foundSecureBootSeparator := false
 
@@ -147,18 +196,22 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			if foundSecureBootSeparator {
 				return errors.New("unexpected configuration event")
 			}
-		case boolParamOrFalse(ctx.Params(), allowInsufficientDMAProtectionParamKey) &&
-			e.PCRIndex == internal_efi.SecureBootPolicyPCR &&
-			e.EventType == tcglog.EventTypeEFIAction &&
-			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) ||
-				bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))):
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
+			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
+			allowInsufficientDMAProtection:
 			// The "DMA Protection Disabled" string is allowed to appear in PCR7.
+			// In this case, it is after the secure boot configuration measurements,
+			// and may be part of the configuration (before the separator) or not
+			// (after the separator).
 			// Now we use the includeInsufficientDMAProtection flag to determine if
 			// this run of fwLoadHandler should really measure it to the profile as
-			// well.
-			if boolParamOrFalse(ctx.Params(), includeInsufficientDMAProtectionParamKey) {
+			// well, which means the profile has a branch that allows the firmware
+			// setting to be corrected so that future runs can drop the option to
+			// permit it.
+			if includeInsufficientDMAProtection {
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
+			allowInsufficientDMAProtection = false // Only allow this event to appear once
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR:
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:
