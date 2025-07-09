@@ -313,9 +313,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				return nil, &HostSecurityError{err}
 			}
 			for _, e := range ce.Unwrap() {
-				if errors.Is(err, ErrInsufficientDMAProtection) && flags&PermitInsufficientDMAProtection > 0 {
+				if errors.Is(e, ErrInsufficientDMAProtection) && flags&PermitInsufficientDMAProtection > 0 {
 					result.Flags |= InsufficientDMAProtectionDetected
-				} else if errors.Is(err, ErrNoKernelIOMMU) && flags&PermitInsufficientDMAProtection > 0 {
+				} else if errors.Is(e, ErrNoKernelIOMMU) && flags&PermitInsufficientDMAProtection > 0 {
 					warnings = append(warnings, err)
 				} else {
 					deferredErrs = append(deferredErrs, &HostSecurityError{e})
