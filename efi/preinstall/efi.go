@@ -22,7 +22,6 @@ package preinstall
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	efi "github.com/canonical/go-efilib"
 )
@@ -94,29 +93,4 @@ func (a *EFIVariableAccessErrorArg) UnmarshalJSON(data []byte) error {
 	}
 	*a = EFIVariableAccessErrorArg(efiErr)
 	return nil
-}
-
-// Error returns the error associated with this argument. Note that
-// this is not an implementation of [error].
-func (a EFIVariableAccessErrorArg) Error() error {
-	switch a {
-	case EFIVarsUnavailable:
-		return efi.ErrVarsUnavailable
-	case EFIVarNotExist:
-		return efi.ErrVarNotExist
-	case EFIVarInvalidParam:
-		return efi.ErrVarInvalidParam
-	case EFIVarDeviceError:
-		return efi.ErrVarDeviceError
-	case EFIVarPermission:
-		return efi.ErrVarPermission
-	case EFIVarInsufficientSpace:
-		return efi.ErrVarInsufficientSpace
-	case EFIVarWriteProtected:
-		return efi.ErrVarWriteProtected
-	case EFIVarUnrecognizedError:
-		return errors.New("unrecognized EFI variable access error")
-	default:
-		return fmt.Errorf("unrecognized EFI variable access error code %q", string(a))
-	}
 }

@@ -74,51 +74,6 @@ func (*efiSuite) TestMakeEFIVariableAccessErrorArgUnrecognizedError(c *C) {
 	c.Check(arg, Equals, EFIVarUnrecognizedError)
 }
 
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorVarsUnavailable(c *C) {
-	arg := EFIVarsUnavailable
-	c.Check(arg.Error(), Equals, efi.ErrVarsUnavailable)
-}
-
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorVarNotExist(c *C) {
-	arg := EFIVarNotExist
-	c.Check(arg.Error(), Equals, efi.ErrVarNotExist)
-}
-
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorVarInvalidParam(c *C) {
-	arg := EFIVarInvalidParam
-	c.Check(arg.Error(), Equals, efi.ErrVarInvalidParam)
-}
-
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorVarDeviceError(c *C) {
-	arg := EFIVarDeviceError
-	c.Check(arg.Error(), Equals, efi.ErrVarDeviceError)
-}
-
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorVarPermission(c *C) {
-	arg := EFIVarPermission
-	c.Check(arg.Error(), Equals, efi.ErrVarPermission)
-}
-
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorVarInsufficientSpace(c *C) {
-	arg := EFIVarInsufficientSpace
-	c.Check(arg.Error(), Equals, efi.ErrVarInsufficientSpace)
-}
-
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorVarWriteProtected(c *C) {
-	arg := EFIVarWriteProtected
-	c.Check(arg.Error(), Equals, efi.ErrVarWriteProtected)
-}
-
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorUnrecognized(c *C) {
-	arg := EFIVarUnrecognizedError
-	c.Check(arg.Error(), ErrorMatches, `unrecognized EFI variable access error`)
-}
-
-func (*efiSuite) TestEFIVariableAccessErrorArgErrorUnrecognized2(c *C) {
-	arg := EFIVariableAccessErrorArg("some-error")
-	c.Check(arg.Error(), ErrorMatches, `unrecognized EFI variable access error code "some-error"`)
-}
-
 func (*efiSuite) TestEFIVariableAccessErrorArgMarshalVarsUnavailable(c *C) {
 	arg1 := EFIVarsUnavailable
 	data, err := json.Marshal(arg1)
