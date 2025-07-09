@@ -39,7 +39,10 @@ const (
 
 var (
 	AcquireArgon2OutOfProcessHandlerSystemLock    = acquireArgon2OutOfProcessHandlerSystemLock
+	AddKeyToUserKeyring                           = addKeyToUserKeyring
+	AddKeyToUserKeyringLegacy                     = addKeyToUserKeyringLegacy
 	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	FormatDesc                                    = formatDesc
 	StorageContainerHandlers                      = storageContainerHandlers
 	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys                        = unmarshalProtectedKeys
@@ -50,16 +53,16 @@ type (
 	ProtectedKeys = protectedKeys
 )
 
-func KDFOptionsKdfParams(o KDFOptions, keyLen uint32) (*KdfParams, error) {
-	return o.kdfParams(keyLen)
+func KDFOptionsKdfParams(opts KDFOptions, defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
+	return opts.kdfParams(defaultTargetDuration, keyLen)
 }
 
-func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
-	return o.kdfParams(keyLen)
+func (o *Argon2Options) KdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
+	return o.kdfParams(defaultTargetDuration, keyLen)
 }
 
-func (o *PBKDF2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
-	return o.kdfParams(keyLen)
+func (o *PBKDF2Options) KdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
+	return o.kdfParams(defaultTargetDuration, keyLen)
 }
 
 func MockArgon2OutOfProcessHandlerSystemLockPath(path string) (restore func()) {
@@ -83,6 +86,20 @@ func MockArgon2SysLockStderr(w io.Writer) (restore func()) {
 	argon2SysLockStderr = w
 	return func() {
 		argon2SysLockStderr = orig
+	}
+}
+
+func MockFilepathEvalSymlinks(links map[string]string) (restore func()) {
+	orig := filepathEvalSymlinks
+	filepathEvalSymlinks = func(path string) (string, error) {
+		target, exists := links[path]
+		if !exists {
+			return path, nil
+		}
+		return target, nil
+	}
+	return func() {
+		filepathEvalSymlinks = orig
 	}
 }
 

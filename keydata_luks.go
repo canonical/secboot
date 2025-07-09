@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 
 	"golang.org/x/xerrors"
 
@@ -39,7 +40,14 @@ type LUKS2KeyDataReader struct {
 }
 
 // NewLUKS2KeyDataReader is used to read a LUKS2 token containing key data with
-// the specified name on the specified LUKS2 container.
+// the specified name on the specified LUKS2 container. This only works with
+// ubuntu-fde tokens (ubuntu-fde-recovery tokens will result in nil, nil being
+// returned).
+//
+// XXX: In the future, we want to bind recovery tokens to LUKS2 keyslot IDs,
+// and also assign priorities to them. This doesn't work with the existing API
+// yet and isn't worth fixing until all of this code has moved into the luks
+// subpackage.
 func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error) {
 	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {
@@ -51,13 +59,24 @@ func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error)
 		return nil, errors.New("a keyslot with the specified name does not exist")
 	}
 
-	kdToken, ok := token.(*luksview.KeyDataToken)
-	if !ok {
-		return nil, errors.New("named keyslot has the wrong type")
-	}
-
-	if kdToken.Data == nil {
-		return nil, errors.New("named keyslot does not contain key data yet")
+	var kdToken *luksview.KeyDataToken
+	switch token.Type() {
+	case luksview.KeyDataTokenType:
+		var ok bool
+		kdToken, ok = token.(*luksview.KeyDataToken)
+		if !ok {
+			return nil, fmt.Errorf("named platform keyslot has the wrong type %T", token)
+		}
+		if kdToken.Data == nil {
+			return nil, errors.New("named platform keyslot does not contain key data yet")
+		}
+	case luksview.RecoveryTokenType:
+		if _, ok := token.(*luksview.RecoveryToken); !ok {
+			return nil, fmt.Errorf("named recovery keyslot has the wrong type %T", token)
+		}
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unexpected named keyslot type %q", token.Type())
 	}
 
 	return &LUKS2KeyDataReader{
@@ -68,6 +87,9 @@ func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error)
 }
 
 func (r *LUKS2KeyDataReader) ReadableName() string {
+	// TODO: I think that devicePath should either be resolved to the target
+	// device if it is a symbolic link, or maybe referenced as the device number.
+	// (eg "[<dev_major>:<dev_minor>]:name").
 	return r.name
 }
 

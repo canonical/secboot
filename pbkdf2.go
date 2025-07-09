@@ -46,7 +46,7 @@ type PBKDF2Options struct {
 	HashAlg crypto.Hash
 }
 
-func (o *PBKDF2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
+func (o *PBKDF2Options) kdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*kdfParams, error) {
 	if keyLen > math.MaxInt32 {
 		return nil, errors.New("invalid key length")
 	}
@@ -84,24 +84,24 @@ func (o *PBKDF2Options) kdfParams(keyLen uint32) (*kdfParams, error) {
 
 		return params, nil
 	default:
-		targetDuration := 2 * time.Second // the default target duration is 2s.
-		HashAlg := defaultHashAlg
+		targetDuration := defaultTargetDuration
+		hashAlg := defaultHashAlg
 
 		if o.TargetDuration != 0 {
 			targetDuration = o.TargetDuration
 		}
 		if o.HashAlg != crypto.Hash(0) {
-			HashAlg = o.HashAlg
+			hashAlg = o.HashAlg
 		}
 
-		iterations, err := pbkdf2Benchmark(targetDuration, HashAlg)
+		iterations, err := pbkdf2Benchmark(targetDuration, hashAlg)
 		if err != nil {
 			return nil, xerrors.Errorf("cannot benchmark KDF: %w", err)
 		}
 
 		o = &PBKDF2Options{
 			ForceIterations: uint32(iterations),
-			HashAlg:         HashAlg}
-		return o.kdfParams(keyLen)
+			HashAlg:         hashAlg}
+		return o.kdfParams(defaultTargetDuration, keyLen)
 	}
 }
