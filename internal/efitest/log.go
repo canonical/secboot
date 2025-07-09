@@ -296,16 +296,6 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			data:      data})
 
 	}
-	if !opts.DisallowPreOSVerification {
-		// Most firmware measures a EV_SEPARATOR here to separate config and verification,
-		// but some older firmware implementations don't do this - it gets measured as part
-		// of the pre-OS to OS-present transition later on.
-		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
-		builder.hashLogExtendEvent(c, data, &logEvent{
-			pcrIndex:  7,
-			eventType: tcglog.EventTypeSeparator,
-			data:      data})
-	}
 	if opts.DMAProtectionDisabled > DMAProtectionNotDisabled {
 		var data tcglog.EventData
 		switch opts.DMAProtectionDisabled {
@@ -319,6 +309,16 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  7,
 			eventType: tcglog.EventTypeEFIAction,
+			data:      data})
+	}
+	if !opts.DisallowPreOSVerification {
+		// Most firmware measures a EV_SEPARATOR here to separate config and verification,
+		// but some older firmware implementations don't do this - it gets measured as part
+		// of the pre-OS to OS-present transition later on.
+		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
+		builder.hashLogExtendEvent(c, data, &logEvent{
+			pcrIndex:  7,
+			eventType: tcglog.EventTypeSeparator,
 			data:      data})
 	}
 

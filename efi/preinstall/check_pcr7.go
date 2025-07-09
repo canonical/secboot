@@ -523,9 +523,6 @@ NextEvent:
 					db = sigDb
 				}
 			case tcglog.EventTypeEFIAction:
-				// This branch exists here for documentation purposes - it falls through to the
-				// default branch below, which returns an error.
-				//
 				// An EV_EFI_ACTION events with the string "UEFI Debug Mode" appears at the
 				// start of the log if a debugging endpoint is enabled. It's also possible that
 				// EV_EFI_ACTION events are used for other conditions in PCR7 that weaken device
@@ -539,6 +536,11 @@ NextEvent:
 				// Just return an error here to prevent the use of WithSecureBootPolicyProfile(). The
 				// "UEFI Debug Mode" and "DMA Protection Disabled" cases are already picked up by the
 				// firmware protection checks, so we don't need any special handling here.
+				if bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
+					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00)) {
+					// This event is detected by the host security checks anyways so we can skip it here
+					continue NextEvent
+				}
 				fallthrough
 			default:
 				// Anything that isn't EV_EFI_VARIABLE_DRIVER_CONFIG ends up here.
