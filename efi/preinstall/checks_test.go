@@ -2944,6 +2944,86 @@ C7E003CB
 	c.Check(errors.As(hse, &rote), testutil.IsTrue)
 }
 
+func (s *runChecksSuite) TestRunChecksBadHostSecurityMissingIntelMEI(c *C) {
+	// Test case where host security checks fail because the intel MEI kernel module is missing.
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+	}
+
+	_, err := s.testRunChecks(c, &testRunChecksParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		flags:        PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport,
+	})
+	c.Check(err, ErrorMatches, `error with system security: encountered an error when checking Intel BootGuard configuration: the kernel module "mei_me" must be loaded`)
+	var hse *HostSecurityError
+	c.Assert(errors.As(err, &hse), testutil.IsTrue)
+	c.Check(errors.Is(hse, MissingKernelModuleError("mei_me")), testutil.IsTrue)
+}
+
+func (s *runChecksSuite) TestRunChecksBadHostSecurityMissingMSR(c *C) {
+	// Test case where host security checks fail because the MSR kernel module is missing.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	_, err := s.testRunChecks(c, &testRunChecksParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 0, nil),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		flags:        PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport,
+	})
+	c.Check(err, ErrorMatches, `error with system security: encountered an error when checking Intel CPU debugging configuration: the kernel module "msr" must be loaded`)
+	var hse *HostSecurityError
+	c.Assert(errors.As(err, &hse), testutil.IsTrue)
+	c.Check(errors.Is(hse, MissingKernelModuleError("msr")), testutil.IsTrue)
+}
+
 func (s *runChecksSuite) TestRunChecksBadUEFIDebuggingEnabledAndNoKernelIOMMU(c *C) {
 	// Test case with more than one host security error.
 	meiAttrs := map[string][]byte{
