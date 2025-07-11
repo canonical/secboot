@@ -58,7 +58,7 @@ func (s *shimSuite) TestReadShimSbatPolicyLatest(c *C) {
 }
 
 func (s *shimSuite) TestReadShimSbatPolicyNotExist(c *C) {
-	env := efitest.NewMockHostEnvironment(nil, nil)
+	env := efitest.NewMockHostEnvironment(efitest.MockVars{}, nil)
 	policy, err := ReadShimSbatPolicy(newMockVarReader(env))
 	c.Check(err, IsNil)
 	c.Check(policy, Equals, ShimSbatPolicyPrevious)
@@ -400,7 +400,7 @@ func (s *shimSuite) TestShimSbatPolicyLatestUnset(c *C) {
 
 	c.Assert(visitor.varModifiers, HasLen, 1)
 
-	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(nil, nil))
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(efitest.MockVars{}, nil))
 	c.Check(visitor.varModifiers[0](collector.PeekAll()[0]), IsNil)
 
 	c.Assert(collector.More(), testutil.IsTrue)
