@@ -455,7 +455,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	if len(loadedImages) > 0 {
 		iblImage = loadedImages[0]
 	}
-	pcr7Result, err := checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx, runChecksEnv, log, result.PCRAlg, iblImage)
+	permitDMAProtectionDisabledEvent := flags&PermitInsufficientDMAProtection > 0
+	pcr7Result, err := checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx, runChecksEnv, log, result.PCRAlg, iblImage, permitDMAProtectionDisabledEvent)
 	switch {
 	case err != nil && !logResults.Lookup(internal_efi.SecureBootPolicyPCR).Ok():
 		// Don't record another error for this PCR

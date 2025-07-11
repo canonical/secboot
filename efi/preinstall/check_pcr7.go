@@ -370,7 +370,7 @@ type secureBootPolicyResult struct {
 // off was made instead.
 //
 // If the end of the log is reached without encountering the launch of the initial boot loader, an error is returned.
-func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId, iblImage secboot_efi.Image) (result *secureBootPolicyResult, err error) {
+func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId, iblImage secboot_efi.Image, permitDMAProtectionDisabledEvent bool) (result *secureBootPolicyResult, err error) {
 	if iblImage == nil {
 		return nil, errors.New("must supply the initial boot loader image")
 	}
@@ -530,15 +530,21 @@ NextEvent:
 				//
 				// In general, it's not normal to see EV_EFI_ACTION events and these indicate some
 				// sort of abnormal condition that has a detrimental effect on device security.
-				// WithSecureBootPolicyProfile() will generate an invalid policy in this case because
-				// it doesn't emit them.
+				// WithSecureBootPolicyProfile() will generate an invalid policy in this case because,
+				// with some exceptions, it doesn't emit them.
 				//
 				// Just return an error here to prevent the use of WithSecureBootPolicyProfile(). The
 				// "UEFI Debug Mode" and "DMA Protection Disabled" cases are already picked up by the
 				// firmware protection checks, so we don't need any special handling here.
-				if bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
-					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00)) {
-					// This event is detected by the host security checks anyways so we can skip it here
+				//
+				// We do permit the "DMA Protection Disabled" case if required. In this case,
+				// WithSecureBootPolicyProfile() needs a separate option.
+				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
+					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
+					// This event is detected by the host security checks so we can skip it here.
+					// We'll emit a flag in the results which is picked up by the code in profile.go
+					// to add an option to permit this with WithSecureBootPolicyProfile().
+					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
 					continue NextEvent
 				}
 				fallthrough
@@ -592,6 +598,28 @@ NextEvent:
 				}
 			case tcglog.EventTypeSeparator:
 				// ok
+			case tcglog.EventTypeEFIAction:
+				// In general, it's not normal to see EV_EFI_ACTION events and these indicate some
+				// sort of abnormal condition that has a detrimental effect on device security.
+				// WithSecureBootPolicyProfile() will generate an invalid policy in this case because,
+				// with some exceptions, it doesn't emit them.
+				//
+				// Just return an error here to prevent the use of WithSecureBootPolicyProfile(). The
+				// "UEFI Debug Mode" and "DMA Protection Disabled" cases are already picked up by the
+				// firmware protection checks, so we don't need any special handling here.
+				//
+				// We do permit the "DMA Protection Disabled" case if required. In this case,
+				// WithSecureBootPolicyProfile() needs a separate option. Some firmware measures
+				// this after the EV_SEPARATOR in PCR7 but part of the pre-OS environment.
+				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
+					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
+					// This event is detected by the host security checks so we can skip it here.
+					// We'll emit a flag in the results which is picked up by the code in profile.go
+					// to add an option to permit this with WithSecureBootPolicyProfile().
+					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
+					continue NextEvent
+				}
+				fallthrough
 			default:
 				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY ends up here.
 				return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
