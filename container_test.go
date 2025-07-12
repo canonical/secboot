@@ -43,62 +43,122 @@ func (s *containerSuite) SetUpTest(c *C) {
 
 var _ = Suite(&containerSuite{})
 
-func (s *containerSuite) TestNewStorageContainer1(c *C) {
+func (s *containerSuite) TestFindStorageContainer1(c *C) {
 	expectedContainer := newMockStorageContainer("/dev/sda1")
 	s.backend.addContainer("/dev/sda1", expectedContainer)
 
 	expectedCtx := context.Background()
 
-	container, err := NewStorageContainer(expectedCtx, "/dev/sda1")
+	container, err := FindStorageContainer(expectedCtx, "/dev/sda1")
 	c.Assert(err, IsNil)
 	c.Assert(container, testutil.ConvertibleTo, &mockStorageContainerWithProbeContext{})
 	c.Check(container.(interface{ probeContext() context.Context }).probeContext(), Equals, expectedCtx)
 	c.Check(container.(*mockStorageContainerWithProbeContext).mockStorageContainer, Equals, expectedContainer)
 }
 
-func (s *containerSuite) TestNewStorageContainer2(c *C) {
+func (s *containerSuite) TestFindStorageContainer2(c *C) {
 	expectedContainer := newMockStorageContainer("/dev/vdb2")
 	s.backend.addContainer("/dev/vdb2", expectedContainer)
 
 	expectedCtx := context.Background()
 
-	container, err := NewStorageContainer(expectedCtx, "/dev/vdb2")
+	container, err := FindStorageContainer(expectedCtx, "/dev/vdb2")
 	c.Assert(err, IsNil)
 	c.Assert(container, testutil.ConvertibleTo, &mockStorageContainerWithProbeContext{})
 	c.Check(container.(interface{ probeContext() context.Context }).probeContext(), Equals, expectedCtx)
 	c.Check(container.(*mockStorageContainerWithProbeContext).mockStorageContainer, Equals, expectedContainer)
 }
 
-func (s *containerSuite) TestNewStorageContainerNotFound(c *C) {
-	_, err := NewStorageContainer(context.Background(), "/dev/sda1")
+func (s *containerSuite) TestFindStorageContainerNotFound(c *C) {
+	_, err := FindStorageContainer(context.Background(), "/dev/sda1")
 	c.Check(err, Equals, ErrNoStorageContainer)
 }
 
-func (s *containerSuite) TestNewStorageContainerNotFoundWithMultipleBackends(c *C) {
+func (s *containerSuite) TestFindStorageContainerNotFoundWithMultipleBackends(c *C) {
 	RegisterStorageContainerBackend("foo", new(mockStorageContainerBackend))
 	defer RegisterStorageContainerBackend("foo", nil)
 
-	_, err := NewStorageContainer(context.Background(), "/dev/sda1")
+	_, err := FindStorageContainer(context.Background(), "/dev/sda1")
 	c.Check(err, Equals, ErrNoStorageContainer)
 }
 
-func (s *containerSuite) TestNewStorageContainerProbeError1(c *C) {
+func (s *containerSuite) TestFindStorageContainerProbeError1(c *C) {
 	expectedErr := errors.New("some error")
 	s.backend.setProbeErr(expectedErr)
 
-	_, err := NewStorageContainer(context.Background(), "/dev/sda1")
+	_, err := FindStorageContainer(context.Background(), "/dev/sda1")
 	c.Check(err, ErrorMatches, `cannot probe "mock" backend for path "\/dev\/sda1": some error`)
 	c.Check(errors.Is(err, expectedErr), testutil.IsTrue)
 }
 
-func (s *containerSuite) TestNewStorageContainerProbeError2(c *C) {
+func (s *containerSuite) TestFindStorageContainerProbeError2(c *C) {
 	otherBackend := newMockStorageContainerBackend()
 	expectedErr := errors.New("some error")
 	otherBackend.setProbeErr(expectedErr)
 	RegisterStorageContainerBackend("foo", otherBackend)
 	defer RegisterStorageContainerBackend("foo", nil)
 
-	_, err := NewStorageContainer(context.Background(), "/dev/sdb2")
+	_, err := FindStorageContainer(context.Background(), "/dev/sdb2")
 	c.Check(err, ErrorMatches, `cannot probe "foo" backend for path "\/dev\/sdb2": some error`)
+	c.Check(errors.Is(err, expectedErr), testutil.IsTrue)
+}
+
+func (s *containerSuite) TestFindActivatedStorageContainer1(c *C) {
+	expectedContainer := newMockStorageContainer("/dev/dm-1")
+	s.backend.addActivatedContainer("/dev/dm-1", expectedContainer)
+
+	expectedCtx := context.Background()
+
+	container, err := FindActivatedStorageContainer(expectedCtx, "/dev/dm-1")
+	c.Assert(err, IsNil)
+	c.Assert(container, testutil.ConvertibleTo, &mockStorageContainerWithProbeContext{})
+	c.Check(container.(interface{ probeContext() context.Context }).probeContext(), Equals, expectedCtx)
+	c.Check(container.(*mockStorageContainerWithProbeContext).mockStorageContainer, Equals, expectedContainer)
+}
+
+func (s *containerSuite) TestFindActivatedStorageContainer2(c *C) {
+	expectedContainer := newMockStorageContainer("/dev/dm-3")
+	s.backend.addActivatedContainer("/dev/dm-3", expectedContainer)
+
+	expectedCtx := context.Background()
+
+	container, err := FindActivatedStorageContainer(expectedCtx, "/dev/dm-3")
+	c.Assert(err, IsNil)
+	c.Assert(container, testutil.ConvertibleTo, &mockStorageContainerWithProbeContext{})
+	c.Check(container.(interface{ probeContext() context.Context }).probeContext(), Equals, expectedCtx)
+	c.Check(container.(*mockStorageContainerWithProbeContext).mockStorageContainer, Equals, expectedContainer)
+}
+
+func (s *containerSuite) TestFindActivatedStorageContainerNotFound(c *C) {
+	_, err := FindActivatedStorageContainer(context.Background(), "/dev/dm-1")
+	c.Check(err, Equals, ErrNoStorageContainer)
+}
+
+func (s *containerSuite) TestFindActivatedStorageContainerNotFoundWithMultipleBackends(c *C) {
+	RegisterStorageContainerBackend("foo", new(mockStorageContainerBackend))
+	defer RegisterStorageContainerBackend("foo", nil)
+
+	_, err := FindActivatedStorageContainer(context.Background(), "/dev/dm-1")
+	c.Check(err, Equals, ErrNoStorageContainer)
+}
+
+func (s *containerSuite) TestFindActivatedStorageContainerProbeError1(c *C) {
+	expectedErr := errors.New("some error")
+	s.backend.setProbeActivatedErr(expectedErr)
+
+	_, err := FindActivatedStorageContainer(context.Background(), "/dev/dm-1")
+	c.Check(err, ErrorMatches, `cannot probe "mock" backend for path "\/dev\/dm-1": some error`)
+	c.Check(errors.Is(err, expectedErr), testutil.IsTrue)
+}
+
+func (s *containerSuite) TestFindActivatedStorageContainerProbeError2(c *C) {
+	otherBackend := newMockStorageContainerBackend()
+	expectedErr := errors.New("some error")
+	otherBackend.setProbeActivatedErr(expectedErr)
+	RegisterStorageContainerBackend("foo", otherBackend)
+	defer RegisterStorageContainerBackend("foo", nil)
+
+	_, err := FindActivatedStorageContainer(context.Background(), "/dev/dm-1")
+	c.Check(err, ErrorMatches, `cannot probe "foo" backend for path "\/dev\/dm-1": some error`)
 	c.Check(errors.Is(err, expectedErr), testutil.IsTrue)
 }
