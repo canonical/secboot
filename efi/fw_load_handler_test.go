@@ -606,7 +606,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_1(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
 		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
-			events := log.Events[:i+1]
+			events := append([]*tcglog.Event(nil), log.Events[:i+1]...)
 			events = append(events, event)
 			if len(log.Events) > i+1 {
 				events = append(events, log.Events[i+1:]...)
@@ -630,7 +630,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_2(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
 		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
-			events := log.Events[:i]
+			events := append([]*tcglog.Event(nil), log.Events[:i]...)
 			events = append(events, &tcglog.Event{
 				PCRIndex:  7,
 				EventType: tcglog.EventTypeEFIVariableAuthority})
@@ -657,7 +657,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_3(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
 		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
-			events := log.Events[:i]
+			events := append([]*tcglog.Event(nil), log.Events[:i]...)
 			events = append(events, event)
 			events = append(events, &tcglog.Event{
 				PCRIndex:  7,
@@ -684,7 +684,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_4(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
 		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
-			events := log.Events[:i]
+			events := append([]*tcglog.Event(nil), log.Events[:i]...)
 			events = append(events, event)
 			events = append(events, &tcglog.Event{
 				PCRIndex:  7,
@@ -741,7 +741,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR0_2(c *C) {
 			if _, isLoc := event.Data.(*tcglog.StartupLocalityEventData); !isLoc {
 				continue
 			}
-			events := log.Events[:i]
+			events := append([]*tcglog.Event(nil), log.Events[:i]...)
 			events = append(events, event, event)
 			if len(log.Events) > i+1 {
 				events = append(events, log.Events[i+1:]...)
