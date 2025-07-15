@@ -77,25 +77,26 @@ func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmw
 }
 
 func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabled(c *C) {
-	log := efitest.NewLog(c, &efitest.LogOptions{DMAProtectionDisabled: efitest.DMAProtectionDisabled})
+	log := efitest.NewLog(c, &efitest.LogOptions{DMAProtection: efitest.DMAProtectionDisabled})
 	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrInsufficientDMAProtection})
 }
 
-func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabledNullTerminated(c *C) {
-	log := efitest.NewLog(c, &efitest.LogOptions{DMAProtectionDisabled: efitest.DMAProtectionDisabledNullTerminated})
-	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
-	var tmpl CompoundError
-	c.Assert(err, Implements, &tmpl)
-	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrInsufficientDMAProtection})
-}
-
-func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabledBeforeVerification(c *C) {
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabledEventNullTerminated(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		DMAProtectionDisabled:              efitest.DMAProtectionDisabled,
-		DMAProtectionDisabledEventLocation: efitest.DMAProtectionDisabledEventLocationBeforeVerification,
+		DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventNullTerminated,
+	})
+	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrInsufficientDMAProtection})
+}
+
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabledEventAfterSeparator(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventOrderAfterSeparator,
 	})
 	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
 	var tmpl CompoundError
@@ -105,8 +106,7 @@ func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAPr
 
 func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAProtectionDisabledBeforeConfig(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		DMAProtectionDisabled:              efitest.DMAProtectionDisabled,
-		DMAProtectionDisabledEventLocation: efitest.DMAProtectionDisabledEventLocationBeforeConfig,
+		DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventOrderBeforeConfig,
 	})
 	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
 	var tmpl CompoundError
@@ -116,8 +116,8 @@ func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsDMAPr
 
 func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmwareDebuggingEnabledAndDMAProtectionDisabled(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		FirmwareDebugger:      true,
-		DMAProtectionDisabled: efitest.DMAProtectionDisabled,
+		FirmwareDebugger: true,
+		DMAProtection:    efitest.DMAProtectionDisabled,
 	})
 	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
 	var tmpl CompoundError

@@ -94,7 +94,13 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// deployed mode on (where UEFI >= 2.5), without a UEFI debugger enabled and which
 	// measure events in the correct order.
 	//
-	// We do permit the presence of a EV_EFI_ACTION event that indicates that pre-boot DMA
+	// It doesn't support firmware that implements timestamp revocation (there will be a
+	// dbt variable that needs to be measured), OS recovery (which implies a dbr variable,
+	// to be measured, but we'll likely never encounter this) or where secure boot is
+	// enabled but the platform is in user mode rather than deployed mode. User mode and
+	// dbt will be supported in the future.
+	//
+	// We do permit the presence of an EV_EFI_ACTION event that indicates that pre-boot DMA
 	// protection was disabled if the appropriate options are supplied. However, this event
 	// is poorly documented so we don't really know where in the measurement order it's
 	// meant to be. The only place this is documented is in the tianocore documentation,
@@ -103,19 +109,52 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// possible measurement ordering. Ideally we wouldn't be supporting poorly documented
 	// events such as this, because, in addition to weakening security, it also makes this
 	// code more complicated.
+	//
+	// The TCG PC Client PFP spec is vague wrt where EV_EFI_VARIABLE_AUTHORITY events
+	// associated with verification of third party code in the pre-OS environment should be
+	// measured. EDK2 measures a EV_SEPARATOR event to PCR7 as soon as it has measured all
+	// of the secure boot configuration. In this case, EV_EFI_VARIABLE_AUTHORITY events
+	// associated with third party code in the pre-OS environment are measured *after* this
+	// separator, with the EV_SEPARATOR events in PCRs 0-6 later on indicating the transition
+	// to OS present. The comments in EDK2 imply that the EV_SEPARATOR in PCR7 is the boundary
+	// between configuration and image verification. Some other firmware implementations do not
+	// measure the EV_SEPARATOR event to PCR7 as soon as the secure boot configuration has been
+	// measured, opting to do this during the transition to OS present. In this case,
+	// EV_EFI_VARIABLE_AUTHORITY events associated with third party pre-OS code are measured
+	// *before* the separator, with EV_SEPARATOR events measured to PCRs 0-7 indicating the
+	// transition to OS present. This code handles both cases for now until this is documented
+	// properly, in which case we would want to gradually transition to considering other
+	// measurement orders a bug.
 
 	events := h.log.Events
+
+	// allowInsfficientDMAProtection indicates that we should permit generating profiles
+	// that are compatible with PCR7 even if pre-boot DMA protection is disabled.
 	allowInsufficientDMAProtection := boolParamOrFalse(ctx.Params(), allowInsufficientDMAProtectionParamKey)
+
+	// includeInsufficientDMAProtection indicates that where allowInsufficientDMAProtection
+	// is set to true, this branch should be a branch that includes the corresponding
+	// EV_EFI_ACTION event in the profile if it is present.
 	includeInsufficientDMAProtection := boolParamOrFalse(ctx.Params(), includeInsufficientDMAProtectionParamKey)
 
 	// Wind the log forward to the first EV_EFI_VARIABLE_DRIVER_CONFIG event, including
-	// the EV_EFI_ACTION "DMA Protection Disabled" event if one exists and the supplied
-	// options permit it.
+	// any EV_EFI_ACTION "DMA Protection Disabled" measurement before this in the target
+	// profile, if this measurement is encountered and the supplied options permit it.
+	// Return an error if other unexpected events are encountered, as the profile will be
+	// wrong in this case anyway. This will implicitly catch the EV_EFI_ACTION "UEFI
+	// Debug Mode" measurement and return an error if the platform firmware has a debugger
+	// enabled. A firmware debugger permits an adversary with local access to control
+	// firmware execution, bypassing any protections offered by measuredboot or verified
+	// boot, and the presence of one should prevent FDE from being enabled.
 	for len(events) > 0 {
 		e := events[0]
 		events = events[1:]
 
 		if e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
+			// This is the first secure boot configuration measurement. In most
+			// circumstances, this will be the first measurement to PCR7. Only
+			// in the case where the first event is a EV_EFI_ACTION "DMA Protection
+			// Disabled" event will this not be true.
 			break
 		}
 
@@ -123,13 +162,15 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
-			// The "DMA Protection Disabled" string is allowed to appear in PCR7.
-			// In this case, it is before the secure boot configuration measurements.
+			// This is a EV_EFI_ACTION "DMA Protection Disabled" measurement and is
+			// allowed to appear in PCR7. In this case, it is before the secure
+			// boot configuration measurements.
 			// Now we use the includeInsufficientDMAProtection flag to determine if
-			// this run of fwLoadHandler should really measure it to the profile as
-			// well, which means the profile has a branch that allows the firmware
-			// setting to be corrected so that future runs can drop the option to
-			// permit it.
+			// this run of fwLoadHandler should really measure it to this profile
+			// branch as well. Including a branch in the profile that skips this
+			// measurement makes it possible for the firmware setting to be corrected
+			// without invalidating the profile, which would require a recovery key.
+			// Future runs can then drop the option to permit it.
 			if includeInsufficientDMAProtection {
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
@@ -141,7 +182,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		}
 	}
 
-	// Measure the secure boot configuration.
+	// Measure a secure boot configuration.
 	ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, sbStateName, []byte{1})
 	if _, err := h.readAndMeasureSignatureDb(ctx, PK); err != nil {
 		return xerrors.Errorf("cannot measure PK: %w", err)
@@ -155,59 +196,80 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	if _, err := h.readAndMeasureSignatureDb(ctx, Dbx); err != nil {
 		return xerrors.Errorf("cannot measure dbx: %w", err)
 	}
-	// TODO: Support optional dbt/dbr databases
+	// TODO: Support optional dbt/dbr database
 
-	// Wind the log further forwards, retaining any verification events associated with
-	// third party code executed from the pre-OS environment such as UEFI drivers or
-	// system preparation applications. Note that these make a profile inherently fragile.
-	// See the comment in measureBootManagerCodePreOS regarding event ordering.
-	foundOsPresent := false
-	foundSecureBootSeparator := false
+	// We don't measure a EV_SEPARATOR here yet because we need to preserve the
+	// device-specific measurement ordering - see the notes above about when the
+	// verification of third-party pre-OS code is measured. We don't know whether
+	// the EV_SEPARATOR in PCR7 on this platform signals the transition to OS-present,
+	// or signals the boundary between config (EV_EFI_VARIABLE_DRIVER_CONFIG) and
+	// verification (EV_EFI_VARIABLE_AUTHORITY). We may have to measure any
+	// EV_EFI_VARIABLE_AUTHORITY events associated with third-party pre-OS code
+	// *before* measuring the separator in the case that this platform measures the
+	// separator as part of the transition to OS-present.
 
+	// Wind the log further forwards to the transition to OS-present, past the secure
+	// boot configuration, whilst retaining any verification events associated with
+	// third party code executed from the pre-OS environment. This includes UEFI
+	// drivers or system preparation applications, although note that these make a
+	// profile inherently fragile. See the comment in measureBootManagerCodePreOS
+	// regarding event ordering. This loop retains the device specific ordering, eg,
+	// whether the EV_SEPARATOR in PCR7 signals the end of the configuration
+	// measurements of whether it is measured as part of the transition to OS-present.
+	foundOsPresent := false              // true when we enounter the first EV_SEPARATOR in PCRs 0-6.
+	measuredSecureBootSeparator := false // true when we encounter the EV_SEPARATOR in PCR7.
+	measuredPreOSVerification := false   // true when we encounter a EV_EFI_VARIABLE_AUTHORITY event.
 	for len(events) > 0 {
 		e := events[0]
 		events = events[1:]
 
 		switch {
 		case e.PCRIndex < internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeSeparator:
-			// pre-OS to OS-present signal
+			// Pre-OS to OS-present signal. We abort this loop once we've seen
+			// this *and* the EV_SEPARATOR event in PCR7.
 			foundOsPresent = true
-		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeSeparator:
-			// end of secure boot configuration signal
-			if foundSecureBootSeparator {
-				return errors.New("unexpected separator")
-			}
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeSeparator && !measuredSecureBootSeparator:
+			// End of secure boot configuration signal or transition to OS-present.
 			if err := h.measureSeparator(ctx, internal_efi.SecureBootPolicyPCR, e); err != nil {
 				return err
 			}
-			foundSecureBootSeparator = true
+
+			// Record that we've seen this - we should only see it once. We abort
+			// once we've seen this *and* the transition to OS-present.
+			measuredSecureBootSeparator = true
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableAuthority:
-			// secure boot verification event - shouldn't see this before the end of secure
-			// boot configuration signal.
-			if !foundSecureBootSeparator {
-				return errors.New("unexpected verification event")
-			}
+			// Pre-OS secure boot verification event. This must be retained, and we
+			// support this being measured either before or after the EV_SEPARATOR event
+			// in PCR7, preserving the original measurement order. If
+			// measuredSecureBootSeparator is false at this point, then the EV_SEPARATOR
+			// in PCR7 is measured as part of the transition to OS-present on this platform,
+			// otherwise it is measured immediately after the secure boot configuration
+			// measurements.
 			digest := e.Digests[ctx.PCRAlg()]
 			ctx.FwContext().AppendVerificationEvent(digest)
 			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, digest)
-		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
-			// ignore: part of the secure boot configuration - shouldn't see this after the
-			// end of secure boot configuration signal.
-			if foundSecureBootSeparator {
-				return errors.New("unexpected configuration event")
-			}
+			measuredPreOSVerification = true
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig &&
+			!measuredPreOSVerification && !measuredSecureBootSeparator:
+			// Ignore: part of the secure boot configuration - we shouldn't see these
+			// once we've encountered the first EV_EFI_VARIABLE_AUTHORITY event and
+			// we'll likely generate an invalid profile if we do. The preinstall
+			// checks will catch this.
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
-			// The "DMA Protection Disabled" string is allowed to appear in PCR7.
-			// In this case, it is after the secure boot configuration measurements,
-			// and may be part of the configuration (before the separator) or not
-			// (after the separator).
+			// This is a EV_EFI_ACTION "DMA Protection Disabled" measurement and is
+			// allowed to appear in PCR7. In this case, it is after the secure
+			// boot configuration measurements, and may be after the separator (if
+			// the separator indicates the end of the configuration) or before the
+			// separator (if the separator is measured as part of the transition to
+			// OS-present).
 			// Now we use the includeInsufficientDMAProtection flag to determine if
-			// this run of fwLoadHandler should really measure it to the profile as
-			// well, which means the profile has a branch that allows the firmware
-			// setting to be corrected so that future runs can drop the option to
-			// permit it.
+			// this run of fwLoadHandler should really measure it to this profile
+			// branch as well. Including a branch in the profile that skips this
+			// measurement makes it possible for the firmware setting to be corrected
+			// without invalidating the profile, which would require a recovery key.
+			// Future runs can then drop the option to permit it.
 			if includeInsufficientDMAProtection {
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
@@ -218,13 +280,17 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			// not a secure boot event
 		}
 
-		if foundOsPresent && foundSecureBootSeparator {
+		if foundOsPresent && measuredSecureBootSeparator {
+			// We've encountered the signal to OS-present (EV_SEPARATOR events in PCRs
+			// 0-6) *and* we've seen the EV_SEPARATOR for PCR7. At this point we can
+			// abort - the next events are associated with verification of the OS
+			// components.
 			break
 		}
 	}
 
-	if !foundSecureBootSeparator {
-		return errors.New("missing separator")
+	if !measuredSecureBootSeparator {
+		return errors.New("missing separator in log")
 	}
 	return nil
 }
@@ -269,7 +335,7 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 		ctx.ExtendPCR(internal_efi.PlatformFirmwarePCR, event.Digests[ctx.PCRAlg()])
 	}
 
-	return errors.New("missing separator")
+	return errors.New("missing separator in log")
 }
 
 func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
@@ -284,7 +350,7 @@ func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
 		ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
 	}
 
-	return errors.New("missing separator")
+	return errors.New("missing separator in log")
 }
 
 func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error {
@@ -342,7 +408,7 @@ func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error 
 	}
 
 	if !measuredSeparator {
-		return errors.New("missing separator")
+		return errors.New("missing separator in log")
 	}
 
 	// Some newer laptops including those from Dell and Lenovo execute code from a firmware volume as part

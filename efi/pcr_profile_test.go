@@ -1283,8 +1283,8 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20WithDbxUpdateWithAllowInsufficien
 	err := s.testAddPCRProfile(c, &testAddPCRProfileData{
 		vars: makeMockVars(c, withMsSecureBootConfig(), withSbatLevel([]byte("sbat,1,2022052400\ngrub,2\n"))),
 		log: efitest.NewLog(c, &efitest.LogOptions{
-			Algorithms:            []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-			DMAProtectionDisabled: efitest.DMAProtectionDisabled,
+			Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection: efitest.DMAProtectionDisabled,
 		}),
 		alg: tpm2.HashAlgorithmSHA256,
 		loadSequences: NewImageLoadSequences(

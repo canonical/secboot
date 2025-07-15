@@ -222,6 +222,7 @@ type testCheckFirmwareLogAndChoosePCRBankParams struct {
 	enabledBanks              []tpm2.HashAlgorithmId
 	logAlgs                   []tpm2.HashAlgorithmId
 	startupLocality           uint8
+	separatorOrder            efitest.SecureBootSeparatorOrder
 	disallowPreOSVerification bool
 	mandatoryPcrs             tpm2.HandleList
 	flags                     CheckFirmwareLogFlags
@@ -233,9 +234,9 @@ func (s *tcglogSuite) testCheckFirmwareLogAndChoosePCRBank(c *C, params *testChe
 	s.allocatePCRBanks(c, params.enabledBanks...)
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                params.logAlgs,
-		StartupLocality:           params.startupLocality,
-		DisallowPreOSVerification: params.disallowPreOSVerification,
+		Algorithms:               params.logAlgs,
+		StartupLocality:          params.startupLocality,
+		SecureBootSeparatorOrder: params.separatorOrder,
 	})
 	s.resetTPMAndReplayLog(c, log, params.logAlgs...)
 	result, err := CheckFirmwareLogAndChoosePCRBank(s.TPM, log, params.mandatoryPcrs, params.flags)
@@ -426,9 +427,9 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankOldFirmware(c *C) {
 	// transition instead of being used to separate secure boot config from secure boot
 	// verification.
 	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
-		enabledBanks:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		logAlgs:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		disallowPreOSVerification: true,
+		enabledBanks:   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		logAlgs:        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		separatorOrder: efitest.SecureBootSeparatorAfterPreOS,
 		mandatoryPcrs: tpm2.HandleList{
 			internal_efi.PlatformFirmwarePCR,
 			internal_efi.PlatformConfigPCR,
@@ -755,8 +756,8 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankPCRMismatchNonMandator
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSecureBootConfigJumpsToOSPresent(c *C) {
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256)
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		DisallowPreOSVerification: true,
+		Algorithms:               []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		SecureBootSeparatorOrder: efitest.SecureBootSeparatorAfterPreOS,
 	})
 	var (
 		eventsCopy                      []*tcglog.Event

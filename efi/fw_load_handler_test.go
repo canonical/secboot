@@ -114,6 +114,32 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileSecureB
 	})
 }
 
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileSecureBootSeparatorAfterPreOS(c *C) {
+	// Verify the event ordering when the log indicates that the EV_SEPARATOR in PCR7
+	// is measured as part of the transition to OS-present. The ordering has no effect
+	// in this case because there are no events asssociated with verification of
+	// third-party pre-OS images.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:               []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			SecureBootSeparatorOrder: efitest.SecureBootSeparatorAfterPreOS,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+}
+
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeDriverLaunch(c *C) {
 	// Verify the events associated with a driver launch are included in the profile
 	vars := makeMockVars(c, withMsSecureBootConfig())
@@ -140,14 +166,43 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileInclude
 	c.Check(fc.HasVerificationEvent(verificationDigest), testutil.IsTrue)
 }
 
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeDriverLaunchAndSecureBootSeparatorAfterPreOS(c *C) {
+	// Verify the events associated with a driver launch are included in the profile, and
+	// that the event ordering is preserved in the case where the EV_SEPARATOR event in
+	// PCR7 is measured as part of the transition to OS-present.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	verificationDigest := testutil.DecodeHexString(c, "4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9")
+	fc := s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:               []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			SecureBootSeparatorOrder: efitest.SecureBootSeparatorAfterPreOS,
+			IncludeDriverLaunch:      true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: verificationDigest},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+	c.Check(fc.HasVerificationEvent(verificationDigest), testutil.IsTrue)
+}
+
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileAllowInsufficientDMAProtection(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted.
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		vars: vars,
 		logOptions: &efitest.LogOptions{
-			Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-			IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
-			DMAProtectionDisabled:             efitest.DMAProtectionDisabled,
+			Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection: efitest.DMAProtectionDisabled,
 		},
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
@@ -168,13 +223,14 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileAllowIn
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtection(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted
+	// and included in the emitted profile.
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		vars: vars,
 		logOptions: &efitest.LogOptions{
-			Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-			IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
-			DMAProtectionDisabled:             efitest.DMAProtectionDisabled,
+			Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection: efitest.DMAProtectionDisabled,
 		},
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
@@ -196,13 +252,15 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileInclude
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtectionNul(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted
+	// and included in the emitted profile, and that it handles the case where the
+	// event data is NULL terminated.
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		vars: vars,
 		logOptions: &efitest.LogOptions{
-			Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-			IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
-			DMAProtectionDisabled:             efitest.DMAProtectionDisabledNullTerminated,
+			Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventNullTerminated,
 		},
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
@@ -223,15 +281,91 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileInclude
 	})
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtectionBeforeVerification(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtectionAndDriverLaunch(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted
+	// and included in the emitted profile, and that the original event ordering is
+	// retained - in this case, the event is immediately after the secure boot config
+	// measurements, with the separator in PCR7 dividing the secure boot configuration
+	// and image verification events. There is also a driver launch.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	verificationDigest := testutil.DecodeHexString(c, "4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9")
+	fc := s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection:       efitest.DMAProtectionDisabled,
+			IncludeDriverLaunch: true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"allow_insufficient_dma_protection":   true,
+			"include_insufficient_dma_protection": true,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "019537eeff4f1858181e09d26faa59a5ad3a9d8eef3d1bbbb35288e0e16d656c")}, // "DMA Protection Disabled"
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: verificationDigest},
+		},
+	})
+	c.Check(fc.HasVerificationEvent(verificationDigest), testutil.IsTrue)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtectionAndDriverLaunchWithSeparatorAfterPreOS(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted
+	// and included in the emitted profile, and that the original event ordering is
+	// retained - in this case, the event is immediately after the secure boot config
+	// measurements, with the separator in PCR7 being measured as part of the transition
+	// to OS-present. There is also a driver launch.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	verificationDigest := testutil.DecodeHexString(c, "4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9")
+	fc := s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:               []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection:            efitest.DMAProtectionDisabled,
+			SecureBootSeparatorOrder: efitest.SecureBootSeparatorAfterPreOS,
+			IncludeDriverLaunch:      true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"allow_insufficient_dma_protection":   true,
+			"include_insufficient_dma_protection": true,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "019537eeff4f1858181e09d26faa59a5ad3a9d8eef3d1bbbb35288e0e16d656c")}, // "DMA Protection Disabled"
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: verificationDigest},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+		},
+	})
+	c.Check(fc.HasVerificationEvent(verificationDigest), testutil.IsTrue)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtectionAfterSeparator(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted
+	// and included in the emitted profile, and that the original event ordering is
+	// retained - in this case, the event is immediately after the secure boot separator,
+	// with the separator in PCR7 dividing the secure boot configuration events and the
+	// secure boot image verification events.
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		vars: vars,
 		logOptions: &efitest.LogOptions{
-			Algorithms:                         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-			IncludeOSPresentFirmwareAppLaunch:  efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
-			DMAProtectionDisabled:              efitest.DMAProtectionDisabled,
-			DMAProtectionDisabledEventLocation: efitest.DMAProtectionDisabledEventLocationBeforeVerification,
+			Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventOrderAfterSeparator,
 		},
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
@@ -252,15 +386,52 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileInclude
 	})
 }
 
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtectionAfterSeparatorWithDriverLaunch(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted
+	// and included in the emitted profile, and that the original event ordering is
+	// retained - in this case, the event is immediately after the secure boot separator,
+	// with the separator in PCR7 dividing the secure boot configuration events and the
+	// secure boot image verification events. There is also a driver launch.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	verificationDigest := testutil.DecodeHexString(c, "4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9")
+	fc := s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection:       efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventOrderAfterSeparator,
+			IncludeDriverLaunch: true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"allow_insufficient_dma_protection":   true,
+			"include_insufficient_dma_protection": true,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "019537eeff4f1858181e09d26faa59a5ad3a9d8eef3d1bbbb35288e0e16d656c")}, // "DMA Protection Disabled"
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: verificationDigest},
+		},
+	})
+	c.Check(fc.HasVerificationEvent(verificationDigest), testutil.IsTrue)
+}
+
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileAllowInsufficientDMAProtectionBeforeConfig(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted,
+	// and that the original event ordering is retained - in this case, the event is
+	// before the secure boot configuration measurements.
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		vars: vars,
 		logOptions: &efitest.LogOptions{
-			Algorithms:                         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-			IncludeOSPresentFirmwareAppLaunch:  efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
-			DMAProtectionDisabled:              efitest.DMAProtectionDisabled,
-			DMAProtectionDisabledEventLocation: efitest.DMAProtectionDisabledEventLocationBeforeConfig,
+			Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventOrderBeforeConfig,
 		},
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
@@ -281,14 +452,16 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileAllowIn
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtectionBeforeConfig(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted
+	// and included in the emitted profile, and that the original event ordering is
+	// retained - in this case, the event is before the secure boot configuration
+	// measurements.
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		vars: vars,
 		logOptions: &efitest.LogOptions{
-			Algorithms:                         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-			IncludeOSPresentFirmwareAppLaunch:  efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
-			DMAProtectionDisabled:              efitest.DMAProtectionDisabled,
-			DMAProtectionDisabledEventLocation: efitest.DMAProtectionDisabledEventLocationBeforeConfig,
+			Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventOrderBeforeConfig,
 		},
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
@@ -310,14 +483,15 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileInclude
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeInsufficientDMAProtectionNulBeforeConfig(c *C) {
+	// Verify that the EV_EFI_ACTION "DMA Protection Disabled" event can be permitted
+	// and included in the emitted profile, and that it handles the case where the
+	// event data is NULL terminated.
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		vars: vars,
 		logOptions: &efitest.LogOptions{
-			Algorithms:                         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-			IncludeOSPresentFirmwareAppLaunch:  efi.MakeGUID(0x8feeecf1, 0xbcfd, 0x4a78, 0x9231, [...]byte{0x48, 0x01, 0x56, 0x6b, 0x35, 0x67}),
-			DMAProtectionDisabled:              efitest.DMAProtectionDisabledNullTerminated,
-			DMAProtectionDisabledEventLocation: efitest.DMAProtectionDisabledEventLocationBeforeConfig,
+			Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventNullTerminated | efitest.DMAProtectionDisabledEventOrderBeforeConfig,
 		},
 		alg:  tpm2.HashAlgorithmSHA256,
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
@@ -541,8 +715,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrDisallowDMAProtectionDisabl
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:            []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		DMAProtectionDisabled: efitest.DMAProtectionDisabled,
+		Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+		DMAProtection: efitest.DMAProtectionDisabled,
 	})
 
 	handler := NewFwLoadHandler(log)
@@ -556,8 +730,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrDisallowDMAProtectionDisabl
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:            []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		DMAProtectionDisabled: efitest.DMAProtectionDisabledNullTerminated,
+		Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+		DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventNullTerminated,
 	})
 
 	handler := NewFwLoadHandler(log)
@@ -571,9 +745,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrDisallowDMAProtectionDisabl
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		DMAProtectionDisabled:              efitest.DMAProtectionDisabled,
-		DMAProtectionDisabledEventLocation: efitest.DMAProtectionDisabledEventLocationBeforeConfig,
+		Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+		DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventOrderBeforeConfig,
 	})
 
 	handler := NewFwLoadHandler(log)
@@ -587,9 +760,8 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrDisallowDMAProtectionDisabl
 		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR)}, nil, collector.Next())
 
 	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
-		DMAProtectionDisabled:              efitest.DMAProtectionDisabledNullTerminated,
-		DMAProtectionDisabledEventLocation: efitest.DMAProtectionDisabledEventLocationBeforeConfig,
+		Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+		DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventNullTerminated | efitest.DMAProtectionDisabledEventOrderBeforeConfig,
 	})
 
 	handler := NewFwLoadHandler(log)
@@ -606,7 +778,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_1(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
 		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
-			events := log.Events[:i+1]
+			events := append([]*tcglog.Event(nil), log.Events[:i+1]...)
 			events = append(events, event)
 			if len(log.Events) > i+1 {
 				events = append(events, log.Events[i+1:]...)
@@ -617,37 +789,10 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_1(c *C) {
 	}
 
 	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected separator`)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected event type \(EV_SEPARATOR\) found in log`)
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_2(c *C) {
-	// Prepend a verification event into PCR7 before the EV_SEPARATOR
-	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
-	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
-		alg:  tpm2.HashAlgorithmSHA256,
-		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR)}, nil, collector.Next())
-
-	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
-	for i, event := range log.Events {
-		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
-			events := log.Events[:i]
-			events = append(events, &tcglog.Event{
-				PCRIndex:  7,
-				EventType: tcglog.EventTypeEFIVariableAuthority})
-			events = append(events, event)
-			if len(log.Events) > i+1 {
-				events = append(events, log.Events[i+1:]...)
-			}
-			log.Events = events
-			break
-		}
-	}
-
-	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected verification event`)
-}
-
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_3(c *C) {
 	// Append a configuration event into PCR7 after the EV_SEPARATOR
 	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
@@ -657,7 +802,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_3(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
 		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
-			events := log.Events[:i]
+			events := append([]*tcglog.Event(nil), log.Events[:i]...)
 			events = append(events, event)
 			events = append(events, &tcglog.Event{
 				PCRIndex:  7,
@@ -671,10 +816,10 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_3(c *C) {
 	}
 
 	handler := NewFwLoadHandler(log)
-	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected configuration event`)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected event type \(EV_EFI_VARIABLE_DRIVER_CONFIG\) found in log`)
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_4(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_3(c *C) {
 	// Insert an unexpected event type into PCR7
 	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
@@ -684,7 +829,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_4(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}})
 	for i, event := range log.Events {
 		if event.PCRIndex == 7 && event.EventType == tcglog.EventTypeSeparator {
-			events := log.Events[:i]
+			events := append([]*tcglog.Event(nil), log.Events[:i]...)
 			events = append(events, event)
 			events = append(events, &tcglog.Event{
 				PCRIndex:  7,
@@ -741,7 +886,7 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR0_2(c *C) {
 			if _, isLoc := event.Data.(*tcglog.StartupLocalityEventData); !isLoc {
 				continue
 			}
-			events := log.Events[:i]
+			events := append([]*tcglog.Event(nil), log.Events[:i]...)
 			events = append(events, event, event)
 			if len(log.Events) > i+1 {
 				events = append(events, log.Events[i+1:]...)
@@ -908,22 +1053,22 @@ func (s *fwLoadHandlerSuite) testMeasureImageStartErrBadLogMissingSeparator(c *C
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogMissingSeparatorPCR0(c *C) {
 	err := s.testMeasureImageStartErrBadLogMissingSeparator(c, 0)
-	c.Check(err, ErrorMatches, `cannot measure platform firmware: missing separator`)
+	c.Check(err, ErrorMatches, `cannot measure platform firmware: missing separator in log`)
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogMissingSeparatorPCR2(c *C) {
 	err := s.testMeasureImageStartErrBadLogMissingSeparator(c, 2)
-	c.Check(err, ErrorMatches, `cannot measure drivers and apps: missing separator`)
+	c.Check(err, ErrorMatches, `cannot measure drivers and apps: missing separator in log`)
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogMissingSeparatorPCR4(c *C) {
 	err := s.testMeasureImageStartErrBadLogMissingSeparator(c, 4)
-	c.Check(err, ErrorMatches, `cannot measure boot manager code: missing separator`)
+	c.Check(err, ErrorMatches, `cannot measure boot manager code: missing separator in log`)
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogMissingSeparatorPCR7(c *C) {
 	err := s.testMeasureImageStartErrBadLogMissingSeparator(c, 7)
-	c.Check(err, ErrorMatches, `cannot measure secure boot policy: unexpected verification event`)
+	c.Check(err, ErrorMatches, `cannot measure secure boot policy: missing separator in log`)
 }
 
 type testFwMeasureImageLoadData struct {
