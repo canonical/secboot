@@ -142,16 +142,17 @@ func (e *joinError) Unwrap() []error {
 // MissingKernelModuleError is returned unwrapped from [RunChecks] to indicate that
 // the specified kernel module is not built as part of the currently executing kernel,
 // but is required to be loaded in order for tests to continue. The caller is expected
-// to load the required kernel module.
+// to load the required kernel module, which it can obtain by calling
+// [MissingKernelModuleError.Module].
 type MissingKernelModuleError string
 
 func (e MissingKernelModuleError) Error() string {
 	return fmt.Sprintf("the kernel module %q must be loaded", string(e))
 }
 
-// String implements [fmt.Stringer] and returns the name of the kernel module that
-// should be loaded before calling [RunChecks].
-func (e MissingKernelModuleError) String() string {
+// Module returns the name of the kernel module associated with this error, and
+// which should be loaded before calling [RunChecks].
+func (e MissingKernelModuleError) Module() string {
 	return string(e)
 }
 
