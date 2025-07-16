@@ -94,7 +94,7 @@ func (s *sealLegacySuite) testSealKeyToTPM(c *C, params *KeyCreationParams) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 		_, _, err = k.UnsealFromTPM(s.TPM())
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+		c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }
@@ -287,7 +287,7 @@ func (s *sealLegacySuite) testSealKeyToTPMMultiple(c *C, data *testSealKeyToTPMM
 			c.Assert(err, IsNil)
 
 			_, _, err = k.UnsealFromTPM(s.TPM())
-			c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+			c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 				"cannot execute PolicyOR assertions: current session digest not found in policy data")
 		}
 	}
@@ -513,7 +513,7 @@ func (s *sealLegacySuite) testSealKeyToExternalTPMStorageKey(c *C, params *KeyCr
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 		_, _, err = k.UnsealFromTPM(s.TPM())
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+		c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }
