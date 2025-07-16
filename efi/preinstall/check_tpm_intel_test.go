@@ -71,3 +71,14 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardNoTPM(c *C) {
 	_, err = IsTPMDiscreteFromIntelBootGuard(amd64)
 	c.Check(err, Equals, ErrNoTPM2Device)
 }
+
+func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardNoMSRSupport(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil),
+	)
+	amd64, err := env.AMD64()
+	c.Assert(err, IsNil)
+	_, err = IsTPMDiscreteFromIntelBootGuard(amd64)
+	c.Check(err, ErrorMatches, `the kernel module "msr" must be loaded`)
+	c.Check(err, Equals, MissingKernelModuleError("msr"))
+}

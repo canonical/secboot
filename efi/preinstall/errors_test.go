@@ -284,3 +284,8 @@ func (s *errorsSuite) TestGetWithKindAndActionsErrorInvalidType2(c *C) {
 	_, err := GetWithKindAndActionsErrorArg[*withKindAndActionsErrorArgs](testErr)
 	c.Assert(err, ErrorMatches, `cannot deserialize argument map from JSON to type \*preinstall_test.withKindAndActionsErrorArgs: json: cannot unmarshal bool into Go struct field withKindAndActionsErrorArgs.arg2 of type int`)
 }
+
+func (s *errorsSuite) TestMissingKernelModuleErrorModule(c *C) {
+	c.Check(MissingKernelModuleError("msr").Module(), Equals, "msr")
+	c.Check(MissingKernelModuleError("mei_me").Module(), Equals, "mei_me")
+}

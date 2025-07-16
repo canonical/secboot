@@ -197,7 +197,7 @@ func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
 		return fmt.Errorf("cannot obtain devices with \"mei\" class: %w", err)
 	}
 	if len(devices) == 0 {
-		return fmt.Errorf("no MEI device available")
+		return MissingKernelModuleError("mei_me")
 	}
 	device := devices[0]
 
@@ -316,7 +316,10 @@ func checkHostSecurityIntelCPUDebuggingLocked(env internal_efi.HostEnvironmentAM
 	}
 
 	vals, err := env.ReadMSRs(ia32DebugInterfaceMSR)
-	if err != nil {
+	switch {
+	case errors.Is(err, internal_efi.ErrNoKernelMSRSupport):
+		return MissingKernelModuleError("msr")
+	case err != nil:
 		return fmt.Errorf("cannot read MSRs: %w", err)
 	}
 	if len(vals) == 0 {

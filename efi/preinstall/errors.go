@@ -139,6 +139,23 @@ func (e *joinError) Unwrap() []error {
 	return e.errs
 }
 
+// MissingKernelModuleError is returned unwrapped from [RunChecks] to indicate that
+// the specified kernel module is not built as part of the currently executing kernel,
+// but is required to be loaded in order for tests to continue. The caller is expected
+// to load the required kernel module, which it can obtain by calling
+// [MissingKernelModuleError.Module].
+type MissingKernelModuleError string
+
+func (e MissingKernelModuleError) Error() string {
+	return fmt.Sprintf("the kernel module %q must be loaded", string(e))
+}
+
+// Module returns the name of the kernel module associated with this error, and
+// which should be loaded before calling [RunChecks].
+func (e MissingKernelModuleError) Module() string {
+	return string(e)
+}
+
 var (
 	// ErrVirtualMachineDetected is returned unwrapped from RunChecks when the current
 	// OS is running in a virtual machine and the PermitVirtualMachine flag was not supplied.
@@ -151,7 +168,8 @@ var (
 	ErrVirtualMachineDetected = errors.New("virtual machine environment detected")
 )
 
-// EFIVariableAccessError describes an error that occurred when reading an EFI variable.
+// EFIVariableAccessError describes an error that occurred when reading an EFI variable and
+// is returned unwrapped from [RunChecks].
 type EFIVariableAccessError struct {
 	err error
 }
