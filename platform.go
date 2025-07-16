@@ -92,6 +92,8 @@ type PlatformKeyDataHandlerFlags uint64
 
 const platformKeyDataHandlerCommonFlagsMask uint64 = 0xffffff0000000000
 
+// TODO define a common flag which indicates that the platform can be used as FIDO2's hmac-secret salt provider
+
 // AddPlatformFlags adds the platform defined flags to the common flags,
 // returning a new flags value. This package doesn't define the meaning of
 // the specified flags and it does not use or interpret them in any way.
