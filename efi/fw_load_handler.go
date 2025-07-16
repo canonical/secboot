@@ -163,6 +163,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// See the comment in measureBootManagerCodePreOS regarding event ordering.
 	foundOsPresent := false
 	foundSecureBootSeparator := false
+	foundStartOfVerification := false
 
 	for len(events) > 0 {
 		e := events[0]
@@ -173,7 +174,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			// pre-OS to OS-present signal
 			foundOsPresent = true
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeSeparator:
-			// end of secure boot configuration signal
+			// End of secure boot configuration signal
 			if foundSecureBootSeparator {
 				return errors.New("unexpected separator")
 			}
@@ -182,18 +183,17 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			}
 			foundSecureBootSeparator = true
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableAuthority:
-			// secure boot verification event - shouldn't see this before the end of secure
-			// boot configuration signal.
-			if !foundSecureBootSeparator {
-				return errors.New("unexpected verification event")
-			}
+			// Secure boot verification event - shouldn't see this before the end of secure
+			// boot configuration signal, but some firmware implementations will perform
+			// pre-OS verification before that signal.
 			digest := e.Digests[ctx.PCRAlg()]
 			ctx.FwContext().AppendVerificationEvent(digest)
 			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, digest)
+			foundStartOfVerification = true
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
-			// ignore: part of the secure boot configuration - shouldn't see this after the
-			// end of secure boot configuration signal.
-			if foundSecureBootSeparator {
+			// Ignore: part of the secure boot configuration - shouldn't see this after the
+			// end of secure boot configuration signal, or after any verification events.
+			if foundSecureBootSeparator || foundStartOfVerification {
 				return errors.New("unexpected configuration event")
 			}
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
