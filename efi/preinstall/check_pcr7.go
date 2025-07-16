@@ -466,7 +466,7 @@ NextEvent:
 		}
 
 		switch phase {
-		case tcglogPhasePreOSMeasuringSecureBootConfig:
+		case tcglogPhaseMeasuringSecureBootConfig:
 			if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
 				// Not PCR7
 				continue NextEvent
@@ -552,7 +552,7 @@ NextEvent:
 				// Anything that isn't EV_EFI_VARIABLE_DRIVER_CONFIG ends up here.
 				return nil, fmt.Errorf("unexpected %v event %q whilst measuring config", ev.EventType, ev.Data)
 			}
-		case tcglogPhasePreOSAfterMeasureSecureBootConfig:
+		case tcglogPhasePreOSThirdPartyDispatch:
 			if len(configs) > 0 {
 				// We've transitioned to a phase where components can be loaded and verified but we haven't
 				// measured all of the secure boot variables. We'll fail to generate a valid policy with
@@ -728,7 +728,7 @@ NextEvent:
 				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY ends up here.
 				return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
 			}
-		case tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated:
+		case tcglogPhasePreOSThirdPartyDispatchUnterminated:
 			if ev.PCRIndex == internal_efi.SecureBootPolicyPCR {
 				return nil, fmt.Errorf("unexpected %v event in PCR7 after measuring config but before transitioning to OS-present", ev.EventType)
 			}

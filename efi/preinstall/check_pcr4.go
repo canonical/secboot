@@ -122,7 +122,7 @@ NextEvent:
 		}
 
 		switch phase {
-		case tcglogPhasePreOSBeforeMeasureSecureBootConfig, tcglogPhasePreOSAfterMeasureSecureBootConfig, tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated:
+		case tcglogPhaseFirmwareLaunch, tcglogPhasePreOSThirdPartyDispatch, tcglogPhasePreOSThirdPartyDispatchUnterminated:
 			if ev.PCRIndex != internal_efi.BootManagerCodePCR {
 				// Not PCR4
 				continue NextEvent
@@ -161,7 +161,7 @@ NextEvent:
 				// verifying this because we just copy the events into the profile.
 				if ev.Data == tcglog.EFICallingEFIApplicationEvent {
 					// This is the signal from BDS that we're about to hand over to the OS.
-					if phase == tcglogPhasePreOSBeforeMeasureSecureBootConfig {
+					if phase == tcglogPhaseFirmwareLaunch {
 						return 0, fmt.Errorf("unexpected %v event %q (before secure boot config was measured)", ev.EventType, ev.Data)
 					}
 					if omitBootDeviceEventsSeen {
@@ -195,7 +195,7 @@ NextEvent:
 				// device path, if it's reachable from the OS. Although this also suffers from a similar
 				// variation of the issue described above - that path could have been updated between
 				// booting and now.
-				if phase == tcglogPhasePreOSBeforeMeasureSecureBootConfig {
+				if phase == tcglogPhaseFirmwareLaunch {
 					// Application launches before the secure boot configuration has been measured is a bug.
 					return 0, fmt.Errorf("encountered pre-OS %v event for %v before secure boot configuration has been measured", ev.EventType, ev.Data.(*tcglog.EFIImageLoadEvent).DevicePath)
 				}

@@ -379,31 +379,33 @@ func checkFirmwareLogAgainstTPMForAlg(tpm *tpm2.TPMContext, log *tcglog.Log, alg
 type tcglogPhase int
 
 const (
-	// tcglogPhasePreOSBeforeMeasureSecureBootConfig is the pre-OS phase of the log
-	// before measurement of the secure boot configuration has begun. This is the
-	// starting point.
-	tcglogPhasePreOSBeforeMeasureSecureBootConfig tcglogPhase = iota
+	// tcglogPhaseFirmwareLaunch is the phase of the log that contains the initial
+	// platform firmware launch, before the execution of any third party code. This
+	// is the starting point.
+	tcglogPhaseFirmwareLaunch tcglogPhase = iota
 
-	// tcglogPhasePreOSMeasuringSecureBootConfig is the pre-OS phase of the log where
-	// the secure boot configuration is being measured.
-	// tcglogPhasePreOSBeforeMeasureSecureBootConfig transitions to this phase by the
-	// first non EV_SEPARATOR event in PCR7.
-	tcglogPhasePreOSMeasuringSecureBootConfig
+	// tcglogPhaseMeasuringSecureBootConfig is the phase of the log where the secure
+	// boot configuration is being measured, before the execution of any third party
+	// code. tcglogPhaseFirmwareLaunch transitions to this phase by the first non
+	// EV_SEPARATOR event in PCR7.
+	tcglogPhaseMeasuringSecureBootConfig
 
-	// tcglogPhasePreOSAfterMeasureSecureBootConfig is the pre-OS phase of the log after
-	// measuring the secure boot configuration and which may contain authentication and
-	// loading of pre-OS components. An EV_SEPARATOR in PCR7 transitions
-	// tcglogPhasePreOSMeasuringSecureBootConfig to this phase. Some older firmware
+	// tcglogPhasePreOSThirdPartyDispatch is the pre-OS phase of the log after measuring
+	// the secure boot configuration and which may contain authentication and loading
+	// of third-party pre-OS components. An EV_SEPARATOR in PCR7 transitions
+	// tcglogPhaseMeasuringSecureBootConfig to this phase. Some older firmware
 	// implementations skip this phase because they measure EV_SEPARATORS in PCRs 0-7 to
 	// indicate the transition to OS-present.
-	tcglogPhasePreOSAfterMeasureSecureBootConfig
+	tcglogPhasePreOSThirdPartyDispatch
 
-	// tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated happens on some older firmware
+	// tcglogPhasePreOSThirdPartyDispatchUnterminated happens on some older firmware
 	// implementations that don't use a EV_SEPARATOR in PCR7 to separate secure boot config
 	// from secure boot verification, but instead measure the separator as part of the pre-OS
 	// to OS-present transition. There shouldn't be any more events in PCR7 until
 	// tcglogPhaseOSPresent.
-	tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated
+	// XXX(chrisccoulson): This state is temporary and will likely disappear as part of
+	// the fix for https://github.com/canonical/secboot/issues/410.
+	tcglogPhasePreOSThirdPartyDispatchUnterminated
 
 	// tcglogPhaseTransitioningToOSPresent describes the phase of the log where the transition
 	// to OS-present happens. Either of the 2 previous pre-OS phases can transition to this one
@@ -432,7 +434,7 @@ type tcglogPhaseTracker struct {
 // newTcgLogPhaseTracker returns a new tcglogPhaseTracker
 func newTcgLogPhaseTracker() *tcglogPhaseTracker {
 	return &tcglogPhaseTracker{
-		phase:             tcglogPhasePreOSBeforeMeasureSecureBootConfig,
+		phase:             tcglogPhaseFirmwareLaunch,
 		numSeparatorsSeen: 0,
 		pcrSeparatorsSeen: make(map[tpm2.Handle]bool),
 	}
@@ -493,7 +495,7 @@ func (t *tcglogPhaseTracker) processEvent(ev *tcglog.Event) (phase tcglogPhase, 
 
 	// Handle phase transitions
 	switch {
-	case t.phase == tcglogPhasePreOSBeforeMeasureSecureBootConfig:
+	case t.phase == tcglogPhaseFirmwareLaunch:
 		switch {
 		case ev.EventType == tcglog.EventTypeSeparator:
 			// An EV_SEPARATOR during this phase is used to signal an error condition, but
@@ -502,11 +504,11 @@ func (t *tcglogPhaseTracker) processEvent(ev *tcglog.Event) (phase tcglogPhase, 
 			return 0, fmt.Errorf("unexpected normal EV_SEPARATOR event in PCR %d", ev.PCRIndex)
 		case ev.PCRIndex == internal_efi.SecureBootPolicyPCR:
 			// A non EV_SEPARATOR event to PCR7 signals the beginning of the secure boot config measurements.
-			t.phase = tcglogPhasePreOSMeasuringSecureBootConfig
+			t.phase = tcglogPhaseMeasuringSecureBootConfig
 		default:
 			// No change for any other event
 		}
-	case t.phase == tcglogPhasePreOSMeasuringSecureBootConfig:
+	case t.phase == tcglogPhaseMeasuringSecureBootConfig:
 		switch {
 		case ev.PCRIndex != internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeSeparator:
 			// An EV_SEPARATOR event in PCRs 0-6 after measuring the secure boot configuration begins the
@@ -516,17 +518,17 @@ func (t *tcglogPhaseTracker) processEvent(ev *tcglog.Event) (phase tcglogPhase, 
 		case ev.PCRIndex != internal_efi.SecureBootPolicyPCR:
 			// Any other events that aren't to PCR7 terminate the measurement of the secure
 			// boot config. This path should only happen on older firmware implementations.
-			t.phase = tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated
+			t.phase = tcglogPhasePreOSThirdPartyDispatchUnterminated
 		case ev.EventType == tcglog.EventTypeSeparator:
 			// An EV_SEPARATOR in PCR7 transitions to the part of the pre-OS phase where pre-OS
 			// components can be verified and executed.
-			t.phase = tcglogPhasePreOSAfterMeasureSecureBootConfig
+			t.phase = tcglogPhasePreOSThirdPartyDispatch
 		default:
 			// No change for any other event to PCR7
 		}
-	case t.phase == tcglogPhasePreOSAfterMeasureSecureBootConfigUnterminated:
+	case t.phase == tcglogPhasePreOSThirdPartyDispatchUnterminated:
 		// XXX(chrisccoulson): It's not clear whether this should return to
-		// tcglogPhasePreOSMeasuringSecureBootConfig if there is an event in PCR7. The
+		// tcglogPhaseMeasuringSecureBootConfig if there is an event in PCR7. The
 		// justification for this is that PCR7 should begin with an extra event indicating
 		// that there is a debugger active if that is the case. EDK2 measures this in the
 		// same block of events as the secure boot configuration, but we don't know whether
@@ -540,7 +542,7 @@ func (t *tcglogPhaseTracker) processEvent(ev *tcglog.Event) (phase tcglogPhase, 
 		default:
 			// No change for events in any other PCR.
 		}
-	case t.phase == tcglogPhasePreOSAfterMeasureSecureBootConfig:
+	case t.phase == tcglogPhasePreOSThirdPartyDispatch:
 		switch {
 		case ev.EventType == tcglog.EventTypeSeparator:
 			// Any EV_SEPARATOR from this phase begins the transition to OS present.
