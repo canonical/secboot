@@ -65,6 +65,21 @@ const (
 	// because of a bug in the OS. It is a pseudo-action and cannnot be performed
 	// by this package.
 	ActionContactOSVendor Action = "contact-os-vendor"
+
+	// ActionEnableTPMViaFirmware tells RunChecksContext.Run to enable the TPM
+	// via the physical presence interface. If successful, this action will
+	// respond with ErrorKindShutdown or ErrorKindReboot.
+	ActionEnableTPMViaFirmware Action = "enable-tpm-via-firmware"
+
+	// ActionEnableAndClearTPMViaFirmware tells RunChecksContext.Run to enable
+	// and clear the TPM via the physical presence interface. If successful, this
+	// action will respond with ErrorKindShutdown or ErrorKindReboot.
+	ActionEnableAndClearTPMViaFirmware Action = "enable-and-clear-tpm-via-firmware"
+
+	// ActionClearTPMViaFirmware tells RunChecksContext.Run to clear the TPM
+	// via the physical presence interface. If successful, this action will
+	// respond with ErrorKindShutdown or ErrorKindReboot.
+	ActionClearTPMViaFirmware Action = "clear-tpm-via-firmware"
 )
 
 // IsExternalAction will return true if the action cannot actually be executed by
