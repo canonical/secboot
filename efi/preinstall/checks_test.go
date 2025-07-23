@@ -4673,7 +4673,10 @@ C7E003CB
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}, DMAProtectionDisabled: efitest.DMAProtectionDisabled})),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				DMAProtection: efitest.DMAProtectionDisabled,
+			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
 			efitest.WithSysfsDevices(devices),
 			efitest.WithMockVars(efitest.MockVars{

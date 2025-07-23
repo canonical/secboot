@@ -89,61 +89,94 @@ func (b *logBuilder) hashLogExtendEvent(c *C, data logHashData, event *logEvent)
 	b.events = append(b.events, ev)
 }
 
-type DMAProtectionDisabledEventType int
+// DMAProtectionDisabledEventFlags specifies whether there should be a EV_EFI_ACTION
+// "DMA Protection Disabled" event in PCR7 to indicate that pre-boot DMA protection
+// is disabled.
+type DMAProtectionDisabledEventFlags int
 
 const (
-	DMAProtectionNotDisabled DMAProtectionDisabledEventType = iota
-	DMAProtectionDisabled
-	DMAProtectionDisabledNullTerminated
+	// DMAProtectionDisabled indicates that a EV_EFI_ACTION event should be included,
+	// as it would be on systems with pre-boot DMA protection disabled.
+	DMAProtectionDisabled DMAProtectionDisabledEventFlags = 1 << 0
+
+	// DMAProtectionDisabledEventNullTerminated is a modifier that includes the
+	// EV_EFI_ACTION event with a NULL terminated string.
+	DMAProtectionDisabledEventNullTerminated DMAProtectionDisabledEventFlags = 1 << 1
+
+	// DMAProtectionDisabledEventOrderBeforeConfig is a modifier to indicate that
+	// the EV_EFI_ACTION event should be added before the secure boot configuration
+	// events (towards the start of the events in PCR7).
+	// If this and DMAProtectionDisabledEventOrderAfterSeparator are both clear,
+	// then the event will be added immediately after the secure boot configuration
+	// events.
+	DMAProtectionDisabledEventOrderBeforeConfig DMAProtectionDisabledEventFlags = 1 << 2
+
+	// DMAProtectionDisabledEventOrderAfterSeparator is a modifier to indicate that
+	// the EV_EFI_ACTION event should be added immediately after the EV_SEPARATOR
+	// in PCR7.
+	// If this and DMAProtectionDisabledEventOrderBeforeConfig are both clear,
+	// then the event will be added immediately after the secure boot configuration
+	// events.
+	DMAProtectionDisabledEventOrderAfterSeparator DMAProtectionDisabledEventFlags = 2 << 2
+
+	// dmaProtectionNotDisabled is the lack of DMAProtectionDisabled and is used to
+	// implicitly document the code.
+	dmaProtectionNotDisabled DMAProtectionDisabledEventFlags = 0
+
+	// dmaProtectionDisabledEventOrderAfterConfig is the lack of
+	// DMAProtectionDisabledEventOrderBeforeConfig and
+	// DMAProtectionDisabledEventOrderAfterSeparator, and is used to implicitly
+	// document the code.
+	dmaProtectionDisabledEventOrderAfterConfig DMAProtectionDisabledEventFlags = 0
+
+	dmaProtectionDisabledEventOrderMask DMAProtectionDisabledEventFlags = 3 << 2
 )
 
-type DMAProtectionDisabledEventLocation int
-
-const (
-	DMAProtectionDisabledEventLocationAfterConfig DMAProtectionDisabledEventLocation = iota
-	DMAProtectionDisabledEventLocationBeforeVerification
-	DMAProtectionDisabledEventLocationBeforeConfig
-)
-
-func maybeMeasureDMAProtectionDisabledEvent(c *C, builder *logBuilder, opts *LogOptions, location DMAProtectionDisabledEventLocation) {
-	if opts.DMAProtectionDisabled == DMAProtectionNotDisabled {
+func maybeMeasureDMAProtectionDisabledEvent(c *C, builder *logBuilder, opts *LogOptions, order DMAProtectionDisabledEventFlags) {
+	if opts.DMAProtection&DMAProtectionDisabled == dmaProtectionNotDisabled {
 		return
 	}
-	if opts.DMAProtectionDisabledEventLocation != location {
+	if opts.DMAProtection&dmaProtectionDisabledEventOrderMask != order {
 		return
 	}
 
 	var data tcglog.EventData
-	switch opts.DMAProtectionDisabled {
-	case DMAProtectionDisabled:
+	if opts.DMAProtection&DMAProtectionDisabledEventNullTerminated == 0 {
 		data = tcglog.DMAProtectionDisabled
-	case DMAProtectionDisabledNullTerminated:
+	} else {
 		data = tcglog.OpaqueEventData(append([]byte(tcglog.DMAProtectionDisabled), 0x00))
-	default:
-		c.Fatal("invalid value for DMAProtectionDisabled")
 	}
+
 	builder.hashLogExtendEvent(c, data, &logEvent{
 		pcrIndex:  7,
 		eventType: tcglog.EventTypeEFIAction,
 		data:      data})
 }
 
+// SecureBootSeparatorOrder specifies when the EV_SEPARATOR event in PCR7
+// should be emitted.
+type SecureBootSeparatorOrder int
+
+const (
+	SecureBootSeparatorAfterConfig SecureBootSeparatorOrder = iota // The EV_SEPARATOR is included after the secure boot configuration.
+	SecureBootSeparatorAfterPreOS                                  // The EV_SEPARATOR is included with the pre-OS to OS-present transition.
+)
+
 // LogOptions provides options for [NewLog].
 type LogOptions struct {
 	Algorithms []tpm2.HashAlgorithmId // the digest algorithms to include
 
-	StartupLocality                    uint8                              // specify a startup locality other than 0
-	FirmwareDebugger                   bool                               // indicate a firmware debugger endpoint is enabled
-	DMAProtectionDisabled              DMAProtectionDisabledEventType     // whether DMA protection is disabled
-	DMAProtectionDisabledEventLocation DMAProtectionDisabledEventLocation // where the "DMA Protection Disabled" event is measured
-	SecureBootDisabled                 bool                               // Whether secure boot is disabled
-	DisallowPreOSVerification          bool                               // don't measure EV_SEPARATOR to PCR7 after the secure boot config is measured
-	IncludeDriverLaunch                bool                               // include a driver launch from a PCI device in the log
-	IncludeSysPrepAppLaunch            bool                               // include a system-preparation app launch in the log
-	NoCallingEFIApplicationEvent       bool                               // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
-	IncludeOSPresentFirmwareAppLaunch  efi.GUID                           // include a flash based application launch in the log as part of the OS-present phase
-	NoSBAT                             bool                               // omit the SbatLevel measurement to mimic older versions of shim
-	PreOSVerificationUsesDigests       crypto.Hash                        // Whether Driver or SysPrep launches are verified using a digest
+	StartupLocality                   uint8                           // specify a startup locality other than 0
+	FirmwareDebugger                  bool                            // indicate a firmware debugger endpoint is enabled
+	DMAProtection                     DMAProtectionDisabledEventFlags // whether DMA protection is disabled
+	SecureBootDisabled                bool                            // Whether secure boot is disabled
+	SecureBootSeparatorOrder          SecureBootSeparatorOrder        // when to emit the EV_SEPARATOR event for PCR7
+	IncludeDriverLaunch               bool                            // include a driver launch from a PCI device in the log
+	IncludeSysPrepAppLaunch           bool                            // include a system-preparation app launch in the log
+	NoCallingEFIApplicationEvent      bool                            // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
+	IncludeOSPresentFirmwareAppLaunch efi.GUID                        // include a flash based application launch in the log as part of the OS-present phase
+	NoSBAT                            bool                            // omit the SbatLevel measurement to mimic older versions of shim
+	PreOSVerificationUsesDigests      crypto.Hash                     // Whether Driver or SysPrep launches are verified using a digest
 }
 
 // NewLog creates a mock TCG log for testing. The log will look like a standard
@@ -274,7 +307,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		})
 	}
 
-	maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, DMAProtectionDisabledEventLocationBeforeConfig)
+	maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, DMAProtectionDisabledEventOrderBeforeConfig)
 
 	db := efi.SignatureDatabase{
 		NewSignatureListX509(c, testutil.DecodePEMType(c, "CERTIFICATE", msPCACert), efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b})),
@@ -331,20 +364,18 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 
 	}
 
-	maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, DMAProtectionDisabledEventLocationAfterConfig)
+	maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, dmaProtectionDisabledEventOrderAfterConfig)
 
-	if !opts.DisallowPreOSVerification {
-		// Most firmware measures a EV_SEPARATOR here to separate config and verification,
-		// but some older firmware implementations don't do this - it gets measured as part
-		// of the pre-OS to OS-present transition later on.
+	if opts.SecureBootSeparatorOrder == SecureBootSeparatorAfterConfig {
+		// Emit the separator as part of the boundary between the secure boot
+		// configuration events and the image verification events.
 		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  7,
 			eventType: tcglog.EventTypeSeparator,
 			data:      data})
+		maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, DMAProtectionDisabledEventOrderAfterSeparator)
 	}
-
-	maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, DMAProtectionDisabledEventLocationBeforeVerification)
 
 	// Mock EFI driver launch
 	if opts.IncludeDriverLaunch {
@@ -569,13 +600,14 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeSeparator,
 			data:      data})
 	}
-	if opts.DisallowPreOSVerification {
-		// We also need a EV_SEPARATOR in PCR7.
+	if opts.SecureBootSeparatorOrder == SecureBootSeparatorAfterPreOS {
+		// Emit the secure boot separator as part of the transition to OS-present.
 		data := &tcglog.SeparatorEventData{Value: tcglog.SeparatorEventNormalValue}
 		builder.hashLogExtendEvent(c, data, &logEvent{
 			pcrIndex:  7,
 			eventType: tcglog.EventTypeSeparator,
 			data:      data})
+		maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, DMAProtectionDisabledEventOrderAfterSeparator)
 	}
 
 	// Mock firmware application launch
