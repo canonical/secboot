@@ -31,6 +31,7 @@ import (
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/objectutil"
+	"github.com/canonical/go-tpm2/ppi"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"github.com/canonical/tcglog-parser"
 	secboot_efi "github.com/snapcore/secboot/efi"
@@ -46,12 +47,26 @@ type runChecksContextSuite struct {
 	tpm2_testutil.TPMSimulatorTest
 	tpmPropertyModifierMixin
 	tcglogReplayMixin
+
+	devToPPIMap map[tpm2.TPMDevice]ppi.PPI
+	ppiErr      error
 }
 
 func (s *runChecksContextSuite) SetUpTest(c *C) {
 	s.TPMSimulatorTest.SetUpTest(c)
 	s.tpmPropertyModifierMixin.transport = s.Transport
 	s.tcglogReplayMixin.impl = s
+
+	s.devToPPIMap = make(map[tpm2.TPMDevice]ppi.PPI)
+	s.ppiErr = nil
+
+	restore := MockObtainTPMDevicePPI(func(dev tpm2.TPMDevice) (ppi.PPI, error) {
+		if s.ppiErr != nil {
+			return nil, s.ppiErr
+		}
+		return s.devToPPIMap[dev], nil
+	})
+	s.AddCleanup(restore)
 }
 
 func (s *runChecksContextSuite) Tpm() *tpm2.TPMContext {
@@ -69,6 +84,7 @@ type testRunChecksContextRunParams struct {
 	env                  internal_efi.HostEnvironment
 	tpmPropertyModifiers map[tpm2.Property]uint32
 	enabledBanks         []tpm2.HashAlgorithmId
+	ppi                  *mockPPI
 
 	initialFlags CheckFlags
 	loadedImages []secboot_efi.Image
@@ -86,7 +102,7 @@ type testRunChecksContextRunParams struct {
 }
 
 func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunParams) (errs []*WithKindAndActionsError) {
-	_, err := params.env.TPMDevice()
+	dev, err := params.env.TPMDevice()
 	if err == nil {
 		s.allocatePCRBanks(c, params.enabledBanks...)
 		s.addTPMPropertyModifiers(c, params.tpmPropertyModifiers)
@@ -95,6 +111,23 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 		if err == nil {
 			s.resetTPMAndReplayLog(c, log, log.Algorithms...)
 		}
+
+		p := params.ppi
+		if p == nil {
+			// Create a mockPPI if one wasn't supplied
+			p = &mockPPI{}
+		}
+		if p.ops == nil {
+			// Initialize an uninitialzed PPI. Supply the
+			// ops map to prevent this.
+			p.sta = ppi.StateTransitionRebootRequired
+			p.ops = map[ppi.OperationId]ppi.OperationStatus{
+				ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+				ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			}
+		}
+		s.devToPPIMap[dev] = p
 	}
 
 	restore := MockEfiComputePeImageDigest(func(alg crypto.Hash, r io.ReaderAt, sz int64) ([]byte, error) {
@@ -156,7 +189,7 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 	}
 
 	// Make sure we don't leave any open TPM connections
-	dev, err := params.env.TPMDevice()
+	dev, err = params.env.TPMDevice()
 	if err == nil {
 		c.Assert(dev, testutil.ConvertibleTo, &tpm2_testutil.TransportBackedDevice{})
 		c.Check(dev.(*tpm2_testutil.TransportBackedDevice).NumberOpen(), Equals, 0)
@@ -170,8 +203,10 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 	}
 	c.Assert(ctx.Errors(), HasLen, expectedErrsLen)
 
-	// Make sure that LastError() is the same as the last value returned from Errors()
-	if len(ctx.Errors()) > 0 {
+	// Make sure that LastError() is the same as the last value returned from Errors(),
+	// only if the last execution of the Run() loop failed else LastError() will
+	// return nil
+	if len(errs) > 0 && len(ctx.Errors()) > 0 {
 		c.Check(ctx.LastError(), Equals, ctx.Errors()[len(ctx.Errors())-1])
 	}
 
@@ -492,7 +527,263 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
-// TODO: Test a good case with an empty SHA-384 bank when we have an action to turn on the PermitEmptyPCRBanks flag
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitEmptyPCRBanks(c *C) {
+	// Test that ActionProceed turns on PermitEmptyPCRBanks.
+	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
+
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsErrorForTest(
+					ErrorKindEmptyPCRBanks,
+					map[string]json.RawMessage{"algs": []byte("[12]")},
+					[]Action{ActionContactOEM, ActionProceed},
+					&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
+				))
+			}
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `3 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
+func (s *runChecksContextSuite) TestRunGoodPermitInsufficientDMAProtectionFromInitialFlags(c *C) {
+	// Test case where there is an empty PCR bank, but it is permitted by
+	// supplying PermitInsufficientDMAProtection as an initial flag.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:            []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				DMAProtectionDisabled: efitest.DMAProtectionDisabled,
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		initialFlags: PermitInsufficientDMAProtection,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts:               PCRProfileOptionsDefault,
+		actions:                   []actionAndArgs{{action: ActionNone}},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | InsufficientDMAProtectionDetected,
+		expectedWarningsMatch: `3 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Assert(errs, HasLen, 0)
+}
+
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitInsufficientDMAProtection(c *C) {
+	// Test that ActionProceed enables PermitInsufficientDMAProtection.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:            []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				DMAProtectionDisabled: efitest.DMAProtectionDisabled,
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindInsufficientDMAProtection,
+					nil,
+					[]Action{ActionContactOEM, ActionRebootToFWSettings, ActionProceed},
+					errs[0].Unwrap(),
+				))
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | InsufficientDMAProtectionDetected,
+		expectedWarningsMatch: `3 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Assert(errs, HasLen, 0)
+}
 
 func (s *runChecksContextSuite) TestRunGoodPostInstall(c *C) {
 	// Test good post-install scenario on a fTPM, which skips some tests related to
@@ -692,9 +983,248 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
-// TODO: Test a good case with a VM setup when we have an action to turn on the PermitVirtualMachine flag.
-//
-// TODO: Test a good case with a discrete TPM where the startup locality is 0, when we have an action to turn on the PermitNoDiscreteTPMResetMitigation flag.
+func (s *runChecksContextSuite) TestRunGoodPermitVirtualMachineFromInitialFlags(c *C) {
+	// Test on a virtual machine, wehere PermitVirtualMachine is supplied via
+	// the initial flags to permit it.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode("qemu", internal_efi.DetectVirtModeVM),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		initialFlags: PermitVirtualMachine,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts:               PCRProfileOptionsDefault,
+		actions:                   []actionAndArgs{{action: ActionNone}},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `4 errors detected:
+- virtual machine environment detected
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitVirtualMachine(c *C) {
+	// Test that ActionProceed turns on PermitVirtualMachine.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode("qemu", internal_efi.DetectVirtModeVM),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindRunningInVM,
+					nil,
+					[]Action{ActionProceed},
+					ErrVirtualMachineDetected,
+				))
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `4 errors detected:
+- virtual machine environment detected
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitNoDiscreteTPMResetMitigationDiscreteTPMDetectedSL0(c *C) {
+	// Test that ActionProceed turns on PermitNoDiscreteTPMResetMitigation,
+	// for the case where we have a dTPM and the startup locality is 0.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | StartupLocalityNotProtected,
+		expectedWarningsMatch: `3 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
 
 func (s *runChecksContextSuite) TestRunGoodDiscreteTPMDetectedSL3(c *C) {
 	// Test a good case on a dTPM where the startup locality is 3 and
@@ -1175,6 +1705,86 @@ C7E003CB
 
 // TODO: Test the above case without the initial flag when we have an action to set PermitVARSuppliedDrivers.
 
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitVARSuppliedDrivers(c *C) {
+	// Test that ActionProceed turns on PermitVARSuppliedDrivers.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeDriverLaunch: true,
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `4 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- value added retailer supplied drivers were detected to be running
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
 func (s *runChecksContextSuite) TestRunGoodSysPrepAppsPresentFromInitialFlags(c *C) {
 	// Test good case on a fTPM where there are system preparation applications
 	// detected, and these are permitted with the PermitSysPrepApplications
@@ -1254,7 +1864,97 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
-// TODO: Test the above case without the initial flag when we have an action to set PermitSysPrepApplications.
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitSysPrepApplications(c *C) {
+	// Test that ActionProceed enables PermitSysPrepApplications.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeSysPrepAppLaunch: true,
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindSysPrepApplicationsPresent,
+					nil,
+					[]Action{ActionProceed},
+					ErrSysPrepApplicationsPresent,
+				))
+			}
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `4 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- system preparation applications were detected to be running
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Assert(errs, HasLen, 0)
+}
 
 func (s *runChecksContextSuite) TestRunGoodAbsoluteActiveFromInitialFlags(c *C) {
 	// Test good case on a fTPM where Absolute is detected, and this is
@@ -1310,6 +2010,98 @@ C7E003CB
 		profileOpts:  PCRProfileOptionsDefault,
 		actions:      []actionAndArgs{{action: ActionNone}},
 		initialFlags: PermitAbsoluteComputrace,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `4 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- Absolute was detected to be active and it is advised that this is disabled
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitAbsolute(c *C) {
+	// Test that ActionProceed enables PermitAbsoluteComputrace.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		profileOpts:  PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Check(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindAbsolutePresent,
+					nil,
+					[]Action{ActionContactOEM, ActionRebootToFWSettings, ActionProceed},
+					ErrAbsoluteComputraceActive,
+				))
+			}
+		},
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -1496,7 +2288,108 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
-// TODO: Test the above case without the initial flag when we have an action to set PermitPreOSVerificationUsingDigests.
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitPreOSVerificationUsingDigests(c *C) {
+	// Test that ActionProceed enables the PermitPreOSVerificationUsingDigests flag. As
+	// this test generates 2 errors, it also tests the case where ActionProceed can
+	// be used to ignore multiple errors.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeDriverLaunch:          true,
+				PreOSVerificationUsesDigests: crypto.SHA256,
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Check(errs, HasLen, 2)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindVARSuppliedDriversPresent,
+					nil,
+					[]Action{ActionProceed},
+					ErrVARSuppliedDriversPresent,
+				))
+
+				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindPreOSDigestVerificationDetected,
+					nil,
+					[]Action{ActionProceed},
+					ErrPreOSVerificationUsingDigests,
+				))
+			}
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `5 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- value added retailer supplied drivers were detected to be running
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
 
 func (s *runChecksContextSuite) TestRunGoodWeakSecureBootAlgsFromInitialFlags(c *C) {
 	// Test a good case on a fTPM where there are weak secure boot algorithms
@@ -1580,19 +2473,157 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
-// TODO: Test the above case without the initial flag when we have an action to set PermitWeakSecureBootAlgorithms.
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitWeakSecureBootAlgs(c *C) {
+	// Test that ActionProceed enables PermitWeakSecureBootAlgorithms. As
+	// this test generates 3 errors, it also tests the case where ActionProceed
+	// can be used to ignore multiple errors.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeDriverLaunch:          true,
+				PreOSVerificationUsesDigests: crypto.SHA1,
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Check(errs, HasLen, 3)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindVARSuppliedDriversPresent,
+					nil,
+					[]Action{ActionProceed},
+					ErrVARSuppliedDriversPresent,
+				))
+
+				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindWeakSecureBootAlgorithmsDetected,
+					nil,
+					[]Action{ActionProceed},
+					ErrWeakSecureBootAlgorithmDetected,
+				))
+
+				c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindPreOSDigestVerificationDetected,
+					nil,
+					[]Action{ActionProceed},
+					ErrPreOSVerificationUsingDigests,
+				))
+			}
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedWarningsMatch: `6 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- value added retailer supplied drivers were detected to be running
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- a weak cryptographic algorithm was detected during secure boot verification
+- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
 // TODO: Good test case for invalid secure boot config (eg, no DeployedMode) when PCRProfileOptionPermitNoSecureBootPolicyProfile is supported.
 
 // **End of good cases ** //
 
-func (s *runChecksContextSuite) TestRunBadUnexpexctedAction(c *C) {
+func (s *runChecksContextSuite) TestRunBadUnexpectedAction(c *C) {
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env:         efitest.NewMockHostEnvironmentWithOpts(),
 		profileOpts: PCRProfileOptionsDefault,
-		actions:     []actionAndArgs{{action: "fake-action"}},
+		actions:     []actionAndArgs{{action: ActionClearTPMViaFirmware}},
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Assert(errs[0], ErrorMatches, `specified action is not expected`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUnexpectedAction, nil, nil, errs[0].Unwrap()))
+}
+
+func (s *runChecksContextSuite) TestRunBadExternalAction(c *C) {
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
+		),
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		profileOpts:  PCRProfileOptionsDefault,
+		iterations:   2,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Disable owner and endorsement hierarchies
+				c.Assert(s.TPM.HierarchyControl(s.TPM.OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
+				c.Assert(s.TPM.HierarchyControl(s.TPM.EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionRebootToFWSettings},
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `specified action is not implemented directly by this package`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUnexpectedAction, nil, nil, errs[0].Unwrap()))
 }
 
@@ -1610,7 +2641,12 @@ func (s *runChecksContextSuite) TestRunBadVirtualMachine(c *C) {
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Assert(errs[0], ErrorMatches, `virtual machine environment detected`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRunningInVM, nil, nil, ErrVirtualMachineDetected))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindRunningInVM,
+		nil,
+		[]Action{ActionProceed},
+		ErrVirtualMachineDetected,
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadNotEFI(c *C) {
@@ -1776,7 +2812,93 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabled(c *C) {
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but is currently disabled by the platform firmware`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware}, errs[0].Unwrap()))
+}
+
+func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableTPMViaFirmwareAction(c *C) {
+	// Test the error case where the TPM has been disabled by firmware, and
+	// we run the ActionEnableTPMViaFirmware action.
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
+		),
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		profileOpts:  PCRProfileOptionsDefault,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Disable owner and endorsement hierarchies on the first iteration
+				c.Assert(s.TPM.HierarchyControl(s.TPM.OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
+				c.Assert(s.TPM.HierarchyControl(s.TPM.EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
+			}
+		},
+		iterations: 2,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionEnableTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware}, errs[0].Unwrap()))
+			}
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"EnableTPM()"})
+}
+
+func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableAndClearTPMViaFirmwareAction(c *C) {
+	// Test the error case where the TPM has been disabled by firmware, and
+	// we run the ActionEnableAndClearTPMViaFirmware action.
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
+		),
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		profileOpts:  PCRProfileOptionsDefault,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Disable owner and endorsement hierarchies on the first iteration
+				c.Assert(s.TPM.HierarchyControl(s.TPM.OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
+				c.Assert(s.TPM.HierarchyControl(s.TPM.EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
+			}
+		},
+		iterations: 2,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionEnableAndClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware}, errs[0].Unwrap()))
+			}
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"EnableAndClearTPM()"})
 }
 
 func (s *runChecksContextSuite) TestRunBadTPMHierarchiesOwned(c *C) {
@@ -1830,6 +2952,8 @@ C7E003CB
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
+			// Set an authorization value for the lockout hierarchy and
+			// an authorization policy for the storage hierarchy.
 			s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
 			c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 		},
@@ -1843,9 +2967,187 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
-		[]Action{ActionRebootToFWSettings},
+		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
 		errs[0].Unwrap(),
 	))
+}
+
+func (s *runChecksContextSuite) TestRunBadTPMHierarchiesOwnedRunActionClearTPMViaFirmware(c *C) {
+	// Test the error case where one or more hierarchies of the TPM are already owned, and
+	// we run the ActionClearTPMViaFirmware action.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		profileOpts:  PCRProfileOptionsDefault,
+		iterations:   2,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Set an authorization value for the lockout hierarchy and
+				// an authorization policy for the storage hierarchy on the
+				// first iteration.
+				s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+				c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindTPMHierarchiesOwned,
+					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+					errs[0].Unwrap(),
+				))
+			}
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"ClearTPM()"})
+}
+
+func (s *runChecksContextSuite) TestRunBadTPMHierarchiesOwnedRunActionEnableAndClearTPMViaFirmware(c *C) {
+	// Test the error case where one or more hierarchies of the TPM are already owned, and
+	// we run the ActionEnableAndClearTPMViaFirmware action.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		profileOpts:  PCRProfileOptionsDefault,
+		iterations:   2,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Set an authorization value for the lockout hierarchy and
+				// an authorization policy for the storage hierarchy on the
+				// first iteration.
+				s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+				c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionEnableAndClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindTPMHierarchiesOwned,
+					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+					errs[0].Unwrap(),
+				))
+			}
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"EnableAndClearTPM()"})
 }
 
 func (s *runChecksContextSuite) TestRunBadTPMDeviceLockedOut(c *C) {
@@ -1929,7 +3231,234 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM is in DA lockout mode`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceLockout, &TPMDeviceLockoutArgs{IntervalDuration: 2 * time.Hour, TotalDuration: 64 * time.Hour}, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindTPMDeviceLockout,
+		&TPMDeviceLockoutArgs{IntervalDuration: 2 * time.Hour, TotalDuration: 64 * time.Hour},
+		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+		errs[0].Unwrap(),
+	))
+}
+
+func (s *runChecksContextSuite) TestRunBadTPMDeviceLockedOutRunActionClearTPMViaFirmware(c *C) {
+	// Test the error case where the TPM's DA protection has been tripped, and
+	// we run the ActionClearTPMViaFirmware action.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		profileOpts:  PCRProfileOptionsDefault,
+		iterations:   2,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Trip the DA mechanism on the first iteration.
+				c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 32, 7200, 86400, nil), IsNil)
+				// Authorize the lockout hierarchy enough times with a bogus value to trip it
+				object, _, _, _, _, err := s.TPM.CreatePrimary(s.TPM.OwnerHandleContext(), &tpm2.SensitiveCreate{UserAuth: []byte("foo")}, objectutil.NewECCKeyTemplate(objectutil.UsageSign), nil, nil, nil)
+				c.Assert(err, IsNil)
+
+				object.SetAuthValue(nil)
+				digest := testutil.DecodeHexString(c, "fbde6a7fe0a4a95d2656f206437a3db64322a74822e581cf63b69f205c63ab6f")
+				scheme := &tpm2.SigScheme{
+					Scheme: tpm2.SigSchemeAlgECDSA,
+					Details: &tpm2.SigSchemeU{
+						ECDSA: &tpm2.SigSchemeECDSA{
+							HashAlg: tpm2.HashAlgorithmSHA256,
+						},
+					},
+				}
+
+				for i := 0; i < 32; i++ {
+					_, err := s.TPM.Sign(object, digest, scheme, nil, nil)
+					if tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandSign, 1) {
+						continue
+					}
+					if tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandSign) {
+						break
+					}
+					c.Errorf("unexpected error: %v", err)
+				}
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindTPMDeviceLockout,
+					&TPMDeviceLockoutArgs{IntervalDuration: 2 * time.Hour, TotalDuration: 64 * time.Hour},
+					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+					errs[0].Unwrap(),
+				))
+			}
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"ClearTPM()"})
+}
+
+func (s *runChecksContextSuite) TestRunBadTPMDeviceLockedOutRunActionEnableAndClearTPMViaFirmware(c *C) {
+	// Test the error case where the TPM's DA protection has been tripped, and
+	// we run the ActionEnableAndClearTPMViaFirmware action.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		profileOpts:  PCRProfileOptionsDefault,
+		iterations:   2,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Trip the DA mechanism on the first iteration.
+				c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 32, 7200, 86400, nil), IsNil)
+				// Authorize the lockout hierarchy enough times with a bogus value to trip it
+				object, _, _, _, _, err := s.TPM.CreatePrimary(s.TPM.OwnerHandleContext(), &tpm2.SensitiveCreate{UserAuth: []byte("foo")}, objectutil.NewECCKeyTemplate(objectutil.UsageSign), nil, nil, nil)
+				c.Assert(err, IsNil)
+
+				object.SetAuthValue(nil)
+				digest := testutil.DecodeHexString(c, "fbde6a7fe0a4a95d2656f206437a3db64322a74822e581cf63b69f205c63ab6f")
+				scheme := &tpm2.SigScheme{
+					Scheme: tpm2.SigSchemeAlgECDSA,
+					Details: &tpm2.SigSchemeU{
+						ECDSA: &tpm2.SigSchemeECDSA{
+							HashAlg: tpm2.HashAlgorithmSHA256,
+						},
+					},
+				}
+
+				for i := 0; i < 32; i++ {
+					_, err := s.TPM.Sign(object, digest, scheme, nil, nil)
+					if tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandSign, 1) {
+						continue
+					}
+					if tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandSign) {
+						break
+					}
+					c.Errorf("unexpected error: %v", err)
+				}
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionEnableAndClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindTPMDeviceLockout,
+					&TPMDeviceLockoutArgs{IntervalDuration: 2 * time.Hour, TotalDuration: 64 * time.Hour},
+					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+					errs[0].Unwrap(),
+				))
+			}
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"EnableAndClearTPM()"})
 }
 
 func (s *runChecksContextSuite) TestRunBadTPMDeviceLockoutLockedOut(c *C) {
@@ -2005,7 +3534,220 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM's lockout hierarchy is unavailable because it is locked out`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceLockoutLockedOut, TPMDeviceLockoutRecoveryArg(24*time.Hour), []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindTPMDeviceLockoutLockedOut,
+		TPMDeviceLockoutRecoveryArg(24*time.Hour),
+		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+		errs[0].Unwrap(),
+	))
+}
+
+func (s *runChecksContextSuite) TestRunBadTPMDeviceLockoutLockedOutRunActionClearTPMViaFirmware(c *C) {
+	// Test the error case where the TPM's lockout hierarchy is locked out, and
+	// we run the ActionClearTPMViaFirmware action.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		iterations:  2,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Disable the lockout hierarchy on the first iteration.
+				c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 32, 7200, 86400, nil), IsNil)
+
+				// Disable the lockout hierarchy by authorizing it incorrectly
+				s.TPM.LockoutHandleContext().SetAuthValue([]byte("1234"))
+				err := s.TPM.DictionaryAttackLockReset(s.TPM.LockoutHandleContext(), nil)
+				c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindTPMDeviceLockoutLockedOut,
+					TPMDeviceLockoutRecoveryArg(24*time.Hour),
+					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+					errs[0].Unwrap(),
+				))
+
+			}
+		},
+		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"ClearTPM()"})
+}
+
+func (s *runChecksContextSuite) TestRunBadTPMDeviceLockoutLockedOutRunActionEnableAndClearTPMViaFirmware(c *C) {
+	// Test the error case where the TPM's lockout hierarchy is locked out, and
+	// we run the ActionEnableAndClearTPMViaFirmware action.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		iterations:  2,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Disable the lockout hierarchy on the first iteration.
+				c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 32, 7200, 86400, nil), IsNil)
+
+				// Disable the lockout hierarchy by authorizing it incorrectly
+				s.TPM.LockoutHandleContext().SetAuthValue([]byte("1234"))
+				err := s.TPM.DictionaryAttackLockReset(s.TPM.LockoutHandleContext(), nil)
+				c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionEnableAndClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindTPMDeviceLockoutLockedOut,
+					TPMDeviceLockoutRecoveryArg(24*time.Hour),
+					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+					errs[0].Unwrap(),
+				))
+
+			}
+		},
+		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"EnableAndClearTPM()"})
 }
 
 func (s *runChecksContextSuite) TestRunBadTPMInsufficientCounters(c *C) {
@@ -2061,7 +3803,164 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: insufficient NV counters available`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindInsufficientTPMStorage, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindInsufficientTPMStorage,
+		nil,
+		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+		errs[0].Unwrap(),
+	))
+}
+
+func (s *runChecksContextSuite) TestRunBadTPMInsufficientCountersRunActionClearTPMViaFirmware(c *C) {
+	// Test the error case where there appears to be too few NV counters, and
+	// we run the ActionClearTPMViaFirmware action.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     6,
+			tpm2.PropertyNVCounters:        5,
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		iterations:   2,
+		profileOpts:  PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			c.Assert(errs, HasLen, 1)
+			c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+				ErrorKindInsufficientTPMStorage,
+				nil,
+				[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+				errs[0].Unwrap(),
+			))
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"ClearTPM()"})
+}
+
+func (s *runChecksContextSuite) TestRunBadTPMInsufficientCountersRunActionEnableAndClearTPMViaFirmware(c *C) {
+	// Test the error case where there appears to be too few NV counters, and
+	// we run the ActionEnableAndClearTPMViaFirmware action.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	p := new(mockPPI)
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     6,
+			tpm2.PropertyNVCounters:        5,
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi:          p,
+		iterations:   2,
+		profileOpts:  PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionEnableAndClearTPMViaFirmware},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			c.Assert(errs, HasLen, 1)
+			c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+				ErrorKindInsufficientTPMStorage,
+				nil,
+				[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+				errs[0].Unwrap(),
+			))
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a reboot is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindRebootRequired, nil, []Action{ActionReboot}, errs[0].Unwrap()))
+
+	c.Check(p.called, DeepEquals, []string{"EnableAndClearTPM()"})
 }
 
 func (s *runChecksContextSuite) TestRunBadTPMHierarchiesOwnedAndLockedOut(c *C) {
@@ -2154,7 +4053,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}},
-		[]Action{ActionRebootToFWSettings},
+		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
 		errs[0].Unwrap(),
 	))
 
@@ -2162,7 +4061,7 @@ C7E003CB
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMDeviceLockout,
 		&TPMDeviceLockoutArgs{IntervalDuration: 2 * time.Hour, TotalDuration: 64 * time.Hour},
-		[]Action{ActionRebootToFWSettings},
+		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
 		errs[1].Unwrap(),
 	))
 }
@@ -2262,7 +4161,12 @@ C7E003CB
 	c.Assert(errs, HasLen, 1)
 
 	c.Check(errs[0], ErrorMatches, `error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMStartupLocalityNotProtected, nil, nil, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindTPMStartupLocalityNotProtected,
+		nil,
+		[]Action{ActionProceed},
+		errs[0].Unwrap(),
+	))
 }
 
 // TODO: Test another bad case where PCR0 is mandatory but unusable, but is mandatory
@@ -2597,7 +4501,12 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware indicates that DMA protections are insufficient`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindInsufficientDMAProtection, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindInsufficientDMAProtection,
+		nil,
+		[]Action{ActionContactOEM, ActionRebootToFWSettings, ActionProceed},
+		errs[0].Unwrap(),
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadNoKernelIOMMU(c *C) {
@@ -2640,7 +4549,12 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with system security: no kernel IOMMU support was detected`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoKernelIOMMU, nil, []Action{ActionContactOSVendor}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindNoKernelIOMMU,
+		nil,
+		[]Action{ActionRebootToFWSettings, ActionContactOSVendor, ActionProceed},
+		errs[0].Unwrap(),
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadStartupLocalityNotProtected(c *C) {
@@ -2688,11 +4602,18 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with system security: access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMStartupLocalityNotProtected, nil, nil, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindTPMStartupLocalityNotProtected,
+		nil,
+		[]Action{ActionProceed},
+		errs[0].Unwrap(),
+	))
 }
 
 func (s *runChecksContextSuite) TestRunChecksBadUEFIDebuggingEnabledAndNoKernelIOMMU(c *C) {
-	// Test case with more than one host security error.
+	// Test case with more than one host security error. This also tests the case
+	// where ActionProceed is suppressed because one of the returned errors
+	// doesn't permit it.
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -2738,7 +4659,12 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUEFIDebuggingEnabled, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
 
 	c.Check(errs[1], ErrorMatches, `error with system security: no kernel IOMMU support was detected`)
-	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindNoKernelIOMMU, nil, []Action{ActionContactOSVendor}, errs[1].Unwrap()))
+	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindNoKernelIOMMU,
+		nil,
+		[]Action{ActionRebootToFWSettings, ActionContactOSVendor},
+		errs[1].Unwrap(),
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadHostSecurityErrorMissingIntelMEI(c *C) {
@@ -3166,7 +5092,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsErrorForTest(
 		ErrorKindEmptyPCRBanks,
 		map[string]json.RawMessage{"algs": []byte("[12]")},
-		[]Action{ActionRebootToFWSettings, ActionContactOEM},
+		[]Action{ActionContactOEM, ActionProceed},
 		&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
 	))
 }
@@ -3239,7 +5165,12 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `value added retailer supplied drivers were detected to be running`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindVARSuppliedDriversPresent, nil, nil, ErrVARSuppliedDriversPresent))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindVARSuppliedDriversPresent,
+		nil,
+		[]Action{ActionProceed},
+		ErrVARSuppliedDriversPresent,
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadSysPrepAppsPresent(c *C) {
@@ -3310,7 +5241,12 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `system preparation applications were detected to be running`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindSysPrepApplicationsPresent, nil, nil, ErrSysPrepApplicationsPresent))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindSysPrepApplicationsPresent,
+		nil,
+		[]Action{ActionProceed},
+		ErrSysPrepApplicationsPresent,
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadAbsoluteActive(c *C) {
@@ -3381,7 +5317,12 @@ C7E003CB
 	})
 	c.Check(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `Absolute was detected to be active and it is advised that this is disabled`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindAbsolutePresent, nil, []Action{ActionContactOEM, ActionRebootToFWSettings}, ErrAbsoluteComputraceActive))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindAbsolutePresent,
+		nil,
+		[]Action{ActionContactOEM, ActionRebootToFWSettings, ActionProceed},
+		ErrAbsoluteComputraceActive,
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadNotAllBootManagerCodeDigestsVerified(c *C) {
@@ -3685,13 +5626,28 @@ C7E003CB
 	})
 	c.Check(errs, HasLen, 3)
 	c.Check(errs[0], ErrorMatches, `value added retailer supplied drivers were detected to be running`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindVARSuppliedDriversPresent, nil, nil, ErrVARSuppliedDriversPresent))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindVARSuppliedDriversPresent,
+		nil,
+		[]Action{ActionProceed},
+		ErrVARSuppliedDriversPresent,
+	))
 
 	c.Check(errs[1], ErrorMatches, `a weak cryptographic algorithm was detected during secure boot verification`)
-	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindWeakSecureBootAlgorithmsDetected, nil, nil, ErrWeakSecureBootAlgorithmDetected))
+	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindWeakSecureBootAlgorithmsDetected,
+		nil,
+		[]Action{ActionProceed},
+		ErrWeakSecureBootAlgorithmDetected,
+	))
 
 	c.Check(errs[2], ErrorMatches, `some pre-OS components were authenticated from the authorized signature database using an Authenticode digest`)
-	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPreOSDigestVerificationDetected, nil, nil, ErrPreOSVerificationUsingDigests))
+	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindPreOSDigestVerificationDetected,
+		nil,
+		[]Action{ActionProceed},
+		ErrPreOSVerificationUsingDigests,
+	))
 }
 
 // TODO: This is disabled temporarily until a follow-up PR which adds warnings to the returned errors
@@ -3855,6 +5811,9 @@ C7E003CB
 //}
 
 func (s *runChecksContextSuite) TestRunChecksBadEmptyPCRBankAndNoKernelIOMMU(c *C) {
+	// Test with a system that has an empty PCR bank and no kernel IOMMU.
+	// As both errors support ActionProceed, it is a valid action for
+	// both of the returned errors.
 	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
 
 	meiAttrs := map[string][]byte{
@@ -3917,8 +5876,196 @@ C7E003CB
 	c.Assert(errs, HasLen, 2)
 
 	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindEmptyPCRBanks, &EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}}, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindEmptyPCRBanks,
+		&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
+		[]Action{ActionContactOEM, ActionProceed},
+		errs[0].Unwrap(),
+	))
 
 	c.Check(errs[1], ErrorMatches, `error with system security: no kernel IOMMU support was detected`)
-	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindNoKernelIOMMU, nil, []Action{ActionContactOSVendor}, errs[1].Unwrap()))
+	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindNoKernelIOMMU,
+		nil,
+		[]Action{ActionRebootToFWSettings, ActionContactOSVendor, ActionProceed},
+		errs[1].Unwrap(),
+	))
+}
+
+func (s *runChecksContextSuite) TestRunChecksActionEnableTPMViaFirmwareNotAvailable(c *C) {
+	// Generate an error that could be fixed by ActionEnableTPMViaFirmware when
+	// this action is not available.
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
+		),
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi: &mockPPI{
+			sta: ppi.StateTransitionRebootRequired,
+			ops: map[ppi.OperationId]ppi.OperationStatus{
+				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+				ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		prepare: func(_ int) {
+			// Disable owner and endorsement hierarchies
+			c.Assert(s.TPM.HierarchyControl(s.TPM.OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
+			c.Assert(s.TPM.HierarchyControl(s.TPM.EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
+		},
+		actions: []actionAndArgs{{action: ActionNone}},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but is currently disabled by the platform firmware`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableAndClearTPMViaFirmware}, errs[0].Unwrap()))
+}
+
+func (s *runChecksContextSuite) TestRunChecksActionEnableAndClearTPMViaFirmwareNotAvailable(c *C) {
+	// Generate an error that could be fixed by ActionEnableAndClearTPMViaFirmware when
+	// this action is not available.
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
+		),
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi: &mockPPI{
+			sta: ppi.StateTransitionRebootRequired,
+			ops: map[ppi.OperationId]ppi.OperationStatus{
+				ppi.OperationEnableTPM: ppi.OperationPPRequired,
+				ppi.OperationClearTPM:  ppi.OperationPPRequired,
+			},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		prepare: func(_ int) {
+			// Disable owner and endorsement hierarchies
+			c.Assert(s.TPM.HierarchyControl(s.TPM.OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
+			c.Assert(s.TPM.HierarchyControl(s.TPM.EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
+		},
+		actions: []actionAndArgs{{action: ActionNone}},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but is currently disabled by the platform firmware`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableTPMViaFirmware}, errs[0].Unwrap()))
+}
+
+func (s *runChecksContextSuite) TestRunChecksActionClearTPMViaFirmwareNotAvailable(c *C) {
+	// Generate an error that could be fixed by ActionClearTPMViaFirmware when this action
+	// is not available.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"iommu": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
+			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
+		},
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
+		},
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi: &mockPPI{
+			sta: ppi.StateTransitionRebootRequired,
+			ops: map[ppi.OperationId]ppi.OperationStatus{
+				ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+			},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		prepare: func(_ int) {
+			// Set an authorization value for the lockout hierarchy and
+			// an authorization policy for the storage hierarchy.
+			s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+			c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
+		},
+		actions: []actionAndArgs{{action: ActionNone}},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
+- TPM_RH_LOCKOUT has an authorization value
+- TPM_RH_OWNER has an authorization policy
+`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindTPMHierarchiesOwned,
+		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+		[]Action{ActionRebootToFWSettings, ActionEnableAndClearTPMViaFirmware},
+		errs[0].Unwrap(),
+	))
+}
+
+func (s *runChecksContextSuite) TestRunChecksPPIActionWithShutdownTransition(c *C) {
+	// Generate an error that can be resolve using a PPI action, with the
+	// state transition action being "shutdown" rather than the more common
+	// "reboot".
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
+		),
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		ppi: &mockPPI{
+			sta: ppi.StateTransitionShutdownRequired,
+			ops: map[ppi.OperationId]ppi.OperationStatus{
+				ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+				ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		iterations:  2,
+		prepare: func(i int) {
+			switch i {
+			case 0:
+				// Disable owner and endorsement hierarchies on the first iteration
+				c.Assert(s.TPM.HierarchyControl(s.TPM.OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
+				c.Assert(s.TPM.HierarchyControl(s.TPM.EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
+			}
+		},
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionEnableTPMViaFirmware},
+		},
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `a shutdown is required to complete the action`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindShutdownRequired, nil, []Action{ActionShutdown}, errs[0].Unwrap()))
 }

@@ -10,6 +10,7 @@ require (
 	github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3
 	github.com/canonical/go-tpm2 v1.13.0
 	github.com/canonical/tcglog-parser v0.0.0-20240924110432-d15eaf652981
+	github.com/jessevdk/go-flags v1.5.0
 	github.com/snapcore/snapd v0.0.0-20220714152900-4a1f4c93fc85
 	golang.org/x/crypto v0.23.0
 	golang.org/x/sys v0.21.0
