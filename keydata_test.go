@@ -68,8 +68,8 @@ const (
 )
 
 type mockPlatformKeyDataHandler struct {
-	state             int
-	passphraseSupport bool
+	state           int
+	userAuthSupport bool
 }
 
 func (h *mockPlatformKeyDataHandler) checkState() error {
@@ -146,7 +146,7 @@ func (h *mockPlatformKeyDataHandler) RecoverKeys(data *PlatformKeyData, encrypte
 }
 
 func (h *mockPlatformKeyDataHandler) RecoverKeysWithAuthKey(data *PlatformKeyData, encryptedPayload []byte, key []byte) ([]byte, error) {
-	if !h.passphraseSupport {
+	if !h.userAuthSupport {
 		return nil, errors.New("not supported")
 	}
 
@@ -171,7 +171,7 @@ type mockChangeAuthKeyContextType struct{}
 var mockChangeAuthKeyContext = mockChangeAuthKeyContextType{}
 
 func (h *mockPlatformKeyDataHandler) ChangeAuthKey(data *PlatformKeyData, old, new []byte, context any) ([]byte, error) {
-	if !h.passphraseSupport {
+	if !h.userAuthSupport {
 		return nil, errors.New("not supported")
 	}
 
@@ -286,7 +286,7 @@ func (s *keyDataTestBase) SetUpSuite(c *C) {
 
 func (s *keyDataTestBase) SetUpTest(c *C) {
 	s.handler.state = mockPlatformDeviceStateOK
-	s.handler.passphraseSupport = false
+	s.handler.userAuthSupport = false
 	s.origArgon2KDF = SetArgon2KDF(&testutil.MockArgon2KDF{})
 	s.restorePBKDF2Benchmark = MockPBKDF2Benchmark(func(duration time.Duration, hashAlg crypto.Hash) (uint, error) {
 		c.Check(hashAlg, Equals, s.expectedPBKDF2Hash)
@@ -491,7 +491,7 @@ func (s *keyDataTestBase) checkKeyDataJSONDecodedAuthModePassphrase(c *C, j map[
 		kdfOpts = &def
 	}
 
-	kdfParams, err := KDFOptionsKdfParams(kdfOpts, 0)
+	kdfParams, err := KDFOptionsKdfParams(kdfOpts, 2*time.Second, 0)
 	c.Assert(err, IsNil)
 
 	s.checkKeyDataJSONCommon(c, j, &creationParams.KeyParams)
@@ -854,7 +854,7 @@ func (s *keyDataSuite) TestRecoverKeysInvalidData(c *C) {
 }
 
 func (s *keyDataSuite) testRecoverKeysWithPassphrase(c *C, passphrase string) {
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	primaryKey := s.newPrimaryKey(c, 32)
 	protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", nil, 32, crypto.SHA256)
@@ -877,7 +877,7 @@ func (s *keyDataSuite) TestRecoverKeysWithPassphrase2(c *C) {
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphrasePBKDF2(c *C) {
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	primaryKey := s.newPrimaryKey(c, 32)
 	protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", &PBKDF2Options{}, 32, crypto.SHA256)
@@ -899,7 +899,7 @@ type testRecoverKeysWithPassphraseErrorHandlingData struct {
 }
 
 func (s *keyDataSuite) testRecoverKeysWithPassphraseErrorHandling(c *C, data *testRecoverKeysWithPassphraseErrorHandlingData) {
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	if data.kdfType == "" {
 		data.kdfType = "argon2i"
@@ -965,35 +965,35 @@ func (s *keyDataSuite) testRecoverKeysWithPassphraseErrorHandling(c *C, data *te
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseNotSupportedKDF(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		kdfType: "other",
-		errMsg:  "unexpected intermediate KDF type \"other\"",
+		errMsg:  "invalid key data: unexpected intermediate KDF type \"other\"",
 	})
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidDerivedKeySize(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		derivedKeySize: -1,
-		errMsg:         "invalid derived key size (-1 bytes)",
+		errMsg:         "invalid key data: invalid derived key size (-1 bytes)",
 	})
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidEncryptionKeySizeSmall(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		encryptionKeySize: -1,
-		errMsg:            "invalid encryption key size (-1 bytes)",
+		errMsg:            "invalid key data: invalid encryption key size (-1 bytes)",
 	})
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidEncryptionKeySizeBig(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		encryptionKeySize: 33,
-		errMsg:            "invalid encryption key size (33 bytes)",
+		errMsg:            "invalid key data: invalid encryption key size (33 bytes)",
 	})
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidAuthKeySize(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		authKeySize: -1,
-		errMsg:      "invalid auth key size (-1 bytes)",
+		errMsg:      "invalid key data: invalid auth key size (-1 bytes)",
 	})
 }
 
@@ -1012,7 +1012,7 @@ func (s *keyDataSuite) TestRecoverKeysWithPassphraseAuthModeNone(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeysWithPassphrase("")
-	c.Check(err, ErrorMatches, "cannot recover key with passphrase")
+	c.Check(err, ErrorMatches, "cannot recover key with passphrase - user auth required: none")
 	c.Check(recoveredKey, IsNil)
 	c.Check(recoveredAuxKey, IsNil)
 }
@@ -1024,7 +1024,7 @@ func (s *keyDataSuite) TestNewKeyDataWithPassphraseNotSupported(c *C) {
 	passphraseParams, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, "", nil, 32, crypto.SHA256)
 
 	_, err := NewKeyDataWithPassphrase(passphraseParams, "passphrase")
-	c.Check(err, ErrorMatches, "cannot set passphrase: not supported")
+	c.Check(err, ErrorMatches, "cannot set passphrase: cannot perform action because of an unexpected error: not supported")
 }
 
 func (s *keyDataSuite) TestChangePassphraseNotSupported(c *C) {
@@ -1104,7 +1104,7 @@ func (s *keyDataSuite) TestChangePassphraseWithoutInitial(c *C) {
 	keyData, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(j)})
 	c.Assert(err, IsNil)
 
-	c.Check(keyData.ChangePassphrase("passphrase", ""), ErrorMatches, "cannot change passphrase without setting an initial passphrase")
+	c.Check(keyData.ChangePassphrase("passphrase", ""), ErrorMatches, "cannot change passphrase - user auth configured: none")
 }
 
 type testChangePassphraseData struct {
@@ -1114,7 +1114,7 @@ type testChangePassphraseData struct {
 }
 
 func (s *keyDataSuite) testChangePassphrase(c *C, data *testChangePassphraseData) {
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	primaryKey := s.newPrimaryKey(c, 32)
 	protected, _ := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", data.kdfOptions, 32, crypto.SHA256)
@@ -1169,7 +1169,7 @@ func (s *keyDataSuite) TestChangePassphrasePBKDF2(c *C) {
 }
 
 func (s *keyDataSuite) TestChangePassphraseWrongPassphrase(c *C) {
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	primaryKey := s.newPrimaryKey(c, 32)
 
@@ -1683,7 +1683,7 @@ func (s *keyDataSuite) TestLegacySetAuthorizedSnapModelsWithWrongKey(c *C) {
 
 func (s *keyDataSuite) TestKeyDataDerivePassphraseKeysExpectedInfoFields(c *C) {
 	// Test that key derivation from passphrase is using expected info fields
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	// Valid KeyData with passphrase "passphrase"
 	j := []byte(

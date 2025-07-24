@@ -37,6 +37,7 @@ import (
 var (
 	secbootNewKeyData               = secboot.NewKeyData
 	secbootNewKeyDataWithPassphrase = secboot.NewKeyDataWithPassphrase
+	secbootNewKeyDataWithPIN        = secboot.NewKeyDataWithPIN
 )
 
 // ProtectKeyParams provides arguments for the ProtectKey* APIs.
@@ -67,6 +68,12 @@ type PassphraseProtectKeyParams struct {
 	KDFOptions secboot.KDFOptions
 }
 
+type PINProtectKeyParams struct {
+	ProtectKeyParams
+
+	KDFOptions *secboot.PBKDF2Options
+}
+
 type keyDataConstructor func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error)
 
 func makeKeyDataNoAuth(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
@@ -93,6 +100,23 @@ func makeKeyDataWithPassphraseConstructor(tpm *Connection, kdfOptions secboot.KD
 			AuthKeySize:          skd.data.Public().NameAlg.Size(),
 			ChangeAuthKeyContext: tpm,
 		}, passphrase)
+	}
+}
+
+func makeKeyDataWithPINConstructor(tpm *Connection, kdfOptions *secboot.PBKDF2Options, pin secboot.PIN) keyDataConstructor {
+	return func(skd *SealedKeyData, role string, encryptedPayload []byte, kdfAlg crypto.Hash) (*secboot.KeyData, error) {
+		return secbootNewKeyDataWithPIN(&secboot.KeyWithPINParams{
+			KeyParams: secboot.KeyParams{
+				Handle:           skd,
+				Role:             role,
+				EncryptedPayload: encryptedPayload,
+				PlatformName:     platformName,
+				KDFAlg:           kdfAlg,
+			},
+			KDFOptions:           kdfOptions,
+			AuthKeySize:          skd.data.Public().NameAlg.Size(),
+			ChangeAuthKeyContext: tpm,
+		}, pin)
 	}
 }
 
@@ -309,4 +333,21 @@ func NewTPMPassphraseProtectedKey(tpm *Connection, params *PassphraseProtectKeyP
 		Role:                   params.Role,
 		PcrProfile:             params.PCRProfile,
 	}, sealer, makeKeyDataWithPassphraseConstructor(tpm, params.KDFOptions, passphrase), tpm.HmacSession())
+}
+
+func NewTPMPINProtectedKey(tpm *Connection, params *PINProtectKeyParams, pin secboot.PIN) (protectedKey *secboot.KeyData, primaryKey secboot.PrimaryKey, unlockKey secboot.DiskUnlockKey, err error) {
+	// params is mandatory.
+	if params == nil {
+		return nil, nil, nil, errors.New("no PINProtectKeyParams provided")
+	}
+
+	sealer := &sealedObjectKeySealer{tpm}
+
+	return makeSealedKeyData(tpm.TPMContext, &makeSealedKeyDataParams{
+		PrimaryKey:             params.PrimaryKey,
+		PcrPolicyCounterHandle: params.PCRPolicyCounterHandle,
+		AuthMode:               secboot.AuthModePIN,
+		Role:                   params.Role,
+		PcrProfile:             params.PCRProfile,
+	}, sealer, makeKeyDataWithPINConstructor(tpm, params.KDFOptions, pin), tpm.HmacSession())
 }
