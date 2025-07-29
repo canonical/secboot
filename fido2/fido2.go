@@ -23,7 +23,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"slices"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/keys-pub/go-libfido2"
 	"github.com/snapcore/secboot"
