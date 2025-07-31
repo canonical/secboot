@@ -732,6 +732,8 @@ func (d *KeyData) WriteAtomic(w KeyDataWriter) error {
 
 // ReadKeyData reads the key data from the supplied KeyDataReader, returning a
 // new KeyData object.
+//
+// XXX: Eventually this API will take a KeyslotInfo type instead.
 func ReadKeyData(r KeyDataReader) (*KeyData, error) {
 	d := &KeyData{readableName: r.ReadableName()}
 	dec := json.NewDecoder(r)
