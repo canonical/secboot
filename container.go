@@ -27,23 +27,11 @@ import (
 )
 
 var (
-	ErrContainerClosed    = errors.New("storage container reader/writer is already closed")
-	ErrKeyslotNotFound    = errors.New("keyslot not found")
-	ErrNoStorageContainer = errors.New("no storage container for path")
+	ErrStorageContainerClosed    = errors.New("storage container reader/writer is already closed")
+	ErrKeyslotNotFound           = errors.New("keyslot not found")
+	ErrStorageContainerNotActive = errors.New("storage container is not active")
+	ErrNoStorageContainer        = errors.New("no storage container for path")
 )
-
-// ActivateOptionVisitor is used for gathering options (using
-// ActivateOption). Each backend shouls provide its own
-// implementation of this.
-type ActivateOptionVisitor interface {
-	Add(key, value any)
-}
-
-// ActivateOption represents an option that can be supplied to
-// StorageContainer.Activate.
-type ActivateOption interface {
-	ApplyTo(ActivateOptionVisitor)
-}
 
 // KeyslotType describes the type of a keyslot.
 type KeyslotType string
@@ -51,9 +39,13 @@ type KeyslotType string
 const (
 	KeyslotTypePlatform KeyslotType = "platform"
 	KeyslotTypeRecovery KeyslotType = "recovery"
+
+	KeyslotTypeUnknown KeyslotType = ""
 )
 
-// KeyslotInfo provides information about a keyslot.
+// KeyslotInfo provides public information about a keyslot. These properties
+// should be suitable to display to an unprivileged user. It must not expose
+// anything that is secret.
 type KeyslotInfo interface {
 	Type() KeyslotType
 	Name() string
@@ -73,7 +65,7 @@ type KeyslotInfo interface {
 // [StorageContainerReadWriter].
 type StorageContainerReader interface {
 	// Container returns the StorageContainer that this reader
-	// was opened from.
+	// was opened from. It can return nil once Close is called.
 	Container() StorageContainer
 
 	// io.Closer is used to close this reader.
@@ -109,9 +101,9 @@ type StorageContainer interface {
 	// If supplied, the backend can use this to target the supplied
 	// key at a specific keyslot. If keyslotInfo nil is supplied, the
 	// backend will have to test all keyslots with the supplied key.
-	// The caller can specify one or more options, which may be
-	// backend-specific.
-	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ActivateOption) error
+	// The caller can specify a configuration, which is a map of keys
+	// or arbitrary types to values of arbitrary types.
+	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, cfg ActivateConfigGetter) error
 
 	// Deactivate locks this storage container.
 	Deactivate(ctx context.Context) error

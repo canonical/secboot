@@ -42,6 +42,7 @@ var (
 	ComputeV3PcrPolicyRef                   = computeV3PcrPolicyRef
 	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
+	IsPCRPolicyDataError                    = isPCRPolicyDataError
 	IsPolicyDataError                       = isPolicyDataError
 	MakeSealedKeyData                       = makeSealedKeyData
 	MakeKeyDataNoAuth                       = makeKeyDataNoAuth
