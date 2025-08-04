@@ -47,7 +47,7 @@ func (c *mockStorageContainer) BackendName() string {
 	return mockStorageContainerType
 }
 
-func (c *mockStorageContainer) Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ActivateOption) error {
+func (c *mockStorageContainer) Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, cfg ActivateConfigGetter) error {
 	return errors.New("not supported")
 }
 

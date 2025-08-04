@@ -37,7 +37,7 @@ type FileKeyDataReader struct {
 	*bytes.Reader
 }
 
-func (r *FileKeyDataReader) ReadableName() string {
+func (r FileKeyDataReader) ReadableName() string {
 	return r.readableName
 }
 
