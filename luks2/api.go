@@ -44,6 +44,7 @@ type luks2KeyDataReader interface {
 }
 
 func newLUKS2KeyDataReader(devicePath, name string) (luks2KeyDataReader, error) {
+	// TODO: Don't depend on this function.
 	return secboot.NewLUKS2KeyDataReader(devicePath, name)
 }
 

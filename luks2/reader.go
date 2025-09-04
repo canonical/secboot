@@ -47,6 +47,15 @@ type storageContainerReadWriterImpl struct {
 	keyslots map[string]*keyslotImpl
 }
 
+// ensureKeyslotNames ensures that the names of keyslots are cached.
+// XXX: There is only read access for storage containers for now. Although there will
+// eventually be read/write access, snapd will continue to use the existing
+// [secboot.LUKS2KeyDataWriter] in the meantime. It is an error to modify the LUKS2
+// header with an open reader, and this package will ensure that a read/writer cannot
+// be opened whilst there are open readers when read/write access is supported.
+// Therefore, it is safe to assume that the cached information will not change for
+// now. When read/write access is implemented, writes will need to ensure that cached
+// data is properly refreshed and kept in sync.
 func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 	if s.keyslots != nil {
 		return nil
@@ -85,6 +94,16 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 	return nil
 }
 
+// ensureKeyslot ensures that the keyslot data for the keyslot with the specified name
+// is cached.
+// XXX: There is only read access for storage containers for now. Although there will
+// eventually be read/write access, snapd will continue to use the existing
+// [secboot.LUKS2KeyDataWriter] in the meantime. It is an error to modify the LUKS2
+// header with an open reader, and this package will ensure that a read/writer cannot
+// be opened whilst there are open readers when read/write access is supported.
+// Therefore, it is safe to assume that the cached information will not change for
+// now. When read/write access is implemented, writes will need to ensure that cached
+// data is properly refreshed and kept in sync.
 func (s *storageContainerReadWriterImpl) ensureKeyslot(ctx context.Context, name string) error {
 	if err := s.ensureKeyslotNames(); err != nil {
 		return err
