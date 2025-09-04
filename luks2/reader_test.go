@@ -247,20 +247,20 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatform(c *C) {
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default")
+	ks, err := r.ReadKeyslot(context.Background(), "default")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypePlatform)
-	c.Check(ki.Name(), Equals, "default")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ks.Name(), Equals, "default")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data().ReadableName(), Equals, "/dev/sda1:default")
-	data, err := io.ReadAll(ki.Data())
+	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
+	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 0)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentName(c *C) {
@@ -271,20 +271,20 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentName(c *C) 
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default-fallback")
+	ks, err := r.ReadKeyslot(context.Background(), "default-fallback")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypePlatform)
-	c.Check(ki.Name(), Equals, "default-fallback")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ks.Name(), Equals, "default-fallback")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data().ReadableName(), Equals, "/dev/sda1:default-fallback")
-	data, err := io.ReadAll(ki.Data())
+	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default-fallback")
+	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 0)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentDevice(c *C) {
@@ -294,20 +294,20 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentDevice(c *C
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default")
+	ks, err := r.ReadKeyslot(context.Background(), "default")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypePlatform)
-	c.Check(ki.Name(), Equals, "default")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ks.Name(), Equals, "default")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data().ReadableName(), Equals, "/dev/nvme0n1p3:default")
-	data, err := io.ReadAll(ki.Data())
+	c.Check(ks.Data().ReadableName(), Equals, "/dev/nvme0n1p3:default")
+	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 0)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotRecovery(c *C) {
@@ -318,17 +318,17 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecovery(c *C) {
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default-recovery")
+	ks, err := r.ReadKeyslot(context.Background(), "default-recovery")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypeRecovery)
-	c.Check(ki.Name(), Equals, "default-recovery")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypeRecovery)
+	c.Check(ks.Name(), Equals, "default-recovery")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data(), IsNil)
+	c.Check(ks.Data(), IsNil)
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 1)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 1)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryDifferentKeyslotID(c *C) {
@@ -339,17 +339,17 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryDifferentKeyslotID(c
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default-recovery")
+	ks, err := r.ReadKeyslot(context.Background(), "default-recovery")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypeRecovery)
-	c.Check(ki.Name(), Equals, "default-recovery")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypeRecovery)
+	c.Check(ks.Name(), Equals, "default-recovery")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data(), IsNil)
+	c.Check(ks.Data(), IsNil)
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 3)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 3)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentPriority(c *C) {
@@ -359,20 +359,20 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentPriority(c 
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default")
+	ks, err := r.ReadKeyslot(context.Background(), "default")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypePlatform)
-	c.Check(ki.Name(), Equals, "default")
-	c.Check(ki.Priority(), Equals, 2)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ks.Name(), Equals, "default")
+	c.Check(ks.Priority(), Equals, 2)
 
-	c.Check(ki.Data().ReadableName(), Equals, "/dev/sda1:default")
-	data, err := io.ReadAll(ki.Data())
+	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
+	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 0)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentKeyslotID(c *C) {
@@ -383,20 +383,20 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentKeyslotID(c
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default")
+	ks, err := r.ReadKeyslot(context.Background(), "default")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypePlatform)
-	c.Check(ki.Name(), Equals, "default")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ks.Name(), Equals, "default")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data().ReadableName(), Equals, "/dev/sda1:default")
-	data, err := io.ReadAll(ki.Data())
+	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
+	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 1)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 1)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentData(c *C) {
@@ -407,20 +407,20 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentData(c *C) 
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default")
+	ks, err := r.ReadKeyslot(context.Background(), "default")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypePlatform)
-	c.Check(ki.Name(), Equals, "default")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ks.Name(), Equals, "default")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data().ReadableName(), Equals, "/dev/sda1:default")
-	data, err := io.ReadAll(ki.Data())
+	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
+	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata2"))
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 0)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
@@ -430,20 +430,20 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default")
+	ks, err := r.ReadKeyslot(context.Background(), "default")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypePlatform)
-	c.Check(ki.Name(), Equals, "default")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ks.Name(), Equals, "default")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data().ReadableName(), Equals, "/dev/sda1:default")
-	data, err := io.ReadAll(ki.Data())
+	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
+	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 0)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 0)
 
 	restore := MockLUKS2Ops(&Luks2Api{
 		ListUnlockKeyNames: func(_ string) ([]string, error) {
@@ -461,9 +461,9 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
 	})
 	defer restore()
 
-	ki2, err := r.ReadKeyslot(context.Background(), "default")
+	ks2, err := r.ReadKeyslot(context.Background(), "default")
 	c.Check(err, IsNil)
-	c.Check(ki2, Equals, ki)
+	c.Check(ks2, Equals, ks)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryCached(c *C) {
@@ -474,17 +474,17 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryCached(c *C) {
 	r, err := container.OpenRead(context.Background())
 	c.Assert(err, IsNil)
 
-	ki, err := r.ReadKeyslot(context.Background(), "default-recovery")
+	ks, err := r.ReadKeyslot(context.Background(), "default-recovery")
 	c.Assert(err, IsNil)
-	c.Check(ki.Type(), Equals, secboot.KeyslotTypeRecovery)
-	c.Check(ki.Name(), Equals, "default-recovery")
-	c.Check(ki.Priority(), Equals, 0)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypeRecovery)
+	c.Check(ks.Name(), Equals, "default-recovery")
+	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ki.Data(), IsNil)
+	c.Check(ks.Data(), IsNil)
 
-	var tmpl KeyslotInfo
-	c.Assert(ki, Implements, &tmpl)
-	c.Check(ki.(KeyslotInfo).KeyslotID(), Equals, 1)
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, 1)
 
 	restore := MockLUKS2Ops(&Luks2Api{
 		ListUnlockKeyNames: func(_ string) ([]string, error) {
@@ -502,9 +502,9 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryCached(c *C) {
 	})
 	defer restore()
 
-	ki2, err := r.ReadKeyslot(context.Background(), "default-recovery")
+	ks2, err := r.ReadKeyslot(context.Background(), "default-recovery")
 	c.Check(err, IsNil)
-	c.Check(ki2, Equals, ki)
+	c.Check(ks2, Equals, ks)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotNotFound(c *C) {

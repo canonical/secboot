@@ -32,26 +32,26 @@ import (
 
 func Test(t *testing.T) { TestingT(t) }
 
-type mockExternalKeyslotInfo struct {
+type mockExternalKeyslot struct {
 }
 
-func (*mockExternalKeyslotInfo) Type() secboot.KeyslotType {
+func (*mockExternalKeyslot) Type() secboot.KeyslotType {
 	return secboot.KeyslotTypePlatform
 }
 
-func (*mockExternalKeyslotInfo) Name() string {
+func (*mockExternalKeyslot) Name() string {
 	return "mock external keyslot"
 }
 
-func (*mockExternalKeyslotInfo) Priority() int {
+func (*mockExternalKeyslot) Priority() int {
 	return 0
 }
 
-func (*mockExternalKeyslotInfo) Data() secboot.KeyDataReader {
+func (*mockExternalKeyslot) Data() secboot.KeyDataReader {
 	return nil
 }
 
-type mockKeyslotInfo struct {
+type mockKeyslot struct {
 	keyslotType     secboot.KeyslotType
 	keyslotName     string
 	keyslotPriority int
@@ -59,23 +59,23 @@ type mockKeyslotInfo struct {
 	keyslotId       int
 }
 
-func (i *mockKeyslotInfo) Type() secboot.KeyslotType {
+func (i *mockKeyslot) Type() secboot.KeyslotType {
 	return i.keyslotType
 }
 
-func (i *mockKeyslotInfo) Name() string {
+func (i *mockKeyslot) Name() string {
 	return i.keyslotName
 }
 
-func (i *mockKeyslotInfo) Priority() int {
+func (i *mockKeyslot) Priority() int {
 	return i.keyslotPriority
 }
 
-func (i *mockKeyslotInfo) Data() secboot.KeyDataReader {
+func (i *mockKeyslot) Data() secboot.KeyDataReader {
 	return i.keyslotData
 }
 
-func (i *mockKeyslotInfo) KeyslotID() int {
+func (i *mockKeyslot) KeyslotID() int {
 	return i.keyslotId
 }
 

@@ -44,7 +44,7 @@ type storageContainerReadWriterImpl struct {
 	// - go routines to have read access whilst there is a goroutine with
 	//   read/write access.
 	// - more than one goroutine at a time to have read/write access.
-	keyslots map[string]*keyslotInfoImpl
+	keyslots map[string]*keyslotImpl
 }
 
 func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
@@ -52,17 +52,17 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 		return nil
 	}
 
-	keyslots := make(map[string]*keyslotInfoImpl)
+	keyslots := make(map[string]*keyslotImpl)
 
 	names, err := luks2Ops.ListUnlockKeyNames(s.container.Path())
 	if err != nil {
 		return err
 	}
 	for _, name := range names {
-		keyslots[name] = &keyslotInfoImpl{
+		keyslots[name] = &keyslotImpl{
 			keyslotType: secboot.KeyslotTypePlatform,
 			keyslotName: name,
-			keyslotId:   internal_luks2.AnySlot, // use AnySlot to indicate we haven't filled this KeyslotInfo yet.
+			keyslotId:   internal_luks2.AnySlot, // use AnySlot to indicate we haven't filled this Keyslot yet.
 		}
 	}
 
@@ -74,10 +74,10 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 		// The existing secboot API doesn't map keyslot names to LUKS2 keyslot
 		// IDs for recovery keyslots. We will eventually do that when this package
 		// natively supports LUKS2 rather than using the legacy secboot APIs.
-		keyslots[name] = &keyslotInfoImpl{
+		keyslots[name] = &keyslotImpl{
 			keyslotType: secboot.KeyslotTypeRecovery,
 			keyslotName: name,
-			keyslotId:   internal_luks2.AnySlot, // use AnySlot to indicate we haven't filled this KeyslotInfo yet.
+			keyslotId:   internal_luks2.AnySlot, // use AnySlot to indicate we haven't filled this Keyslot yet.
 		}
 	}
 
@@ -85,22 +85,22 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 	return nil
 }
 
-func (s *storageContainerReadWriterImpl) ensureKeyslotInfo(ctx context.Context, name string) error {
+func (s *storageContainerReadWriterImpl) ensureKeyslot(ctx context.Context, name string) error {
 	if err := s.ensureKeyslotNames(); err != nil {
 		return err
 	}
 
-	info, exists := s.keyslots[name]
+	ks, exists := s.keyslots[name]
 	if !exists {
 		return secboot.ErrKeyslotNotFound
 	}
 
-	if info.keyslotId != internal_luks2.AnySlot {
+	if ks.keyslotId != internal_luks2.AnySlot {
 		// We already have everything for this keyslot.
 		return nil
 	}
 
-	switch info.keyslotType {
+	switch ks.keyslotType {
 	case secboot.KeyslotTypeRecovery:
 		// The existing secboot API doesn't expose the LUKS2 keyslot ID for recovery
 		// keys, so we use the luksview package directly, via a bit of an abstraction
@@ -118,15 +118,15 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotInfo(ctx context.Context, 
 		if !inUse {
 			return fmt.Errorf("no metadata for keyslot %q", name)
 		}
-		info.keyslotId = token.Keyslots()[0] // luksview guarantees there is always 1 keyslot here.
+		ks.keyslotId = token.Keyslots()[0] // luksview guarantees there is always 1 keyslot here.
 	case secboot.KeyslotTypePlatform:
 		r, err := luks2Ops.NewKeyDataReader(s.container.Path(), name)
 		if err != nil {
 			return fmt.Errorf("cannot obtain reader for %q: %w", name, err)
 		}
-		info.keyslotId = r.KeyslotID()
-		info.keyslotPriority = r.Priority()
-		info.keyslotData = r
+		ks.keyslotId = r.KeyslotID()
+		ks.keyslotPriority = r.Priority()
+		ks.keyslotData = r
 	default:
 		panic("not reached")
 	}
@@ -158,8 +158,8 @@ func (s *storageContainerReadWriterImpl) ListKeyslotNames(ctx context.Context) (
 	return names, nil
 }
 
-func (s *storageContainerReadWriterImpl) ReadKeyslot(ctx context.Context, name string) (secboot.KeyslotInfo, error) {
-	if err := s.ensureKeyslotInfo(ctx, name); err != nil {
+func (s *storageContainerReadWriterImpl) ReadKeyslot(ctx context.Context, name string) (secboot.Keyslot, error) {
+	if err := s.ensureKeyslot(ctx, name); err != nil {
 		return nil, err
 	}
 
@@ -183,7 +183,7 @@ func (*closedStorageContainerReadWriterImpl) ListKeyslotNames(_ context.Context)
 	return nil, secboot.ErrStorageContainerClosed
 }
 
-func (*closedStorageContainerReadWriterImpl) ReadKeyslot(_ context.Context, _ string) (secboot.KeyslotInfo, error) {
+func (*closedStorageContainerReadWriterImpl) ReadKeyslot(_ context.Context, _ string) (secboot.Keyslot, error) {
 	return nil, secboot.ErrStorageContainerClosed
 }
 
@@ -218,6 +218,6 @@ func (s *storageContainerReader) ListKeyslotNames(ctx context.Context) ([]string
 }
 
 // ReadKeyslot implements [secboot.StorageContainerReader.ListKeyslotNames].
-func (s *storageContainerReader) ReadKeyslot(ctx context.Context, name string) (secboot.KeyslotInfo, error) {
+func (s *storageContainerReader) ReadKeyslot(ctx context.Context, name string) (secboot.Keyslot, error) {
 	return s.impl.ReadKeyslot(ctx, name)
 }

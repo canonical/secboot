@@ -173,7 +173,7 @@ func (c *storageContainerImpl) BackendName() string {
 }
 
 // Activate implements [secboot.StorageContainer.Activate]
-func (c *storageContainerImpl) Activate(ctx context.Context, ki secboot.KeyslotInfo, key []byte, opts ...secboot.ActivateOption) error {
+func (c *storageContainerImpl) Activate(ctx context.Context, ks secboot.Keyslot, key []byte, opts ...secboot.ActivateOption) error {
 	// TODO: Activate should require a temporary read lock (equivalent to OpenRead).
 	optsCtx := make(activateOptions)
 	for _, opt := range opts {
@@ -191,9 +191,9 @@ func (c *storageContainerImpl) Activate(ctx context.Context, ki secboot.KeyslotI
 	}
 
 	slot := luks2.AnySlot
-	if ki != nil {
-		if lki, ok := ki.(KeyslotInfo); ok {
-			slot = lki.KeyslotID()
+	if ks != nil {
+		if lks, ok := ks.(Keyslot); ok {
+			slot = lks.KeyslotID()
 		}
 	}
 

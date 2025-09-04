@@ -21,7 +21,7 @@ package luks2
 
 import "github.com/snapcore/secboot"
 
-type keyslotInfoImpl struct {
+type keyslotImpl struct {
 	keyslotType     secboot.KeyslotType
 	keyslotName     string
 	keyslotId       int
@@ -29,29 +29,29 @@ type keyslotInfoImpl struct {
 	keyslotData     secboot.KeyDataReader // This will eventually just be a io.Reader
 }
 
-func (i *keyslotInfoImpl) Type() secboot.KeyslotType {
+func (i *keyslotImpl) Type() secboot.KeyslotType {
 	return i.keyslotType
 }
 
-func (i *keyslotInfoImpl) Name() string {
+func (i *keyslotImpl) Name() string {
 	return i.keyslotName
 }
 
-func (i *keyslotInfoImpl) Priority() int {
+func (i *keyslotImpl) Priority() int {
 	return i.keyslotPriority
 }
 
-func (i *keyslotInfoImpl) Data() secboot.KeyDataReader {
+func (i *keyslotImpl) Data() secboot.KeyDataReader {
 	return i.keyslotData
 }
 
-func (i *keyslotInfoImpl) KeyslotID() int {
+func (i *keyslotImpl) KeyslotID() int {
 	return i.keyslotId
 }
 
-// KeyslotInfo provides information about a LUKS2 keyslot.
-type KeyslotInfo interface {
-	secboot.KeyslotInfo
+// Keyslot provides information about a LUKS2 keyslot.
+type Keyslot interface {
+	secboot.Keyslot
 
 	// KeyslotID returns the LUKS2 keyslot ID associated
 	// with this secboot keyslot.

@@ -54,8 +54,8 @@ const (
 	KeyslotTypeRecovery KeyslotType = "recovery"
 )
 
-// KeyslotInfo provides information about a keyslot.
-type KeyslotInfo interface {
+// Keyslot provides information about a keyslot.
+type Keyslot interface {
 	Type() KeyslotType
 	Name() string
 	Priority() int
@@ -85,7 +85,7 @@ type StorageContainerReader interface {
 
 	// ReadKeyslot returns information about the keyslot with
 	// the specified name.
-	ReadKeyslot(ctx context.Context, name string) (KeyslotInfo, error)
+	ReadKeyslot(ctx context.Context, name string) (Keyslot, error)
 }
 
 // StorageContainer represents some type of storage container that
@@ -104,7 +104,7 @@ type StorageContainer interface {
 	BackendName() string
 
 	// Activate unlocks this container with the specified key.
-	// The caller can choose to supply the KeyslotInfo instance
+	// The caller can choose to supply the Keyslot instance
 	// related to the keyslot from which the supplied key is
 	// associated with (obtained from StorageContainerReader.ReadKeyslot).
 	// If supplied, the backend can use this to target the supplied
@@ -112,7 +112,7 @@ type StorageContainer interface {
 	// backend will have to test all keyslots with the supplied key.
 	// The caller can specify one or more options, which may be
 	// backend-specific.
-	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ActivateOption) error
+	Activate(ctx context.Context, ks Keyslot, key []byte, opts ...ActivateOption) error
 
 	// Deactivate locks this storage container.
 	Deactivate(ctx context.Context) error
