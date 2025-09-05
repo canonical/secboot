@@ -29,14 +29,15 @@ import (
 // container.
 type StorageContainerBackend interface {
 	// Probe returns a StorageContainer instance for the supplied
-	// path if it can be handled by this backend, else it returns
-	// (nil, nil).
+	// path to a storage container source if it can be handled by this
+	// backend, else it returns (nil, nil).
 	//
 	// Implementations should always return the same StorageContainer
 	// instance for the same container referenced by the supplied path -
 	// the implementation should at least handle the cases of symbolic
-	// links and maybe any other cases where the supplied path has some
-	// indirect relationship to a storage container.
+	// links. It should also be the same instance as the one returned
+	// via the ProbeActivated method with a path to the corresponding
+	// activate storage container.
 	//
 	// Implementations of this must be safe to call from any goroutine.
 	//
@@ -44,6 +45,26 @@ type StorageContainerBackend interface {
 	// depending on how the backend works - there may be backends in the
 	// future that don't use block devices for storage containers.
 	Probe(ctx context.Context, path string) (StorageContainer, error)
+
+	// ProbeActivated returns a StorageContainer instance for the
+	// supplied path to an activated storage container if it can be
+	// handled by this backend, else it returns (nil, nil). An activated
+	// storage container is one that is backed by some source that can
+	// be returned via the Probe method using the path to the source
+	// instead.
+	//
+	// Implementations should always return the same StorageContainer
+	// instance for the same container referenced by the supplied path -
+	// the implementation should at least handle the cases of symbolic
+	// links. It should also be the same instance as the one returned
+	// via the Probe method with the corresponding source path.
+	//
+	// Implementations of this must be safe to call from any goroutine.
+	//
+	// The supplied path may or may not be a path to a block device,
+	// depending on how the backend works - there may be backends in the
+	// future that don't use block devices for storage containers.
+	ProbeActivated(ctx context.Context, path string) (StorageContainer, error)
 }
 
 var (

@@ -27,9 +27,10 @@ import (
 )
 
 var (
-	ErrContainerClosed    = errors.New("storage container reader/writer is already closed")
-	ErrKeyslotNotFound    = errors.New("keyslot not found")
-	ErrNoStorageContainer = errors.New("no storage container for path")
+	ErrStorageContainerClosed    = errors.New("storage container reader/writer is already closed")
+	ErrKeyslotNotFound           = errors.New("keyslot not found")
+	ErrStorageContainerNotActive = errors.New("storage container is not active")
+	ErrNoStorageContainer        = errors.New("no storage container for path")
 )
 
 // ActivateOptionVisitor is used for gathering options (using
@@ -53,8 +54,8 @@ const (
 	KeyslotTypeRecovery KeyslotType = "recovery"
 )
 
-// KeyslotInfo provides information about a keyslot.
-type KeyslotInfo interface {
+// Keyslot provides information about a keyslot.
+type Keyslot interface {
 	Type() KeyslotType
 	Name() string
 	Priority() int
@@ -73,7 +74,7 @@ type KeyslotInfo interface {
 // [StorageContainerReadWriter].
 type StorageContainerReader interface {
 	// Container returns the StorageContainer that this reader
-	// was opened from.
+	// was opened from. It can return nil once Close is called.
 	Container() StorageContainer
 
 	// io.Closer is used to close this reader.
@@ -84,7 +85,7 @@ type StorageContainerReader interface {
 
 	// ReadKeyslot returns information about the keyslot with
 	// the specified name.
-	ReadKeyslot(ctx context.Context, name string) (KeyslotInfo, error)
+	ReadKeyslot(ctx context.Context, name string) (Keyslot, error)
 }
 
 // StorageContainer represents some type of storage container that
@@ -103,7 +104,7 @@ type StorageContainer interface {
 	BackendName() string
 
 	// Activate unlocks this container with the specified key.
-	// The caller can choose to supply the KeyslotInfo instance
+	// The caller can choose to supply the Keyslot instance
 	// related to the keyslot from which the supplied key is
 	// associated with (obtained from StorageContainerReader.ReadKeyslot).
 	// If supplied, the backend can use this to target the supplied
@@ -111,7 +112,7 @@ type StorageContainer interface {
 	// backend will have to test all keyslots with the supplied key.
 	// The caller can specify one or more options, which may be
 	// backend-specific.
-	Activate(ctx context.Context, keyslotInfo KeyslotInfo, key []byte, opts ...ActivateOption) error
+	Activate(ctx context.Context, ks Keyslot, key []byte, opts ...ActivateOption) error
 
 	// Deactivate locks this storage container.
 	Deactivate(ctx context.Context) error
@@ -126,18 +127,53 @@ type StorageContainer interface {
 	OpenRead(ctx context.Context) (StorageContainerReader, error)
 }
 
-// NewStorageContainer creates a new StorageContainer from the specified
-// path, probing each of the registered backends to obtain an appropriate
-// instance. The path may or may not be a path to a block device, depending
-// on the backends that are registered, because not all backends that may
-// exist in the future will make use of block devices for a storage container.
+// FindStorageContainer returns a StorageContainer associated with the specified
+// path to a storage container source, probing each of the registered backends
+// to obtain an appropriate instance. The path may or may not be a path to a
+// block device, depending on the backends that are registered, because not all
+// backends that may exist in the future will make use of block devices for a
+// storage container.
+//
+// This will always return the same StorageContainer instance for any path that
+// points to the same storage container source, and will return the same
+// StorageContainer that [FindActivatedStorageContainer] returns when
+// it is supplied with the path of any container that is backed by this one.
 //
 // If no StorageContainer is found, a ErrNoStorageContainer error is returned.
 //
 // This is safe to call from multiple goroutines.
-func NewStorageContainer(ctx context.Context, path string) (StorageContainer, error) {
+func FindStorageContainer(ctx context.Context, path string) (StorageContainer, error) {
 	for name, backend := range storageContainerHandlers {
 		container, err := backend.Probe(ctx, path)
+		if err != nil {
+			return nil, fmt.Errorf("cannot probe %q backend for path %q: %w", name, path, err)
+		}
+		if container != nil {
+			return container, nil
+		}
+	}
+
+	return nil, ErrNoStorageContainer
+}
+
+// FindActivatedStorageContainer returns a StorageContainer associated
+// with the supplied path to some storage that is backed by a source storage
+// container, probing each of the registered backend to obtain an appropriate
+// instance. The path may or may not be a path to a block device, depending on
+// the backends that are registered, because not all backends that may exist in
+// the future will make use of block devices for a storage container.
+//
+// This will always return the same StorageContainer instance for any path that
+// points to the same activated storage container, and will return the same
+// StorageContainer that [FindStorageContainer] returns when it is supplied with
+// a path to the source container.
+//
+// If no StorageContainer is found, a ErrNoStorageContainer error is returned.
+//
+// This is safe to call from multiple goroutines.
+func FindActivatedStorageContainer(ctx context.Context, path string) (StorageContainer, error) {
+	for name, backend := range storageContainerHandlers {
+		container, err := backend.ProbeActivated(ctx, path)
 		if err != nil {
 			return nil, fmt.Errorf("cannot probe %q backend for path %q: %w", name, path, err)
 		}
