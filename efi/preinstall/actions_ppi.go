@@ -121,8 +121,13 @@ func isPPIActionAvailable(env internal_efi.HostEnvironment, action Action) (bool
 	}
 	switch status {
 	case ppi.OperationPPRequired, ppi.OperationPPNotRequired:
+		// The OS can submit a request for this operation, and it will be processed
+		// by the firmware either with or without a physical presence check.
 		return true, nil
 	default:
+		// The OS cannot submit a request for this operation, either because it is
+		// not implemented, or it is only available to be requested from the firmware
+		// environment, or it is blocked from the OS because of a firmware setting.
 		return false, nil
 	}
 }
