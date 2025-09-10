@@ -20,8 +20,11 @@
 package tpm2_test
 
 import (
+	"crypto/rand"
+
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 
 	. "gopkg.in/check.v1"
@@ -121,14 +124,15 @@ func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisi
 	c.Check(err, IsNil)
 	c.Check(value, Equals, uint32(86400))
 
-	// Verify that owner control is disabled, that the lockout hierarchy auth is set, and no
-	// other hierarchy auth is set
+	// Verify that owner control is disabled, that the lockout hierarchy auth is set, no
+	// other hierarchy auth is set, and there is no lockout.
 	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyPermanent)
 	c.Check(err, IsNil)
 	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet, Equals, tpm2.AttrLockoutAuthSet)
 	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrDisableClear, Equals, tpm2.AttrDisableClear)
 	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrOwnerAuthSet, Equals, tpm2.PermanentAttributes(0))
 	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrEndorsementAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
 
 	// Test the lockout hierarchy auth
 	s.TPM().LockoutHandleContext().SetAuthValue(data.lockoutAuth)
@@ -164,6 +168,25 @@ func (s *provisioningSimulatorSuite) TestProvisionNewTPMDifferentLockoutAuth(c *
 	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
 		mode:        ProvisionModeClear,
 		lockoutAuth: []byte("foo")})
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionTPMInLockout(c *C) {
+	// Trip the DA logic by triggering an auth failure with a DA protected
+	// resource.
+	c.Assert(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 1, 10000, 10000, nil), IsNil)
+	pub, sensitive, err := objectutil.NewSealedObject(rand.Reader, []byte("foo"), []byte("5678"))
+	c.Assert(err, IsNil)
+	key, err := s.TPM().LoadExternal(sensitive, pub, tpm2.HandleNull)
+	c.Assert(err, IsNil)
+	key.SetAuthValue(nil)
+	_, err = s.TPM().Unseal(key, nil)
+	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1), testutil.IsTrue)
+	// Need to explicitly flush because we check that EnsureProvisioned doesn't leave transient objects.
+	c.Check(s.TPM().FlushContext(key), IsNil)
+
+	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
+		mode:        ProvisionModeFull,
+		lockoutAuth: []byte("1234")})
 }
 
 func (s *provisioningSimulatorSuite) testProvisionErrorHandling(c *C, mode ProvisionMode) error {
@@ -215,7 +238,7 @@ func (s *provisioningSuite) TestProvisionErrorHandlingInLockout1(c *C) {
 	authValue := []byte("1234")
 	s.HierarchyChangeAuth(c, tpm2.HandleLockout, authValue)
 
-	// Trip the DA lockout
+	// Trip the DA lockout for the lockout hierarchy.
 	s.TPM().LockoutHandleContext().SetAuthValue(nil)
 	c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), testutil.ErrorIs,
 		&tpm2.TPMSessionError{TPMError: &tpm2.TPMError{Command: tpm2.CommandHierarchyChangeAuth, Code: tpm2.ErrorAuthFail}, Index: 1})
@@ -229,7 +252,7 @@ func (s *provisioningSuite) TestProvisionErrorHandlingInLockout2(c *C) {
 	authValue := []byte("1234")
 	s.HierarchyChangeAuth(c, tpm2.HandleLockout, authValue)
 
-	// Trip the DA lockout
+	// Trip the DA lockout for the lockout hierarchy.
 	s.TPM().LockoutHandleContext().SetAuthValue(nil)
 	c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), testutil.ErrorIs,
 		&tpm2.TPMSessionError{TPMError: &tpm2.TPMError{Command: tpm2.CommandHierarchyChangeAuth, Code: tpm2.ErrorAuthFail}, Index: 1})
@@ -277,6 +300,24 @@ func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout3(
 }
 
 func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout4(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+	c.Check(s.TPM().ClearControl(s.TPM().LockoutHandleContext(), true, nil), IsNil)
+	// Trip the DA logic by triggering an auth failure with a DA protected
+	// resource.
+	c.Assert(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 1, 10000, 10000, nil), IsNil)
+	pub, sensitive, err := objectutil.NewSealedObject(rand.Reader, []byte("foo"), []byte("5678"))
+	c.Assert(err, IsNil)
+	key, err := s.TPM().LoadExternal(sensitive, pub, tpm2.HandleNull)
+	c.Assert(err, IsNil)
+	key.SetAuthValue(nil)
+	_, err = s.TPM().Unseal(key, nil)
+	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1), testutil.IsTrue)
+
+	err = s.testProvisionErrorHandling(c, ProvisionModeWithoutLockout)
+	c.Check(err, Equals, ErrTPMProvisioningRequiresLockout)
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout5(c *C) {
 	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
 	c.Check(s.TPM().ClearControl(s.TPM().LockoutHandleContext(), true, nil), IsNil)
 

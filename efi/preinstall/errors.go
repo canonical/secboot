@@ -290,14 +290,16 @@ var (
 	// device available.
 	ErrNoTPM2Device = internal_efi.ErrNoTPM2Device
 
-	// ErrTPMLockout is returned wrapped in TPM2DeviceError if the TPM is in DA
-	// lockout mode. This only applies to the protection that is provided to DA protected
-	// resources other than the lockout hierarchy. This is checked after verifying that
-	// the authorization value for the lockout hierarchy is empty, so it may be easy to
-	// clear this using the TPM2_DictionaryAttackLockReset command as long as the lockout
-	// hierarchy is available. The alternative is to wait for the lockout to clear, the time
-	// of which depends on the pre-programmed lockoutInterval. This test only runs during
-	// pre-install, and not if the PostInstall flag is passed to RunChecks.
+	// ErrTPMLockout is returned wrapped in TPM2DeviceError as a warning if the TPM is in
+	// DA lockout mode. This only applies to the protection that is provided to DA protected
+	// resources other than the lockout hierarchy. This error is only returned as a warning
+	// because the failedTries counter should be reset to zero as part of the install
+	// process (eg, via a subsequent call to [secboot_tpm2.Connection.EnsureProvisioned])
+	// and should be reset to zero as part of a successful boot. If the lockout hierarchy
+	// cannot be used, ErrTPMLockoutLockedOut will be returned for that. If there is no
+	// authorization value for the lockout hierarchy and the lockout hierarchy is available
+	// when RunChecks is called, a DA lockout will be cleared as part of the checks and this
+	// error will not be returned.
 	ErrTPMLockout = errors.New("TPM is in DA lockout mode")
 
 	// ErrTPMLockoutLockoutOut is returned wrapped in TPM2DeviceError if the TPM's
@@ -310,9 +312,13 @@ var (
 	// TPM2_DictionaryAttackLockReset command. If this operation fails with TPM_RC_LOCKOUT
 	// then this error will be returned to indicate that the lockout hierarchy is unavailable
 	// due to it being locked out. It will remain locked out for the pre-programmed
-	// lockoutRecovery time, or until the TPM is cleared using the platform hierarchy. This
-	// test only runs during pre-install, and not if the PostInstall flag is passed to RunChecks.
+	// lockoutRecovery time, or until the TPM is cleared using the platform hierarchy.
 	ErrTPMLockoutLockedOut = errors.New("TPM's lockout hierarchy is unavailable because it is locked out")
+
+	// ErrTPMLockoutAvailabilityNotChecked is returned as a warning if the availability of
+	// the lockout hierarchy cannot be checked because the lockout hierarchy has a non-empty
+	// authorization value.
+	ErrTPMLockoutAvailabilityNotChecked = errors.New("availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set")
 
 	// ErrTPMInsufficientNVCounters is returned wrapped in TPM2DeviceError if there are
 	// insufficient NV counters available for PCR policy revocation. If this is still
