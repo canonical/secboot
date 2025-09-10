@@ -86,7 +86,7 @@ func runPPIAction(env internal_efi.HostEnvironment, action Action) (ppi.StateTra
 }
 
 // isPPIActionAvailable checks whether the PPI operation associated with the supplied
-// action is avaiable. An action is considered to be available regardless of whether
+// action is available. An action is considered to be available regardless of whether
 // physical presence is required or not. An operation may be unavailable either because
 // it ins't implemented, it is a firmware only operation, or it is currently blocked
 // because of the firmware settings.

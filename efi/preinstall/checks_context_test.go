@@ -118,7 +118,7 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 			p = &mockPPI{}
 		}
 		if p.ops == nil {
-			// Initialize an uninitialzed PPI. Supply the
+			// Initialize an uninitialized PPI. Supply the
 			// ops map to prevent this.
 			p.sta = ppi.StateTransitionRebootRequired
 			p.ops = map[ppi.OperationId]ppi.OperationStatus{
