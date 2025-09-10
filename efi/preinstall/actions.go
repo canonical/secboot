@@ -29,11 +29,12 @@ package preinstall
 // and the documentation for some actions provide hints as to whether they are
 // inappropriate for an installer UI. In some cases, it may be appropriate for snapd
 // to choose an action as opposed to exposing it to the installer UI.
-//
-// TODO: Add some meaningful actions here later on.
 type Action string
 
 const (
+	// XXX: When adding actions here, remember to add them to the tests in
+	// actionsSuite.TestIsExternalAction{False, True}
+
 	// ActionNone corresponds to no action.
 	ActionNone Action = ""
 
@@ -85,9 +86,6 @@ const (
 // IsExternalAction will return true if the action cannot actually be executed by
 // [RunChecksContext.Run], but the action is expected to be performed by the caller
 // (eg, snapd or the installer) instead.
-//
-// TODO: Add extra actions that can be performed by this package by passing the
-// action to [RunChecksContext.Run].
 func (a Action) IsExternalAction() bool {
 	switch a {
 	case ActionReboot, ActionShutdown, ActionRebootToFWSettings, ActionContactOEM, ActionContactOSVendor:
