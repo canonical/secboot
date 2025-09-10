@@ -104,14 +104,6 @@ const (
 	// type describes the JSON format of the argument.
 	ErrorKindTPMHierarchiesOwned ErrorKind = "tpm-hierarchies-owned"
 
-	// ErrorKindTPMDeviceLockout indicates that the TPM's dictionary attack
-	// logic is currently triggered, preventing the use of any DA protected
-	// resources. This only applies to DA protected resources other than the
-	// lockout hierarchy. This will be accompanied with an argument of the type
-	// TPMDeviceLockoutArgs. The TPMDeviceLockoutArgs type describes the JSON format
-	// of the argument.
-	ErrorKindTPMDeviceLockout ErrorKind = "tpm-device-lockout"
-
 	// ErrorKindTPMDeviceLockoutLockedOut indicates that the TPM's lockout hierarchy
 	// is currently unavailable because it is locked out. This is not the same as
 	// ErrorKindTPMDeviceLockout. As there is no way to test for this other than

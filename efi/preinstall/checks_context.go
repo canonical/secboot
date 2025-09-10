@@ -68,13 +68,6 @@ func init() {
 			// TODO: Add action to clear the TPM directly.
 			// TODO: Add action to clear the authorization values / policies
 		},
-		ErrorKindTPMDeviceLockout: []Action{
-			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
-			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
-			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
-			// TODO: Add action to clear the TPM directly.
-			// TODO: Add action to clear the lockout.
-		},
 		ErrorKindTPMDeviceLockoutLockedOut: []Action{
 			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
@@ -311,43 +304,6 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 	var ownershipErr *TPM2OwnedHierarchiesError
 	if errors.As(err, &ownershipErr) {
 		return ErrorKindTPMHierarchiesOwned, ownershipErr, nil
-	}
-
-	if errors.Is(err, ErrTPMLockout) {
-		var (
-			maxAuthFail     uint32
-			lockoutInterval uint32
-		)
-		dev, err := c.env.TPMDevice()
-		if err != nil {
-			// This shouldn't be possible - we just did some tests against a TPM device.
-			return ErrorKindNone, nil, fmt.Errorf("cannot obtain TPM device: %w", err)
-		}
-		tpm, err := tpm2.OpenTPMDevice(dev)
-		if err != nil {
-			// Likewise, this also shouldn't be possible, for the same reason.
-			return ErrorKindNone, nil, fmt.Errorf("cannot open TPM device: %w", err)
-		}
-		defer tpm.Close()
-
-		for _, prop := range []struct {
-			Prop   tpm2.Property
-			Target *uint32
-		}{
-			{Prop: tpm2.PropertyMaxAuthFail, Target: &maxAuthFail},
-			{Prop: tpm2.PropertyLockoutInterval, Target: &lockoutInterval},
-		} {
-			val, err := tpm.GetCapabilityTPMProperty(prop.Prop)
-			if err != nil {
-				return ErrorKindNone, nil, fmt.Errorf("cannot read property %v: %w", prop.Prop, err)
-			}
-			*prop.Target = val
-		}
-
-		return ErrorKindTPMDeviceLockout, &TPMDeviceLockoutArgs{
-			IntervalDuration: time.Duration(lockoutInterval) * time.Second,
-			TotalDuration:    time.Duration(lockoutInterval) * time.Second * time.Duration(maxAuthFail),
-		}, nil
 	}
 
 	if errors.Is(err, ErrTPMLockoutLockedOut) {
