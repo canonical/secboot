@@ -38,18 +38,11 @@ const platformName = "tpm2"
 
 type platformKeyDataHandler struct{}
 
-func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData, encryptedPayload, authKey []byte) ([]byte, error) {
+func (h *platformKeyDataHandler) recoverSealedKeyData(data *secboot.PlatformKeyData) (*SealedKeyData, error) {
 	if data.Generation < 0 || int64(data.Generation) > math.MaxUint32 {
 		return nil, &secboot.PlatformHandlerError{
 			Type: secboot.PlatformHandlerErrorInvalidData,
 			Err:  fmt.Errorf("invalid key data generation: %d", data.Generation)}
-	}
-
-	kdfAlg, err := hashAlgorithmIdFromCryptoHash(data.KDFAlg)
-	if err != nil {
-		return nil, &secboot.PlatformHandlerError{
-			Type: secboot.PlatformHandlerErrorInvalidData,
-			Err:  errors.New("invalid KDF algorithm")}
 	}
 
 	var k *SealedKeyData
@@ -67,6 +60,10 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 			Err:  fmt.Errorf("invalid key data version: %d", k.data.Version())}
 	}
 
+	return k, nil
+}
+
+func (h *platformKeyDataHandler) recoverSymmetricKey(k *SealedKeyData, authKey []byte) ([]byte, error) {
 	tpm, err := ConnectToDefaultTPM()
 	switch {
 	case err == ErrNoTPM2Device:
@@ -100,6 +97,27 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 				Err:  err}
 		}
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)
+	}
+
+	return symKey, nil
+}
+
+func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData, encryptedPayload, authKey []byte) ([]byte, error) {
+	k, err := h.recoverSealedKeyData(data)
+	if err != nil {
+		return nil, err
+	}
+
+	symKey, err := h.recoverSymmetricKey(k, authKey)
+	if err != nil {
+		return nil, err
+	}
+
+	kdfAlg, err := hashAlgorithmIdFromCryptoHash(data.KDFAlg)
+	if err != nil {
+		return nil, &secboot.PlatformHandlerError{
+			Type: secboot.PlatformHandlerErrorInvalidData,
+			Err:  errors.New("invalid KDF algorithm")}
 	}
 
 	payload, err := k.data.Decrypt(symKey, encryptedPayload, uint32(data.Generation), []byte(data.Role), kdfAlg, data.AuthMode)
@@ -239,7 +257,18 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	return newHandle, nil
 }
 
+func (h *platformKeyDataHandler) GetSymmetricKey(data *secboot.PlatformKeyData, authKey []byte) ([]byte, error) {
+	k, err := h.recoverSealedKeyData(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.recoverSymmetricKey(k, authKey)
+}
+
 func init() {
+	// TODO define a common flag which indicates that the platform can be used as FIDO2's hmac-secret salt provider
+
 	// Just use the flags to describe the current version of this platform.
 	flags := secboot.PlatformKeyDataHandlerFlags(0).AddPlatformFlags(3)
 	secboot.RegisterPlatformKeyDataHandler(platformName, new(platformKeyDataHandler), flags)
