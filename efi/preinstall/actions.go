@@ -81,6 +81,20 @@ const (
 	// via the physical presence interface. If successful, this action will
 	// respond with ErrorKindShutdown or ErrorKindReboot.
 	ActionClearTPMViaFirmware Action = "clear-tpm-via-firmware"
+
+	// ActionProceed tells RunChecksContext.Run to turn on the appropriate
+	// CheckFlags so that the corresponding errors are ignored. If multiple errors
+	// are returned with this action in a single call, then calling
+	// RunChecksContext.Run with it will result in all of those errors being
+	// ignored if no argument is supplied. If the optional []ErrorKind argument is
+	// supplied, then only the CheckFlags associated with those error will be
+	// turned on. This provides the user with an opportunity to evaluate and
+	// accept any risk associated with ignoring the returned errors, before
+	// proceeding.
+	//
+	// Some errors that support this action may also still support other actions
+	// that offer a way to rectify the error.
+	ActionProceed Action = "proceed"
 )
 
 // IsExternalAction will return true if the action cannot actually be executed by
