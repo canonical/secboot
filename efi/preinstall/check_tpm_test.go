@@ -21,10 +21,12 @@ package preinstall_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"errors"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
+	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	. "github.com/snapcore/secboot/efi/preinstall"
 	"github.com/snapcore/secboot/internal/efitest"
@@ -170,8 +172,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnershipCheckSk
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
 	})
 
-	// Set the lockout hierarchy auth value.
-	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.LockoutHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
+	// Set the endorsement hierarchy auth value.
+	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.EndorsementHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
@@ -194,30 +196,6 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnershipCheckSk
 
 	// Set the owner hierarchy auth policy.
 	c.Assert(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
-
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
-	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
-	c.Check(err, IsNil)
-	c.Assert(tpm, NotNil)
-	var tmpl tpm2_testutil.TransportWrapper
-	c.Assert(tpm.Transport(), Implements, &tmpl)
-	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
-	c.Check(dev.NumberOpen(), Equals, int(1))
-}
-
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMLockoutCheckSkipped(c *C) {
-	// Test the good case for post-install on bare-metal, making sure we skip the
-	// lockout status check.
-	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyNVCountersMax:     6,
-		tpm2.PropertyNVCounters:        4,
-		tpm2.PropertyPSFamilyIndicator: 1,
-		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
-	})
-
-	// Trip the DA logic by setting newMaxTries to 0
-	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 10000, 10000, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
@@ -269,6 +247,42 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCountersWit
 	c.Assert(tpm.Transport(), Implements, &tmpl)
 	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
 	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodNoVMPreinstallLockoutAvailabilityCheckClearsDALockout(c *C) {
+	// Test the good case where the tests start with the TPM's DA lockout
+	// mechanism tripped, but the lockout hierarchy availability check
+	// clears it without having to return an error.
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Trip the DA logic by triggering an auth failure with a DA protected
+	// resource.
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 1, 10000, 10000, nil), IsNil)
+	pub, sensitive, err := objectutil.NewSealedObject(rand.Reader, []byte("foo"), []byte("5678"))
+	c.Assert(err, IsNil)
+	key, err := s.TPM.LoadExternal(sensitive, pub, tpm2.HandleNull)
+	c.Assert(err, IsNil)
+	key.SetAuthValue(nil)
+	_, err = s.TPM.Unseal(key, nil)
+	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1), testutil.IsTrue)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, IsNil)
+	c.Check(tpm, NotNil)
+	var tmpl tpm2_testutil.TransportWrapper
+	c.Assert(tpm.Transport(), Implements, &tmpl)
+	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+
+	// Verify that the DA lockout has cleared.
+	perm, err := s.TPM.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	c.Check(err, IsNil)
+	c.Check(tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
 }
 
 // XXX: See the commented out TPM2_SelfTest result handling code in check_tpm.go
@@ -504,16 +518,20 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedLockout(c *C) {
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, ErrorMatches, `one or more of the TPM hierarchies is already owned:
-- TPM_RH_LOCKOUT has an authorization value
+	c.Check(err, ErrorMatches, `2 errors detected:
+- availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
+- one or more of the TPM hierarchies is already owned:
+  - TPM_RH_LOCKOUT has an authorization value
 `)
 
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
-	c.Assert(err.(CompoundError).Unwrap(), HasLen, 1)
+	c.Assert(err.(CompoundError).Unwrap(), HasLen, 2)
+
+	c.Check(errors.Is(err.(CompoundError).Unwrap()[0], ErrTPMLockoutAvailabilityNotChecked), testutil.IsTrue)
 
 	var e *TPM2OwnedHierarchiesError
-	c.Check(errors.As(err.(CompoundError).Unwrap()[0], &e), testutil.IsTrue)
+	c.Check(errors.As(err.(CompoundError).Unwrap()[1], &e), testutil.IsTrue)
 	c.Check(e.WithAuthValue, DeepEquals, tpm2.HandleList{tpm2.HandleLockout})
 	c.Check(e.WithAuthPolicy, HasLen, 0)
 
@@ -666,24 +684,112 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsementWithPolicy(c
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout(c *C) {
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout1(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 	})
 
-	// Trip the DA logic by setting newMaxTries to 0
+	// Trip the DA logic by setting newMaxTries to 0. This also prevents
+	// the lockout hierarchy availability test from clearing the lockout,
+	// although that test does still run.
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 10000, 10000, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, ErrorMatches, `TPM is in DA lockout mode`)
 
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
 	c.Assert(err.(CompoundError).Unwrap(), HasLen, 1)
 
 	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockout)
+
+	c.Check(tpm, NotNil)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout2(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Trip the DA logic by triggering an auth failure with a DA protected
+	// resource. We set the lockout hierarchy auth value to disable the
+	// lockout hierarchy availability check, which would otherwise clear
+	// the lockout.
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 1, 10000, 10000, nil), IsNil)
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+	pub, sensitive, err := objectutil.NewSealedObject(rand.Reader, []byte("foo"), []byte("5678"))
+	c.Assert(err, IsNil)
+	key, err := s.TPM.LoadExternal(sensitive, pub, tpm2.HandleNull)
+	c.Assert(err, IsNil)
+	key.SetAuthValue(nil)
+	_, err = s.TPM.Unseal(key, nil)
+	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1), testutil.IsTrue)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, ErrorMatches, `3 errors detected:
+- availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
+- TPM is in DA lockout mode
+- one or more of the TPM hierarchies is already owned:
+  - TPM_RH_LOCKOUT has an authorization value
+`)
+
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Assert(err.(CompoundError).Unwrap(), HasLen, 3)
+
+	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockoutAvailabilityNotChecked)
+	c.Check(err.(CompoundError).Unwrap()[1], Equals, ErrTPMLockout)
+
+	var e *TPM2OwnedHierarchiesError
+	c.Assert(errors.As(err.(CompoundError).Unwrap()[2], &e), testutil.IsTrue)
+	c.Check(e.WithAuthValue, DeepEquals, tpm2.HandleList{tpm2.HandleLockout})
+	c.Check(e.WithAuthPolicy, HasLen, 0)
+
+	c.Check(tpm, NotNil)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutPostInstall(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+	})
+
+	// Trip the DA logic by triggering an auth failure with a DA protected
+	// resource. We set the lockout hierarchy auth value to disable the
+	// lockout hierarchy availability check, which would otherwise clear
+	// the lockout.
+	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 1, 10000, 10000, nil), IsNil)
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+	pub, sensitive, err := objectutil.NewSealedObject(rand.Reader, []byte("foo"), []byte("5678"))
+	c.Assert(err, IsNil)
+	key, err := s.TPM.LoadExternal(sensitive, pub, tpm2.HandleNull)
+	c.Assert(err, IsNil)
+	key.SetAuthValue(nil)
+	_, err = s.TPM.Unseal(key, nil)
+	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1), testutil.IsTrue)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
+	c.Check(err, ErrorMatches, `2 errors detected:
+- availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
+- TPM is in DA lockout mode
+`)
+
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Assert(err.(CompoundError).Unwrap(), HasLen, 2)
+
+	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockoutAvailabilityNotChecked)
+	c.Check(err.(CompoundError).Unwrap()[1], Equals, ErrTPMLockout)
 
 	c.Check(tpm, NotNil)
 	c.Check(dev.NumberOpen(), Equals, int(1))
@@ -703,6 +809,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutLockedOut(c *C) {
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, ErrorMatches, `TPM's lockout hierarchy is unavailable because it is locked out`)
 
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
@@ -714,67 +821,27 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutLockedOut(c *C) {
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutLockedOutIgnoredIfAuthValueSet(c *C) {
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutLockedOutPostInstall(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 	})
 
-	// Give the lockout hierarchy an authorization value
-	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
-
 	// Disable the lockout hierarchy by authorizing it incorrectly
-	s.TPM.LockoutHandleContext().SetAuthValue([]byte("5678"))
+	s.TPM.LockoutHandleContext().SetAuthValue([]byte("1234"))
 	err := s.TPM.DictionaryAttackLockReset(s.TPM.LockoutHandleContext(), nil)
 	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
-	tpm, err := OpenAndCheckTPM2Device(env, 0)
+	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
+	c.Check(err, ErrorMatches, `TPM's lockout hierarchy is unavailable because it is locked out`)
 
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
 	c.Assert(err.(CompoundError).Unwrap(), HasLen, 1)
 
-	var e *TPM2OwnedHierarchiesError
-	c.Check(errors.As(err.(CompoundError).Unwrap()[0], &e), testutil.IsTrue)
-	c.Check(e.WithAuthValue, DeepEquals, tpm2.HandleList{tpm2.HandleLockout})
-	c.Check(e.WithAuthPolicy, HasLen, 0)
-
-	c.Check(tpm, NotNil)
-	c.Check(dev.NumberOpen(), Equals, int(1))
-}
-
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceCombinedHierarchyOwnershipAndLockout(c *C) {
-	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyPSFamilyIndicator: 1,
-		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
-	})
-
-	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
-
-	// Trip the DA logic by setting newMaxTries to 0
-	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 10000, 10000, nil), IsNil)
-
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
-	tpm, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, ErrorMatches, `2 errors detected:
-- one or more of the TPM hierarchies is already owned:
-  - TPM_RH_OWNER has an authorization value
-- TPM is in DA lockout mode
-`)
-
-	var tmpl CompoundError
-	c.Assert(err, Implements, &tmpl)
-	c.Assert(err.(CompoundError).Unwrap(), HasLen, 2)
-
-	var e *TPM2OwnedHierarchiesError
-	c.Check(errors.As(err.(CompoundError).Unwrap()[0], &e), testutil.IsTrue)
-	c.Check(e.WithAuthValue, DeepEquals, tpm2.HandleList{tpm2.HandleOwner})
-	c.Check(e.WithAuthPolicy, HasLen, 0)
-
-	c.Check(err.(CompoundError).Unwrap()[1], Equals, ErrTPMLockout)
+	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockoutLockedOut)
 
 	c.Check(tpm, NotNil)
 	c.Check(dev.NumberOpen(), Equals, int(1))
@@ -799,5 +866,33 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPreInstall(c 
 	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMInsufficientNVCounters)
 
 	c.Check(tpm, NotNil)
+	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutAvailabilitySkipped(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 1,
+		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
+	})
+
+	// Set the lockout hierarchy auth value.
+	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.LockoutHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
+
+	// Disable the lockout hierarchy by authorizing it incorrectly
+	s.TPM.LockoutHandleContext().SetAuthValue([]byte("5678"))
+	err := s.TPM.DictionaryAttackLockReset(s.TPM.LockoutHandleContext(), nil)
+	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall) // Post install so we get 1 error.
+
+	var tmpl CompoundError
+	c.Assert(err, Implements, &tmpl)
+	c.Assert(err.(CompoundError).Unwrap(), HasLen, 1)
+
+	c.Check(err.(CompoundError).Unwrap()[0], Equals, ErrTPMLockoutAvailabilityNotChecked)
+
+	c.Assert(tpm, NotNil)
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }

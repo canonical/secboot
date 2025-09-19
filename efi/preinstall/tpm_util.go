@@ -68,29 +68,6 @@ func isTPMCommunicationError(err error) (yes bool) {
 	return errors.As(err, &e)
 }
 
-// TPMDeviceLockoutArgs are the arguments associated with errors with an [ErrorKind]
-// of ErrorKindTPMDeviceLockout.
-type TPMDeviceLockoutArgs struct {
-	// IntervalDuration is the maximum amount of time it will
-	// take for the lockout counter to reduce by one so that the lockout
-	// clears, although it will only take a single authorization failure
-	// to trigger the lockout again.
-	IntervalDuration time.Duration `json:"interval-duration"`
-
-	// TotalDuration is the maximum amount of time it will
-	// take for the lockout counter to reduce to zero.
-	TotalDuration time.Duration `json:"total-duration"`
-}
-
-// IsValid indicates whether these arguments are valid. In order to be valid,
-// each member must be a modulus of 1 second and not negative
-func (a *TPMDeviceLockoutArgs) IsValid() bool {
-	if a.IntervalDuration%time.Second != 0 || a.IntervalDuration < 0 {
-		return false
-	}
-	return a.TotalDuration%time.Second == 0 && a.TotalDuration >= 0
-}
-
 // TPMDeviceLockoutRecoveryArg is the argument associated with errors with an [ErrorKind]
 // of ErrorKindTPMDeviceLockoutLockedOut.
 type TPMDeviceLockoutRecoveryArg time.Duration

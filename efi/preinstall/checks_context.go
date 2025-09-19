@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/canonical/go-tpm2"
@@ -36,6 +37,10 @@ import (
 // be executed to attempt to resolve the associated error kind.
 var errorKindToActions map[ErrorKind][]Action
 
+// errorKindToProceedFlag maps an error kind to a flag that can be set
+// to ignore the error. Not all errors can be ignored in this way.
+var errorKindToProceedFlag map[ErrorKind]CheckFlags
+
 func init() {
 	errorKindToActions = map[ErrorKind][]Action{
 		ErrorKindShutdownRequired: []Action{
@@ -44,14 +49,11 @@ func init() {
 		ErrorKindRebootRequired: []Action{
 			ActionReboot,
 		},
-		ErrorKindRunningInVM: []Action{
-			// TODO: Add action to add PermitVirtualMachine to CheckFlags
-		},
 		ErrorKindEFIVariableAccess: []Action{
 			ActionContactOEM,
 		},
 		ErrorKindTPMDeviceFailure: []Action{
-			ActionReboot,
+			ActionReboot, // suggest rebooting to see if it clears the failure
 			ActionContactOEM,
 		},
 		ErrorKindTPMDeviceDisabled: []Action{
@@ -65,13 +67,6 @@ func init() {
 			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
 			// TODO: Add action to clear the TPM directly.
 			// TODO: Add action to clear the authorization values / policies
-		},
-		ErrorKindTPMDeviceLockout: []Action{
-			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
-			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
-			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
-			// TODO: Add action to clear the TPM directly.
-			// TODO: Add action to clear the lockout.
 		},
 		ErrorKindTPMDeviceLockoutLockedOut: []Action{
 			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
@@ -91,22 +86,19 @@ func init() {
 			// TODO: Add an action to reconfigure PCR banks via the PPI.
 		},
 		ErrorKindEmptyPCRBanks: []Action{
-			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to disable the empty PCR bank
-			ActionContactOEM,         // suggest contacting the OEM because of a firmware bug
+			ActionContactOEM, // suggest contacting the OEM because of a firmware bug
 			// TODO: Add an action to reconfigure PCR banks via the PPI
-			// TODO: Add an action to add PermitEmptyPCRBanks to CheckFlags if the user is ok with accepting this.
 		},
 		ErrorKindUEFIDebuggingEnabled: []Action{
 			ActionContactOEM, // suggest contacting the OEM because of a firmware bug
 		},
 		ErrorKindInsufficientDMAProtection: []Action{
+			ActionContactOEM,         // suggest contacting the OEM because of a firmware bug.
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable DMA protection.
 		},
 		ErrorKindNoKernelIOMMU: []Action{
-			ActionContactOSVendor, // suggest contacting the OS vendor to supply a kernel with this feature enabled.
-		},
-		ErrorKindTPMStartupLocalityNotProtected: []Action{
-			// TODO: Add an action to add PermitNoDiscreteTPMResetMitigation to CheckFlags
+			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable DMA protection.
+			ActionContactOSVendor,    // suggest contacting the OS vendor to supply a kernel with this feature enabled.
 		},
 		ErrorKindHostSecurity: []Action{
 			ActionContactOEM, // suggest contacting the OEM because of a firmware bug or misconfigured root-of-trust
@@ -115,20 +107,14 @@ func init() {
 			ActionContactOEM, // suggest contacting the OEM because of a firmware bug
 		},
 		ErrorKindVARSuppliedDriversPresent: []Action{
-			// TODO: Add action to add PermitVARSuppliedDrivers to CheckFlags if they're necessary - this gives the
-			// user the chance to be aware of their existence.
 			// TODO: If the drivers are being loaded from BDS using DriverOrder and DriverXXXX variables, add action to delete these
 		},
 		ErrorKindSysPrepApplicationsPresent: []Action{
-			// TODO: Add action to add PermitSysPrepApplications to CheckFlags if the user wants to keep them -
-			// this gives the user the chance to be aware of their existence.
 			// TODO: Add an action to just disable these by erasing the SysPrepOrder and SysPrepXXXX variables
 		},
 		ErrorKindAbsolutePresent: []Action{
 			ActionContactOEM,         // suggest contacting the OEM if there's no way to disable it.
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to disable it.
-			// TODO: Add action to add PermitAbsoluteComputrace to CheckFlags if the user doesn't want to
-			// or can't disable it. This gives the user the chance to be aware of their existence.
 			// TODO: Add an action to just disable this automatically on supported platforms (eg, Dell via the WMI interface)
 		},
 		ErrorKindInvalidSecureBootMode: []Action{
@@ -142,6 +128,19 @@ func init() {
 		ErrorKindPreOSDigestVerificationDetected: []Action{
 			// TODO: Add action to add PermitPreOSVerificationUsingDigests to CheckFlags.
 		},
+	}
+
+	errorKindToProceedFlag = map[ErrorKind]CheckFlags{
+		ErrorKindRunningInVM:                      PermitVirtualMachine,
+		ErrorKindEmptyPCRBanks:                    PermitEmptyPCRBanks,
+		ErrorKindInsufficientDMAProtection:        PermitInsufficientDMAProtection,
+		ErrorKindNoKernelIOMMU:                    PermitInsufficientDMAProtection,
+		ErrorKindTPMStartupLocalityNotProtected:   PermitNoDiscreteTPMResetMitigation,
+		ErrorKindVARSuppliedDriversPresent:        PermitVARSuppliedDrivers,
+		ErrorKindSysPrepApplicationsPresent:       PermitSysPrepApplications,
+		ErrorKindAbsolutePresent:                  PermitAbsoluteComputrace,
+		ErrorKindWeakSecureBootAlgorithmsDetected: PermitWeakSecureBootAlgorithms,
+		ErrorKindPreOSDigestVerificationDetected:  PermitPreOSVerificationUsingDigests,
 	}
 }
 
@@ -163,7 +162,15 @@ type RunChecksContext struct {
 	// - unavailable (a value of false).
 	// - available (a value of true).
 	availableActions map[Action]bool
-	expectedActions  []Action
+
+	// expectedActions contains a slice of actions that are expected on a subsequent call
+	// to Run. Trying to execute an action that is not in here will result in an error
+	// being returned.
+	expectedActions []Action
+
+	// proceedFlags indicates the CheckFlags that will be enabled if Run is called
+	// with ActionProceed.
+	proceedFlags CheckFlags
 }
 
 // NewRunChecksContext returns a new RunChecksContext instance with the initial flags for [RunChecks]
@@ -201,6 +208,7 @@ func NewRunChecksContext(initialFlags CheckFlags, loadedImages []secboot_efi.Ima
 			ActionRebootToFWSettings: true,
 			ActionContactOEM:         true,
 			ActionContactOSVendor:    true,
+			ActionProceed:            true,
 		},
 	}
 }
@@ -296,43 +304,6 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 	var ownershipErr *TPM2OwnedHierarchiesError
 	if errors.As(err, &ownershipErr) {
 		return ErrorKindTPMHierarchiesOwned, ownershipErr, nil
-	}
-
-	if errors.Is(err, ErrTPMLockout) {
-		var (
-			maxAuthFail     uint32
-			lockoutInterval uint32
-		)
-		dev, err := c.env.TPMDevice()
-		if err != nil {
-			// This shouldn't be possible - we just did some tests against a TPM device.
-			return ErrorKindNone, nil, fmt.Errorf("cannot obtain TPM device: %w", err)
-		}
-		tpm, err := tpm2.OpenTPMDevice(dev)
-		if err != nil {
-			// Likewise, this also shouldn't be possible, for the same reason.
-			return ErrorKindNone, nil, fmt.Errorf("cannot open TPM device: %w", err)
-		}
-		defer tpm.Close()
-
-		for _, prop := range []struct {
-			Prop   tpm2.Property
-			Target *uint32
-		}{
-			{Prop: tpm2.PropertyMaxAuthFail, Target: &maxAuthFail},
-			{Prop: tpm2.PropertyLockoutInterval, Target: &lockoutInterval},
-		} {
-			val, err := tpm.GetCapabilityTPMProperty(prop.Prop)
-			if err != nil {
-				return ErrorKindNone, nil, fmt.Errorf("cannot read property %v: %w", prop.Prop, err)
-			}
-			*prop.Target = val
-		}
-
-		return ErrorKindTPMDeviceLockout, &TPMDeviceLockoutArgs{
-			IntervalDuration: time.Duration(lockoutInterval) * time.Second,
-			TotalDuration:    time.Duration(lockoutInterval) * time.Second * time.Duration(maxAuthFail),
-		}, nil
 	}
 
 	if errors.Is(err, ErrTPMLockoutLockedOut) {
@@ -533,6 +504,59 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 		}
 
 		return NewWithKindAndActionsError(kind, nil, errorKindToActions[kind], err)
+	case ActionProceed:
+		var proceedFlags CheckFlags
+		if len(args) == 1 {
+			kinds, ok := args[0].([]ErrorKind)
+			if !ok {
+				return NewWithKindAndActionsError(
+					ErrorKindInvalidArgument,
+					InvalidActionArgumentParams{
+						Index:  0,
+						Reason: InvalidActionArgumentReasonType,
+					},
+					nil, // actions
+					fmt.Errorf("unexpected type for argument 0 (error kinds): expected %s, got %s", reflect.TypeOf([]ErrorKind(nil)), reflect.TypeOf(args[0])),
+				)
+			}
+			for i, kind := range kinds {
+				flag, ok := errorKindToProceedFlag[kind]
+				if !ok {
+					return NewWithKindAndActionsError(
+						ErrorKindInvalidArgument,
+						InvalidActionArgumentParams{
+							Index:  0,
+							Reason: InvalidActionArgumentReasonValue,
+						},
+						nil, // actions
+						fmt.Errorf("invalid value for argument 0 (error kinds) at index %d: %q does not support the %q action", i, kind, ActionProceed),
+					)
+				}
+
+				if c.proceedFlags&flag == 0 {
+					return NewWithKindAndActionsError(
+						ErrorKindInvalidArgument,
+						InvalidActionArgumentParams{
+							Index:  0,
+							Reason: InvalidActionArgumentReasonValue,
+						},
+						nil, // actions
+						fmt.Errorf("invalid value for argument 0 (error kinds) at index %d: %q is not expected", i, kind),
+					)
+				}
+
+				proceedFlags |= flag
+				c.proceedFlags &^= flag
+			}
+		}
+
+		if proceedFlags == CheckFlags(0) {
+			// Handle the case where no argument is supplied or
+			// an empty []ErrorKind slice is supplied
+			proceedFlags = c.proceedFlags
+		}
+
+		c.flags |= proceedFlags
 	default:
 		return NewWithKindAndActionsError(
 			ErrorKindUnexpectedAction,
@@ -540,6 +564,8 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 			errors.New("specified action is invalid"),
 		)
 	}
+
+	return nil
 }
 
 // LastError returns the error from the last [RunChecks] invocation. If it completed
@@ -597,8 +623,21 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 			// If RunChecks failed, save its error and return the appropriate error kinds.
 			c.errs = append(c.errs, err)
 
-			// Reset the list of expected actions
+			// Reset the list of expected actions.
 			c.expectedActions = nil
+
+			// Reset the flags that would be enabled if ActionProceed is used.
+			c.proceedFlags = 0
+
+			// Track whether ActionProceed can be added as an action to error
+			// kinds that support this. Is true until we encounter an error kind
+			// that doesn't permit it.
+			permitActionProceed := true
+
+			// Intermediate error slice so we can do a second pass over errors
+			// that support ActionProceed, adding this action if possible and
+			// ordering these errors to appear after all other errors.
+			var errsProceed []*WithKindAndActionsError
 
 			// Convert each error into WithKindAndActionsError
 			for _, e := range unwrapCompoundError(err) {
@@ -619,9 +658,32 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 						fmt.Errorf("cannot filter unavailable actions: %w", err),
 					)
 				}
+				if _, canProceed := errorKindToProceedFlag[kind]; !canProceed {
+					// This error kind doesn't support ActionProceed. Don't
+					// permit it at all for now, waiting until all of the errors
+					// we return support it.
+					permitActionProceed = false
+					errs = append(errs, NewWithKindAndActionsError(kind, args, actions, e))
+				} else {
+					errsProceed = append(errsProceed, NewWithKindAndActionsError(kind, args, actions, e))
+				}
 
-				errs = append(errs, NewWithKindAndActionsError(kind, args, actions, e))
 				c.expectedActions = append(c.expectedActions, actions...)
+			}
+
+			// Add ActionProceed to any error kinds that support it, if it is allowed
+			// right now.
+			for _, e := range errsProceed {
+				if permitActionProceed {
+					flag := errorKindToProceedFlag[e.Kind]
+					c.proceedFlags |= flag
+					e.Actions = append(e.Actions, ActionProceed)
+				}
+				errs = append(errs, e)
+			}
+
+			if c.proceedFlags != 0 {
+				c.expectedActions = append(c.expectedActions, ActionProceed)
 			}
 
 			break

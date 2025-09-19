@@ -22,6 +22,7 @@ package preinstall
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/canonical/go-tpm2"
 )
@@ -59,10 +60,8 @@ const (
 	// ErrorKindInvalidArgument is returned if an action was supplied
 	// that requires one or more arguments, but one or more of the
 	// supplied arguments are of an invalid type of are an invalid value.
-	// This will be accompanied with an argument that is a JSON map with 2
-	// entries:
-	// - "index": An int indicating the zero-indexed argument index.
-	// - "reason": A string indicating the reason - invalid "type" or "value".
+	// This will be accompanied with an argument of the
+	// InvalidActionArgumentParams.
 	ErrorKindInvalidArgument ErrorKind = "invalid-argument"
 
 	// ErrorKindActionFailed indicates that the supplied action did not
@@ -104,14 +103,6 @@ const (
 	// authorization value or an authorization policy. The TPM2OwnedHierarchiesError
 	// type describes the JSON format of the argument.
 	ErrorKindTPMHierarchiesOwned ErrorKind = "tpm-hierarchies-owned"
-
-	// ErrorKindTPMDeviceLockout indicates that the TPM's dictionary attack
-	// logic is currently triggered, preventing the use of any DA protected
-	// resources. This only applies to DA protected resources other than the
-	// lockout hierarchy. This will be accompanied with an argument of the type
-	// TPMDeviceLockoutArgs. The TPMDeviceLockoutArgs type describes the JSON format
-	// of the argument.
-	ErrorKindTPMDeviceLockout ErrorKind = "tpm-device-lockout"
 
 	// ErrorKindTPMDeviceLockoutLockedOut indicates that the TPM's lockout hierarchy
 	// is currently unavailable because it is locked out. This is not the same as
@@ -285,4 +276,25 @@ func (a PCRUnusableArg) PCR() tpm2.Handle {
 type PCRUnsupportedArgs struct {
 	PCR tpm2.Handle `json:"pcr"` // The unsupported PCR.
 	URL string      `json:"url"` // A URL to a github issue.
+}
+
+// InvalidActionArgumentReason specifies why an argument supplied with an
+// action is invalid.
+type InvalidActionArgumentReason string
+
+const (
+	InvalidActionArgumentReasonType  InvalidActionArgumentReason = "type"  // The argument type is invalid.
+	InvalidActionArgumentReasonValue InvalidActionArgumentReason = "value" // The argument value is invalid.
+)
+
+// InvalidActionArgumentParams provides information about an invalid
+// argument supplied with an action.
+type InvalidActionArgumentParams struct {
+	Index  int                         `json:"index"`  // The argument index.
+	Reason InvalidActionArgumentReason `json:"reason"` // Why the argument is invalid.
+}
+
+// String implements [fmt.Stringer].
+func (a *InvalidActionArgumentParams) String() string {
+	return fmt.Sprintf("invalid action argument %d: invalid %s", a.Index, a.Reason)
 }
