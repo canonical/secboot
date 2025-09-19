@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/canonical/go-tpm2"
@@ -548,7 +549,58 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 
 		return NewWithKindAndActionsError(kind, nil, errorKindToActions[kind], err)
 	case ActionProceed:
-		c.flags |= c.proceedFlags
+		var proceedFlags CheckFlags
+		if len(args) == 1 {
+			kinds, ok := args[0].([]ErrorKind)
+			if !ok {
+				return NewWithKindAndActionsError(
+					ErrorKindInvalidArgument,
+					InvalidActionArgumentParams{
+						Index:  0,
+						Reason: InvalidActionArgumentReasonType,
+					},
+					nil, // actions
+					fmt.Errorf("unexpected type for argument 0 (error kinds): expected %s, got %s", reflect.TypeOf([]ErrorKind(nil)), reflect.TypeOf(args[0])),
+				)
+			}
+			for i, kind := range kinds {
+				flag, ok := errorKindToProceedFlag[kind]
+				if !ok {
+					return NewWithKindAndActionsError(
+						ErrorKindInvalidArgument,
+						InvalidActionArgumentParams{
+							Index:  0,
+							Reason: InvalidActionArgumentReasonValue,
+						},
+						nil, // actions
+						fmt.Errorf("invalid value for argument 0 (error kinds) at index %d: %q does not support the %q action", i, kind, ActionProceed),
+					)
+				}
+
+				if c.proceedFlags&flag == 0 {
+					return NewWithKindAndActionsError(
+						ErrorKindInvalidArgument,
+						InvalidActionArgumentParams{
+							Index:  0,
+							Reason: InvalidActionArgumentReasonValue,
+						},
+						nil, // actions
+						fmt.Errorf("invalid value for argument 0 (error kinds) at index %d: %q is not expected", i, kind),
+					)
+				}
+
+				proceedFlags |= flag
+				c.proceedFlags &^= flag
+			}
+		}
+
+		if proceedFlags == CheckFlags(0) {
+			// Handle the case where no argument is supplied or
+			// an empty []ErrorKind slice is supplied
+			proceedFlags = c.proceedFlags
+		}
+
+		c.flags |= proceedFlags
 	default:
 		return NewWithKindAndActionsError(
 			ErrorKindUnexpectedAction,
@@ -626,9 +678,10 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 			// that doesn't permit it.
 			permitActionProceed := true
 
-			// Intermediate error slice so we can do a second pass over it, adding
-			// ActionProceed where appropriate.
-			var errsIntermediate []*WithKindAndActionsError
+			// Intermediate error slice so we can do a second pass over errors
+			// that support ActionProceed, adding this action if possible and
+			// ordering these errors to appear after all other errors.
+			var errsProceed []*WithKindAndActionsError
 
 			// Convert each error into WithKindAndActionsError
 			for _, e := range unwrapCompoundError(err) {
@@ -654,20 +707,21 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) 
 					// permit it at all for now, waiting until all of the errors
 					// we return support it.
 					permitActionProceed = false
+					errs = append(errs, NewWithKindAndActionsError(kind, args, actions, e))
+				} else {
+					errsProceed = append(errsProceed, NewWithKindAndActionsError(kind, args, actions, e))
 				}
 
-				errsIntermediate = append(errsIntermediate, NewWithKindAndActionsError(kind, args, actions, e))
 				c.expectedActions = append(c.expectedActions, actions...)
 			}
 
 			// Add ActionProceed to any error kinds that support it, if it is allowed
 			// right now.
-			for _, e := range errsIntermediate {
+			for _, e := range errsProceed {
 				if permitActionProceed {
-					if flag, canProceed := errorKindToProceedFlag[e.Kind]; canProceed {
-						c.proceedFlags |= flag
-						e.Actions = append(e.Actions, ActionProceed)
-					}
+					flag := errorKindToProceedFlag[e.Kind]
+					c.proceedFlags |= flag
+					e.Actions = append(e.Actions, ActionProceed)
 				}
 				errs = append(errs, e)
 			}
