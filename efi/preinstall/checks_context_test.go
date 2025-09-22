@@ -77,7 +77,7 @@ var _ = Suite(&runChecksContextSuite{})
 
 type actionAndArgs struct {
 	action Action
-	args   []any
+	args   map[string]any
 }
 
 type testRunChecksContextRunParams struct {
@@ -172,7 +172,7 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 		errs = nil
 
 		var err error
-		result, err = ctx.Run(context.Background(), params.actions[i].action, params.actions[i].args...)
+		result, err = ctx.Run(context.Background(), params.actions[i].action, params.actions[i].args)
 		if err == nil {
 			c.Check(i, Equals, iterations-1)
 			break
@@ -2677,9 +2677,9 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: []any{[]ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
-			{action: ActionProceed, args: []any{[]ErrorKind{ErrorKindWeakSecureBootAlgorithmsDetected}}},
-			{action: ActionProceed, args: []any{[]ErrorKind{ErrorKindPreOSDigestVerificationDetected}}},
+			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
+			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindWeakSecureBootAlgorithmsDetected}}},
+			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindPreOSDigestVerificationDetected}}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6451,7 +6451,7 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: []any{1}},
+			{action: ActionProceed, args: map[string]any{"error-kinds": 1}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6468,11 +6468,11 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `unexpected type for argument 0 \(error kinds\): expected \[\]preinstall.ErrorKind, got int`)
+	c.Check(errs[0], ErrorMatches, `unexpected type for argument "error-kinds": expected \[\]preinstall.ErrorKind, got int`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
 		InvalidActionArgumentParams{
-			Index:  0,
+			Name:   "error-kinds",
 			Reason: InvalidActionArgumentReasonType,
 		},
 		nil,
@@ -6546,7 +6546,7 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: []any{[]ErrorKind{ErrorKindInvalidSecureBootMode}}},
+			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindInvalidSecureBootMode}}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6563,11 +6563,11 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `invalid value for argument 0 \(error kinds\) at index 0: "invalid-secure-boot-mode" does not support the "proceed" action`)
+	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "invalid-secure-boot-mode" does not support the "proceed" action`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
 		InvalidActionArgumentParams{
-			Index:  0,
+			Name:   "error-kinds",
 			Reason: InvalidActionArgumentReasonValue,
 		},
 		nil,
@@ -6641,7 +6641,7 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: []any{[]ErrorKind{ErrorKindPreOSDigestVerificationDetected}}},
+			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindPreOSDigestVerificationDetected}}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6658,11 +6658,11 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `invalid value for argument 0 \(error kinds\) at index 0: "pre-os-digest-verification-detected" is not expected`)
+	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "pre-os-digest-verification-detected" is not expected`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
 		InvalidActionArgumentParams{
-			Index:  0,
+			Name:   "error-kinds",
 			Reason: InvalidActionArgumentReasonValue,
 		},
 		nil,
@@ -6737,8 +6737,8 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: []any{[]ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
-			{action: ActionProceed, args: []any{[]ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
+			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
+			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6770,11 +6770,11 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `invalid value for argument 0 \(error kinds\) at index 0: "var-supplied-drivers-present" is not expected`)
+	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "var-supplied-drivers-present" is not expected`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
 		InvalidActionArgumentParams{
-			Index:  0,
+			Name:   "error-kinds",
 			Reason: InvalidActionArgumentReasonValue,
 		},
 		nil,

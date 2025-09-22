@@ -86,11 +86,11 @@ const (
 	// CheckFlags so that the corresponding errors are ignored. If multiple errors
 	// are returned with this action in a single call, then calling
 	// RunChecksContext.Run with it will result in all of those errors being
-	// ignored if no argument is supplied. If the optional []ErrorKind argument is
-	// supplied, then only the CheckFlags associated with those error will be
-	// turned on. This provides the user with an opportunity to evaluate and
-	// accept any risk associated with ignoring the returned errors, before
-	// proceeding.
+	// ignored if no argument is supplied. If the optional "error-kind" (type
+	// []ErrorKind) argument is supplied, then only the CheckFlags associated with
+	// those error will be turned on. This provides the user with an opportunity to
+	// evaluate and accept any risk associated with ignoring the returned errors,
+	// before proceeding.
 	//
 	// Some errors that support this action may also still support other actions
 	// that offer a way to rectify the error.

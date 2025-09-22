@@ -503,7 +503,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 	return ErrorKindInternal, nil, nil
 }
 
-func (c *RunChecksContext) runAction(action Action, args ...any) error {
+func (c *RunChecksContext) runAction(action Action, args map[string]any) error {
 	if !c.isActionExpected(action) {
 		return NewWithKindAndActionsError(
 			ErrorKindUnexpectedAction,
@@ -550,47 +550,53 @@ func (c *RunChecksContext) runAction(action Action, args ...any) error {
 		return NewWithKindAndActionsError(kind, nil, errorKindToActions[kind], err)
 	case ActionProceed:
 		var proceedFlags CheckFlags
-		if len(args) == 1 {
-			kinds, ok := args[0].([]ErrorKind)
-			if !ok {
-				return NewWithKindAndActionsError(
-					ErrorKindInvalidArgument,
-					InvalidActionArgumentParams{
-						Index:  0,
-						Reason: InvalidActionArgumentReasonType,
-					},
-					nil, // actions
-					fmt.Errorf("unexpected type for argument 0 (error kinds): expected %s, got %s", reflect.TypeOf([]ErrorKind(nil)), reflect.TypeOf(args[0])),
-				)
-			}
-			for i, kind := range kinds {
-				flag, ok := errorKindToProceedFlag[kind]
+		if args != nil {
+			const errorsArgName = "error-kinds"
+
+			errorsArg, exists := args[errorsArgName]
+			if exists {
+				kinds, ok := errorsArg.([]ErrorKind)
 				if !ok {
 					return NewWithKindAndActionsError(
 						ErrorKindInvalidArgument,
 						InvalidActionArgumentParams{
-							Index:  0,
-							Reason: InvalidActionArgumentReasonValue,
+							Name:   errorsArgName,
+							Reason: InvalidActionArgumentReasonType,
 						},
 						nil, // actions
-						fmt.Errorf("invalid value for argument 0 (error kinds) at index %d: %q does not support the %q action", i, kind, ActionProceed),
+						fmt.Errorf("unexpected type for argument %q: expected %s, got %s", errorsArgName, reflect.TypeOf([]ErrorKind(nil)), reflect.TypeOf(errorsArg)),
 					)
 				}
 
-				if c.proceedFlags&flag == 0 {
-					return NewWithKindAndActionsError(
-						ErrorKindInvalidArgument,
-						InvalidActionArgumentParams{
-							Index:  0,
-							Reason: InvalidActionArgumentReasonValue,
-						},
-						nil, // actions
-						fmt.Errorf("invalid value for argument 0 (error kinds) at index %d: %q is not expected", i, kind),
-					)
-				}
+				for i, kind := range kinds {
+					flag, ok := errorKindToProceedFlag[kind]
+					if !ok {
+						return NewWithKindAndActionsError(
+							ErrorKindInvalidArgument,
+							InvalidActionArgumentParams{
+								Name:   errorsArgName,
+								Reason: InvalidActionArgumentReasonValue,
+							},
+							nil, // actions
+							fmt.Errorf("invalid value for argument %q at index %d: %q does not support the %q action", errorsArgName, i, kind, ActionProceed),
+						)
+					}
 
-				proceedFlags |= flag
-				c.proceedFlags &^= flag
+					if c.proceedFlags&flag == 0 {
+						return NewWithKindAndActionsError(
+							ErrorKindInvalidArgument,
+							InvalidActionArgumentParams{
+								Name:   errorsArgName,
+								Reason: InvalidActionArgumentReasonValue,
+							},
+							nil, // actions
+							fmt.Errorf("invalid value for argument %q at index %d: %q is not expected", errorsArgName, i, kind),
+						)
+					}
+
+					proceedFlags |= flag
+					c.proceedFlags &^= flag
+				}
 			}
 		}
 
@@ -637,8 +643,8 @@ func (c *RunChecksContext) Result() *CheckResult {
 // actions associated with an error, the install environment may try one or more of them in
 // order to try to resolve the issue that caused the error. In some cases, it may be appropriate
 // to ask permission from the user to perform an action.
-func (c *RunChecksContext) Run(ctx context.Context, action Action, args ...any) (*CheckResult, error) {
-	if err := c.runAction(action, args...); err != nil {
+func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[string]any) (*CheckResult, error) {
+	if err := c.runAction(action, args); err != nil {
 		c.lastErr = err
 		c.errs = append(c.errs, err)
 		return nil, err

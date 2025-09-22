@@ -298,11 +298,11 @@ const (
 // InvalidActionArgumentParams provides information about an invalid
 // argument supplied with an action.
 type InvalidActionArgumentParams struct {
-	Index  int                         `json:"index"`  // The argument index.
+	Name   string                      `json:"name"`   // The argument name.
 	Reason InvalidActionArgumentReason `json:"reason"` // Why the argument is invalid.
 }
 
 // String implements [fmt.Stringer].
 func (a *InvalidActionArgumentParams) String() string {
-	return fmt.Sprintf("invalid action argument %d: invalid %s", a.Index, a.Reason)
+	return fmt.Sprintf("invalid action argument %q: invalid %s", a.Name, a.Reason)
 }
