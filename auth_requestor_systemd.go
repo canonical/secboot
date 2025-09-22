@@ -31,13 +31,13 @@ import (
 )
 
 type systemdAuthRequestor struct {
-	formatStrings map[UserAuthType]string
+	formatStringFn func(UserAuthType) (string, error)
 }
 
 func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error) {
-	fmtString, exists := r.formatStrings[authTypes]
-	if !exists {
-		return "", errors.New("no format string available requested auth types")
+	fmtString, err := r.formatStringFn(authTypes)
+	if err != nil {
+		return "", fmt.Errorf("cannot request format string for requested auth types: %w", err)
 	}
 	msg := fmt.Sprintf(fmtString, name, path)
 
@@ -66,8 +66,11 @@ func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, 
 // messages. The format strings are interpreted with the following parameters:
 // - %[1]s: A human readable name for the storage container.
 // - %[2]s: The path of the encrypted storage container.
-func NewSystemdAuthRequestor(formatStrings map[UserAuthType]string) AuthRequestor {
-	return &systemdAuthRequestor{
-		formatStrings: formatStrings,
+func NewSystemdAuthRequestor(formatStringFn func(UserAuthType) (string, error)) (AuthRequestor, error) {
+	if formatStringFn == nil {
+		return nil, errors.New("must supply a callback to obtain format strings for requesting user credentials")
 	}
+	return &systemdAuthRequestor{
+		formatStringFn: formatStringFn,
+	}, nil
 }

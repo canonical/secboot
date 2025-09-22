@@ -71,15 +71,27 @@ type testRequestUserCredentialParams struct {
 func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *testRequestUserCredentialParams) {
 	s.setPassphrase(c, params.passphrase)
 
-	requestor := NewSystemdAuthRequestor(map[UserAuthType]string{
-		UserAuthTypePassphrase:                                             "Enter passphrase for %[1]s (%[2]s):",
-		UserAuthTypePIN:                                                    "Enter PIN for %[1]s (%[2]s):",
-		UserAuthTypeRecoveryKey:                                            "Enter recovery key for %[1]s (%[2]s):",
-		UserAuthTypePassphrase | UserAuthTypePIN:                           "Enter passphrase or PIN for %[1]s (%[2]s):",
-		UserAuthTypePassphrase | UserAuthTypeRecoveryKey:                   "Enter passphrase or recovery key for %[1]s (%[2]s):",
-		UserAuthTypePIN | UserAuthTypeRecoveryKey:                          "Enter PIN or recovery key for %[1]s (%[2]s):",
-		UserAuthTypePassphrase | UserAuthTypePIN | UserAuthTypeRecoveryKey: "Enter passphrase, PIN or recovery key for %[1]s (%[2]s):",
+	requestor, err := NewSystemdAuthRequestor(func(authType UserAuthType) (string, error) {
+		switch authType {
+		case UserAuthTypePassphrase:
+			return "Enter passphrase for %[1]s (%[2]s):", nil
+		case UserAuthTypePIN:
+			return "Enter PIN for %[1]s (%[2]s):", nil
+		case UserAuthTypeRecoveryKey:
+			return "Enter recovery key for %[1]s (%[2]s):", nil
+		case UserAuthTypePassphrase | UserAuthTypePIN:
+			return "Enter passphrase or PIN for %[1]s (%[2]s):", nil
+		case UserAuthTypePassphrase | UserAuthTypeRecoveryKey:
+			return "Enter passphrase or recovery key for %[1]s (%[2]s):", nil
+		case UserAuthTypePIN | UserAuthTypeRecoveryKey:
+			return "Enter PIN or recovery key for %[1]s (%[2]s):", nil
+		case UserAuthTypePassphrase | UserAuthTypePIN | UserAuthTypeRecoveryKey:
+			return "Enter passphrase, PIN or recovery key for %[1]s (%[2]s):", nil
+		default:
+			return "", errors.New("unexpected UserAuthType")
+		}
 	})
+	c.Assert(err, IsNil)
 
 	passphrase, err := requestor.RequestUserCredential(params.ctx, params.name, params.path, params.authTypes)
 	c.Check(err, IsNil)
@@ -200,37 +212,55 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPINOrRe
 	})
 }
 
+func (s *authRequestorSystemdSuite) TestNewRequestorNoFormatStringCallback(c *C) {
+	_, err := NewSystemdAuthRequestor(nil)
+	c.Check(err, ErrorMatches, `must supply a callback to obtain format strings for requesting user credentials`)
+}
+
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialObtainFormatStringError(c *C) {
+	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+		return "", errors.New("some error")
+	})
+	c.Assert(err, IsNil)
+
+	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	c.Check(err, ErrorMatches, `cannot request format string for requested auth types: some error`)
+}
+
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialInvalidResponse(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor := NewSystemdAuthRequestor(map[UserAuthType]string{
-		UserAuthTypePassphrase: "",
+	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+		return "", nil
 	})
+	c.Assert(err, IsNil)
 
-	_, err := requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "systemd-ask-password output is missing terminating newline")
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialFailure(c *C) {
-	requestor := NewSystemdAuthRequestor(map[UserAuthType]string{
-		UserAuthTypePassphrase: "",
+	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+		return "", nil
 	})
+	c.Assert(err, IsNil)
 
-	_, err := requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialCanceledContext(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor := NewSystemdAuthRequestor(map[UserAuthType]string{
-		UserAuthTypePassphrase: "",
+	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+		return "", nil
 	})
+	c.Assert(err, IsNil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, err = requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: context canceled")
 	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
 }
