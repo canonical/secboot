@@ -65,7 +65,8 @@ func init() {
 			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
 			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
-			// TODO: Add action to clear the TPM directly.
+			ActionClearTPMSimple,               // suggest clearing the TPM using TPM2_Clear
+			ActionClearTPM,                     // suggest clearing the TPM using TPM2_Clear
 			// TODO: Add action to clear the authorization values / policies
 		},
 		ErrorKindTPMDeviceLockoutLockedOut: []Action{
@@ -78,7 +79,8 @@ func init() {
 			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
 			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
-			// TODO: Add action to clear the TPM directly.
+			ActionClearTPMSimple,               // suggest clearing the TPM using TPM2_Clear
+			ActionClearTPM,                     // suggest clearing the TPM using TPM2_Clear
 		},
 		ErrorKindNoSuitablePCRBank: []Action{
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable other PCR banks
@@ -142,6 +144,12 @@ func init() {
 		ErrorKindWeakSecureBootAlgorithmsDetected: PermitWeakSecureBootAlgorithms,
 		ErrorKindPreOSDigestVerificationDetected:  PermitPreOSVerificationUsingDigests,
 	}
+}
+
+type errorInfo struct {
+	kind ErrorKind
+	args any
+	err  error
 }
 
 // RunChecksContext maintains context for multiple invocations of [RunChecks] to permit the
@@ -225,10 +233,50 @@ func (c *RunChecksContext) testActionAvailable(action Action) error {
 		if err != nil {
 			return err
 		}
+	case ActionClearTPMSimple:
+		tpm, err := openTPMDevice(c.env)
+		if err != nil {
+			return fmt.Errorf("cannot open TPM device: %w", err)
+		}
+		defer tpm.Close()
+
+		clearDisabled, err := isOwnerClearDisabled(tpm)
+		if err != nil {
+			return fmt.Errorf("cannot determine if TPM owner clear is enabled: %w", err)
+		}
+		available = !clearDisabled
+
+		if available {
+			requireAuthValue, err := isLockoutHierarchyAuthValueSet(tpm)
+			if err != nil {
+				return fmt.Errorf("cannot determine if TPM lockout hierarchy authorization value is set: %w", err)
+			}
+			available = !requireAuthValue
+		}
+	case ActionClearTPM:
+		tpm, err := openTPMDevice(c.env)
+		if err != nil {
+			return fmt.Errorf("cannot open TPM device: %w", err)
+		}
+		defer tpm.Close()
+
+		clearDisabled, err := isOwnerClearDisabled(tpm)
+		if err != nil {
+			return fmt.Errorf("cannot determine if TPM owner clear is enabled: %w", err)
+		}
+		available = !clearDisabled
 	}
 
 	c.availableActions[action] = available
 	return nil
+}
+
+// disableActionsOnLockoutHierarchyUnavailable marks actions that require the
+// use of the TPMs lockout hierarchy as unavailable if the lockout hierarchy
+// becomes unavailable.
+func (c *RunChecksContext) disableActionsOnLockoutHierarchyUnavailable() {
+	c.availableActions[ActionClearTPMSimple] = false
+	c.availableActions[ActionClearTPM] = false
 }
 
 // filterUnavailableActions will filter out any actions in the supplied slice
@@ -307,14 +355,12 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 	}
 
 	if errors.Is(err, ErrTPMLockoutLockedOut) {
-		dev, err := c.env.TPMDevice()
+		// Actions that require the use of the lockout hierarchy are not available.
+		c.disableActionsOnLockoutHierarchyUnavailable()
+
+		tpm, err := openTPMDevice(c.env)
 		if err != nil {
 			// This shouldn't be possible - we just did some tests against a TPM device.
-			return ErrorKindNone, nil, fmt.Errorf("cannot obtain TPM device: %w", err)
-		}
-		tpm, err := tpm2.OpenTPMDevice(dev)
-		if err != nil {
-			// Likewise, this also shouldn't be possible, for the same reason.
 			return ErrorKindNone, nil, fmt.Errorf("cannot open TPM device: %w", err)
 		}
 		defer tpm.Close()
@@ -476,6 +522,17 @@ func (c *RunChecksContext) runAction(action Action, args map[string]json.RawMess
 		)
 	}
 
+	available, tested := c.availableActions[action]
+	if !tested || !available {
+		// This can happen if an action becomes unavailable after it
+		// was returned and added to the list of expected actions.
+		return NewWithKindAndActionsError(
+			ErrorKindUnexpectedAction,
+			nil, nil, // args, actions
+			errors.New("specified action is no longer available"),
+		)
+	}
+
 	switch action {
 	case ActionNone:
 		// ok, do nothing
@@ -504,6 +561,85 @@ func (c *RunChecksContext) runAction(action Action, args map[string]json.RawMess
 		}
 
 		return NewWithKindAndActionsError(kind, nil, errorKindToActions[kind], err)
+	case ActionClearTPMSimple:
+		err := clearTPM(c.env, nil)
+		switch {
+		case errors.Is(err, errInvalidLockoutAuthValueSupplied):
+			// This can happen if something sets the TPM's lockout hierarchy
+			// authorization value after returning an error that permits this
+			// action.
+			return NewWithKindAndActionsError(
+				ErrorKindUnexpectedAction,
+				nil, nil, // args, actions
+				fmt.Errorf("specified action is no longer available because the TPM's lockout hierarchy now has a non-empty auth value: use %q action instead", ActionClearTPM),
+			)
+			// TODO: In a future PR, maybe convert TPM response errors into
+			// ErrorKindTPMCommandFailed, ErrorKindInvalidTPMResponse, or
+			// ErrorKindTPMCommunication, wrapped in ErrorKindActionFailed?
+		case err != nil:
+			return NewWithKindAndActionsError(
+				ErrorKindActionFailed,
+				nil, nil, // args, actions
+				err,
+			)
+		}
+	case ActionClearTPM:
+		const fieldName = "auth-value"
+
+		var authValue TPMAuthValueArg
+		if args != nil {
+			var err error
+			authValue, err = GetValueFromJSONMap[TPMAuthValueArg](args)
+			if err != nil {
+				return NewWithKindAndActionsError(
+					ErrorKindInvalidArgument,
+					InvalidActionArgumentDetails{
+						// XXX: We assume that the field is "auth-value" in this case, but
+						// we don't really know for sure. Try to address this later.
+						Field:  fieldName,
+						Reason: InvalidActionArgumentReasonType,
+					},
+					nil, // actions
+					err,
+				)
+			}
+		}
+
+		err := clearTPM(c.env, authValue)
+		switch {
+		case errors.Is(err, errInvalidLockoutAuthValueSupplied):
+			return NewWithKindAndActionsError(
+				ErrorKindInvalidArgument,
+				InvalidActionArgumentDetails{
+					Field:  fieldName,
+					Reason: InvalidActionArgumentReasonValue,
+				},
+				nil, // actions
+				err,
+			)
+		case tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandClear, 1):
+			// Actions that require the use of the lockout hierarchy are no longer available.
+			c.disableActionsOnLockoutHierarchyUnavailable()
+
+			return NewWithKindAndActionsError(
+				ErrorKindInvalidArgument,
+				InvalidActionArgumentDetails{
+					Field:  fieldName,
+					Reason: InvalidActionArgumentReasonValue,
+				},
+				nil, // actions
+				err,
+			)
+			// TODO: In a future PR, maybe convert TPM response errors into
+			// ErrorKindTPMCommandFailed, ErrorKindInvalidTPMResponse, or
+			// ErrorKindTPMCommunication, wrapped in ErrorKindActionFailed?
+		case err != nil:
+			return NewWithKindAndActionsError(
+				ErrorKindActionFailed,
+				nil, nil, // args, actions
+				err,
+			)
+		}
 	case ActionProceed:
 		var proceedFlags CheckFlags
 		if args != nil {
@@ -634,6 +770,26 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			// Reset the flags that would be enabled if ActionProceed is used.
 			c.proceedFlags = 0
 
+			// errInfo contains the error kind and arguments for each error.
+			var errInfo []errorInfo
+
+			// Classify each error into an error kind and associated arguments and
+			// save this information. We do this separate pass before creating
+			// the WithKindAndActionsError because some errors encountered here
+			// may change the available actions.
+			for _, e := range unwrapCompoundError(err) {
+				kind, args, err := c.classifyRunChecksError(e)
+				if err != nil {
+					return nil, NewWithKindAndActionsError(
+						ErrorKindInternal,
+						nil, nil, // args, actions
+						fmt.Errorf("cannot classify error %v: %w", e, err),
+					)
+				}
+
+				errInfo = append(errInfo, errorInfo{kind: kind, args: args, err: e})
+			}
+
 			// Track whether ActionProceed can be added as an action to error
 			// kinds that support this. Is true until we encounter an error kind
 			// that doesn't permit it.
@@ -644,17 +800,10 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			// ordering these errors to appear after all other errors.
 			var errsProceed []*WithKindAndActionsError
 
-			// Convert each error into WithKindAndActionsError
-			for _, e := range unwrapCompoundError(err) {
-				kind, args, err := c.classifyRunChecksError(e)
-				if err != nil {
-					return nil, NewWithKindAndActionsError(
-						ErrorKindInternal,
-						nil, nil, // args, actions
-						fmt.Errorf("cannot classify error %v: %w", e, err),
-					)
-				}
-				actions := errorKindToActions[kind]
+			// Iterate over the error info, creating a WithKindAndActionsError
+			// for each one with associated actions.
+			for _, info := range errInfo {
+				actions := errorKindToActions[info.kind]
 				actions, err = c.filterUnavailableActions(actions)
 				if err != nil {
 					return nil, NewWithKindAndActionsError(
@@ -663,21 +812,22 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 						fmt.Errorf("cannot filter unavailable actions: %w", err),
 					)
 				}
-				if _, canProceed := errorKindToProceedFlag[kind]; !canProceed {
+
+				if _, canProceed := errorKindToProceedFlag[info.kind]; !canProceed {
 					// This error kind doesn't support ActionProceed. Don't
 					// permit it at all for now, waiting until all of the errors
 					// we return support it.
 					permitActionProceed = false
-					errs = append(errs, NewWithKindAndActionsError(kind, args, actions, e))
+					errs = append(errs, NewWithKindAndActionsError(info.kind, info.args, actions, info.err))
 				} else {
-					errsProceed = append(errsProceed, NewWithKindAndActionsError(kind, args, actions, e))
+					errsProceed = append(errsProceed, NewWithKindAndActionsError(info.kind, info.args, actions, info.err))
 				}
 
 				c.expectedActions = append(c.expectedActions, actions...)
 			}
 
-			// Add ActionProceed to any error kinds that support it, if it is allowed
-			// right now.
+			// Add ActionProceed to any error kinds that support it if it is allowed
+			// right now, and append these errors to the list of errors we return.
 			for _, e := range errsProceed {
 				if permitActionProceed {
 					flag := errorKindToProceedFlag[e.Kind]
@@ -688,6 +838,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			}
 
 			if c.proceedFlags != 0 {
+				// We are returning errors with ActionProceed enabled.
 				c.expectedActions = append(c.expectedActions, ActionProceed)
 			}
 

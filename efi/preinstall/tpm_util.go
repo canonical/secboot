@@ -22,9 +22,11 @@ package preinstall
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/canonical/go-tpm2"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
 // TPMErrorResponse represents a TPM response that can be serialized to JSON.
@@ -109,4 +111,98 @@ func (r TPMDeviceLockoutRecoveryArg) LockoutClearsOnTPMStartupClear() bool {
 // it must be a modulus of 1 second and not negative.
 func (r TPMDeviceLockoutRecoveryArg) IsValid() bool {
 	return time.Duration(r)%time.Second == 0 && r >= 0
+}
+
+func openTPMDevice(env internal_efi.HostEnvironment) (*tpm2.TPMContext, error) {
+	device, err := env.TPMDevice()
+	if err != nil {
+		return nil, fmt.Errorf("cannot obtain TPM device: %w", err)
+	}
+
+	return tpm2.OpenTPMDevice(device)
+}
+
+func isLockoutHierarchyAuthValueSet(tpm *tpm2.TPMContext) (bool, error) {
+	val, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	if err != nil {
+		return false, err
+	}
+
+	return tpm2.PermanentAttributes(val)&tpm2.AttrLockoutAuthSet > 0, nil
+}
+
+func isOwnerClearDisabled(tpm *tpm2.TPMContext) (bool, error) {
+	val, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	if err != nil {
+		return false, err
+	}
+
+	return tpm2.PermanentAttributes(val)&tpm2.AttrDisableClear > 0, nil
+}
+
+// TPMAuthValueArg represents a TPM authorization value.
+type TPMAuthValueArg []byte
+
+// MarshalJSON implements [json.Marshaler].
+func (v TPMAuthValueArg) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string][]byte{"auth-value": []byte(v)})
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (v *TPMAuthValueArg) UnmarshalJSON(data []byte) error {
+	var m map[string][]byte
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+
+	*v = TPMAuthValueArg(m["auth-value"])
+	return nil
+}
+
+var errInvalidLockoutAuthValueSupplied = errors.New("supplied TPM lockout hierarchy authorization value is inconsistent with the value of the TPM_PT_PERMANENT lockoutAuthSet attribute")
+
+func clearTPM(env internal_efi.HostEnvironment, lockoutAuthValue []byte) error {
+	tpm, err := openTPMDevice(env)
+	if err != nil {
+		return fmt.Errorf("cannot open TPM device: %w", err)
+	}
+	defer tpm.Close()
+
+	// Avoid tripping the lockout for the lockout hierarchy in some cases (if an empty auth
+	// value is supplied but the lockout hierarchy has a non-empty value or if a non-empty
+	// value is supplied but the lockout hierarchy has an empty value. We obviously can't
+	// protect against the case where the lockout hierarchy has a non-empty value but an
+	// incorrect non-empty value is supplied).
+	requireAuthValue, err := isLockoutHierarchyAuthValueSet(tpm)
+	if err != nil {
+		return fmt.Errorf("cannot determine if TPM lockout hierarchy authorization value is set: %w", err)
+	}
+	switch requireAuthValue {
+	case false:
+		// The lockout hierarchy has an empty auth value, so we expect
+		// to have been supplied with an empty value.
+		if len(lockoutAuthValue) > 0 {
+			return errInvalidLockoutAuthValueSupplied
+		}
+	case true:
+		// The lockout hierarchy has a non-empty auth value, so we expect
+		// to have been supplied with a non empty value.
+		if len(lockoutAuthValue) == 0 {
+			return errInvalidLockoutAuthValueSupplied
+		}
+	}
+
+	tpm.LockoutHandleContext().SetAuthValue(lockoutAuthValue)
+
+	session, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypeHMAC, nil, tpm2.HashAlgorithmSHA256)
+	if err != nil {
+		return fmt.Errorf("cannot start TPM session: %w", err)
+	}
+	defer tpm.FlushContext(session)
+
+	if err := tpm.Clear(tpm.LockoutHandleContext(), session); err != nil {
+		return fmt.Errorf("cannot clear TPM: %w", err)
+	}
+
+	return nil
 }

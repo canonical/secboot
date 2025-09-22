@@ -283,14 +283,14 @@ type PCRUnsupportedArgs struct {
 type InvalidActionArgumentReason string
 
 const (
-	InvalidActionArgumentReasonType  InvalidActionArgumentReason = "type"  // The argument type is invalid.
-	InvalidActionArgumentReasonValue InvalidActionArgumentReason = "value" // The argument value is invalid.
+	InvalidActionArgumentReasonType  InvalidActionArgumentReason = "type"  // An argument type is invalid.
+	InvalidActionArgumentReasonValue InvalidActionArgumentReason = "value" // An argument value is invalid.
 )
 
 // InvalidActionArgumentDetails provides information about an invalid
 // argument supplied with an action.
 type InvalidActionArgumentDetails struct {
-	Field  string                      `json:"field"`  // The full name of the argument field.
+	Field  string                      `json:"field"`  // The full name of the argument field, may be empty.
 	Reason InvalidActionArgumentReason `json:"reason"` // Why the argument is invalid.
 }
 

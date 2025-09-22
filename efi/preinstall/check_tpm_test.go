@@ -364,7 +364,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceNoTPM(c *C) {
 	// Test the case where there isn't a TPM2 device.
 	env := efitest.NewMockHostEnvironmentWithOpts()
 	_, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, Equals, ErrNoTPM2Device)
+	c.Check(err, ErrorMatches, `cannot open TPM device: cannot obtain TPM device: no TPM2 device is available`)
+	c.Check(errors.Is(err, ErrNoTPM2Device), testutil.IsTrue)
 }
 
 func (s *tpmSuite) TestOpenAndCheckTPM2DeviceFailureMode(c *C) {

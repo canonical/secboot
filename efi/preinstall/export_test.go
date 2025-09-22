@@ -84,8 +84,10 @@ var (
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
 	CheckSystemIsEFI                                      = checkSystemIsEFI
+	ClearTPM                                              = clearTPM
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor
+	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete
