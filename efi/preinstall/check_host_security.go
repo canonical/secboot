@@ -68,6 +68,7 @@ func checkSecureBootPolicyPCRForDegradedFirmwareSettings(log *tcglog.Log) error 
 	var errs []error
 
 	events := log.Events
+Loop:
 	for len(events) > 0 {
 		// Pop next event
 		event := events[0]
@@ -98,17 +99,15 @@ func checkSecureBootPolicyPCRForDegradedFirmwareSettings(log *tcglog.Log) error 
 		case tcglog.EventTypeEFIVariableDriverConfig, tcglog.EventTypeSeparator:
 			// ok
 		case tcglog.EventTypeEFIVariableAuthority:
-			if len(errs) > 0 {
-				return joinErrors(errs...)
-			}
-			return nil
+			break Loop
 		default:
 			// Unexpected event type
 			return fmt.Errorf("unexpected event type (%v) in PCR7", event.EventType)
 		}
 	}
 
-	// This could only happen if there are no events in PCR7, but checkFirmwareLogAndChoosePCRBank
-	// verifies that there is a separator in all TCG defined PCRs.
-	panic("not reached")
+	if len(errs) > 0 {
+		return joinErrors(errs...)
+	}
+	return nil
 }
