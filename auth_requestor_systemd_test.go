@@ -20,17 +20,19 @@
 package secboot_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 
+	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot"
-	"github.com/snapcore/secboot/internal/testutil"
 )
 
 type authRequestorSystemdSuite struct {
@@ -55,219 +57,210 @@ func (s *authRequestorSystemdSuite) setPassphrase(c *C, passphrase string) {
 
 var _ = Suite(&authRequestorSystemdSuite{})
 
-type testRequestPassphraseData struct {
+type testRequestUserCredentialParams struct {
 	passphrase string
 
-	tmpl string
-
-	volumeName       string
-	sourceDevicePath string
+	ctx       context.Context
+	name      string
+	path      string
+	authTypes UserAuthType
 
 	expectedMsg string
 }
 
-func (s *authRequestorSystemdSuite) testRequestPassphrase(c *C, data *testRequestPassphraseData) {
-	s.setPassphrase(c, data.passphrase)
+func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *testRequestUserCredentialParams) {
+	s.setPassphrase(c, params.passphrase)
 
-	requestor := NewSystemdAuthRequestor(data.tmpl, "")
+	requestor, err := NewSystemdAuthRequestor(func(authType UserAuthType) (string, error) {
+		switch authType {
+		case UserAuthTypePassphrase:
+			return "Enter passphrase for %[1]s (%[2]s):", nil
+		case UserAuthTypePIN:
+			return "Enter PIN for %[1]s (%[2]s):", nil
+		case UserAuthTypeRecoveryKey:
+			return "Enter recovery key for %[1]s (%[2]s):", nil
+		case UserAuthTypePassphrase | UserAuthTypePIN:
+			return "Enter passphrase or PIN for %[1]s (%[2]s):", nil
+		case UserAuthTypePassphrase | UserAuthTypeRecoveryKey:
+			return "Enter passphrase or recovery key for %[1]s (%[2]s):", nil
+		case UserAuthTypePIN | UserAuthTypeRecoveryKey:
+			return "Enter PIN or recovery key for %[1]s (%[2]s):", nil
+		case UserAuthTypePassphrase | UserAuthTypePIN | UserAuthTypeRecoveryKey:
+			return "Enter passphrase, PIN or recovery key for %[1]s (%[2]s):", nil
+		default:
+			return "", errors.New("unexpected UserAuthType")
+		}
+	})
+	c.Assert(err, IsNil)
 
-	passphrase, err := requestor.RequestPassphrase(data.volumeName, data.sourceDevicePath)
+	passphrase, err := requestor.RequestUserCredential(params.ctx, params.name, params.path, params.authTypes)
 	c.Check(err, IsNil)
-	c.Check(passphrase, Equals, data.passphrase)
+	c.Check(passphrase, Equals, params.passphrase)
 
 	c.Check(s.mockSdAskPassword.Calls(), HasLen, 1)
 	c.Check(s.mockSdAskPassword.Calls()[0], DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk",
-		"--id", filepath.Base(os.Args[0]) + ":" + data.sourceDevicePath, data.expectedMsg})
+		"--id", filepath.Base(os.Args[0]) + ":" + params.path, params.expectedMsg})
 }
 
-func (s *authRequestorSystemdSuite) TestRequestPassphrase(c *C) {
-	s.testRequestPassphrase(c, &testRequestPassphraseData{
-		passphrase:       "password",
-		tmpl:             "Enter passphrase for %[2]s:",
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		expectedMsg:      "Enter passphrase for /dev/sda1:"})
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphrase(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "password",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypePassphrase,
+		expectedMsg: "Enter passphrase for data (/dev/sda1):",
+	})
 }
 
-func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentPassphrase(c *C) {
-	s.testRequestPassphrase(c, &testRequestPassphraseData{
-		passphrase:       "1234",
-		tmpl:             "Enter passphrase for %[2]s:",
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		expectedMsg:      "Enter passphrase for /dev/sda1:"})
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseDifferentPassphrase(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "1234",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypePassphrase,
+		expectedMsg: "Enter passphrase for data (/dev/sda1):",
+	})
 }
 
-func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentSourceDevice(c *C) {
-	s.testRequestPassphrase(c, &testRequestPassphraseData{
-		passphrase:       "password",
-		tmpl:             "Enter passphrase for %[2]s:",
-		volumeName:       "data",
-		sourceDevicePath: "/dev/nvme0n1p1",
-		expectedMsg:      "Enter passphrase for /dev/nvme0n1p1:"})
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialDifferentPath(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "password",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/nvme0n1p1",
+		authTypes:   UserAuthTypePassphrase,
+		expectedMsg: "Enter passphrase for data (/dev/nvme0n1p1):",
+	})
 }
 
-func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentMsg(c *C) {
-	s.testRequestPassphrase(c, &testRequestPassphraseData{
-		passphrase:       "password",
-		tmpl:             "Enter passphrase for %[1]s:",
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		expectedMsg:      "Enter passphrase for data:"})
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseDifferentName(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "password",
+		ctx:         context.Background(),
+		name:        "foo",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypePassphrase,
+		expectedMsg: "Enter passphrase for foo (/dev/sda1):",
+	})
 }
 
-func (s *authRequestorSystemdSuite) TestRequestPassphraseDifferentVolumeName(c *C) {
-	s.testRequestPassphrase(c, &testRequestPassphraseData{
-		passphrase:       "password",
-		tmpl:             "Enter passphrase for %[1]s:",
-		volumeName:       "foo",
-		sourceDevicePath: "/dev/sda1",
-		expectedMsg:      "Enter passphrase for foo:"})
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialPIN(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "1234",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypePIN,
+		expectedMsg: "Enter PIN for data (/dev/sda1):",
+	})
 }
 
-func (s *authRequestorSystemdSuite) TestRequestPassphraseInvalidResponse(c *C) {
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialRecoveryKey(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "00000-11111-22222-33333-44444-55555-00000-11111",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypeRecoveryKey,
+		expectedMsg: "Enter recovery key for data (/dev/sda1):",
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPIN(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "1234",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypePassphrase | UserAuthTypePIN,
+		expectedMsg: "Enter passphrase or PIN for data (/dev/sda1):",
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrRecoveryKey(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "password",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+		expectedMsg: "Enter passphrase or recovery key for data (/dev/sda1):",
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialPINOrRecoveryKey(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "00000-11111-22222-33333-44444-55555-00000-11111",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypePIN | UserAuthTypeRecoveryKey,
+		expectedMsg: "Enter PIN or recovery key for data (/dev/sda1):",
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPINOrRecoveryKey(c *C) {
+	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+		passphrase:  "password",
+		ctx:         context.Background(),
+		name:        "data",
+		path:        "/dev/sda1",
+		authTypes:   UserAuthTypePassphrase | UserAuthTypePIN | UserAuthTypeRecoveryKey,
+		expectedMsg: "Enter passphrase, PIN or recovery key for data (/dev/sda1):",
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNewRequestorNoFormatStringCallback(c *C) {
+	_, err := NewSystemdAuthRequestor(nil)
+	c.Check(err, ErrorMatches, `must supply a callback to obtain format strings for requesting user credentials`)
+}
+
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialObtainFormatStringError(c *C) {
+	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+		return "", errors.New("some error")
+	})
+	c.Assert(err, IsNil)
+
+	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	c.Check(err, ErrorMatches, `cannot request format string for requested auth types: some error`)
+}
+
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialInvalidResponse(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor := NewSystemdAuthRequestor("", "")
+	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+		return "", nil
+	})
+	c.Assert(err, IsNil)
 
-	_, err := requestor.RequestPassphrase("data", "/dev/sda1")
+	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "systemd-ask-password output is missing terminating newline")
 }
 
-func (s *authRequestorSystemdSuite) TestRequestPassphraseFailure(c *C) {
-	requestor := NewSystemdAuthRequestor("", "")
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialFailure(c *C) {
+	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+		return "", nil
+	})
+	c.Assert(err, IsNil)
 
-	_, err := requestor.RequestPassphrase("data", "/dev/sda1")
+	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
 }
 
-type testRequestRecoveryKeyData struct {
-	passphrase string
-
-	tmpl string
-
-	volumeName       string
-	sourceDevicePath string
-
-	expectedKey RecoveryKey
-	expectedMsg string
-}
-
-func (s *authRequestorSystemdSuite) testRequestRecoveryKey(c *C, data *testRequestRecoveryKeyData) {
-	s.setPassphrase(c, data.passphrase)
-
-	requestor := NewSystemdAuthRequestor("", data.tmpl)
-
-	key, err := requestor.RequestRecoveryKey(data.volumeName, data.sourceDevicePath)
-	c.Check(err, IsNil)
-	c.Check(key, Equals, data.expectedKey)
-
-	c.Check(s.mockSdAskPassword.Calls(), HasLen, 1)
-	c.Check(s.mockSdAskPassword.Calls()[0], DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk",
-		"--id", filepath.Base(os.Args[0]) + ":" + data.sourceDevicePath, data.expectedMsg})
-}
-
-func (s *authRequestorSystemdSuite) TestRequestRecoveryKey(c *C) {
-	var key RecoveryKey
-	{
-		k := testutil.DecodeHexString(c, "e73232a995f8c96988fbd4b4824e34f4")
-		copy(key[:], k)
-	}
-
-	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
-		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for %[2]s:",
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		expectedKey:      key,
-		expectedMsg:      "Enter recovery key for /dev/sda1:"})
-}
-
-func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentKey(c *C) {
-	var key RecoveryKey
-	{
-		k := testutil.DecodeHexString(c, "8e67b1865e3d219bab10850cbd2c4dbe")
-		copy(key[:], k)
-	}
-
-	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
-		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for %[2]s:",
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		expectedKey:      key,
-		expectedMsg:      "Enter recovery key for /dev/sda1:"})
-}
-
-func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentSourceDevice(c *C) {
-	var key RecoveryKey
-	{
-		k := testutil.DecodeHexString(c, "e73232a995f8c96988fbd4b4824e34f4")
-		copy(key[:], k)
-	}
-
-	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
-		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for %[2]s:",
-		volumeName:       "data",
-		sourceDevicePath: "/dev/vdb1",
-		expectedKey:      key,
-		expectedMsg:      "Enter recovery key for /dev/vdb1:"})
-}
-
-func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentMsg(c *C) {
-	var key RecoveryKey
-	{
-		k := testutil.DecodeHexString(c, "e73232a995f8c96988fbd4b4824e34f4")
-		copy(key[:], k)
-	}
-
-	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
-		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for %[1]s:",
-		volumeName:       "data",
-		sourceDevicePath: "/dev/sda1",
-		expectedKey:      key,
-		expectedMsg:      "Enter recovery key for data:"})
-}
-
-func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyDifferentVolumeName(c *C) {
-	var key RecoveryKey
-	{
-		k := testutil.DecodeHexString(c, "e73232a995f8c96988fbd4b4824e34f4")
-		copy(key[:], k)
-	}
-
-	s.testRequestRecoveryKey(c, &testRequestRecoveryKeyData{
-		passphrase:       key.String(),
-		tmpl:             "Enter recovery key for %[1]s:",
-		volumeName:       "bar",
-		sourceDevicePath: "/dev/sda1",
-		expectedKey:      key,
-		expectedMsg:      "Enter recovery key for bar:"})
-}
-
-func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyInvalidResponse(c *C) {
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialCanceledContext(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor := NewSystemdAuthRequestor("", "")
+	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+		return "", nil
+	})
+	c.Assert(err, IsNil)
 
-	_, err := requestor.RequestRecoveryKey("data", "/dev/sda1")
-	c.Check(err, ErrorMatches, "systemd-ask-password output is missing terminating newline")
-}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
-func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyInvalidFormat(c *C) {
-	s.setPassphrase(c, "foo")
-
-	requestor := NewSystemdAuthRequestor("", "")
-
-	_, err := requestor.RequestRecoveryKey("data", "/dev/sda1")
-	c.Check(err, ErrorMatches, "cannot parse recovery key: incorrectly formatted: insufficient characters")
-}
-
-func (s *authRequestorSystemdSuite) TestRequestRecoveryKeyFailure(c *C) {
-	requestor := NewSystemdAuthRequestor("", "")
-
-	_, err := requestor.RequestRecoveryKey("data", "/dev/sda1")
-	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
+	_, err = requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
+	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: context canceled")
+	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
 }

@@ -21,32 +21,36 @@ package secboot
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/xerrors"
 )
 
 type systemdAuthRequestor struct {
-	passphraseTmpl  string
-	recoveryKeyTmpl string
+	formatStringFn func(UserAuthType) (string, error)
 }
 
-func (r *systemdAuthRequestor) askPassword(sourceDevicePath, msg string) (string, error) {
-	cmd := exec.Command(
-		"systemd-ask-password",
+func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error) {
+	fmtString, err := r.formatStringFn(authTypes)
+	if err != nil {
+		return "", fmt.Errorf("cannot request format string for requested auth types: %w", err)
+	}
+	msg := fmt.Sprintf(fmtString, name, path)
+
+	cmd := exec.CommandContext(
+		ctx, "systemd-ask-password",
 		"--icon", "drive-harddisk",
-		"--id", filepath.Base(os.Args[0])+":"+sourceDevicePath,
+		"--id", filepath.Base(os.Args[0])+":"+path,
 		msg)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		return "", xerrors.Errorf("cannot execute systemd-ask-password: %v", err)
+		return "", fmt.Errorf("cannot execute systemd-ask-password: %w", err)
 	}
 	result, err := out.ReadString('\n')
 	if err != nil {
@@ -56,34 +60,17 @@ func (r *systemdAuthRequestor) askPassword(sourceDevicePath, msg string) (string
 	return strings.TrimRight(result, "\n"), nil
 }
 
-func (r *systemdAuthRequestor) RequestPassphrase(volumeName, sourceDevicePath string) (string, error) {
-	msg := fmt.Sprintf(r.passphraseTmpl, volumeName, sourceDevicePath)
-	return r.askPassword(sourceDevicePath, msg)
-}
-
-func (r *systemdAuthRequestor) RequestRecoveryKey(volumeName, sourceDevicePath string) (RecoveryKey, error) {
-	msg := fmt.Sprintf(r.recoveryKeyTmpl, volumeName, sourceDevicePath)
-	passphrase, err := r.askPassword(sourceDevicePath, msg)
-	if err != nil {
-		return RecoveryKey{}, err
-	}
-
-	key, err := ParseRecoveryKey(passphrase)
-	if err != nil {
-		return RecoveryKey{}, xerrors.Errorf("cannot parse recovery key: %w", err)
-	}
-
-	return key, nil
-}
-
 // NewSystemdAuthRequestor creates an implementation of AuthRequestor that
-// delegates to the systemd-ask-password binary. The supplied foramt strings are
-// used to compose the messages that will be displayed when requesting a
-// credential. The format strings will be interpreted with the following parameters:
-// - %[1]s: The name that the LUKS container will be mapped to.
-// - %[2]s: The device path of the LUKS container.
-func NewSystemdAuthRequestor(passphraseTmpl, recoveryKeyTmpl string) AuthRequestor {
+// delegates to the systemd-ask-password binary. The caller supplies a map
+// of user auth type combinations to format strings that are used to construct
+// messages. The format strings are interpreted with the following parameters:
+// - %[1]s: A human readable name for the storage container.
+// - %[2]s: The path of the encrypted storage container.
+func NewSystemdAuthRequestor(formatStringFn func(UserAuthType) (string, error)) (AuthRequestor, error) {
+	if formatStringFn == nil {
+		return nil, errors.New("must supply a callback to obtain format strings for requesting user credentials")
+	}
 	return &systemdAuthRequestor{
-		passphraseTmpl:  passphraseTmpl,
-		recoveryKeyTmpl: recoveryKeyTmpl}
+		formatStringFn: formatStringFn,
+	}, nil
 }
