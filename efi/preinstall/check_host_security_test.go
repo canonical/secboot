@@ -68,6 +68,23 @@ func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedFirmwareSetti
 	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), IsNil)
 }
 
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedFirmwareSettingsOkNoSecureBoot(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{SecureBootDisabled: true})
+	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), IsNil)
+}
+
+func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedFirmwareSettingsOkNoSecureBootAndEmptySbatLevel(c *C) {
+	// Simulate running on a machine with secure boot disabled and running
+	// shim on a system with an empty SbatLevel variable. In this case,
+	// there are no EV_EFI_VARIABLE_AUTHORITY events which caused
+	// https://launchpad.net/bugs/2125439
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		SecureBootDisabled: true,
+		NoSBAT:             true,
+	})
+	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), IsNil)
+}
+
 func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmwareDebuggingEnabled(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
