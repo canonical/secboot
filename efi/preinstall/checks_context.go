@@ -21,9 +21,9 @@ package preinstall
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/canonical/go-tpm2"
@@ -503,7 +503,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (ErrorKind, any, er
 	return ErrorKindInternal, nil, nil
 }
 
-func (c *RunChecksContext) runAction(action Action, args map[string]any) error {
+func (c *RunChecksContext) runAction(action Action, args map[string]json.RawMessage) error {
 	if !c.isActionExpected(action) {
 		return NewWithKindAndActionsError(
 			ErrorKindUnexpectedAction,
@@ -551,52 +551,49 @@ func (c *RunChecksContext) runAction(action Action, args map[string]any) error {
 	case ActionProceed:
 		var proceedFlags CheckFlags
 		if args != nil {
-			const errorsArgName = "error-kinds"
+			const fieldName = "error-kinds"
 
-			errorsArg, exists := args[errorsArgName]
-			if exists {
-				kinds, ok := errorsArg.([]ErrorKind)
+			kinds, err := GetValueFromJSONMap[ActionProceedArgs](args)
+			if err != nil {
+				return NewWithKindAndActionsError(
+					ErrorKindInvalidArgument,
+					InvalidActionArgumentDetails{
+						Field:  fieldName,
+						Reason: InvalidActionArgumentReasonType,
+					},
+					nil, // actions
+					err,
+				)
+			}
+
+			for i, kind := range kinds {
+				flag, ok := errorKindToProceedFlag[kind]
 				if !ok {
 					return NewWithKindAndActionsError(
 						ErrorKindInvalidArgument,
-						InvalidActionArgumentParams{
-							Name:   errorsArgName,
-							Reason: InvalidActionArgumentReasonType,
+						InvalidActionArgumentDetails{
+							Field:  fieldName,
+							Reason: InvalidActionArgumentReasonValue,
 						},
 						nil, // actions
-						fmt.Errorf("unexpected type for argument %q: expected %s, got %s", errorsArgName, reflect.TypeOf([]ErrorKind(nil)), reflect.TypeOf(errorsArg)),
+						fmt.Errorf("invalid value for argument %q at index %d: %q does not support the %q action", fieldName, i, kind, ActionProceed),
 					)
 				}
 
-				for i, kind := range kinds {
-					flag, ok := errorKindToProceedFlag[kind]
-					if !ok {
-						return NewWithKindAndActionsError(
-							ErrorKindInvalidArgument,
-							InvalidActionArgumentParams{
-								Name:   errorsArgName,
-								Reason: InvalidActionArgumentReasonValue,
-							},
-							nil, // actions
-							fmt.Errorf("invalid value for argument %q at index %d: %q does not support the %q action", errorsArgName, i, kind, ActionProceed),
-						)
-					}
-
-					if c.proceedFlags&flag == 0 {
-						return NewWithKindAndActionsError(
-							ErrorKindInvalidArgument,
-							InvalidActionArgumentParams{
-								Name:   errorsArgName,
-								Reason: InvalidActionArgumentReasonValue,
-							},
-							nil, // actions
-							fmt.Errorf("invalid value for argument %q at index %d: %q is not expected", errorsArgName, i, kind),
-						)
-					}
-
-					proceedFlags |= flag
-					c.proceedFlags &^= flag
+				if c.proceedFlags&flag == 0 {
+					return NewWithKindAndActionsError(
+						ErrorKindInvalidArgument,
+						InvalidActionArgumentDetails{
+							Field:  fieldName,
+							Reason: InvalidActionArgumentReasonValue,
+						},
+						nil, // actions
+						fmt.Errorf("invalid value for argument %q at index %d: %q is not expected", fieldName, i, kind),
+					)
 				}
+
+				proceedFlags |= flag
+				c.proceedFlags &^= flag
 			}
 		}
 
@@ -643,7 +640,7 @@ func (c *RunChecksContext) Result() *CheckResult {
 // actions associated with an error, the install environment may try one or more of them in
 // order to try to resolve the issue that caused the error. In some cases, it may be appropriate
 // to ask permission from the user to perform an action.
-func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[string]any) (*CheckResult, error) {
+func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[string]json.RawMessage) (*CheckResult, error) {
 	if err := c.runAction(action, args); err != nil {
 		c.lastErr = err
 		c.errs = append(c.errs, err)

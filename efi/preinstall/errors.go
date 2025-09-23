@@ -968,29 +968,11 @@ func (e *WithKindAndActionsError) Unwrap() error {
 	return e.err
 }
 
-func zero[T any]() T {
-	var z T
-	return z
-}
-
 // GetWithKindAndActionsErrorArg returns the argument map for a [WithKindAndActionsError]
 // as the specified type. If any values in the argument map cannot be serialized or the
 // serialized argument map cannot be unserialized to the specified type, an error will be
 // returned. This is a global function due to go's restriction of not allowing methods of
 // types to have arbitrary type parameters.
 func GetWithKindAndActionsErrorArg[T any](e *WithKindAndActionsError) (T, error) {
-	// Serialize the argument map to JSON.
-	jsonArgs, err := json.Marshal(e.Args)
-	if err != nil {
-		return zero[T](), fmt.Errorf("cannot serialize argument map to JSON: %w", err)
-	}
-
-	// Unserialize the serialized argument map to the desired type.
-	var arg T
-	dec := json.NewDecoder(bytes.NewReader(jsonArgs))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&arg); err != nil {
-		return zero[T](), fmt.Errorf("cannot deserialize argument map from JSON to type %T: %w", arg, err)
-	}
-	return arg, nil
+	return GetValueFromJSONMap[T](e.Args)
 }

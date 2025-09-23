@@ -77,7 +77,7 @@ var _ = Suite(&runChecksContextSuite{})
 
 type actionAndArgs struct {
 	action Action
-	args   map[string]any
+	args   any
 }
 
 type testRunChecksContextRunParams struct {
@@ -171,8 +171,15 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 
 		errs = nil
 
+		var args map[string]json.RawMessage
+		if params.actions[i].args != nil {
+			jsonArgs, err := json.Marshal(params.actions[i].args)
+			c.Assert(err, IsNil)
+			c.Assert(json.Unmarshal(jsonArgs, &args), IsNil)
+		}
+
 		var err error
-		result, err = ctx.Run(context.Background(), params.actions[i].action, params.actions[i].args)
+		result, err = ctx.Run(context.Background(), params.actions[i].action, args)
 		if err == nil {
 			c.Check(i, Equals, iterations-1)
 			break
@@ -2677,9 +2684,9 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
-			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindWeakSecureBootAlgorithmsDetected}}},
-			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindPreOSDigestVerificationDetected}}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindVARSuppliedDriversPresent}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindWeakSecureBootAlgorithmsDetected}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindPreOSDigestVerificationDetected}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6468,11 +6475,11 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `unexpected type for argument "error-kinds": expected \[\]preinstall.ErrorKind, got int`)
+	c.Check(errs[0], ErrorMatches, `cannot deserialize argument map from JSON to type preinstall.ActionProceedArgs: json: cannot unmarshal number into Go value of type \[\]preinstall.ErrorKind`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
-		InvalidActionArgumentParams{
-			Name:   "error-kinds",
+		InvalidActionArgumentDetails{
+			Field:  "error-kinds",
 			Reason: InvalidActionArgumentReasonType,
 		},
 		nil,
@@ -6546,7 +6553,7 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindInvalidSecureBootMode}}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindInvalidSecureBootMode}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6566,8 +6573,8 @@ C7E003CB
 	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "invalid-secure-boot-mode" does not support the "proceed" action`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
-		InvalidActionArgumentParams{
-			Name:   "error-kinds",
+		InvalidActionArgumentDetails{
+			Field:  "error-kinds",
 			Reason: InvalidActionArgumentReasonValue,
 		},
 		nil,
@@ -6641,7 +6648,7 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindPreOSDigestVerificationDetected}}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindPreOSDigestVerificationDetected}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6661,8 +6668,8 @@ C7E003CB
 	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "pre-os-digest-verification-detected" is not expected`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
-		InvalidActionArgumentParams{
-			Name:   "error-kinds",
+		InvalidActionArgumentDetails{
+			Field:  "error-kinds",
 			Reason: InvalidActionArgumentReasonValue,
 		},
 		nil,
@@ -6737,8 +6744,8 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
-			{action: ActionProceed, args: map[string]any{"error-kinds": []ErrorKind{ErrorKindVARSuppliedDriversPresent}}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindVARSuppliedDriversPresent}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindVARSuppliedDriversPresent}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -6773,8 +6780,8 @@ C7E003CB
 	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "var-supplied-drivers-present" is not expected`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
-		InvalidActionArgumentParams{
-			Name:   "error-kinds",
+		InvalidActionArgumentDetails{
+			Field:  "error-kinds",
 			Reason: InvalidActionArgumentReasonValue,
 		},
 		nil,
