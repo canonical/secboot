@@ -106,6 +106,8 @@ Loop:
 		}
 	}
 
+	// We'll reach here if we encounter an EV_EFI_VARIABLE_AUTHORITY event or
+	// we get to the end of the log.
 	if len(errs) > 0 {
 		return joinErrors(errs...)
 	}
