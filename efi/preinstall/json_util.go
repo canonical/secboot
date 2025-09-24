@@ -34,6 +34,12 @@ func zero[T any]() T {
 // type. If any values in the supplied map cannot be serialized or the serialized
 // map cannot be unserialized to the specified type, an error will be returned.
 func GetValueFromJSONMap[T any](m map[string]json.RawMessage) (T, error) {
+	if m == nil {
+		// Ensure that we always decode a JSON object rather than
+		// null into the requested type.
+		m = make(map[string]json.RawMessage)
+	}
+
 	// Serialize the argument map to JSON.
 	jsonMap, err := json.Marshal(m)
 	if err != nil {

@@ -558,6 +558,8 @@ func (c *RunChecksContext) runAction(action Action, args map[string]json.RawMess
 				return NewWithKindAndActionsError(
 					ErrorKindInvalidArgument,
 					InvalidActionArgumentDetails{
+						// XXX: We assume that the field is "error-kinds" in this case, but
+						// we don't really know for sure. Try to address this later.
 						Field:  fieldName,
 						Reason: InvalidActionArgumentReasonType,
 					},
