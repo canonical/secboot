@@ -22,6 +22,7 @@ package preinstall
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/canonical/go-tpm2"
 )
@@ -59,10 +60,8 @@ const (
 	// ErrorKindInvalidArgument is returned if an action was supplied
 	// that requires one or more arguments, but one or more of the
 	// supplied arguments are of an invalid type of are an invalid value.
-	// This will be accompanied with an argument that is a JSON map with 2
-	// entries:
-	// - "index": An int indicating the zero-indexed argument index.
-	// - "reason": A string indicating the reason - invalid "type" or "value".
+	// This will be accompanied with an argument of the type
+	// InvalidActionArgumentDetails.
 	ErrorKindInvalidArgument ErrorKind = "invalid-argument"
 
 	// ErrorKindActionFailed indicates that the supplied action did not
@@ -285,4 +284,25 @@ func (a PCRUnusableArg) PCR() tpm2.Handle {
 type PCRUnsupportedArgs struct {
 	PCR tpm2.Handle `json:"pcr"` // The unsupported PCR.
 	URL string      `json:"url"` // A URL to a github issue.
+}
+
+// InvalidActionArgumentReason specifies why an argument supplied with an
+// action is invalid.
+type InvalidActionArgumentReason string
+
+const (
+	InvalidActionArgumentReasonType  InvalidActionArgumentReason = "type"  // The argument type is invalid.
+	InvalidActionArgumentReasonValue InvalidActionArgumentReason = "value" // The argument value is invalid.
+)
+
+// InvalidActionArgumentDetails provides information about an invalid
+// argument supplied with an action.
+type InvalidActionArgumentDetails struct {
+	Field  string                      `json:"field"`  // The full name of the argument field.
+	Reason InvalidActionArgumentReason `json:"reason"` // Why the argument is invalid.
+}
+
+// String implements [fmt.Stringer].
+func (a *InvalidActionArgumentDetails) String() string {
+	return fmt.Sprintf("invalid action argument %q: invalid %s", a.Field, a.Reason)
 }

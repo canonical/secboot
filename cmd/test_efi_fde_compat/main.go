@@ -123,10 +123,10 @@ func run() error {
 	fmt.Println("Testing this platform for compatibility with EFI based TPM protected FDE")
 
 	ctx := preinstall.NewRunChecksContext(checkFlags, bootImages, pcrFlags)
-	result, err := ctx.Run(context.Background(), preinstall.ActionNone)
+	result, err := ctx.Run(context.Background(), preinstall.ActionNone, nil)
 	switch {
 	case err != nil && opts.Action != preinstall.ActionNone:
-		result, err = ctx.Run(context.Background(), opts.Action)
+		result, err = ctx.Run(context.Background(), opts.Action, nil)
 		if err != nil {
 			return err
 		}
