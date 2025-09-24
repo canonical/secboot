@@ -223,7 +223,18 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			return nil, &TPM2DeviceError{err}
 		}
 		for _, e := range ce.Unwrap() {
-			deferredErrs = append(deferredErrs, &TPM2DeviceError{e})
+			switch {
+			case errors.Is(e, ErrTPMLockout):
+				// Treat a DA lockout as a warning.
+				warnings = append(warnings, &TPM2DeviceError{e})
+			case errors.Is(e, ErrTPMLockoutAvailabilityNotChecked):
+				// Treat inability to check that the lockout hierarchy is available
+				// as a warning.
+				warnings = append(warnings, e)
+			default:
+				// Everything else is an error.
+				deferredErrs = append(deferredErrs, &TPM2DeviceError{e})
+			}
 		}
 	}
 	defer tpm.Close()

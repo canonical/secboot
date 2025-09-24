@@ -21,6 +21,7 @@ package tpm2
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/canonical/go-tpm2"
@@ -196,15 +197,12 @@ func removeStoredSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) 
 func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAuth []byte, srkTemplate *tpm2.Public, useExistingSrkTemplate bool) error {
 	session := t.HmacSession()
 
-	props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
+	val, err := t.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
 	if err != nil {
 		return xerrors.Errorf("cannot fetch permanent properties: %w", err)
 	}
-	if props[0].Property != tpm2.PropertyPermanent {
-		return errors.New("TPM returned value for the wrong property")
-	}
 	if mode == ProvisionModeClear {
-		if tpm2.PermanentAttributes(props[0].Value)&tpm2.AttrDisableClear > 0 {
+		if tpm2.PermanentAttributes(val)&tpm2.AttrDisableClear > 0 {
 			return ErrTPMClearRequiresPPI
 		}
 
@@ -267,19 +265,17 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 	t.provisionedSrk = srk
 
 	if mode == ProvisionModeWithoutLockout {
-		props, err := t.GetCapabilityTPMProperties(tpm2.PropertyPermanent, 1)
+		val, err := t.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
 		if err != nil {
 			return xerrors.Errorf("cannot fetch permanent properties to determine if lockout hierarchy is required: %w", err)
 		}
-		if props[0].Property != tpm2.PropertyPermanent {
-			return errors.New("TPM returned value for the wrong property")
-		}
 		required := tpm2.AttrLockoutAuthSet | tpm2.AttrDisableClear
-		if tpm2.PermanentAttributes(props[0].Value)&required != required {
+		mask := required | tpm2.AttrInLockout
+		if tpm2.PermanentAttributes(val)&mask != required {
 			return ErrTPMProvisioningRequiresLockout
 		}
 
-		props, err = t.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3)
+		props, err := t.GetCapabilityTPMProperties(tpm2.PropertyMaxAuthFail, 3)
 		if err != nil {
 			return xerrors.Errorf("cannot fetch DA parameters to determine if lockout hierarchy is required: %w", err)
 		}
@@ -305,6 +301,18 @@ func (t *Connection) ensureProvisionedInternal(mode ProvisionMode, newLockoutAut
 			return ErrTPMLockout
 		}
 		return xerrors.Errorf("cannot configure dictionary attack parameters: %w", err)
+	}
+
+	// Clear any lockout if there is one. This has to happen after setting the DA parameters
+	// because we can't clear a lockout if maxTries is 0.
+	if err := t.DictionaryAttackLockReset(t.LockoutHandleContext(), session); err != nil {
+		switch {
+		case isAuthFailError(err, tpm2.CommandDictionaryAttackLockReset, 1):
+			return AuthFailError{tpm2.HandleLockout}
+		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandDictionaryAttackLockReset):
+			return ErrTPMLockout
+		}
+		return fmt.Errorf("cannot reset dictionary attack protection: %w", err)
 	}
 
 	// Disable owner clear. Pass the HMAC session here so we don't supply the cleartext auth
