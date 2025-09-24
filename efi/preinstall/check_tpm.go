@@ -182,14 +182,61 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		}
 	}
 
-	if flags&checkTPM2DevicePostInstall == 0 {
-		var errs []error
+	// Some errors from this point may be collected and returned together.
+	var errs []error
 
-		// Perform some checks only during pre-install.
-		perm, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
-		if err != nil {
-			return nil, fmt.Errorf("cannot obtain value for TPM_PT_PERMANENT: %w", err)
+	// Obtain the permanent attributes from the TPM.
+	perm, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	if err != nil {
+		return nil, fmt.Errorf("cannot obtain value for TPM_PT_PERMANENT: %w", err)
+	}
+
+	switch {
+	case tpm2.PermanentAttributes(perm)&tpm2.AttrLockoutAuthSet == 0:
+		// If the lockout hierarchy has no authorization value, check if it is available. We do
+		// this by attempting to use it with an empty authorization value. There is no other way to
+		// figure this out other than by using it.
+		//
+		// As we test the lockout hierarchy with TPM2_DictionaryAttackLockReset, this may have the
+		// side effect of clearing a DA lockout.
+		tpm.LockoutHandleContext().SetAuthValue(nil)
+		err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
+		switch {
+		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandDictionaryAttackLockReset):
+			// The lockout hierarchy is unavailable because it is locked out, either for what is
+			// remaining of the pre-programmed lockoutRecovery time, or until the TPM is cleared
+			// using the platform auth.
+			errs = append(errs, ErrTPMLockoutLockedOut)
+		case err != nil:
+			return nil, fmt.Errorf("cannot test usage of TPM_RH_LOCKOUT: %w", err)
+		case tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0:
+			// The lockout hierarchy is available and TPM2_DictionaryAttackLockReset completed
+			// successfully. As the DA lockout had previously been activated, obtain the
+			// permanent attributes from the TPM again in case it has been cleared. It may not
+			// have been cleared in the case where the maxTries DA setting is zero.
+			perm, err = tpm.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+			if err != nil {
+				return nil, fmt.Errorf("cannot refresh value for TPM_PT_PERMANENT: %w", err)
+			}
+		default:
+			// The lockout hierarchy is available and TPM2_DictionaryAttackLockReset completed
+			// successfully. There was no DA lockout previously activated, so there's nothing
+			// else to do.
 		}
+	default:
+		// The lockout hierarchy has an authorization value set, so add an error indicating that
+		// we couldn't test if the hierarchy is available.
+		// TODO: Update the public API to accept the authorization value for post-install tests.
+		errs = append(errs, ErrTPMLockoutAvailabilityNotChecked)
+	}
+
+	// Make sure that the DA lockout mode is not activated.
+	if tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0 {
+		errs = append(errs, ErrTPMLockout)
+	}
+
+	if flags&checkTPM2DevicePostInstall == 0 {
+		// Perform some checks only during pre-install.
 
 		// First of all, make sure that the TPM isn't owned.
 		ownedErr := new(TPM2OwnedHierarchiesError)
@@ -224,12 +271,6 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 			errs = append(errs, ownedErr)
 		}
 
-		// Make sure that the DA lockout mode is not activated. This is easy to fix if the
-		// authorization value for the lockout hierarchy is empty.
-		if tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout > 0 {
-			errs = append(errs, ErrTPMLockout)
-		}
-
 		// Make sure we have enough NV counters for PCR policy revocation. We need at least 2
 		// (1 normally, and an extra 1 during reprovision). The platform firmware may use up
 		// some of the allocation.
@@ -249,26 +290,10 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 				errs = append(errs, ErrTPMInsufficientNVCounters)
 			}
 		}
+	}
 
-		if tpm2.PermanentAttributes(perm)&tpm2.AttrLockoutAuthSet == 0 {
-			// If the lockout hierarchy has no authorization value, attempt to use it with an empty
-			// authorization value to check if it is enabled or not. There is no other way to figure
-			// this out other than by using it.
-			tpm.LockoutHandleContext().SetAuthValue(nil)
-			if err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil); err != nil {
-				if !tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandDictionaryAttackLockReset) {
-					return nil, fmt.Errorf("cannot test usage of TPM_RH_LOCKOUT: %w", err)
-				}
-				// The lockout hierarchy is unavailable because it is locked out, either for what is
-				// remaining of the pre-programmed lockoutRecovery time, or until the TPM is cleared
-				// using the platform auth.
-				errs = append(errs, ErrTPMLockoutLockedOut)
-			}
-		}
-
-		if len(errs) > 0 {
-			return tpm, joinErrors(errs...)
-		}
+	if len(errs) > 0 {
+		return tpm, joinErrors(errs...)
 	}
 
 	return tpm, nil
