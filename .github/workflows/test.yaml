@@ -1,9 +1,9 @@
 name: Tests
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "used-by-snapd-*" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "used-by-snapd-*" ]
 jobs:
   tests:
     runs-on: ubuntu-24.04
