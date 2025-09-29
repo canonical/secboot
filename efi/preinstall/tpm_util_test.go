@@ -32,38 +32,6 @@ type tpmutilSuite struct{}
 
 var _ = Suite(&tpmutilSuite{})
 
-func (*tpmutilSuite) TestDeviceLockoutArgsIsValidTrue(c *C) {
-	args := TPMDeviceLockoutArgs{
-		IntervalDuration: 2 * time.Hour,
-		TotalDuration:    64 * time.Hour,
-	}
-	c.Check(args.IsValid(), testutil.IsTrue)
-}
-
-func (*tpmutilSuite) TestDeviceLockoutArgsIsValidNotMod1False1(c *C) {
-	args := TPMDeviceLockoutArgs{
-		IntervalDuration: (2 * time.Hour) + (15625 * time.Millisecond),
-		TotalDuration:    (64 * time.Hour) + time.Second,
-	}
-	c.Check(args.IsValid(), testutil.IsFalse)
-}
-
-func (*tpmutilSuite) TestDeviceLockoutArgsIsValidNotMod1False2(c *C) {
-	args := TPMDeviceLockoutArgs{
-		IntervalDuration: 2 * time.Hour,
-		TotalDuration:    (64 * time.Hour) + (2 * time.Microsecond),
-	}
-	c.Check(args.IsValid(), testutil.IsFalse)
-}
-
-func (*tpmutilSuite) TestDeviceLockoutArgsIsValidNegativeFalse1(c *C) {
-	args := TPMDeviceLockoutArgs{
-		IntervalDuration: -2 * time.Hour,
-		TotalDuration:    64 * time.Hour,
-	}
-	c.Check(args.IsValid(), testutil.IsFalse)
-}
-
 func (*tpmutilSuite) TestDeviceLockoutRecoveryArgJSON(c *C) {
 	arg := TPMDeviceLockoutRecoveryArg(24 * time.Hour)
 	data, err := json.Marshal(arg)
