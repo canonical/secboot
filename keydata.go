@@ -730,6 +730,32 @@ func (d *KeyData) WriteAtomic(w KeyDataWriter) error {
 	return nil
 }
 
+// RecoverSymmetricKey attempts to recover a secret protected by this keydata's platform
+// which is meant to be used as a salt for the FIDO2 hmac-secret extension.
+//
+// Only the tpm2 platform currently implements this.
+// TODO more extensive comment
+func (d *KeyData) RecoverSymmetricKey() (string, *PlatformKeyData, []byte, error) {
+	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
+	if !exists {
+		return "", nil, nil, ErrNoPlatformHandlerRegistered
+	}
+
+	// TODO consistency check that the flags indicate that the platform can be used as a fido2 hmac-secret salt provider
+
+	provider, ok := handlerInfo.handler.(FIDO2Provider)
+	if !ok {
+		return "", nil, nil, fmt.Errorf("%s handler %T does not implement FIDO2Provider", d.data.PlatformName, provider)
+	}
+
+	sym, err := provider.GetSymmetricKey(d.platformKeyData(), nil)
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	return d.data.PlatformName, d.platformKeyData(), sym, nil
+}
+
 // ReadKeyData reads the key data from the supplied KeyDataReader, returning a
 // new KeyData object.
 //
@@ -881,4 +907,8 @@ func MakeDiskUnlockKey(rand io.Reader, alg crypto.Hash, primaryKey PrimaryKey) (
 	}
 
 	return pk.unlockKey(alg), cleartextPayload, nil
+}
+
+type FIDO2Provider interface {
+	GetSymmetricKey(*PlatformKeyData, []byte) ([]byte, error)
 }
