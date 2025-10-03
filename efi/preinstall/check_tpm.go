@@ -50,14 +50,8 @@ const (
 // and don't prevent further use of the TPM, the errors will be returned wrapped in a type
 // that implements [CompoundError].
 func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2DeviceFlags) (tpm *tpm2.TPMContext, err error) {
-	// Get a device from the supplied environment
-	device, err := env.TPMDevice()
-	if err != nil {
-		return nil, err
-	}
-
-	// Open it!
-	tpm, err = tpm2.OpenTPMDevice(device)
+	// Open the device from the supplied environment.
+	tpm, err = openTPMDevice(env)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open TPM device: %w", err)
 	}

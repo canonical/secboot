@@ -84,6 +84,25 @@ const (
 	// respond with ErrorKindShutdown or ErrorKindReboot.
 	ActionClearTPMViaFirmware Action = "clear-tpm-via-firmware"
 
+	// ActionClearTPMSimple tells RunChecksContext.Run to clear the TPM using the
+	// TPM2_Clear command. This will only be available if the TPM's lockout hierarchy
+	// has no authorization value set. It is separate from ActionClearTPM so that it
+	// can be omitted as a supported action if the TPM's lockout hierarchy has an
+	// authorization value set, allowing the installer UI to only support the
+	// simple version without having to handle errors from ActionClearTPM
+	ActionClearTPMSimple Action = "clear-tpm-simple"
+
+	// ActionClearTPMSimple tells RunChecksContext.Run to clear the TPM using the
+	// TPM2_Clear command. This requires a single argument of the TPMAuthValueArg type
+	// which should be the authorization value for the TPM's lockout hierarchy.
+	// RunChecksContext.Run will do a simple check of whether the lockout hierarchy
+	// authorization value has been set or not, and will return an error if an empty
+	// value is supplied when the authorization value is set, or if a value is supplied
+	// when the authorization value is not set. If the authorization value is set and
+	// the incorrect value is supplied, the TPM's lockout hierarchy will become
+	// unavailable.
+	ActionClearTPM Action = "clear-tpm"
+
 	// ActionProceed tells RunChecksContext.Run to turn on the appropriate
 	// CheckFlags so that the corresponding errors are ignored. If multiple errors
 	// are returned with this action in a single call, then calling
