@@ -41,6 +41,7 @@ import (
 	. "github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/bootscope"
 	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
+	"github.com/snapcore/secboot/internal/keyring/keyringtest"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luks2/luks2test"
 	"github.com/snapcore/secboot/internal/luksview"
@@ -370,7 +371,7 @@ type cryptSuite struct {
 	cryptTestBase
 	keyDataTestBase
 	snapd_testutil.BaseTest
-	keyringTestMixin
+	keyringtest.TestMixin
 
 	luks2 *mockLUKS2
 
@@ -413,7 +414,7 @@ func (s *cryptSuite) SetUpTest(c *C) {
 	}
 
 	s.keyDataTestBase.SetUpTest(c)
-	s.keyringTestMixin.SetUpTest(c)
+	s.TestMixin.SetUpTest(c)
 
 	restore := MockKeyringAddKey(s.AddKeyNoCheck)
 	s.AddCleanup(restore)
@@ -435,7 +436,7 @@ func (s *cryptSuite) SetUpTest(c *C) {
 }
 
 func (s *cryptSuite) TearDownTest(c *C) {
-	s.keyringTestMixin.TearDownTest(c)
+	s.TestMixin.TearDownTest(c)
 	s.keyDataTestBase.TearDownTest(c)
 	s.BaseTest.TearDownTest(c)
 }
@@ -547,9 +548,6 @@ type testActivateVolumeWithRecoveryKeyData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithRecoveryKey(c *C, data *testActivateVolumeWithRecoveryKeyData) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	s.addMockKeyslot(data.sourceDevicePath, data.recoveryKey[:])
 
 	authRequestor := &mockAuthRequestor{responses: data.authResponses}
@@ -856,9 +854,6 @@ type testActivateVolumeWithKeyDataData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolumeWithKeyDataData) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	var err error
 	var unlockKey DiskUnlockKey
 	var primaryKey PrimaryKey
@@ -1014,9 +1009,6 @@ type testActivateVolumeWithKeyDataErrorHandlingData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithKeyDataErrorHandling(c *C, data *testActivateVolumeWithKeyDataErrorHandlingData) error {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	s.addMockKeyslot("/dev/sda1", data.diskUnlockKey)
 	s.addMockKeyslot("/dev/sda1", data.recoveryKey[:])
 
@@ -1303,9 +1295,6 @@ type testActivateVolumeWithMultipleKeyDataData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithMultipleKeyData(c *C, data *testActivateVolumeWithMultipleKeyDataData) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	for _, k := range data.keys {
 		s.addMockKeyslot(data.sourceDevicePath, k)
 	}
@@ -1670,9 +1659,6 @@ type testActivateVolumeWithMultipleKeyDataErrorHandlingData struct {
 }
 
 func (s *cryptSuite) testActivateVolumeWithMultipleKeyDataErrorHandling(c *C, data *testActivateVolumeWithMultipleKeyDataErrorHandlingData) error {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	for _, key := range data.keys {
 		s.addMockKeyslot("/dev/sda1", key)
 	}
@@ -3367,9 +3353,6 @@ func (s *cryptSuiteUnmocked) TestRenameLUKS2ContainerRecoveryKey(c *C) {
 
 // Legacy
 func (s *cryptSuite) TestActivateVolumeWithLegacyKeyData3(c *C) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	var err error
 	var unlockKey DiskUnlockKey
 	var primaryKey PrimaryKey
@@ -4007,9 +3990,6 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyPaths(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithLegacyPathsError(c *C) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	s.deviceStats = map[string]unix.Stat_t{
 		"/dev/some/path": unix.Stat_t{
 			Mode: 0600 | unix.S_IFBLK,
@@ -4032,7 +4012,7 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyPathsError(c *C) {
 	s.addMockKeyslot("/dev/some/path", unlockKey)
 
 	stderr := new(bytes.Buffer)
-	restore = MockStderr(stderr)
+	restore := MockStderr(stderr)
 	defer restore()
 
 	err := ActivateVolumeWithKeyData("data", "/dev/some/path", authRequestor, options, keyData)

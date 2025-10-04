@@ -22,6 +22,7 @@ package keyringtest
 import (
 	"context"
 	"errors"
+	"runtime"
 	"time"
 
 	"github.com/snapcore/secboot/internal/keyring"
@@ -32,26 +33,35 @@ import (
 // addition of keys and to automatically invalidate them at the end
 // of a test.
 type TestMixin struct {
-	AddedKeys []keyring.KeyID
+	AddedKeys      []keyring.KeyID
+	lockedOSThread int
 }
 
 func (m *TestMixin) SetUpTest(c *C) {
+	c.Check(m.AddedKeys, HasLen, 0)
+	c.Check(m.lockedOSThread, Equals, 0)
+
 	m.AddedKeys = nil
 }
 
 func (m *TestMixin) TearDownTest(c *C) {
 	n := len(m.AddedKeys)
-	if n == 0 {
-		return
+	if n > 0 {
+		// This looks like a long timeout for something that should happen
+		// quickly, but there have already been failures at 30s, and SSHing
+		// into a github runner instance reveals some moments where the
+		// instance becomes unresponsive for 10s of seconds.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		InvalidateKeysAndWaitForGC(c, ctx, m.AddedKeys...)
+		cancel()
+
+		m.AddedKeys = nil
 	}
 
-	// This looks like a long timeout for something that should happen
-	// quickly, but there have already been failures at 30s, and SSHing
-	// into a github runner instance reveals some moments where the
-	// instance becomes unresponsive for 10s of seconds.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	InvalidateKeysAndWaitForGC(c, ctx, m.AddedKeys...)
-	cancel()
+	for m.lockedOSThread > 0 {
+		runtime.UnlockOSThread()
+		m.lockedOSThread -= 1
+	}
 }
 
 // AddKey is a wrapper around [keyring.AddKey] that will abort the test if
@@ -77,6 +87,31 @@ func (m *TestMixin) AddKeyNoCheck(key []byte, keyType keyring.KeyType, desc stri
 	m.AddedKeys = append(m.AddedKeys, id)
 	return id, nil
 }
+
+// LockOSThread calls [runtime.LockOSThread] to bind the calling goroutine
+// to the current OS thread, and keeps track of the number of times it is
+// called so that [runtime.UnlockOSThread] can be called an appropriate
+// number of times automatically at the end of the test. Use this if a test
+// needs to bind to a single OS thread until after the test teardown completes.
+//
+// A test may need to bind to an OS thread in order to use the thread keyring
+// or if it wants to join and use a session keyring.
+//
+// If a test wants to unbind from its OS thread before the test is torn down
+// after calling this, use [UnlockOSThread] rather than [runtime.UnlockOSThread].
+func (m *TestMixin) LockOSThread() {
+	runtime.LockOSThread()
+	m.lockedOSThread += 1
+}
+
+// UnlockOSThread undoes the action of [LockOSThread].
+func (m *TestMixin) UnlockOSThread() {
+	runtime.UnlockOSThread()
+	m.lockedOSThread -= 1
+}
+
+//func (m *TestMixin) JoinNewSessionKeyringAndPossessUserKeyring(c *C) {
+//}
 
 // InvalidateKeysAndWaitForGC invalidates the specified keys and waits for them
 // to be fully garbage collected, failing the test if there is an error. This will

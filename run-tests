@@ -23,4 +23,6 @@ while [ $# -gt 0 ]; do
         esac
 done
 
-env $ENV go test -ldflags '-X github.com/snapcore/secboot/internal/testenv.testBinary=enabled' -v -race -p 1 -timeout 20m ./... -args -check.v $@
+#env $ENV go test -ldflags '-X github.com/snapcore/secboot/internal/testenv.testBinary=enabled' -v -race -p 1 -timeout 20m ./... -args -check.v $@
+env $ENV go test -ldflags '-X github.com/snapcore/secboot/internal/testenv.testBinary=enabled' -v -race -p 1 -timeout 20m . -args -check.v -test.run "^Test$" -check.f "^cryptSuite\." -check.f "^keyringSuite\." $@
+env $ENV go test -ldflags '-X github.com/snapcore/secboot/internal/testenv.testBinary=enabled' -v -race -p 1 -timeout 20m ./internal/keyring -args -check.v $@

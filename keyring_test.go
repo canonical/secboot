@@ -23,7 +23,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"runtime"
 	"syscall"
 
 	. "github.com/snapcore/secboot"
@@ -36,56 +35,16 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type keyringTestMixin struct {
-	keyringtest.TestMixin
-}
-
-func (s *keyringTestMixin) AddKey(c *C, key []byte, keyType keyring.KeyType, desc string, keyringId keyring.KeyID) keyring.KeyID {
-	return s.TestMixin.AddKey(c, key, keyType, desc, keyringId)
-}
-
-func (s *keyringTestMixin) AddKeyNoCheck(key []byte, keyType keyring.KeyType, desc string, keyringId keyring.KeyID) (keyring.KeyID, error) {
-	return s.TestMixin.AddKeyNoCheck(key, keyType, desc, keyringId)
-}
-
-// possessUserKeyring locks the calling goroutine to the current OS thread,
-// replaces the thread's session keyring with a new anonymous keyring and
-// then adds a link to the user keyring from the new session keyring.
-//
-// The returned callback must be called once possession of the user keyring
-// is no longer required. This callback will unlock the calling routine from
-// the current OS thread, but it won't restore the original session keyring
-// as there isn't a reliable way to do this.
-func (*keyringTestMixin) possessUserKeyring(c *C) (unlock func()) {
-	// In order to run tests that require posession of keys added to the
-	// user keyring, we need to possess the user keyring first. In order
-	// to do this, we join a new anonymous session keyring and add a link
-	// to the user keyring from the new session keyring. However, joining
-	// a session keyring only affects the calling thread, which means that
-	// we need to bind the entire test to a single OS thread for this to
-	// work reliably.
-	runtime.LockOSThread()
-
-	id, err := keyring.JoinSessionKeyring("")
-	c.Assert(err, IsNil)
-
-	c.Assert(keyring.LinkKey(keyring.UserKeyring, id), IsNil)
-
-	return func() {
-		runtime.UnlockOSThread()
-	}
-}
-
 type keyringSuite struct {
 	snapd_testutil.BaseTest
-	keyringTestMixin
+	keyringtest.TestMixin
 
 	fileInfo map[string]unix.Stat_t
 }
 
 func (s *keyringSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
-	s.keyringTestMixin.SetUpTest(c)
+	s.TestMixin.SetUpTest(c)
 
 	s.fileInfo = make(map[string]unix.Stat_t)
 
@@ -104,7 +63,7 @@ func (s *keyringSuite) SetUpTest(c *C) {
 }
 
 func (s *keyringSuite) TearDownTest(c *C) {
-	s.keyringTestMixin.TearDownTest(c)
+	s.TestMixin.TearDownTest(c)
 	s.BaseTest.TearDownTest(c)
 }
 
@@ -144,9 +103,6 @@ type testAddKeyToUserKeyringLegacyParams struct {
 }
 
 func (s *keyringSuite) testAddKeyToUserKeyringLegacy(c *C, params *testAddKeyToUserKeyringLegacyParams) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	c.Assert(AddKeyToUserKeyringLegacy(params.key, params.path, params.purpose, params.prefix), IsNil)
 
 	c.Assert(s.AddedKeys, HasLen, 1)
@@ -238,9 +194,6 @@ type testGetDiskUnlockKeyFromKernelData struct {
 }
 
 func (s *keyringSuite) testGetDiskUnlockKeyFromKernel(c *C, data *testGetDiskUnlockKeyFromKernelData) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	prefix := data.prefix
 	if prefix == "" {
 		prefix = "ubuntu-fde"
@@ -316,9 +269,6 @@ func (s *keyringSuite) TestGetDiskUnlockKeyFromKernelNotFound4(c *C) {
 }
 
 func (s *keyringSuite) TestGetDiskUnlockKeyFromKernelAndRemove(c *C) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	key := DiskUnlockKey(testutil.DecodeHexString(c, "12bd560279b49c30ac014827c0356fdb9a968fead2f9ea83808d34189515af97"))
 
 	c.Check(AddKeyToUserKeyringLegacy(key, "/dev/sda1", KeyringKeyPurposeUnlock, "ubuntu-fde"), IsNil)
@@ -339,9 +289,6 @@ type testGetPrimaryKeyFromKernelData struct {
 }
 
 func (s *keyringSuite) testGetPrimaryKeyFromKernel(c *C, data *testGetPrimaryKeyFromKernelData) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	prefix := data.prefix
 	if prefix == "" {
 		prefix = "ubuntu-fde"
@@ -417,9 +364,6 @@ func (s *keyringSuite) TestGetPrimaryKeyFromKernelNotFound4(c *C) {
 }
 
 func (s *keyringSuite) TestGetPrimaryKeyFromKernelAndRemove(c *C) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	key := PrimaryKey(testutil.DecodeHexString(c, "c3e00a237a9f8dbf0fd66c473401054ba5232a1cf6564d52945d7726a464ffa9"))
 
 	c.Check(AddKeyToUserKeyringLegacy(key, "/dev/sda1", KeyringKeyPurposeAuxiliary, "ubuntu-fde"), IsNil)
@@ -514,9 +458,6 @@ type testAddKeyToUserKeyringParams struct {
 }
 
 func (s *keyringSuite) testAddKeyToUserKeyring(c *C, params *testAddKeyToUserKeyringParams) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	c.Check(AddKeyToUserKeyring(params.key, params.container, params.purpose, params.prefix), IsNil)
 
 	c.Assert(s.AddedKeys, HasLen, 1)
@@ -609,9 +550,6 @@ type testGetKeyFromKernelParams struct {
 }
 
 func (s *keyringSuite) testGetKeyFromKernel(c *C, params *testGetKeyFromKernelParams) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	prefix := params.prefix
 	if prefix == "" {
 		prefix = "ubuntu-fde"
@@ -815,9 +753,6 @@ type testGetKeyFromKernelWithLegacyAddKeyParams struct {
 }
 
 func (s *keyringSuite) testGetKeyFromKernelWithLegacyAddKey(c *C, params *testGetKeyFromKernelWithLegacyAddKeyParams) {
-	restore := s.possessUserKeyring(c)
-	defer restore()
-
 	s.addFileInfos(params.fileInfo)
 
 	prefix := params.prefix

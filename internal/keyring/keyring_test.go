@@ -56,7 +56,7 @@ func (s *keyringSuite) testAddKey(c *C, params *testAddKeyParams) error {
 		return err
 	}
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		keyringtest.InvalidateKeysAndWaitForGC(c, ctx, id)
 		cancel()
 	}()
@@ -121,7 +121,7 @@ func (s *keyringSuite) TestAddKeyDifferentDesc(c *C) {
 
 func (s *keyringSuite) TestAddKeyDifferentKeyring(c *C) {
 	runtime.LockOSThread() // Required to use the thread keyring
-	defer runtime.UnlockOSThread()
+	defer runtime.LockOSThread()
 
 	err := s.testAddKey(c, &testAddKeyParams{
 		key:       testutil.DecodeHexString(c, "f72a1c45f27c9b12a0374e4ec00ad6702dd4c7a85f0be6577ef5cc67580f5de3"),
@@ -242,8 +242,7 @@ func (s *keyringSuite) TestSearchKey(c *C) {
 }
 
 func (s *keyringSuite) TestSearchKeyDifferentKeyring(c *C) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	s.LockOSThread() // Required to use the thread keyring.
 
 	err := s.testSearchKey(c, &testSearchKeyParams{
 		keyringId: ThreadKeyring,
@@ -274,8 +273,7 @@ func (s *keyringSuite) TestSearchKeyDifferentDesc(c *C) {
 }
 
 func (s *keyringSuite) TestSearchKeyWithDestination(c *C) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	s.LockOSThread() // Required to use the thread keyring.
 
 	err := s.testSearchKey(c, &testSearchKeyParams{
 		keyringId:         ProcessKeyring,
@@ -320,8 +318,7 @@ func (s *keyringSuite) testGetKeyringID(c *C, id KeyID) error {
 }
 
 func (s *keyringSuite) TestGetKeyringID(c *C) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	s.LockOSThread() // Required to use the thread keyring.
 
 	c.Check(s.testGetKeyringID(c, ThreadKeyring), IsNil)
 }
@@ -353,8 +350,7 @@ func (s *keyringSuite) testLinkKey(c *C, params *testLinkKeyParams) error {
 }
 
 func (s *keyringSuite) TestLinkKey1(c *C) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	s.LockOSThread() // Required to use the thread keyring.
 
 	c.Check(s.testLinkKey(c, &testLinkKeyParams{
 		creationKeyringId:   ProcessKeyring,
@@ -363,8 +359,7 @@ func (s *keyringSuite) TestLinkKey1(c *C) {
 }
 
 func (s *keyringSuite) TestLinkKey2(c *C) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	s.LockOSThread() // Required to use the thread keyring.
 
 	c.Check(s.testLinkKey(c, &testLinkKeyParams{
 		creationKeyringId:   ThreadKeyring,
@@ -400,8 +395,7 @@ func (s *keyringSuite) TestUnlinkKey1(c *C) {
 }
 
 func (s *keyringSuite) TestUnlinkKey2(c *C) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	s.LockOSThread() // Required to use the thread keyring.
 
 	s.testUnlinkKey(c, ThreadKeyring)
 }
