@@ -322,11 +322,22 @@ func (a HashAlg) MarshalASN1(b *cryptobyte.Builder) {
 }
 
 type kdfParams struct {
-	Type   string  `json:"type"`
-	Time   int     `json:"time"`
-	Memory int     `json:"memory"`
-	CPUs   int     `json:"cpus"`
-	Hash   HashAlg `json:"hash"`
+	Type string `json:"type"` // The KDF algorithm
+
+	// Time is the time cost, which specifies the number of
+	// iterations of the KDF. Used for both argon2 and
+	// pbkdf2.
+	Time int `json:"time"`
+
+	// Memory is the memory cost, used only by argon2.
+	Memory int `json:"memory"`
+
+	// CPUs is the number of threads for argon2 only.
+	CPUs int `json:"cpus"`
+
+	// Hash is the digest algorithm to use, used only
+	// by pbkdf2.
+	Hash HashAlg `json:"hash"`
 }
 
 // kdfData corresponds to the arguments to a KDF and matches the
