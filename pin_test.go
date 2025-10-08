@@ -99,5 +99,5 @@ func (s *pinSuite) TestPINInvalidChars(c *C) {
 
 func (s *pinSuite) TestPINStringError(c *C) {
 	pin := MakePIN(8, []byte{0xff, 0xff, 0xff, 0xff})
-	c.Check(func() { pin.String() }, PanicMatches, `PIN length and value inconsistent`)
+	c.Check(func() { _ = pin.String() }, PanicMatches, `PIN length and value inconsistent`)
 }
