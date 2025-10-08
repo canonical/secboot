@@ -44,7 +44,7 @@ func (s *containerSuite) SetUpTest(c *C) {
 var _ = Suite(&containerSuite{})
 
 func (s *containerSuite) TestFindStorageContainer1(c *C) {
-	expectedContainer := newMockStorageContainer("/dev/sda1")
+	expectedContainer := newMockStorageContainer("", "")
 	s.backend.addContainer("/dev/sda1", expectedContainer)
 
 	expectedCtx := context.Background()
@@ -57,7 +57,7 @@ func (s *containerSuite) TestFindStorageContainer1(c *C) {
 }
 
 func (s *containerSuite) TestFindStorageContainer2(c *C) {
-	expectedContainer := newMockStorageContainer("/dev/vdb2")
+	expectedContainer := newMockStorageContainer("", "")
 	s.backend.addContainer("/dev/vdb2", expectedContainer)
 
 	expectedCtx := context.Background()
@@ -104,7 +104,7 @@ func (s *containerSuite) TestFindStorageContainerProbeError2(c *C) {
 }
 
 func (s *containerSuite) TestFindActivatedStorageContainer1(c *C) {
-	expectedContainer := newMockStorageContainer("/dev/dm-1")
+	expectedContainer := newMockStorageContainer("", "")
 	s.backend.addActivatedContainer("/dev/dm-1", expectedContainer)
 
 	expectedCtx := context.Background()
@@ -117,7 +117,7 @@ func (s *containerSuite) TestFindActivatedStorageContainer1(c *C) {
 }
 
 func (s *containerSuite) TestFindActivatedStorageContainer2(c *C) {
-	expectedContainer := newMockStorageContainer("/dev/dm-3")
+	expectedContainer := newMockStorageContainer("", "")
 	s.backend.addActivatedContainer("/dev/dm-3", expectedContainer)
 
 	expectedCtx := context.Background()

@@ -27,7 +27,7 @@ jobs:
     - name: Install dependencies
       run: |
           sudo apt-get update
-          sudo apt-get install -y sbsigntool
+          sudo apt-get install -y sbsigntool libkeyutils-dev
           sudo snap install core core18
           sudo snap install tpm2-simulator-chrisccoulson
     - name: Build

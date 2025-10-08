@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021 Canonical Ltd
+ * Copyright (C) 2025 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -17,32 +17,24 @@
  *
  */
 
-package testutil
+// Package forcesessioninit should be imported by applications that want to
+// unconditionally join a new anonymous session keyring before the go runtime starts.
+package forcesessioninit
 
-import (
-	"encoding/binary"
-
-	"golang.org/x/sys/unix"
-
-	. "gopkg.in/check.v1"
-)
-
-const (
-	sessionKeyring = -3
-	UserKeyring    = -4
-)
-
-func GetKeyringKeys(c *C, keyringId int) (out []int) {
-	n, err := unix.KeyctlBuffer(unix.KEYCTL_READ, keyringId, nil, 0)
-	c.Assert(err, IsNil)
-	buf := make([]byte, n)
-	_, err = unix.KeyctlBuffer(unix.KEYCTL_READ, keyringId, buf, 0)
-	c.Assert(err, IsNil)
-
-	for len(buf) > 0 {
-		id := int(binary.LittleEndian.Uint32(buf[0:4]))
-		buf = buf[4:]
-		out = append(out, id)
+/*
+#cgo LDFLAGS: -lkeyutils
+#include <errno.h>
+#include <keyutils.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+__attribute__((constructor))
+void force_init_session_keyring() {
+	key_serial_t res;
+	if ((res = keyctl_join_session_keyring(NULL)) < 0) {
+		fprintf(stderr, "FATAL: Cannot join anonymous session keyring (%s)\n", strerror(errno));
+		_exit(1);
 	}
-	return out
 }
+*/
+import "C"
