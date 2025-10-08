@@ -157,7 +157,7 @@ var maybeCheckAndPrepareAttachedKeyring = func(id KeyID) (unlockOSThreadIfNeeded
 		runtimeUnlockOSThread()
 	}()
 
-	if _, err := GetKeyringID(id); err != nil {
+	if _, err := internalGetKeyringID(id); err != nil {
 		return nil, err
 	}
 
@@ -311,24 +311,7 @@ var (
 	sessionKeyringID KeyID
 )
 
-// GetKeyringID returns the real keyring ID for the supplied special keyring
-// ID. The underlying system call supports a "create" argument. That isn't
-// exposed here (this function passes create=false unless the supplied keyring
-// ID is the thread keyring). It isn't appropriate to create and attach a
-// process keyring from the go runtime because these must be created in a
-// single threaded environment. If the supplied keyring ID is the thread
-// keyring, then the thread keyring is created if there isn't already one
-// attached to the calling OS thread. Note that thread keyring usage requires
-// the goroutine to be locked to a single OS thread. If the keyring ID
-// corresponds to the session keyring, then the user session keyring will be
-// attached as the session keyring for the calling OS thread if there isn't
-// already a session keyring. This is a safe default because it means that
-// every goroutine will see the same session keyring. It is not appropriate
-// to create and join a new anonymous session keyring (which is what
-// create=true would do) from the go runtime because this would mean the
-// session keyring a goroutine could access would depend on the OS thread it
-// is executing on.
-func GetKeyringID(id KeyID) (KeyID, error) {
+var internalGetKeyringID = func(id KeyID) (KeyID, error) {
 	create := false
 	if id == ThreadKeyring {
 		create = true
@@ -373,6 +356,27 @@ func GetKeyringID(id KeyID) (KeyID, error) {
 	}
 
 	return KeyID(realId), nil
+}
+
+// GetKeyringID returns the real keyring ID for the supplied special keyring
+// ID. The underlying system call supports a "create" argument. That isn't
+// exposed here (this function passes create=false unless the supplied keyring
+// ID is the thread keyring). It isn't appropriate to create and attach a
+// process keyring from the go runtime because these must be created in a
+// single threaded environment. If the supplied keyring ID is the thread
+// keyring, then the thread keyring is created if there isn't already one
+// attached to the calling OS thread. Note that thread keyring usage requires
+// the goroutine to be locked to a single OS thread. If the keyring ID
+// corresponds to the session keyring, then the user session keyring will be
+// attached as the session keyring for the calling OS thread if there isn't
+// already a session keyring. This is a safe default because it means that
+// every goroutine will see the same session keyring. It is not appropriate
+// to create and join a new anonymous session keyring (which is what
+// create=true would do) from the go runtime because this would mean the
+// session keyring a goroutine could access would depend on the OS thread it
+// is executing on.
+func GetKeyringID(id KeyID) (KeyID, error) {
+	return internalGetKeyringID(id)
 }
 
 // LinkKey links the key with the specified ID into the keyring with

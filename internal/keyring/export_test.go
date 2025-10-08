@@ -20,6 +20,7 @@
 package keyring
 
 var (
+	InternalGetKeyringID                = internalGetKeyringID
 	MaybeCheckAndPrepareAttachedKeyring = maybeCheckAndPrepareAttachedKeyring
 	ProcessSyscallError                 = processSyscallError
 )
@@ -38,6 +39,14 @@ func SetSessionKeyringID(id KeyID) {
 
 func GetSessionKeyringID() KeyID {
 	return sessionKeyringID
+}
+
+func MockInternalGetKeyringID(fn func(KeyID) (KeyID, error)) (restore func()) {
+	orig := internalGetKeyringID
+	internalGetKeyringID = fn
+	return func() {
+		internalGetKeyringID = orig
+	}
 }
 
 func MockMaybeCheckAndPrepareAttachedKeyring(fn func(KeyID) (func(), error)) (restore func()) {

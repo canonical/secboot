@@ -21,7 +21,10 @@ package keyring_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
+	"math"
 	"os"
 	"runtime"
 	"sort"
@@ -197,6 +200,57 @@ func (s *keyringSuite) TestMaybeCheckAndPrepareAttachedKeyringProcessKeyring(c *
 
 	unlockOSThreadIfNeeded()
 	c.Check(lockCount, Equals, 0)
+}
+
+func (s *keyringSuite) TestMaybeCheckAndPrepareAttachedKeyringProcessKeyringNotCreatedYet(c *C) {
+	var lockCount int
+	restore := MockRuntimeLockOSThread(func() {
+		runtime.LockOSThread()
+		lockCount += 1
+	})
+	defer restore()
+
+	restore = MockRuntimeUnlockOSThread(func() {
+		runtime.UnlockOSThread()
+		lockCount -= 1
+	})
+	defer restore()
+
+	// Mock internalGetKeyringID to swap ProcessKeyring with an ID that
+	// doesn't exist.
+	var b [4]byte
+	_, err := rand.Read(b[:])
+	c.Assert(err, IsNil)
+	mockId := binary.BigEndian.Uint32(b[:])
+	mockId &= math.MaxInt32 // Only special IDs can be negative
+	for {
+		if mockId&0x80000000 != 0 || mockId == 0 {
+			mockId = 1
+		}
+		if _, err := GetKeyringID(KeyID(mockId)); err == ErrKeyNotExist {
+			break
+		}
+		mockId += 1
+	}
+
+	restore = MockInternalGetKeyringID(func(id KeyID) (KeyID, error) {
+		if id == ProcessKeyring {
+			id = KeyID(mockId)
+		}
+		return InternalGetKeyringID(id)
+	})
+	defer restore()
+
+	SetProcessKeyringID(0)
+	SetSessionKeyringID(0)
+
+	_, err = MaybeCheckAndPrepareAttachedKeyring(ProcessKeyring)
+	c.Check(err, ErrorMatches, `cannot complete operation because a specified key does not exist`)
+	c.Check(err, Equals, ErrKeyNotExist)
+	c.Check(lockCount, Equals, 0)
+
+	c.Check(GetProcessKeyringID(), Equals, KeyID(0))
+	c.Check(GetSessionKeyringID(), Equals, KeyID(0))
 }
 
 func (s *keyringSuite) TestMaybeCheckAndPrepareAttachedKeyringProcessKeyringPanicsOnChange(c *C) {
