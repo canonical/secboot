@@ -493,7 +493,7 @@ const (
 	KeyUserViewPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyUserRole)
 
 	// KeyUserReadPerm is the owner read permission.
-	KeyUserReadPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyUserRole)
+	KeyUserReadPerm KeyPerm = KeyPerm(KeyReadPerm) << KeyPerm(KeyUserRole)
 
 	// KeyUserWritePerm is the owner write permission.
 	KeyUserWritePerm KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyUserRole)
@@ -514,7 +514,7 @@ const (
 	KeyGroupViewPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyGroupRole)
 
 	// KeyGroupReadPerm is the group read permission.
-	KeyGroupReadPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyGroupRole)
+	KeyGroupReadPerm KeyPerm = KeyPerm(KeyReadPerm) << KeyPerm(KeyGroupRole)
 
 	// KeyGroupWritePerm is the group write permission.
 	KeyGroupWritePerm KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyGroupRole)
@@ -535,7 +535,7 @@ const (
 	KeyOtherViewPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyOtherRole)
 
 	// KeyOtherReadPerm is the third-party read permission.
-	KeyOtherReadPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyOtherRole)
+	KeyOtherReadPerm KeyPerm = KeyPerm(KeyReadPerm) << KeyPerm(KeyOtherRole)
 
 	// KeyOtherWritePerm is the third-party write permission.
 	KeyOtherWritePerm KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyOtherRole)

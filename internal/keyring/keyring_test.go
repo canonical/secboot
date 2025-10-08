@@ -708,3 +708,46 @@ func (s *keyringSuite) TestUnlinkKey2(c *C) {
 func (s *keyringSuite) TestUnlinkKeyError(c *C) {
 	c.Check(UnlinkKey(UserKeyring, ProcessKeyring), Equals, ErrKeyNotExist)
 }
+
+func (s *keyringSuite) TestKeyPermString(c *C) {
+	perm := KeyPossessorAllPerms | KeyUserViewPerm
+	c.Check(perm.String(), Equals, "--alswrv|-------v|--------|--------")
+
+	perm = KeyPossessorLinkPerm | KeyPossessorSearchPerm | KeyPossessorWritePerm | KeyPossessorReadPerm | KeyPossessorViewPerm | KeyUserAllPerms
+	c.Check(perm.String(), Equals, "---lswrv|--alswrv|--------|--------")
+
+	perm = KeyPossessorAllPerms | KeyUserReadPerm | KeyUserViewPerm
+	c.Check(perm.String(), Equals, "--alswrv|------rv|--------|--------")
+
+	perm = KeyPossessorAllPerms | KeyUserSearchPerm | KeyUserReadPerm | KeyUserViewPerm | KeyGroupViewPerm | KeyOtherViewPerm
+	c.Check(perm.String(), Equals, "--alswrv|----s-rv|-------v|-------v")
+}
+
+func (s *keyringSuite) TestKeyDescriptionString(c *C) {
+	desc := KeyDescription{
+		Type: UserKeyType,
+		UID:  1001,
+		GID:  1001,
+		Perm: KeyPossessorAllPerms | KeyUserViewPerm,
+		Desc: "foo",
+	}
+	c.Check(desc.String(), Equals, "--alswrv|-------v|--------|-------- 1001 1001 user: foo")
+
+	desc = KeyDescription{
+		Type: KeyringKeyType,
+		UID:  1000,
+		GID:  1000,
+		Perm: KeyPossessorLinkPerm | KeyPossessorSearchPerm | KeyPossessorWritePerm | KeyPossessorReadPerm | KeyPossessorViewPerm | KeyUserAllPerms,
+		Desc: "_uid.1000",
+	}
+	c.Check(desc.String(), Equals, "---lswrv|--alswrv|--------|-------- 1000 1000 keyring: _uid.1000")
+
+	desc = KeyDescription{
+		Type: KeyringKeyType,
+		UID:  0,
+		GID:  0,
+		Perm: KeyPossessorAllPerms | KeyUserReadPerm | KeyUserViewPerm,
+		Desc: "_ses",
+	}
+	c.Check(desc.String(), Equals, "--alswrv|------rv|--------|-------- 0 0 keyring: _ses")
+}
