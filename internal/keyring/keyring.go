@@ -411,25 +411,56 @@ func UnlinkKey(id, keyringId KeyID) error {
 	return processSyscallError(err)
 }
 
+// See include/linux/key.h in the kernel tree for definitions of
+// key permission constants.
+
+// KeyRole is used to select the permissions for a key.
 type KeyRole int
 
 const (
+	// KeyPossessorRole selects the possessor permissions of a key.
 	KeyPossessorRole KeyRole = 24
-	KeyUserRole      KeyRole = 16
-	KeyGroupRole     KeyRole = 8
-	KeyOtherRole     KeyRole = 0
+
+	// KeyUserRole selects the owner permissions of a key.
+	KeyUserRole KeyRole = 16
+
+	// KeyGroupRole selects the group permissions of a key.
+	KeyGroupRole KeyRole = 8
+
+	// KeyOtherRole selects the third-party permissions of a key.
+	KeyOtherRole KeyRole = 0
 )
 
+// KeyRolePerm are individual permissions for a key.
 type KeyRolePerm uint8
 
 const (
+	// KeyViewPerm corresponds to the view permission, required to
+	// see the public attributes of a key.
 	KeyViewPerm KeyRolePerm = 1 << iota
+
+	// KeyReadPerm corresponds to the read permission, required to
+	// read the contents of a key.
 	KeyReadPerm
+
+	// KeyWritePerm corresponds to the write permission, required to
+	// update the contents of a key.
 	KeyWritePerm
+
+	// KeySearchPerm corresponds to the search permission, required to
+	// be able to search for a key or invalidate it.
 	KeySearchPerm
+
+	// KeyLinkPerm corresponds to the link permission, required to be
+	// able to link the key into a keyring.
 	KeyLinkPerm
+
+	// KeySetAttrPerm corresponds to the set attribute permission,
+	// required to be able to change a key's owner or permissions,
+	// revoke it or set its timeout.
 	KeySetAttrPerm
 
+	// KeyAllPerms corresponds to all permissions.
 	KeyAllPerms KeyRolePerm = 0x3f
 )
 
@@ -437,37 +468,89 @@ const (
 type KeyPerm uint32
 
 const (
-	KeyPossessorViewPerm    KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyPossessorRole)
-	KeyPossessorReadPerm    KeyPerm = KeyPerm(KeyReadPerm) << KeyPerm(KeyPossessorRole)
-	KeyPossessorWritePerm   KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyPossessorRole)
-	KeyPossessorSearchPerm  KeyPerm = KeyPerm(KeySearchPerm) << KeyPerm(KeyPossessorRole)
-	KeyPossessorLinkPerm    KeyPerm = KeyPerm(KeyLinkPerm) << KeyPerm(KeyPossessorRole)
+	// KeyPossessorViewPerm is the possessor view permission.
+	KeyPossessorViewPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyPossessorRole)
+
+	// KeyPossessorReadPerm is the possessor read permission.
+	KeyPossessorReadPerm KeyPerm = KeyPerm(KeyReadPerm) << KeyPerm(KeyPossessorRole)
+
+	// KeyPossessorWritePerm is the possessor write permission.
+	KeyPossessorWritePerm KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyPossessorRole)
+
+	// KeyPossessorSearchPerm is the possessor search permission.
+	KeyPossessorSearchPerm KeyPerm = KeyPerm(KeySearchPerm) << KeyPerm(KeyPossessorRole)
+
+	// KeyPossessorLinkPerm is the possessor link permission.
+	KeyPossessorLinkPerm KeyPerm = KeyPerm(KeyLinkPerm) << KeyPerm(KeyPossessorRole)
+
+	// KeyPossessorSetAttrPerm is the possessor set attribute permission.
 	KeyPossessorSetAttrPerm KeyPerm = KeyPerm(KeySetAttrPerm) << KeyPerm(KeyPossessorRole)
-	KeyPossessorAllPerms    KeyPerm = KeyPerm(KeyAllPerms) << KeyPerm(KeyPossessorRole)
 
-	KeyUserViewPerm    KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyUserRole)
-	KeyUserReadPerm    KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyUserRole)
-	KeyUserWritePerm   KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyUserRole)
-	KeyUserSearchPerm  KeyPerm = KeyPerm(KeySearchPerm) << KeyPerm(KeyUserRole)
-	KeyUserLinkPerm    KeyPerm = KeyPerm(KeyLinkPerm) << KeyPerm(KeyUserRole)
+	// KeyPossessorAllPerms corresponds to all possessor permissions.
+	KeyPossessorAllPerms KeyPerm = KeyPerm(KeyAllPerms) << KeyPerm(KeyPossessorRole)
+
+	// KeyUserViewPerm is the owner view permission.
+	KeyUserViewPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyUserRole)
+
+	// KeyUserReadPerm is the owner read permission.
+	KeyUserReadPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyUserRole)
+
+	// KeyUserWritePerm is the owner write permission.
+	KeyUserWritePerm KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyUserRole)
+
+	// KeyUserSearchPerm is the owner search permission.
+	KeyUserSearchPerm KeyPerm = KeyPerm(KeySearchPerm) << KeyPerm(KeyUserRole)
+
+	// KeyUserLinkPerm is the owner link permission.
+	KeyUserLinkPerm KeyPerm = KeyPerm(KeyLinkPerm) << KeyPerm(KeyUserRole)
+
+	// KeyUserSetAttrPerm is the owner set attribute permission.
 	KeyUserSetAttrPerm KeyPerm = KeyPerm(KeySetAttrPerm) << KeyPerm(KeyUserRole)
-	KeyUserAllPerms    KeyPerm = KeyPerm(KeyAllPerms) << KeyPerm(KeyUserRole)
 
-	KeyGroupViewPerm    KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyGroupRole)
-	KeyGroupReadPerm    KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyGroupRole)
-	KeyGroupWritePerm   KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyGroupRole)
-	KeyGroupSearchPerm  KeyPerm = KeyPerm(KeySearchPerm) << KeyPerm(KeyGroupRole)
-	KeyGroupLinkPerm    KeyPerm = KeyPerm(KeyLinkPerm) << KeyPerm(KeyGroupRole)
+	// KeyUserAllPerms corresponds to all owner permissions.
+	KeyUserAllPerms KeyPerm = KeyPerm(KeyAllPerms) << KeyPerm(KeyUserRole)
+
+	// KeyGroupViewPerm is the group view permission.
+	KeyGroupViewPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyGroupRole)
+
+	// KeyGroupReadPerm is the group read permission.
+	KeyGroupReadPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyGroupRole)
+
+	// KeyGroupWritePerm is the group write permission.
+	KeyGroupWritePerm KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyGroupRole)
+
+	// KeyGroupSearchPerm is the group search permission.
+	KeyGroupSearchPerm KeyPerm = KeyPerm(KeySearchPerm) << KeyPerm(KeyGroupRole)
+
+	// KeyGroupLinkPerm is the group link permission.
+	KeyGroupLinkPerm KeyPerm = KeyPerm(KeyLinkPerm) << KeyPerm(KeyGroupRole)
+
+	// KeyGroupSetAttrPerm is the group set attribute permission.
 	KeyGroupSetAttrPerm KeyPerm = KeyPerm(KeySetAttrPerm) << KeyPerm(KeyGroupRole)
-	KeyGroupAllPerms    KeyPerm = KeyPerm(KeyAllPerms) << KeyPerm(KeyGroupRole)
 
-	KeyOtherViewPerm    KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyOtherRole)
-	KeyOtherReadPerm    KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyOtherRole)
-	KeyOtherWritePerm   KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyOtherRole)
-	KeyOtherSearchPerm  KeyPerm = KeyPerm(KeySearchPerm) << KeyPerm(KeyOtherRole)
-	KeyOtherLinkPerm    KeyPerm = KeyPerm(KeyLinkPerm) << KeyPerm(KeyOtherRole)
+	// KeyGroupAllPerms corresponds to all group permissions.
+	KeyGroupAllPerms KeyPerm = KeyPerm(KeyAllPerms) << KeyPerm(KeyGroupRole)
+
+	// KeyOtherViewPerm is the third-party view permission.
+	KeyOtherViewPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyOtherRole)
+
+	// KeyOtherReadPerm is the third-party read permission.
+	KeyOtherReadPerm KeyPerm = KeyPerm(KeyViewPerm) << KeyPerm(KeyOtherRole)
+
+	// KeyOtherWritePerm is the third-party write permission.
+	KeyOtherWritePerm KeyPerm = KeyPerm(KeyWritePerm) << KeyPerm(KeyOtherRole)
+
+	// KeyOtherSearchPerm is the third-party search permission.
+	KeyOtherSearchPerm KeyPerm = KeyPerm(KeySearchPerm) << KeyPerm(KeyOtherRole)
+
+	// KeyOtherLinkPerm is the third-party link permission.
+	KeyOtherLinkPerm KeyPerm = KeyPerm(KeyLinkPerm) << KeyPerm(KeyOtherRole)
+
+	// KeyOtherSetAttrPerm is the third-party set attribute permission.
 	KeyOtherSetAttrPerm KeyPerm = KeyPerm(KeySetAttrPerm) << KeyPerm(KeyOtherRole)
-	KeyOtherAllPerms    KeyPerm = KeyPerm(KeyAllPerms) << KeyPerm(KeyOtherRole)
+
+	// KeyOtherAllPerms corresponds to all third-party permissions.
+	KeyOtherAllPerms KeyPerm = KeyPerm(KeyAllPerms) << KeyPerm(KeyOtherRole)
 )
 
 // String implements [fmt.Stringer].
