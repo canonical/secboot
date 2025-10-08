@@ -413,7 +413,7 @@ func (s *cryptSuite) SetUpTest(c *C) {
 	s.keyDataTestBase.SetUpTest(c)
 	s.KeyringTestBase.SetUpTest(c)
 
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 

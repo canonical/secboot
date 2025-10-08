@@ -158,6 +158,30 @@ func (s *platformSuite) TestRecoverKeysWithBadPassphraseIntegrated(c *C) {
 	c.Check(err, Equals, secboot.ErrInvalidPassphrase)
 }
 
+func (s *platformSuite) TestRecoverKeysWithPassphraseTPMLockoutIntegrated(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "bar",
+	}
+
+	passphraseParams := &PassphraseProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, _, _, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	// Put the TPM in DA lockout mode. Keys without user auth should still be recoverable.
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+
+	_, _, err = k.RecoverKeysWithPassphrase("passphrase")
+	c.Check(err, ErrorMatches, `the platform's secure device is unavailable: the TPM is in DA lockout mode`)
+	c.Check(err, testutil.ConvertibleTo, &secboot.PlatformDeviceUnavailableError{})
+}
+
 func (s *platformSuite) TestChangePassphraseIntegrated(c *C) {
 	params := &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
@@ -201,6 +225,120 @@ func (s *platformSuite) TestChangePassphraseWithBadPassphraseIntegrated(c *C) {
 	c.Check(k.ChangePassphrase("1234", "1234"), Equals, secboot.ErrInvalidPassphrase)
 
 	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
+	c.Check(err, IsNil)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+}
+
+func (s *platformSuite) TestRecoverKeysWithPINIntegrated(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "bar",
+	}
+
+	pinParams := &PINProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPINProtectedKey(s.TPM(), pinParams, makePIN(c, "1234"))
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPIN(makePIN(c, "1234"))
+	c.Check(err, IsNil)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+}
+
+func (s *platformSuite) TestRecoverKeysWithBadPINIntegrated(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "bar",
+	}
+
+	pinParams := &PINProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, _, _, err := NewTPMPINProtectedKey(s.TPM(), pinParams, makePIN(c, "1234"))
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	_, _, err = k.RecoverKeysWithPIN(makePIN(c, "01234"))
+	c.Check(err, Equals, secboot.ErrInvalidPIN)
+}
+
+func (s *platformSuite) TestRecoverKeysWithPINTPMLockoutIntegrated(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "bar",
+	}
+
+	pinParams := &PINProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, _, _, err := NewTPMPINProtectedKey(s.TPM(), pinParams, makePIN(c, "1234"))
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	// Put the TPM in DA lockout mode. Keys without user auth should still be recoverable.
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+
+	_, _, err = k.RecoverKeysWithPIN(makePIN(c, "1234"))
+	c.Check(err, ErrorMatches, `the platform's secure device is unavailable: the TPM is in DA lockout mode`)
+	c.Check(err, testutil.ConvertibleTo, &secboot.PlatformDeviceUnavailableError{})
+}
+
+func (s *platformSuite) TestChangePINIntegrated(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "foo",
+	}
+
+	pinParams := &PINProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPINProtectedKey(s.TPM(), pinParams, makePIN(c, "1234"))
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	c.Check(k.ChangePIN(makePIN(c, "1234"), makePIN(c, "23456789")), IsNil)
+
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPIN(makePIN(c, "23456789"))
+	c.Check(err, IsNil)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+}
+
+func (s *platformSuite) TestChangePINWithBadPINIntegrated(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "foo",
+	}
+
+	pinParams := &PINProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPINProtectedKey(s.TPM(), pinParams, makePIN(c, "1234"))
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	c.Check(k.ChangePIN(makePIN(c, "0000"), makePIN(c, "23456789")), Equals, secboot.ErrInvalidPIN)
+
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPIN(makePIN(c, "1234"))
 	c.Check(err, IsNil)
 	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
 	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
