@@ -145,6 +145,10 @@ func (p PIN) Bytes() []byte {
 	}
 
 	if dst[0] == 0x80 {
+		// When we allocated the destination buffer, we allocated the largest number
+		// of bytes required for the source size. If the upper bits of the most
+		// significant source byte which flow into the most-significant destination
+		// byte are all zero, then remove the most-significant destination byte.
 		dst = dst[1:]
 	}
 
