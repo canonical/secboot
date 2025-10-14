@@ -28,18 +28,24 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 	"github.com/snapcore/secboot/internal/paths"
 )
 
 const (
-	NilHash = nilHash
+	KeyringKeyPurposeAuxiliary = keyringKeyPurposeAuxiliary
+	NilHash                    = nilHash
 )
 
 var (
 	AcquireArgon2OutOfProcessHandlerSystemLock    = acquireArgon2OutOfProcessHandlerSystemLock
+	AddKeyToUserKeyring                           = addKeyToUserKeyring
+	AddKeyToUserKeyringLegacy                     = addKeyToUserKeyringLegacy
 	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	FormatKeyringKeyDesc                          = formatKeyringKeyDesc
+	ParseKeyringKeyDesc                           = parseKeyringKeyDesc
 	StorageContainerHandlers                      = storageContainerHandlers
 	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys                        = unmarshalProtectedKeys
@@ -83,6 +89,14 @@ func MockArgon2SysLockStderr(w io.Writer) (restore func()) {
 	argon2SysLockStderr = w
 	return func() {
 		argon2SysLockStderr = orig
+	}
+}
+
+func MockKeyringAddKey(fn func([]byte, keyring.KeyType, string, keyring.KeyID) (keyring.KeyID, error)) (restore func()) {
+	orig := keyringAddKey
+	keyringAddKey = fn
+	return func() {
+		keyringAddKey = orig
 	}
 }
 

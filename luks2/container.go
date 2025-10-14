@@ -167,6 +167,11 @@ func (c *storageContainerImpl) Path() string {
 	return c.path
 }
 
+// CredentialName implements [secboot.StorageContainer.CredentialName]
+func (c *storageContainerImpl) CredentialName() string {
+	return c.path
+}
+
 // BackendName implements [secboot.StorageContainer.BackendName]
 func (c *storageContainerImpl) BackendName() string {
 	return storageContainerBackendName
