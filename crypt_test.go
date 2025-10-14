@@ -420,7 +420,7 @@ func (s *cryptSuite) SetUpTest(c *C) {
 	restore := MockKeyringAddKey(s.AddKeyNoCheck)
 	s.AddCleanup(restore)
 
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 

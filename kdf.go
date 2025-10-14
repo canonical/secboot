@@ -19,8 +19,10 @@
 
 package secboot
 
+import "time"
+
 // KDFOptions is an interface for supplying options for different
 // key derivation functions
 type KDFOptions interface {
-	kdfParams(keyLen uint32) (*kdfParams, error)
+	kdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*kdfParams, error)
 }
