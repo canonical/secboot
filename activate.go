@@ -433,7 +433,19 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		// 3) See if it decodes as a recovery key, and try it against every recovery keyslot.
 
 		recoveryKey, err := ParseRecoveryKey(cred)
-		if err == nil {
+		switch {
+		case err != nil && authType == UserAuthTypeRecoveryKey:
+			// We are only expecting a recovery key and the user supplied a badly
+			// formatted one. We can log this to stderr and allow them another
+			// attempt.
+			// XXX: Maybe display a notice in Plymouth for this case in the
+			// future.
+			fmt.Fprintf(m.stderr, "Cannot parse recovery key: %v\n", err)
+		case err != nil:
+			// The user supplied credential isn't a valid recovery key, but it
+			// could be a valid PIN or passphrase, so ignore the error in this
+			// case.
+		default:
 			// This is a valid recovery key
 			recoveryKeyTries -= 1
 			if slot := m.tryRecoveryKeyslotsHelper(ctx, recoverySlotRecords, recoveryKey); slot != nil {
