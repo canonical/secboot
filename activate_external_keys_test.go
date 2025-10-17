@@ -20,6 +20,8 @@
 package secboot_test
 
 import (
+	"io"
+
 	. "github.com/snapcore/secboot"
 	. "gopkg.in/check.v1"
 )
@@ -29,17 +31,25 @@ type activateExternalKeysSuite struct{}
 var _ = Suite(&activateExternalKeysSuite{})
 
 func (*activateExternalKeysSuite) TestNewExternalKeyData(c *C) {
-	r := new(FileKeyDataReader)
+	r := newMockKeyDataReader("", []byte("foo mock key data"))
 	data := NewExternalKeyData("foo", r)
 	c.Assert(data, NotNil)
 	c.Check(data.Name(), Equals, "foo")
-	c.Check(data.Data(), Equals, r)
+	c.Check(data.ReadableName(), Equals, "foo")
+
+	b, err := io.ReadAll(r)
+	c.Check(err, IsNil)
+	c.Check(b, DeepEquals, []byte("foo mock key data"))
 }
 
 func (*activateExternalKeysSuite) TestNewExternalKeyDataDifferentName(c *C) {
-	r := new(FileKeyDataReader)
+	r := newMockKeyDataReader("", []byte("bar mock key data"))
 	data := NewExternalKeyData("bar", r)
 	c.Assert(data, NotNil)
 	c.Check(data.Name(), Equals, "bar")
-	c.Check(data.Data(), Equals, r)
+	c.Check(data.ReadableName(), Equals, "bar")
+
+	b, err := io.ReadAll(r)
+	c.Check(err, IsNil)
+	c.Check(b, DeepEquals, []byte("bar mock key data"))
 }

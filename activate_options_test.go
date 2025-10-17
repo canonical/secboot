@@ -50,6 +50,27 @@ type activateOptionsSuite struct{}
 
 var _ = Suite(&activateOptionsSuite{})
 
+func (*activateOptionsSuite) TestActivateConfigImpl(c *C) {
+	cfg := make(ActivateConfigImpl)
+
+	k1 := mockActivateConfigKey1("foo")
+	cfg.Set(k1, int(10))
+	k2 := mockActivateConfigKey2{}
+	cfg.Set(k2, "bar")
+
+	v, exists := cfg.Get(k1)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, int(10))
+
+	v, exists = cfg.Get(k2)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, "bar")
+
+	cfg.Set(k1, nil)
+	_, exists = cfg.Get(k1)
+	c.Check(exists, testutil.IsFalse)
+}
+
 func (*activateOptionsSuite) TestActivateConfigGet(c *C) {
 	k := mockActivateConfigKey1("foo")
 

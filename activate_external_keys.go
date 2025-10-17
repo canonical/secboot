@@ -39,6 +39,11 @@ func (*externalKeyslot) Priority() int {
 	return 100
 }
 
+func (s *externalKeyslot) Data() KeyDataReader {
+	// externalKeyslot is already a KeyDataReader.
+	return s
+}
+
 // ExternalKeyData represents external key metadata that is not provided
 // by a [StorageContainer].
 type ExternalKeyData struct {
@@ -60,12 +65,6 @@ func NewExternalKeyData(name string, data KeyDataReader) *ExternalKeyData {
 // Name returns the name associated with this external key metadata.
 func (d *ExternalKeyData) Name() string {
 	return d.name
-}
-
-// Data returns the external key metadata. Note that this will eventually
-// return [io.Reader] rather than [KeyDataReader].
-func (d *ExternalKeyData) Data() KeyDataReader {
-	return d.data
 }
 
 // ReadableName implements [KeyDataReader.ReadableName].

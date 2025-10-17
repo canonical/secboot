@@ -59,9 +59,10 @@ var (
 )
 
 type (
-	ActivateConfigKey = activateConfigKey
-	KdfParams         = kdfParams
-	ProtectedKeys     = protectedKeys
+	ActivateConfigImpl = activateConfig
+	ActivateConfigKey  = activateConfigKey
+	KdfParams          = kdfParams
+	ProtectedKeys      = protectedKeys
 )
 
 func KDFOptionsKdfParams(o KDFOptions, keyLen uint32) (*KdfParams, error) {

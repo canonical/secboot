@@ -36,6 +36,8 @@ import (
 // attempts remaining.
 var ErrCannotActivate = errors.New("cannot activate: no valid keyslots and / or no more passphrase, PIN or recovery key tries remaining")
 
+// errorKeyslot is used to represent a Keyslot in a keyslotAttemptRecord
+// in the case where StorageContainerReader.ReadKeyslot returns an error.
 type errorKeyslot struct {
 	slotType KeyslotType
 	name     string
@@ -119,7 +121,7 @@ type activateOneContainerStateMachine struct {
 
 	err            error                            // The first fatal error for this statemachine
 	status         ActivationStatus                 // Whether and how this container is activated.
-	keyslotRecords map[string]*keyslotAttemptRecord // Keyslot specific status.
+	keyslotRecords map[string]*keyslotAttemptRecord // Keyslot specific status, keyed by keyslot name.
 }
 
 func newActivateOneContainerStateMachine(container StorageContainer, cfg activateConfig) *activateOneContainerStateMachine {
@@ -434,7 +436,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		if err == nil {
 			// This is a valid recovery key
 			recoveryKeyTries -= 1
-			if slot := m.tryRecoveryKeyslots(ctx, recoverySlotRecords, recoveryKey); slot != nil {
+			if slot := m.tryRecoveryKeyslotsHelper(ctx, recoverySlotRecords, recoveryKey); slot != nil {
 				// Success!
 				m.status = ActivationSucceededWithRecoveryKey
 			}
@@ -462,7 +464,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 	return ErrCannotActivate
 }
 
-func (m *activateOneContainerStateMachine) tryRecoveryKeyslots(ctx context.Context, slotRecords keyslotAttemptRecordSlice, recoveryKey RecoveryKey) Keyslot {
+func (m *activateOneContainerStateMachine) tryRecoveryKeyslotsHelper(ctx context.Context, slotRecords keyslotAttemptRecordSlice, recoveryKey RecoveryKey) Keyslot {
 	for _, record := range slotRecords {
 		// XXX: Not sure what to do with errors from Activate yet. The most common error
 		// will be because the recovery key is wrong, but we have no way to know. The API
