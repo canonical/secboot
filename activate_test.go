@@ -1064,6 +1064,8 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyRetryAfterInvalidRecover
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
+		expectedStderr: `Cannot parse recovery key: incorrectly formatted: insufficient characters
+`,
 		expectedAuthRequestName:  "data",
 		expectedAuthRequestPath:  "/dev/sda1",
 		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey, UserAuthTypeRecoveryKey},
