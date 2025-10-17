@@ -119,13 +119,26 @@ type DiskUnlockKey []byte
 // object without having to create a new object.
 type PrimaryKey []byte
 
-// AuthMode corresponds to an authentication mechanism.
+// AuthMode corresponds to an authentication mechanism supported by
+// a KeyData. Only one mode is supported at a time.
 type AuthMode uint8
 
 const (
 	AuthModeNone AuthMode = iota
 	AuthModePassphrase
 )
+
+// String implements [fmt.Stringer].
+func (m AuthMode) String() string {
+	switch m {
+	case AuthModeNone:
+		return "none"
+	case AuthModePassphrase:
+		return "passphrase"
+	default:
+		return fmt.Sprintf("unknown(%d)", int(m))
+	}
+}
 
 // KeyParams provides parameters required to create a new KeyData object.
 // It should be produced by a platform implementation.
@@ -186,6 +199,9 @@ type KeyDataWriter interface {
 
 // KeyDataReader is an interface used to read and decode a KeyData
 // from persistent storage.
+//
+// XXX: This will eventually be removed when the legacy activation API
+// is removed.
 type KeyDataReader interface {
 	io.Reader
 	ReadableName() string
@@ -586,6 +602,9 @@ func (d *KeyData) PlatformName() string {
 
 // ReadableName returns a human-readable name for this key data, useful for
 // including in errors.
+//
+// XXX: This is only used by the legacy activation API and will eventuall be
+// removed along with it and [KeyDataReader].
 func (d *KeyData) ReadableName() string {
 	return d.readableName
 }
@@ -600,7 +619,7 @@ func (d *KeyData) UniqueID() (KeyID, error) {
 	return KeyID(h.Sum(nil)), nil
 }
 
-// AuthMode indicates the authentication mechanisms enabled for this key data.
+// AuthMode indicates the authentication mechanism enabled for this key data.
 func (d *KeyData) AuthMode() (out AuthMode) {
 	switch {
 	case d.data.PassphraseParams != nil:
@@ -733,7 +752,8 @@ func (d *KeyData) WriteAtomic(w KeyDataWriter) error {
 // ReadKeyData reads the key data from the supplied KeyDataReader, returning a
 // new KeyData object.
 //
-// XXX: Eventually this API will take a Keyslot type instead.
+// XXX: This API will take eventually take a [io.Reader] type instead when
+// [KeyDataReader] is removed along with the legacy activation API.
 func ReadKeyData(r KeyDataReader) (*KeyData, error) {
 	d := &KeyData{readableName: r.ReadableName()}
 	dec := json.NewDecoder(r)

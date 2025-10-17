@@ -26,6 +26,7 @@ import (
 
 	"github.com/snapcore/secboot"
 	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/luksview"
 )
 
 // storageContainerReadWriterImpl is the main implementation that backs
@@ -119,35 +120,34 @@ func (s *storageContainerReadWriterImpl) ensureKeyslot(ctx context.Context, name
 		return nil
 	}
 
-	switch ks.keyslotType {
-	case secboot.KeyslotTypeRecovery:
-		// The existing secboot API doesn't expose the LUKS2 keyslot ID for recovery
-		// keys, so we use the luksview package directly, via a bit of an abstraction
-		// so that it can be mocked in unit tests. This will all be cleaned up
-		// eventually once all of this functionality is implemented natively in this
-		// package.
-		//
-		// The new unlocking API will test a recovery key separately against each
-		// individual recovery keyslot, so we know which keyslot is used for unlocking.
-		view, err := newLuksView(ctx, s.container.Path())
-		if err != nil {
-			return fmt.Errorf("cannot obtain new luksview.View: %w", err)
+	// The existing secboot API doesn't expose the LUKS2 keyslot ID for recovery
+	// keys, and we also don't want to create a new KeyDataReader yet for platform
+	// keys, so we use the luksview package directly via a bit of an abstraction
+	// so that it can be mocked in unit tests. This will all be cleaned up
+	// eventually once all of this functionality is implemented natively in this
+	// package.
+	//
+	// The new unlocking API will test a recovery key separately against each
+	// individual recovery keyslot, so we know which keyslot is used for unlocking.
+	view, err := newLuksView(ctx, s.container.Path())
+	if err != nil {
+		return fmt.Errorf("cannot obtain new luksview.View: %w", err)
+	}
+	token, _, inUse := view.TokenByName(name)
+	if !inUse {
+		return fmt.Errorf("no metadata for keyslot %q", name)
+	}
+	ks.keyslotId = token.Keyslots()[0] // luksview guarantees there is always 1 keyslot here.
+	if ks.keyslotType == secboot.KeyslotTypePlatform {
+		// TODO: Once the functionality of luksview is implemented directly in
+		// this package, we'll give recovery keyslots a priority as well. This
+		// makes sense given that a recovery key will be tested separately
+		// against each individual recovery keyslot with the new unlocking API.
+		kdToken, ok := token.(*luksview.KeyDataToken)
+		if !ok {
+			return fmt.Errorf("platform keyslot %q has an invalid token", name)
 		}
-		token, _, inUse := view.TokenByName(name)
-		if !inUse {
-			return fmt.Errorf("no metadata for keyslot %q", name)
-		}
-		ks.keyslotId = token.Keyslots()[0] // luksview guarantees there is always 1 keyslot here.
-	case secboot.KeyslotTypePlatform:
-		r, err := luks2Ops.NewKeyDataReader(s.container.Path(), name)
-		if err != nil {
-			return fmt.Errorf("cannot obtain reader for %q: %w", name, err)
-		}
-		ks.keyslotId = r.KeyslotID()
-		ks.keyslotPriority = r.Priority()
-		ks.keyslotData = r
-	default:
-		panic("not reached")
+		ks.keyslotPriority = kdToken.Priority
 	}
 
 	return nil
@@ -182,7 +182,26 @@ func (s *storageContainerReadWriterImpl) ReadKeyslot(ctx context.Context, name s
 		return nil, err
 	}
 
-	return s.keyslots[name], nil
+	ks := s.keyslots[name]
+
+	// Make a copy of the keyslotImpl so that we can always
+	// attach a new KeyDataReader for platform key slots.
+	// TODO: In a follow-up, just make the keyslots map a
+	// map[string]*luksview.Token so that we cache the
+	// keydata from the token, and then we just wrap it
+	// in a secboot.KeyDataReader and new keyslotImpl here.
+	// This would get rid of the call to secboot.NewLUKS2KeyDataReader.
+	ksCopy := *ks
+
+	if ks.keyslotType == secboot.KeyslotTypePlatform {
+		r, err := luks2Ops.NewKeyDataReader(s.container.Path(), name)
+		if err != nil {
+			return nil, fmt.Errorf("cannot obtain reader for %q: %w", name, err)
+		}
+		ksCopy.keyslotData = r
+	}
+
+	return &ksCopy, nil
 }
 
 // closedStorageContainerReadWriterImpl is an implementation of StorageContainerReader

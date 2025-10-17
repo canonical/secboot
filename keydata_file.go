@@ -32,11 +32,16 @@ import (
 )
 
 // FileKeyDataReader provides a mechanism to read a KeyData from a file.
+// This type will eventually just embed *[ExternalKeyData].
 type FileKeyDataReader struct {
 	readableName string
 	*bytes.Reader
 }
 
+// ReadableName implements [KeyDataReader.ReadableName].
+//
+// XXX: This will be eventually be deleted along with [KeyDataReader] when the
+// legacy activation API is deleted.
 func (r *FileKeyDataReader) ReadableName() string {
 	return r.readableName
 }

@@ -28,6 +28,7 @@ import (
 
 	"github.com/snapcore/secboot"
 	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/internal/luksview"
 	. "github.com/snapcore/secboot/luks2"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 	"golang.org/x/sys/unix"
@@ -96,18 +97,18 @@ func (s *readerSuite) listLUKS2ContainerRecoveryKeyNames(devicePath string) ([]s
 	return out, nil
 }
 
-func (s *readerSuite) newLUKS2KeyDataReader(devicePath, name string) (Luks2KeyDataReader, error) {
+func (s *readerSuite) newLUKS2KeyDataReader(devicePath, name string) (secboot.KeyDataReader, error) {
 	data, exists := s.containerData[devicePath]
 	if !exists {
 		return nil, errors.New("unrecognized device path")
 	}
 
-	r, exists := data.platformKeyslots[name]
+	token, exists := data.platformKeyslots[name]
 	if !exists {
 		return nil, errors.New("unrecognized platform keyslot name")
 	}
 
-	return r, nil
+	return newMockLuks2KeyDataReader(token), nil
 }
 
 func (s *readerSuite) ensureContainerData(path string) {
@@ -123,9 +124,9 @@ func (s *readerSuite) addRecoveryKeyslot(path, name string, slot int) {
 	s.containerData[path].recoveryKeyslots[name] = slot
 }
 
-func (s *readerSuite) addUnlockKeyslot(path, name string, r Luks2KeyDataReader) {
+func (s *readerSuite) addUnlockKeyslot(path string, token *luksview.KeyDataToken) {
 	s.ensureContainerData(path)
-	s.containerData[path].platformKeyslots[name] = r
+	s.containerData[path].platformKeyslots[token.Name()] = token
 }
 
 var _ = Suite(&readerSuite{})
@@ -159,8 +160,8 @@ func (s *readerSuite) TestContainerReaderClose(c *C) {
 
 func (s *readerSuite) TestContainerReaderListKeyslotNames(c *C) {
 	s.addRecoveryKeyslot("/dev/sda1", "default-recovery", 2)
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("", 0, 0, []byte("dummy keyslot metadata1")))
-	s.addUnlockKeyslot("/dev/sda1", "default-fallback", newMockLuks2KeyDataReader("", 1, 0, []byte("dummy keyslot metadata2")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default-fallback", 1, 0, []byte("dummy keyslot metadata2")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -173,8 +174,8 @@ func (s *readerSuite) TestContainerReaderListKeyslotNames(c *C) {
 
 func (s *readerSuite) TestContainerReaderListKeyslotNamesDifferentPath(c *C) {
 	s.addRecoveryKeyslot("/dev/nvme0n1p3", "default-recovery", 2)
-	s.addUnlockKeyslot("/dev/nvme0n1p3", "default", newMockLuks2KeyDataReader("", 0, 0, []byte("dummy keyslot metadata1")))
-	s.addUnlockKeyslot("/dev/nvme0n1p3", "default-fallback", newMockLuks2KeyDataReader("", 1, 0, []byte("dummy keyslot metadata2")))
+	s.addUnlockKeyslot("/dev/nvme0n1p3", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/nvme0n1p3", newKeyDataToken("default-fallback", 1, 0, []byte("dummy keyslot metadata2")))
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	r, err := container.OpenRead(context.Background())
@@ -187,8 +188,8 @@ func (s *readerSuite) TestContainerReaderListKeyslotNamesDifferentPath(c *C) {
 
 func (s *readerSuite) TestContainerReaderListKeyslotNamesDifferentNames(c *C) {
 	s.addRecoveryKeyslot("/dev/sda1", "recovery-1", 2)
-	s.addUnlockKeyslot("/dev/sda1", "normal-1", newMockLuks2KeyDataReader("", 0, 0, []byte("dummy keyslot metadata1")))
-	s.addUnlockKeyslot("/dev/sda1", "normal-2", newMockLuks2KeyDataReader("", 1, 0, []byte("dummy keyslot metadata2")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("normal-1", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("normal-2", 1, 0, []byte("dummy keyslot metadata2")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -201,8 +202,8 @@ func (s *readerSuite) TestContainerReaderListKeyslotNamesDifferentNames(c *C) {
 
 func (s *readerSuite) TestContainerReaderListKeyslotNamesCached(c *C) {
 	s.addRecoveryKeyslot("/dev/sda1", "default-recovery", 2)
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("", 0, 0, []byte("dummy keyslot metadata1")))
-	s.addUnlockKeyslot("/dev/sda1", "default-fallback", newMockLuks2KeyDataReader("", 1, 0, []byte("dummy keyslot metadata2")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default-fallback", 1, 0, []byte("dummy keyslot metadata2")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -241,7 +242,7 @@ func (s *readerSuite) TestContainerReaderListKeyslotNamesClosed(c *C) {
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatform(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -253,7 +254,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatform(c *C) {
 	c.Check(ks.Name(), Equals, "default")
 	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
 	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
@@ -264,8 +264,8 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatform(c *C) {
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentName(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default-fallback", newMockLuks2KeyDataReader("/dev/sda1:default-fallback", 0, 0, []byte("dummy keyslot metadata1")))
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 1, 0, []byte("dummy keyslot metadata2")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default-fallback", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 1, 0, []byte("dummy keyslot metadata2")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -277,7 +277,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentName(c *C) 
 	c.Check(ks.Name(), Equals, "default-fallback")
 	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default-fallback")
 	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
@@ -288,7 +287,7 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentName(c *C) 
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentDevice(c *C) {
-	s.addUnlockKeyslot("/dev/nvme0n1p3", "default", newMockLuks2KeyDataReader("/dev/nvme0n1p3:default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/nvme0n1p3", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
 
 	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
 	r, err := container.OpenRead(context.Background())
@@ -300,7 +299,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentDevice(c *C
 	c.Check(ks.Name(), Equals, "default")
 	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ks.Data().ReadableName(), Equals, "/dev/nvme0n1p3:default")
 	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
@@ -311,7 +309,7 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentDevice(c *C
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotRecovery(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
 	s.addRecoveryKeyslot("/dev/sda1", "default-recovery", 1)
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
@@ -332,7 +330,7 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecovery(c *C) {
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryDifferentKeyslotID(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
 	s.addRecoveryKeyslot("/dev/sda1", "default-recovery", 3)
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
@@ -353,7 +351,7 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryDifferentKeyslotID(c
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentPriority(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 2, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 2, []byte("dummy keyslot metadata1")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -365,7 +363,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentPriority(c 
 	c.Check(ks.Name(), Equals, "default")
 	c.Check(ks.Priority(), Equals, 2)
 
-	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
 	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
@@ -376,8 +373,8 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentPriority(c 
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentKeyslotID(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 1, 0, []byte("dummy keyslot metadata1")))
-	s.addUnlockKeyslot("/dev/sda1", "default-fallback", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata2")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 1, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default-fallback", 0, 0, []byte("dummy keyslot metadata2")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -389,7 +386,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentKeyslotID(c
 	c.Check(ks.Name(), Equals, "default")
 	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
 	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
@@ -400,8 +396,8 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentKeyslotID(c
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentData(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default-fallback", newMockLuks2KeyDataReader("/dev/sda1:default-fallback", 1, 0, []byte("dummy keyslot metadata1")))
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata2")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default-fallback", 1, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata2")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -413,7 +409,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentData(c *C) 
 	c.Check(ks.Name(), Equals, "default")
 	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
 	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata2"))
@@ -423,8 +418,8 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformDifferentData(c *C) 
 	c.Check(ks.(Keyslot).KeyslotID(), Equals, 0)
 }
 
-func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+func (s *readerSuite) TestContainerReaderReadKeyslotPlatformRepeated(c *C) {
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -436,7 +431,6 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
 	c.Check(ks.Name(), Equals, "default")
 	c.Check(ks.Priority(), Equals, 0)
 
-	c.Check(ks.Data().ReadableName(), Equals, "/dev/sda1:default")
 	data, err := io.ReadAll(ks.Data())
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
@@ -454,20 +448,23 @@ func (s *readerSuite) TestContainerReaderReadKeyslotPlatformCached(c *C) {
 			c.Error("call not expected")
 			return nil, errors.New("call not expected")
 		},
-		NewKeyDataReader: func(_, _ string) (Luks2KeyDataReader, error) {
-			c.Error("call not expected")
-			return nil, errors.New("call not expected")
+		NewKeyDataReader: func(path, name string) (secboot.KeyDataReader, error) {
+			return s.newLUKS2KeyDataReader(path, name)
 		},
 	})
 	defer restore()
 
 	ks2, err := r.ReadKeyslot(context.Background(), "default")
 	c.Check(err, IsNil)
-	c.Check(ks2, Equals, ks)
+	c.Check(ks2, Not(Equals), ks)
+
+	data, err = io.ReadAll(ks2.Data())
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
 }
 
-func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryCached(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryRepeated(c *C) {
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
 	s.addRecoveryKeyslot("/dev/sda1", "default-recovery", 1)
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
@@ -495,7 +492,7 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryCached(c *C) {
 			c.Error("call not expected")
 			return nil, errors.New("call not expected")
 		},
-		NewKeyDataReader: func(_, _ string) (Luks2KeyDataReader, error) {
+		NewKeyDataReader: func(_, _ string) (secboot.KeyDataReader, error) {
 			c.Error("call not expected")
 			return nil, errors.New("call not expected")
 		},
@@ -504,11 +501,12 @@ func (s *readerSuite) TestContainerReaderReadKeyslotRecoveryCached(c *C) {
 
 	ks2, err := r.ReadKeyslot(context.Background(), "default-recovery")
 	c.Check(err, IsNil)
-	c.Check(ks2, Equals, ks)
+	c.Check(ks2, Not(Equals), ks)
+	c.Check(ks2, DeepEquals, ks)
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotNotFound(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())
@@ -519,7 +517,7 @@ func (s *readerSuite) TestContainerReaderReadKeyslotNotFound(c *C) {
 }
 
 func (s *readerSuite) TestContainerReaderReadKeyslotClosed(c *C) {
-	s.addUnlockKeyslot("/dev/sda1", "default", newMockLuks2KeyDataReader("/dev/sda1:default", 0, 0, []byte("dummy keyslot metadata1")))
+	s.addUnlockKeyslot("/dev/sda1", newKeyDataToken("default", 0, 0, []byte("dummy keyslot metadata1")))
 
 	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
 	r, err := container.OpenRead(context.Background())

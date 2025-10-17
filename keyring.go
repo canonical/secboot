@@ -281,13 +281,12 @@ func GetKeyFromKernel(ctx context.Context, container StorageContainer, purpose K
 	return key, nil
 }
 
-func addKeyToUserKeyring(key []byte, container StorageContainer, purpose KeyringKeyPurpose, prefix string) error {
+var addKeyToUserKeyring = func(key []byte, container StorageContainer, purpose KeyringKeyPurpose, prefix string) (keyring.KeyID, error) {
 	if strings.IndexAny(prefix, ":") >= 0 {
-		return errors.New("invalid prefix")
+		return 0, errors.New("invalid prefix")
 	}
 	if strings.IndexAny(string(purpose), ":") >= 0 {
-		return errors.New("invalid purpose")
+		return 0, errors.New("invalid purpose")
 	}
-	_, err := keyringAddKey(key, keyring.UserKeyType, formatKeyringKeyDesc(container.CredentialName(), purpose, prefix), keyring.UserKeyring)
-	return err
+	return keyringAddKey(key, keyring.UserKeyType, formatKeyringKeyDesc(container.CredentialName(), purpose, prefix), keyring.UserKeyring)
 }

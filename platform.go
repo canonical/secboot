@@ -90,7 +90,14 @@ type PlatformKeyData struct {
 // although there aren't any defined right now.
 type PlatformKeyDataHandlerFlags uint64
 
-const platformKeyDataHandlerCommonFlagsMask uint64 = 0xffffff0000000000
+const (
+	platformKeyDataHandlerCommonFlagsMask uint64 = 0xffffff0000000000
+
+	// PlatformProtectedByStorageContainer indicates that a platform protects
+	// its keys inside an encrypted storage container rather than a hardware
+	// device.
+	PlatformProtectedByStorageContainer PlatformKeyDataHandlerFlags = 1 << 40
+)
 
 // AddPlatformFlags adds the platform defined flags to the common flags,
 // returning a new flags value. This package doesn't define the meaning of

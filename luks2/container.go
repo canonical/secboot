@@ -34,7 +34,7 @@ import (
 
 // StorageContainer represents a LUKS2 storage container.
 type StorageContainer interface {
-	secboot.StorageContainer
+	secboot.StorageContainer // Common to all StorageContainer implementations.
 
 	// Dev returns the device number for the LUKS2 storage container.
 	// The major and minor components of this can be accessed with
@@ -48,39 +48,6 @@ type StorageContainer interface {
 	ActiveVolumeName(ctx context.Context) (string, error)
 
 	// TODO: Add LUKS2 UUID / label accessors here as well.
-}
-
-type activateOptionKey string
-
-const (
-	volumeNameKey activateOptionKey = "volume-name"
-)
-
-type activateOptions map[any]any
-
-func (o activateOptions) Add(key, value any) {
-	o[key] = value
-}
-
-type volumeNameOption string
-
-func (o volumeNameOption) ApplyTo(visitor secboot.ActivateOptionVisitor) {
-	if _, ok := visitor.(activateOptions); !ok {
-		panic("WithVolumeName can only be used for the luks2 backend")
-	}
-	visitor.Add(volumeNameKey, string(o))
-}
-
-// WithVolumeName is used to specify the volume name used to create the
-// DM device when unlocking a LUKS2 container.
-//
-// XXX: It is mandatory for now for any [StorageContainer] managed by this
-// package. A future revision will relax this requirement and support a
-// mode where the volume name is created automatically, perhaps based on
-// the UUID of the LUKS2 container. An automatically generated volume name
-// can be retrieved afterwards using [StorageContainer.ActiveVolumeName].
-func WithVolumeName(name string) secboot.ActivateOption {
-	return volumeNameOption(name)
 }
 
 // storageContainerImpl is an implementation of [secboot.StorageContainer].
@@ -178,21 +145,12 @@ func (c *storageContainerImpl) BackendName() string {
 }
 
 // Activate implements [secboot.StorageContainer.Activate]
-func (c *storageContainerImpl) Activate(ctx context.Context, ks secboot.Keyslot, key []byte, opts ...secboot.ActivateOption) error {
+func (c *storageContainerImpl) Activate(ctx context.Context, ks secboot.Keyslot, key []byte, cfg secboot.ActivateConfigGetter) error {
 	// TODO: Activate should require a temporary read lock (equivalent to OpenRead).
-	optsCtx := make(activateOptions)
-	for _, opt := range opts {
-		opt.ApplyTo(optsCtx)
-	}
-
-	vn, exists := optsCtx[volumeNameKey]
+	volumeName, exists := secboot.ActivateConfigGet[string](cfg, volumeNameKey)
 	if !exists {
 		// TODO: Relax this requirement and autogenerate a volume name.
 		return errors.New("missing WithVolumeName option for LUKS2 container")
-	}
-	volumeName, ok := vn.(string)
-	if !ok {
-		return errors.New("invalid volume name")
 	}
 
 	slot := luks2.AnySlot
