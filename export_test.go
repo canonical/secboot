@@ -35,8 +35,15 @@ import (
 )
 
 const (
-	KeyringKeyPurposeAuxiliary = keyringKeyPurposeAuxiliary
-	NilHash                    = nilHash
+	AuthRequestorKey                = authRequestorKey
+	AuthRequestorUserVisibleNameKey = authRequestorUserVisibleNameKey
+	ExternalKeyDataKey              = externalKeyDataKey
+	KeyringDescPrefixKey            = keyringDescPrefixKey
+	KeyringKeyPurposeAuxiliary      = keyringKeyPurposeAuxiliary
+	LegacyKeyringKeyDescPathsKey    = legacyKeyringKeyDescPathsKey
+	NilHash                         = nilHash
+	RecoveryKeyTriesKey             = recoveryKeyTriesKey
+	StderrLoggerKey                 = stderrLoggerKey
 )
 
 var (
@@ -52,12 +59,27 @@ var (
 )
 
 type (
-	KdfParams     = kdfParams
-	ProtectedKeys = protectedKeys
+	ActivateConfigImpl = activateConfig
+	ActivateConfigKey  = activateConfigKey
+	KdfParams          = kdfParams
+	ProtectedKeys      = protectedKeys
 )
 
 func KDFOptionsKdfParams(o KDFOptions, keyLen uint32) (*KdfParams, error) {
 	return o.kdfParams(keyLen)
+}
+
+func (c activateConfig) Len() int {
+	return len(c)
+}
+
+// XXX: This will eventually be part of the ActivateContext API.
+func (c *ActivateContext) State() *ActivateState {
+	return c.state
+}
+
+func (c *ActivateContext) Config() ActivateConfigGetter {
+	return c.cfg
 }
 
 func (o *Argon2Options) KdfParams(keyLen uint32) (*KdfParams, error) {
