@@ -42,8 +42,9 @@ const (
 type AuthRequestor interface {
 	// RequestUserCredential is used to request a user credential that is
 	// required to unlock the container at the specified path. The optional
-	// name argument permits the caller to supply a more human friendly name.
-	// The authTypes argument is used to indicate what type of credential is
-	// being requested.
+	// name argument permits the caller to supply a more human friendly name,
+	// and can be supplied via the ActivateContext API using the
+	// WithAuthRequestorUserVisibleName option. The authTypes argument is used
+	// to indicate what types of credential are being requested.
 	RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error)
 }
