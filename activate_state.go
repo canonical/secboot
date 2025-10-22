@@ -57,10 +57,6 @@ type ActivateState struct {
 // TotalActivatedContainers returns the total number of activated storage
 // containers.
 func (s *ActivateState) TotalActivatedContainers() (n int) {
-	if s.Activations == nil {
-		return 0
-	}
-
 	for _, state := range s.Activations {
 		switch state.Status {
 		case ActivationSucceededWithPlatformKey, ActivationSucceededWithRecoveryKey:
@@ -74,10 +70,6 @@ func (s *ActivateState) TotalActivatedContainers() (n int) {
 // NumActivatedContainersWithPlatformKey returns the number of storage
 // containers activated with a platform key.
 func (s *ActivateState) NumActivatedContainersWithPlatformKey() (n int) {
-	if s.Activations == nil {
-		return 0
-	}
-
 	for _, state := range s.Activations {
 		switch state.Status {
 		case ActivationSucceededWithPlatformKey:
@@ -91,10 +83,6 @@ func (s *ActivateState) NumActivatedContainersWithPlatformKey() (n int) {
 // NumActivatedContainersWithPlatformKey returns the number of storage
 // containers activated with a recovery key.
 func (s *ActivateState) NumActivatedContainersWithRecoveryKey() (n int) {
-	if s.Activations == nil {
-		return 0
-	}
-
 	for _, state := range s.Activations {
 		switch state.Status {
 		case ActivationSucceededWithRecoveryKey:
