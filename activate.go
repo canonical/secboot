@@ -107,9 +107,20 @@ func (s keyslotAttemptRecordSlice) Swap(i, j int) {
 type activateOneContainerStateMachineFlags int
 
 const (
-	activatePermitPlatformKey activateOneContainerStateMachineFlags = 1 << iota
-	activatePermitRecoveryKey
+	// activatePermitRecoveryKey allows recovery keyslots to be used.
+	// Note that platform keyslots are always permitted to be used.
+	activatePermitRecoveryKey activateOneContainerStateMachineFlags = 1 << iota
+
+	// activateRequrePlatformProtectedByStorageContainer is used to
+	// require that platform keyslots are protected by platforms registered
+	// with the PlatformProtectedByStorageContainer flag in order to
+	// be used.
 	activateRequirePlatformKeyProtectedByStorageContainer
+
+	// activateCrossCheckPrimaryKey is used to require that the
+	// primary key recovered from a platform keyslot is cross-checked
+	// against a previously used primary key before it can be used
+	// for unlocking.
 	activateCrossCheckPrimaryKey
 )
 
@@ -228,16 +239,9 @@ func (m *activateOneContainerStateMachine) initExternalKeyAttempts(ctx context.C
 }
 
 func (m *activateOneContainerStateMachine) initKeyslotAttempts(ctx context.Context) error {
-	if m.flags&activatePermitPlatformKey > 0 {
-		m.next = activateOneContainerStateMachineTask{
-			name: "try-no-user-auth-keyslots",
-			fn:   m.tryNoUserAuthKeyslots,
-		}
-	} else {
-		m.next = activateOneContainerStateMachineTask{
-			name: "try-with-user-auth-keyslots",
-			fn:   m.tryWithUserAuthKeyslots,
-		}
+	m.next = activateOneContainerStateMachineTask{
+		name: "try-no-user-auth-keyslots",
+		fn:   m.tryNoUserAuthKeyslots,
 	}
 
 	r, err := m.container.OpenRead(ctx)
@@ -418,9 +422,6 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		if record.slot.Type() != KeyslotTypePlatform {
 			// Skipping keyslot of unknown type. This should already
 			// have an error set anyway.
-			continue
-		}
-		if m.flags&activatePermitPlatformKey == 0 {
 			continue
 		}
 		// Look for keys that require a PIN or passphrase.
@@ -747,9 +748,6 @@ func NewActivateContext(ctx context.Context, state *ActivateState, opts ...Activ
 			if state.PrimaryKeyID == 0 {
 				return nil, errors.New("invalid state: \"primary-key-id\" unset with one or more containers activated with a platform keyslot")
 			}
-			if state.NumActivatedContainersWithRecoveryKey() > 1 {
-				return nil, errors.New("invalid state: not possible to unlock more than one container with a recovery key if one or more containers was unlocked with a platform key")
-			}
 		}
 	}
 
@@ -843,18 +841,6 @@ func (c *ActivateContext) updateState(sm *activateOneContainerStateMachine) {
 //     storage container is part of the same install as the first container. The recovered
 //     primary key can be used to check the binding of subsequent storage containers using
 //     the first method.
-//
-// If more than one container is unlocked using a recovery key, then all containers must be
-// unlocked using a recovery key. This is because it is only possible to prove the binding
-// of storage containers to a single container using a platform that is registered with the
-// PlatformProtectedByStorageContainer flag.
-//
-// Once any storage containers have been unlocked using a platform keyslot, all subsequent
-// containers must be unlocked using platform keyslots. This is because it is not possible
-// to properly verify that subsequent containers are bound to existing containers if they
-// are unlocked with a recovery key. In this case, existing containers must be deactivated
-// and then activated only with recovery keys.
-// XXX: A mechanism to handle this case will be provided in the future.
 func (c *ActivateContext) ActivateContainer(ctx context.Context, container StorageContainer, opts ...ActivateOption) error {
 	// Process options. These apply on top of those supplied to NewActivateContext.
 	cfg := c.cfg.Clone()
@@ -868,33 +854,35 @@ func (c *ActivateContext) ActivateContainer(ctx context.Context, container Stora
 	case c.state.TotalActivatedContainers() == 0:
 		// If this is the first container to be activated, permit either
 		// a platform or recovery keyslot to be used.
-		flags = activatePermitPlatformKey | activatePermitRecoveryKey
-	case c.state.TotalActivatedContainers() == 1 && c.state.NumActivatedContainersWithRecoveryKey() == 1:
-		// If this is the second container to be activated and the first
-		// was activated with a recovery keyslot, permit either a platform
-		// or recovery keyslot to be used. The platform keyslot must be
-		// protected with a platform registered with the
-		// PlatformProtectedByStorageContainer flag.
-		flags = activatePermitPlatformKey | activatePermitRecoveryKey | activateRequirePlatformKeyProtectedByStorageContainer
-	case c.state.NumActivatedContainersWithRecoveryKey() > 1:
-		// If more than one storage container has been unlocked with a
-		// recovery key, then only permit recovery keyslots. We can only
-		// associate keyslots protected by a platform registered with the
-		// PlatformProtectedByStorageContainer flag with a single container,
-		// meaning that 1 or more storage containers might be supplied by
-		// an adversary.
 		flags = activatePermitRecoveryKey
+	case c.state.NumActivatedContainersWithPlatformKey() == 0:
+		// If all storage containers have been unlocked with recovery keys,
+		// then permit either a platform or recovery keyslot to be used.
+		// The platform keyslot must be protected with a platform registered
+		// with the PlatformProtectedByStorageContainer flag, which binds it
+		// to one of the already opened storage containers. The already opened
+		// storage containers are bound by the fact that the user knows the
+		// recovery keys to them.
+		flags = activatePermitRecoveryKey | activateRequirePlatformKeyProtectedByStorageContainer
+	case c.state.NumActivatedContainersWithRecoveryKey() > 0:
+		// A mix of platform keyslots and recovery keys have been used to
+		// unlock previous storage containers. As the binding between these
+		// has already been proven, via a combination of platform keys
+		// protected by a platform registered with the
+		// PlatformProtectedByStorageContainer flag and by knowledge of
+		// recovery keys, permit unlocking with any type of keyslot.
+		flags = activatePermitRecoveryKey | activateCrossCheckPrimaryKey
 	default:
-		// In all other cases we have unlocked 1 or more storage containers
-		// with a platform key. It is no longer safe to permit the use of a
-		// recovery key because it is not possible to associate the container
-		// with others that are already activated in this case.
+		// All storage containers so far have been unlocked with platform
+		// keys. It is no longer safe to permit the use of a recovery key
+		// because it is not possible to associate the container with others
+		// that are already activated in this case.
 		//
 		// TODO: What happens if we genuinely hit this case? The only safe
 		// way to handle this would be to deactivate existing containers and
 		// require everything to be unlocked using recovery keys. Will add
 		// a way to handle this case in a follow-up PR.
-		flags = activatePermitPlatformKey | activateCrossCheckPrimaryKey
+		flags = activateCrossCheckPrimaryKey
 	}
 	sm := newActivateOneContainerStateMachine(container, cfg, c.primaryKey, flags)
 	for sm.hasMoreWork() {
