@@ -39,5 +39,56 @@ const (
 // XXX: This will eventually be part of the serialized [ActivateState].
 type DeactivationReason string
 
+// ContainerActivateState contains the activation state for a single
+// [StorageContainer].
+type ContainerActivateState struct {
+	Status ActivationStatus `json:"status"`
+}
+
+// ActivateState contains the global activation state.
 type ActivateState struct {
+	PrimaryKeyID int32 `json:"primary-key-id"`
+
+	// Activations contains state for each StorageContainer, keyed by
+	// credential name.
+	Activations map[string]*ContainerActivateState `json:"activations"`
+}
+
+// TotalActivatedContainers returns the total number of activated storage
+// containers.
+func (s *ActivateState) TotalActivatedContainers() (n int) {
+	for _, state := range s.Activations {
+		switch state.Status {
+		case ActivationSucceededWithPlatformKey, ActivationSucceededWithRecoveryKey:
+			n += 1
+		}
+	}
+
+	return n
+}
+
+// NumActivatedContainersWithPlatformKey returns the number of storage
+// containers activated with a platform key.
+func (s *ActivateState) NumActivatedContainersWithPlatformKey() (n int) {
+	for _, state := range s.Activations {
+		switch state.Status {
+		case ActivationSucceededWithPlatformKey:
+			n += 1
+		}
+	}
+
+	return n
+}
+
+// NumActivatedContainersWithPlatformKey returns the number of storage
+// containers activated with a recovery key.
+func (s *ActivateState) NumActivatedContainersWithRecoveryKey() (n int) {
+	for _, state := range s.Activations {
+		switch state.Status {
+		case ActivationSucceededWithRecoveryKey:
+			n += 1
+		}
+	}
+
+	return n
 }

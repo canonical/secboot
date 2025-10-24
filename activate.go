@@ -21,20 +21,27 @@ package secboot
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"sort"
 
+	"github.com/snapcore/secboot/internal/keyring"
 	"golang.org/x/sys/unix"
 )
 
-// ErrCannotActivate is returned from ActivateContext.ActivateContainer
-// if a storage container cannot be activated because there are no valid
-// keyslots and / or there are no more passphrase, PIN or recovery key
-// attempts remaining.
-var ErrCannotActivate = errors.New("cannot activate: no valid keyslots and / or no more passphrase, PIN or recovery key tries remaining")
+var (
+	// ErrCannotActivate is returned from ActivateContext.ActivateContainer
+	// if a storage container cannot be activated because there are no valid
+	// keyslots and / or there are no more passphrase, PIN or recovery key
+	// attempts remaining.
+	ErrCannotActivate = errors.New("cannot activate: no valid keyslots and / or no more passphrase, PIN or recovery key tries remaining")
+
+	errInvalidPrimaryKey = errors.New("invalid primary key")
+	errNoPrimaryKey      = errors.New("no primary key was obtained during activation")
+)
 
 // errorKeyslot is used to represent a Keyslot in a keyslotAttemptRecord
 // in the case where StorageContainerReader.ReadKeyslot returns an error.
@@ -97,6 +104,26 @@ func (s keyslotAttemptRecordSlice) Swap(i, j int) {
 	s[i] = tmp
 }
 
+type activateOneContainerStateMachineFlags int
+
+const (
+	// activatePermitRecoveryKey allows recovery keyslots to be used.
+	// Note that platform keyslots are always permitted to be used.
+	activatePermitRecoveryKey activateOneContainerStateMachineFlags = 1 << iota
+
+	// activateRequrePlatformProtectedByStorageContainer is used to
+	// require that platform keyslots are protected by platforms registered
+	// with the PlatformProtectedByStorageContainer flag in order to
+	// be used.
+	activateRequirePlatformKeyProtectedByStorageContainer
+
+	// activateCrossCheckPrimaryKey is used to require that the
+	// primary key recovered from a platform keyslot is cross-checked
+	// against a previously used primary key before it can be used
+	// for unlocking.
+	activateCrossCheckPrimaryKey
+)
+
 // activateOneContainerStateMachineTask describes a state of
 // the state machine, including a readable name and a callback function.
 type activateOneContainerStateMachineTask struct {
@@ -115,16 +142,21 @@ type activateOneContainerStateMachine struct {
 	// inherits the global configuration).
 	cfg activateConfig
 
+	primaryKey PrimaryKey // The primary key obtained from a previous activation
+	flags      activateOneContainerStateMachineFlags
+
 	stderr io.Writer // For writing error messages to.
 
-	next activateOneContainerStateMachineTask // The next state to run.
+	next activateOneContainerStateMachineTask // The next task to run.
 
-	err            error                            // The first fatal error for this statemachine
-	status         ActivationStatus                 // Whether and how this container is activated.
-	keyslotRecords map[string]*keyslotAttemptRecord // Keyslot specific status, keyed by keyslot name.
+	err                   error                            // The first fatal error for this statemachine
+	status                ActivationStatus                 // Whether and how this container is activated.
+	activationKeyslotName string                           // On successful activation, the name of the keyslot used.
+	primaryKeyID          keyring.KeyID                    // If added to the keyring, the ID of the primary key.
+	keyslotRecords        map[string]*keyslotAttemptRecord // Keyslot specific status, keyed by keyslot name.
 }
 
-func newActivateOneContainerStateMachine(container StorageContainer, cfg activateConfig) *activateOneContainerStateMachine {
+func newActivateOneContainerStateMachine(container StorageContainer, cfg activateConfig, primaryKey PrimaryKey, flags activateOneContainerStateMachineFlags) *activateOneContainerStateMachine {
 	// Check whether we have a custom stderr using WithStderrLogger
 	stderr, exists := ActivateConfigGet[io.Writer](cfg, stderrLoggerKey)
 	if !exists {
@@ -134,6 +166,8 @@ func newActivateOneContainerStateMachine(container StorageContainer, cfg activat
 	m := &activateOneContainerStateMachine{
 		container:      container,
 		cfg:            cfg,
+		primaryKey:     primaryKey,
+		flags:          flags,
 		stderr:         stderr,
 		keyslotRecords: make(map[string]*keyslotAttemptRecord),
 	}
@@ -143,6 +177,14 @@ func newActivateOneContainerStateMachine(container StorageContainer, cfg activat
 	}
 
 	return m
+}
+
+func (m *activateOneContainerStateMachine) checkPrimaryKeyValid(primaryKey PrimaryKey) bool {
+	if m.flags&activateCrossCheckPrimaryKey == 0 {
+		return true
+	}
+
+	return subtle.ConstantTimeCompare(primaryKey, m.primaryKey) == 1
 }
 
 func (m *activateOneContainerStateMachine) addKeyslotRecord(name string, rec *keyslotAttemptRecord) error {
@@ -268,8 +310,22 @@ func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Con
 		if record.slot.Type() != KeyslotTypePlatform {
 			continue
 		}
+		if m.flags&activateRequirePlatformKeyProtectedByStorageContainer > 0 {
+			_, flags, err := RegisteredPlatformKeyDataHandler(record.data.PlatformName())
+			if err != nil {
+				// No handler registered for this platform
+				record.err = ErrNoPlatformHandlerRegistered
+				fmt.Fprintf(m.stderr, "Error with keyslot %q: %v\n", record.slot.Name(), record.err)
+				continue
+			}
+			if flags&PlatformProtectedByStorageContainer == 0 {
+				// We require keyslots protected by platforms with
+				// this flag, so skip this one.
+				continue
+			}
+		}
 		if record.data.AuthMode() != AuthModeNone {
-			// Skip this one
+			// This one requires user auth, so skip this one.
 			continue
 		}
 		records = append(records, record)
@@ -285,6 +341,12 @@ func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Con
 			// to making it possible to override stderr, we should make it possible
 			// for the application to provide a logger where we can log messages at
 			// different levels.
+			fmt.Fprintf(m.stderr, "Error with keyslot %q: %v\n", record.slot.Name(), record.err)
+			continue
+		}
+
+		if !m.checkPrimaryKeyValid(primaryKey) {
+			record.err = &InvalidKeyDataError{errInvalidPrimaryKey}
 			fmt.Fprintf(m.stderr, "Error with keyslot %q: %v\n", record.slot.Name(), record.err)
 			continue
 		}
@@ -307,6 +369,8 @@ func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Con
 
 		// We have unlocked successfully.
 		m.status = ActivationSucceededWithPlatformKey
+		m.activationKeyslotName = record.slot.Name()
+
 		m.next = activateOneContainerStateMachineTask{
 			name: "add-keyring-keys",
 			fn: func(ctx context.Context) error {
@@ -322,7 +386,6 @@ func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Con
 		name: "try-with-user-auth-keyslots",
 		fn:   m.tryWithUserAuthKeyslots,
 	}
-
 	return nil
 }
 
@@ -351,7 +414,9 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		}
 		if record.slot.Type() == KeyslotTypeRecovery {
 			// We've found a recovery key
-			recoverySlotRecords = append(recoverySlotRecords, record)
+			if m.flags&activatePermitRecoveryKey > 0 {
+				recoverySlotRecords = append(recoverySlotRecords, record)
+			}
 			continue
 		}
 		if record.slot.Type() != KeyslotTypePlatform {
@@ -359,7 +424,6 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 			// have an error set anyway.
 			continue
 		}
-
 		// Look for keys that require a PIN or passphrase.
 		switch record.data.AuthMode() {
 		case AuthModeNone:
@@ -422,6 +486,10 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 			authType &^= UserAuthTypeRecoveryKey
 		}
 
+		if authType == UserAuthType(0) {
+			break
+		}
+
 		cred, err := authRequestor.RequestUserCredential(ctx, name, m.container.Path(), authType)
 		if err != nil {
 			return fmt.Errorf("cannot request user credential: %w", err)
@@ -431,6 +499,9 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		// 1) TODO: Try it against every keyslot with a passphrase.
 		// 2) TODO: See if it decodes as a PIN and try it against every keyslot with a passphrase.
 		// 3) See if it decodes as a recovery key, and try it against every recovery keyslot.
+		//
+		// XXX: Remember that for PIN and passphrase keyslots, a primary key check must be
+		// performed.
 
 		recoveryKey, err := ParseRecoveryKey(cred)
 		switch {
@@ -451,6 +522,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 			if slot := m.tryRecoveryKeyslotsHelper(ctx, recoverySlotRecords, recoveryKey); slot != nil {
 				// Success!
 				m.status = ActivationSucceededWithRecoveryKey
+				m.activationKeyslotName = slot.Name()
 			}
 
 		}
@@ -518,12 +590,21 @@ func (m *activateOneContainerStateMachine) addKeyringKeys(ctx context.Context, u
 	// We don't return an error if either of these fail because we don't
 	// want failure to add keys to the keyring to mark activation of the
 	// storage container as failed.
-	if err := addKeyToUserKeyring(unlockKey, m.container, KeyringKeyPurposeUnlock, prefix); err != nil {
+	if _, err := addKeyToUserKeyring(unlockKey, m.container, KeyringKeyPurposeUnlock, prefix); err != nil {
 		fmt.Fprintln(m.stderr, "Cannot add unlock key to user keyring:", err)
 	}
 	if len(primaryKey) > 0 {
-		if err := addKeyToUserKeyring(primaryKey, m.container, KeyringKeyPurposePrimary, prefix); err != nil {
-			fmt.Fprintln(m.stderr, "Cannot add primary key to user keyring:", err)
+		id, err := addKeyToUserKeyring(primaryKey, m.container, KeyringKeyPurposePrimary, prefix)
+		switch {
+		case err != nil:
+			fmt.Fprintln(m.stderr, fmt.Sprintf("Cannot add primary key to user keyring: %v", err))
+		case len(m.primaryKey) == 0:
+			// This is the first primary key from a keyslot that
+			// was used to successfully unlock a storage container,
+			// so retain it in order for it to be used for cross-checking
+			// with other containers.
+			m.primaryKeyID = id
+			m.primaryKey = primaryKey
 		}
 	}
 
@@ -582,15 +663,23 @@ func (m *activateOneContainerStateMachine) addKeyringKeys(ctx context.Context, u
 	return nil
 }
 
-func (m *activateOneContainerStateMachine) hasMoreWork() bool {
-	return m.next.fn != nil
+func (m *activateOneContainerStateMachine) primaryKeyInfo() (PrimaryKey, keyring.KeyID, error) {
+	if m.hasMoreWork() {
+		return nil, 0, errors.New("state machine has not finished")
+	}
+
+	if m.status != ActivationSucceededWithPlatformKey {
+		return nil, 0, errNoPrimaryKey
+	}
+
+	return m.primaryKey, m.primaryKeyID, nil
 }
 
-func (m *activateOneContainerStateMachine) runNextState(ctx context.Context) error {
-	if ctx.Err() != nil {
-		// The supplied context is already canceled or expired in some way.
-		return ctx.Err()
-	}
+func (m *activateOneContainerStateMachine) hasMoreWork() bool {
+	return m.next.fn != nil && m.err == nil
+}
+
+func (m *activateOneContainerStateMachine) runNextTask(ctx context.Context) error {
 	if m.err != nil {
 		// A previous call to this state machine resulted in an unrecoverable error.
 		return fmt.Errorf("error occurred during previous state: %w", m.err)
@@ -615,20 +704,61 @@ func (m *activateOneContainerStateMachine) runNextState(ctx context.Context) err
 }
 
 // ActivateContext maintains context related to [StorageContainer] activation
-// during early boot. it is not safe to use from multiple goroutines.
+// during early boot. It is not safe to use from multiple goroutines.
 type ActivateContext struct {
 	state *ActivateState // used to track the status of activation
 	cfg   activateConfig // a config built from the initial options
+
+	stderr io.Writer
+
+	primaryKey PrimaryKey
 }
 
 // NewActivateContext returns a new ActivateContext. The optional state argument
 // makes it possible to perform activation in multiple processes, permitting them
-// to share state. The caller can supply options that are common to all calls to
+// to share state. Note that ActivateContext usage must be serialized because state
+// from the previous ActivateContext must propagate to the next one via the state
+// argument. The caller can supply options that are common to all calls to
 // [ActivateContext.ActivateContainer].
-func NewActivateContext(state *ActivateState, opts ...ActivateContextOption) *ActivateContext {
+func NewActivateContext(ctx context.Context, state *ActivateState, opts ...ActivateContextOption) (*ActivateContext, error) {
 	// state can be nil
 	if state == nil {
 		state = new(ActivateState)
+	}
+	if state.Activations == nil {
+		state.Activations = make(map[string]*ContainerActivateState)
+	}
+
+	// Perform some sanity checks on the supplied state.
+	switch state.TotalActivatedContainers() {
+	case 0:
+		if state.PrimaryKeyID != 0 {
+			return nil, errors.New("invalid state: \"primary-key-id\" set with no activated containers")
+		}
+	default:
+		switch state.NumActivatedContainersWithPlatformKey() {
+		case 0:
+			if state.PrimaryKeyID != 0 {
+				return nil, errors.New("invalid state: \"primary-key-id\" set with no containers activated with a platform keyslot")
+			}
+			if state.NumActivatedContainersWithRecoveryKey() == 0 {
+				panic("unexpected state: total activated containers > 0 but none activated with platform or recovery keyslot")
+			}
+		default:
+			if state.PrimaryKeyID == 0 {
+				return nil, errors.New("invalid state: \"primary-key-id\" unset with one or more containers activated with a platform keyslot")
+			}
+		}
+	}
+
+	// Fetch the primary key from the keyring using the ID supplied by the state.
+	var primaryKey PrimaryKey
+	if state.PrimaryKeyID != 0 {
+		key, err := keyring.ReadKey(ctx, keyring.KeyID(state.PrimaryKeyID))
+		if err != nil {
+			return nil, fmt.Errorf("cannot obtain primary key from keyring: %w", err)
+		}
+		primaryKey = PrimaryKey(key)
 	}
 
 	// Process global options
@@ -637,32 +767,141 @@ func NewActivateContext(state *ActivateState, opts ...ActivateContextOption) *Ac
 		opt.ApplyContextOptionToConfig(cfg)
 	}
 
+	// Check whether we have a custom stderr using WithStderrLogger
+	stderr, exists := ActivateConfigGet[io.Writer](cfg, stderrLoggerKey)
+	if !exists {
+		stderr = osStderr
+	}
+
 	return &ActivateContext{
-		state: state,
-		cfg:   cfg,
+		state:      state,
+		cfg:        cfg,
+		stderr:     stderr,
+		primaryKey: primaryKey,
+	}, nil
+}
+
+func (c *ActivateContext) updateState(sm *activateOneContainerStateMachine) {
+	if c.state.PrimaryKeyID == 0 {
+		primaryKey, primaryKeyID, err := sm.primaryKeyInfo()
+
+		// We don't return errors from here because if we get to this
+		// point, we have already successfully unlocked the storage
+		// container. If we experience an error here, all this means
+		// is that we fail to populate the primary key on the context
+		// which will force activation of subsequent containers to
+		// only use a "plainkey" key slot (see the documentation for
+		// ActivatePath).
+		switch {
+		case errors.Is(err, errNoPrimaryKey):
+			// The activation either failed or used a recovery key.
+			// Don't log this.
+		case err != nil:
+			// Log an unexpected error.
+			fmt.Fprintf(c.stderr, "Cannot obtain primary key information: %v\n", err)
+		default:
+			c.primaryKey = primaryKey
+			c.state.PrimaryKeyID = int32(primaryKeyID)
+		}
+	}
+
+	c.state.Activations[sm.container.CredentialName()] = &ContainerActivateState{
+		Status: sm.status,
 	}
 }
 
 // ActivateContainer unlocks the supplied [StorageContainer]. The caller can supply options
 // that are specific to this invocation, but which inherit from those options already supplied
 // to [NewActivateContext].
+//
+// If there are no keyslots that can be used to unlock the storage container, a
+// ErrCannotActivate error is returned.
+//
+// Note that it is important that all unlocked storage containers are part of the same install
+// to prevent an attack where an adversary replaces a storage container with one that contains
+// their own credentials, in order to use those credentials to gain access to confidential
+// data on another storage container that has keyslots which unlock automatically.
+// This "binding" is enforced using 1 of 2 mechanisms:
+//  1. As the unlock key for each keyslot is derived from a primary key that is common for all
+//     keyslots, and a keyslot unique key, there is a cryptographic binding between the unlock
+//     key and the primary key. If a keyslot is used successfully, then verifying that the
+//     primary key matches the primary key from keyslots used to unlock other containers is
+//     sufficient to determine that the storage containers are related to the same install.
+//     Where a previous storage container has been unlocked using a platform keyslot, any
+//     keyslots that do not have a matching primary key will be dismissed as being unsuitable
+//     for unlocking its associated storage container.
+//  2. If the first container is unlocked using a recovery key, then there is no primary key
+//     to which keyslots from subsequent containers can be compared. In this case, subsequent
+//     containers must either be unlocked using a recovery key, or must be unlocked using a
+//     platform keyslot protected by a platform that is registered with the
+//     PlatformProtectedByStorageContainer flag (the "plainkey" platform is registered with
+//     this), as these keyslots are protected using a key that must be stored inside the
+//     first unlocked storage container. If unlocking succeeds using a keyslot protected by
+//     a platform registered with this flag, then this is sufficient to determine that the
+//     storage container is part of the same install as the first container. The recovered
+//     primary key can be used to check the binding of subsequent storage containers using
+//     the first method.
 func (c *ActivateContext) ActivateContainer(ctx context.Context, container StorageContainer, opts ...ActivateOption) error {
-	// Procss options. These apply on top of those supplied to NewActivateContext.
+	// Process options. These apply on top of those supplied to NewActivateContext.
 	cfg := c.cfg.Clone()
 	for _, opt := range opts {
 		opt.ApplyOptionToConfig(cfg)
 	}
 
-	// TODO: When we retain activation state, make sure we obtain the activation
-	// status and keyslot errors from the state machine before returning.
-
 	// Create and run a state machine for this activation
-	sm := newActivateOneContainerStateMachine(container, cfg)
+	var flags activateOneContainerStateMachineFlags
+	switch {
+	case c.state.TotalActivatedContainers() == 0:
+		// If this is the first container to be activated, permit either
+		// a platform or recovery keyslot to be used.
+		flags = activatePermitRecoveryKey
+	case c.state.NumActivatedContainersWithPlatformKey() == 0:
+		// If all storage containers have been unlocked with recovery keys,
+		// then permit either a platform or recovery keyslot to be used.
+		// The platform keyslot must be protected with a platform registered
+		// with the PlatformProtectedByStorageContainer flag, which binds it
+		// to one of the already opened storage containers. The already opened
+		// storage containers are bound by the fact that the user knows the
+		// recovery keys to them.
+		flags = activatePermitRecoveryKey | activateRequirePlatformKeyProtectedByStorageContainer
+	case c.state.NumActivatedContainersWithRecoveryKey() > 0:
+		// A mix of platform keyslots and recovery keys have been used to
+		// unlock previous storage containers. As the binding between these
+		// has already been proven, via a combination of platform keys
+		// protected by a platform registered with the
+		// PlatformProtectedByStorageContainer flag and by knowledge of
+		// recovery keys, permit unlocking with any type of keyslot.
+		flags = activatePermitRecoveryKey | activateCrossCheckPrimaryKey
+	default:
+		// All storage containers so far have been unlocked with platform
+		// keys. It is no longer safe to permit the use of a recovery key
+		// because it is not possible to associate the container with others
+		// that are already activated in this case.
+		//
+		// TODO: What happens if we genuinely hit this case? The only safe
+		// way to handle this would be to deactivate existing containers and
+		// require everything to be unlocked using recovery keys. Will add
+		// a way to handle this case in a follow-up PR.
+		flags = activateCrossCheckPrimaryKey
+	}
+	sm := newActivateOneContainerStateMachine(container, cfg, c.primaryKey, flags)
 	for sm.hasMoreWork() {
-		if err := sm.runNextState(ctx); err != nil {
+		if ctx.Err() != nil {
+			// The supplied context is already canceled or expired in some way.
+			// Mark this container as failed. We don't call updateState here
+			// to avoid logging the error returned from sm.primaryKeyInfo to
+			// stderr.
+			c.state.Activations[sm.container.CredentialName()] = &ContainerActivateState{
+				Status: ActivationFailed,
+			}
+			return ctx.Err()
+		}
+		if err := sm.runNextTask(ctx); err != nil {
+			c.updateState(sm)
 			return err
 		}
 	}
+	c.updateState(sm)
 
 	return nil
 }
@@ -670,10 +909,18 @@ func (c *ActivateContext) ActivateContainer(ctx context.Context, container Stora
 // DeactivateContainer locks the supplied [StorageContainer]. The caller can supply a reason
 // for the container being locked again which will be added to the state.
 func (c *ActivateContext) DeactivateContainer(ctx context.Context, container StorageContainer, reason DeactivationReason) error {
-	// TODO: When we retain activation state, mark the attempt for this storage
-	// container as "deactivated" and record the supplied reason.
-
 	// TODO: This should remove any keys added to the keyring.
 
-	return container.Deactivate(ctx)
+	if err := container.Deactivate(ctx); err != nil {
+		return err
+	}
+
+	containerState, exists := c.state.Activations[container.CredentialName()]
+	if !exists {
+		containerState = new(ContainerActivateState)
+		c.state.Activations[container.CredentialName()] = containerState
+	}
+	containerState.Status = ActivationDeactivated
+
+	return nil
 }

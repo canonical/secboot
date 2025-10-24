@@ -142,7 +142,7 @@ func (*platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, old,
 }
 
 func init() {
-	// Just use the flags to describe the current version of this platform.
-	flags := secboot.PlatformKeyDataHandlerFlags(0).AddPlatformFlags(1)
+	// Add the current version of this platform to the flags.
+	flags := secboot.PlatformProtectedByStorageContainer.AddPlatformFlags(1)
 	secboot.RegisterPlatformKeyDataHandler(platformName, &platformKeyDataHandler{}, flags)
 }
