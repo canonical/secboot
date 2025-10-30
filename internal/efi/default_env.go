@@ -29,7 +29,6 @@ import (
 	"path/filepath"
 
 	efi "github.com/canonical/go-efilib"
-	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot/internal/tpm2_device"
 )
@@ -60,7 +59,7 @@ func (defaultEnvImpl) ReadEventLog() (*tcglog.Log, error) {
 }
 
 // TPMDevice implements [HostEnvironment.TPMDevice].
-func (defaultEnvImpl) TPMDevice() (tpm2.TPMDevice, error) {
+func (defaultEnvImpl) TPMDevice() (tpm2_device.TPMDevice, error) {
 	return tpm2_deviceDefaultDevice(tpm2_device.DeviceModeTryResourceManaged)
 }
 

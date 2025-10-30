@@ -25,8 +25,6 @@ import (
 	"io"
 
 	efi "github.com/canonical/go-efilib"
-	"github.com/canonical/go-tpm2"
-	"github.com/canonical/go-tpm2/ppi"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
@@ -124,14 +122,6 @@ func MockKnownCAs(set AuthorityTrustDataSet) (restore func()) {
 	knownCAs = set
 	return func() {
 		knownCAs = orig
-	}
-}
-
-func MockObtainTPMDevicePPI(fn func(tpm2.TPMDevice) (ppi.PPI, error)) (restore func()) {
-	orig := obtainTPMDevicePPI
-	obtainTPMDevicePPI = fn
-	return func() {
-		obtainTPMDevicePPI = orig
 	}
 }
 
