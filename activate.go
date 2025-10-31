@@ -22,6 +22,7 @@ package secboot
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -41,6 +42,8 @@ var (
 
 	errInvalidPrimaryKey = errors.New("invalid primary key")
 	errNoPrimaryKey      = errors.New("no primary key was obtained during activation")
+
+	errInvalidRecoveryKey = errors.New("the supplied recovery key is incorrect")
 )
 
 // errorKeyslot is used to represent a Keyslot in a keyslotAttemptRecord
@@ -77,7 +80,27 @@ func (r *keyslotAttemptRecord) usable() bool {
 	if r.err == nil {
 		return true
 	}
-	return errors.Is(r.err, ErrInvalidPassphrase)
+
+	// In general, a keyslot that has encountered an error becomes unusable,
+	// with one exception being that if the error is a result of the user
+	// supplying an incorrect credential (passphrase, PIN, or recovery key),
+	// it should remain usable.
+	var expectedUserAuthErr error
+	switch {
+	case r.slot.Type() == KeyslotTypeRecovery:
+		// Recovery keyslot
+		expectedUserAuthErr = errInvalidRecoveryKey
+	// TODO: Enable this when passphrase support is added. This is just here
+	// for now as a reminder - there will be a branch for PIN keyslots as well.
+	//case r.slot.Type() == KeyslotTypePlatform && r.data != nil && r.data.AuthMode() == AuthModePassphrase:
+	//	// Passphrase keyslot
+	//	expectedUserAuthErr = ErrInvalidPassphrase
+	default:
+		// Any other type of keyslot is unusable with any error.
+		return false
+	}
+
+	return errors.Is(r.err, expectedUserAuthErr)
 }
 
 type keyslotAttemptRecordSlice []*keyslotAttemptRecord
@@ -527,7 +550,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 
 		}
 
-		if m.status == ActivationIncomplete {
+		if m.status == activationIncomplete {
 			// We haven't unlocked yet, so try again.
 			continue
 		}
@@ -573,7 +596,7 @@ func (m *activateOneContainerStateMachine) tryRecoveryKeyslotsHelper(ctx context
 
 		// The most likely failure here is an invalid key, so set the error for this keyslot
 		// as such so that it will be communicated via ActivateState in the future.
-		record.err = ErrInvalidPassphrase
+		record.err = errInvalidRecoveryKey
 	}
 
 	// We were unable to unlock with any recovery keyslot.
@@ -675,6 +698,38 @@ func (m *activateOneContainerStateMachine) primaryKeyInfo() (PrimaryKey, keyring
 	return m.primaryKey, m.primaryKeyID, nil
 }
 
+func (m *activateOneContainerStateMachine) activationState() (*ContainerActivateState, error) {
+	if m.hasMoreWork() {
+		return nil, errors.New("state machine has not finished")
+	}
+
+	state := &ContainerActivateState{
+		Status:        m.status,
+		KeyslotErrors: make(map[string]KeyslotErrorType),
+	}
+
+	// Did the caller use the WithActivateStateCustomData option?
+	customData, exists := ActivateConfigGet[json.RawMessage](m.cfg, activateStateCustomDataKey)
+	if exists {
+		state.CustomData = customData
+	}
+
+	// If unlocked, retrieve the name of the keyslot used.
+	if m.status == ActivationSucceededWithPlatformKey || m.status == ActivationSucceededWithRecoveryKey {
+		state.Keyslot = m.activationKeyslotName
+	}
+
+	for name, rec := range m.keyslotRecords {
+		if rec.err == nil {
+			// Don't add keyslots that have no error.
+			continue
+		}
+		state.KeyslotErrors[name] = errorToKeyslotError(rec.err)
+	}
+
+	return state, nil
+}
+
 func (m *activateOneContainerStateMachine) hasMoreWork() bool {
 	return m.next.fn != nil && m.err == nil
 }
@@ -694,7 +749,7 @@ func (m *activateOneContainerStateMachine) runNextTask(ctx context.Context) erro
 			err = fmt.Errorf("cannot complete state %q: %w", current.name, err)
 		}
 		m.err = err
-		if m.status != ActivationIncomplete {
+		if m.status != activationIncomplete {
 			panic(fmt.Sprintf("unexpected status %q on error %v", m.status, err))
 		}
 		m.status = ActivationFailed
@@ -781,33 +836,31 @@ func NewActivateContext(ctx context.Context, state *ActivateState, opts ...Activ
 	}, nil
 }
 
-func (c *ActivateContext) updateState(sm *activateOneContainerStateMachine) {
+func (c *ActivateContext) updateStateOnActivationAttempt(sm *activateOneContainerStateMachine) {
 	if c.state.PrimaryKeyID == 0 {
 		primaryKey, primaryKeyID, err := sm.primaryKeyInfo()
-
-		// We don't return errors from here because if we get to this
-		// point, we have already successfully unlocked the storage
-		// container. If we experience an error here, all this means
-		// is that we fail to populate the primary key on the context
-		// which will force activation of subsequent containers to
-		// only use a "plainkey" key slot (see the documentation for
-		// ActivatePath).
 		switch {
 		case errors.Is(err, errNoPrimaryKey):
 			// The activation either failed or used a recovery key.
 			// Don't log this.
 		case err != nil:
 			// Log an unexpected error.
-			fmt.Fprintf(c.stderr, "Cannot obtain primary key information: %v\n", err)
+			fmt.Fprintf(c.stderr, "Cannot obtain primary key information when unlocking %s: %v\n", sm.container.Path(), err)
 		default:
 			c.primaryKey = primaryKey
 			c.state.PrimaryKeyID = int32(primaryKeyID)
 		}
 	}
 
-	c.state.Activations[sm.container.CredentialName()] = &ContainerActivateState{
-		Status: sm.status,
+	state, err := sm.activationState()
+	if err != nil {
+		fmt.Fprintf(c.stderr, "Cannot obtain activation state associated with unlocking %s: %v\n", sm.container.Path(), err)
+		c.state.Activations[sm.container.CredentialName()] = &ContainerActivateState{
+			Status: ActivationFailed,
+		}
+		return
 	}
+	c.state.Activations[sm.container.CredentialName()] = state
 }
 
 // ActivateContainer unlocks the supplied [StorageContainer]. The caller can supply options
@@ -892,18 +945,31 @@ func (c *ActivateContext) ActivateContainer(ctx context.Context, container Stora
 			// to avoid logging the error returned from sm.primaryKeyInfo to
 			// stderr.
 			c.state.Activations[sm.container.CredentialName()] = &ContainerActivateState{
-				Status: ActivationFailed,
+				Status:        ActivationFailed,
+				KeyslotErrors: make(map[string]KeyslotErrorType),
 			}
 			return ctx.Err()
 		}
 		if err := sm.runNextTask(ctx); err != nil {
-			c.updateState(sm)
+			c.updateStateOnActivationAttempt(sm)
 			return err
 		}
 	}
-	c.updateState(sm)
+	c.updateStateOnActivationAttempt(sm)
 
 	return nil
+}
+
+func (c *ActivateContext) updateStateOnDeactivation(container StorageContainer, reason DeactivationReason) {
+	state, exists := c.state.Activations[container.CredentialName()]
+	if !exists {
+		state = new(ContainerActivateState)
+		c.state.Activations[container.CredentialName()] = state
+	}
+
+	state.Status = ActivationDeactivated
+	state.Keyslot = ""
+	state.DeactivateReason = reason
 }
 
 // DeactivateContainer locks the supplied [StorageContainer]. The caller can supply a reason
@@ -914,13 +980,14 @@ func (c *ActivateContext) DeactivateContainer(ctx context.Context, container Sto
 	if err := container.Deactivate(ctx); err != nil {
 		return err
 	}
-
-	containerState, exists := c.state.Activations[container.CredentialName()]
-	if !exists {
-		containerState = new(ContainerActivateState)
-		c.state.Activations[container.CredentialName()] = containerState
-	}
-	containerState.Status = ActivationDeactivated
+	c.updateStateOnDeactivation(container, reason)
 
 	return nil
+}
+
+// State returns a pointer to the current state. Note that this is a pointer
+// to the state object used by this context, so it will be updated by calls
+// to ActivateContainer and DeactivateContainer.
+func (c *ActivateContext) State() *ActivateState {
+	return c.state
 }
