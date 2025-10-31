@@ -29,6 +29,7 @@ import (
 	. "github.com/snapcore/secboot/efi/preinstall"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	. "gopkg.in/check.v1"
 )
 
@@ -86,8 +87,9 @@ func (s *tpmutilSuite) TestClearTPMWithoutAuthValue(c *C) {
 	// Set the authorization value for the storage hierarchy.
 	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
 
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+	)
 
 	c.Check(ClearTPM(env, nil), IsNil)
 
@@ -100,8 +102,9 @@ func (s *tpmutilSuite) TestClearTPMWithAuthValue(c *C) {
 	// Set the authorization value for the lockout hierarchy.
 	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
 
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+	)
 
 	c.Check(ClearTPM(env, []byte("1234")), IsNil)
 
@@ -119,8 +122,9 @@ func (s *tpmutilSuite) TestClearTPMErrNoTPM2Device(c *C) {
 }
 
 func (s *tpmutilSuite) TestClearTPMErrInconsistentAuthValue1(c *C) {
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+	)
 
 	err := ClearTPM(env, []byte("1234"))
 	c.Check(err, ErrorMatches, `supplied TPM lockout hierarchy authorization value is inconsistent with the value of the TPM_PT_PERMANENT lockoutAuthSet attribute`)
@@ -131,8 +135,9 @@ func (s *tpmutilSuite) TestClearTPMErrInconsistentAuthValue2(c *C) {
 	// Set the authorization value for the lockout hierarchy.
 	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
 
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+	)
 
 	err := ClearTPM(env, nil)
 	c.Check(err, ErrorMatches, `supplied TPM lockout hierarchy authorization value is inconsistent with the value of the TPM_PT_PERMANENT lockoutAuthSet attribute`)
@@ -140,8 +145,9 @@ func (s *tpmutilSuite) TestClearTPMErrInconsistentAuthValue2(c *C) {
 }
 
 func (s *tpmutilSuite) TestClearTPMErrClearCommandFails(c *C) {
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+	)
 
 	c.Check(s.TPM.ClearControl(s.TPM.LockoutHandleContext(), true, nil), IsNil)
 

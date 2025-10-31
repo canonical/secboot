@@ -30,9 +30,11 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
+	"github.com/canonical/go-tpm2/ppi"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	secboot_efi "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	. "gopkg.in/check.v1"
 )
 
@@ -114,6 +116,28 @@ func (i *mockImage) Open() (secboot_efi.ImageReader, error) {
 		contents:   i.contents,
 		digest:     i.digest,
 		signatures: i.signatures}, nil
+}
+
+type tpmDevice struct {
+	tpm2.TPMDevice
+	ppi    ppi.PPI
+	ppiErr error
+}
+
+func newTpmDevice(dev tpm2.TPMDevice, ppi ppi.PPI, ppiErr error) *tpmDevice {
+	return &tpmDevice{
+		TPMDevice: dev,
+		ppi:       ppi,
+		ppiErr:    ppiErr,
+	}
+}
+
+func (d *tpmDevice) Mode() tpm2_device.DeviceMode {
+	return tpm2_device.DeviceModeResourceManaged
+}
+
+func (d *tpmDevice) PPI() (ppi.PPI, error) {
+	return d.ppi, d.ppiErr
 }
 
 func TestMain(m *testing.M) {

@@ -24,7 +24,6 @@ import (
 	"errors"
 	"io"
 
-	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	"github.com/snapcore/secboot/internal/tpm2_device"
 )
@@ -123,7 +122,7 @@ type HostEnvironment interface {
 	HostEnvironmentEFI
 
 	// TPMDevice returns a TPMDevice that can be used to open a tpm2.TPMContext.
-	TPMDevice() (tpm2.TPMDevice, error)
+	TPMDevice() (tpm2_device.TPMDevice, error)
 
 	// DetectVirtMode returns whether the environment is virtualized. If not, it returns
 	// (VirtModeNone, nil). The mode can be used to choose what type of virtualization to
