@@ -33,25 +33,14 @@ var (
 	ErrNoStorageContainer        = errors.New("no storage container for path")
 )
 
-// ActivateOptionVisitor is used for gathering options (using
-// ActivateOption). Each backend shouls provide its own
-// implementation of this.
-type ActivateOptionVisitor interface {
-	Add(key, value any)
-}
-
-// ActivateOption represents an option that can be supplied to
-// StorageContainer.Activate.
-type ActivateOption interface {
-	ApplyTo(ActivateOptionVisitor)
-}
-
 // KeyslotType describes the type of a keyslot.
 type KeyslotType string
 
 const (
 	KeyslotTypePlatform KeyslotType = "platform"
 	KeyslotTypeRecovery KeyslotType = "recovery"
+
+	KeyslotTypeUnknown KeyslotType = ""
 )
 
 // Keyslot provides information about a keyslot.
@@ -103,6 +92,11 @@ type StorageContainer interface {
 	// backend.
 	BackendName() string
 
+	// CredentialName returns a string that can be used to identify
+	// a credential associated with this container that is passed from
+	// the early boot environment
+	CredentialName() string
+
 	// Activate unlocks this container with the specified key.
 	// The caller can choose to supply the Keyslot instance
 	// related to the keyslot from which the supplied key is
@@ -110,9 +104,9 @@ type StorageContainer interface {
 	// If supplied, the backend can use this to target the supplied
 	// key at a specific keyslot. If keyslotInfo nil is supplied, the
 	// backend will have to test all keyslots with the supplied key.
-	// The caller can specify one or more options, which may be
-	// backend-specific.
-	Activate(ctx context.Context, ks Keyslot, key []byte, opts ...ActivateOption) error
+	// The caller can specify a configuration, which is a map of keys
+	// or arbitrary types to values of arbitrary types.
+	Activate(ctx context.Context, ks Keyslot, key []byte, cfg ActivateConfigGetter) error
 
 	// Deactivate locks this storage container.
 	Deactivate(ctx context.Context) error

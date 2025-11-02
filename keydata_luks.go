@@ -31,6 +31,10 @@ import (
 )
 
 // LUKS2KeyDataReader provides a mechanism to read a KeyData from a LUKS2 token.
+//
+// XXX: This will eventually be deleted when the legacy activation API has been
+// deleted, [StorageContainer] has write support and snapd has migrated to that
+// new write support.
 type LUKS2KeyDataReader struct {
 	name     string
 	slot     int
@@ -40,6 +44,10 @@ type LUKS2KeyDataReader struct {
 
 // NewLUKS2KeyDataReader is used to read a LUKS2 token containing key data with
 // the specified name on the specified LUKS2 container.
+//
+// XXX: This will eventually be deleted when the legacy activation API has been
+// deleted, [StorageContainer] has write support and snapd has migrated to that
+// new write support.
 func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error) {
 	view, err := newLUKSView(context.TODO(), devicePath)
 	if err != nil {

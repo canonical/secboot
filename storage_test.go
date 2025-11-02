@@ -21,7 +21,6 @@ package secboot_test
 
 import (
 	"context"
-	"errors"
 
 	. "gopkg.in/check.v1"
 
@@ -30,34 +29,6 @@ import (
 )
 
 const mockStorageContainerType = "mock"
-
-type mockStorageContainer struct {
-	path string
-}
-
-func newMockStorageContainer(path string) *mockStorageContainer {
-	return &mockStorageContainer{path: path}
-}
-
-func (c *mockStorageContainer) Path() string {
-	return c.path
-}
-
-func (c *mockStorageContainer) BackendName() string {
-	return mockStorageContainerType
-}
-
-func (c *mockStorageContainer) Activate(ctx context.Context, keyslot Keyslot, key []byte, opts ...ActivateOption) error {
-	return errors.New("not supported")
-}
-
-func (c *mockStorageContainer) Deactivate(ctx context.Context) error {
-	return errors.New("not supported")
-}
-
-func (c *mockStorageContainer) OpenRead(ctx context.Context) (StorageContainerReader, error) {
-	return nil, errors.New("no StorageContainerReader")
-}
 
 type mockStorageContainerWithProbeContext struct {
 	backendProbeCtx context.Context
@@ -98,8 +69,10 @@ func (b *mockStorageContainerBackend) setProbeErr(err error) {
 	b.probeErr = err
 }
 
-func (b *mockStorageContainerBackend) clearProbeErr() {
-	b.probeErr = nil
+func (b *mockStorageContainerBackend) activatedContainer(c *C, path string) *mockStorageContainer {
+	container, exists := b.activatedContainers[path]
+	c.Assert(exists, testutil.IsTrue)
+	return container
 }
 
 func (b *mockStorageContainerBackend) addActivatedContainer(path string, container *mockStorageContainer) {
@@ -116,10 +89,6 @@ func (b *mockStorageContainerBackend) deleteActivatedContainer(path string) {
 
 func (b *mockStorageContainerBackend) setProbeActivatedErr(err error) {
 	b.probeActivatedErr = err
-}
-
-func (b *mockStorageContainerBackend) clearProbeActivatedErr() {
-	b.probeActivatedErr = nil
 }
 
 func (b *mockStorageContainerBackend) Probe(ctx context.Context, path string) (StorageContainer, error) {
@@ -153,8 +122,6 @@ func (b *mockStorageContainerBackend) ProbeActivated(ctx context.Context, path s
 }
 
 type storageSuite struct{}
-
-func (s *storageSuite) SetUpTest(c *C) {}
 
 var _ = Suite(&storageSuite{})
 

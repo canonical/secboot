@@ -1,5 +1,3 @@
-//go:build linux
-
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
@@ -19,29 +17,24 @@
  *
  */
 
-package preinstall
+// Package processinit should be imported by applications that want a
+// process keyring created before the go runtime starts.
+package processinit
 
-import (
-	"github.com/canonical/go-tpm2/linux"
-	"github.com/canonical/go-tpm2/ppi"
-)
-
-var (
-	ObtainTPMDevicePPILinux = obtainTPMDevicePPILinux
-)
-
-func MockLinuxRawDevicePhysicalPresenceInterface(fn func(*linux.RawDevice) (ppi.PPI, error)) (restore func()) {
-	orig := linuxRawDevicePhysicalPresenceInterface
-	linuxRawDevicePhysicalPresenceInterface = fn
-	return func() {
-		linuxRawDevicePhysicalPresenceInterface = orig
+/*
+#cgo LDFLAGS: -lkeyutils
+#include <errno.h>
+#include <keyutils.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+__attribute__((constructor))
+void init_process_keyring() {
+	key_serial_t res;
+	if ((res = keyctl_get_keyring_ID(KEY_SPEC_PROCESS_KEYRING, 1)) < 0) {
+		fprintf(stderr, "FATAL: Cannot create process keyring (%s)\n", strerror(errno));
+		_exit(1);
 	}
 }
-
-func MockLinuxRMDeviceRawDevice(fn func(*linux.RMDevice) *linux.RawDevice) (restore func()) {
-	orig := linuxRMDeviceRawDevice
-	linuxRMDeviceRawDevice = fn
-	return func() {
-		linuxRMDeviceRawDevice = orig
-	}
-}
+*/
+import "C"

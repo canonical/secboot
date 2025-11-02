@@ -29,30 +29,76 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 	"github.com/snapcore/secboot/internal/paths"
 )
 
 const (
-	NilHash = nilHash
+	AuthRequestorKey                = authRequestorKey
+	AuthRequestorUserVisibleNameKey = authRequestorUserVisibleNameKey
+	ExternalKeyDataKey              = externalKeyDataKey
+	KeyringDescPrefixKey            = keyringDescPrefixKey
+	KeyringKeyPurposeAuxiliary      = keyringKeyPurposeAuxiliary
+	LegacyKeyringKeyDescPathsKey    = legacyKeyringKeyDescPathsKey
+	NilHash                         = nilHash
+	RecoveryKeyTriesKey             = recoveryKeyTriesKey
+	StderrLoggerKey                 = stderrLoggerKey
 )
 
 var (
 	AcquireArgon2OutOfProcessHandlerSystemLock    = acquireArgon2OutOfProcessHandlerSystemLock
+	AddKeyToUserKeyring                           = addKeyToUserKeyring
+	AddKeyToUserKeyringLegacy                     = addKeyToUserKeyringLegacy
 	ErrArgon2OutOfProcessHandlerSystemLockTimeout = errArgon2OutOfProcessHandlerSystemLockTimeout
+	FormatKeyringKeyDesc                          = formatKeyringKeyDesc
+	ParseKeyringKeyDesc                           = parseKeyringKeyDesc
 	StorageContainerHandlers                      = storageContainerHandlers
 	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
 	UnmarshalProtectedKeys                        = unmarshalProtectedKeys
 )
 
 type (
-	KdfParams     = kdfParams
-	ProtectedKeys = protectedKeys
+	ActivateConfigImpl = activateConfig
+	ActivateConfigKey  = activateConfigKey
+	KdfParams          = kdfParams
+	ProtectedKeys      = protectedKeys
 )
 
 func KDFOptionsKdfParams(opts KDFOptions, defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
 	return opts.kdfParams(defaultTargetDuration, keyLen)
+}
+
+func (c activateConfig) Len() int {
+	return len(c)
+}
+
+// XXX: This will eventually be part of the ActivateContext API.
+func (c *ActivateContext) State() *ActivateState {
+	return c.state
+}
+
+func (c *ActivateContext) Config() ActivateConfigGetter {
+	return c.cfg
+}
+
+func (c *ActivateContext) PrimaryKey() PrimaryKey {
+	return c.primaryKey
+}
+
+func (s *ActivateState) Copy() *ActivateState {
+	out := &ActivateState{
+		PrimaryKeyID: s.PrimaryKeyID,
+	}
+	if s.Activations != nil {
+		out.Activations = make(map[string]*ContainerActivateState)
+	}
+	for k, v := range s.Activations {
+		vc := *v
+		out.Activations[k] = &vc
+	}
+	return out
 }
 
 func (o *Argon2Options) KdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
@@ -61,6 +107,14 @@ func (o *Argon2Options) KdfParams(defaultTargetDuration time.Duration, keyLen ui
 
 func (o *PBKDF2Options) KdfParams(defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
 	return o.kdfParams(defaultTargetDuration, keyLen)
+}
+
+func MockAddKeyToUserKeyring(fn func([]byte, StorageContainer, KeyringKeyPurpose, string) (keyring.KeyID, error)) (restore func()) {
+	orig := addKeyToUserKeyring
+	addKeyToUserKeyring = fn
+	return func() {
+		addKeyToUserKeyring = orig
+	}
 }
 
 func MockArgon2OutOfProcessHandlerSystemLockPath(path string) (restore func()) {
@@ -84,6 +138,14 @@ func MockArgon2SysLockStderr(w io.Writer) (restore func()) {
 	argon2SysLockStderr = w
 	return func() {
 		argon2SysLockStderr = orig
+	}
+}
+
+func MockKeyringAddKey(fn func([]byte, keyring.KeyType, string, keyring.KeyID) (keyring.KeyID, error)) (restore func()) {
+	orig := keyringAddKey
+	keyringAddKey = fn
+	return func() {
+		keyringAddKey = orig
 	}
 }
 

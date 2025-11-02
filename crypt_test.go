@@ -30,7 +30,6 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"syscall"
 
 	"github.com/snapcore/snapd/asserts"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
@@ -84,6 +83,10 @@ func (r *mockAuthRequestor) RequestUserCredential(ctx context.Context, name, pat
 		path:      path,
 		authTypes: authTypes,
 	})
+
+	if len(r.responses) == 0 {
+		return "", errors.New("no response")
+	}
 	response := r.responses[0]
 	r.responses = r.responses[1:]
 
@@ -369,49 +372,37 @@ func (l *mockLUKS2) newLUKSView(ctx context.Context, devicePath string) (*luksvi
 type cryptSuite struct {
 	cryptTestBase
 	keyDataTestBase
-	testutil.KeyringTestBase
+	snapd_testutil.BaseTest
+	keyringTestMixin
 
 	luks2 *mockLUKS2
-
-	deviceStats    map[string]unix.Stat_t
-	requestedStats []string
 }
 
 var _ = Suite(&cryptSuite{})
 
 func (s *cryptSuite) SetUpSuite(c *C) {
 	s.keyDataTestBase.SetUpSuite(c)
-	s.KeyringTestBase.SetUpSuite(c)
+	s.keyringTestMixin.SetUpSuite(c)
 }
 
 func (s *cryptSuite) TearDownSuite(c *C) {
+	s.keyringTestMixin.TearDownSuite(c)
 	s.keyDataTestBase.TearDownSuite(c)
 }
 
 func (s *cryptSuite) SetUpTest(c *C) {
-	s.AddCleanup(MockUnixStat(func(devicePath string, st *unix.Stat_t) error {
-		s.requestedStats = append(s.requestedStats, devicePath)
-		foundSt, hasSt := s.deviceStats[devicePath]
-		if !hasSt {
-			return syscall.ENOENT
-		}
-		*st = foundSt
-		return nil
-	}))
-
-	s.deviceStats = map[string]unix.Stat_t{
-		"/dev/sda1": unix.Stat_t{
-			Mode: 0600 | unix.S_IFBLK,
-			Rdev: unix.Mkdev(8, 1),
-		},
-		"/dev/vda2": unix.Stat_t{
-			Mode: 0600 | unix.S_IFBLK,
-			Rdev: unix.Mkdev(9, 2),
-		},
-	}
-
+	s.BaseTest.SetUpTest(c)
 	s.keyDataTestBase.SetUpTest(c)
-	s.KeyringTestBase.SetUpTest(c)
+	s.keyringTestMixin.SetUpTest(c)
+
+	s.addFileInfo("/dev/sda1", &unix.Stat_t{
+		Mode: 0600 | unix.S_IFBLK,
+		Rdev: unix.Mkdev(8, 1),
+	})
+	s.addFileInfo("/dev/vda2", &unix.Stat_t{
+		Mode: 0600 | unix.S_IFBLK,
+		Rdev: unix.Mkdev(9, 2),
+	})
 
 	s.handler.userAuthSupport = true
 
@@ -430,8 +421,9 @@ func (s *cryptSuite) SetUpTest(c *C) {
 }
 
 func (s *cryptSuite) TearDownTest(c *C) {
+	s.keyringTestMixin.TearDownTest(c)
 	s.keyDataTestBase.TearDownTest(c)
-	s.KeyringTestBase.TearDownTest(c)
+	s.BaseTest.TearDownTest(c)
 }
 
 func (s *cryptSuite) addMockToken(path string, token luks2.Token) int {
@@ -458,24 +450,12 @@ func (s *cryptSuite) addMockKeyslot(path string, key []byte) int {
 }
 
 func (s *cryptSuite) checkRecoveryKeyInKeyring(c *C, prefix, path string, expected RecoveryKey) {
-	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
-	// so far, mark the current test as expected to fail.
-	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
 	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, DiskUnlockKey(expected[:]))
 }
 
 func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expectedKey DiskUnlockKey, expectedAuxKey PrimaryKey) {
-	// The following test will fail if the user keyring isn't reachable from the session keyring. If the test have succeeded
-	// so far, mark the current test as expected to fail.
-	if !s.ProcessPossessesUserKeyringKeys && !c.Failed() {
-		c.ExpectFailure("Cannot possess user keys because the user keyring isn't reachable from the session keyring")
-	}
-
 	key, err := GetDiskUnlockKeyFromKernel(prefix, path, false)
 	c.Check(err, IsNil)
 	c.Check(key, DeepEquals, expectedKey)
@@ -488,7 +468,7 @@ func (s *cryptSuite) checkKeyDataKeysInKeyring(c *C, prefix, path string, expect
 func (s *cryptSuite) newMultipleNamedKeyData(c *C, names ...string) (keyData []*KeyData, keys []DiskUnlockKey, primaryKeys []PrimaryKey) {
 	for _, name := range names {
 		primaryKey := s.newPrimaryKey(c, 32)
-		protected, unlockKey := s.mockProtectKeys(c, primaryKey, "foo", crypto.SHA256)
+		protected, unlockKey := s.mockProtectKeysRand(c, primaryKey, "foo", crypto.SHA256)
 
 		kd, err := NewKeyData(protected)
 		c.Assert(err, IsNil)
@@ -516,7 +496,7 @@ func (s *cryptSuite) newNamedKeyData(c *C, name string) (*KeyData, DiskUnlockKey
 func (s *cryptSuite) newMultipleNamedKeyDataWithPassphrases(c *C, passphrases []string, names ...string) (keyData []*KeyData, keys []DiskUnlockKey, primaryKeys []PrimaryKey) {
 	for i, name := range names {
 		primaryKey := s.newPrimaryKey(c, 32)
-		protected, unlockKey := s.mockProtectKeysWithPassphrase(c, primaryKey, "foo", nil, 32, crypto.SHA256)
+		protected, unlockKey := s.mockProtectKeysWithPassphraseRand(c, primaryKey, "foo", nil, 32, crypto.SHA256)
 
 		kd, err := NewKeyDataWithPassphrase(protected, passphrases[i])
 		c.Assert(err, IsNil)
@@ -3973,16 +3953,14 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyDataErrorHandling15(
 }
 
 func (s *cryptSuite) TestActivateVolumeWithLegacyPaths(c *C) {
-	s.deviceStats = map[string]unix.Stat_t{
-		"/dev/some/path": unix.Stat_t{
-			Mode: 0600 | unix.S_IFBLK,
-			Rdev: unix.Mkdev(8, 1),
-		},
-		"/dev/some/legacy/path": unix.Stat_t{
-			Mode: 0600 | unix.S_IFBLK,
-			Rdev: unix.Mkdev(8, 1),
-		},
-	}
+	s.addFileInfo("/dev/some/path", &unix.Stat_t{
+		Mode: 0600 | unix.S_IFBLK,
+		Rdev: unix.Mkdev(8, 1),
+	})
+	s.addFileInfo("/dev/some/legacy/path", &unix.Stat_t{
+		Mode: 0600 | unix.S_IFBLK,
+		Rdev: unix.Mkdev(8, 1),
+	})
 
 	models := []SnapModel{nil}
 
@@ -3995,17 +3973,15 @@ func (s *cryptSuite) TestActivateVolumeWithLegacyPaths(c *C) {
 }
 
 func (s *cryptSuite) TestActivateVolumeWithLegacyPathsError(c *C) {
-	s.deviceStats = map[string]unix.Stat_t{
-		"/dev/some/path": unix.Stat_t{
-			Mode: 0600 | unix.S_IFBLK,
-			Rdev: unix.Mkdev(8, 1),
-		},
-		"/dev/some/legacy/path": unix.Stat_t{
-			Mode: 0600 | unix.S_IFBLK,
-			// different node
-			Rdev: unix.Mkdev(8, 2),
-		},
-	}
+	s.addFileInfo("/dev/some/path", &unix.Stat_t{
+		Mode: 0600 | unix.S_IFBLK,
+		Rdev: unix.Mkdev(8, 1),
+	})
+	s.addFileInfo("/dev/some/legacy/path", &unix.Stat_t{
+		Mode: 0600 | unix.S_IFBLK,
+		// different node
+		Rdev: unix.Mkdev(8, 2),
+	})
 
 	keyData, unlockKey, primaryKey := s.newNamedKeyData(c, "")
 	authRequestor := &mockAuthRequestor{}
