@@ -26,9 +26,9 @@ import (
 	"io"
 
 	efi "github.com/canonical/go-efilib"
-	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
 // MockHostEnvironment provides a mock host environment that can be used by both
@@ -37,7 +37,7 @@ type MockHostEnvironment struct {
 	Vars MockVars
 	Log  *tcglog.Log
 
-	TPM2Device tpm2.TPMDevice
+	TPM2Device tpm2_device.TPMDevice
 
 	VirtMode               string
 	VirtModeType           internal_efi.DetectVirtMode
@@ -75,7 +75,7 @@ func WithLog(log *tcglog.Log) MockHostEnvironmentOption {
 }
 
 // WithTPMDevice adds the specified TPM device to a [MockHostEnvironment].
-func WithTPMDevice(device tpm2.TPMDevice) MockHostEnvironmentOption {
+func WithTPMDevice(device tpm2_device.TPMDevice) MockHostEnvironmentOption {
 	return func(env *MockHostEnvironment) {
 		env.TPM2Device = device
 	}
@@ -226,7 +226,7 @@ func (e *MockHostEnvironment) ReadEventLog() (*tcglog.Log, error) {
 }
 
 // TPMDevice implements [github.com/snapcore/secboot/internal/efi.HostEnvironment.TPMDevice].
-func (e *MockHostEnvironment) TPMDevice() (tpm2.TPMDevice, error) {
+func (e *MockHostEnvironment) TPMDevice() (tpm2_device.TPMDevice, error) {
 	if e.TPM2Device == nil {
 		return nil, internal_efi.ErrNoTPM2Device
 	}

@@ -531,6 +531,133 @@ func (s *sealSuite) TestPassphraseProtectKeyWithTPMDifferentPassphrase(c *C) {
 	}, "uWjzz3MURKUS")
 }
 
+func makePIN(c *C, in string) secboot.PIN {
+	out, err := secboot.ParsePIN(in)
+	c.Assert(err, IsNil)
+	return out
+}
+
+func (s *sealSuite) testPINProtectKeyWithTPM(c *C, params *PINProtectKeyParams, pin secboot.PIN) {
+	s.AddCleanup(MockSecbootNewKeyDataWithPIN(func(keyParams *secboot.KeyWithPINParams, keyPIN secboot.PIN) (*secboot.KeyData, error) {
+		c.Check(keyParams.Role, Equals, params.Role)
+		c.Check(keyParams.PlatformName, Equals, "tpm2")
+		c.Check(keyParams.KDFAlg, Equals, crypto.SHA256)
+		c.Check(keyParams.KDFOptions, DeepEquals, params.KDFOptions)
+		c.Check(keyParams.AuthKeySize, Equals, 32)
+		c.Check(keyPIN, DeepEquals, pin)
+
+		// TODO: Check EncryptedPayload and Handle fields
+
+		return secboot.NewKeyDataWithPIN(keyParams, keyPIN)
+	}))
+
+	k, primaryKey, unlockKey, err := NewTPMPINProtectedKey(s.TPM(), params, pin)
+	c.Assert(err, IsNil)
+
+	c.Check(k.AuthMode(), Equals, secboot.AuthModePIN)
+
+	skd, err := NewSealedKeyData(k)
+	c.Assert(err, IsNil)
+	c.Check(skd.Validate(s.TPM().TPMContext, primaryKey), IsNil)
+
+	c.Check(skd.Version(), Equals, uint32(3))
+	c.Check(skd.PCRPolicyCounterHandle(), Equals, params.PCRPolicyCounterHandle)
+
+	policyAuthPublicKey, err := NewPolicyAuthPublicKey(primaryKey)
+	c.Assert(err, IsNil)
+
+	var pcrPolicyCounterPub *tpm2.NVPublic
+	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
+		index, err := s.TPM().CreateResourceContextFromTPM(params.PCRPolicyCounterHandle)
+		c.Assert(err, IsNil)
+
+		pcrPolicyCounterPub, _, err = s.TPM().NVReadPublic(index)
+		c.Check(err, IsNil)
+
+	}
+
+	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, params.Role, pcrPolicyCounterPub, true)
+	c.Assert(err, IsNil)
+
+	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(skd.Data().Public().Attrs, Equals, tpm2.AttrFixedTPM|tpm2.AttrFixedParent)
+	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, expectedPolicyDigest)
+	c.Check(skd.Data().Policy().(*KeyDataPolicy_v3).StaticData, tpm2_testutil.TPMValueDeepEquals, expectedPolicyData.(*KeyDataPolicy_v3).StaticData)
+
+	if params.PrimaryKey != nil {
+		c.Check(primaryKey, DeepEquals, params.PrimaryKey)
+	}
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPIN(pin)
+	c.Check(err, IsNil)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+
+	if params.PCRProfile != nil {
+		// Verify that the key is sealed with the supplied PCR profile by changing
+		// the PCR values.
+		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
+		c.Check(err, IsNil)
+		_, _, err = k.RecoverKeysWithPIN(pin)
+		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+	}
+
+	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
+		c.Check(s.TPM().DoesHandleExist(params.PCRPolicyCounterHandle), testutil.IsTrue)
+	}
+}
+
+func (s *sealSuite) TestPINProtectKeyWithTPM(c *C) {
+	s.testPINProtectKeyWithTPM(c, &PINProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+		},
+	}, makePIN(c, "1234"))
+}
+
+func (s *sealSuite) TestPINProtectKeyWithTPMSuppliedKDFOptions(c *C) {
+	s.testPINProtectKeyWithTPM(c, &PINProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+		},
+		KDFOptions: &secboot.PBKDF2Options{
+			ForceIterations: 50000,
+			HashAlg:         crypto.SHA256,
+		},
+	}, makePIN(c, "1234"))
+}
+
+func (s *sealSuite) TestPINProtectKeyWithTPMDifferentSuppliedKDFOptions(c *C) {
+	s.testPINProtectKeyWithTPM(c, &PINProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+		},
+		KDFOptions: &secboot.PBKDF2Options{
+			ForceIterations: 100000,
+			HashAlg:         crypto.SHA384,
+		},
+	}, makePIN(c, "1234"))
+}
+
+func (s *sealSuite) TestPINProtectKeyWithTPMDifferentPIN(c *C) {
+	s.testPINProtectKeyWithTPM(c, &PINProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+		},
+	}, makePIN(c, "87654321"))
+}
+
 func (s *sealSuite) testProtectKeyWithExternalStorageKey(c *C, params *ProtectKeyParams) {
 	srk, err := s.TPM().NewResourceContext(tcg.SRKHandle)
 	c.Assert(err, IsNil)

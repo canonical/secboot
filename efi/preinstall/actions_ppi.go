@@ -23,18 +23,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/ppi"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 )
-
-var (
-	obtainTPMDevicePPI = obtainTPMDevicePPIFallback
-)
-
-func obtainTPMDevicePPIFallback(dev tpm2.TPMDevice) (ppi.PPI, error) {
-	return nil, errors.New("physical presence interface not supported")
-}
 
 // runPPIAction submits the PPI operation associated with the supplied action
 // to the platform firmware. On success, the state transition action is returned,
@@ -45,12 +37,12 @@ func runPPIAction(env internal_efi.HostEnvironment, action Action) (ppi.StateTra
 	if err != nil {
 		return 0, err
 	}
-	p, err := obtainTPMDevicePPI(dev)
-	if err != nil {
-		return 0, fmt.Errorf("cannot obtain physical presence interface: %w", err)
-	}
-	if p == nil {
+	p, err := dev.PPI()
+	switch {
+	case errors.Is(err, tpm2_device.ErrNoPPI):
 		return 0, ppi.ErrOperationUnsupported
+	case err != nil:
+		return 0, fmt.Errorf("cannot obtain physical presence interface: %w", err)
 	}
 
 	switch action {
@@ -95,12 +87,12 @@ func isPPIActionAvailable(env internal_efi.HostEnvironment, action Action) (bool
 	if err != nil {
 		return false, err
 	}
-	p, err := obtainTPMDevicePPI(dev)
-	if err != nil {
-		return false, fmt.Errorf("cannot obtain physical presence interface: %w", err)
-	}
-	if p == nil {
+	p, err := dev.PPI()
+	switch {
+	case errors.Is(err, tpm2_device.ErrNoPPI):
 		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("cannot obtain physical presence interface: %w", err)
 	}
 
 	var operation ppi.OperationId

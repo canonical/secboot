@@ -31,6 +31,7 @@ import (
 	. "github.com/snapcore/secboot/efi/preinstall"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	. "gopkg.in/check.v1"
 )
 
@@ -112,7 +113,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCounters(
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -133,7 +134,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMFiniteCounters(c 
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -154,7 +155,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMCountersCheckSki
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -176,7 +177,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnershipCheckSk
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.EndorsementHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -198,7 +199,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnershipCheckSk
 	c.Assert(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -217,7 +218,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCounters(c 
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DeviceInVM)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -239,7 +240,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCountersWit
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DeviceInVM)
 	c.Check(err, IsNil)
 	c.Assert(tpm, NotNil)
@@ -270,7 +271,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodNoVMPreinstallLockoutAvailabili
 	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1), testutil.IsTrue)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, IsNil)
 	c.Check(tpm, NotNil)
@@ -373,7 +374,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceFailureMode(c *C) {
 	s.Mssim(c).TestFailureMode()
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	_, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, Equals, ErrTPMFailure)
 	c.Check(dev.NumberOpen(), Equals, int(0))
@@ -401,7 +402,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceWithBackgroundSelfTest(c *C) {
 	}
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	_, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `cannot perform partial self test: TPM returned a warning whilst executing command TPM_CC_SelfTest: TPM_RC_TESTING \(TPM is performing self-tests\)`)
 	c.Check(tpm2.IsTPMWarning(err, tpm2.WarningTesting, tpm2.CommandSelfTest), testutil.IsTrue)
@@ -471,7 +472,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceIsNotPCClient(c *C) {
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	_, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, Equals, ErrNoPCClientTPM)
 	c.Check(dev.NumberOpen(), Equals, int(0))
@@ -485,7 +486,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceIsNotPCClientWithSWTPMWorkaround(c 
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	_, err := OpenAndCheckTPM2Device(env, CheckTPM2DeviceInVM)
 	c.Check(err, Equals, ErrNoPCClientTPM)
 	c.Check(dev.NumberOpen(), Equals, int(0))
@@ -501,7 +502,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceDisabled(c *C) {
 	c.Assert(s.TPM.HierarchyControl(s.TPM.EndorsementHandleContext(), tpm2.HandleEndorsement, false, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	_, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, Equals, ErrTPMDisabled)
 	c.Check(dev.NumberOpen(), Equals, int(0))
@@ -517,7 +518,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedLockout(c *C) {
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.LockoutHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `2 errors detected:
 - availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
@@ -550,7 +551,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedOwner(c *C) {
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.OwnerHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `one or more of the TPM hierarchies is already owned:
 - TPM_RH_OWNER has an authorization value
@@ -579,7 +580,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsement(c *C) {
 	c.Assert(s.TPM.HierarchyChangeAuth(s.TPM.EndorsementHandleContext(), []byte{1, 2, 3, 4}, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `one or more of the TPM hierarchies is already owned:
 - TPM_RH_ENDORSEMENT has an authorization value
@@ -608,7 +609,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedLockoutWithPolicy(c *C)
 	c.Assert(s.TPM.SetPrimaryPolicy(s.TPM.LockoutHandleContext(), testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"), tpm2.HashAlgorithmSHA256, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `one or more of the TPM hierarchies is already owned:
 - TPM_RH_LOCKOUT has an authorization policy
@@ -637,7 +638,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedOwnerWithPolicy(c *C) {
 	c.Assert(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"), tpm2.HashAlgorithmSHA256, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `one or more of the TPM hierarchies is already owned:
 - TPM_RH_OWNER has an authorization policy
@@ -666,7 +667,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceAlreadyOwnedEndorsementWithPolicy(c
 	c.Assert(s.TPM.SetPrimaryPolicy(s.TPM.EndorsementHandleContext(), testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"), tpm2.HashAlgorithmSHA256, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `one or more of the TPM hierarchies is already owned:
 - TPM_RH_ENDORSEMENT has an authorization policy
@@ -697,7 +698,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout1(c *C) {
 	c.Assert(s.TPM.DictionaryAttackParameters(s.TPM.LockoutHandleContext(), 0, 10000, 10000, nil), IsNil)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `TPM is in DA lockout mode`)
 
@@ -732,7 +733,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockout2(c *C) {
 	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1), testutil.IsTrue)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `3 errors detected:
 - availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
@@ -778,7 +779,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutPostInstall(c *C) {
 	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1), testutil.IsTrue)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, ErrorMatches, `2 errors detected:
 - availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
@@ -808,7 +809,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutLockedOut(c *C) {
 	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 	c.Check(err, ErrorMatches, `TPM's lockout hierarchy is unavailable because it is locked out`)
 
@@ -834,7 +835,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutLockedOutPostInstall(c *C) {
 	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall)
 	c.Check(err, ErrorMatches, `TPM's lockout hierarchy is unavailable because it is locked out`)
 
@@ -857,7 +858,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceInsufficientNVCountersPreInstall(c 
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, 0)
 
 	var tmpl CompoundError
@@ -885,7 +886,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutAvailabilitySkipped(c *C) {
 	c.Check(tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandDictionaryAttackLockReset, 1), testutil.IsTrue)
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DevicePostInstall) // Post install so we get 1 error.
 
 	var tmpl CompoundError

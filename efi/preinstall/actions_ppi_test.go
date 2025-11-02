@@ -27,6 +27,7 @@ import (
 	. "github.com/snapcore/secboot/efi/preinstall"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
 	. "gopkg.in/check.v1"
 )
@@ -104,46 +105,15 @@ func (*mockPPI) OperationResponse() (*ppi.OperationResponse, error) {
 	return nil, nil
 }
 
-type mockTpm2Device struct {
-	_ byte
-}
-
-func (*mockTpm2Device) Open() (tpm2.Transport, error) {
-	return nil, errors.New("not supported")
-}
-
-func (*mockTpm2Device) String() string {
-	return "mock TPM2 device"
-}
-
 type actionsPpiSuite struct {
 	snapd_testutil.BaseTest
-
-	devToPPIMap map[tpm2.TPMDevice]ppi.PPI
-	ppiErr      error
-}
-
-func (s *actionsPpiSuite) SetUpTest(c *C) {
-	s.devToPPIMap = make(map[tpm2.TPMDevice]ppi.PPI)
-	s.ppiErr = nil
-
-	restore := MockObtainTPMDevicePPI(func(dev tpm2.TPMDevice) (ppi.PPI, error) {
-		if s.ppiErr != nil {
-			return nil, s.ppiErr
-		}
-		return s.devToPPIMap[dev], nil
-	})
-	s.AddCleanup(restore)
 }
 
 var _ = Suite(&actionsPpiSuite{})
 
 func (s *actionsPpiSuite) TestRunPPIActionEnableTPM(c *C) {
-	dev := new(mockTpm2Device)
 	p := &mockPPI{sta: ppi.StateTransitionRebootRequired}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(nil, p, nil)))
 
 	sta, err := RunPPIAction(env, ActionEnableTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -152,11 +122,8 @@ func (s *actionsPpiSuite) TestRunPPIActionEnableTPM(c *C) {
 }
 
 func (s *actionsPpiSuite) TestRunPPIActionEnableAndClearTPM(c *C) {
-	dev := new(mockTpm2Device)
 	p := &mockPPI{sta: ppi.StateTransitionRebootRequired}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(nil, p, nil)))
 
 	sta, err := RunPPIAction(env, ActionEnableAndClearTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -165,11 +132,8 @@ func (s *actionsPpiSuite) TestRunPPIActionEnableAndClearTPM(c *C) {
 }
 
 func (s *actionsPpiSuite) TestRunPPIActionClearTPM(c *C) {
-	dev := new(mockTpm2Device)
 	p := &mockPPI{sta: ppi.StateTransitionRebootRequired}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(nil, p, nil)))
 
 	sta, err := RunPPIAction(env, ActionClearTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -178,11 +142,8 @@ func (s *actionsPpiSuite) TestRunPPIActionClearTPM(c *C) {
 }
 
 func (s *actionsPpiSuite) TestRunPPIActionEnableTPMWithShutdownSTA(c *C) {
-	dev := new(mockTpm2Device)
 	p := &mockPPI{sta: ppi.StateTransitionShutdownRequired}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(nil, p, nil)))
 
 	sta, err := RunPPIAction(env, ActionEnableTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -191,54 +152,50 @@ func (s *actionsPpiSuite) TestRunPPIActionEnableTPMWithShutdownSTA(c *C) {
 }
 
 func (s *actionsPpiSuite) TestRunPPIActionInvalidAction(c *C) {
-	dev := new(mockTpm2Device)
-	p := &mockPPI{sta: ppi.StateTransitionRebootRequired}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, &mockPPI{sta: ppi.StateTransitionShutdownRequired}, nil)),
+	)
 
 	_, err := RunPPIAction(env, ActionRebootToFWSettings)
 	c.Check(err, ErrorMatches, `invalid PPI action "reboot-to-fw-settings"`)
 }
 
 func (s *actionsPpiSuite) TestRunPPIActionInvalidSTA(c *C) {
-	dev := new(mockTpm2Device)
-	p := &mockPPI{sta: ppi.StateTransitionActionOSVendorSpecific}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, &mockPPI{sta: ppi.StateTransitionActionOSVendorSpecific}, nil)),
+	)
 
 	_, err := RunPPIAction(env, ActionEnableTPMViaFirmware)
 	c.Check(err, ErrorMatches, `unsupported state transition action "OS Vendor-specific"`)
 }
 
 func (s *actionsPpiSuite) TestRunPPIActionNoPPI(c *C) {
-	dev := new(mockTpm2Device)
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, nil, tpm2_device.ErrNoPPI)),
+	)
 
 	_, err := RunPPIAction(env, ActionEnableTPMViaFirmware)
 	c.Check(err, Equals, ppi.ErrOperationUnsupported)
 }
 
 func (s *actionsPpiSuite) TestRunPPIActionPPIErr(c *C) {
-	s.ppiErr = errors.New("some error")
-	dev := new(mockTpm2Device)
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	expectedErr := errors.New("some error")
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, nil, expectedErr)),
+	)
 
 	_, err := RunPPIAction(env, ActionEnableTPMViaFirmware)
 	c.Check(err, ErrorMatches, `cannot obtain physical presence interface: some error`)
 }
 
 func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableTPM(c *C) {
-	dev := new(mockTpm2Device)
-	p := &mockPPI{ops: map[ppi.OperationId]ppi.OperationStatus{
-		ppi.OperationEnableTPM: ppi.OperationPPRequired,
-	}}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, &mockPPI{
+			ops: map[ppi.OperationId]ppi.OperationStatus{
+				ppi.OperationEnableTPM: ppi.OperationPPRequired,
+			},
+		}, nil)),
+	)
 
 	avail, err := IsPPIActionAvailable(env, ActionEnableTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -246,13 +203,13 @@ func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableTPM(c *C) {
 }
 
 func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableAndClearTPM(c *C) {
-	dev := new(mockTpm2Device)
-	p := &mockPPI{ops: map[ppi.OperationId]ppi.OperationStatus{
-		ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
-	}}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, &mockPPI{
+			ops: map[ppi.OperationId]ppi.OperationStatus{
+				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+			},
+		}, nil)),
+	)
 
 	avail, err := IsPPIActionAvailable(env, ActionEnableAndClearTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -260,13 +217,13 @@ func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableAndClearTPM(c *C) {
 }
 
 func (s *actionsPpiSuite) TestIsPPIActionAvailableClearTPM(c *C) {
-	dev := new(mockTpm2Device)
-	p := &mockPPI{ops: map[ppi.OperationId]ppi.OperationStatus{
-		ppi.OperationClearTPM: ppi.OperationPPRequired,
-	}}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, &mockPPI{
+			ops: map[ppi.OperationId]ppi.OperationStatus{
+				ppi.OperationClearTPM: ppi.OperationPPRequired,
+			},
+		}, nil)),
+	)
 
 	avail, err := IsPPIActionAvailable(env, ActionClearTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -274,11 +231,9 @@ func (s *actionsPpiSuite) TestIsPPIActionAvailableClearTPM(c *C) {
 }
 
 func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableTPMNotAvailable(c *C) {
-	dev := new(mockTpm2Device)
-	p := &mockPPI{}
-	s.devToPPIMap[dev] = p
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, new(mockPPI), nil)),
+	)
 
 	avail, err := IsPPIActionAvailable(env, ActionEnableTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -286,9 +241,9 @@ func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableTPMNotAvailable(c *C) {
 }
 
 func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableTPMNoPPI(c *C) {
-	dev := new(mockTpm2Device)
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, nil, tpm2_device.ErrNoPPI)),
+	)
 
 	avail, err := IsPPIActionAvailable(env, ActionEnableTPMViaFirmware)
 	c.Check(err, IsNil)
@@ -296,10 +251,10 @@ func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableTPMNoPPI(c *C) {
 }
 
 func (s *actionsPpiSuite) TestIsPPIActionAvailableEnableTPMPPIErr(c *C) {
-	s.ppiErr = errors.New("some error")
-	dev := new(mockTpm2Device)
-
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(dev))
+	expectedErr := errors.New("some error")
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithTPMDevice(newTpmDevice(nil, nil, expectedErr)),
+	)
 
 	_, err := IsPPIActionAvailable(env, ActionEnableTPMViaFirmware)
 	c.Check(err, ErrorMatches, `cannot obtain physical presence interface: some error`)

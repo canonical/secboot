@@ -41,6 +41,7 @@ import (
 	"github.com/snapcore/secboot/internal/efitest"
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 	"github.com/snapcore/secboot/internal/testutil"
+	"github.com/snapcore/secboot/internal/tpm2_device"
 	. "gopkg.in/check.v1"
 )
 
@@ -48,26 +49,12 @@ type runChecksContextSuite struct {
 	tpm2_testutil.TPMSimulatorTest
 	tpmPropertyModifierMixin
 	tcglogReplayMixin
-
-	devToPPIMap map[tpm2.TPMDevice]ppi.PPI
-	ppiErr      error
 }
 
 func (s *runChecksContextSuite) SetUpTest(c *C) {
 	s.TPMSimulatorTest.SetUpTest(c)
 	s.tpmPropertyModifierMixin.transport = s.Transport
 	s.tcglogReplayMixin.impl = s
-
-	s.devToPPIMap = make(map[tpm2.TPMDevice]ppi.PPI)
-	s.ppiErr = nil
-
-	restore := MockObtainTPMDevicePPI(func(dev tpm2.TPMDevice) (ppi.PPI, error) {
-		if s.ppiErr != nil {
-			return nil, s.ppiErr
-		}
-		return s.devToPPIMap[dev], nil
-	})
-	s.AddCleanup(restore)
 }
 
 func (s *runChecksContextSuite) Tpm() *tpm2.TPMContext {
@@ -85,7 +72,6 @@ type testRunChecksContextRunParams struct {
 	env                  internal_efi.HostEnvironment
 	tpmPropertyModifiers map[tpm2.Property]uint32
 	enabledBanks         []tpm2.HashAlgorithmId
-	ppi                  *mockPPI
 
 	initialFlags CheckFlags
 	loadedImages []secboot_efi.Image
@@ -114,23 +100,6 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 		if err == nil {
 			s.resetTPMAndReplayLog(c, log, log.Algorithms...)
 		}
-
-		p := params.ppi
-		if p == nil {
-			// Create a mockPPI if one wasn't supplied
-			p = &mockPPI{}
-		}
-		if p.ops == nil {
-			// Initialize an uninitialized PPI. Supply the
-			// ops map to prevent this.
-			p.sta = ppi.StateTransitionRebootRequired
-			p.ops = map[ppi.OperationId]ppi.OperationStatus{
-				ppi.OperationEnableTPM:         ppi.OperationPPRequired,
-				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
-				ppi.OperationClearTPM:          ppi.OperationPPRequired,
-			}
-		}
-		s.devToPPIMap[dev] = p
 	}
 
 	restore := MockEfiComputePeImageDigest(func(alg crypto.Hash, r io.ReaderAt, sz int64) ([]byte, error) {
@@ -201,8 +170,9 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 	// Make sure we don't leave any open TPM connections
 	dev, err = params.env.TPMDevice()
 	if err == nil {
-		c.Assert(dev, testutil.ConvertibleTo, &tpm2_testutil.TransportBackedDevice{})
-		c.Check(dev.(*tpm2_testutil.TransportBackedDevice).NumberOpen(), Equals, 0)
+		c.Assert(dev, testutil.ConvertibleTo, &tpmDevice{})
+		c.Assert(dev.(*tpmDevice).TPMDevice, testutil.ConvertibleTo, &tpm2_testutil.TransportBackedDevice{})
+		c.Check(dev.(*tpmDevice).TPMDevice.(*tpm2_testutil.TransportBackedDevice).NumberOpen(), Equals, 0)
 	}
 
 	// Check errors that were captured from intermediate execution of the Run() loop.
@@ -267,7 +237,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -341,7 +311,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -414,7 +384,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -492,7 +462,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -567,7 +537,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -656,7 +626,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
@@ -732,7 +702,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
@@ -825,7 +795,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -899,7 +869,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -946,7 +916,7 @@ C7E003CB
 	errs = s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -1023,7 +993,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode("qemu", internal_efi.DetectVirtModeVM),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{}),
 			efitest.WithSysfsDevices(devices),
@@ -1097,7 +1067,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode("qemu", internal_efi.DetectVirtModeVM),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{}),
 			efitest.WithSysfsDevices(devices),
@@ -1187,7 +1157,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -1278,7 +1248,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				StartupLocality: 3,
@@ -1356,7 +1326,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				StartupLocality: 4,
@@ -1435,7 +1405,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -1515,7 +1485,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -1595,7 +1565,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -1677,7 +1647,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
@@ -1756,7 +1726,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
@@ -1850,7 +1820,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeSysPrepAppLaunch: true,
@@ -1927,7 +1897,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeSysPrepAppLaunch: true,
@@ -2020,7 +1990,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
@@ -2097,7 +2067,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
@@ -2192,7 +2162,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -2272,7 +2242,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch:          true,
@@ -2353,7 +2323,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch:          true,
@@ -2456,7 +2426,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch:          true,
@@ -2538,7 +2508,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch:          true,
@@ -2650,7 +2620,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch:          true,
@@ -2787,7 +2757,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -2879,7 +2849,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -2978,7 +2959,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -3078,7 +3070,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -3166,7 +3169,7 @@ func (s *runChecksContextSuite) TestRunBadExternalAction(c *C) {
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
@@ -3217,7 +3220,7 @@ func (s *runChecksContextSuite) TestRunBadNotEFI(c *C) {
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
@@ -3257,7 +3260,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -3316,7 +3319,7 @@ func (s *runChecksContextSuite) TestRunBadTPMDeviceFailure(c *C) {
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
@@ -3340,7 +3343,7 @@ func (s *runChecksContextSuite) TestRunBadNoPCClientTPMDevice(c *C) {
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -3360,7 +3363,18 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabled(c *C) {
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
@@ -3382,16 +3396,22 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableTPMViaFirmw
 	// Test the error case where the TPM has been disabled by firmware, and
 	// we run the ActionEnableTPMViaFirmware action.
 
-	p := new(mockPPI)
+	p := &mockPPI{
+		sta: ppi.StateTransitionRebootRequired,
+		ops: map[ppi.OperationId]ppi.OperationStatus{
+			ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+			ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+		},
+	}
 
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi:          p,
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(i int) {
 			switch i {
@@ -3425,16 +3445,22 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableAndClearTPM
 	// Test the error case where the TPM has been disabled by firmware, and
 	// we run the ActionEnableAndClearTPMViaFirmware action.
 
-	p := new(mockPPI)
+	p := &mockPPI{
+		sta: ppi.StateTransitionRebootRequired,
+		ops: map[ppi.OperationId]ppi.OperationStatus{
+			ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+			ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+		},
+	}
 
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi:          p,
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(i int) {
 			switch i {
@@ -3492,7 +3518,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -3561,12 +3598,19 @@ C7E003CB
 		},
 	}
 
-	p := new(mockPPI)
+	p := &mockPPI{
+		sta: ppi.StateTransitionRebootRequired,
+		ops: map[ppi.OperationId]ppi.OperationStatus{
+			ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+			ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+		},
+	}
 
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -3587,7 +3631,6 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi:          p,
 		profileOpts:  PCRProfileOptionsDefault,
 		iterations:   2,
 		prepare: func(i int) {
@@ -3650,12 +3693,19 @@ C7E003CB
 		},
 	}
 
-	p := new(mockPPI)
+	p := &mockPPI{
+		sta: ppi.StateTransitionRebootRequired,
+		ops: map[ppi.OperationId]ppi.OperationStatus{
+			ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+			ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+		},
+	}
 
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -3676,7 +3726,6 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi:          p,
 		profileOpts:  PCRProfileOptionsDefault,
 		iterations:   2,
 		prepare: func(i int) {
@@ -3740,7 +3789,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -3820,12 +3880,19 @@ C7E003CB
 		},
 	}
 
-	p := new(mockPPI)
+	p := &mockPPI{
+		sta: ppi.StateTransitionRebootRequired,
+		ops: map[ppi.OperationId]ppi.OperationStatus{
+			ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+			ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+		},
+	}
 
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -3846,7 +3913,6 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi:          p,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -3924,12 +3990,19 @@ C7E003CB
 		},
 	}
 
-	p := new(mockPPI)
+	p := &mockPPI{
+		sta: ppi.StateTransitionRebootRequired,
+		ops: map[ppi.OperationId]ppi.OperationStatus{
+			ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+			ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+		},
+	}
 
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -3950,7 +4023,6 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi:          p,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -4029,7 +4101,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -4089,12 +4172,19 @@ C7E003CB
 		},
 	}
 
-	p := new(mockPPI)
+	p := &mockPPI{
+		sta: ppi.StateTransitionRebootRequired,
+		ops: map[ppi.OperationId]ppi.OperationStatus{
+			ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+			ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+		},
+	}
 
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -4115,7 +4205,6 @@ C7E003CB
 			tpm2.PropertyPSFamilyIndicator: 1,
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi:          p,
 		iterations:   2,
 		profileOpts:  PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
@@ -4165,12 +4254,19 @@ C7E003CB
 		},
 	}
 
-	p := new(mockPPI)
+	p := &mockPPI{
+		sta: ppi.StateTransitionRebootRequired,
+		ops: map[ppi.OperationId]ppi.OperationStatus{
+			ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+			ppi.OperationClearTPM:          ppi.OperationPPRequired,
+			ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+		},
+	}
 
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -4191,7 +4287,6 @@ C7E003CB
 			tpm2.PropertyPSFamilyIndicator: 1,
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi:          p,
 		iterations:   2,
 		profileOpts:  PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
@@ -4245,7 +4340,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -4302,7 +4408,7 @@ func (s *runChecksContextSuite) TestRunBadTCGLog(c *C) {
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 		),
@@ -4348,7 +4454,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				StartupLocality: 3,
@@ -4433,7 +4539,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -4509,7 +4615,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -4586,7 +4692,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -4663,7 +4769,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:       []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				FirmwareDebugger: true,
@@ -4713,7 +4819,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
@@ -4764,7 +4870,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -4817,7 +4923,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -4867,7 +4973,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:       []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				StartupLocality:  3,
@@ -4910,7 +5016,7 @@ func (s *runChecksContextSuite) TestRunBadHostSecurityErrorMissingIntelMEI(c *C)
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -4958,7 +5064,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 0, nil),
 			efitest.WithSysfsDevices(devices),
@@ -5007,7 +5113,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -5055,7 +5161,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -5128,7 +5234,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -5204,7 +5310,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -5284,7 +5390,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -5357,7 +5463,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
@@ -5433,7 +5539,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeSysPrepAppLaunch: true,
@@ -5509,7 +5615,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
@@ -5588,7 +5694,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -5658,7 +5764,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -5728,7 +5834,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				SecureBootDisabled: true,
@@ -5801,7 +5907,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				SecureBootDisabled: true,
@@ -5893,7 +5999,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(log),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -5962,7 +6068,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch:          true,
@@ -6214,7 +6320,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
@@ -6274,18 +6380,21 @@ func (s *runChecksContextSuite) TestRunChecksActionEnableTPMViaFirmwareNotAvaila
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi: &mockPPI{
-			sta: ppi.StateTransitionRebootRequired,
-			ops: map[ppi.OperationId]ppi.OperationStatus{
-				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
-				ppi.OperationClearTPM:          ppi.OperationPPRequired,
-			},
-		},
-		profileOpts: PCRProfileOptionsDefault,
+		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
 			// Disable owner and endorsement hierarchies
 			c.Assert(s.TPM.HierarchyControl(s.TPM.OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
@@ -6304,18 +6413,21 @@ func (s *runChecksContextSuite) TestRunChecksActionEnableAndClearTPMViaFirmwareN
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionShutdownRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM: ppi.OperationPPRequired,
+						ppi.OperationClearTPM:  ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi: &mockPPI{
-			sta: ppi.StateTransitionRebootRequired,
-			ops: map[ppi.OperationId]ppi.OperationStatus{
-				ppi.OperationEnableTPM: ppi.OperationPPRequired,
-				ppi.OperationClearTPM:  ppi.OperationPPRequired,
-			},
-		},
-		profileOpts: PCRProfileOptionsDefault,
+		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
 			// Disable owner and endorsement hierarchies
 			c.Assert(s.TPM.HierarchyControl(s.TPM.OwnerHandleContext(), tpm2.HandleOwner, false, nil), IsNil)
@@ -6357,7 +6469,17 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -6378,14 +6500,7 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi: &mockPPI{
-			sta: ppi.StateTransitionRebootRequired,
-			ops: map[ppi.OperationId]ppi.OperationStatus{
-				ppi.OperationEnableTPM:         ppi.OperationPPRequired,
-				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
-			},
-		},
-		profileOpts: PCRProfileOptionsDefault,
+		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
 			// Set an authorization value for the endorsement hierarchy and
 			// an authorization policy for the storage hierarchy.
@@ -6414,20 +6529,23 @@ func (s *runChecksContextSuite) TestRunChecksPPIActionWithShutdownTransition(c *
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionShutdownRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		ppi: &mockPPI{
-			sta: ppi.StateTransitionShutdownRequired,
-			ops: map[ppi.OperationId]ppi.OperationStatus{
-				ppi.OperationEnableTPM:         ppi.OperationPPRequired,
-				ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
-				ppi.OperationClearTPM:          ppi.OperationPPRequired,
-			},
-		},
-		profileOpts: PCRProfileOptionsDefault,
-		iterations:  2,
+		profileOpts:  PCRProfileOptionsDefault,
+		iterations:   2,
 		prepare: func(i int) {
 			switch i {
 			case 0:
@@ -6475,7 +6593,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
@@ -6553,7 +6682,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -6631,7 +6760,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
@@ -6726,7 +6855,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
@@ -6821,7 +6950,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
@@ -6916,7 +7045,7 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch:          true,
@@ -7028,7 +7157,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -7100,7 +7240,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
@@ -7170,7 +7321,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -7276,7 +7438,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -7382,7 +7555,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -7501,7 +7685,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -7609,7 +7804,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -7716,7 +7922,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
@@ -7822,7 +8039,18 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
+						ppi.OperationClearTPM:          ppi.OperationPPRequired,
+						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices),
