@@ -155,6 +155,8 @@ func (m AuthMode) String() string {
 	}
 }
 
+// keyDataError is used to wrap errors in order to identify errors that occur
+// because of invalid key metadata.
 type keyDataError struct {
 	err error
 }
