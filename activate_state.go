@@ -94,10 +94,11 @@ func errorToKeyslotError(err error) KeyslotErrorType {
 // ContainerActivateState contains the activation state for a single
 // [StorageContainer].
 type ContainerActivateState struct {
-	Status           ActivationStatus            `json:"status"`                      // The overall activation status for this storage container.
-	Keyslot          string                      `json:"keyslot,omitempty"`           // If the container was activated, the name of the keyslot used.
-	DeactivateReason DeactivationReason          `json:"deactivate-reason,omitempty"` // An argument supplied to ActivateContext.DeactivateContainer.
-	KeyslotErrors    map[string]KeyslotErrorType `json:"keyslot-errors"`              // A map of errors for tried keyslots, keyed by name.
+	Status             ActivationStatus            `json:"status"`                      // The overall activation status for this storage container.
+	Keyslot            string                      `json:"keyslot,omitempty"`           // If the container was activated, the name of the keyslot used.
+	DeactivateReason   DeactivationReason          `json:"deactivate-reason,omitempty"` // An argument supplied to ActivateContext.DeactivateContainer.
+	KeyslotErrors      map[string]KeyslotErrorType `json:"keyslot-errors"`              // A map of errors for tried keyslots, keyed by name.
+	KeyslotErrorsOrder []string                    `json:"keyslot-errors-order"`        // A list of keyslot names in order of failure.
 
 	// CustomData provides a way for the user of the ActivateContext API
 	// to save arbitrary custom JSON data, using the

@@ -111,6 +111,10 @@ func (s *ContainerActivateState) Copy() *ContainerActivateState {
 			out.KeyslotErrors[k] = v
 		}
 	}
+	if s.KeyslotErrorsOrder != nil {
+		out.KeyslotErrorsOrder = make([]string, len(s.KeyslotErrorsOrder))
+		copy(out.KeyslotErrorsOrder, s.KeyslotErrorsOrder)
+	}
 	if s.CustomData != nil {
 		out.CustomData = make(json.RawMessage, len(s.CustomData))
 		copy(out.CustomData, s.CustomData)
