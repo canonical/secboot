@@ -182,7 +182,7 @@ type activateOneContainerStateMachine struct {
 	// supplied to NewActivateContext (which apply to all activations),
 	// and those supplied to ActivateContext.ActivateContainer (which
 	// inherits the global configuration).
-	cfg activateConfig
+	cfg ActivateConfigGetter
 
 	primaryKey PrimaryKey // The primary key obtained from a previous activation
 	flags      activateOneContainerStateMachineFlags
@@ -199,7 +199,7 @@ type activateOneContainerStateMachine struct {
 	keyslotErrCount       int                              // The number of keyslot errors.
 }
 
-func newActivateOneContainerStateMachine(container StorageContainer, cfg activateConfig, primaryKey PrimaryKey, flags activateOneContainerStateMachineFlags) *activateOneContainerStateMachine {
+func newActivateOneContainerStateMachine(container StorageContainer, cfg ActivateConfigGetter, primaryKey PrimaryKey, flags activateOneContainerStateMachineFlags) *activateOneContainerStateMachine {
 	// Check whether we have a custom stderr using WithStderrLogger
 	stderr, exists := ActivateConfigGet[io.Writer](cfg, stderrLoggerKey)
 	if !exists {

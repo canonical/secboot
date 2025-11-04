@@ -2680,3 +2680,15 @@ func (s *activateSuite) TestDeactivateContainerNoProvidedState(c *C) {
 	c.Check(container.isActivated(), testutil.IsFalse)
 	c.Check(ctx.State(), DeepEquals, expectedState)
 }
+
+func (s *activateSuite) TestActivateOneContainerStateMachinePrimaryKeyInfoWithMoreWork(c *C) {
+	m := NewActivateOneContainerStateMachine(nil, make(mockActivateConfig), nil, 0)
+	_, _, err := m.PrimaryKeyInfo()
+	c.Check(err, ErrorMatches, `state machine has not finished`)
+}
+
+func (s *activateSuite) TestActivateOneContainerStateMachineActivationStateWithMoreWork(c *C) {
+	m := NewActivateOneContainerStateMachine(nil, make(mockActivateConfig), nil, 0)
+	_, err := m.ActivationState()
+	c.Check(err, ErrorMatches, `state machine has not finished`)
+}
