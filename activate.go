@@ -88,9 +88,11 @@ func (r *keyslotAttemptRecord) usable() bool {
 	// it should remain usable.
 	var expectedUserAuthErr error
 	switch {
-	case r.slot.Type() == KeyslotTypeRecovery:
-		// Recovery keyslot
-		expectedUserAuthErr = errInvalidRecoveryKey
+	// XXX: Keep this commented out for now because we don't check recovery
+	// keyslot usability once we have built the initial list of them.
+	//case r.slot.Type() == KeyslotTypeRecovery:
+	//	// Recovery keyslot
+	//	expectedUserAuthErr = errInvalidRecoveryKey
 	// TODO: Enable this when passphrase support is added. This is just here
 	// for now as a reminder - there will be a branch for PIN keyslots as well.
 	//case r.slot.Type() == KeyslotTypePlatform && r.data != nil && r.data.AuthMode() == AuthModePassphrase:
