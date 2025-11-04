@@ -86,7 +86,8 @@ func (r *keyslotAttemptRecord) usable() bool {
 	// with one exception being that if the error is a result of the user
 	// supplying an incorrect credential (passphrase, PIN, or recovery key),
 	// it should remain usable.
-	var expectedUserAuthErr error
+	// TODO: Uncomment this when passphrase support is added.
+	//var expectedUserAuthErr error
 	switch {
 	// XXX: Keep this commented out for now because we don't check recovery
 	// keyslot usability once we have built the initial list of them.
@@ -103,7 +104,8 @@ func (r *keyslotAttemptRecord) usable() bool {
 		return false
 	}
 
-	return errors.Is(r.err, expectedUserAuthErr)
+	// TODO: Uncomment this when passphrase support is added.
+	//return errors.Is(r.err, expectedUserAuthErr)
 }
 
 type keyslotAttemptRecordPrioritySlice []*keyslotAttemptRecord
