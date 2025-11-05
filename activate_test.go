@@ -573,6 +573,7 @@ func (s *activateSuite) TestActivateContainerWithReadKeyslotError(c *C) {
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -602,6 +603,7 @@ func (s *activateSuite) TestActivateContainerWithInvalidKeyData(c *C) {
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -660,6 +662,7 @@ func (s *activateSuite) TestActivateContainerAuthModeNoneWithRecoverKeysErrorAnd
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorIncompatibleRoleParams,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -691,6 +694,7 @@ func (s *activateSuite) TestActivateContainerAuthModeNoneWithUnlockErrorAndFallb
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -1368,6 +1372,7 @@ Error with keyslot "default-fallback": cannot recover keys from keyslot: incompa
 				"default":          KeyslotErrorIncompatibleRoleParams,
 				"default-fallback": KeyslotErrorIncompatibleRoleParams,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -1516,6 +1521,7 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithRecoveryKeyTries(c *
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default-recovery": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default-recovery"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -1563,6 +1569,7 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithDifferentRecoveryKey
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default-recovery": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default-recovery"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -1782,6 +1789,7 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyData(c *C) {
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -1829,6 +1837,7 @@ Error with keyslot "external:default": cannot recover keys from keyslot: incompa
 				"default-fallback": KeyslotErrorInvalidKeyData,
 				"external:default": KeyslotErrorIncompatibleRoleParams,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback", "external:default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -1868,6 +1877,7 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority1(c *C) 
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default-fallback": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -1907,6 +1917,7 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority2(c *C) 
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -1931,7 +1942,7 @@ func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyData(c *C) {
 		opts: []ActivateOption{
 			WithExternalKeyData(external...),
 		},
-		expectedStderr: `Error with external key metadata "external:default": invalid key data: cannot decode key data: invalid character 'i' looking for beginning of value
+		expectedStderr: `Error with keyslot "external:default": invalid key data: cannot decode key data: invalid character 'i' looking for beginning of value
 `,
 		expectedActivateConfig: map[any]any{
 			ExternalKeyDataKey: external,
@@ -1944,6 +1955,7 @@ func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyData(c *C) {
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"external:default": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"external:default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -2055,6 +2067,7 @@ func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterOneRecoveryKey(
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -2101,6 +2114,7 @@ Cannot try keyslots that require a user credential because WithAuthRequestor was
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -2142,6 +2156,7 @@ Cannot try keyslots that require a user credential because WithAuthRequestor was
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorUnknown,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -2280,7 +2295,7 @@ func (s *activateSuite) TestActivateContainerWithNoSuitableKeyslotsAfterPlatform
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("save"),
 		},
-		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: no appropriate platform handler is registered
+		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
 Error with keyslot "default-fallback": invalid key data: cannot activate container with key recovered from keyslot metadata: invalid key
 `,
 		expectedTryKeys: [][]byte{unlockKey2},
@@ -2295,6 +2310,7 @@ Error with keyslot "default-fallback": invalid key data: cannot activate contain
 				"default":          KeyslotErrorUnknown,
 				"default-fallback": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -2346,6 +2362,7 @@ Cannot try keyslots that require a user credential because WithAuthRequestor was
 				"default":          KeyslotErrorInvalidPrimaryKey,
 				"default-fallback": KeyslotErrorInvalidPrimaryKey,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -2488,7 +2505,7 @@ func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterPlatformAndReco
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("foo"),
 		},
-		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: no appropriate platform handler is registered
+		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
 Error with keyslot "default-fallback": invalid key data: cannot activate container with key recovered from keyslot metadata: invalid key
 `,
 		expectedTryKeys:          [][]byte{unlockKey2, recoveryKey},
@@ -2508,6 +2525,7 @@ Error with keyslot "default-fallback": invalid key data: cannot activate contain
 				"default":          KeyslotErrorUnknown,
 				"default-fallback": KeyslotErrorInvalidKeyData,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -2561,6 +2579,7 @@ Cannot try keyslots that require a user credential because WithAuthRequestor was
 				"default":          KeyslotErrorInvalidPrimaryKey,
 				"default-fallback": KeyslotErrorInvalidPrimaryKey,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -2687,6 +2706,7 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseRetryAfterIncorre
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -2734,6 +2754,7 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseSecondKey(c *C) {
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -2786,6 +2807,7 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseWithPassphraseTri
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -2836,6 +2858,7 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseWithDifferentPass
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -2895,6 +2918,7 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseWithRecoveryKeyFa
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -2968,6 +2992,7 @@ Error with keyslot "default-fallback": cannot recover keys from keyslot: incompa
 				"default":          KeyslotErrorInvalidKeyData,
 				"default-fallback": KeyslotErrorIncompatibleRoleParams,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3031,6 +3056,7 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseWithRecoveryKeyFa
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3102,6 +3128,7 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseAfterRecoveryKeyF
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-recovery": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default-recovery", "default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3165,6 +3192,7 @@ Error with keyslot "default": invalid key data: invalid primary key
 				"default":          KeyslotErrorInvalidPrimaryKey,
 				"default-fallback": KeyslotErrorInvalidPrimaryKey,
 			},
+			KeyslotErrorsOrder: []string{"default-fallback", "default"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -3261,6 +3289,7 @@ func (s *activateSuite) TestActivateContainerAuthModePINRetryAfterIncorrectPIN(c
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3308,6 +3337,7 @@ func (s *activateSuite) TestActivateContainerAuthModePINSecondKey(c *C) {
 			KeyslotErrors: map[string]KeyslotErrorType{
 				"default": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3363,6 +3393,7 @@ func (s *activateSuite) TestActivateContainerAuthModePINWithPINTries(c *C) {
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -3413,6 +3444,7 @@ func (s *activateSuite) TestActivateContainerAuthModePINWithDifferentPINTries(c 
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -3472,6 +3504,7 @@ func (s *activateSuite) TestActivateContainerAuthModePINWithRecoveryKeyFallback(
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3544,6 +3577,7 @@ Error with keyslot "default-fallback": cannot recover keys from keyslot: incompa
 				"default":          KeyslotErrorInvalidKeyData,
 				"default-fallback": KeyslotErrorIncompatibleRoleParams,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3607,6 +3641,7 @@ func (s *activateSuite) TestActivateContainerAuthModePINWithRecoveryKeyFallbackA
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-fallback": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3678,6 +3713,7 @@ func (s *activateSuite) TestActivateContainerAuthModePINAfterRecoveryKeyFallback
 				"default":          KeyslotErrorIncorrectUserAuth,
 				"default-recovery": KeyslotErrorIncorrectUserAuth,
 			},
+			KeyslotErrorsOrder: []string{"default-recovery", "default"},
 		},
 	})
 	c.Check(err, IsNil)
@@ -3741,6 +3777,7 @@ Error with keyslot "default": invalid key data: invalid primary key
 				"default":          KeyslotErrorInvalidPrimaryKey,
 				"default-fallback": KeyslotErrorInvalidPrimaryKey,
 			},
+			KeyslotErrorsOrder: []string{"default-fallback", "default"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -3858,4 +3895,16 @@ func (s *activateSuite) TestDeactivateContainerNoProvidedState(c *C) {
 	c.Check(ctx.DeactivateContainer(context.Background(), container, ""), IsNil)
 	c.Check(container.isActivated(), testutil.IsFalse)
 	c.Check(ctx.State(), DeepEquals, expectedState)
+}
+
+func (s *activateSuite) TestActivateOneContainerStateMachinePrimaryKeyInfoWithMoreWork(c *C) {
+	m := NewActivateOneContainerStateMachine(nil, make(mockActivateConfig), nil, 0)
+	_, _, err := m.PrimaryKeyInfo()
+	c.Check(err, ErrorMatches, `state machine has not finished`)
+}
+
+func (s *activateSuite) TestActivateOneContainerStateMachineActivationStateWithMoreWork(c *C) {
+	m := NewActivateOneContainerStateMachine(nil, make(mockActivateConfig), nil, 0)
+	_, err := m.ActivationState()
+	c.Check(err, ErrorMatches, `state machine has not finished`)
 }

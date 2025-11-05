@@ -60,6 +60,7 @@ var (
 	ErrInvalidRecoveryKey                         = errInvalidRecoveryKey
 	ErrorToKeyslotError                           = errorToKeyslotError
 	FormatKeyringKeyDesc                          = formatKeyringKeyDesc
+	NewActivateOneContainerStateMachine           = newActivateOneContainerStateMachine
 	ParseKeyringKeyDesc                           = parseKeyringKeyDesc
 	StorageContainerHandlers                      = storageContainerHandlers
 	UnmarshalV1KeyPayload                         = unmarshalV1KeyPayload
@@ -67,10 +68,12 @@ var (
 )
 
 type (
-	ActivateConfigImpl = activateConfig
-	ActivateConfigKey  = activateConfigKey
-	KdfParams          = kdfParams
-	ProtectedKeys      = protectedKeys
+	ActivateConfigImpl                    = activateConfig
+	ActivateConfigKey                     = activateConfigKey
+	ActivateOneContainerStateMachine      = activateOneContainerStateMachine
+	ActivateOneContainerStateMachineFlags = activateOneContainerStateMachineFlags
+	KdfParams                             = kdfParams
+	ProtectedKeys                         = protectedKeys
 )
 
 func KDFOptionsKdfParams(opts KDFOptions, defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
@@ -87,6 +90,14 @@ func (c *ActivateContext) Config() ActivateConfigGetter {
 
 func (c *ActivateContext) PrimaryKey() PrimaryKey {
 	return c.primaryKey
+}
+
+func (m *activateOneContainerStateMachine) ActivationState() (*ContainerActivateState, error) {
+	return m.activationState()
+}
+
+func (m *activateOneContainerStateMachine) PrimaryKeyInfo() (PrimaryKey, keyring.KeyID, error) {
+	return m.primaryKeyInfo()
 }
 
 func (s *ActivateState) Copy() *ActivateState {
@@ -113,6 +124,10 @@ func (s *ContainerActivateState) Copy() *ContainerActivateState {
 		for k, v := range s.KeyslotErrors {
 			out.KeyslotErrors[k] = v
 		}
+	}
+	if s.KeyslotErrorsOrder != nil {
+		out.KeyslotErrorsOrder = make([]string, len(s.KeyslotErrorsOrder))
+		copy(out.KeyslotErrorsOrder, s.KeyslotErrorsOrder)
 	}
 	if s.CustomData != nil {
 		out.CustomData = make(json.RawMessage, len(s.CustomData))
