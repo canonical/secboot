@@ -177,6 +177,7 @@ type LogOptions struct {
 	IncludeOSPresentFirmwareAppLaunch efi.GUID                        // include a flash based application launch in the log as part of the OS-present phase
 	NoSBAT                            bool                            // omit the SbatLevel measurement to mimic older versions of shim
 	PreOSVerificationUsesDigests      crypto.Hash                     // Whether Driver or SysPrep launches are verified using a digest
+	DisableDeployedMode               bool                            // Whether deployed/audit modes are disabled and we have UEFI 2.5
 }
 
 // NewLog creates a mock TCG log for testing. The log will look like a standard
@@ -362,6 +363,31 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeEFIVariableDriverConfig,
 			data:      data})
 
+	}
+
+	if opts.DisableDeployedMode {
+		for _, sbvar := range []struct {
+			name efi.VariableDescriptor
+			data []byte
+		}{
+			{
+				name: efi.VariableDescriptor{Name: "AuditMode", GUID: efi.GlobalVariable},
+				data: []byte{0x00},
+			},
+			{
+				name: efi.VariableDescriptor{Name: "DeployedMode", GUID: efi.GlobalVariable},
+				data: []byte{0x00},
+			},
+		} {
+			data := &tcglog.EFIVariableData{
+				VariableName: sbvar.name.GUID,
+				UnicodeName:  sbvar.name.Name,
+				VariableData: sbvar.data}
+			builder.hashLogExtendEvent(c, data, &logEvent{
+				pcrIndex:  7,
+				eventType: tcglog.EventTypeEFIVariableDriverConfig,
+				data:      data})
+		}
 	}
 
 	maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, dmaProtectionDisabledEventOrderAfterConfig)

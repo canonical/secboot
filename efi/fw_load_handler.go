@@ -196,6 +196,22 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	if _, err := h.readAndMeasureSignatureDb(ctx, Dbx); err != nil {
 		return xerrors.Errorf("cannot measure dbx: %w", err)
 	}
+
+	// Backward compliance: On Ubuntu Core not using preinstall checks,
+	// the firmware might be UEFI 2.5 compliant but not be in deployed mode.
+	// In that case we should still expect those measurements due to the mode.
+	// Note that DeployedMode variable should only be present in UEFI 2.5
+	// and not before.
+	deployedMode, _, err := ctx.Vars().ReadVar("DeployedMode", efi.GlobalVariable)
+	if err != nil && err != efi.ErrVarNotExist {
+		return fmt.Errorf("cannot read DeployedMode variable: %w", err)
+	} else if err == nil {
+		if len(deployedMode) == 1 && deployedMode[0] == 0 {
+			ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "AuditMode", []byte{0})
+			ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "DeployedMode", []byte{0})
+		}
+	}
+
 	// TODO: Support optional dbt/dbr database
 
 	// We don't measure a EV_SEPARATOR here yet because we need to preserve the

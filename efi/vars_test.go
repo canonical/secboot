@@ -142,6 +142,13 @@ func withSecureBootDisabled() mockVarsConfig {
 	}
 }
 
+func withDeployedModeDisabled() mockVarsConfig {
+	return func(c *C, vars efitest.MockVars) {
+		vars.AddVar("DeployedMode", efi.GlobalVariable, efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{0})
+		vars.AddVar("AuditMode", efi.GlobalVariable, efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess, []byte{0})
+	}
+}
+
 type mockVarsConfig func(*C, efitest.MockVars)
 
 func makeMockVars(c *C, confs ...mockVarsConfig) efitest.MockVars {
