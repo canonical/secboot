@@ -39,6 +39,9 @@ type (
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
 	CpuVendor                             = cpuVendor
 	DetectVirtResult                      = detectVirtResult
+	HfstsRegisters                        = hfstsRegisters
+	HfstsRegistersCsme11                  = hfstsRegistersCsme11
+	HfstsRegistersCsme18                  = hfstsRegistersCsme18
 	JoinError                             = joinError
 	MeVersion                             = meVersion
 	SecureBootPolicyResult                = secureBootPolicyResult
@@ -78,6 +81,8 @@ var (
 	CheckForKernelIOMMU                                   = checkForKernelIOMMU
 	CheckHostSecurity                                     = checkHostSecurity
 	CheckHostSecurityIntelBootGuard                       = checkHostSecurityIntelBootGuard
+	CheckHostSecurityIntelBootGuardCSME11                 = checkHostSecurityIntelBootGuardCSME11
+	CheckHostSecurityIntelBootGuardCSME18                 = checkHostSecurityIntelBootGuardCSME18
 	CheckHostSecurityIntelCPUDebuggingLocked              = checkHostSecurityIntelCPUDebuggingLocked
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings

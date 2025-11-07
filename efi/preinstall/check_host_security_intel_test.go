@@ -65,13 +65,6 @@ func (d *mockMEISysfsDevice) AttributeReader(attr string) (io.ReadCloser, error)
 	}
 }
 
-func regPtrs(regs *[6]uint32) (out [6]*uint32) {
-	for i := range *regs {
-		out[i] = &((*regs)[i])
-	}
-	return out
-}
-
 func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfs1(c *C) {
 	dev := &mockMEISysfsDevice{
 		fwStatus: []byte(`94000245
@@ -83,16 +76,15 @@ C7E003CB
 `),
 	}
 
-	var regs [6]uint32
-	err := ReadIntelHFSTSRegistersFromMEISysfs(dev, regPtrs(&regs))
+	regs, err := ReadIntelHFSTSRegistersFromMEISysfs(dev)
 	c.Check(err, IsNil)
-	c.Check(regs, Equals, [6]uint32{
-		0x94000245,
-		0x09F10506,
-		0x00000020,
-		0x00004000,
-		0x00041F03,
-		0xC7E003CB,
+	c.Check(regs, DeepEquals, HfstsRegisters{
+		Hfsts1: 0x94000245,
+		Hfsts2: 0x09F10506,
+		Hfsts3: 0x00000020,
+		Hfsts4: 0x00004000,
+		Hfsts5: 0x00041F03,
+		Hfsts6: 0xC7E003CB,
 	})
 }
 
@@ -107,24 +99,22 @@ C7E0034B
 `),
 	}
 
-	var regs [6]uint32
-	err := ReadIntelHFSTSRegistersFromMEISysfs(dev, regPtrs(&regs))
+	regs, err := ReadIntelHFSTSRegistersFromMEISysfs(dev)
 	c.Check(err, IsNil)
-	c.Check(regs, Equals, [6]uint32{
-		0x94000245,
-		0x09F10506,
-		0x00000020,
-		0x00004000,
-		0x00041F03,
-		0xC7E0034B,
+	c.Check(regs, Equals, HfstsRegisters{
+		Hfsts1: 0x94000245,
+		Hfsts2: 0x09F10506,
+		Hfsts3: 0x00000020,
+		Hfsts4: 0x00004000,
+		Hfsts5: 0x00041F03,
+		Hfsts6: 0xC7E0034B,
 	})
 }
 
 func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrNoAttr(c *C) {
 	dev := &mockMEISysfsDevice{}
 
-	var regs [6]uint32
-	err := ReadIntelHFSTSRegistersFromMEISysfs(dev, regPtrs(&regs))
+	_, err := ReadIntelHFSTSRegistersFromMEISysfs(dev)
 	c.Check(err, ErrorMatches, `device attribute does not exist`)
 }
 
@@ -140,8 +130,7 @@ C7E003CB
 `),
 	}
 
-	var regs [6]uint32
-	err := ReadIntelHFSTSRegistersFromMEISysfs(dev, regPtrs(&regs))
+	_, err := ReadIntelHFSTSRegistersFromMEISysfs(dev)
 	c.Check(err, ErrorMatches, `invalid fw_status format: too many entries`)
 }
 
@@ -156,8 +145,7 @@ func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrInval
 `),
 	}
 
-	var regs [6]uint32
-	err := ReadIntelHFSTSRegistersFromMEISysfs(dev, regPtrs(&regs))
+	_, err := ReadIntelHFSTSRegistersFromMEISysfs(dev)
 	c.Check(err, ErrorMatches, `invalid fw_status format: unexpected line length for line 5 \(7 chars\)`)
 }
 
@@ -172,8 +160,7 @@ G7E003CB
 `),
 	}
 
-	var regs [6]uint32
-	err := ReadIntelHFSTSRegistersFromMEISysfs(dev, regPtrs(&regs))
+	_, err := ReadIntelHFSTSRegistersFromMEISysfs(dev)
 	c.Check(err, ErrorMatches, `invalid fw_status format: cannot scan line 5: expected integer`)
 }
 
@@ -187,8 +174,7 @@ func (s *hostSecurityIntelSuite) TestReadIntelHFSTSRegistersFromMEISysfsErrNotEn
 `),
 	}
 
-	var regs [6]uint32
-	err := ReadIntelHFSTSRegistersFromMEISysfs(dev, regPtrs(&regs))
+	_, err := ReadIntelHFSTSRegistersFromMEISysfs(dev)
 	c.Check(err, ErrorMatches, `invalid fw_status format: not enough entries`)
 }
 
@@ -271,7 +257,7 @@ func (s *hostSecurityIntelSuite) TestCalculateIntelMEFamilyUnkown(c *C) {
 	c.Check(CalculateIntelMEFamily(MeVersion{Major: 0}, 0x940F0245), Equals, MeFamilyUnknown)
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodCSME(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME11(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -295,18 +281,18 @@ C7E003CB
 	c.Check(err, IsNil)
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodME(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVECSME11(c *C) {
 	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:8.1.65.1586
-0:8.1.65.1586
-0:8.1.52.1496
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
 `),
 		"fw_status": []byte(`94000245
 09F10506
 00000020
 00004000
 00041F03
-C7E003CB
+C7E002CB
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -319,18 +305,42 @@ C7E003CB
 	c.Check(err, IsNil)
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodSPS(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME18(c *C) {
 	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:4.1.4.54
-0:4.1.4.54
-0:4.1.4.54
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
 `),
-		"fw_status": []byte(`940f0245
-09F10506
+		"fw_status": []byte(`A4000245
+09110500
 00000020
-00004000
-00041F03
-C7E003CB
+00000000
+02F61F03
+40200000
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
+		},
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, IsNil)
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVECSME18(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
+`),
+		"fw_status": []byte(`A4000245
+09110500
+00000020
+00000000
+02F21F03
+40200000
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -356,23 +366,6 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEIDevi
 	c.Check(err, Equals, MissingKernelModuleError("mei_me"))
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrHFSTSRegisters(c *C) {
-	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
-	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `cannot read HFSTS registers from sysfs: device attribute does not exist`)
-}
-
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFwVer(c *C) {
 	attrs := map[string][]byte{
 		"fw_status": []byte(`94000245
@@ -391,6 +384,98 @@ C7E003CB
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `cannot obtain ME version from sysfs: device attribute does not exist`)
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrHFSTSRegisters(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
+		},
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `cannot read HFSTS registers from sysfs: device attribute does not exist`)
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupportedMEFamily(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:8.1.65.1586
+0:8.1.65.1586
+0:8.1.52.1496
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
+		},
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `unsupported platform: unsupported ME family`)
+	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrOperationModeOverrideJumper(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94040245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
+		},
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid ME operation mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrOperationModeDebug(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94020245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
+		},
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid ME operation mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrMfgMode(c *C) {
@@ -414,22 +499,22 @@ C7E003CB
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrOperationMode(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrACMNotActive(c *C) {
 	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
 `),
-		"fw_status": []byte(`94040245
-09F10506
+		"fw_status": []byte(`A4000245
+09110500
 00000020
-00004000
-00041F03
-C7E003CB
+00000000
+02F61E02
+40200000
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -439,22 +524,47 @@ C7E003CB
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid ME operation mode: checks for software tampering may be disabled`)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard ACM is not active`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrInvalidFamily(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrACMNotDone(c *C) {
 	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:3.1.70.0
-0:3.1.70.0
-0:3.1.65.0
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
+`),
+		"fw_status": []byte(`A4000245
+09110500
+00000020
+00000000
+02F61E03
+40200000
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
+		},
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard ACM is not active`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoFPFSOCLock(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
 `),
 		"fw_status": []byte(`94000245
 09F10506
 00000020
 00004000
 00041F03
-C7E003CB
+87E003CB
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -464,7 +574,7 @@ C7E003CB
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard unsupported on TXE ME family`)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard OTP fuses are not locked`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
@@ -493,7 +603,7 @@ D7E003CB
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoForceBootGuardACM(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupportedNoFVMECSME11(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -504,7 +614,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoForceBo
 00000020
 00004000
 00041F03
-C7E003CA
+C7E00002
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -514,11 +624,11 @@ C7E003CA
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: the BootGuard ACM is not forced to execute - the CPU can execute arbitrary code from the legacy reset vector if BootGuard cannot be successfully loaded`)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoVerifiedBoot(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupportedVMProfileCSME11(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -529,7 +639,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoVerifie
 00000020
 00004000
 00041F03
-C7E001CB
+C7E0030A
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -539,11 +649,11 @@ C7E001CB
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard verified boot mode is not enabled - this allows arbitrary firmware that doesn't have a valid signature to be executed`)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrEnforcementPolicy(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrInvalidProfileCSME11(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -554,7 +664,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrEnforceme
 00000020
 00004000
 00041F03
-C7E0034B
+C7E0024A
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -564,22 +674,22 @@ C7E0034B
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard does not have an appropriate error enforcement policy`)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: cannot determine BootGuard profile: invalid profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoProtectBIOSEnv(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrInvalidProfileCSME18(c *C) {
 	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
 `),
-		"fw_status": []byte(`94000245
-09F10506
+		"fw_status": []byte(`A4000245
+09110500
 00000020
-00004000
-00041F03
-C7E003C3
+00000000
+02F61F01
+40200000
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -589,22 +699,22 @@ C7E003C3
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: the \"Protect BIOS Environment\" feature is not enabled`)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoFPFSOCLock(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupportedNoFVMEProfileCSME18(c *C) {
 	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
 `),
-		"fw_status": []byte(`94000245
-09F10506
+		"fw_status": []byte(`A4000245
+09110500
 00000020
-00004000
-00041F03
-87E003CB
+00000000
+02E21F03
+40200000
 `),
 	}
 	devices := map[string][]internal_efi.SysfsDevice{
@@ -614,7 +724,32 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoFPFSOCL
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard OTP fuses are not locked`)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupportedVMProfileCSME18(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
+`),
+		"fw_status": []byte(`A4000245
+09110500
+00000020
+00000000
+02EE1F03
+40200000
+`),
+	}
+	devices := map[string][]internal_efi.SysfsDevice{
+		"mei": []internal_efi.SysfsDevice{
+			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
+		},
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
