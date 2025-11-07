@@ -19,7 +19,10 @@
 
 package secboot
 
-import "io"
+import (
+	"encoding/json"
+	"io"
+)
 
 // ActivateConfigGetter provides read-only access to configuration options
 // that were added to a [ActivateConfig].
@@ -109,6 +112,11 @@ func ActivateConfigGet[V any, K comparable](c ActivateConfigGetter, key K) (val 
 type activateConfigKey string
 
 const (
+	// activateStateCustomDataKey is used by WithActivateStateCustomData to
+	// provide a way for the user of the activation API to supply arbitrary
+	// JSON data.
+	activateStateCustomDataKey activateConfigKey = "activate-state-custom-data"
+
 	// externalKeyDataKey is used by WithExternalKeyDataOption to supply extra
 	// key metadata that isn't part of the container header
 	authRequestorKey activateConfigKey = "auth-requestor"
@@ -156,6 +164,16 @@ type genericContextOption[T any] struct {
 
 func (o *genericContextOption[T]) ApplyContextOptionToConfig(config ActivateConfig) {
 	config.Set(o.key, o.val)
+}
+
+// WithActivateStateCustomData can be supplied to [ActivateContext.ActivatePath] to
+// permit the caller to supply arbitrary data that will appear in the
+// [ContainerActivateState] associated with an activation.
+func WithActivateStateCustomData(data json.RawMessage) ActivateOption {
+	return &genericOption[json.RawMessage]{
+		key: activateStateCustomDataKey,
+		val: data,
+	}
 }
 
 // WithAuthRequestor allows the caller to specify an instance of [AuthRequestor]

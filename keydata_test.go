@@ -135,7 +135,7 @@ func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHand
 		}
 	}
 	if !permittedRole {
-		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidData, Err: errors.New("permission denied")}
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorIncompatibleRole, Err: errors.New("permission denied")}
 	}
 
 	b, err := aes.NewCipher(handle.Key)
@@ -1009,35 +1009,35 @@ func (s *keyDataSuite) testRecoverKeysWithPassphraseErrorHandling(c *C, data *te
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseNotSupportedKDF(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		kdfType: "other",
-		errMsg:  "unexpected intermediate KDF type \"other\"",
+		errMsg:  "invalid key data: unexpected intermediate KDF type \"other\"",
 	})
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidDerivedKeySize(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		derivedKeySize: -1,
-		errMsg:         "invalid derived key size (-1 bytes)",
+		errMsg:         "invalid key data: invalid derived key size (-1 bytes)",
 	})
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidEncryptionKeySizeSmall(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		encryptionKeySize: -1,
-		errMsg:            "invalid encryption key size (-1 bytes)",
+		errMsg:            "invalid key data: invalid encryption key size (-1 bytes)",
 	})
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidEncryptionKeySizeBig(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		encryptionKeySize: 33,
-		errMsg:            "invalid encryption key size (33 bytes)",
+		errMsg:            "invalid key data: invalid encryption key size (33 bytes)",
 	})
 }
 
 func (s *keyDataSuite) TestRecoverKeysWithPassphraseInvalidAuthKeySize(c *C) {
 	s.testRecoverKeysWithPassphraseErrorHandling(c, &testRecoverKeysWithPassphraseErrorHandlingData{
 		authKeySize: -1,
-		errMsg:      "invalid auth key size (-1 bytes)",
+		errMsg:      "invalid key data: invalid auth key size (-1 bytes)",
 	})
 }
 
@@ -1068,7 +1068,7 @@ func (s *keyDataSuite) TestNewKeyDataWithPassphraseNotSupported(c *C) {
 	passphraseParams, _ := s.mockProtectKeysWithPassphraseRand(c, primaryKey, "", nil, 32, crypto.SHA256)
 
 	_, err := NewKeyDataWithPassphrase(passphraseParams, "passphrase")
-	c.Check(err, ErrorMatches, "cannot set passphrase: not supported")
+	c.Check(err, ErrorMatches, "cannot set passphrase: cannot perform action because of an unexpected error: not supported")
 }
 
 func (s *keyDataSuite) TestChangePassphraseNotSupported(c *C) {

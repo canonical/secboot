@@ -24,6 +24,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
@@ -378,7 +379,7 @@ type testActivateContextActivateContainerParams struct {
 	expectedKeyringKeyPrefix string
 	expectedPrimaryKey       PrimaryKey
 	expectedUnlockKey        DiskUnlockKey
-	expectedStatus           ActivationStatus
+	expectedState            *ContainerActivateState
 }
 
 func (s *activateSuite) testActivateContextActivateContainer(c *C, params *testActivateContextActivateContainerParams) error {
@@ -403,7 +404,13 @@ func (s *activateSuite) testActivateContextActivateContainer(c *C, params *testA
 		}
 	}
 	expectedState := initialState.Copy()
-	expectedState.Activations[params.container.CredentialName()] = new(ContainerActivateState)
+	if params.expectedState != nil {
+		cs := params.expectedState.Copy()
+		if cs.KeyslotErrors == nil {
+			cs.KeyslotErrors = make(map[string]KeyslotErrorType)
+		}
+		expectedState.Activations[params.container.CredentialName()] = cs
+	}
 
 	activateCtx, err := NewActivateContext(context.Background(), params.initialState, params.contextOpts...)
 	c.Assert(err, IsNil)
@@ -424,7 +431,12 @@ func (s *activateSuite) testActivateContextActivateContainer(c *C, params *testA
 		_, keyringErr = GetKeyFromKernel(context.Background(), params.container, KeyringKeyPurposePrimary, params.expectedKeyringKeyPrefix)
 		c.Check(keyringErr, Equals, ErrKernelKeyNotFound)
 
-		expectedState.Activations[params.container.CredentialName()].Status = ActivationFailed
+		if params.expectedState == nil {
+			expectedState.Activations[params.container.CredentialName()] = &ContainerActivateState{
+				Status:        ActivationFailed,
+				KeyslotErrors: make(map[string]KeyslotErrorType),
+			}
+		}
 		c.Check(activateCtx.State(), DeepEquals, expectedState)
 
 		return err
@@ -474,10 +486,9 @@ func (s *activateSuite) testActivateContextActivateContainer(c *C, params *testA
 		c.Check(k, DeepEquals, []byte(params.expectedPrimaryKey))
 	}
 
-	if params.expectedStatus == ActivationSucceededWithPlatformKey && expectedState.PrimaryKeyID == 0 {
+	if params.expectedState.Status == ActivationSucceededWithPlatformKey && expectedState.PrimaryKeyID == 0 {
 		expectedState.PrimaryKeyID = int32(primaryKeyId)
 	}
-	expectedState.Activations[params.container.CredentialName()].Status = params.expectedStatus
 	c.Check(activateCtx.State(), DeepEquals, expectedState)
 
 	return nil
@@ -499,7 +510,10 @@ func (s *activateSuite) TestActivateContainerAuthModeNone(c *C) {
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -525,7 +539,14 @@ func (s *activateSuite) TestActivateContainerWithReadKeyslotError(c *C) {
 `,
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -548,7 +569,14 @@ func (s *activateSuite) TestActivateContainerWithInvalidKeyData(c *C) {
 `,
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -571,7 +599,10 @@ func (s *activateSuite) TestActivateContainerAuthModeNoneIgnoresRecoveryKey(c *C
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -593,11 +624,18 @@ func (s *activateSuite) TestActivateContainerAuthModeNoneWithRecoverKeysErrorAnd
 			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
 		),
-		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: invalid key data: permission denied
+		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: incompatible key data role params: permission denied
 `,
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorIncompatibleRoleParams,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -622,7 +660,14 @@ func (s *activateSuite) TestActivateContainerAuthModeNoneWithUnlockErrorAndFallb
 		expectedTryKeys:    [][]byte{unlockKey1, unlockKey2},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -650,7 +695,10 @@ func (s *activateSuite) TestActivateContainerAuthModeNoneWithContextOptions(c *C
 		expectedActivateConfig: map[any]any{
 			mockActivateConfigKey1("foo"): "value1",
 		},
-		expectedStatus: ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -681,7 +729,10 @@ func (s *activateSuite) TestActivateContainerAuthModeNoneWithOptions(c *C) {
 		expectedActivateConfig: map[any]any{
 			mockActivateConfigKey1("foo"): "value2",
 		},
-		expectedStatus: ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -701,7 +752,10 @@ func (s *activateSuite) TestActivateContainerAuthModeNonePriority(c *C) {
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -722,7 +776,10 @@ func (s *activateSuite) TestActivateContainerDifferentPrimaryKey(c *C) {
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -743,7 +800,10 @@ func (s *activateSuite) TestActivateContainerDifferentCredentialName(c *C) {
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -770,7 +830,10 @@ func (s *activateSuite) TestActivateContainerWithKeyringDescriptionPrefix(c *C) 
 		expectedKeyringKeyPrefix: "foo",
 		expectedPrimaryKey:       primaryKey,
 		expectedUnlockKey:        unlockKey1,
-		expectedStatus:           ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -806,7 +869,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -853,7 +919,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -900,7 +969,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -952,7 +1024,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 		expectedKeyringKeyPrefix: "foo",
 		expectedPrimaryKey:       primaryKey,
 		expectedUnlockKey:        unlockKey1,
-		expectedStatus:           ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -996,7 +1071,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 `,
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -1039,7 +1117,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -1083,7 +1164,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -1134,7 +1218,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -1185,7 +1272,10 @@ func (s *activateSuite) TestActivateContainerWithLegacyKeyringKeyDescriptionPath
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 
@@ -1235,8 +1325,8 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyFallback(c *C) {
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
-		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: invalid key data: permission denied
-Error with keyslot "default-fallback": cannot recover keys from keyslot: invalid key data: permission denied
+		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: incompatible key data role params: permission denied
+Error with keyslot "default-fallback": cannot recover keys from keyslot: incompatible key data role params: permission denied
 `,
 		expectedAuthRequestName:  "data",
 		expectedAuthRequestPath:  "/dev/sda1",
@@ -1247,7 +1337,15 @@ Error with keyslot "default-fallback": cannot recover keys from keyslot: invalid
 			RecoveryKeyTriesKey:             uint(3),
 		},
 		expectedUnlockKey: recoveryKey,
-		expectedStatus:    ActivationSucceededWithRecoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncompatibleRoleParams,
+				"default-fallback": KeyslotErrorIncompatibleRoleParams,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1289,7 +1387,10 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyRetryAfterInvalidRecover
 			RecoveryKeyTriesKey:             uint(3),
 		},
 		expectedUnlockKey: recoveryKey,
-		expectedStatus:    ActivationSucceededWithRecoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1331,7 +1432,10 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyRetryAfterIncorrectRecov
 			RecoveryKeyTriesKey:             uint(3),
 		},
 		expectedUnlockKey: recoveryKey,
-		expectedStatus:    ActivationSucceededWithRecoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1371,6 +1475,13 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithRecoveryKeyTries(c *
 			AuthRequestorUserVisibleNameKey: "data",
 			RecoveryKeyTriesKey:             uint(3),
 		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default-recovery": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default-recovery"},
+		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
 }
@@ -1408,6 +1519,13 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithDifferentRecoveryKey
 			AuthRequestorKey:                authRequestor,
 			AuthRequestorUserVisibleNameKey: "data",
 			RecoveryKeyTriesKey:             uint(2),
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default-recovery": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default-recovery"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -1474,7 +1592,10 @@ func (s *activateSuite) TestActivateContainerWithDifferentAuthRequestorUserVisib
 			RecoveryKeyTriesKey:             uint(3),
 		},
 		expectedUnlockKey: recoveryKey,
-		expectedStatus:    ActivationSucceededWithRecoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1567,7 +1688,10 @@ func (s *activateSuite) TestActivateContainerContext(c *C) {
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1612,7 +1736,14 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyData(c *C) {
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1628,7 +1759,7 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataMultiple(c *C) {
 	s.handler.permittedRoles = []string{"recover"}
 
 	external := []*ExternalKeyData{
-		NewExternalKeyData("default-recover", newMockKeyDataReader("", kd2)),
+		NewExternalKeyData("default-fallback", newMockKeyDataReader("", kd2)),
 		NewExternalKeyData("default", newMockKeyDataReader("", kd1)),
 	}
 
@@ -1637,21 +1768,30 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataMultiple(c *C) {
 			withStorageContainerPath("/dev/sda1"),
 			withStorageContainerCredentialName("sda1"),
 			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, nil),
-			withStorageContainerKeyslot("default-recover", unlockKey2, KeyslotTypePlatform, 0, nil),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, nil),
 		),
 		opts: []ActivateOption{
 			WithExternalKeyData(external...),
 		},
 		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
-Error with keyslot "default-recover": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
-Error with keyslot "external:default": cannot recover keys from keyslot: invalid key data: permission denied
+Error with keyslot "default-fallback": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+Error with keyslot "external:default": cannot recover keys from keyslot: incompatible key data role params: permission denied
 `,
 		expectedActivateConfig: map[any]any{
 			ExternalKeyDataKey: external,
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorInvalidKeyData,
+				"default-fallback": KeyslotErrorInvalidKeyData,
+				"external:default": KeyslotErrorIncompatibleRoleParams,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback", "external:default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1664,7 +1804,7 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority1(c *C) 
 	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
 
 	external := []*ExternalKeyData{
-		NewExternalKeyData("default-recover", newMockKeyDataReader("", kd2)),
+		NewExternalKeyData("default-fallback", newMockKeyDataReader("", kd2)),
 	}
 
 	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
@@ -1672,19 +1812,26 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority1(c *C) 
 			withStorageContainerPath("/dev/sda1"),
 			withStorageContainerCredentialName("sda1"),
 			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
-			withStorageContainerKeyslot("default-recover", unlockKey2, KeyslotTypePlatform, 0, nil),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, nil),
 		),
 		opts: []ActivateOption{
 			WithExternalKeyData(external...),
 		},
-		expectedStderr: `Error with keyslot "default-recover": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+		expectedStderr: `Error with keyslot "default-fallback": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
 `,
 		expectedActivateConfig: map[any]any{
 			ExternalKeyDataKey: external,
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default-fallback": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default-fallback"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1705,7 +1852,7 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority2(c *C) 
 			withStorageContainerPath("/dev/sda1"),
 			withStorageContainerCredentialName("sda1"),
 			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, nil),
-			withStorageContainerKeyslot("default-recover", unlockKey2, KeyslotTypePlatform, 101, kd2),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 101, kd2),
 		),
 		opts: []ActivateOption{
 			WithExternalKeyData(external...),
@@ -1717,7 +1864,14 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority2(c *C) 
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1729,7 +1883,7 @@ func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyData(c *C) {
 	kd, unlockKey := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover")
 
 	external := []*ExternalKeyData{
-		NewExternalKeyData("default-fallback", newMockKeyDataReader("", []byte("invalid key data"))),
+		NewExternalKeyData("default", newMockKeyDataReader("", []byte("invalid key data"))),
 	}
 
 	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
@@ -1741,14 +1895,21 @@ func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyData(c *C) {
 		opts: []ActivateOption{
 			WithExternalKeyData(external...),
 		},
-		expectedStderr: `Error with external key metadata "external:default-fallback": invalid key data: cannot decode key data: invalid character 'i' looking for beginning of value
+		expectedStderr: `Error with keyslot "external:default": invalid key data: cannot decode key data: invalid character 'i' looking for beginning of value
 `,
 		expectedActivateConfig: map[any]any{
 			ExternalKeyDataKey: external,
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"external:default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"external:default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1786,7 +1947,10 @@ func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageCo
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1850,7 +2014,14 @@ func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterOneRecoveryKey(
 			AuthRequestorUserVisibleNameKey: "save",
 		},
 		expectedUnlockKey: recoveryKey,
-		expectedStatus:    ActivationSucceededWithRecoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -1891,6 +2062,13 @@ func (s *activateSuite) TestActivateContainerNoSuitableKeyslotsAfterOneRecoveryK
 Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
 		expectedTryKeys: [][]byte{unlockKey1},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
 }
@@ -1905,7 +2083,7 @@ func (s *activateSuite) TestActivateContainerNoSuitableKeyslotsBecauseNoSuitable
 
 	// XXX: This is a bit of a hack for now. I think that keyDataTestBase and
 	// mockPlatformKeyDataHandler need a bit of a rethink.
-	params, _ := s.mockProtectKeys(c, primaryKey, testutil.DecodeHexString(c, "50ad62d4630bd3ca269e1a566b75b0f4929ef236c2534209d027a2f7d67fb58e"), "", crypto.SHA256)
+	params, unlockKey1 := s.mockProtectKeys(c, primaryKey, testutil.DecodeHexString(c, "50ad62d4630bd3ca269e1a566b75b0f4929ef236c2534209d027a2f7d67fb58e"), "", crypto.SHA256)
 	params.PlatformName = "mock2"
 	kd1 := s.makeKeyDataBlobFromParams(c, params)
 
@@ -1920,12 +2098,19 @@ func (s *activateSuite) TestActivateContainerNoSuitableKeyslotsBecauseNoSuitable
 		container: newMockStorageContainer(
 			withStorageContainerPath("/dev/sda2"),
 			withStorageContainerCredentialName("sda2"),
-			withStorageContainerKeyslot("default", nil, KeyslotTypePlatform, 0, kd1), // Configured to fail unlocking
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
 		),
 		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
 Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorUnknown,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
 }
@@ -1967,7 +2152,10 @@ func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageCo
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -2009,7 +2197,10 @@ func (s *activateSuite) TestActivateContainerWithPlatformKeyAfterPlatformKeyUsed
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -2066,6 +2257,14 @@ Error with keyslot "default-fallback": invalid key data: cannot activate contain
 			RecoveryKeyTriesKey:             uint(3),
 			AuthRequestorUserVisibleNameKey: "save",
 		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorUnknown,
+				"default-fallback": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
 }
@@ -2110,6 +2309,14 @@ func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAfterPlatfo
 Error with keyslot "default-fallback": invalid key data: invalid primary key
 Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorInvalidPrimaryKey,
+				"default-fallback": KeyslotErrorInvalidPrimaryKey,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
 }
@@ -2151,7 +2358,10 @@ func (s *activateSuite) TestActivateContainerWithPlatformKeyAfterPlatformAndReco
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -2194,7 +2404,10 @@ func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageCo
 		),
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey1,
-		expectedStatus:     ActivationSucceededWithPlatformKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -2258,7 +2471,15 @@ Error with keyslot "default-fallback": invalid key data: cannot activate contain
 			AuthRequestorUserVisibleNameKey: "foo",
 		},
 		expectedUnlockKey: recoveryKey,
-		expectedStatus:    ActivationSucceededWithRecoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorUnknown,
+				"default-fallback": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -2305,18 +2526,62 @@ func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAfterPlatfo
 Error with keyslot "default-fallback": invalid key data: invalid primary key
 Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorInvalidPrimaryKey,
+				"default-fallback": KeyslotErrorInvalidPrimaryKey,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerWithActivateStateCustomData(c *C) {
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover")
+	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithActivateStateCustomData(json.RawMessage(`"foo"`)),
+		},
+		expectedActivateConfig: map[any]any{
+			ActivateStateCustomDataKey: json.RawMessage(`"foo"`),
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey1,
+		expectedState: &ContainerActivateState{
+			Status:     ActivationSucceededWithPlatformKey,
+			Keyslot:    "default",
+			CustomData: json.RawMessage(`"foo"`),
+		},
+	})
+	c.Check(err, IsNil)
 }
 
 func (s *activateSuite) TestDeactivateContainer(c *C) {
 	state := &ActivateState{
 		Activations: map[string]*ContainerActivateState{
-			"sda1": {Status: ActivationSucceededWithRecoveryKey},
+			"sda1": {
+				Status:  ActivationSucceededWithRecoveryKey,
+				Keyslot: "default-recovery",
+				KeyslotErrors: map[string]KeyslotErrorType{
+					"default": KeyslotErrorInvalidKeyData,
+				},
+			},
 		},
 	}
 	expectedState := state.Copy()
 	expectedState.Activations["sda1"].Status = ActivationDeactivated
+	expectedState.Activations["sda1"].Keyslot = ""
 	expectedContainerState := state.Activations["sda1"]
 
 	ctx, err := NewActivateContext(context.Background(), state)
@@ -2335,11 +2600,20 @@ func (s *activateSuite) TestDeactivateContainer(c *C) {
 }
 
 func (s *activateSuite) TestDeactivateContainerError(c *C) {
-	expectedState := &ActivateState{
-		Activations: make(map[string]*ContainerActivateState),
+	state := &ActivateState{
+		Activations: map[string]*ContainerActivateState{
+			"sda1": {
+				Status:  ActivationSucceededWithRecoveryKey,
+				Keyslot: "default-recovery",
+				KeyslotErrors: map[string]KeyslotErrorType{
+					"default": KeyslotErrorInvalidKeyData,
+				},
+			},
+		},
 	}
+	expectedState := state.Copy()
 
-	ctx, err := NewActivateContext(context.Background(), nil)
+	ctx, err := NewActivateContext(context.Background(), state)
 	c.Assert(err, IsNil)
 
 	container := newMockStorageContainer(
@@ -2354,11 +2628,18 @@ func (s *activateSuite) TestDeactivateContainerError(c *C) {
 func (s *activateSuite) TestDeactivateContainerContext(c *C) {
 	state := &ActivateState{
 		Activations: map[string]*ContainerActivateState{
-			"sda1": {Status: ActivationSucceededWithRecoveryKey},
+			"sda1": {
+				Status:  ActivationSucceededWithRecoveryKey,
+				Keyslot: "default-recovery",
+				KeyslotErrors: map[string]KeyslotErrorType{
+					"default": KeyslotErrorInvalidKeyData,
+				},
+			},
 		},
 	}
 	expectedState := state.Copy()
 	expectedState.Activations["sda1"].Status = ActivationDeactivated
+	expectedState.Activations["sda1"].Keyslot = ""
 	expectedContainerState := state.Activations["sda1"]
 
 	ctx, err := NewActivateContext(context.Background(), state)
@@ -2377,4 +2658,37 @@ func (s *activateSuite) TestDeactivateContainerContext(c *C) {
 	c.Check(container.isActivated(), testutil.IsFalse)
 	c.Check(ctx.State(), DeepEquals, expectedState)
 	c.Check(ctx.State().Activations["sda1"], Equals, expectedContainerState)
+}
+
+func (s *activateSuite) TestDeactivateContainerNoProvidedState(c *C) {
+	expectedState := &ActivateState{
+		Activations: map[string]*ContainerActivateState{
+			"sda1": {Status: ActivationDeactivated},
+		},
+	}
+
+	ctx, err := NewActivateContext(context.Background(), nil)
+	c.Assert(err, IsNil)
+
+	container := newMockStorageContainer(
+		withStorageContainerPath("/dev/sda1"),
+		withStorageContainerCredentialName("sda1"),
+		withStorageContainerActivated(),
+	)
+
+	c.Check(ctx.DeactivateContainer(context.Background(), container, ""), IsNil)
+	c.Check(container.isActivated(), testutil.IsFalse)
+	c.Check(ctx.State(), DeepEquals, expectedState)
+}
+
+func (s *activateSuite) TestActivateOneContainerStateMachinePrimaryKeyInfoWithMoreWork(c *C) {
+	m := NewActivateOneContainerStateMachine(nil, make(mockActivateConfig), nil, 0)
+	_, _, err := m.PrimaryKeyInfo()
+	c.Check(err, ErrorMatches, `state machine has not finished`)
+}
+
+func (s *activateSuite) TestActivateOneContainerStateMachineActivationStateWithMoreWork(c *C) {
+	m := NewActivateOneContainerStateMachine(nil, make(mockActivateConfig), nil, 0)
+	_, err := m.ActivationState()
+	c.Check(err, ErrorMatches, `state machine has not finished`)
 }

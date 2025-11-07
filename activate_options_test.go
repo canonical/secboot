@@ -20,6 +20,7 @@
 package secboot_test
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 
@@ -347,4 +348,26 @@ func (*activateOptionsSuite) TestWithRecoveryKeyTriesContext(c *C) {
 	v, exists := ActivateConfigGet[uint](cfg, RecoveryKeyTriesKey)
 	c.Check(exists, testutil.IsTrue)
 	c.Check(v, Equals, uint(3))
+}
+
+func (*activateOptionsSuite) TestWithActivateStateCustomData1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithActivateStateCustomData(json.RawMessage(`{"foo":"bar"}`))
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[json.RawMessage](cfg, ActivateStateCustomDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, json.RawMessage(`{"foo":"bar"}`))
+}
+
+func (*activateOptionsSuite) TestWithActivateStateCustomData2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithActivateStateCustomData(json.RawMessage(`[5, 7]`))
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[json.RawMessage](cfg, ActivateStateCustomDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, json.RawMessage(`[5, 7]`))
 }

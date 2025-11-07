@@ -19,11 +19,17 @@
 
 package secboot
 
+import (
+	"encoding/json"
+	"errors"
+)
+
 // ActivationStatus describes the activation status for a storage container.
 type ActivationStatus string
 
 const (
-	ActivationIncomplete               ActivationStatus = ""
+	activationIncomplete ActivationStatus = ""
+
 	ActivationFailed                   ActivationStatus = "failed"       // The container could not be unlocked
 	ActivationSucceededWithPlatformKey ActivationStatus = "platform-key" // The container was unlocked with a normal platform key
 	ActivationSucceededWithRecoveryKey ActivationStatus = "recovery-key" // The container was unlocked with a recovery key
@@ -35,22 +41,79 @@ const (
 // on a successfully unlocked storage container. This is intended to
 // be used like an enum, with the user of the [ActivateContext] API
 // defining the values.
-//
-// XXX: This will eventually be part of the serialized [ActivateState].
 type DeactivationReason string
+
+// KeyslotErrorType describes the reason a keyslot failed when it was attempted.
+type KeyslotErrorType string
+
+const (
+	KeyslotErrorNone                   KeyslotErrorType = ""
+	KeyslotErrorIncompatibleRoleParams KeyslotErrorType = "incompatible-role-params" // The role parameters for the keyslot are not compatible with the current boot configuration.
+	KeyslotErrorInvalidKeyData         KeyslotErrorType = "invalid-key-data"         // The keyslot metadata is invalid.
+	KeyslotErrorInvalidPrimaryKey      KeyslotErrorType = "invalid-primary-key"      // The keyslot's primary key failed the primary key crosscheck.
+	KeyslotErrorIncorrectUserAuth      KeyslotErrorType = "incorrect-user-auth"      // An incorrect user authorization was provided.
+	KeyslotErrorPlatformFailure        KeyslotErrorType = "platform-failure"         // There was an error with the platform device.
+	KeyslotErrorUnknown                KeyslotErrorType = "unknown"
+)
+
+func errorToKeyslotError(err error) KeyslotErrorType {
+	if err == nil {
+		return KeyslotErrorNone
+	}
+
+	if errors.Is(err, errInvalidPrimaryKey) {
+		return KeyslotErrorInvalidPrimaryKey
+	}
+
+	var ikdErr *InvalidKeyDataError
+	if errors.As(err, &ikdErr) {
+		return KeyslotErrorInvalidKeyData
+	}
+
+	var ikdrErr *IncompatibleKeyDataRoleParamsError
+	if errors.As(err, &ikdrErr) {
+		return KeyslotErrorIncompatibleRoleParams
+	}
+
+	// XXX: Add the incorrect PIN error here as well.
+	if errors.Is(err, ErrInvalidPassphrase) || errors.Is(err, errInvalidRecoveryKey) {
+		return KeyslotErrorIncorrectUserAuth
+	}
+
+	var (
+		puErr  *PlatformUninitializedError
+		pduErr *PlatformDeviceUnavailableError
+	)
+	if errors.As(err, &puErr) || errors.As(err, &pduErr) {
+		return KeyslotErrorPlatformFailure
+	}
+
+	return KeyslotErrorUnknown
+}
 
 // ContainerActivateState contains the activation state for a single
 // [StorageContainer].
 type ContainerActivateState struct {
-	Status ActivationStatus `json:"status"`
+	Status             ActivationStatus            `json:"status"`                      // The overall activation status for this storage container.
+	Keyslot            string                      `json:"keyslot,omitempty"`           // If the container was activated, the name of the keyslot used.
+	DeactivateReason   DeactivationReason          `json:"deactivate-reason,omitempty"` // An argument supplied to ActivateContext.DeactivateContainer.
+	KeyslotErrors      map[string]KeyslotErrorType `json:"keyslot-errors"`              // A map of errors for tried keyslots, keyed by name.
+	KeyslotErrorsOrder []string                    `json:"keyslot-errors-order"`        // A list of keyslot names in order of failure.
+
+	// CustomData provides a way for the user of the ActivateContext API
+	// to save arbitrary custom JSON data, using the
+	// WithCustomActivateStateData option.
+	CustomData json.RawMessage `json:"custom-data,omitempty"`
 }
 
 // ActivateState contains the global activation state.
 type ActivateState struct {
+	// PrimaryKeyID is used to allow the primary key to be shared between
+	// different ActivateContexts without storing the key in the state.
 	PrimaryKeyID int32 `json:"primary-key-id"`
 
 	// Activations contains state for each StorageContainer, keyed by
-	// credential name.
+	// the credential name of the container.
 	Activations map[string]*ContainerActivateState `json:"activations"`
 }
 
