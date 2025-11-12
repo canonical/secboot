@@ -129,6 +129,10 @@ const (
 	// to supply extra key metadata that isn't part of the container header.
 	externalKeyDataKey activateConfigKey = "external-key-data"
 
+	// externalUnlockKey is used by WithExternalUnlockKey to supply an externally
+	// recovered unlock key that can be used to unlock a container.
+	externalUnlockKeyKey activateConfigKey = "external-unlock-key"
+
 	// keyringDescPrefixKey is used by WithKeyringDescriptionPrefix to customize the
 	// prefix of the description for keys added to the kernel keyring during storage
 	// container unlocking.
@@ -267,6 +271,36 @@ func WithExternalKeyDataFromReader(name string, r KeyDataReader) ActivateOption 
 		val: &externalKeyData{
 			name: name,
 			r:    r,
+		},
+	}
+}
+
+// ExternalUnlockKeySource provides a hint about where a key supplied to
+// [WithExternalUnlockKey] comes from.
+type ExternalUnlockKeySource int
+
+const (
+	// ExternalUnlockKeyFromPlatformDevice indicates that a key was recovered
+	// from some platform device.
+	ExternalUnlockKeyFromPlatformDevice ExternalUnlockKeySource = iota
+
+	// ExternalUnlockKeyFromStorageContainer indicates that a key was recovered
+	// from some encrypted storage container.
+	ExternalUnlockKeyFromStorageContainer
+)
+
+// WithExternalUnlockKey makesit possible for callers of [ActivateContext.ActivateContainer]
+// to supply plain unlock keys that can be used to try to unlock the storage container. These
+// keys have a hardcoded priority of 100 so that they are tried before [StorageContainer]
+// keyslots with the default priority (0) and no user authentication. External keys are tried
+// in order of name. This option can be supplied multiple times.
+func WithExternalUnlockKey(name string, key DiskUnlockKey, src ExternalUnlockKeySource) ActivateOption {
+	return &genericSliceOption[*externalUnlockKey]{
+		key: externalUnlockKeyKey,
+		val: &externalUnlockKey{
+			name: name,
+			key:  key,
+			src:  src,
 		},
 	}
 }
