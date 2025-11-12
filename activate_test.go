@@ -32,6 +32,8 @@ import (
 	"strings"
 
 	. "github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/bootscope"
+	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
 	"github.com/snapcore/secboot/internal/keyring"
 	"github.com/snapcore/secboot/internal/testutil"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
@@ -79,6 +81,8 @@ func (s *activateSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 	s.keyDataTestBase.SetUpTest(c)
 	s.keyringTestMixin.SetUpTest(c)
+
+	internal_bootscope.UnsafeClearModelForTesting()
 }
 
 func (s *activateSuite) TearDownTest(c *C) {
@@ -186,6 +190,24 @@ func (*activateSuite) TestNewActivateContextWithProvidedStateAndPrimaryKey2(c *C
 	c.Check(ctx.State(), DeepEquals, stateCopy)
 	c.Check(ctx.Config().(interface{ Len() int }).Len(), Equals, 0)
 	c.Check(ctx.PrimaryKey(), DeepEquals, PrimaryKey(primaryKey))
+}
+
+func (*activateSuite) TestNewActivateContextWithProvidedStateAndNoPrimaryKey(c *C) {
+	state := &ActivateState{
+		Activations: map[string]*ContainerActivateState{
+			"sda1": {Status: ActivationSucceededWithPlatformKey},
+		},
+	}
+	stateCopy := state.Copy()
+
+	ctx, err := NewActivateContext(context.Background(), state)
+	c.Assert(err, IsNil)
+	c.Assert(ctx, NotNil)
+
+	c.Check(ctx.State(), Equals, state)
+	c.Check(ctx.State(), DeepEquals, stateCopy)
+	c.Check(ctx.Config().(interface{ Len() int }).Len(), Equals, 0)
+	c.Check(ctx.PrimaryKey(), HasLen, 0)
 }
 
 func (*activateSuite) TestNewActivateContextWithOptions(c *C) {
@@ -298,19 +320,6 @@ func (*activateSuite) TestNewActivateContextWithInvalidState2(c *C) {
 	c.Check(err, ErrorMatches, `invalid state: "primary-key-id" set with no containers activated with a platform keyslot`)
 }
 
-func (*activateSuite) TestNewActivateContextWithInvalidState3(c *C) {
-	// Provide a state with a zero primary key ID when there are containers activated
-	// with a platform key.
-	state := &ActivateState{
-		Activations: map[string]*ContainerActivateState{
-			"sda1": {Status: ActivationSucceededWithPlatformKey},
-		},
-	}
-
-	_, err := NewActivateContext(context.Background(), state)
-	c.Check(err, ErrorMatches, `invalid state: "primary-key-id" unset with one or more containers activated with a platform keyslot`)
-}
-
 func (*activateSuite) TestNewActivateContextWithCanceledContext(c *C) {
 	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
 	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
@@ -369,6 +378,8 @@ type testActivateContextActivateContainerParams struct {
 	ctx       context.Context
 	container *mockStorageContainer
 	opts      []ActivateOption
+
+	legacyV1KeyUnlock bool
 
 	expectedStderr           string
 	expectedTryKeys          [][]byte
@@ -486,7 +497,7 @@ func (s *activateSuite) testActivateContextActivateContainer(c *C, params *testA
 		c.Check(k, DeepEquals, []byte(params.expectedPrimaryKey))
 	}
 
-	if params.expectedState.Status == ActivationSucceededWithPlatformKey && expectedState.PrimaryKeyID == 0 {
+	if params.expectedState.Status == ActivationSucceededWithPlatformKey && expectedState.PrimaryKeyID == 0 && !params.legacyV1KeyUnlock {
 		expectedState.PrimaryKeyID = int32(primaryKeyId)
 	}
 	c.Check(activateCtx.State(), DeepEquals, expectedState)
@@ -1914,6 +1925,177 @@ func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyData(c *C) {
 	c.Check(err, IsNil)
 }
 
+func (s *activateSuite) TestActivateContainerWithV1KeyData(c *C) {
+	// Test that it's possible to unlock the first storage container with
+	// a legacy v1 key.
+	primaryKey := testutil.DecodeHexString(c, "b410288b4d466cbeb08b490e5a1728dad0282b27c15f1f4828cac62e88fb7ff5")
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		legacyV1KeyUnlock:  true,
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithV1KeyDataWrongModel(c *C) {
+	// Test that unlocking with a v1 key fails if it is not authorized
+	// for the current boot model.
+	unlockKey := testutil.DecodeHexString(c, "f7fa464710317654f14f22ab6eff4c88f13a77d78045f2a882e47c62286093b2")
+
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"fGSmc6pljAph4q00AKuniTSl19yZSHOO5ClFBnm3mEg=",` +
+			`"iv":"GanDRGxWSx4stoOC8ueRaQ==",` +
+			`"auth-key-hmac":"NPjHH7EG+guHv7ZUl5tetrD7268e6+kx4TIiOUzC2ks=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"kDm5zMabUoz83oLJMhmjWMmFexRSPJi0+yYgyGlp6l9hr20e4NZCzyiIchrHRXjS/ipVLy42H2pPm0fdTF3YXnYuKnk=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"7G4XkozL+sVJ2+vcp0zof6m3M6XRNSooHdV07GFmG74=",` +
+			`"digest":"bCda3tRyxm9yobtWLPflFzdpXOWoSyBkLjAI4Ni/+pE="},` +
+			`"hmacs":null}}
+`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		expectedStderr: `Error with keyslot "default": incompatible key data role params: snap model is not authorized
+Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorIncompatibleRoleParams,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerWithV1KeyDataNoBootModelSet(c *C) {
+	// Test that unlocking with a v1 key fails if the boot model is not set.
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		expectedStderr: `Error with keyslot "default": encountered generation 1 key but bootscope.SetModel has not been called
+Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorUnknown,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
 func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterOneRecoveryKey(c *C) {
 	// Test the case where we attempt to unlock a container after the first
 	// one was unlocked using a recovery key. In this case, we don't permit
@@ -2410,6 +2592,255 @@ func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageCo
 		},
 	})
 	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterV1PlatformKeyUsed(c *C) {
+	// Test that it's possible to unlock a container with a platform key protected by
+	// a platform that's registered with the PlatformProtectedByStorageContainer flag
+	// after the previous container was unlocked with a v1 platform key.
+	handler2 := new(mockPlatformKeyDataHandler)
+	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
+	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
+
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	// XXX: This is a bit of a hack for now. I think that keyDataTestBase and
+	// mockPlatformKeyDataHandler need a bit of a rethink.
+	params, unlockKey := s.mockProtectKeys(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "", crypto.SHA256)
+	params.PlatformName = "mock2"
+	kd := s.makeKeyDataBlobFromParams(c, params)
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithPlatformKeyAfterV1PlatformKeyUsedWillCheckStorageContainerBinding(c *C) {
+	// Test the integration of WillCheckStorageContainerBinding. Unlocking with
+	// a new platform key should succeed even if the previous container was unlocked
+	// with a v1 platform key. In this case, no primary key cross-check is performed
+	// and the caller must verify that the storage containers are properly bound.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd, unlockKey := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		opts: []ActivateOption{
+			WillCheckStorageContainerBinding(),
+		},
+		expectedActivateConfig: map[any]any{
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithPlatformKeyFailsAfterV1PlatformKeyUsed(c *C) {
+	// Test that unlocking with a new platform key fails if the previous storage container
+	// was unlocked with a v1 platform key. This is because it's not possible to cross-check
+	// the primary keys, as they have different properties.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	kd, unlockKey := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		expectedStderr: `Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerWithV1PlatformKeyAfterPlatformKeyUsedWillCheckStorageContainerBinding(c *C) {
+	// Test the integration of WillCheckStorageContainerBinding. Unlocking with
+	// a v1 key should succeed even if the previous container was unlocked with a
+	// new key. In this case, no primary key cross-check is performed and the caller
+	// must verify that the storage containers are properly bound.
+	primaryKey1 := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey1, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	primaryKey2 := testutil.DecodeHexString(c, "b410288b4d466cbeb08b490e5a1728dad0282b27c15f1f4828cac62e88fb7ff5")
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		opts: []ActivateOption{
+			WillCheckStorageContainerBinding(),
+		},
+		legacyV1KeyUnlock: true,
+		expectedActivateConfig: map[any]any{
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedPrimaryKey: primaryKey2,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithV1PlatformKeyFailsAfterPlatformKeyUsed(c *C) {
+	// Test that unlocking with a v1 key fails after the previous storage container
+	// was unlocked with a new key. This is because it's not possible to cross-check
+	// the primary keys, as they have different properties.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		expectedStderr: `Error with keyslot "default": invalid key data: key generation 1 is too old
+Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
 }
 
 func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterPlatformAndRecoveryKeyUsed(c *C) {
