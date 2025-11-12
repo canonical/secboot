@@ -42,6 +42,7 @@ var (
 	ComputeV3PcrPolicyRef                   = computeV3PcrPolicyRef
 	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
+	IsPCRPolicyDataError                    = isPCRPolicyDataError
 	IsPolicyDataError                       = isPolicyDataError
 	MakeSealedKeyData                       = makeSealedKeyData
 	MakeKeyDataNoAuth                       = makeKeyDataNoAuth
@@ -127,9 +128,10 @@ type PcrPolicyData_v3 = pcrPolicyData_v3
 
 type PcrPolicyParams = pcrPolicyParams
 
-func NewPcrPolicyParams(key secboot.PrimaryKey, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounter *tpm2.NVPublic, policySequence uint64) *PcrPolicyParams {
+func NewPcrPolicyParams(key secboot.PrimaryKey, role []byte, pcrs tpm2.PCRSelectionList, pcrDigests tpm2.DigestList, policyCounter *tpm2.NVPublic, policySequence uint64) *PcrPolicyParams {
 	return &PcrPolicyParams{
 		key:            key,
+		role:           role,
 		pcrs:           pcrs,
 		pcrDigests:     pcrDigests,
 		policyCounter:  policyCounter,
@@ -238,7 +240,15 @@ func MockSecbootNewKeyDataWithPassphrase(fn func(*secboot.KeyWithPassphraseParam
 	}
 }
 
-func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, PcrPolicyVersionOption) error) (restore func()) {
+func MockSecbootNewKeyDataWithPIN(fn func(*secboot.KeyWithPINParams, secboot.PIN) (*secboot.KeyData, error)) (restore func()) {
+	orig := secbootNewKeyDataWithPIN
+	secbootNewKeyDataWithPIN = fn
+	return func() {
+		secbootNewKeyDataWithPIN = orig
+	}
+}
+
+func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, string, *tpm2.NVPublic, *PCRProtectionProfile, PcrPolicyVersionOption) error) (restore func()) {
 	orig := skdbUpdatePCRProtectionPolicyNoValidate
 	skdbUpdatePCRProtectionPolicyNoValidate = fn
 	return func() {
