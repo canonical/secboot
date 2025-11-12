@@ -2053,6 +2053,108 @@ func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyDataFromReade
 	c.Check(err, IsNil)
 }
 
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKey(c *C) {
+	// Test that WithExternalUnlockKey is integrated properly.
+	unlockKey := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromPlatformDevice),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromPlatformDevice)},
+		},
+		expectedUnlockKey: unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKeyPriority1(c *C) {
+	// Test that keys provided via WithExternalUnlockKey have a higher priority
+	// than 0.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run")
+	_, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default-fallback", unlockKey2, ExternalUnlockKeyFromPlatformDevice),
+		},
+		expectedStderr: `Error with keyslot "default-fallback": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default-fallback", unlockKey2, ExternalUnlockKeyFromPlatformDevice)},
+		},
+		expectedUnlockKey: unlockKey2,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default-fallback": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKeyPriority2(c *C) {
+	// Test that native keys can be prioritised ahead of keys added with
+	// WithExternalUnlockKey.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	_, unlockKey1 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run")
+	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, nil),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 101, kd2),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default", unlockKey1, ExternalUnlockKeyFromPlatformDevice),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default", unlockKey1, ExternalUnlockKeyFromPlatformDevice)},
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey2,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
 func (s *activateSuite) TestActivateContainerWithV1KeyData(c *C) {
 	// Test that it's possible to unlock the first storage container with
 	// a legacy v1 key.
@@ -2542,6 +2644,82 @@ func (s *activateSuite) TestActivateContainerWithV1PlatformKeyAfterOneRecoveryKe
 		},
 	})
 	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKeyFromStorageContainerAfterOneRecoveryKeyUsed(c *C) {
+	// Test that unlocking succeeds with a key supplied by WithExternalUnlockKey
+	// if the source is ExternalUnlockKeyFromStorageContainer and the previous
+	// container was unlocked with a recovery key.
+	unlockKey := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer)},
+		},
+		expectedUnlockKey: unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKeyFromPlatformDeviceFailsAfterOneRecoveryKeyUsed(c *C) {
+	// Test that unlocking fails with a key supplied by WithExternalUnlockKey
+	// if the source is ExternalUnlockKeyFromPlatformDevice and the previous
+	// container was unlocked with a recovery key.
+	unlockKey := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromPlatformDevice),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer)},
+		},
+		expectedUnlockKey: unlockKey,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
 }
 
 func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterPlatformKeyUsed(c *C) {
@@ -3156,6 +3334,94 @@ func (s *activateSuite) TestActivateContainerWithNoSuitableKeyslotsAfterPlatform
 	c.Check(err, Equals, ErrCannotActivate)
 }
 
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKeyFromStorageContainerAfterPlatformKeyUsed(c *C) {
+	// Test that unlocking succeeds with a key supplied by WithExternalUnlockKey
+	// if the source is ExternalUnlockKeyFromStorageContainer and the previous
+	// container was unlocked with a recovery key.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	unlockKey := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer)},
+		},
+		expectedUnlockKey: unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKeyFromPlatformDeviceFailsAfterPlatformKeyUsed(c *C) {
+	// Test that unlocking fails with a key supplied by WithExternalUnlockKey
+	// if the source is ExternalUnlockKeyFromPlatformDevice and the previous
+	// container was unlocked with a recovery key.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	unlockKey := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromPlatformDevice),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer)},
+		},
+		expectedUnlockKey: unlockKey,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
 func (s *activateSuite) TestActivateContainerWithPlatformKeyAfterPlatformAndRecoveryKeyUsed(c *C) {
 	// Test the case where we attempt to unlock a container after the first containers
 	// were unlocked with a mix of platform and recovery keys. In this case, unlocking
@@ -3747,6 +4013,96 @@ func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterPlatformKeyAndR
 		},
 	})
 	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKeyFromStorageContainerAfterPlatformKeyAndRecoveryKeyUsed(c *C) {
+	// Test that unlocking succeeds with a key supplied by WithExternalUnlockKey
+	// if the source is ExternalUnlockKeyFromStorageContainer and the previous
+	// containers were unlocked with a mix of platform keys and recovery keys.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	unlockKey := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer)},
+		},
+		expectedUnlockKey: unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithExternalUnlockKeyFromPlatformDeviceFailsAfterPlatformKeyAndRecoveryKeyUsed(c *C) {
+	// Test that unlocking fails with a key supplied by WithExternalUnlockKey
+	// if the source is ExternalUnlockKeyFromPlatformDevice and the previous
+	// containers were unlocked with a mix of platform keys and recovery keys.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	unlockKey := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromPlatformDevice),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalUnlockKeyKey: []*ExternalUnlockKey{NewExternalUnlockKey("default", unlockKey, ExternalUnlockKeyFromStorageContainer)},
+		},
+		expectedUnlockKey: unlockKey,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
 }
 
 func (s *activateSuite) TestActivateContainerWithActivateStateCustomData(c *C) {
