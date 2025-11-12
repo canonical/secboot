@@ -70,6 +70,7 @@ type (
 	ActivateConfigKey                     = activateConfigKey
 	ActivateOneContainerStateMachine      = activateOneContainerStateMachine
 	ActivateOneContainerStateMachineFlags = activateOneContainerStateMachineFlags
+	ExternalKeyData                       = externalKeyData
 	KdfParams                             = kdfParams
 	ProtectedKeys                         = protectedKeys
 )
@@ -307,6 +308,14 @@ func MockUnixStat(f func(devicePath string, st *unix.Stat_t) error) (restore fun
 	unixStat = f
 	return func() {
 		unixStat = old
+	}
+}
+
+func NewExternalKeyData(name string, r KeyDataReader, data *KeyData) *externalKeyData {
+	return &externalKeyData{
+		name: name,
+		r:    r,
+		data: data,
 	}
 }
 

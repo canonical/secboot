@@ -125,8 +125,8 @@ const (
 	// to customize the name argument passed to AuthRequestor.RequestUserCredential.
 	authRequestorUserVisibleNameKey activateConfigKey = "auth-requestor-user-visible-name"
 
-	// externalKeyDataKey is used by WithExternalKeyDataOption to supply extra
-	// key metadata that isn't part of the container header
+	// externalKeyData is used by WithExternalKeyData and WithExternalKeyDataFromReader
+	// to supply extra key metadata that isn't part of the container header.
 	externalKeyDataKey activateConfigKey = "external-key-data"
 
 	// keyringDescPrefixKey is used by WithKeyringDescriptionPrefix to customize the
@@ -174,6 +174,19 @@ type genericContextOption[T any] struct {
 
 func (o *genericContextOption[T]) ApplyContextOptionToConfig(config ActivateConfig) {
 	config.Set(o.key, o.val)
+}
+
+type genericSliceOption[T any] struct {
+	key activateConfigKey
+	val T
+}
+
+func (o *genericSliceOption[T]) ApplyOptionToConfig(config ActivateConfig) {
+	var current []T
+	if val, exists := config.Get(o.key); exists {
+		current = val.([]T)
+	}
+	config.Set(o.key, append(current, o.val))
 }
 
 var willCheckStorageContainerBindingOption flagOption
@@ -227,12 +240,34 @@ func WithAuthRequestorUserVisibleName(name string) ActivateOption {
 	}
 }
 
-// WithExternalKeyData makes it possible for callers to [ActivateContext.ActivateContainer]
-// to supply extra key metadata that is not part of the associated [StorageContainer].
-func WithExternalKeyData(keys ...*ExternalKeyData) ActivateOption {
-	return &genericOption[[]*ExternalKeyData]{
+// WithExternalKeyData makes it possible for callers of [ActivateContext.ActivateContainer]
+// to supply extra key metadata that is not part of the associated [StorageContainer]. These
+// keys have a hardcoded priority of 100 so that they are tried before [StorageContainer]
+// keyslots with the default priority (0). External keys are tried in order of name.
+// This option can be supplied multiple times.
+func WithExternalKeyData(name string, data *KeyData) ActivateOption {
+	return &genericSliceOption[*externalKeyData]{
 		key: externalKeyDataKey,
-		val: keys,
+		val: &externalKeyData{
+			name: name,
+			data: data,
+		},
+	}
+}
+
+// WithExternalKeyDataFromReader makes it possible for callers of
+// [ActivateContext.ActivateContainer] to supply extra key metadata that is not part of the
+// associated [StorageContainer]. These keys have a hardcoded priority of 100 so that they
+// are tried before [StorageContainer] keyslots with the default priority (0). External
+// keys are tried in order of name. Note that the [KeyDataReader] argument will eventually
+// be replaced by [io.Reader]. This option can be supplied multiple times.
+func WithExternalKeyDataFromReader(name string, r KeyDataReader) ActivateOption {
+	return &genericSliceOption[*externalKeyData]{
+		key: externalKeyDataKey,
+		val: &externalKeyData{
+			name: name,
+			r:    r,
+		},
 	}
 }
 

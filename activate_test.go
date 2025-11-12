@@ -20,6 +20,7 @@
 package secboot_test
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -1809,14 +1810,12 @@ func (s *activateSuite) TestActivateContainerWithCanceledContext(c *C) {
 	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
 }
 
-func (s *activateSuite) TestActivateContainerWithExternalKeyData(c *C) {
-	// Test that WithExternalKeyData is integrated properly.
+func (s *activateSuite) TestActivateContainerWithExternalKeyDataFromReader(c *C) {
+	// Test that WithExternalKeyDataFromReader is integrated properly.
 	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
 	kd, unlockKey := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover")
 
-	external := []*ExternalKeyData{
-		NewExternalKeyData("default", newMockKeyDataReader("", kd)),
-	}
+	r := newMockKeyDataReader("", kd)
 
 	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
 		container: newMockStorageContainer(
@@ -1825,12 +1824,14 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyData(c *C) {
 			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
 		),
 		opts: []ActivateOption{
-			WithExternalKeyData(external...),
+			WithExternalKeyDataFromReader("default", r),
 		},
 		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
 `,
 		expectedActivateConfig: map[any]any{
-			ExternalKeyDataKey: external,
+			ExternalKeyDataKey: []*ExternalKeyData{
+				NewExternalKeyData("default", r, nil),
+			},
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey,
@@ -1846,8 +1847,46 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyData(c *C) {
 	c.Check(err, IsNil)
 }
 
-func (s *activateSuite) TestActivateContainerWithExternalKeyDataMultiple(c *C) {
-	// Test WithExternalKeyData with more than 1 key. The 2 external keys
+func (s *activateSuite) TestActivateContainerWithExternalKeyData(c *C) {
+	// Test that WithExternalKeyData is integrated properly.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd, unlockKey := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover")
+
+	data, err := ReadKeyData(&mockKeyDataReader{Reader: bytes.NewReader(kd)})
+	c.Assert(err, IsNil)
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithExternalKeyData("default", data),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
+`,
+		expectedActivateConfig: map[any]any{
+			ExternalKeyDataKey: []*ExternalKeyData{
+				NewExternalKeyData("default", nil, data),
+			},
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "external:default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithExternalKeyDataFromReaderMultiple(c *C) {
+	// Test WithExternalKeyDataFromReader with more than 1 key. The 2 external keys
 	// have the same priority, and so "default" is ordered before
 	// "default-recovery"
 	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
@@ -1856,10 +1895,8 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataMultiple(c *C) {
 
 	s.handler.permittedRoles = []string{"recover"}
 
-	external := []*ExternalKeyData{
-		NewExternalKeyData("default-fallback", newMockKeyDataReader("", kd2)),
-		NewExternalKeyData("default", newMockKeyDataReader("", kd1)),
-	}
+	r1 := newMockKeyDataReader("", kd2)
+	r2 := newMockKeyDataReader("", kd1)
 
 	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
 		container: newMockStorageContainer(
@@ -1869,14 +1906,18 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataMultiple(c *C) {
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, nil),
 		),
 		opts: []ActivateOption{
-			WithExternalKeyData(external...),
+			WithExternalKeyDataFromReader("default-fallback", r1),
+			WithExternalKeyDataFromReader("default", r2),
 		},
 		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
 Error with keyslot "default-fallback": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
 Error with keyslot "external:default": cannot recover keys from keyslot: incompatible key data role params: permission denied
 `,
 		expectedActivateConfig: map[any]any{
-			ExternalKeyDataKey: external,
+			ExternalKeyDataKey: []*ExternalKeyData{
+				NewExternalKeyData("default-fallback", r1, nil),
+				NewExternalKeyData("default", r2, nil),
+			},
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
@@ -1894,16 +1935,14 @@ Error with keyslot "external:default": cannot recover keys from keyslot: incompa
 	c.Check(err, IsNil)
 }
 
-func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority1(c *C) {
-	// Test that keys provided via WithExternalKeyData have a higher priority
+func (s *activateSuite) TestActivateContainerWithExternalKeyDataFromReaderPriority1(c *C) {
+	// Test that keys provided via WithExternalKeyDataFromReader have a higher priority
 	// than 0.
 	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
 	kd1, unlockKey1 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run")
 	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
 
-	external := []*ExternalKeyData{
-		NewExternalKeyData("default-fallback", newMockKeyDataReader("", kd2)),
-	}
+	r := newMockKeyDataReader("", kd2)
 
 	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
 		container: newMockStorageContainer(
@@ -1913,12 +1952,14 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority1(c *C) 
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, nil),
 		),
 		opts: []ActivateOption{
-			WithExternalKeyData(external...),
+			WithExternalKeyDataFromReader("default-fallback", r),
 		},
 		expectedStderr: `Error with keyslot "default-fallback": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
 `,
 		expectedActivateConfig: map[any]any{
-			ExternalKeyDataKey: external,
+			ExternalKeyDataKey: []*ExternalKeyData{
+				NewExternalKeyData("default-fallback", r, nil),
+			},
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
@@ -1934,16 +1975,14 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority1(c *C) 
 	c.Check(err, IsNil)
 }
 
-func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority2(c *C) {
+func (s *activateSuite) TestActivateContainerWithExternalKeyDataFromReaderPriority2(c *C) {
 	// Test that native keys can be prioritised ahead of keys added with
-	// WithExternalKeyData.
+	// WithExternalKeyDataFromReader.
 	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
 	kd1, unlockKey1 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run")
 	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
 
-	external := []*ExternalKeyData{
-		NewExternalKeyData("default", newMockKeyDataReader("", kd1)),
-	}
+	r := newMockKeyDataReader("", kd1)
 
 	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
 		container: newMockStorageContainer(
@@ -1953,12 +1992,14 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority2(c *C) 
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 101, kd2),
 		),
 		opts: []ActivateOption{
-			WithExternalKeyData(external...),
+			WithExternalKeyDataFromReader("default", r),
 		},
 		expectedStderr: `Error with keyslot "default": invalid key data: cannot decode keyslot metadata: cannot decode key data: EOF
 `,
 		expectedActivateConfig: map[any]any{
-			ExternalKeyDataKey: external,
+			ExternalKeyDataKey: []*ExternalKeyData{
+				NewExternalKeyData("default", r, nil),
+			},
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey2,
@@ -1974,15 +2015,13 @@ func (s *activateSuite) TestActivateContainerWithExternalKeyDataPriority2(c *C) 
 	c.Check(err, IsNil)
 }
 
-func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyData(c *C) {
-	// Test that supplying invalid key data to WithExternalKeyData is
+func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyDataFromReader(c *C) {
+	// Test that supplying invalid key data to WithExternalKeyDataFromReader is
 	// handled correctly.
 	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
 	kd, unlockKey := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover")
 
-	external := []*ExternalKeyData{
-		NewExternalKeyData("default", newMockKeyDataReader("", []byte("invalid key data"))),
-	}
+	r := newMockKeyDataReader("", []byte("invalid key data"))
 
 	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
 		container: newMockStorageContainer(
@@ -1991,12 +2030,14 @@ func (s *activateSuite) TestActivateContainerWithInvalidExternalKeyData(c *C) {
 			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
 		),
 		opts: []ActivateOption{
-			WithExternalKeyData(external...),
+			WithExternalKeyDataFromReader("default", r),
 		},
 		expectedStderr: `Error with keyslot "external:default": invalid key data: cannot decode key data: invalid character 'i' looking for beginning of value
 `,
 		expectedActivateConfig: map[any]any{
-			ExternalKeyDataKey: external,
+			ExternalKeyDataKey: []*ExternalKeyData{
+				NewExternalKeyData("default", r, nil),
+			},
 		},
 		expectedPrimaryKey: primaryKey,
 		expectedUnlockKey:  unlockKey,

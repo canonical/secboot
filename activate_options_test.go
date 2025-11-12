@@ -20,6 +20,8 @@
 package secboot_test
 
 import (
+	"bytes"
+	"crypto"
 	"encoding/json"
 	"io"
 	"os"
@@ -197,28 +199,97 @@ func (*activateOptionsSuite) TestWithAuthRequestorUserVisibleName2(c *C) {
 	c.Check(v, Equals, "save")
 }
 
-func (*activateOptionsSuite) TestWithExternalKeyData1(c *C) {
+func (*activateOptionsSuite) TestWithExternalKeyDataFromReader1(c *C) {
 	cfg := make(mockActivateConfig)
 
-	external := []*ExternalKeyData{NewExternalKeyData("foo", nil)}
-	opt := WithExternalKeyData(external...)
+	r := new(mockKeyDataReader)
+	opt := WithExternalKeyDataFromReader("foo", r)
 	opt.ApplyOptionToConfig(cfg)
 
 	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
 	c.Check(exists, testutil.IsTrue)
-	c.Check(v, DeepEquals, external)
+	c.Check(v, DeepEquals, []*ExternalKeyData{NewExternalKeyData("foo", r, nil)})
+}
+
+func (*activateOptionsSuite) TestWithExternalKeyDataFromReader2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	r1 := &mockKeyDataReader{Reader: bytes.NewReader([]byte("key data 1"))}
+	opt := WithExternalKeyDataFromReader("foo", r1)
+	opt.ApplyOptionToConfig(cfg)
+
+	r2 := &mockKeyDataReader{Reader: bytes.NewReader([]byte("key data 2"))}
+	opt = WithExternalKeyDataFromReader("bar", r2)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalKeyData{
+		NewExternalKeyData("foo", r1, nil),
+		NewExternalKeyData("bar", r2, nil),
+	})
+}
+
+func (*activateOptionsSuite) TestWithExternalKeyData1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	data := new(KeyData)
+	opt := WithExternalKeyData("foo", data)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalKeyData{NewExternalKeyData("foo", nil, data)})
 }
 
 func (*activateOptionsSuite) TestWithExternalKeyData2(c *C) {
 	cfg := make(mockActivateConfig)
 
-	external := []*ExternalKeyData{NewExternalKeyData("bar", nil), NewExternalKeyData("foo", nil)}
-	opt := WithExternalKeyData(external...)
+	data1, err := NewKeyData(&KeyParams{
+		Handle:           []byte("\"handle1\""),
+		EncryptedPayload: []byte("payload 1"),
+		PlatformName:     "mock",
+		KDFAlg:           crypto.SHA256,
+	})
+	c.Assert(err, IsNil)
+	opt := WithExternalKeyData("foo", data1)
+	opt.ApplyOptionToConfig(cfg)
+
+	data2, err := NewKeyData(&KeyParams{
+		Handle:           []byte("\"handle2\""),
+		EncryptedPayload: []byte("payload 2"),
+		PlatformName:     "mock",
+		KDFAlg:           crypto.SHA256,
+	})
+	c.Assert(err, IsNil)
+	opt = WithExternalKeyData("bar", data2)
 	opt.ApplyOptionToConfig(cfg)
 
 	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
 	c.Check(exists, testutil.IsTrue)
-	c.Check(v, DeepEquals, external)
+	c.Check(v, DeepEquals, []*ExternalKeyData{
+		NewExternalKeyData("foo", nil, data1),
+		NewExternalKeyData("bar", nil, data2),
+	})
+}
+
+func (*activateOptionsSuite) TestWithExternalKeyDataAndWithExternalKeyDataFromReader(c *C) {
+	cfg := make(mockActivateConfig)
+
+	data := new(KeyData)
+	opt := WithExternalKeyData("foo", data)
+	opt.ApplyOptionToConfig(cfg)
+
+	r := new(mockKeyDataReader)
+	opt = WithExternalKeyDataFromReader("bar", r)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalKeyData{
+		NewExternalKeyData("foo", nil, data),
+		NewExternalKeyData("bar", r, nil),
+	})
 }
 
 func (*activateOptionsSuite) TestWithKeyringDescriptionPrefix1(c *C) {
