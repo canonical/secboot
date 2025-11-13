@@ -1571,6 +1571,63 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithNoRecoveryKeyTries(c
 	c.Check(err, Equals, ErrCannotActivate)
 }
 
+func (s *activateSuite) TestActivateContainerRecoveryKeyFallbackWithWillCheckStorageContainerBinding(c *C) {
+	// Test that the integration of WillCheckStorageContainerBinding doesn't
+	// disable the recovery key fallback, as it does modify the state machine flags.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "8517c4e1f9798772b7b68500e822cc211d7be1178a75c22bd5b9af5d711610cf"), "run")
+	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "c2a1d329cc15cd8b06c11c4ca57acf7448567a2e27241bd82ddfe6d7e8846cfa"), "run")
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	s.handler.permittedRoles = []string{"recover"}
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{makeRecoveryKey(c, recoveryKey)},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+			WillCheckStorageContainerBinding(),
+		},
+		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: incompatible key data role params: permission denied
+Error with keyslot "default-fallback": cannot recover keys from keyslot: incompatible key data role params: permission denied
+`,
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                         authRequestor,
+			AuthRequestorUserVisibleNameKey:          "data",
+			RecoveryKeyTriesKey:                      uint(3),
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncompatibleRoleParams,
+				"default-fallback": KeyslotErrorIncompatibleRoleParams,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
 func (s *activateSuite) TestActivateContainerWithDifferentAuthRequestorUserVisibleName(c *C) {
 	// Test that WithAuthRequestorUserVisibleName is integrated by supplying
 	// it with a different name compared with other tests.
@@ -2297,6 +2354,125 @@ Cannot try keyslots that require a user credential because WithAuthRequestor was
 	c.Check(err, Equals, ErrCannotActivate)
 }
 
+func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterOneRecoveryKeyWithWillCheckStorageContainerBinding(c *C) {
+	// Test that the integration of WillCheckStorageContainerBinding doesn't
+	// disable the recovery key fallback, as it does modify the state machine
+	// flags.
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{makeRecoveryKey(c, recoveryKey)},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithRecoveryKeyTries(3),
+		},
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+			},
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("save"),
+			WillCheckStorageContainerBinding(),
+		},
+		expectedAuthRequestName:  "save",
+		expectedAuthRequestPath:  "/dev/sda2",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                         authRequestor,
+			RecoveryKeyTriesKey:                      uint(3),
+			AuthRequestorUserVisibleNameKey:          "save",
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithV1PlatformKeyAfterOneRecoveryKeyUsedWillCheckStorageContainerBinding(c *C) {
+	// Test the integration of WillCheckStorageContainerBinding. Unlocking with
+	// a v1 key should succeed even if the previous container was unlocked with a
+	// recovery key. In this case, the caller must verify that the storage
+	// containers are properly bound.
+	primaryKey := testutil.DecodeHexString(c, "b410288b4d466cbeb08b490e5a1728dad0282b27c15f1f4828cac62e88fb7ff5")
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		opts: []ActivateOption{
+			WillCheckStorageContainerBinding(),
+		},
+		legacyV1KeyUnlock: true,
+		expectedActivateConfig: map[any]any{
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
 func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterPlatformKeyUsed(c *C) {
 	// Test the case where we attempt to unlock a container after the first one
 	// was unlocked with a platform key. In this case, unlocking with a platform
@@ -2503,97 +2679,6 @@ Cannot try keyslots that require a user credential because WithAuthRequestor was
 	c.Check(err, Equals, ErrCannotActivate)
 }
 
-func (s *activateSuite) TestActivateContainerWithPlatformKeyAfterPlatformAndRecoveryKeyUsed(c *C) {
-	// Test the case where we attempt to unlock a container after the first containers
-	// were unlocked with a mix of platform and recovery keys. In this case, unlocking
-	// with a normal platform key should work fine.
-	handler2 := new(mockPlatformKeyDataHandler)
-	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
-	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
-
-	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
-
-	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
-	c.Check(err, IsNil)
-
-	// XXX: This is a bit of a hack for now. I think that keyDataTestBase and
-	// mockPlatformKeyDataHandler need a bit of a rethink.
-	params, unlockKey1 := s.mockProtectKeys(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "", crypto.SHA256)
-	params.PlatformName = "mock2"
-	kd1 := s.makeKeyDataBlobFromParams(c, params)
-
-	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
-
-	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
-		initialState: &ActivateState{
-			PrimaryKeyID: int32(id),
-			Activations: map[string]*ContainerActivateState{
-				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
-				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
-			},
-		},
-		container: newMockStorageContainer(
-			withStorageContainerPath("/dev/sda3"),
-			withStorageContainerCredentialName("sda3"),
-			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
-			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 1, kd2),
-		),
-		expectedPrimaryKey: primaryKey,
-		expectedUnlockKey:  unlockKey2,
-		expectedState: &ContainerActivateState{
-			Status:  ActivationSucceededWithPlatformKey,
-			Keyslot: "default-fallback",
-		},
-	})
-	c.Check(err, IsNil)
-}
-
-func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterPlatformAndRecoveryKeyUsed(c *C) {
-	// Test the case where we attempt to unlock a container after the first containers
-	// were unlocked with a mix of platform and recovery keys. In this case, unlocking
-	// with a platform key protected by a platform that's registered with the
-	// PlatformProtectedByStorageContainer flag should work fine.
-	handler2 := new(mockPlatformKeyDataHandler)
-	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
-	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
-
-	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
-
-	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
-	c.Check(err, IsNil)
-
-	// XXX: This is a bit of a hack for now. I think that keyDataTestBase and
-	// mockPlatformKeyDataHandler need a bit of a rethink.
-	params, unlockKey1 := s.mockProtectKeys(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "", crypto.SHA256)
-	params.PlatformName = "mock2"
-	kd1 := s.makeKeyDataBlobFromParams(c, params)
-
-	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
-
-	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
-		initialState: &ActivateState{
-			PrimaryKeyID: int32(id),
-			Activations: map[string]*ContainerActivateState{
-				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
-				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
-			},
-		},
-		container: newMockStorageContainer(
-			withStorageContainerPath("/dev/sda3"),
-			withStorageContainerCredentialName("sda3"),
-			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
-			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
-		),
-		expectedPrimaryKey: primaryKey,
-		expectedUnlockKey:  unlockKey1,
-		expectedState: &ContainerActivateState{
-			Status:  ActivationSucceededWithPlatformKey,
-			Keyslot: "default",
-		},
-	})
-	c.Check(err, IsNil)
-}
-
 func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterV1PlatformKeyUsed(c *C) {
 	// Test that it's possible to unlock a container with a platform key protected by
 	// a platform that's registered with the PlatformProtectedByStorageContainer flag
@@ -2771,6 +2856,77 @@ func (s *activateSuite) TestActivateContainerWithV1PlatformKeyAfterPlatformKeyUs
 	c.Check(err, IsNil)
 }
 
+func (s *activateSuite) TestActivateContainerWithV1PlatformKeyAfterV1PlatformKeyUsedWillCheckStorageContainerBinding(c *C) {
+	// Test the integration of WillCheckStorageContainerBinding. Unlocking with
+	// a v1 key should succeed if the previous container was also unlocked with a
+	// v1 key. In this case, no primary key cross-check is performed and the caller
+	// must verify that the storage containers are properly bound.
+	primaryKey := testutil.DecodeHexString(c, "b410288b4d466cbeb08b490e5a1728dad0282b27c15f1f4828cac62e88fb7ff5")
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		opts: []ActivateOption{
+			WillCheckStorageContainerBinding(),
+		},
+		legacyV1KeyUnlock: true,
+		expectedActivateConfig: map[any]any{
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
 func (s *activateSuite) TestActivateContainerWithV1PlatformKeyFailsAfterPlatformKeyUsed(c *C) {
 	// Test that unlocking with a v1 key fails after the previous storage container
 	// was unlocked with a new key. This is because it's not possible to cross-check
@@ -2841,6 +2997,144 @@ Cannot try keyslots that require a user credential because WithAuthRequestor was
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerWithNoSuitableKeyslotsAfterPlatformKeyUsedWithWillCheckStorageContainerBinding(c *C) {
+	// Test that the integration of WillCheckStorageContainerBinding doesn't
+	// enable the recovery key fallback, as it does modify the state machine
+	// flags.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{}
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithRecoveryKeyTries(3),
+		},
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("save"),
+			WillCheckStorageContainerBinding(),
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                         authRequestor,
+			RecoveryKeyTriesKey:                      uint(3),
+			AuthRequestorUserVisibleNameKey:          "save",
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerWithPlatformKeyAfterPlatformAndRecoveryKeyUsed(c *C) {
+	// Test the case where we attempt to unlock a container after the first containers
+	// were unlocked with a mix of platform and recovery keys. In this case, unlocking
+	// with a normal platform key should work fine.
+	handler2 := new(mockPlatformKeyDataHandler)
+	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
+	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
+
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	// XXX: This is a bit of a hack for now. I think that keyDataTestBase and
+	// mockPlatformKeyDataHandler need a bit of a rethink.
+	params, unlockKey1 := s.mockProtectKeys(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "", crypto.SHA256)
+	params.PlatformName = "mock2"
+	kd1 := s.makeKeyDataBlobFromParams(c, params)
+
+	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 1, kd2),
+		),
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey2,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterPlatformAndRecoveryKeyUsed(c *C) {
+	// Test the case where we attempt to unlock a container after the first containers
+	// were unlocked with a mix of platform and recovery keys. In this case, unlocking
+	// with a platform key protected by a platform that's registered with the
+	// PlatformProtectedByStorageContainer flag should work fine.
+	handler2 := new(mockPlatformKeyDataHandler)
+	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
+	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
+
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	// XXX: This is a bit of a hack for now. I think that keyDataTestBase and
+	// mockPlatformKeyDataHandler need a bit of a rethink.
+	params, unlockKey1 := s.mockProtectKeys(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "", crypto.SHA256)
+	params.PlatformName = "mock2"
+	kd1 := s.makeKeyDataBlobFromParams(c, params)
+
+	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey1,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
 }
 
 func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterPlatformAndRecoveryKeyUsed(c *C) {
@@ -2967,6 +3261,391 @@ Cannot try keyslots that require a user credential because WithAuthRequestor was
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterV1PlatformKeyAndRecoveryKeyUsed(c *C) {
+	// Test that it's possible to unlock a container with a platform key protected by
+	// a platform that's registered with the PlatformProtectedByStorageContainer flag
+	// after the previous containers were unlocked with a mix of v1 platform keys
+	// and recovery keys.
+	handler2 := new(mockPlatformKeyDataHandler)
+	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
+	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
+
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	// XXX: This is a bit of a hack for now. I think that keyDataTestBase and
+	// mockPlatformKeyDataHandler need a bit of a rethink.
+	params, unlockKey := s.mockProtectKeys(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "", crypto.SHA256)
+	params.PlatformName = "mock2"
+	kd := s.makeKeyDataBlobFromParams(c, params)
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithPlatformKeyAfterV1PlatformKeyAndRecoveryKeyUsedWillCheckStorageContainerBinding(c *C) {
+	// Test the integration of WillCheckStorageContainerBinding. Unlocking with
+	// a new platform key should succeed even if the previous containers were unlocked
+	// with a mix of v1 platform keys and recovery keys. In this case, no primary key
+	// cross-check is performed and the caller must verify that the storage containers
+	// are properly bound.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd, unlockKey := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		opts: []ActivateOption{
+			WillCheckStorageContainerBinding(),
+		},
+		expectedActivateConfig: map[any]any{
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithPlatformKeyFailsAfterV1PlatformKeyAndRecoveryKeyUsed(c *C) {
+	// Test that unlocking with a new platform key fails if the previous storage containers
+	// were unlocked with a mix of v1 platform keys and recovery keys. This is because it's
+	// not possible to cross-check the primary keys, as they have different properties.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	kd, unlockKey := s.makeKeyDataBlob(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		expectedStderr: `Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerWithV1PlatformKeyAfterPlatformKeyAndRecoveryKeyUsedWillCheckStorageContainerBinding(c *C) {
+	// Test the integration of WillCheckStorageContainerBinding. Unlocking with
+	// a v1 key should succeed even if the previous containers were unlocked with a
+	// mix of new platform keys and recovery keys. In this case, no primary key
+	// cross-check is performed and the caller must verify that the storage
+	// containers are properly bound.
+	primaryKey1 := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey1, newMockStorageContainer(withStorageContainerCredentialName("sda2")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	primaryKey2 := testutil.DecodeHexString(c, "b410288b4d466cbeb08b490e5a1728dad0282b27c15f1f4828cac62e88fb7ff5")
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		opts: []ActivateOption{
+			WillCheckStorageContainerBinding(),
+		},
+		legacyV1KeyUnlock: true,
+		expectedActivateConfig: map[any]any{
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedPrimaryKey: primaryKey2,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithV1PlatformKeyAfterV1PlatformKeyAndRecoveryKeyUsedWillCheckStorageContainerBinding(c *C) {
+	// Test the integration of WillCheckStorageContainerBinding. Unlocking with
+	// a v1 key should succeed if the previous containers were unlocked with a mix
+	// of v1 platform keys and recovery keys. In this case, no primary key cross-check
+	// is performed and the caller must verify that the storage containers are properly
+	// bound.
+	primaryKey := testutil.DecodeHexString(c, "b410288b4d466cbeb08b490e5a1728dad0282b27c15f1f4828cac62e88fb7ff5")
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		opts: []ActivateOption{
+			WillCheckStorageContainerBinding(),
+		},
+		legacyV1KeyUnlock: true,
+		expectedActivateConfig: map[any]any{
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerWithV1PlatformKeyFailsAfterPlatformKeyAndRecoveryKeyUsed(c *C) {
+	// Test that unlocking with a v1 key fails after the previous storage containers
+	// were unlocked with a mix of new platform keys and recovery keys. This is because
+	// it's not possible to cross-check the primary keys, as they have different properties.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda2")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	unlockKey := testutil.DecodeHexString(c, "d765126a3f3ff1cde33445d9eb178ac6302deb813d023020e3a56abf60398dd1")
+	kd := []byte(
+		`{` +
+			`"generation":1,` +
+			`"platform_name":"mock",` +
+			`"platform_handle":` +
+			`{` +
+			`"key":"0GCaTfIgLy9dCqqcfOTjMs9CXm4rPQUnvJNmPKhnIes=",` +
+			`"iv":"jRuLy2H7lDV2tyMd8t5L6g==",` +
+			`"auth-key-hmac":"6b9WLMjXPvtVSyUZ2/Cwu8ksvZla1nyqtBPK3jL4q7I=",` +
+			`"exp-generation":1,` +
+			`"exp-kdf_alg":5,` +
+			`"exp-auth-mode":0},` +
+			`"role":"",` +
+			`"kdf_alg":"sha256",` +
+			`"encrypted_payload":"DqgmsMD4d2NMqQ9ugLBTLRZW+ZCOkjgR6rRyIAXOb2Rdd0wA21SN09N9Nmkt5fzNou34P6OVTEu8wQd+nToGzQk8Tlc=",` +
+			`"authorized_snap_models":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"kdf_alg":"sha256",` +
+			`"key_digest":` +
+			`{` +
+			`"alg":"sha256",` +
+			`"salt":"qX+OkuhbLRAmB3BvgSQR7U0qUMJguOQqPG/V8aMarqk=",` +
+			`"digest":"PrtdZnxX2aE0rCxgn/vmHSUKWS4Cr2P+B7Hj70W1D7w="},` +
+			`"hmacs":["6PbEHuaRXkghoQlYYRZbj4PWcq2XfL/qXuPzTfxKjDE=",` +
+			`"JVhzcAvNFHYQYgPM82TVVtIsuTBbxjBs8wCb1yDY5mA="]}}
+	`)
+
+	bootscope.SetModel(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+		"authority-id": "fake-brand",
+		"series":       "16",
+		"brand-id":     "fake-brand",
+		"model":        "fake-model",
+		"grade":        "secured",
+	}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij"))
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
+		),
+		expectedStderr: `Error with keyslot "default": invalid key data: key generation 1 is too old
+Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+`,
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorInvalidKeyData,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterPlatformKeyAndRecoveryKeyUsedWithWillCheckStorageContainerBinding(c *C) {
+	// Test that the integration of WillCheckStorageContainerBinding doesn't
+	// disable the recovery key fallback, as it does modify the state machine
+	// flags.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	id, err := AddKeyToUserKeyring(primaryKey, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{makeRecoveryKey(c, recoveryKey)},
+	}
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithRecoveryKeyTries(3),
+		},
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithRecoveryKey},
+				"sda2": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda3"),
+			withStorageContainerCredentialName("sda3"),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("foo"),
+			WillCheckStorageContainerBinding(),
+		},
+		expectedAuthRequestName:  "foo",
+		expectedAuthRequestPath:  "/dev/sda3",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                         authRequestor,
+			RecoveryKeyTriesKey:                      uint(3),
+			AuthRequestorUserVisibleNameKey:          "foo",
+			WillCheckStorageContainerBindingOption(): struct{}{},
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+		},
+	})
+	c.Check(err, IsNil)
 }
 
 func (s *activateSuite) TestActivateContainerWithActivateStateCustomData(c *C) {
