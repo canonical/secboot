@@ -74,7 +74,7 @@ func checkHostSecurityIntelBootGuardCSME18(regs hfstsRegistersCsme18) error {
 
 	// Check that the BootGuard profile is valid. I think that's what this
 	// is checking - fwupd's definition of this bit is just called "valid".
-	// This bit does exist for CSME #18, but the definition in slimbootloader
+	// This bit does exist for CSME #11, but the definition in slimbootloader
 	// suggests that it indicates that the error status code and result status
 	// code in bits 7:2 are valid. This bit is set of my XPS16 with CSME #18
 	// and unset on my older XPS15.
