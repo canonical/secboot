@@ -85,7 +85,8 @@ func checkHostSecurityIntelBootGuardCSME18(regs hfstsRegistersCsme18) error {
 	// Check the BootGuard profile.
 	switch regs.Hfsts5.btgProfile() {
 	case btgProfileFVE, btgProfileFVME:
-		// ok
+		// We require verified boot, so the 2 profiles with forced
+		// verification are ok.
 	default:
 		return &NoHardwareRootOfTrustError{errors.New("unsupported BootGuard profile")}
 	}
