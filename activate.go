@@ -71,41 +71,55 @@ func (i *errorKeyslot) Data() KeyDataReader {
 
 // keyslotAttemptRecord binds together information about a keyslot.
 type keyslotAttemptRecord struct {
-	slot      Keyslot  // The backend supplied Keyslot.
-	data      *KeyData // A cache of the decoded KeyData for platform keys.
-	err       error    // The first error that occurred with this keyslot.
-	errNumber int      // The number of the error, used for ordering.
+	slot      Keyslot                     // The backend supplied Keyslot.
+	data      *KeyData                    // A cache of the decoded KeyData for platform keys.
+	flags     PlatformKeyDataHandlerFlags // The flags that the handling platform is registered with.
+	err       error                       // The first error that occurred with this keyslot.
+	errNumber int                         // The number of the error, used for ordering.
 }
 
-func (r *keyslotAttemptRecord) usable() bool {
-	if r.err == nil {
-		return true
+func (r *keyslotAttemptRecord) usable(flags activateOneContainerStateMachineFlags) bool {
+	if r.err != nil {
+		// In general, a keyslot that has encountered an error becomes unusable,
+		// with one exception being that if the error is a result of the user
+		// supplying an incorrect credential (passphrase, PIN, or recovery key),
+		// it should remain usable.
+		var expectedUserAuthErr error
+		switch {
+		// XXX: Keep this commented out for now because we don't check recovery
+		// keyslot usability once we have built the initial list of them.
+		//case r.slot.Type() == KeyslotTypeRecovery:
+		//	// Recovery keyslot
+		//	expectedUserAuthErr = errInvalidRecoveryKey
+		case r.slot.Type() == KeyslotTypePlatform && r.data != nil && r.data.AuthMode() == AuthModePassphrase:
+			// Passphrase keyslot
+			expectedUserAuthErr = ErrInvalidPassphrase
+		default:
+			// Any other type of keyslot is unusable with any error.
+			return false
+		}
+
+		if !errors.Is(r.err, expectedUserAuthErr) {
+			// Anything other than a user auth error makes a keyslot unusable.
+			return false
+		}
 	}
 
-	// In general, a keyslot that has encountered an error becomes unusable,
-	// with one exception being that if the error is a result of the user
-	// supplying an incorrect credential (passphrase, PIN, or recovery key),
-	// it should remain usable.
-	// TODO: Uncomment this when passphrase support is added.
-	//var expectedUserAuthErr error
+	// Check if the keyslot is usable with the current flags.
 	switch {
-	// XXX: Keep this commented out for now because we don't check recovery
-	// keyslot usability once we have built the initial list of them.
-	//case r.slot.Type() == KeyslotTypeRecovery:
-	//	// Recovery keyslot
-	//	expectedUserAuthErr = errInvalidRecoveryKey
-	// TODO: Enable this when passphrase support is added. This is just here
-	// for now as a reminder - there will be a branch for PIN keyslots as well.
-	//case r.slot.Type() == KeyslotTypePlatform && r.data != nil && r.data.AuthMode() == AuthModePassphrase:
-	//	// Passphrase keyslot
-	//	expectedUserAuthErr = ErrInvalidPassphrase
-	default:
-		// Any other type of keyslot is unusable with any error.
+	case r.slot.Type() == KeyslotTypeRecovery && flags&activatePermitRecoveryKey == 0:
+		// Recovery keys are not permitted.
 		return false
+	case r.slot.Type() == KeyslotTypePlatform && flags&activateRequirePlatformKeyProtectedByStorageContainer > 0:
+		// Platform keys are permitted if they are protected by a platform registered with
+		// the PlatformProtectedByStorageContainer flag.
+		if r.flags&PlatformProtectedByStorageContainer == 0 {
+			// The platform is not registered with the PlatformProtectedByStorageContainer flag.
+			return false
+		}
 	}
 
-	// TODO: Uncomment this when passphrase support is added.
-	//return errors.Is(r.err, expectedUserAuthErr)
+	return true
 }
 
 type keyslotAttemptRecordPrioritySlice []*keyslotAttemptRecord
@@ -146,6 +160,15 @@ func (s keyslotAttemptRecordErrorSlice) Swap(i, j int) {
 	tmp := s[j]
 	s[j] = s[i]
 	s[i] = tmp
+}
+
+func (s keyslotAttemptRecordPrioritySlice) hasUsable(flags activateOneContainerStateMachineFlags) bool {
+	for _, slot := range s {
+		if slot.usable(flags) {
+			return true
+		}
+	}
+	return false
 }
 
 type activateOneContainerStateMachineFlags int
@@ -249,6 +272,16 @@ func (m *activateOneContainerStateMachine) addKeyslotRecord(name string, rec *ke
 		return fmt.Errorf("duplicate keyslots with the name %q", name)
 	}
 	m.keyslotRecords[name] = rec
+
+	if rec.err == nil && rec.data != nil {
+		_, flags, err := RegisteredPlatformKeyDataHandler(rec.data.PlatformName())
+		if err != nil {
+			// No handler registered for this platform.
+			rec.err = ErrNoPlatformHandlerRegistered
+		}
+		rec.flags = flags
+	}
+
 	if rec.err != nil {
 		rec.errNumber = m.keyslotErrCount
 		m.keyslotErrCount += 1
@@ -359,25 +392,12 @@ func (m *activateOneContainerStateMachine) initKeyslotAttempts(ctx context.Conte
 func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Context) error {
 	var records keyslotAttemptRecordPrioritySlice
 	for _, record := range m.keyslotRecords {
-		if !record.usable() {
+		if !record.usable(m.flags) {
 			// Skipping this unusable keyslot.
 			continue
 		}
 		if record.slot.Type() != KeyslotTypePlatform {
 			continue
-		}
-		if m.flags&activateRequirePlatformKeyProtectedByStorageContainer > 0 {
-			_, flags, err := RegisteredPlatformKeyDataHandler(record.data.PlatformName())
-			if err != nil {
-				// No handler registered for this platform
-				m.setKeyslotError(record, ErrNoPlatformHandlerRegistered)
-				continue
-			}
-			if flags&PlatformProtectedByStorageContainer == 0 {
-				// We require keyslots protected by platforms with
-				// this flag, so skip this one.
-				continue
-			}
 		}
 		if record.data.AuthMode() != AuthModeNone {
 			// This one requires user auth, so skip this one.
@@ -448,56 +468,54 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 
 	var (
 		// Keep separate slices for different authentication types.
-		// XXX: Future PRs will add passphrase + PIN support.
-		//passphraseSlotRecords keyslotAttemptRecordPrioritySlice
+		// XXX: A future PR will add PIN support.
+		passphraseSlotRecords keyslotAttemptRecordPrioritySlice
 		//pinSlotRecords        keyslotAttemptRecordPrioritySlice
 		recoverySlotRecords keyslotAttemptRecordPrioritySlice
 	)
 
 	// Gather keyslots
 	for _, record := range m.keyslotRecords {
-		if !record.usable() {
+		if !record.usable(m.flags) {
 			// Skipping this unusable keyslot.
 			continue
 		}
-		if record.slot.Type() == KeyslotTypeRecovery {
-			// We've found a recovery key
-			if m.flags&activatePermitRecoveryKey > 0 {
-				recoverySlotRecords = append(recoverySlotRecords, record)
+		switch record.slot.Type() {
+		case KeyslotTypeRecovery:
+			// We've found a recovery keyslot.
+			recoverySlotRecords = append(recoverySlotRecords, record)
+		case KeyslotTypePlatform:
+			// We've found a platform keyslot.
+			switch record.data.AuthMode() {
+			case AuthModeNone:
+				// Skip as we've already tried these.
+			case AuthModePassphrase:
+				passphraseSlotRecords = append(passphraseSlotRecords, record)
+			// case AuthModePIN:
+			// XXX: A future PR will add PIN support.
+			default:
+				m.setKeyslotError(record, &InvalidKeyDataError{fmt.Errorf("unknown user auth mode for keyslot: %s", record.data.AuthMode())})
 			}
-			continue
-		}
-		if record.slot.Type() != KeyslotTypePlatform {
-			// Skipping keyslot of unknown type. This should already
-			// have an error set anyway.
-			continue
-		}
-		// Look for keys that require a PIN or passphrase.
-		switch record.data.AuthMode() {
-		case AuthModeNone:
-			// Skip as we've already tried these
-		//case AuthModePassphrase:
-		// XXX: A future PR will add passphrase support
-		//case AuthModePIN:
-		// XXX: A future PR will add PIN support
-		default:
-			m.setKeyslotError(record, &InvalidKeyDataError{fmt.Errorf("unknown user auth mode for keyslot: %s", record.data.AuthMode())})
 		}
 	}
 
 	// Sort everything by priority.
-	// XXX: Future PRs will add passphrase + PIN support.
-	//sort.Sort(passphraseSlotRecords)
+	// XXX: A future PR will add PIN support.
+	sort.Sort(passphraseSlotRecords)
 	//sort.Sort(pinSlotRecords)
 	sort.Sort(recoverySlotRecords)
 
 	// Get the value of WithAuthRequestorUserVisibleName, if used.
 	name, _ := ActivateConfigGet[string](m.cfg, authRequestorUserVisibleNameKey)
 
+	// Get the value of WithPassphraseTries. This must be supplied and not zero
+	// in order to use passphrase keyslots.
+	passphraseTries, _ := ActivateConfigGet[uint](m.cfg, passphraseTriesKey)
+
 	// Get the value of WithRecoveryKeyTries. This must be supplied and not zero
 	// in order to use recovery keys.
 	recoveryKeyTries, _ := ActivateConfigGet[uint](m.cfg, recoveryKeyTriesKey)
-	// TODO: Get the equivalent values for PIN and passphrase.
+	// TODO: Get the equivalent value for PIN.
 
 	// TODO: Obtain values for PIN, passphrase ratelimiting from options when this
 	// is implemented. Rate limiting is tricky because it relies on us temporarily
@@ -516,20 +534,28 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 
 	// Determine the available authentication types.
 	var authType UserAuthType
+	if len(passphraseSlotRecords) > 0 {
+		authType |= UserAuthTypePassphrase
+	}
 	if len(recoverySlotRecords) > 0 {
 		authType |= UserAuthTypeRecoveryKey
 	}
-	// TODO: Update authType for PIN / passphrase
+	// TODO: Update authType for PIN
 
-	// XXX: When passphrase + PIN support lands, this will loop on available
-	// PIN + passphrase tries as well.
-	for recoveryKeyTries > 0 {
+	// XXX: When PIN support lands, this will loop on available PIN tries as well.
+	for passphraseTries > 0 || recoveryKeyTries > 0 {
+		// Don't try a method where there are no more usable keyslots.
+		if !passphraseSlotRecords.hasUsable(m.flags) {
+			passphraseTries = 0
+		}
+
 		// Update authType flags
-		// XXX: This code will make more sense once support for passphrases and PINs is in,
-		// as what we're doing here is removing an auth type once the number of tries has
-		// expired so that the user prompt can be updated.
+		if passphraseTries == 0 {
+			// No more passphrase key tries are left.
+			authType &^= UserAuthTypePassphrase
+		}
 		if recoveryKeyTries == 0 {
-			// No more recovery key tries are left,
+			// No more recovery key tries are left.
 			authType &^= UserAuthTypeRecoveryKey
 		}
 
@@ -543,35 +569,55 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		}
 
 		// We have a user credential.
-		// 1) TODO: Try it against every keyslot with a passphrase.
+		// 1) Try it against every keyslot with a passphrase.
 		// 2) TODO: See if it decodes as a PIN and try it against every keyslot with a passphrase.
 		// 3) See if it decodes as a recovery key, and try it against every recovery keyslot.
 		//
 		// XXX: Remember that for PIN and passphrase keyslots, a primary key check must be
 		// performed.
 
-		recoveryKey, err := ParseRecoveryKey(cred)
-		switch {
-		case err != nil && authType == UserAuthTypeRecoveryKey:
-			// We are only expecting a recovery key and the user supplied a badly
-			// formatted one. We can log this to stderr and allow them another
-			// attempt.
-			// XXX: Maybe display a notice in Plymouth for this case in the
-			// future.
-			fmt.Fprintf(m.stderr, "Cannot parse recovery key: %v\n", err)
-		case err != nil:
-			// The user supplied credential isn't a valid recovery key, but it
-			// could be a valid PIN or passphrase, so ignore the error in this
-			// case.
-		default:
-			// This is a valid recovery key
-			recoveryKeyTries -= 1
-			if slot := m.tryRecoveryKeyslotsHelper(ctx, recoverySlotRecords, recoveryKey); slot != nil {
-				// Success!
-				m.status = ActivationSucceededWithRecoveryKey
-				m.activationKeyslotName = slot.Name()
-			}
+		var (
+			unlockKey  DiskUnlockKey
+			primaryKey PrimaryKey
+		)
 
+		if passphraseTries > 0 {
+			passphraseTries -= 1
+			if uk, pk, slot := m.tryPassphraseKeyslotsHelper(ctx, passphraseSlotRecords, cred); slot != nil {
+				// Success!
+				m.status = ActivationSucceededWithPlatformKey
+				m.activationKeyslotName = slot.Name()
+
+				unlockKey = uk
+				primaryKey = pk
+			}
+		}
+
+		if m.status == activationIncomplete && recoveryKeyTries > 0 {
+			recoveryKey, err := ParseRecoveryKey(cred)
+			switch {
+			case err != nil && authType == UserAuthTypeRecoveryKey:
+				// We are only expecting a recovery key and the user supplied a badly
+				// formatted one. We can log this to stderr and allow them another
+				// attempt.
+				// XXX: Maybe display a notice in Plymouth for this case in the
+				// future.
+				fmt.Fprintf(m.stderr, "Cannot parse recovery key: %v\n", err)
+			case err != nil:
+				// The user supplied credential isn't a valid recovery key, but it
+				// could be a valid PIN or passphrase, so ignore the error in this
+				// case.
+			default:
+				// This is a valid recovery key
+				recoveryKeyTries -= 1
+				if slot := m.tryRecoveryKeyslotsHelper(ctx, recoverySlotRecords, recoveryKey); slot != nil {
+					// Success!
+					m.status = ActivationSucceededWithRecoveryKey
+					m.activationKeyslotName = slot.Name()
+
+					unlockKey = DiskUnlockKey(recoveryKey[:])
+				}
+			}
 		}
 
 		if m.status == activationIncomplete {
@@ -583,7 +629,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		m.next = activateOneContainerStateMachineTask{
 			name: "add-keyring-keys",
 			fn: func(ctx context.Context) error {
-				return m.addKeyringKeys(ctx, DiskUnlockKey(recoveryKey[:]), PrimaryKey(nil))
+				return m.addKeyringKeys(ctx, unlockKey, primaryKey)
 			},
 		}
 		return nil
@@ -593,6 +639,50 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 	m.next = activateOneContainerStateMachineTask{}
 
 	return ErrCannotActivate
+}
+
+func (m *activateOneContainerStateMachine) tryPassphraseKeyslotsHelper(ctx context.Context, slotRecords keyslotAttemptRecordPrioritySlice, passphrase string) (DiskUnlockKey, PrimaryKey, Keyslot) {
+	for _, record := range slotRecords {
+		if !record.usable(m.flags) {
+			// A previous error might have marked this as unusable.
+			continue
+		}
+
+		unlockKey, primaryKey, err := record.data.RecoverKeysWithPassphrase(passphrase)
+		if err != nil {
+			m.setKeyslotError(record, fmt.Errorf("cannot recover keys from keyslot: %w", err))
+			continue
+		}
+
+		// Clear any previous ErrInvalidPassphrase error.
+		record.err = nil
+
+		if !m.checkPrimaryKeyValid(primaryKey) {
+			m.setKeyslotError(record, &InvalidKeyDataError{errInvalidPrimaryKey})
+			continue
+		}
+
+		if err := m.container.Activate(ctx, record.slot, unlockKey, m.cfg); err != nil {
+			// XXX: This could fail for any number of reasons, such as invalid supplied parameters,
+			// but the current API doesn't have a way of communicating this and in the luks2
+			// backend, systemd-cryptsetup only gives us an exit code of 1 regardless of whether
+			// the key is wrong or an already active volume name is supplied, so we just assume
+			// invalid data for now. I'd really like to do better than this though and distinguish
+			// between the key being wrong or the caller providing incorrect options. Given how
+			// little of systemd-cryptsetup's functionality we use, perhaps in the future we could
+			// replace it by a simple C application that makes use of libcryptsetup and returns
+			// useful information back to us via a combination of JSON output on stdout and / or
+			// exit codes.
+			m.setKeyslotError(record, &InvalidKeyDataError{fmt.Errorf("cannot activate container with key recovered from keyslot metadata: %w", err)})
+			continue
+		}
+
+		// Unlocking succeeded with this keyslot
+		return unlockKey, primaryKey, record.slot
+	}
+
+	// We were unable to unlock with any passphrase keyslot
+	return nil, nil, nil
 }
 
 func (m *activateOneContainerStateMachine) tryRecoveryKeyslotsHelper(ctx context.Context, slotRecords keyslotAttemptRecordPrioritySlice, recoveryKey RecoveryKey) Keyslot {
@@ -609,7 +699,7 @@ func (m *activateOneContainerStateMachine) tryRecoveryKeyslotsHelper(ctx context
 		// to provide an option that allows us to integrate with the callers logging framework,
 		// which can allow us to write messages at different log levels.
 		//
-		// Note that we don't check if the keyslot is usable here (calling slot.usable()), as
+		// Note that we don't check if the keyslot is usable here (calling record.usable()), as
 		// we did that when building the list of recovery keys and nothing we do to the list
 		// of recovery keys will make them unusable.
 		if err := m.container.Activate(ctx, record.slot, recoveryKey[:], m.cfg); err == nil {
