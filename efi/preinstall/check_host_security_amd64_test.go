@@ -164,11 +164,11 @@ C7E003CB
 	)
 
 	_, err := CheckHostSecurity(env, nil)
-	c.Check(err, ErrorMatches, `encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
+	c.Check(err, ErrorMatches, `encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: ME is in manufacturing mode`)
 
 	var nhrotErr *NoHardwareRootOfTrustError
 	c.Check(errors.As(err, &nhrotErr), testutil.IsTrue)
-	c.Check(nhrotErr, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode: no firmware protections are enabled`)
+	c.Check(nhrotErr, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode`)
 }
 
 func (s *hostSecurityAMD64Suite) TestCheckHostSecuritySecureBootPolicyFirmwareDebugging(c *C) {
