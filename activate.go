@@ -251,9 +251,15 @@ func (m *activateOneContainerStateMachine) addKeyslotRecord(name string, rec *ke
 	}
 	m.keyslotRecords[name] = rec
 
+	// XXX: The passphrase support PR refactors keyslotAttemptRecord.usable such that
+	// it will be able to indicate that a keyslot is unusable based on the current flags,
+	// without having to check it here.
 	if m.flags&activateCrossCheckPrimaryKey > 0 && rec.data != nil && rec.data.Generation() < 2 {
 		// Older keys require a machanism other than the primary key crosscheck to prove
 		// binding between containers, so reject them here.
+		// XXX: Set an error here for now to make the keyslot unusable. The passphrase
+		// support PR refactors keyslotAttemptRecord.usable such that it will be able
+		// to indicate that the keyslot is unusable based on the current flags.
 		rec.err = &InvalidKeyDataError{fmt.Errorf("key generation %d is too old", rec.data.Generation())}
 	}
 
