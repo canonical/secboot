@@ -82,6 +82,7 @@ func (s *activateSuite) SetUpTest(c *C) {
 	s.keyDataTestBase.SetUpTest(c)
 	s.keyringTestMixin.SetUpTest(c)
 
+	s.handler.passphraseSupport = true
 	internal_bootscope.UnsafeClearModelForTesting()
 }
 
@@ -111,6 +112,19 @@ func (s *activateSuite) makeKeyDataBlob(c *C, primaryKey PrimaryKey, uniqueKey [
 	params, unlockKey = s.mockProtectKeys(c, primaryKey, uniqueKey, role, crypto.SHA256)
 
 	return s.makeKeyDataBlobFromParams(c, params), unlockKey
+}
+
+func (s *activateSuite) makeKeyDataBlobWithPassphrase(c *C, primaryKey PrimaryKey, uniqueKey []byte, role, passphrase string) (blob []byte, unlockKey DiskUnlockKey) {
+	var params *KeyWithPassphraseParams
+	params, unlockKey = s.mockProtectKeysWithPassphrase(c, primaryKey, uniqueKey, role, nil, 32, crypto.SHA256)
+
+	kd, err := NewKeyDataWithPassphrase(params, passphrase)
+	c.Assert(err, IsNil)
+
+	w := makeMockKeyDataWriter()
+	c.Check(kd.WriteAtomic(w), IsNil)
+
+	return w.Bytes(), unlockKey
 }
 
 var _ = Suite(&activateSuite{})
@@ -1389,9 +1403,12 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyRetryAfterInvalidRecover
 		},
 		expectedStderr: `Cannot parse recovery key: incorrectly formatted: insufficient characters
 `,
-		expectedAuthRequestName:  "data",
-		expectedAuthRequestPath:  "/dev/sda1",
-		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey, UserAuthTypeRecoveryKey},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			AuthRequestorUserVisibleNameKey: "data",
@@ -1433,10 +1450,13 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyRetryAfterIncorrectRecov
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
-		expectedTryKeys:          [][]byte{incorrectRecoveryKey, recoveryKey},
-		expectedAuthRequestName:  "data",
-		expectedAuthRequestPath:  "/dev/sda1",
-		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey, UserAuthTypeRecoveryKey},
+		expectedTryKeys:         [][]byte{incorrectRecoveryKey, recoveryKey},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			AuthRequestorUserVisibleNameKey: "data",
@@ -1477,10 +1497,14 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithRecoveryKeyTries(c *
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
-		expectedTryKeys:          [][]byte{incorrectRecoveryKey, incorrectRecoveryKey, incorrectRecoveryKey},
-		expectedAuthRequestName:  "data",
-		expectedAuthRequestPath:  "/dev/sda1",
-		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey, UserAuthTypeRecoveryKey, UserAuthTypeRecoveryKey},
+		expectedTryKeys:         [][]byte{incorrectRecoveryKey, incorrectRecoveryKey, incorrectRecoveryKey},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			AuthRequestorUserVisibleNameKey: "data",
@@ -1522,10 +1546,13 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithDifferentRecoveryKey
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
-		expectedTryKeys:          [][]byte{incorrectRecoveryKey, incorrectRecoveryKey},
-		expectedAuthRequestName:  "data",
-		expectedAuthRequestPath:  "/dev/sda1",
-		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey, UserAuthTypeRecoveryKey},
+		expectedTryKeys:         [][]byte{incorrectRecoveryKey, incorrectRecoveryKey},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			AuthRequestorUserVisibleNameKey: "data",
@@ -1560,9 +1587,12 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithNoRecoveryKeyTries(c
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
-		expectedAuthRequestName:  "data",
-		expectedAuthRequestPath:  "/dev/sda1",
-		expectedAuthRequestTypes: []UserAuthType{UserAuthTypeRecoveryKey, UserAuthTypeRecoveryKey},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			AuthRequestorUserVisibleNameKey: "data",
@@ -2606,7 +2636,7 @@ func (s *activateSuite) TestActivateContainerWithNoSuitableKeyslotsAfterPlatform
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("save"),
 		},
-		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: no appropriate platform handler is registered
+		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
 Error with keyslot "default-fallback": invalid key data: cannot activate container with key recovered from keyslot metadata: invalid key
 `,
 		expectedTryKeys: [][]byte{unlockKey2},
@@ -2627,14 +2657,10 @@ Error with keyslot "default-fallback": invalid key data: cannot activate contain
 	c.Check(err, Equals, ErrCannotActivate)
 }
 
-func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAfterPlatformKeyUsed(c *C) {
+func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAuthModeNoneAfterPlatformKeyUsed(c *C) {
 	// Test the case where we attempt to unlock a container after the first one
-	// was unlocked with a platform key. Unlocking fails because both keyslots
-	// have a different primary key compared with the first container.
-	handler2 := new(mockPlatformKeyDataHandler)
-	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
-	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
-
+	// was unlocked with a platform key. Unlocking fails because the keyslot
+	// has a different primary key compared with the first container.
 	primaryKey1 := testutil.DecodeHexString(c, "990e0742eaa152b5c2bcc3aaf94c9dae58df62a46c13ab569a3e7b4afebb7e1d")
 
 	id, err := AddKeyToUserKeyring(primaryKey1, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
@@ -2660,23 +2686,71 @@ func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAfterPlatfo
 		container: newMockStorageContainer(
 			withStorageContainerPath("/dev/sda2"),
 			withStorageContainerCredentialName("sda2"),
-			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1), // Configured to fail.
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
 		),
-		expectedStderr: `Error with keyslot "default": invalid key data: invalid primary key
+		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
 Error with keyslot "default-fallback": invalid key data: invalid primary key
 Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
 		expectedState: &ContainerActivateState{
 			Status: ActivationFailed,
 			KeyslotErrors: map[string]KeyslotErrorType{
-				"default":          KeyslotErrorInvalidPrimaryKey,
+				"default":          KeyslotErrorUnknown,
 				"default-fallback": KeyslotErrorInvalidPrimaryKey,
 			},
 			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerPrimaryKeyProtectedByStorageContainerNoPrimaryKeyCrosscheckAfterPlatformKeyUsed(c *C) {
+	// Test the case where we attempt to unlock a container after the first one
+	// was unlocked with a platform key. Unlocking succeeds with a key protected by
+	// a platform registered with the PlatformProtectedByStorageContainer despite the
+	// primary key being different, because the primary key does not need to be
+	// checked in this case.
+	handler2 := new(mockPlatformKeyDataHandler)
+	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
+	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
+
+	primaryKey1 := testutil.DecodeHexString(c, "990e0742eaa152b5c2bcc3aaf94c9dae58df62a46c13ab569a3e7b4afebb7e1d")
+
+	id, err := AddKeyToUserKeyring(primaryKey1, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	primaryKey2 := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+
+	// XXX: This is a bit of a hack for now. I think that keyDataTestBase and
+	// mockPlatformKeyDataHandler need a bit of a rethink.
+	params, unlockKey1 := s.mockProtectKeys(c, primaryKey2, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "", crypto.SHA256)
+	params.PlatformName = "mock2"
+	kd1 := s.makeKeyDataBlobFromParams(c, params)
+
+	kd2, unlockKey2 := s.makeKeyDataBlob(c, primaryKey1, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover")
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		expectedPrimaryKey: primaryKey2,
+		expectedUnlockKey:  unlockKey1,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
 }
 
 func (s *activateSuite) TestActivateContainerWithPlatformKeyProtectedByStorageContainerAfterV1PlatformKeyUsed(c *C) {
@@ -2985,15 +3059,10 @@ func (s *activateSuite) TestActivateContainerWithV1PlatformKeyFailsAfterPlatform
 			withStorageContainerCredentialName("sda2"),
 			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
 		),
-		expectedStderr: `Error with keyslot "default": invalid key data: key generation 1 is too old
-Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+		expectedStderr: `Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
 		expectedState: &ContainerActivateState{
 			Status: ActivationFailed,
-			KeyslotErrors: map[string]KeyslotErrorType{
-				"default": KeyslotErrorInvalidKeyData,
-			},
-			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -3183,7 +3252,7 @@ func (s *activateSuite) TestActivateContainerWithRecoveryKeyAfterPlatformAndReco
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("foo"),
 		},
-		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: no appropriate platform handler is registered
+		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
 Error with keyslot "default-fallback": invalid key data: cannot activate container with key recovered from keyslot metadata: invalid key
 `,
 		expectedTryKeys:          [][]byte{unlockKey2, recoveryKey},
@@ -3212,12 +3281,8 @@ Error with keyslot "default-fallback": invalid key data: cannot activate contain
 func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAfterPlatformKeyAndRecoveryKeyUsed(c *C) {
 	// Test the case where we attempt to unlock a container after the first containers
 	// were unlocked with a mix of platform and recovery keys. In this case, unlocking
-	// fails because both keyslots have a different primary key compared with one
+	// fails because the keyslot has a different primary key compared with one
 	// used previously.
-	handler2 := new(mockPlatformKeyDataHandler)
-	RegisterPlatformKeyDataHandler("mock2", handler2, PlatformProtectedByStorageContainer)
-	defer RegisterPlatformKeyDataHandler("mock2", nil, 0)
-
 	primaryKey1 := testutil.DecodeHexString(c, "990e0742eaa152b5c2bcc3aaf94c9dae58df62a46c13ab569a3e7b4afebb7e1d")
 
 	id, err := AddKeyToUserKeyring(primaryKey1, newMockStorageContainer(withStorageContainerCredentialName("sda2")), KeyringKeyPurposePrimary, "ubuntu-fde")
@@ -3244,17 +3309,17 @@ func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAfterPlatfo
 		container: newMockStorageContainer(
 			withStorageContainerPath("/dev/sda3"),
 			withStorageContainerCredentialName("sda3"),
-			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1), // Configured to fail.
 			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
 		),
-		expectedStderr: `Error with keyslot "default": invalid key data: invalid primary key
+		expectedStderr: `Error with keyslot "default": no appropriate platform handler is registered
 Error with keyslot "default-fallback": invalid key data: invalid primary key
 Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
 		expectedState: &ContainerActivateState{
 			Status: ActivationFailed,
 			KeyslotErrors: map[string]KeyslotErrorType{
-				"default":          KeyslotErrorInvalidPrimaryKey,
+				"default":          KeyslotErrorUnknown,
 				"default-fallback": KeyslotErrorInvalidPrimaryKey,
 			},
 			KeyslotErrorsOrder: []string{"default", "default-fallback"},
@@ -3579,15 +3644,10 @@ func (s *activateSuite) TestActivateContainerWithV1PlatformKeyFailsAfterPlatform
 			withStorageContainerCredentialName("sda3"),
 			withStorageContainerKeyslot("default", unlockKey, KeyslotTypePlatform, 0, kd),
 		),
-		expectedStderr: `Error with keyslot "default": invalid key data: key generation 1 is too old
-Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
+		expectedStderr: `Cannot try keyslots that require a user credential because WithAuthRequestor wasn't supplied
 `,
 		expectedState: &ContainerActivateState{
 			Status: ActivationFailed,
-			KeyslotErrors: map[string]KeyslotErrorType{
-				"default": KeyslotErrorInvalidKeyData,
-			},
-			KeyslotErrorsOrder: []string{"default"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
@@ -3675,6 +3735,590 @@ func (s *activateSuite) TestActivateContainerWithActivateStateCustomData(c *C) {
 		},
 	})
 	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphrase(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{"secret"},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypePassphrase},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey1,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseRetryAfterIncorrectPassphrase(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth. The first
+	// passphrase is incorrect for both keyslots, but we should get another
+	// attempt.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"incorrect",
+			"secret",
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase,
+			UserAuthTypePassphrase,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey1,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseSecondKey(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth. Unlocking happens
+	// with the second tested keyslot.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{"foo"},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypePassphrase},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey2,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseWithPassphraseTries(c *C) {
+	// Test the integration of WithPassphraseTries.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"incorrect",
+			"incorrect",
+			"incorrect",
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase,
+			UserAuthTypePassphrase,
+			UserAuthTypePassphrase,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseWithDifferentPassphraseTries(c *C) {
+	// Test the integration of WithPassphraseTries.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"incorrect",
+			"incorrect",
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(2),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase,
+			UserAuthTypePassphrase,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(2),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseWithRecoveryKeyFallback(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth and
+	// a recovery keyslot. Unlocking happens with a recovery keyslot
+	// after entering an incorrect passphrase.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"incorrect",
+			makeRecoveryKey(c, recoveryKey),
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseBecomesUnavailableWithRecoveryKeyFallback(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth and
+	// a recovery keyslot. Unlocking happens with a recovery keyslot
+	// after the 2 platform keyslots fail with errors. The last
+	// credential request should only be for a recovery key.
+	// This also test unlocking errors with passphrase keyslots, as
+	// well as passphrase keyslots becoming unusable.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"secret",
+			"foo",
+			makeRecoveryKey(c, recoveryKey),
+		},
+	}
+
+	s.handler.permittedRoles = []string{"run+recover"}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", nil, KeyslotTypePlatform, 0, kd1),                 // Configured to fail.
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2), // Not permitted.
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedStderr: `Error with keyslot "default": invalid key data: cannot activate container with key recovered from keyslot metadata: invalid key
+Error with keyslot "default-fallback": cannot recover keys from keyslot: incompatible key data role params: permission denied
+`,
+		expectedTryKeys: [][]byte{
+			unlockKey1,
+			recoveryKey,
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorInvalidKeyData,
+				"default-fallback": KeyslotErrorIncompatibleRoleParams,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseWithRecoveryKeyFallbackAfterPassphraseTriesExhausted(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth and
+	// a recovery keyslot. Unlocking happens with a recovery keyslot
+	// after all passphrase tries are exhausted.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"incorrect",
+			"incorrect",
+			"incorrect",
+			makeRecoveryKey(c, recoveryKey),
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypeRecoveryKey,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseAfterRecoveryKeyFallbackTriesExhausted(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth and
+	// a recovery keyslot. Unlocking happens with a passphrase keyslot
+	// after all recovery key tries are exhausted.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+	incorrectRecoveryKey := testutil.DecodeHexString(c, "c9654970edbf1c8005f4f0c38ab6b300")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			makeRecoveryKey(c, incorrectRecoveryKey),
+			makeRecoveryKey(c, incorrectRecoveryKey),
+			makeRecoveryKey(c, incorrectRecoveryKey),
+			"foo",
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(5),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedTryKeys: [][]byte{
+			incorrectRecoveryKey,
+			incorrectRecoveryKey,
+			incorrectRecoveryKey,
+			unlockKey2,
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypePassphrase,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(5),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedPrimaryKey: primaryKey,
+		expectedUnlockKey:  unlockKey2,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithPlatformKey,
+			Keyslot: "default-fallback",
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-recovery": KeyslotErrorIncorrectUserAuth,
+			},
+			KeyslotErrorsOrder: []string{"default-recovery", "default"},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *activateSuite) TestActivateContainerPrimaryKeyCrosscheckFailAuthModePassphraseAfterPlatformKeyUsed(c *C) {
+	primaryKey1 := testutil.DecodeHexString(c, "990e0742eaa152b5c2bcc3aaf94c9dae58df62a46c13ab569a3e7b4afebb7e1d")
+
+	id, err := AddKeyToUserKeyring(primaryKey1, newMockStorageContainer(withStorageContainerCredentialName("sda1")), KeyringKeyPurposePrimary, "ubuntu-fde")
+	c.Check(err, IsNil)
+
+	primaryKey2 := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey2, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey2, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			"foo",
+			"secret",
+		},
+	}
+
+	err = s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		initialState: &ActivateState{
+			PrimaryKeyID: int32(id),
+			Activations: map[string]*ContainerActivateState{
+				"sda1": &ContainerActivateState{Status: ActivationSucceededWithPlatformKey},
+			},
+		},
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda2"),
+			withStorageContainerCredentialName("sda2"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("save"),
+		},
+		expectedStderr: `Error with keyslot "default-fallback": invalid key data: invalid primary key
+Error with keyslot "default": invalid key data: invalid primary key
+`,
+		expectedAuthRequestName: "save",
+		expectedAuthRequestPath: "/dev/sda2",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase,
+			UserAuthTypePassphrase,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			AuthRequestorUserVisibleNameKey: "save",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorInvalidPrimaryKey,
+				"default-fallback": KeyslotErrorInvalidPrimaryKey,
+			},
+			KeyslotErrorsOrder: []string{"default-fallback", "default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
 }
 
 func (s *activateSuite) TestDeactivateContainer(c *C) {
