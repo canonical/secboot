@@ -85,6 +85,7 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 	key, authKey, err := k.UnsealFromTPM(tpm)
 	if err != nil {
 		var e InvalidKeyDataError
+		var p *PCRPolicyDataError
 		switch {
 		case xerrors.As(err, &e):
 			return nil, &secboot.PlatformHandlerError{
@@ -97,6 +98,10 @@ func (h *legacyPlatformKeyDataHandler) RecoverKeys(data *secboot.PlatformKeyData
 		case err == ErrTPMLockout:
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorUnavailable,
+				Err:  err}
+		case errors.As(err, &p):
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorIncompatibleRole,
 				Err:  err}
 		}
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)

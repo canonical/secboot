@@ -225,17 +225,18 @@ func (p *keyDataPolicy_v1) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, pcrPolicyDigest, p.PCRData.AuthorizedPolicySignature)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
-			// PCRData.AuthorizedPolicySignature is invalid.
-			return policyDataError{xerrors.Errorf("cannot verify PCR policy signature: %w", err)}
+			// d.PCRData.AuthorizedPolicySignature or d.PCRData.AuthorizedPolicy is invalid, or
+			// the NV counter has the wrong name. The public key could also be incorrect, but this
+			// would be detected when attempting to update the PCR policy.
+			return pcrPolicyDataError{xerrors.Errorf("cannot verify PCR policy signature: %w", err)}
 		}
 		return err
 	}
 
 	if err := tpm.PolicyAuthorize(policySession, p.PCRData.AuthorizedPolicy, pcrPolicyRef, authorizeKey.Name(), authorizeTicket); err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
-			// d.PCRData.AuthorizedPolicy is invalid or the auth key isn't associated with
-			// this object.
-			return policyDataError{errors.New("the PCR policy is invalid")}
+			// d.PCRData.AuthorizedPolicy is invalid.
+			return pcrPolicyDataError{errors.New("the PCR policy is invalid")}
 		}
 		return err
 	}
