@@ -20,11 +20,15 @@
 package secboot
 
 type externalKeyslot struct {
-	*ExternalKeyData
+	name string
+	data KeyDataReader // This will eventually just be a io.Reader.
 }
 
-func newExternalKeyslot(data *ExternalKeyData) *externalKeyslot {
-	return &externalKeyslot{ExternalKeyData: data}
+func newExternalKeyslot(name string, data KeyDataReader) *externalKeyslot {
+	return &externalKeyslot{
+		name: name,
+		data: data,
+	}
 }
 
 func (*externalKeyslot) Type() KeyslotType {
@@ -32,7 +36,7 @@ func (*externalKeyslot) Type() KeyslotType {
 }
 
 func (s *externalKeyslot) Name() string {
-	return "external:" + s.ExternalKeyData.Name()
+	return "external:" + s.name
 }
 
 func (*externalKeyslot) Priority() int {
@@ -40,43 +44,11 @@ func (*externalKeyslot) Priority() int {
 }
 
 func (s *externalKeyslot) Data() KeyDataReader {
-	// externalKeyslot is already a KeyDataReader.
-	return s
+	return s.data
 }
 
-// ExternalKeyData represents external key metadata that is not provided
-// by a [StorageContainer].
-type ExternalKeyData struct {
+type externalKeyData struct {
 	name string
-	data KeyDataReader
-}
-
-// NewExternalKeyData creates a new ExternalKeyData. External keys have
-// a hardcoded priority of 100 so that these are tried before
-// [StorageContainer] keyslots with the default priority (0). Note that
-// the [KeyDataReader] argument will eventually be replaced by [io.Reader].
-func NewExternalKeyData(name string, data KeyDataReader) *ExternalKeyData {
-	return &ExternalKeyData{
-		name: name,
-		data: data,
-	}
-}
-
-// Name returns the name associated with this external key metadata.
-func (d *ExternalKeyData) Name() string {
-	return d.name
-}
-
-// ReadableName implements [KeyDataReader.ReadableName].
-//
-// XXX: This only exists so that ExternalKeyData can be passed to
-// [ReadKeyData] and will eventually be deleted along with [KeyDataReader]
-// when the legacy activation API is deleted.
-func (d *ExternalKeyData) ReadableName() string {
-	return d.name
-}
-
-// Read implements [io.Reader].
-func (d *ExternalKeyData) Read(data []byte) (int, error) {
-	return d.data.Read(data)
+	r    KeyDataReader // nil when WithExternalKeyData is used.
+	data *KeyData      // nil when WithExternalKeyDataFromReader is used.
 }

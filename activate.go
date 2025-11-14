@@ -29,6 +29,7 @@ import (
 	"os"
 	"sort"
 
+	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
 	"github.com/snapcore/secboot/internal/keyring"
 	"golang.org/x/sys/unix"
 )
@@ -113,6 +114,14 @@ func (r *keyslotAttemptRecord) usable(flags activateOneContainerStateMachineFlag
 	case r.slot.Type() == KeyslotTypePlatform && flags&activateRequirePlatformKeyProtectedByStorageContainer > 0:
 		// Platform keys are permitted if they are protected by a platform registered with
 		// the PlatformProtectedByStorageContainer flag.
+		if r.flags&PlatformProtectedByStorageContainer == 0 {
+			// The platform is not registered with the PlatformProtectedByStorageContainer flag.
+			return false
+		}
+	case r.slot.Type() == KeyslotTypePlatform && r.data.Generation() < 2 && flags&activateCrossCheckPrimaryKey > 0:
+		// v1 platform keys are permitted if they are protected by a platform registered
+		// with the PlatformProtectedByStorageContainer flag, as their primary key
+		// cannot be checked against those recovered from other storage containers.
 		if r.flags&PlatformProtectedByStorageContainer == 0 {
 			// The platform is not registered with the PlatformProtectedByStorageContainer flag.
 			return false
@@ -259,8 +268,14 @@ func (m *activateOneContainerStateMachine) setKeyslotError(rec *keyslotAttemptRe
 	fmt.Fprintf(m.stderr, "Error with keyslot %q: %v\n", rec.slot.Name(), err)
 }
 
-func (m *activateOneContainerStateMachine) checkPrimaryKeyValid(primaryKey PrimaryKey) bool {
+func (m *activateOneContainerStateMachine) checkPrimaryKeyValid(platformFlags PlatformKeyDataHandlerFlags, primaryKey PrimaryKey) bool {
 	if m.flags&activateCrossCheckPrimaryKey == 0 {
+		// Checking the primary key was not requested for the current context.
+		return true
+	}
+	if platformFlags&PlatformProtectedByStorageContainer > 0 {
+		// Checking the primary key is not required because the key was recovered
+		// from a previously unlocked storage container.
 		return true
 	}
 
@@ -297,26 +312,30 @@ func (m *activateOneContainerStateMachine) initExternalKeyAttempts(ctx context.C
 		fn:   m.initKeyslotAttempts,
 	}
 
-	// Find external keys supplied via WithExternalKeyData.
-	external, exists := ActivateConfigGet[[]*ExternalKeyData](m.cfg, externalKeyDataKey)
+	// Find external keys supplied via WithExternalKeyData and WithExternalKeyDataFromReader.
+	external, exists := ActivateConfigGet[[]*externalKeyData](m.cfg, externalKeyDataKey)
 	if !exists {
 		// Option not supplied.
 		return nil
 	}
 
 	for _, data := range external {
-		slot := newExternalKeyslot(data)
-		kd, err := ReadKeyData(slot.Data())
-		if err != nil {
-			rec := &keyslotAttemptRecord{
-				slot: slot,
-				err:  &InvalidKeyDataError{err: err},
-			}
-			if err := m.addKeyslotRecord(slot.Name(), rec); err != nil {
-				return fmt.Errorf("cannot add external key metadata %q: %w", slot.Name(), err)
-			}
+		slot := newExternalKeyslot(data.name, data.r)
+		kd := data.data
+		if kd == nil {
+			var err error
+			kd, err = ReadKeyData(slot.Data())
+			if err != nil {
+				rec := &keyslotAttemptRecord{
+					slot: slot,
+					err:  &InvalidKeyDataError{err: err},
+				}
+				if err := m.addKeyslotRecord(slot.Name(), rec); err != nil {
+					return fmt.Errorf("cannot add external key metadata %q: %w", slot.Name(), err)
+				}
 
-			continue
+				continue
+			}
 		}
 
 		rec := &keyslotAttemptRecord{
@@ -415,7 +434,24 @@ func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Con
 			continue
 		}
 
-		if !m.checkPrimaryKeyValid(primaryKey) {
+		if record.data.Generation() < 2 {
+			model := internal_bootscope.GetModel()
+			if model == nil {
+				m.setKeyslotError(record, errors.New("encountered generation 1 key but bootscope.SetModel has not been called"))
+				continue
+			}
+			authorized, err := record.data.IsSnapModelAuthorized(primaryKey, model)
+			if err != nil {
+				m.setKeyslotError(record, &InvalidKeyDataError{fmt.Errorf("cannot check if snap model is authorized: %w", err)})
+				continue
+			}
+			if !authorized {
+				m.setKeyslotError(record, &IncompatibleKeyDataRoleParamsError{errors.New("snap model is not authorized")})
+				continue
+			}
+		}
+
+		if !m.checkPrimaryKeyValid(record.flags, primaryKey) {
 			m.setKeyslotError(record, &InvalidKeyDataError{errInvalidPrimaryKey})
 			continue
 		}
@@ -485,16 +521,19 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 			// We've found a recovery keyslot.
 			recoverySlotRecords = append(recoverySlotRecords, record)
 		case KeyslotTypePlatform:
-			// We've found a platform keyslot.
-			switch record.data.AuthMode() {
-			case AuthModeNone:
-				// Skip as we've already tried these.
-			case AuthModePassphrase:
-				passphraseSlotRecords = append(passphraseSlotRecords, record)
-			// case AuthModePIN:
-			// XXX: A future PR will add PIN support.
-			default:
-				m.setKeyslotError(record, &InvalidKeyDataError{fmt.Errorf("unknown user auth mode for keyslot: %s", record.data.AuthMode())})
+			// We've found a platform keyslot. Don't support platform
+			// keyslots older than v2.
+			if record.data.Generation() >= 2 {
+				switch record.data.AuthMode() {
+				case AuthModeNone:
+					// Skip as we've already tried these.
+				case AuthModePassphrase:
+					passphraseSlotRecords = append(passphraseSlotRecords, record)
+				// case AuthModePIN:
+				// XXX: A future PR will add PIN support.
+				default:
+					m.setKeyslotError(record, &InvalidKeyDataError{fmt.Errorf("unknown user auth mode for keyslot: %s", record.data.AuthMode())})
+				}
 			}
 		}
 	}
@@ -657,7 +696,7 @@ func (m *activateOneContainerStateMachine) tryPassphraseKeyslotsHelper(ctx conte
 		// Clear any previous ErrInvalidPassphrase error.
 		record.err = nil
 
-		if !m.checkPrimaryKeyValid(primaryKey) {
+		if !m.checkPrimaryKeyValid(record.flags, primaryKey) {
 			m.setKeyslotError(record, &InvalidKeyDataError{errInvalidPrimaryKey})
 			continue
 		}
@@ -809,6 +848,12 @@ func (m *activateOneContainerStateMachine) primaryKeyInfo() (PrimaryKey, keyring
 		return nil, 0, errNoPrimaryKey
 	}
 
+	if m.keyslotRecords[m.activationKeyslotName].data.Generation() < 2 {
+		// The activation keyslot does not have a primary key that can be
+		// used to demonstrate binding of other storage containers.
+		return nil, 0, errNoPrimaryKey
+	}
+
 	return m.primaryKey, m.primaryKeyID, nil
 }
 
@@ -912,17 +957,12 @@ func NewActivateContext(ctx context.Context, state *ActivateState, opts ...Activ
 			return nil, errors.New("invalid state: \"primary-key-id\" set with no activated containers")
 		}
 	default:
-		switch state.NumActivatedContainersWithPlatformKey() {
-		case 0:
+		if state.NumActivatedContainersWithPlatformKey() == 0 {
 			if state.PrimaryKeyID != 0 {
 				return nil, errors.New("invalid state: \"primary-key-id\" set with no containers activated with a platform keyslot")
 			}
 			if state.NumActivatedContainersWithRecoveryKey() == 0 {
 				panic("unexpected state: total activated containers > 0 but none activated with platform or recovery keyslot")
-			}
-		default:
-			if state.PrimaryKeyID == 0 {
-				return nil, errors.New("invalid state: \"primary-key-id\" unset with one or more containers activated with a platform keyslot")
 			}
 		}
 	}
@@ -1058,6 +1098,24 @@ func (c *ActivateContext) ActivateContainer(ctx context.Context, container Stora
 		// a way to handle this case in a follow-up PR.
 		flags = activateCrossCheckPrimaryKey
 	}
+	if _, exists := ActivateConfigGet[struct{}](cfg, &willCheckStorageContainerBindingOption); exists {
+		// The caller says they will verify the storage container binding separately.
+		// Skip the primary key crosscheck and permit any platform key.
+		flags &^= (activateCrossCheckPrimaryKey | activateRequirePlatformKeyProtectedByStorageContainer)
+	}
+	if flags&activateCrossCheckPrimaryKey > 0 && c.state.PrimaryKeyID == 0 {
+		// We need to perform a primary key crosscheck but we don't yet
+		// have a primary key - this can happen if previous storage containers
+		// were unlocked with v1 platform keys and the caller hasn't specified
+		// the WillCheckStorageContainerBinding option. In this case, only
+		// permit platform keys that are protected by a platform registered with
+		// the PlatformProtectedByStorageContainer flag.
+		flags |= activateRequirePlatformKeyProtectedByStorageContainer
+
+		// Also skip the primary key crosscheck, as this won't work.
+		flags &^= activateCrossCheckPrimaryKey
+	}
+
 	sm := newActivateOneContainerStateMachine(container, cfg, c.primaryKey, flags)
 	for sm.hasMoreWork() {
 		if ctx.Err() != nil {
