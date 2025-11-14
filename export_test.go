@@ -325,3 +325,7 @@ func NewPlatformUninitializedError(err error) *PlatformUninitializedError {
 func NewPlatformDeviceUnavailableError(err error) *PlatformDeviceUnavailableError {
 	return &PlatformDeviceUnavailableError{err: err}
 }
+
+func WillCheckStorageContainerBindingOption() *flagOption {
+	return &willCheckStorageContainerBindingOption
+}
