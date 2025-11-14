@@ -117,17 +117,21 @@ const (
 	// JSON data.
 	activateStateCustomDataKey activateConfigKey = "activate-state-custom-data"
 
-	// externalKeyDataKey is used by WithExternalKeyDataOption to supply extra
-	// key metadata that isn't part of the container header
+	// authRequestorKey is used by WithAuthRequestor to supply an AuthRequestor
+	// implementation.
 	authRequestorKey activateConfigKey = "auth-requestor"
 
 	// authRequestorUserVisibleNameKey is used by WithAuthRequestorUserVisibleName
 	// to customize the name argument passed to AuthRequestor.RequestUserCredential.
 	authRequestorUserVisibleNameKey activateConfigKey = "auth-requestor-user-visible-name"
 
-	// externalKeyDataKey is used by WithExternalKeyDataOption to supply extra
-	// key metadata that isn't part of the container header
+	// externalKeyData is used by WithExternalKeyData and WithExternalKeyDataFromReader
+	// to supply extra key metadata that isn't part of the container header.
 	externalKeyDataKey activateConfigKey = "external-key-data"
+
+	// externalUnlockKey is used by WithExternalUnlockKey to supply an externally
+	// recovered unlock key that can be used to unlock a container.
+	externalUnlockKeyKey activateConfigKey = "external-unlock-key"
 
 	// keyringDescPrefixKey is used by WithKeyringDescriptionPrefix to customize the
 	// prefix of the description for keys added to the kernel keyring during storage
@@ -153,6 +157,12 @@ const (
 	stderrLoggerKey activateConfigKey = "stderr-logger"
 )
 
+type flagOption bool
+
+func (o *flagOption) ApplyOptionToConfig(config ActivateConfig) {
+	config.Set(o, struct{}{})
+}
+
 type genericOption[T any] struct {
 	key activateConfigKey
 	val T
@@ -168,6 +178,39 @@ type genericContextOption[T any] struct {
 
 func (o *genericContextOption[T]) ApplyContextOptionToConfig(config ActivateConfig) {
 	config.Set(o.key, o.val)
+}
+
+type genericSliceOption[T any] struct {
+	key activateConfigKey
+	val T
+}
+
+func (o *genericSliceOption[T]) ApplyOptionToConfig(config ActivateConfig) {
+	var current []T
+	if val, exists := config.Get(o.key); exists {
+		current = val.([]T)
+	}
+	config.Set(o.key, append(current, o.val))
+}
+
+var willCheckStorageContainerBindingOption flagOption
+
+// WillCheckStorageContainerBinding indicates that the caller will verify that a
+// storage container is bound to those that have already been unlocked, rather than
+// relying on this to be performed by cross checking the primary key.
+//
+// Note that this disables the primary key check performed by [ActivateContext]. This
+// should only be used when it is known that unlocking will happen with a [KeyData]
+// with a generation older than 2. It should not be used in any other circumstance.
+// When used, the caller must take steps to verify that the storage container being
+// unlocked is bound to those that have already been unlocked (XXX: This doesn't apply
+// if a recovery key is used - the [ActivateContext.ActivateContainer] API will be
+// updated in another PR to indicate what type of key was used).
+//
+// If the external binding check fails, the unlocked storage container must be locked
+// again. The caller can then repeat the attempt without this option.
+func WillCheckStorageContainerBinding() ActivateOption {
+	return &willCheckStorageContainerBindingOption
 }
 
 // WithActivateStateCustomData can be supplied to [ActivateContext.ActivatePath] to
@@ -201,12 +244,64 @@ func WithAuthRequestorUserVisibleName(name string) ActivateOption {
 	}
 }
 
-// WithExternalKeyData makes it possible for callers to [ActivateContext.ActivateContainer]
-// to supply extra key metadata that is not part of the associated [StorageContainer].
-func WithExternalKeyData(keys ...*ExternalKeyData) ActivateOption {
-	return &genericOption[[]*ExternalKeyData]{
+// WithExternalKeyData makes it possible for callers of [ActivateContext.ActivateContainer]
+// to supply extra key metadata that is not part of the associated [StorageContainer]. These
+// keys have a hardcoded priority of 100 so that they are tried before [StorageContainer]
+// keyslots with the default priority (0). External keys are tried in order of name.
+// This option can be supplied multiple times.
+func WithExternalKeyData(name string, data *KeyData) ActivateOption {
+	return &genericSliceOption[*externalKeyData]{
 		key: externalKeyDataKey,
-		val: keys,
+		val: &externalKeyData{
+			name: name,
+			data: data,
+		},
+	}
+}
+
+// WithExternalKeyDataFromReader makes it possible for callers of
+// [ActivateContext.ActivateContainer] to supply extra key metadata that is not part of the
+// associated [StorageContainer]. These keys have a hardcoded priority of 100 so that they
+// are tried before [StorageContainer] keyslots with the default priority (0). External
+// keys are tried in order of name. Note that the [KeyDataReader] argument will eventually
+// be replaced by [io.Reader]. This option can be supplied multiple times.
+func WithExternalKeyDataFromReader(name string, r KeyDataReader) ActivateOption {
+	return &genericSliceOption[*externalKeyData]{
+		key: externalKeyDataKey,
+		val: &externalKeyData{
+			name: name,
+			r:    r,
+		},
+	}
+}
+
+// ExternalUnlockKeySource provides a hint about where a key supplied to
+// [WithExternalUnlockKey] comes from.
+type ExternalUnlockKeySource int
+
+const (
+	// ExternalUnlockKeyFromPlatformDevice indicates that a key was recovered
+	// from some platform device.
+	ExternalUnlockKeyFromPlatformDevice ExternalUnlockKeySource = iota
+
+	// ExternalUnlockKeyFromStorageContainer indicates that a key was recovered
+	// from some encrypted storage container.
+	ExternalUnlockKeyFromStorageContainer
+)
+
+// WithExternalUnlockKey makesit possible for callers of [ActivateContext.ActivateContainer]
+// to supply plain unlock keys that can be used to try to unlock the storage container. These
+// keys have a hardcoded priority of 100 so that they are tried before [StorageContainer]
+// keyslots with the default priority (0) and no user authentication. External keys are tried
+// in order of name. This option can be supplied multiple times.
+func WithExternalUnlockKey(name string, key DiskUnlockKey, src ExternalUnlockKeySource) ActivateOption {
+	return &genericSliceOption[*externalUnlockKey]{
+		key: externalUnlockKeyKey,
+		val: &externalUnlockKey{
+			name: name,
+			key:  key,
+			src:  src,
+		},
 	}
 }
 

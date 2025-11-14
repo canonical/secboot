@@ -20,6 +20,8 @@
 package secboot_test
 
 import (
+	"bytes"
+	"crypto"
 	"encoding/json"
 	"io"
 	"os"
@@ -141,6 +143,16 @@ func (*activateOptionsSuite) TestActivateConfigGetMissing(c *C) {
 	c.Check(v, Equals, 0)
 }
 
+func (*activateOptionsSuite) TestWillCheckStorageContainerBinding(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WillCheckStorageContainerBinding()
+	opt.ApplyOptionToConfig(cfg)
+
+	_, exists := ActivateConfigGet[struct{}](cfg, WillCheckStorageContainerBindingOption())
+	c.Check(exists, testutil.IsTrue)
+}
+
 func (*activateOptionsSuite) TestWithAuthRequestor(c *C) {
 	cfg := make(mockActivateConfig)
 
@@ -187,28 +199,128 @@ func (*activateOptionsSuite) TestWithAuthRequestorUserVisibleName2(c *C) {
 	c.Check(v, Equals, "save")
 }
 
-func (*activateOptionsSuite) TestWithExternalKeyData1(c *C) {
+func (*activateOptionsSuite) TestWithExternalKeyDataFromReader1(c *C) {
 	cfg := make(mockActivateConfig)
 
-	external := []*ExternalKeyData{NewExternalKeyData("foo", nil)}
-	opt := WithExternalKeyData(external...)
+	r := new(mockKeyDataReader)
+	opt := WithExternalKeyDataFromReader("foo", r)
 	opt.ApplyOptionToConfig(cfg)
 
 	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
 	c.Check(exists, testutil.IsTrue)
-	c.Check(v, DeepEquals, external)
+	c.Check(v, DeepEquals, []*ExternalKeyData{NewExternalKeyData("foo", r, nil)})
+}
+
+func (*activateOptionsSuite) TestWithExternalKeyDataFromReader2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	r1 := &mockKeyDataReader{Reader: bytes.NewReader([]byte("key data 1"))}
+	opt := WithExternalKeyDataFromReader("foo", r1)
+	opt.ApplyOptionToConfig(cfg)
+
+	r2 := &mockKeyDataReader{Reader: bytes.NewReader([]byte("key data 2"))}
+	opt = WithExternalKeyDataFromReader("bar", r2)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalKeyData{
+		NewExternalKeyData("foo", r1, nil),
+		NewExternalKeyData("bar", r2, nil),
+	})
+}
+
+func (*activateOptionsSuite) TestWithExternalKeyData1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	data := new(KeyData)
+	opt := WithExternalKeyData("foo", data)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalKeyData{NewExternalKeyData("foo", nil, data)})
 }
 
 func (*activateOptionsSuite) TestWithExternalKeyData2(c *C) {
 	cfg := make(mockActivateConfig)
 
-	external := []*ExternalKeyData{NewExternalKeyData("bar", nil), NewExternalKeyData("foo", nil)}
-	opt := WithExternalKeyData(external...)
+	data1, err := NewKeyData(&KeyParams{
+		Handle:           []byte("\"handle1\""),
+		EncryptedPayload: []byte("payload 1"),
+		PlatformName:     "mock",
+		KDFAlg:           crypto.SHA256,
+	})
+	c.Assert(err, IsNil)
+	opt := WithExternalKeyData("foo", data1)
+	opt.ApplyOptionToConfig(cfg)
+
+	data2, err := NewKeyData(&KeyParams{
+		Handle:           []byte("\"handle2\""),
+		EncryptedPayload: []byte("payload 2"),
+		PlatformName:     "mock",
+		KDFAlg:           crypto.SHA256,
+	})
+	c.Assert(err, IsNil)
+	opt = WithExternalKeyData("bar", data2)
 	opt.ApplyOptionToConfig(cfg)
 
 	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
 	c.Check(exists, testutil.IsTrue)
-	c.Check(v, DeepEquals, external)
+	c.Check(v, DeepEquals, []*ExternalKeyData{
+		NewExternalKeyData("foo", nil, data1),
+		NewExternalKeyData("bar", nil, data2),
+	})
+}
+
+func (*activateOptionsSuite) TestWithExternalKeyDataAndWithExternalKeyDataFromReader(c *C) {
+	cfg := make(mockActivateConfig)
+
+	data := new(KeyData)
+	opt := WithExternalKeyData("foo", data)
+	opt.ApplyOptionToConfig(cfg)
+
+	r := new(mockKeyDataReader)
+	opt = WithExternalKeyDataFromReader("bar", r)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalKeyData](cfg, ExternalKeyDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalKeyData{
+		NewExternalKeyData("foo", nil, data),
+		NewExternalKeyData("bar", r, nil),
+	})
+}
+
+func (*activateOptionsSuite) TestWithExternalUnlockKey1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	key := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+	opt := WithExternalUnlockKey("foo", key, ExternalUnlockKeyFromPlatformDevice)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalUnlockKey](cfg, ExternalUnlockKeyKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalUnlockKey{NewExternalUnlockKey("foo", key, ExternalUnlockKeyFromPlatformDevice)})
+}
+
+func (*activateOptionsSuite) TestWithExternalUnlockKey2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	key1 := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+	opt := WithExternalUnlockKey("foo", key1, ExternalUnlockKeyFromStorageContainer)
+	opt.ApplyOptionToConfig(cfg)
+
+	key2 := testutil.DecodeHexString(c, "1f11ea11681129341720cfc1fe475df5fa7873bcd5a020cb7eb0eef5399ba096")
+	opt = WithExternalUnlockKey("bar", key2, ExternalUnlockKeyFromStorageContainer)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalUnlockKey](cfg, ExternalUnlockKeyKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalUnlockKey{
+		NewExternalUnlockKey("foo", key1, ExternalUnlockKeyFromStorageContainer),
+		NewExternalUnlockKey("bar", key2, ExternalUnlockKeyFromStorageContainer),
+	})
 }
 
 func (*activateOptionsSuite) TestWithKeyringDescriptionPrefix1(c *C) {

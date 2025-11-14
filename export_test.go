@@ -40,6 +40,7 @@ const (
 	AuthRequestorKey                = authRequestorKey
 	AuthRequestorUserVisibleNameKey = authRequestorUserVisibleNameKey
 	ExternalKeyDataKey              = externalKeyDataKey
+	ExternalUnlockKeyKey            = externalUnlockKeyKey
 	KeyringDescPrefixKey            = keyringDescPrefixKey
 	KeyringKeyPurposeAuxiliary      = keyringKeyPurposeAuxiliary
 	LegacyKeyringKeyDescPathsKey    = legacyKeyringKeyDescPathsKey
@@ -70,6 +71,8 @@ type (
 	ActivateConfigKey                     = activateConfigKey
 	ActivateOneContainerStateMachine      = activateOneContainerStateMachine
 	ActivateOneContainerStateMachineFlags = activateOneContainerStateMachineFlags
+	ExternalKeyData                       = externalKeyData
+	ExternalUnlockKey                     = externalUnlockKey
 	KdfParams                             = kdfParams
 	ProtectedKeys                         = protectedKeys
 )
@@ -310,6 +313,22 @@ func MockUnixStat(f func(devicePath string, st *unix.Stat_t) error) (restore fun
 	}
 }
 
+func NewExternalKeyData(name string, r KeyDataReader, data *KeyData) *externalKeyData {
+	return &externalKeyData{
+		name: name,
+		r:    r,
+		data: data,
+	}
+}
+
+func NewExternalUnlockKey(name string, key DiskUnlockKey, src ExternalUnlockKeySource) *externalUnlockKey {
+	return &externalUnlockKey{
+		name: name,
+		key:  key,
+		src:  src,
+	}
+}
+
 func NewInvalidKeyDataError(err error) *InvalidKeyDataError {
 	return &InvalidKeyDataError{err: err}
 }
@@ -324,4 +343,8 @@ func NewPlatformUninitializedError(err error) *PlatformUninitializedError {
 
 func NewPlatformDeviceUnavailableError(err error) *PlatformDeviceUnavailableError {
 	return &PlatformDeviceUnavailableError{err: err}
+}
+
+func WillCheckStorageContainerBindingOption() *flagOption {
+	return &willCheckStorageContainerBindingOption
 }
