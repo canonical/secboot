@@ -119,13 +119,9 @@ func (r *keyslotAttemptRecord) usable(flags activateOneContainerStateMachineFlag
 			return false
 		}
 	case r.slot.Type() == KeyslotTypePlatform && r.data.Generation() < 2 && flags&activateCrossCheckPrimaryKey > 0:
-		// v1 platform keys are permitted if they are protected by a platform registered
-		// with the PlatformProtectedByStorageContainer flag, as their primary key
-		// cannot be checked against those recovered from other storage containers.
-		if r.flags&PlatformProtectedByStorageContainer == 0 {
-			// The platform is not registered with the PlatformProtectedByStorageContainer flag.
-			return false
-		}
+		// v1 platform keys are not permitted if we are in a context where the primary
+		// key needs to be crosschecked with those recovered from other storage containers.
+		return false
 	}
 
 	return true
