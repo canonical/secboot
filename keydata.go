@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"time"
 
 	"github.com/snapcore/secboot/internal/pbkdf2"
 	"golang.org/x/crypto/cryptobyte"
@@ -66,8 +67,12 @@ var (
 	ErrNoPlatformHandlerRegistered = errors.New("no appropriate platform handler is registered")
 
 	// ErrInvalidPassphrase is returned from KeyData methods that require
-	// knowledge of a passphrase is the supplied passphrase is incorrect.
+	// knowledge of a passphrase and the supplied passphrase is incorrect.
 	ErrInvalidPassphrase = errors.New("the supplied passphrase is incorrect")
+
+	// ErrInvalidPIN is returned from KeyData methods that require
+	// knowledge of a PIN and the supplied passphrase is incorrect.
+	ErrInvalidPIN = errors.New("the supplied PIN is incorrect")
 )
 
 // InvalidKeyDataError is returned from KeyData methods if the key data
@@ -141,6 +146,7 @@ type AuthMode uint8
 const (
 	AuthModeNone AuthMode = iota
 	AuthModePassphrase
+	AuthModePIN
 )
 
 // String implements [fmt.Stringer].
@@ -150,6 +156,8 @@ func (m AuthMode) String() string {
 		return "none"
 	case AuthModePassphrase:
 		return "passphrase"
+	case AuthModePIN:
+		return "PIN"
 	default:
 		return fmt.Sprintf("unknown(%d)", int(m))
 	}
@@ -210,6 +218,23 @@ type KeyWithPassphraseParams struct {
 	KDFOptions KDFOptions // The passphrase KDF options
 
 	// AuthKeySize is the size of key to derive from the passphrase for
+	// use by the platform implementation.
+	AuthKeySize int
+
+	// ChangeAuthKeyContext can be set to the caller to any arbitrary value
+	// that should be passed to the initial call to
+	// [PlatformKeyDataHandler.ChangeAuthKey]. The main use for this is to
+	// permit the tpm2 package to supply an open TPM connection.
+	ChangeAuthKeyContext any
+}
+
+// KeyWithPINParams provides parameters required to create a new KeyData object
+// with a PIN enabled. It should be produced by a platform implementation.
+type KeyWithPINParams struct {
+	KeyParams
+	KDFOptions *PBKDF2Options // The PIN KDF options
+
+	// AuthKeySize is the size of key to derive from the PIN for
 	// use by the platform implementation.
 	AuthKeySize int
 
@@ -336,11 +361,22 @@ func (a HashAlg) MarshalASN1(b *cryptobyte.Builder) {
 }
 
 type kdfParams struct {
-	Type   string  `json:"type"`
-	Time   int     `json:"time"`
-	Memory int     `json:"memory"`
-	CPUs   int     `json:"cpus"`
-	Hash   HashAlg `json:"hash"`
+	Type string `json:"type"` // The KDF algorithm
+
+	// Time is the time cost, which specifies the number of
+	// iterations of the KDF. Used for both argon2 and
+	// pbkdf2.
+	Time int `json:"time"`
+
+	// Memory is the memory cost, used only by argon2.
+	Memory int `json:"memory"`
+
+	// CPUs is the number of threads for argon2 only.
+	CPUs int `json:"cpus"`
+
+	// Hash is the digest algorithm to use, used only
+	// by pbkdf2.
+	Hash HashAlg `json:"hash"`
 }
 
 // kdfData corresponds to the arguments to a KDF and matches the
@@ -360,6 +396,14 @@ type passphraseParams struct {
 	DerivedKeySize    int    `json:"derived_key_size"`    // Size of key to derive from passphrase using the parameters of the KDF field.
 	EncryptionKeySize int    `json:"encryption_key_size"` // Size of encryption key to derive from passphrase derived key
 	AuthKeySize       int    `json:"auth_key_size"`       // Size of auth key to derive from passphrase derived key
+}
+
+// pinParams contains parameters for PIN authentication.
+type pinParams struct {
+	// KDF contains the key derivation parameters used to derive
+	// a user auth key from an input PIN
+	KDF         kdfData `json:"kdf"`
+	AuthKeySize int     `json:"auth_key_size"` // Size of auth key to derive from PIN
 }
 
 type keyData struct {
@@ -396,6 +440,7 @@ type keyData struct {
 	EncryptedPayload []byte `json:"encrypted_payload"`
 
 	PassphraseParams *passphraseParams `json:"passphrase_params,omitempty"`
+	PINParams        *pinParams        `json:"pin_params,omitempty"`
 
 	// AuthorizedSnapModels contains information about the Snap models
 	// that have been authorized to access the data protected by this key.
@@ -404,7 +449,7 @@ type keyData struct {
 	AuthorizedSnapModels *authorizedSnapModels `json:"authorized_snap_models,omitempty"`
 }
 
-func processPlatformHandlerError(err error) error {
+func processPlatformHandlerError(err error, authMode AuthMode) error {
 	var pe *PlatformHandlerError
 	if xerrors.As(err, &pe) {
 		switch pe.Type {
@@ -415,7 +460,12 @@ func processPlatformHandlerError(err error) error {
 		case PlatformHandlerErrorUnavailable:
 			return &PlatformDeviceUnavailableError{pe.Err}
 		case PlatformHandlerErrorInvalidAuthKey:
-			return ErrInvalidPassphrase
+			switch authMode {
+			case AuthModePassphrase:
+				return ErrInvalidPassphrase
+			case AuthModePIN:
+				return ErrInvalidPIN
+			}
 		case PlatformHandlerErrorIncompatibleRole:
 			return &IncompatibleKeyDataRoleParamsError{pe.Err}
 		}
@@ -459,7 +509,9 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 		return nil, nil, nil, fmt.Errorf("unavailable leaf KDF digest algorithm %v", kdfAlg)
 	}
 
-	// Include derivation parameters in the Argon2 salt in order to protect them
+	// Include derivation parameters in the KDF salt in order to protect them.
+	// Ideally the extra parameters would be part of Argon2's additional data, but
+	// the go package doesn't expose this.
 	builder := cryptobyte.NewBuilder(nil)
 	builder.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) { // SEQUENCE {
 		b.AddASN1OctetString(params.KDF.Salt)                               // salt OCTET STRING
@@ -532,6 +584,36 @@ func (d *KeyData) derivePassphraseKeys(passphrase string) (key, iv, auth []byte,
 	return key, iv, auth, nil
 }
 
+func (d *KeyData) derivePINAuthKey(pin PIN) ([]byte, error) {
+	if d.data.PINParams == nil {
+		return nil, keyDataError{errors.New("no PIN params")}
+	}
+
+	params := d.data.PINParams
+	if params.AuthKeySize < 0 {
+		return nil, keyDataError{fmt.Errorf("invalid auth key size (%d bytes)", params.AuthKeySize)}
+	}
+	if params.KDF.Time < 0 {
+		return nil, keyDataError{fmt.Errorf("invalid KDF time (%d)", params.KDF.Time)}
+	}
+	if params.KDF.Type != pbkdf2Type {
+		return nil, keyDataError{fmt.Errorf("unexpected KDF type \"%s\"", params.KDF.Type)}
+	}
+
+	pbkdfParams := &pbkdf2.Params{
+		Iterations: uint(params.KDF.Time),
+		HashAlg:    crypto.Hash(params.KDF.Hash),
+	}
+	if !hashAlgAvailable(&params.KDF.Hash) {
+		return nil, fmt.Errorf("unavailable pbkdf2 digest algorithm %v", params.KDF.Hash)
+	}
+	key, err := pbkdf2.Key(string(pin.Bytes()), params.KDF.Salt, pbkdfParams, uint(params.AuthKeySize))
+	if err != nil {
+		return nil, xerrors.Errorf("cannot derive auth key from PIN: %w", err)
+	}
+	return key, nil
+}
+
 func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string, platformContext any) error {
 	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
 	if !exists {
@@ -550,7 +632,7 @@ func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string
 
 	handle, err := handlerInfo.handler.ChangeAuthKey(d.platformKeyData(), oldAuthKey, authKey, platformContext)
 	if err != nil {
-		return processPlatformHandlerError(err)
+		return processPlatformHandlerError(err, AuthModePassphrase)
 	}
 
 	c, err := aes.NewCipher(key)
@@ -569,6 +651,26 @@ func (d *KeyData) updatePassphrase(payload, oldAuthKey []byte, passphrase string
 	stream := cipher.NewCFBEncrypter(c, iv)
 	stream.XORKeyStream(d.data.EncryptedPayload, payload)
 
+	return nil
+}
+
+func (d *KeyData) updatePIN(oldAuthKey []byte, pin PIN, platformContext any) error {
+	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
+	if !exists {
+		return ErrNoPlatformHandlerRegistered
+	}
+
+	authKey, err := d.derivePINAuthKey(pin)
+	if err != nil {
+		return err
+	}
+
+	handle, err := handlerInfo.handler.ChangeAuthKey(d.platformKeyData(), oldAuthKey, authKey, platformContext)
+	if err != nil {
+		return processPlatformHandlerError(err, AuthModePIN)
+	}
+
+	d.data.PlatformHandle = handle
 	return nil
 }
 
@@ -673,6 +775,8 @@ func (d *KeyData) AuthMode() (out AuthMode) {
 	switch {
 	case d.data.PassphraseParams != nil:
 		return AuthModePassphrase
+	case d.data.PINParams != nil:
+		return AuthModePIN
 	default:
 		return AuthModeNone
 	}
@@ -704,7 +808,7 @@ func (d *KeyData) MarshalAndUpdatePlatformHandle(handle interface{}) error {
 	return nil
 }
 
-// RecoverKeys recovers the disk unlock key and auxiliary key associated with this
+// RecoverKeys recovers the disk unlock key and primary key associated with this
 // key data from the platform's secure device, for key data that doesn't have any
 // additional authentication modes enabled (AuthMode returns AuthModeNone).
 //
@@ -723,7 +827,7 @@ func (d *KeyData) MarshalAndUpdatePlatformHandle(handle interface{}) error {
 // available, a *PlatformDeviceUnavailableError error will be returned.
 func (d *KeyData) RecoverKeys() (DiskUnlockKey, PrimaryKey, error) {
 	if d.AuthMode() != AuthModeNone {
-		return nil, nil, errors.New("cannot recover key without authorization")
+		return nil, nil, fmt.Errorf("cannot recover key without user authorization - user auth required: %s", d.AuthMode())
 	}
 
 	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
@@ -733,15 +837,37 @@ func (d *KeyData) RecoverKeys() (DiskUnlockKey, PrimaryKey, error) {
 
 	c, err := handlerInfo.handler.RecoverKeys(d.platformKeyData(), d.data.EncryptedPayload)
 	if err != nil {
-		return nil, nil, processPlatformHandlerError(err)
+		return nil, nil, processPlatformHandlerError(err, AuthModeNone)
 	}
 
 	return d.recoverKeysCommon(c)
 }
 
+// RecoverKeysWithPassphrase recovers the disk unlock key and primary key associated
+// with this key data from the platform's secure device, for key data that has been
+// configured with a passphrase (AuthMode returns AuthModeNone). The correct passphrase
+// has to be supplied.
+//
+// If AuthMode returns anything other than AuthModePassphrase, then this will return an
+// error.
+//
+// If no platform handler has been registered for this key data, an
+// ErrNoPlatformHandlerRegistered error will be returned.
+//
+// If the keys cannot be recovered because the key data is invalid, a *InvalidKeyDataError
+// error will be returned.
+//
+// If the keys cannot be recovered because the platform's secure device is not
+// properly initialized, a *PlatformUninitializedError error will be returned.
+//
+// If the keys cannot be recovered because the platform's secure device is not
+// available, a *PlatformDeviceUnavailableError error will be returned.
+//
+// If the key cannot be recovered because the wrong passphrase is supplied, an
+// ErrInvalidPassphrase error will be returned.
 func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, PrimaryKey, error) {
 	if d.AuthMode() != AuthModePassphrase {
-		return nil, nil, errors.New("cannot recover key with passphrase")
+		return nil, nil, fmt.Errorf("cannot recover key with passphrase - user auth required: %s", d.AuthMode())
 	}
 
 	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
@@ -759,7 +885,51 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, P
 
 	c, err := handlerInfo.handler.RecoverKeysWithAuthKey(d.platformKeyData(), payload, key)
 	if err != nil {
-		return nil, nil, processPlatformHandlerError(err)
+		return nil, nil, processPlatformHandlerError(err, AuthModePassphrase)
+	}
+
+	return d.recoverKeysCommon(c)
+}
+
+// RecoverKeysWithPIN recovers the disk unlock key and primary key associated with this
+// key data from the platform's secure device, for key data that has been configured with
+// a PIN (AuthMode returns AuthModePIN). The correct PIN has to be supplied.
+//
+// If AuthMode returns anything other than AuthModePIN, then this will return an
+// error.
+//
+// If no platform handler has been registered for this key data, an
+// ErrNoPlatformHandlerRegistered error will be returned.
+//
+// If the keys cannot be recovered because the key data is invalid, a *InvalidKeyDataError
+// error will be returned.
+//
+// If the keys cannot be recovered because the platform's secure device is not
+// properly initialized, a *PlatformUninitializedError error will be returned.
+//
+// If the keys cannot be recovered because the platform's secure device is not
+// available, a *PlatformDeviceUnavailableError error will be returned.
+//
+// If the key cannot be recovered because the wrong PIN is supplied, an ErrInvalidPIN
+// error will be returned.
+func (d *KeyData) RecoverKeysWithPIN(pin PIN) (DiskUnlockKey, PrimaryKey, error) {
+	if d.AuthMode() != AuthModePIN {
+		return nil, nil, fmt.Errorf("cannot recover key with PIN - user auth required: %s", d.AuthMode())
+	}
+
+	handlerInfo, exists := keyDataHandlers[d.data.PlatformName]
+	if !exists {
+		return nil, nil, ErrNoPlatformHandlerRegistered
+	}
+
+	key, err := d.derivePINAuthKey(pin)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c, err := handlerInfo.handler.RecoverKeysWithAuthKey(d.platformKeyData(), d.data.EncryptedPayload, key)
+	if err != nil {
+		return nil, nil, processPlatformHandlerError(err, AuthModePIN)
 	}
 
 	return d.recoverKeysCommon(c)
@@ -772,7 +942,7 @@ func (d *KeyData) RecoverKeysWithPassphrase(passphrase string) (DiskUnlockKey, P
 // The current passphrase must be supplied via the oldPassphrase argument.
 func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string) error {
 	if d.AuthMode()&AuthModePassphrase == 0 {
-		return errors.New("cannot change passphrase without setting an initial passphrase")
+		return fmt.Errorf("cannot change passphrase - user auth configured: %s", d.AuthMode())
 	}
 
 	payload, oldKey, err := d.openWithPassphrase(oldPassphrase)
@@ -784,6 +954,34 @@ func (d *KeyData) ChangePassphrase(oldPassphrase, newPassphrase string) error {
 	}
 
 	if err := d.updatePassphrase(payload, oldKey, newPassphrase, nil); err != nil {
+		if isKeyDataError(err) {
+			return &InvalidKeyDataError{err}
+		}
+		return err
+	}
+
+	return nil
+}
+
+// ChangePIN updates the PIN used to recover the keys from this key data via the
+// KeyData.RecoverKeysWithPIN API. This can only be called if a PIN has been set
+// previously (KeyData.AuthMode returns AuthModePIN).
+//
+// The current PIN must be supplied via the oldPIN argument.
+func (d *KeyData) ChangePIN(oldPIN, newPIN PIN) error {
+	if d.AuthMode() != AuthModePIN {
+		return fmt.Errorf("cannot change PIN - user auth configured: %s", d.AuthMode())
+	}
+
+	oldKey, err := d.derivePINAuthKey(oldPIN)
+	if err != nil {
+		if isKeyDataError(err) {
+			return &InvalidKeyDataError{err}
+		}
+		return err
+	}
+
+	if err := d.updatePIN(oldKey, newPIN, nil); err != nil {
 		if isKeyDataError(err) {
 			return &InvalidKeyDataError{err}
 		}
@@ -827,6 +1025,10 @@ func ReadKeyData(r KeyDataReader) (*KeyData, error) {
 // the platform's secure device and the associated handle required for subsequent
 // recovery of the keys.
 func NewKeyData(params *KeyParams) (*KeyData, error) {
+	if params == nil {
+		return nil, errors.New("nil params")
+	}
+
 	encodedHandle, err := json.Marshal(params.Handle)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot encode platform handle: %w", err)
@@ -851,6 +1053,10 @@ func NewKeyData(params *KeyParams) (*KeyData, error) {
 // in addition to the KeyParams fields, the KDFOptions and AuthKeySize fields which are used in the key
 // derivation process.
 func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string) (*KeyData, error) {
+	if params == nil {
+		return nil, errors.New("nil params")
+	}
+
 	kd, err := NewKeyData(&params.KeyParams)
 	if err != nil {
 		return nil, err
@@ -862,7 +1068,7 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 		kdfOptions = &defaultOptions
 	}
 
-	kdfParams, err := kdfOptions.kdfParams(passphraseKeyLen)
+	kdfParams, err := kdfOptions.kdfParams(2*time.Second, passphraseKeyLen)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot derive KDF cost parameters: %w", err)
 	}
@@ -885,6 +1091,55 @@ func NewKeyDataWithPassphrase(params *KeyWithPassphraseParams, passphrase string
 
 	if err := kd.updatePassphrase(kd.data.EncryptedPayload, make([]byte, params.AuthKeySize), passphrase, params.ChangeAuthKeyContext); err != nil {
 		return nil, xerrors.Errorf("cannot set passphrase: %w", err)
+	}
+
+	return kd, nil
+}
+
+// NewKeyDataWithPIN is similar to NewKeyData but creates KeyData objects that are supported
+// by a PIN, which is passed as an extra argument. The supplied KeyWithPINParams include
+// in addition to the KeyParams fields, the KDFOptions and AuthKeySize fields which are used
+// in the key derivation process.
+func NewKeyDataWithPIN(params *KeyWithPINParams, pin PIN) (*KeyData, error) {
+	if params == nil {
+		return nil, errors.New("nil params")
+	}
+
+	kd, err := NewKeyData(&params.KeyParams)
+	if err != nil {
+		return nil, err
+	}
+
+	kdfOptions := params.KDFOptions
+	if kdfOptions == nil {
+		var defaultOptions PBKDF2Options
+		kdfOptions = &defaultOptions
+	}
+
+	if params.AuthKeySize < 0 {
+		return nil, errors.New("invalid auth key size")
+	}
+
+	kdfParams, err := kdfOptions.kdfParams(200*time.Millisecond, uint32(params.AuthKeySize))
+	if err != nil {
+		return nil, xerrors.Errorf("cannot derive KDF cost parameters: %w", err)
+	}
+
+	var salt [16]byte
+	if _, err := rand.Read(salt[:]); err != nil {
+		return nil, xerrors.Errorf("cannot read salt: %w", err)
+	}
+
+	kd.data.PINParams = &pinParams{
+		KDF: kdfData{
+			Salt:      salt[:],
+			kdfParams: *kdfParams,
+		},
+		AuthKeySize: params.AuthKeySize,
+	}
+
+	if err := kd.updatePIN(make([]byte, params.AuthKeySize), pin, params.ChangeAuthKeyContext); err != nil {
+		return nil, xerrors.Errorf("cannot set PIN: %w", err)
 	}
 
 	return kd, nil

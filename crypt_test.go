@@ -404,7 +404,7 @@ func (s *cryptSuite) SetUpTest(c *C) {
 		Rdev: unix.Mkdev(9, 2),
 	})
 
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 
 	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 
