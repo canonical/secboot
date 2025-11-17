@@ -20,6 +20,7 @@
 package secboot_test
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 
@@ -316,6 +317,39 @@ func (*activateOptionsSuite) TestWithDiscardStderrLoggerContext(c *C) {
 	c.Check(v, Equals, io.Discard)
 }
 
+func (*activateOptionsSuite) TestWithPassphraseTries1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPassphraseTries(3)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PassphraseTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(3))
+}
+
+func (*activateOptionsSuite) TestWithPassphraseTries2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPassphraseTries(5)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PassphraseTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(5))
+}
+
+func (*activateOptionsSuite) TestWithPassphraseTriesContext(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPassphraseTries(3)
+	opt.ApplyContextOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PassphraseTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(3))
+}
+
 func (*activateOptionsSuite) TestWithRecoveryKeyTries1(c *C) {
 	cfg := make(mockActivateConfig)
 
@@ -347,4 +381,26 @@ func (*activateOptionsSuite) TestWithRecoveryKeyTriesContext(c *C) {
 	v, exists := ActivateConfigGet[uint](cfg, RecoveryKeyTriesKey)
 	c.Check(exists, testutil.IsTrue)
 	c.Check(v, Equals, uint(3))
+}
+
+func (*activateOptionsSuite) TestWithActivateStateCustomData1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithActivateStateCustomData(json.RawMessage(`{"foo":"bar"}`))
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[json.RawMessage](cfg, ActivateStateCustomDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, json.RawMessage(`{"foo":"bar"}`))
+}
+
+func (*activateOptionsSuite) TestWithActivateStateCustomData2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithActivateStateCustomData(json.RawMessage(`[5, 7]`))
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[json.RawMessage](cfg, ActivateStateCustomDataKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, json.RawMessage(`[5, 7]`))
 }
