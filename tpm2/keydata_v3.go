@@ -139,16 +139,15 @@ func (d *keyData_v3) ValidateData(tpm *tpm2.TPMContext, role []byte) (tpm2.Resou
 		return nil, keyDataError{fmt.Errorf("name algorithm for signing key is invalid or not available: %v", authPublicKey.NameAlg)}
 	}
 	pcrPolicyRef := computeV3PcrPolicyRefFromCounterContext(authPublicKey.NameAlg, role, pcrPolicyCounter)
-	if !bytes.Equal(pcrPolicyRef, d.PolicyData.StaticData.PCRPolicyRef) {
-		return nil, keyDataError{errors.New("unexpected PCR policy ref")}
-	}
+	// We don't check p.PolicyData.StaticData.PCRPolicyRef here because it gets updated
+	// in UpdatePCRProtectionPolicy.
 
 	// Make sure that the static authorization policy data is consistent with the sealed key object's policy.
 	if !d.KeyPublic.NameAlg.Available() {
 		return nil, keyDataError{fmt.Errorf("cannot determine if static authorization policy matches sealed key object: algorithm %v unavailable", d.KeyPublic.NameAlg)}
 	}
 	builder := policyutil.NewPolicyBuilder(d.KeyPublic.NameAlg)
-	builder.RootBranch().PolicyAuthorize(d.PolicyData.StaticData.PCRPolicyRef, authPublicKey)
+	builder.RootBranch().PolicyAuthorize(pcrPolicyRef, authPublicKey)
 	if d.PolicyData.StaticData.RequireAuthValue {
 		builder.RootBranch().PolicyAuthValue()
 	}

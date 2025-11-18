@@ -603,8 +603,8 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingInvalidPCRProfile(c *C
 		return ""
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
-	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidData)
-	c.Check(err, ErrorMatches, "cannot complete authorization policy assertions: "+
+	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorIncompatibleRole)
+	c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: "+
 		"cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -636,8 +636,8 @@ func (s *platformSuite) TestRecoverKeysUnsealErrorHandlingSealedKeyAccessLocked(
 		return ""
 	})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
-	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidData)
-	c.Check(err, ErrorMatches, "cannot complete authorization policy assertions: "+
+	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorIncompatibleRole)
+	c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: "+
 		"cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
