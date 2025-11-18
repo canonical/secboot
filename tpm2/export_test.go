@@ -238,6 +238,14 @@ func MockSecbootNewKeyDataWithPassphrase(fn func(*secboot.KeyWithPassphraseParam
 	}
 }
 
+func MockSecbootNewKeyDataWithPIN(fn func(*secboot.KeyWithPINParams, secboot.PIN) (*secboot.KeyData, error)) (restore func()) {
+	orig := secbootNewKeyDataWithPIN
+	secbootNewKeyDataWithPIN = fn
+	return func() {
+		secbootNewKeyDataWithPIN = orig
+	}
+}
+
 func MockSkdbUpdatePCRProtectionPolicyNoValidate(fn func(*sealedKeyDataBase, *tpm2.TPMContext, secboot.PrimaryKey, *tpm2.NVPublic, *PCRProtectionProfile, PcrPolicyVersionOption) error) (restore func()) {
 	orig := skdbUpdatePCRProtectionPolicyNoValidate
 	skdbUpdatePCRProtectionPolicyNoValidate = fn

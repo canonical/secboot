@@ -82,7 +82,7 @@ func (s *activateSuite) SetUpTest(c *C) {
 	s.keyDataTestBase.SetUpTest(c)
 	s.keyringTestMixin.SetUpTest(c)
 
-	s.handler.passphraseSupport = true
+	s.handler.userAuthSupport = true
 	internal_bootscope.UnsafeClearModelForTesting()
 }
 
