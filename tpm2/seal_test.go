@@ -601,8 +601,8 @@ func (s *sealSuite) testPINProtectKeyWithTPM(c *C, params *PINProtectKeyParams, 
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 		_, _, err = k.RecoverKeysWithPIN(pin)
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
-			"cannot execute PolicyOR assertions: current session digest not found in policy data")
+		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization policy assertions: "+
+			"cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
