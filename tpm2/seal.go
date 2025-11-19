@@ -204,7 +204,7 @@ var makeSealedKeyData = func(tpm *tpm2.TPMContext, params *makeSealedKeyDataPara
 	if pcrProfile == nil {
 		pcrProfile = NewPCRProtectionProfile()
 	}
-	if err := skdbUpdatePCRProtectionPolicyNoValidate(&skd.sealedKeyDataBase, tpm, primaryKey, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion); err != nil {
+	if err := skdbUpdatePCRProtectionPolicyNoValidate(&skd.sealedKeyDataBase, tpm, primaryKey, params.Role, pcrPolicyCounterPub, pcrProfile, resetPcrPolicyVersion); err != nil {
 		return nil, nil, nil, xerrors.Errorf("cannot set initial PCR policy: %w", err)
 	}
 
