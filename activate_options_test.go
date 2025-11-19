@@ -141,6 +141,16 @@ func (*activateOptionsSuite) TestActivateConfigGetMissing(c *C) {
 	c.Check(v, Equals, 0)
 }
 
+func (*activateOptionsSuite) TestWillCheckStorageContainerBinding(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WillCheckStorageContainerBinding()
+	opt.ApplyOptionToConfig(cfg)
+
+	_, exists := ActivateConfigGet[struct{}](cfg, WillCheckStorageContainerBindingOption())
+	c.Check(exists, testutil.IsTrue)
+}
+
 func (*activateOptionsSuite) TestWithAuthRequestor(c *C) {
 	cfg := make(mockActivateConfig)
 
