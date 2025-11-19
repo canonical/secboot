@@ -72,11 +72,12 @@ func (i *errorKeyslot) Data() KeyDataReader {
 
 // keyslotAttemptRecord binds together information about a keyslot.
 type keyslotAttemptRecord struct {
-	slot      Keyslot                     // The backend supplied Keyslot.
-	data      *KeyData                    // A cache of the decoded KeyData for platform keys.
-	flags     PlatformKeyDataHandlerFlags // The flags that the handling platform is registered with.
-	err       error                       // The first error that occurred with this keyslot.
-	errNumber int                         // The number of the error, used for ordering.
+	slot              Keyslot                     // The backend supplied Keyslot.
+	data              *KeyData                    // A cache of the decoded KeyData for platform keys.
+	flags             PlatformKeyDataHandlerFlags // The flags that the handling platform is registered with.
+	externalUnlockKey *externalUnlockKey          // An externally recovered unlock key.
+	err               error                       // The first error that occurred with this keyslot.
+	errNumber         int                         // The number of the error, used for ordering.
 }
 
 func (r *keyslotAttemptRecord) usable(flags activateOneContainerStateMachineFlags) bool {
@@ -118,10 +119,18 @@ func (r *keyslotAttemptRecord) usable(flags activateOneContainerStateMachineFlag
 			// The platform is not registered with the PlatformProtectedByStorageContainer flag.
 			return false
 		}
-	case r.slot.Type() == KeyslotTypePlatform && r.data.Generation() < 2 && flags&activateCrossCheckPrimaryKey > 0:
+	case r.slot.Type() == KeyslotTypePlatform && r.data != nil && r.data.Generation() < 2 && flags&activateCrossCheckPrimaryKey > 0:
 		// v1 platform keys are not permitted if we are in a context where the primary
 		// key needs to be crosschecked with those recovered from other storage containers.
 		return false
+	case r.slot.Type() == KeyslotTypePlatform && r.externalUnlockKey != nil && flags&activateCrossCheckPrimaryKey > 0:
+		// External unlock keys are permitted if they have a source of
+		// ExternalUnlockKeyFromStorageContainer, as they don't have a primary key
+		// that can be checked against those recovered from other storage containers.
+		if r.flags&PlatformProtectedByStorageContainer == 0 {
+			// The unlock key doesn't have a source of ExternalUnlockKeyFromStorageContainer.
+			return false
+		}
 	}
 
 	return true
@@ -245,8 +254,8 @@ func newActivateOneContainerStateMachine(container StorageContainer, cfg Activat
 		keyslotRecords: make(map[string]*keyslotAttemptRecord),
 	}
 	m.next = activateOneContainerStateMachineTask{
-		name: "init-external-key-attempts",
-		fn:   m.initExternalKeyAttempts,
+		name: "init-external-unlock-key-attempts",
+		fn:   m.initExternalUnlockKeyAttempts,
 	}
 
 	return m
@@ -284,13 +293,25 @@ func (m *activateOneContainerStateMachine) addKeyslotRecord(name string, rec *ke
 	}
 	m.keyslotRecords[name] = rec
 
-	if rec.err == nil && rec.data != nil {
-		_, flags, err := RegisteredPlatformKeyDataHandler(rec.data.PlatformName())
-		if err != nil {
-			// No handler registered for this platform.
-			rec.err = ErrNoPlatformHandlerRegistered
+	if rec.err == nil && rec.slot.Type() == KeyslotTypePlatform {
+		switch {
+		case rec.data == nil && rec.externalUnlockKey == nil:
+			return errors.New("no key metadata or external unlock key")
+		case rec.data != nil && rec.externalUnlockKey != nil:
+			return errors.New("key metadata and external unlock key supplied")
+		case rec.data != nil:
+			_, flags, err := RegisteredPlatformKeyDataHandler(rec.data.PlatformName())
+			if err != nil {
+				// No handler registered for this platform.
+				rec.err = ErrNoPlatformHandlerRegistered
+			}
+			rec.flags = flags
+		default:
+			// This is an external unlock key.
+			if rec.externalUnlockKey.src == ExternalUnlockKeyFromStorageContainer {
+				rec.flags |= PlatformProtectedByStorageContainer
+			}
 		}
-		rec.flags = flags
 	}
 
 	if rec.err != nil {
@@ -298,6 +319,33 @@ func (m *activateOneContainerStateMachine) addKeyslotRecord(name string, rec *ke
 		m.keyslotErrCount += 1
 		fmt.Fprintf(m.stderr, "Error with keyslot %q: %v\n", rec.slot.Name(), rec.err)
 	}
+	return nil
+}
+
+// collect externally provided unlock keys supplied via WithExternalUnlockKey.
+func (m *activateOneContainerStateMachine) initExternalUnlockKeyAttempts(ctx context.Context) error {
+	m.next = activateOneContainerStateMachineTask{
+		name: "init-external-key-attempts",
+		fn:   m.initExternalKeyAttempts,
+	}
+
+	// Find external unlock keys supplied via WithExternalUnlockKey.
+	external, exists := ActivateConfigGet[[]*externalUnlockKey](m.cfg, externalUnlockKeyKey)
+	if !exists {
+		return nil
+	}
+
+	for _, data := range external {
+		slot := newExternalKeyslot(data.name, nil)
+		rec := &keyslotAttemptRecord{
+			slot:              slot,
+			externalUnlockKey: data,
+		}
+		if err := m.addKeyslotRecord(slot.Name(), rec); err != nil {
+			return fmt.Errorf("cannot add external unlock key data %q: %w", slot.Name(), err)
+		}
+	}
+
 	return nil
 }
 
@@ -414,7 +462,7 @@ func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Con
 		if record.slot.Type() != KeyslotTypePlatform {
 			continue
 		}
-		if record.data.AuthMode() != AuthModeNone {
+		if record.data != nil && record.data.AuthMode() != AuthModeNone {
 			// This one requires user auth, so skip this one.
 			continue
 		}
@@ -424,13 +472,22 @@ func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Con
 	sort.Sort(records)
 
 	for _, record := range records {
-		unlockKey, primaryKey, err := record.data.RecoverKeys()
-		if err != nil {
-			m.setKeyslotError(record, fmt.Errorf("cannot recover keys from keyslot: %w", err))
-			continue
+		var (
+			primaryKey PrimaryKey
+			unlockKey  DiskUnlockKey
+		)
+		if record.data != nil {
+			var err error
+			unlockKey, primaryKey, err = record.data.RecoverKeys()
+			if err != nil {
+				m.setKeyslotError(record, fmt.Errorf("cannot recover keys from keyslot: %w", err))
+				continue
+			}
+		} else {
+			unlockKey = record.externalUnlockKey.key
 		}
 
-		if record.data.Generation() < 2 {
+		if record.data != nil && record.data.Generation() < 2 {
 			model := internal_bootscope.GetModel()
 			if model == nil {
 				m.setKeyslotError(record, errors.New("encountered generation 1 key but bootscope.SetModel has not been called"))
@@ -447,7 +504,10 @@ func (m *activateOneContainerStateMachine) tryNoUserAuthKeyslots(ctx context.Con
 			}
 		}
 
-		if !m.checkPrimaryKeyValid(record.flags, primaryKey) {
+		// We can only check the primary key for keys that were recovered from
+		// KeyData, so it's skipped for external unlock keys. We've already checked
+		// that the external unlock key is safe to use in this context.
+		if record.data != nil && !m.checkPrimaryKeyValid(record.flags, primaryKey) {
 			m.setKeyslotError(record, &InvalidKeyDataError{errInvalidPrimaryKey})
 			continue
 		}
@@ -844,7 +904,13 @@ func (m *activateOneContainerStateMachine) primaryKeyInfo() (PrimaryKey, keyring
 		return nil, 0, errNoPrimaryKey
 	}
 
-	if m.keyslotRecords[m.activationKeyslotName].data.Generation() < 2 {
+	data := m.keyslotRecords[m.activationKeyslotName].data
+	switch {
+	case data == nil:
+		// The activation keyslot is an external unlock key, which doesn't
+		// have a primary key.
+		return nil, 0, errNoPrimaryKey
+	case data.Generation() < 2:
 		// The activation keyslot does not have a primary key that can be
 		// used to demonstrate binding of other storage containers.
 		return nil, 0, errNoPrimaryKey
