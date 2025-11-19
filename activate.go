@@ -308,26 +308,30 @@ func (m *activateOneContainerStateMachine) initExternalKeyAttempts(ctx context.C
 		fn:   m.initKeyslotAttempts,
 	}
 
-	// Find external keys supplied via WithExternalKeyData.
-	external, exists := ActivateConfigGet[[]*ExternalKeyData](m.cfg, externalKeyDataKey)
+	// Find external keys supplied via WithExternalKeyData and WithExternalKeyDataFromReader.
+	external, exists := ActivateConfigGet[[]*externalKeyData](m.cfg, externalKeyDataKey)
 	if !exists {
 		// Option not supplied.
 		return nil
 	}
 
 	for _, data := range external {
-		slot := newExternalKeyslot(data)
-		kd, err := ReadKeyData(slot.Data())
-		if err != nil {
-			rec := &keyslotAttemptRecord{
-				slot: slot,
-				err:  &InvalidKeyDataError{err: err},
-			}
-			if err := m.addKeyslotRecord(slot.Name(), rec); err != nil {
-				return fmt.Errorf("cannot add external key metadata %q: %w", slot.Name(), err)
-			}
+		slot := newExternalKeyslot(data.name, data.r)
+		kd := data.data
+		if kd == nil {
+			var err error
+			kd, err = ReadKeyData(slot.Data())
+			if err != nil {
+				rec := &keyslotAttemptRecord{
+					slot: slot,
+					err:  &InvalidKeyDataError{err: err},
+				}
+				if err := m.addKeyslotRecord(slot.Name(), rec); err != nil {
+					return fmt.Errorf("cannot add external key metadata %q: %w", slot.Name(), err)
+				}
 
-			continue
+				continue
+			}
 		}
 
 		rec := &keyslotAttemptRecord{

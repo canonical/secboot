@@ -71,6 +71,7 @@ type (
 	ActivateConfigKey                     = activateConfigKey
 	ActivateOneContainerStateMachine      = activateOneContainerStateMachine
 	ActivateOneContainerStateMachineFlags = activateOneContainerStateMachineFlags
+	ExternalKeyData                       = externalKeyData
 	KdfParams                             = kdfParams
 	ProtectedKeys                         = protectedKeys
 )
@@ -316,6 +317,14 @@ func MakePIN(length int, data []byte) PIN {
 	return PIN{
 		length: uint8(length - 1),
 		value:  *val,
+	}
+}
+
+func NewExternalKeyData(name string, r KeyDataReader, data *KeyData) *externalKeyData {
+	return &externalKeyData{
+		name: name,
+		r:    r,
+		data: data,
 	}
 }
 
