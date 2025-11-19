@@ -275,6 +275,8 @@ func (p *keyDataPolicy_v3) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 		return fmt.Errorf("cannot compute approved policy: %w", err)
 	}
 
+	// We don't check that the stored PCR policy reference is correct when the metadata
+	// is validated, so refresh it here to ensure that it's correct.
 	var policyCounterName tpm2.Name
 	if params.policyCounter != nil {
 		policyCounterName = params.policyCounter.Name()
