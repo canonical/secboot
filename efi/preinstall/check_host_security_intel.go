@@ -38,41 +38,64 @@ type (
 	hfsts5 uint32
 	hfsts6 uint32
 
-	meOperationMode        uint8
-	errorEnforcementPolicy uint8
+	// meOperationMode is the ME operation mode.
+	meOperationMode uint8
+
+	hfstsRegisters struct {
+		Hfsts1 hfsts1
+		Hfsts2 hfsts2
+		Hfsts3 hfsts3
+		Hfsts4 hfsts4
+		Hfsts5 hfsts5
+		Hfsts6 hfsts6
+	}
+
+	// btgProfile is the BootGuard profile.
+	btgProfile uint8
 )
 
 func (reg hfsts1) operationMode() meOperationMode {
 	return meOperationMode(reg & hfsts1OperationMode >> 16)
 }
 
-func (reg hfsts6) errorEnforcementPolicy() errorEnforcementPolicy {
-	return errorEnforcementPolicy(reg & hfsts6ErrorEnforcementPolicy >> 6)
-}
-
 const (
-	hfsts1MfgMode       hfsts1 = 1 << 4
+	// hfsts1MfgMode indicates that the ME is in manufacturing mode. Fwupd refers to this
+	// as manufacturing mode for CSME #11 and SPI protection mode for CSME #18. Slimbootloader
+	// refers to this as the latter for everything other than Comet Lake.
+	hfsts1MfgMode hfsts1 = 1 << 4
+
+	// hfsts1OperationMode is the ME operation mode bitmask, from fwupd and slimbootloader.
 	hfsts1OperationMode hfsts1 = 0xf0000
 
-	hfsts6ForceBootGuardACM      hfsts6 = 1 << 0
-	hfsts6CpuDebugDisable        hfsts6 = 1 << 1
-	hfsts6ProtectBIOSEnv         hfsts6 = 1 << 3
-	hfsts6ErrorEnforcementPolicy hfsts6 = 0xc0
-	hfsts6MeasuredBoot           hfsts6 = 1 << 8
-	hfsts6VerifiedBoot           hfsts6 = 1 << 9
-	hfsts6BootGuardDisable       hfsts6 = 1 << 28
-	hfsts6FPFSOCLock             hfsts6 = 1 << 30
+	hfsts5BtgAcmActive hfsts5 = 1 << 0
+	hfsts5BtgAcmDone   hfsts5 = 1 << 8
 
-	meOperationModeNormal         meOperationMode = 0
-	meOperationModeDebug          meOperationMode = 2
-	meOperationModeDisabled       meOperationMode = 3
-	meOperationModeOverrideJumper meOperationMode = 4
-	meOperationModeOverrideMei    meOperationMode = 5
-	meOperationModeMaybeSps       meOperationMode = 7
+	hfsts6FPFSOCLock hfsts6 = 1 << 30
 
-	errorEnforcementPolicyNothing        errorEnforcementPolicy = 0
-	errorEnforcementPolicyShutdown30Mins errorEnforcementPolicy = 1
-	errorEnforcementPolicyShutdownNow    errorEnforcementPolicy = 3
+	meOperationModeNormal         meOperationMode = 0x0
+	meOperationModeDebug          meOperationMode = 0x2
+	meOperationModeDisabled       meOperationMode = 0x3
+	meOperationModeOverrideJumper meOperationMode = 0x4
+	meOperationModeOverrideMei    meOperationMode = 0x5
+	meOperationModeSps            meOperationMode = 0xf
+
+	// btgProfileNoVFME indicates that BootGuard will execute without verified or
+	// measured boot.
+	btgProfileNoFVME btgProfile = 0
+
+	// btgProfileVM indicates that BootGuard will execute with verified and measured
+	// boot but the platform will continue booting if verification fails.
+	btgProfileVM btgProfile = 3
+
+	// btgProfileFVE indicates that BootGuard will execute with verified boot.
+	// BootGuard is forced to execute and verification failures result in immediate
+	// shutdown.
+	btgProfileFVE btgProfile = 4
+
+	// btgProfileFVME indicates that BootGuard will execute with verified and
+	// measured boot. BootGuard is forced to execute and verification failures result
+	// in immediate shutdown.
+	btgProfileFVME btgProfile = 5
 )
 
 type meFamily uint8
@@ -85,43 +108,67 @@ const (
 	meFamilyCsme
 )
 
-func readIntelHFSTSRegistersFromMEISysfs(device internal_efi.SysfsDevice, regs [6]*uint32) error {
+func (f meFamily) String() string {
+	switch f {
+	case meFamilySps:
+		return "SPS"
+	case meFamilyTxe:
+		return "TXE"
+	case meFamilyMe:
+		return "ME"
+	case meFamilyCsme:
+		return "CSME"
+	default:
+		return "unknown"
+	}
+}
+
+func readIntelHFSTSRegistersFromMEISysfs(device internal_efi.SysfsDevice) (regs hfstsRegisters, err error) {
 	rc, err := device.AttributeReader("fw_status")
 	if err != nil {
-		return err
+		return hfstsRegisters{}, err
 	}
 	defer rc.Close()
+
+	regs32 := [...]*uint32{
+		(*uint32)(&regs.Hfsts1),
+		(*uint32)(&regs.Hfsts2),
+		(*uint32)(&regs.Hfsts3),
+		(*uint32)(&regs.Hfsts4),
+		(*uint32)(&regs.Hfsts5),
+		(*uint32)(&regs.Hfsts6),
+	}
 
 	i := 0
 	scanner := bufio.NewScanner(rc)
 	for scanner.Scan() {
-		if i > len(regs)-1 {
-			return errors.New("invalid fw_status format: too many entries")
+		if i > len(regs32)-1 {
+			return hfstsRegisters{}, errors.New("invalid fw_status format: too many entries")
 		}
 
 		str := scanner.Text()
 		if len(str) != 8 {
-			return fmt.Errorf("invalid fw_status format: unexpected line length for line %d (%d chars)", i, len(str))
+			return hfstsRegisters{}, fmt.Errorf("invalid fw_status format: unexpected line length for line %d (%d chars)", i, len(str))
 		}
 
-		n, err := fmt.Sscanf(str, "%08x", regs[i])
+		n, err := fmt.Sscanf(str, "%08x", regs32[i])
 		if err != nil {
-			return fmt.Errorf("invalid fw_status format: cannot scan line %d: %w", i, err)
+			return hfstsRegisters{}, fmt.Errorf("invalid fw_status format: cannot scan line %d: %w", i, err)
 		}
 		if n != 1 {
-			return fmt.Errorf("invalid fw_status format: unexpected number of arguments scanned for line %d", i)
+			return hfstsRegisters{}, fmt.Errorf("invalid fw_status format: unexpected number of arguments scanned for line %d", i)
 		}
 
 		i += 1
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error when scanning fw_status: %w", err)
+		return hfstsRegisters{}, fmt.Errorf("error when scanning fw_status: %w", err)
 	}
-	if i != 6 {
-		return errors.New("invalid fw_status format: not enough entries")
+	if i != len(regs32) {
+		return hfstsRegisters{}, errors.New("invalid fw_status format: not enough entries")
 	}
 
-	return nil
+	return regs, nil
 }
 
 type meVersion struct {
@@ -178,7 +225,7 @@ func calculateIntelMEFamily(vers meVersion, hfsts1Reg hfsts1) meFamily {
 	case 0:
 		return meFamilyUnknown
 	case 1, 2, 3, 4:
-		if hfsts1Reg.operationMode() == 0xf {
+		if hfsts1Reg.operationMode() == meOperationModeSps {
 			return meFamilySps
 		}
 		return meFamilyTxe
@@ -201,103 +248,47 @@ func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
 	}
 	device := devices[0]
 
-	var (
-		// Host Firmware Status Registers provided by the ME. The meaning of the
-		// bits of these registers is not described in the datasheet for the PCH.
-		// Thankfully, others have done most of the leg work here to figure out
-		// what most bits mean, and we're only interested in a few of them anyway.
-		hfsts1Reg hfsts1
-		hfsts2Reg hfsts2
-		hfsts3Reg hfsts3
-		hfsts4Reg hfsts4
-		hfsts5Reg hfsts5
-		hfsts6Reg hfsts6
-	)
-
-	if err := readIntelHFSTSRegistersFromMEISysfs(device, [6]*uint32{
-		(*uint32)(&hfsts1Reg),
-		(*uint32)(&hfsts2Reg),
-		(*uint32)(&hfsts3Reg),
-		(*uint32)(&hfsts4Reg),
-		(*uint32)(&hfsts5Reg),
-		(*uint32)(&hfsts6Reg),
-	}); err != nil {
-		return fmt.Errorf("cannot read HFSTS registers from sysfs: %w", err)
-	}
-
 	vers, err := readIntelMEVersionFromMEISysfs(device)
 	if err != nil {
 		return fmt.Errorf("cannot obtain ME version from sysfs: %w", err)
 	}
 
-	// From here, these checks are based on the HSI checks performed in the pci-mei
-	// plugin in fwupd.
-	family := calculateIntelMEFamily(vers, hfsts1Reg)
-	if family == meFamilyUnknown {
-		return fmt.Errorf("cannot determine ME family: %w", err)
+	regs, err := readIntelHFSTSRegistersFromMEISysfs(device)
+	if err != nil {
+		return fmt.Errorf("cannot read HFSTS registers from sysfs: %w", err)
+	}
+
+	// Only support CSME.
+	if calculateIntelMEFamily(vers, regs.Hfsts1) != meFamilyCsme {
+		return &UnsupportedPlatformError{errors.New("unsupported ME family")}
+	}
+
+	// Check that operation mode is normal.
+	if regs.Hfsts1.operationMode() != meOperationModeNormal {
+		return &NoHardwareRootOfTrustError{errors.New("invalid ME operation mode")}
 	}
 
 	// Check manufacturing mode is not enabled.
-	if hfsts1Reg&hfsts1MfgMode > 0 {
-		return &NoHardwareRootOfTrustError{errors.New("ME is in manufacturing mode: no firmware protections are enabled")}
+	if regs.Hfsts1&hfsts1MfgMode > 0 {
+		return &NoHardwareRootOfTrustError{errors.New("ME is in manufacturing mode")}
 	}
 
-	// Check operation mode
-	switch hfsts1Reg.operationMode() {
-	case meOperationModeOverrideJumper:
-		return &NoHardwareRootOfTrustError{errors.New("invalid ME operation mode: checks for software tampering may be disabled")}
-	default:
-		// ok
+	// Check that the BootGuard ACM is active. Fwupd only checks this for CSME #18, but it
+	// appears that the same bits are defined for both versions.
+	if regs.Hfsts5&(hfsts5BtgAcmActive|hfsts5BtgAcmDone) != hfsts5BtgAcmActive|hfsts5BtgAcmDone {
+		return &NoHardwareRootOfTrustError{errors.New("BootGuard ACM is not active")}
 	}
 
-	// Check BootGuard profile - BootGuard must be force enabled. As it's an ACM, it's signed
-	// by Intel and authenticated by a key that's rooted in the CPU microcode (which itself is
-	// authenticated), it's essentially part of the TCB and the hardware root of trust. It
-	// must be configured at least in verified boot mode (where it indirectly verifies that the
-	// IBB has a valid OEM supplied signature before allowing it to execute it, via a hierarchy
-	// of keys), with measured boot mode optional. Note that it's not clear if measured boot mode
-	// without verified boot mode is a valid configuration, and it's not supported here yet. In
-	// order to support it, we would need to be sure that for discrete TPMs, the GPIO configuration
-	// is locked before the platform firmware executes.
-	//
-	// It must have an appropriate error enforcement policy if it fails to execute. The "Protect
-	// BIOS Environment" feauture muse be enabled. The FPFs that control the profile and contain
-	// the hash of the OEM key must be locked.
-
-	// First check we have an appropriate ME family.
-	switch family {
-	case meFamilyUnknown:
-		return &NoHardwareRootOfTrustError{errors.New("BootGuard unsupported on unknown ME family")}
-	case meFamilyTxe:
-		return &NoHardwareRootOfTrustError{errors.New("BootGuard unsupported on TXE ME family")}
-	}
-
-	if hfsts6Reg&hfsts6BootGuardDisable > 0 {
-		// This isn't a good start
-		return &NoHardwareRootOfTrustError{errors.New("BootGuard is disabled")}
-	}
-
-	// Verify the BootGuard profile
-	if hfsts6Reg&hfsts6ForceBootGuardACM == 0 {
-		return &NoHardwareRootOfTrustError{errors.New("the BootGuard ACM is not forced to execute - the CPU can execute arbitrary code from the legacy reset vector if BootGuard cannot be successfully loaded")}
-	}
-	if hfsts6Reg&hfsts6VerifiedBoot == 0 {
-		return &NoHardwareRootOfTrustError{errors.New("BootGuard verified boot mode is not enabled - this allows arbitrary firmware that doesn't have a valid signature to be executed")}
-	}
-	if hfsts6Reg.errorEnforcementPolicy() != errorEnforcementPolicyShutdownNow {
-		return &NoHardwareRootOfTrustError{errors.New("BootGuard does not have an appropriate error enforcement policy")}
-	}
-	if hfsts6Reg&hfsts6ProtectBIOSEnv == 0 {
-		return &NoHardwareRootOfTrustError{errors.New("the \"Protect BIOS Environment\" feature is not enabled")}
-	}
-
-	// Make sure that the FPFs are locked.
-	if hfsts6Reg&hfsts6FPFSOCLock == 0 {
+	// Check that the FPFs are locked.
+	if regs.Hfsts6&hfsts6FPFSOCLock == 0 {
 		return &NoHardwareRootOfTrustError{errors.New("BootGuard OTP fuses are not locked")}
 	}
 
-	// Everything is ok
-	return nil
+	if vers.Major < 18 {
+		return checkHostSecurityIntelBootGuardCSME11(toHfstsRegistersCsme11(regs))
+	}
+
+	return checkHostSecurityIntelBootGuardCSME18(toHfstsRegistersCsme18(regs))
 }
 
 const (
