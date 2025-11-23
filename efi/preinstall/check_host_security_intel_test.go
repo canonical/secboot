@@ -367,7 +367,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME
 		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
 			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
 		)),
-		efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
+		efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei1", map[string]string{"DEVNAME": "mei1"}, "mei", nil, efitest.NewMockSysfsDevice(
 			"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
 		)),
 	}
