@@ -69,7 +69,12 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (prote
 			protectedStartupLocalities |= tpm2.LocalityThree | tpm2.LocalityFour
 		}
 	case cpuVendorAMD:
-		return 0, &UnsupportedPlatformError{errors.New("checking host security is not yet implemented for AMD")}
+		if err := checkHostSecurityAMDPSP(env); err != nil {
+			return 0, fmt.Errorf("encountered an error when checking the AMD PSP configuration: %w", err)
+		}
+
+		// XXX: Don't set protectedStartupLocalities here - it's only used on Intel and
+		// a future PR will remove it from this function anyway.
 	default:
 		panic("not reached")
 	}

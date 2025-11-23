@@ -37,13 +37,8 @@ type (
 	CheckDriversAndAppsMeasurementsResult = checkDriversAndAppsMeasurementsResult
 	CheckFirmwareLogFlags                 = checkFirmwareLogFlags
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
-	CpuVendor                             = cpuVendor
 	DetectVirtResult                      = detectVirtResult
-	HfstsRegisters                        = hfstsRegisters
-	HfstsRegistersCsme11                  = hfstsRegistersCsme11
-	HfstsRegistersCsme18                  = hfstsRegistersCsme18
 	JoinError                             = joinError
-	MeVersion                             = meVersion
 	SecureBootPolicyResult                = secureBootPolicyResult
 	SecureBootPolicyResultFlags           = secureBootPolicyResultFlags
 )
@@ -58,50 +53,34 @@ const (
 	CheckFirmwareLogPermitWeakPCRBanks         = checkFirmwareLogPermitWeakPCRBanks
 	CheckTPM2DeviceInVM                        = checkTPM2DeviceInVM
 	CheckTPM2DevicePostInstall                 = checkTPM2DevicePostInstall
-	CpuVendorIntel                             = cpuVendorIntel
-	CpuVendorAMD                               = cpuVendorAMD
 	DetectVirtNone                             = detectVirtNone
 	DetectVirtVM                               = detectVirtVM
 	DriversAndAppsPresent                      = driversAndAppsPresent
-	MeFamilyUnknown                            = meFamilyUnknown
-	MeFamilySps                                = meFamilySps
-	MeFamilyTxe                                = meFamilyTxe
-	MeFamilyMe                                 = meFamilyMe
-	MeFamilyCsme                               = meFamilyCsme
 	NoDriversAndAppsPresent                    = noDriversAndAppsPresent
 	SecureBootIncludesWeakAlg                  = secureBootIncludesWeakAlg
 	SecureBootPreOSVerificationIncludesDigest  = secureBootPreOSVerificationIncludesDigest
 )
 
 var (
-	CalculateIntelMEFamily                                = calculateIntelMEFamily
 	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
 	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
 	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
 	CheckForKernelIOMMU                                   = checkForKernelIOMMU
 	CheckHostSecurity                                     = checkHostSecurity
-	CheckHostSecurityIntelBootGuard                       = checkHostSecurityIntelBootGuard
-	CheckHostSecurityIntelBootGuardCSME11                 = checkHostSecurityIntelBootGuardCSME11
-	CheckHostSecurityIntelBootGuardCSME18                 = checkHostSecurityIntelBootGuardCSME18
-	CheckHostSecurityIntelCPUDebuggingLocked              = checkHostSecurityIntelCPUDebuggingLocked
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
 	CheckSystemIsEFI                                      = checkSystemIsEFI
 	ClearTPM                                              = clearTPM
 	DetectVirtualization                                  = detectVirtualization
-	DetermineCPUVendor                                    = determineCPUVendor
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	InsertActionProceed                                   = insertActionProceed
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete
-	IsTPMDiscreteFromIntelBootGuard                       = isTPMDiscreteFromIntelBootGuard
 	JoinErrors                                            = joinErrors
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
 	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
-	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
-	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
 	RunPPIAction                                          = runPPIAction
 	UnwrapCompoundError                                   = unwrapCompoundError
