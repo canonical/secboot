@@ -8135,3 +8135,92 @@ C7E003CB
 		errs[0].Unwrap(),
 	))
 }
+
+type insertActionProceedTestSuite struct{}
+
+var _ = Suite(&insertActionProceedTestSuite{})
+
+func (s *insertActionProceedTestSuite) TestInsertActionProceed(c *C) {
+	for _, tc := range []struct {
+		desc     string
+		actions  []Action
+		expected []Action
+	}{
+		{
+			desc: "insert before ActionContactOEM",
+			actions: []Action{
+				ActionClearTPMViaFirmware,
+				ActionRebootToFWSettings,
+				ActionContactOEM,
+			},
+			expected: []Action{
+				ActionClearTPMViaFirmware,
+				ActionRebootToFWSettings,
+				ActionProceed,
+				ActionContactOEM,
+			},
+		},
+		{
+			desc: "insert before ActionContactOSVendor",
+			actions: []Action{
+				ActionRebootToFWSettings,
+				ActionContactOSVendor,
+			},
+			expected: []Action{
+				ActionRebootToFWSettings,
+				ActionProceed,
+				ActionContactOSVendor,
+			},
+		},
+		{
+			desc: "insert before first contact action",
+			actions: []Action{
+				ActionClearTPMViaFirmware,
+				ActionContactOEM,
+				ActionContactOSVendor,
+			},
+			expected: []Action{
+				ActionClearTPMViaFirmware,
+				ActionProceed,
+				ActionContactOEM,
+				ActionContactOSVendor,
+			},
+		},
+		{
+			desc: "append when no contact actions",
+			actions: []Action{
+				ActionClearTPMViaFirmware,
+				ActionRebootToFWSettings,
+			},
+			expected: []Action{
+				ActionClearTPMViaFirmware,
+				ActionRebootToFWSettings,
+				ActionProceed,
+			},
+		},
+		{
+			desc:     "empty slice",
+			actions:  []Action{},
+			expected: []Action{ActionProceed},
+		},
+		{
+			desc:    "only ActionContactOEM",
+			actions: []Action{ActionContactOEM},
+			expected: []Action{
+				ActionProceed,
+				ActionContactOEM,
+			},
+		},
+		{
+			desc:    "only ActionContactOSVendor",
+			actions: []Action{ActionContactOSVendor},
+			expected: []Action{
+				ActionProceed,
+				ActionContactOSVendor,
+			},
+		},
+	} {
+		result := InsertActionProceed(tc.actions)
+		c.Check(result, DeepEquals, tc.expected, Commentf(tc.desc))
+	}
+}

@@ -336,6 +336,24 @@ func (c *RunChecksContext) isActionExpected(action Action) bool {
 	return false
 }
 
+// insertActionProceed inserts [ActionProceed] into the actions slice.
+// It inserts before [ActionContactOEM] or [ActionContactOSVendor] if present,
+// otherwise appends to the end. This ensures [ActionProceed] (which ignores
+// the error) appears before "give up" actions per Rule 1.
+func insertActionProceed(actions []Action) []Action {
+	for i, action := range actions {
+		if action == ActionContactOEM || action == ActionContactOSVendor {
+			// Create new slice with capacity for the additional action.
+			result := make([]Action, len(actions)+1)
+			copy(result, actions[:i])
+			result[i] = ActionProceed
+			copy(result[i+1:], actions[i:])
+			return result
+		}
+	}
+	return append(actions, ActionProceed)
+}
+
 // classifyRunChecksError converts the supplied error which is returned from
 // [RunChecks] into an [ErrorKind] and associated arguments where applicable
 // (see the documentation for each error kind).
@@ -899,7 +917,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 				if permitActionProceed {
 					flag := errorKindToProceedFlag[e.Kind]
 					c.proceedFlags |= flag
-					e.Actions = append(e.Actions, ActionProceed)
+					e.Actions = insertActionProceed(e.Actions)
 				}
 				errs = append(errs, e)
 			}
