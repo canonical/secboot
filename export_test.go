@@ -41,6 +41,7 @@ const (
 	AuthRequestorKey                = authRequestorKey
 	AuthRequestorUserVisibleNameKey = authRequestorUserVisibleNameKey
 	ExternalKeyDataKey              = externalKeyDataKey
+	ExternalUnlockKeyKey            = externalUnlockKeyKey
 	KeyringDescPrefixKey            = keyringDescPrefixKey
 	KeyringKeyPurposeAuxiliary      = keyringKeyPurposeAuxiliary
 	LegacyKeyringKeyDescPathsKey    = legacyKeyringKeyDescPathsKey
@@ -72,6 +73,7 @@ type (
 	ActivateOneContainerStateMachine      = activateOneContainerStateMachine
 	ActivateOneContainerStateMachineFlags = activateOneContainerStateMachineFlags
 	ExternalKeyData                       = externalKeyData
+	ExternalUnlockKey                     = externalUnlockKey
 	KdfParams                             = kdfParams
 	ProtectedKeys                         = protectedKeys
 )
@@ -325,6 +327,14 @@ func NewExternalKeyData(name string, r KeyDataReader, data *KeyData) *externalKe
 		name: name,
 		r:    r,
 		data: data,
+	}
+}
+
+func NewExternalUnlockKey(name string, key DiskUnlockKey, src ExternalUnlockKeySource) *externalUnlockKey {
+	return &externalUnlockKey{
+		name: name,
+		key:  key,
+		src:  src,
 	}
 }
 
