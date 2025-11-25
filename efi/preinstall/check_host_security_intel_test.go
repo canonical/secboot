@@ -29,6 +29,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	"github.com/canonical/cpuid"
+	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot/efi/preinstall"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
@@ -803,4 +804,24 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErr
 	err = CheckHostSecurityIntelCPUDebuggingLocked(amd64Env)
 	c.Check(err, ErrorMatches, `the kernel module "msr" must be loaded`)
 	c.Check(err, Equals, MissingKernelModuleError("msr"))
+}
+
+func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntel(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SMX}, 0, nil),
+	)
+	amd64Env, err := env.AMD64()
+	c.Assert(err, IsNil)
+
+	c.Check(RestrictedTPMLocalitiesIntel(amd64Env), Equals, tpm2.LocalityFour|tpm2.LocalityThree)
+}
+
+func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntelNoTXT(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil),
+	)
+	amd64Env, err := env.AMD64()
+	c.Assert(err, IsNil)
+
+	c.Check(RestrictedTPMLocalitiesIntel(amd64Env), Equals, tpm2.Locality(0))
 }

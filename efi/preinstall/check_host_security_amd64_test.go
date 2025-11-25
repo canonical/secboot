@@ -65,51 +65,13 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	protectedStartupLocalities, err := CheckHostSecurity(env, log)
-	c.Check(err, IsNil)
-	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
-	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
-}
-
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityNoTXT(c *C) {
-	meiAttrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-		"fw_status": []byte(`94000245
-09F10506
-00000020
-00004000
-00041F03
-C7E003CB
-`),
-	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithSysfsDevices(devices),
-		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}),
-	)
-	log := efitest.NewLog(c, &efitest.LogOptions{})
-
-	protectedStartupLocalities, err := CheckHostSecurity(env, log)
-	c.Check(err, IsNil)
-	c.Check(protectedStartupLocalities, Equals, tpm2.Locality(0))
-	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8(nil))
+	c.Check(CheckHostSecurity(env, log), IsNil)
 }
 
 func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrNotAMD64(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
 
-	_, err := CheckHostSecurity(env, nil)
+	err := CheckHostSecurity(env, nil)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: not a AMD64 host`)
 
 	var upe *UnsupportedPlatformError
@@ -121,7 +83,7 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrUnrecognizedCpuVendor(c
 		efitest.WithAMD64Environment("GenuineInte", nil, 0, nil),
 	)
 
-	_, err := CheckHostSecurity(env, nil)
+	err := CheckHostSecurity(env, nil)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
 
 	var upe *UnsupportedPlatformError
@@ -133,7 +95,7 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrAMDNotSupportedYet(c *C
 		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
 	)
 
-	_, err := CheckHostSecurity(env, nil)
+	err := CheckHostSecurity(env, nil)
 	c.Check(err, ErrorMatches, `unsupported platform: checking host security is not yet implemented for AMD`)
 	var upe *UnsupportedPlatformError
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
@@ -163,7 +125,7 @@ C7E003CB
 		efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil),
 	)
 
-	_, err := CheckHostSecurity(env, nil)
+	err := CheckHostSecurity(env, nil)
 	c.Check(err, ErrorMatches, `encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: ME is in manufacturing mode`)
 
 	var nhrotErr *NoHardwareRootOfTrustError
@@ -200,13 +162,11 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 
-	protectedStartupLocalities, err := CheckHostSecurity(env, log)
+	err := CheckHostSecurity(env, log)
 	c.Check(err, ErrorMatches, `the platform firmware contains a debugging endpoint enabled`)
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled})
-	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
-	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
 func (s *hostSecurityAMD64Suite) TestCheckHostSecurityNoIOMMU(c *C) {
@@ -234,13 +194,11 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	protectedStartupLocalities, err := CheckHostSecurity(env, log)
+	err := CheckHostSecurity(env, log)
 	c.Check(err, ErrorMatches, `no kernel IOMMU support was detected`)
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrNoKernelIOMMU})
-	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
-	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
 func (s *hostSecurityAMD64Suite) TestCheckHostSecuritySecureBootPolicyFirmwareDebuggingAndNoIOMMU(c *C) {
@@ -268,7 +226,7 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
 
-	protectedStartupLocalities, err := CheckHostSecurity(env, log)
+	err := CheckHostSecurity(env, log)
 	c.Check(err, ErrorMatches, `2 errors detected:
 - the platform firmware contains a debugging endpoint enabled
 - no kernel IOMMU support was detected
@@ -276,8 +234,6 @@ C7E003CB
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled, ErrNoKernelIOMMU})
-	c.Check(protectedStartupLocalities, Equals, tpm2.LocalityThree|tpm2.LocalityFour)
-	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
 func (s *hostSecurityAMD64Suite) TestCheckHostSecurityCPUDebuggingUnlocked(c *C) {
@@ -309,7 +265,126 @@ C7E003CB
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
 
-	_, err := CheckHostSecurity(env, log)
+	err := CheckHostSecurity(env, log)
 	c.Check(err, ErrorMatches, `encountered an error when checking Intel CPU debugging configuration: CPU debugging features are not disabled and locked`)
 	c.Check(errors.Is(err, ErrCPUDebuggingNotLocked), testutil.IsTrue)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckDiscreteTPMPartialResetAttackMitigationStatusNotRequiredAMD(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
+	)
+
+	status, err := CheckDiscreteTPMPartialResetAttackMitigationStatus(env, NewPCRBankResults(tpm2.HashAlgorithmSHA256, 0, [8]PcrResults{
+		MakePCRResults(
+			false,
+			make(tpm2.Digest, 32),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			nil,
+		),
+	}))
+	c.Check(err, IsNil)
+	c.Check(status, Equals, DtpmPartialResetAttackMitigationNotRequired)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckDiscreteTPMPartialResetAttackMitigationStatusIntelNotDiscrete(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1)}),
+	)
+
+	status, err := CheckDiscreteTPMPartialResetAttackMitigationStatus(env, NewPCRBankResults(tpm2.HashAlgorithmSHA256, 0, [8]PcrResults{
+		MakePCRResults(
+			false,
+			make(tpm2.Digest, 32),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			nil,
+		),
+	}))
+	c.Check(err, IsNil)
+	c.Check(status, Equals, DtpmPartialResetAttackMitigationNotRequired)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckDiscreteTPMPartialResetAttackMitigationStatusIntelUnavailableInvalidPCR0(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1)}),
+	)
+
+	status, err := CheckDiscreteTPMPartialResetAttackMitigationStatus(env, NewPCRBankResults(tpm2.HashAlgorithmSHA256, 3, [8]PcrResults{
+		MakePCRResults(
+			false,
+			make(tpm2.Digest, 32),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			testutil.DecodeHexString(c, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+			nil,
+		),
+	}))
+	c.Check(err, IsNil)
+	c.Check(status, Equals, DtpmPartialResetAttackMitigationUnavailable)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckDiscreteTPMPartialResetAttackMitigationStatusIntelPreferred(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1)}),
+	)
+
+	status, err := CheckDiscreteTPMPartialResetAttackMitigationStatus(env, NewPCRBankResults(tpm2.HashAlgorithmSHA256, 3, [8]PcrResults{
+		MakePCRResults(
+			false,
+			make(tpm2.Digest, 32),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			nil,
+		),
+	}))
+	c.Check(err, IsNil)
+	c.Check(status, Equals, DtpmPartialResetAttackMitigationPreferred)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckDiscreteTPMPartialResetAttackMitigationStatusIntelUnavailableSL0(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1)}),
+	)
+
+	status, err := CheckDiscreteTPMPartialResetAttackMitigationStatus(env, NewPCRBankResults(tpm2.HashAlgorithmSHA256, 0, [8]PcrResults{
+		MakePCRResults(
+			false,
+			make(tpm2.Digest, 32),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			nil,
+		),
+	}))
+	c.Check(err, IsNil)
+	c.Check(status, Equals, DtpmPartialResetAttackMitigationUnavailable)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckDiscreteTPMPartialResetAttackMitigationStatusIntelUnavailableNoTXT(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", nil, 4, map[uint32]uint64{0x13a: (2 << 1)}),
+	)
+
+	status, err := CheckDiscreteTPMPartialResetAttackMitigationStatus(env, NewPCRBankResults(tpm2.HashAlgorithmSHA256, 3, [8]PcrResults{
+		MakePCRResults(
+			false,
+			make(tpm2.Digest, 32),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			testutil.DecodeHexString(c, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"),
+			nil,
+		),
+	}))
+	c.Check(err, IsNil)
+	c.Check(status, Equals, DtpmPartialResetAttackMitigationUnavailable)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckDiscreteTPMPartialResetAttackMitigationStatusErrUnsupportedCpuVendor(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineInte", nil, 0, nil),
+	)
+
+	_, err := CheckDiscreteTPMPartialResetAttackMitigationStatus(env, NewPCRBankResults(tpm2.HashAlgorithmSHA256, 0, [8]PcrResults{}))
+	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
