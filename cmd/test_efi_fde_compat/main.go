@@ -18,7 +18,6 @@ type options struct {
 		PermitVM                            bool `long:"permit-vm" description:"Permit running inside of a virtual machine"`
 		PermitWeakPCRBanks                  bool `long:"permit-weak-pcr-banks" description:"Permit selecting a weak PCR bank if no others are available"`
 		PermitEmptyPCRBanks                 bool `long:"permit-empty-pcr-banks" description:"Allow the platform firmware to leave one or more PCR banks empty. This potentially compromises remote attestation"`
-		PermitNoDiscreteTPMResetMitigation  bool `long:"permit-no-discrete-tpm-reset-mitigation" description:"Permit not enabling a mitigation for reset attacks against discrete TPM devices. The mitigation prevents replaying PCR values from software"`
 		PermitVARSuppliedDrivers            bool `long:"permit-var-supplied-drivers" description:"Allow value-added-retailer supplied drivers to be running. This increases fragility of profiles that include PCR2, and potentially PCR7"`
 		PermitSysPrepApplications           bool `long:"permit-sys-prep-apps" description:"Allow system preparation applications to load before the OS. This increases fragility of profiles that include PCR4, and potentially PCR7"`
 		PermitAbsolute                      bool `long:"permit-absolute" description:"Allow the Absolute endpoint management component to be running. This increases fragility of profiles that include PCR4"`
@@ -62,9 +61,6 @@ func run() error {
 	}
 	if opts.Check.PermitEmptyPCRBanks {
 		checkFlags |= preinstall.PermitEmptyPCRBanks
-	}
-	if opts.Check.PermitNoDiscreteTPMResetMitigation {
-		checkFlags |= preinstall.PermitNoDiscreteTPMResetMitigation
 	}
 	if opts.Check.PermitVARSuppliedDrivers {
 		checkFlags |= preinstall.PermitVARSuppliedDrivers

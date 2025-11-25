@@ -97,13 +97,6 @@ const (
 	// are skipped entirely.
 	PermitVirtualMachine
 
-	// PermitNoDiscreteTPMResetMitigation will prevent RunChecks from returning an error
-	// if a discrete TPM is detected and the TPM startup locality is accessible from ring
-	// 0 code (platform firmware and privileged OS code), which prevents the ability to
-	// enable a mitigation against reset attacks. See the description of the
-	// DiscreteTPMDetected flag for more details.
-	PermitNoDiscreteTPMResetMitigation
-
 	// PermitVARSuppliedDrivers will prevent RunChecks from returning an error if the
 	// platform is running any value-added-retailer supplied drivers, which are included in
 	// a PCR policy when using [secboot_efi.WithDriversAndAppsProfile]. These can be loaded
@@ -346,12 +339,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		switch {
 		case discreteTPM && !logResults.Lookup(internal_efi.PlatformFirmwarePCR).Ok():
 			// We can't use PCR0 to enable the reset attack mitigation.
-			switch {
-			case flags&PermitNoDiscreteTPMResetMitigation > 0:
-				result.Flags |= StartupLocalityNotProtected
-			default:
-				deferredErrs = append(deferredErrs, &HostSecurityError{ErrTPMStartupLocalityNotProtected})
-			}
+			result.Flags |= StartupLocalityNotProtected
+			warnings = append(warnings, &HostSecurityError{ErrNoPartialDiscreteTPMResetAttackMitigation})
 		case discreteTPM:
 			switch logResults.StartupLocality {
 			case 0:
@@ -359,31 +348,23 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				// from anything that runs as part of the static OS (only applicable to
 				// discrete TPMs that can be reset independently of the host CPU, which
 				// isn't really meant to be possible).
-				switch {
-				case flags&PermitNoDiscreteTPMResetMitigation > 0:
-					result.Flags |= StartupLocalityNotProtected
-				default:
-					deferredErrs = append(deferredErrs, &HostSecurityError{ErrTPMStartupLocalityNotProtected})
-				}
+				result.Flags |= StartupLocalityNotProtected
+				warnings = append(warnings, &HostSecurityError{ErrNoPartialDiscreteTPMResetAttackMitigation})
 			case 3:
 				// TPM2_Startup occurred from locality 3. Mark PCR0 as reconstructible
 				// from anything that runs as part of the static OS for the reasons stated
 				// above if access to locality 3 isn't protected.
-				switch {
-				case protectedLocalities&tpm2.LocalityThree == 0 && flags&PermitNoDiscreteTPMResetMitigation > 0:
+				if protectedLocalities&tpm2.LocalityThree == 0 {
 					result.Flags |= StartupLocalityNotProtected
-				case protectedLocalities&tpm2.LocalityThree == 0:
-					deferredErrs = append(deferredErrs, &HostSecurityError{ErrTPMStartupLocalityNotProtected})
+					warnings = append(warnings, &HostSecurityError{ErrNoPartialDiscreteTPMResetAttackMitigation})
 				}
 			case 4:
 				// There were H-CRTM events.  Mark PCR0 as reconstructible from anything that
 				// runs as part of the static OS for the reasons stated above if access to
 				// locality 4 isn't protected.
-				switch {
-				case protectedLocalities&tpm2.LocalityFour == 0 && flags&PermitNoDiscreteTPMResetMitigation > 0:
+				if protectedLocalities&tpm2.LocalityFour == 0 {
 					result.Flags |= StartupLocalityNotProtected
-				case protectedLocalities&tpm2.LocalityFour == 0:
-					deferredErrs = append(deferredErrs, &HostSecurityError{ErrTPMStartupLocalityNotProtected})
+					warnings = append(warnings, &HostSecurityError{ErrNoPartialDiscreteTPMResetAttackMitigation})
 				}
 			}
 		}
