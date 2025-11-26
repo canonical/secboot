@@ -274,6 +274,14 @@ func (p *keyDataPolicy_v3) UpdatePCRPolicy(alg tpm2.HashAlgorithmId, params *pcr
 	if err != nil {
 		return fmt.Errorf("cannot compute approved policy: %w", err)
 	}
+
+	// We don't check that the stored PCR policy reference is correct when the metadata
+	// is validated, so refresh it here to ensure that it's correct.
+	var policyCounterName tpm2.Name
+	if params.policyCounter != nil {
+		policyCounterName = params.policyCounter.Name()
+	}
+	p.StaticData.PCRPolicyRef = computeV3PcrPolicyRef(alg, params.role, policyCounterName)
 	if err := pcrData.authorizePolicy(approvedPolicy, p.StaticData.AuthPublicKey, p.StaticData.PCRPolicyRef, key, p.StaticData.AuthPublicKey.NameAlg); err != nil {
 		return xerrors.Errorf("cannot authorize policy: %w", err)
 	}
@@ -335,17 +343,18 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 	authorizeTicket, err := tpm.VerifySignature(authorizeKey, pcrPolicyDigest, p.PCRData.AuthorizedPolicySignature)
 	if err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.AnyErrorCode, tpm2.CommandVerifySignature, 2) {
-			// PCRData.AuthorizedPolicySignature is invalid.
-			return policyDataError{xerrors.Errorf("cannot verify PCR policy signature: %w", err)}
+			// d.PCRData.AuthorizedPolicySignature, d.StaticData.PCRPolicyRef or d.PCRData.AuthorizedPolicy
+			// is invalid. The public key could also be incorrect, but this would be detected when
+			// attempting to update the PCR policy.
+			return pcrPolicyDataError{xerrors.Errorf("cannot verify PCR policy signature: %w", err)}
 		}
 		return err
 	}
 
 	if err := tpm.PolicyAuthorize(policySession, p.PCRData.AuthorizedPolicy, pcrPolicyRef, authorizeKey.Name(), authorizeTicket); err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
-			// d.PCRData.AuthorizedPolicy is invalid or the auth key isn't associated with
-			// this object.
-			return policyDataError{errors.New("the PCR policy is invalid")}
+			// d.PCRData.AuthorizedPolicy is invalid.
+			return pcrPolicyDataError{errors.New("the PCR policy is invalid")}
 		}
 		return err
 	}

@@ -201,8 +201,8 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingInvalidPCRProfile(c *C) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 	})
-	c.Check(err, testutil.ConvertibleTo, InvalidKeyDataError{})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+	c.Check(err, testutil.ConvertibleTo, &PCRPolicyDataError{})
+	c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -213,8 +213,8 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingRevokedPolicy(c *C) {
 		c.Check(k.UpdatePCRProtectionPolicy(s.TPM(), authKey, nil), IsNil)
 		c.Check(k.RevokeOldPCRProtectionPolicies(s.TPM(), authKey), IsNil)
 	})
-	c.Check(err, testutil.ConvertibleTo, InvalidKeyDataError{})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: "+
+	c.Check(err, testutil.ConvertibleTo, &PCRPolicyDataError{})
+	c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: "+
 		"the PCR policy has been revoked")
 }
 
@@ -222,7 +222,7 @@ func (s *unsealSuite) TestUnsealFromTPMErrorHandlingSealedKeyAccessLocked(c *C) 
 	err := s.testUnsealFromTPMErrorHandling(c, func(_ string, _ secboot.PrimaryKey) {
 		c.Check(BlockPCRProtectionPolicies(s.TPM(), []int{23}), IsNil)
 	})
-	c.Check(err, testutil.ConvertibleTo, InvalidKeyDataError{})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+	c.Check(err, testutil.ConvertibleTo, &PCRPolicyDataError{})
+	c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }

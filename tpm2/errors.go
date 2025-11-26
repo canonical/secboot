@@ -77,9 +77,10 @@ func (e AuthFailError) Error() string {
 	return fmt.Sprintf("cannot access resource at handle %v because an authorization check failed", e.Handle)
 }
 
-// InvalidKeyDataError indicates that the provided key data file is invalid. This error may also be returned in some
-// scenarious where the TPM is incorrectly provisioned, but it isn't possible to determine whether the error is with
-// the provisioning status or because the key data file is invalid.
+// InvalidKeyDataError indicates that the [SealedKeyData] or [SealedKeyObject] is invalid. This error may also
+// be returned in some scenarious where the TPM is incorrectly provisioned, but it isn't possible to determine
+// whether the error is with the provisioning status or because the key data is invalid. This error generally
+// means that the key cannot be recovered.
 type InvalidKeyDataError struct {
 	msg string
 }
@@ -91,4 +92,26 @@ func (e InvalidKeyDataError) Error() string {
 func isInvalidKeyDataError(err error) bool {
 	var e InvalidKeyDataError
 	return xerrors.As(err, &e)
+}
+
+// PCRPolicyDataError may be returned from one of the [secboot.PlatformKeyDataHandler] methods or
+// [SealedKeyObject.UnsealFromTPM] if the PCR policy is invalid, either because the current PCR values
+// are not part of the currently approved policy, or the approved policy digest or signature is
+// invalid. This can generally be repaired by calling [SealedKeyData.UpdatePCRProtectionPolicy] or
+// [SealedKeyObject.UpdatePCRProtectionPolicy].
+//
+// Note that in some cases, this error may occur because the public key used to verify the PCR
+// policy is invalid. If this is the case, an attempt to update the PCR policy will fail with an
+// [InvalidKeyDataError]. A future update may improve this so that updating the PCR policy also refreshes
+// the public key.
+type PCRPolicyDataError struct {
+	err error
+}
+
+func (e *PCRPolicyDataError) Error() string {
+	return fmt.Sprintf("invalid PCR policy data: %v", e.err)
+}
+
+func (e *PCRPolicyDataError) Unwrap() error {
+	return e.err
 }
