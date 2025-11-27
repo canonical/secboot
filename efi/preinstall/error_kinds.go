@@ -175,13 +175,6 @@ const (
 	// remapping support, or some configuration has resulted in it being disabled.
 	ErrorKindNoKernelIOMMU ErrorKind = "no-kernel-iommu"
 
-	// ErrorKindTPMStartupLocalityNotProtected indicates that the system has a discrete TPM
-	// and the startup locality is not protected from access by privileged code running at
-	// ring 0, such as the platform firmware or OS kernel. This makes it impossible to enable
-	// a mitigation against reset attacks (see the description for DiscreteTPMDetected for more
-	// information).
-	ErrorKindTPMStartupLocalityNotProtected ErrorKind = "tpm-startup-locality-not-protected"
-
 	// ErrorKindHostSecurity indicates that there is some problem with the system
 	// security that isn't represented by a more specific error kind.
 	ErrorKindHostSecurity ErrorKind = "host-security"
