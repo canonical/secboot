@@ -91,6 +91,7 @@ var (
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
+	InsertActionProceed                                   = insertActionProceed
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete
