@@ -20,6 +20,7 @@
 package preinstall_test
 
 import (
+	"encoding/json"
 	"errors"
 
 	"github.com/canonical/go-tpm2"
@@ -52,6 +53,66 @@ func (*mockPcrProfileOptionVisitor) AddInitialVariablesModifier(fn internal_efi.
 
 func (v *mockPcrProfileOptionVisitor) AddImageLoadParams(f func(...internal_efi.LoadParams) []internal_efi.LoadParams) {
 	v.imageLoadParams = f(v.imageLoadParams...)
+}
+
+func (s *profileSuite) TestPCRProfileOptionsFlagsMarshalJSON(c *C) {
+	for _, params := range []struct {
+		flags    PCRProfileOptionsFlags
+		expected string
+	}{
+		{flags: PCRProfileOptionsDefault, expected: `[]`},
+		{flags: PCRProfileOptionMostSecure, expected: `["most-secure"]`},
+		{flags: PCRProfileOptionTrustCAsForBootCode, expected: `["trust-cas-for-boot-code"]`},
+		{flags: PCRProfileOptionTrustCAsForVARSuppliedDrivers, expected: `["trust-cas-for-var-supplied-drivers"]`},
+		{flags: PCRProfileOptionDistrustVARSuppliedNonHostCode, expected: `["distrust-var-supplied-nonhost-code"]`},
+		{flags: PCRProfileOptionPermitNoSecureBootPolicyProfile, expected: `["permit-no-secure-boot-policy-profile"]`},
+		{flags: PCRProfileOptionNoDiscreteTPMResetMitigation, expected: `["no-discrete-tpm-reset-mitigation"]`},
+		{flags: PCRProfileOptionTrustCAsForBootCode | PCRProfileOptionTrustCAsForVARSuppliedDrivers, expected: `["trust-cas-for-boot-code","trust-cas-for-var-supplied-drivers"]`},
+	} {
+		data, err := json.Marshal(params.flags)
+		c.Check(err, IsNil, Commentf("flags:%v", params.flags))
+		c.Check(data, DeepEquals, []byte(params.expected), Commentf("flags:%v", params.flags))
+	}
+}
+
+func (s *profileSuite) TestPCRProfileOptionsFlagsUnmarshalJSON(c *C) {
+	for _, params := range []struct {
+		flags    string
+		expected PCRProfileOptionsFlags
+	}{
+		{flags: `[]`, expected: PCRProfileOptionsDefault},
+		{flags: `["most-secure"]`, expected: PCRProfileOptionMostSecure},
+		{flags: `["trust-cas-for-boot-code"]`, expected: PCRProfileOptionTrustCAsForBootCode},
+		{flags: `["trust-cas-for-var-supplied-drivers"]`, expected: PCRProfileOptionTrustCAsForVARSuppliedDrivers},
+		{flags: `["distrust-var-supplied-nonhost-code"]`, expected: PCRProfileOptionDistrustVARSuppliedNonHostCode},
+		{flags: `["permit-no-secure-boot-policy-profile"]`, expected: PCRProfileOptionPermitNoSecureBootPolicyProfile},
+		{flags: `["no-discrete-tpm-reset-mitigation"]`, expected: PCRProfileOptionNoDiscreteTPMResetMitigation},
+		{flags: `["trust-cas-for-boot-code","trust-cas-for-var-supplied-drivers"]`, expected: PCRProfileOptionTrustCAsForBootCode | PCRProfileOptionTrustCAsForVARSuppliedDrivers},
+		{flags: `["0x1"]`, expected: PCRProfileOptionMostSecure},
+		{flags: `["16"]`, expected: PCRProfileOptionPermitNoSecureBootPolicyProfile},
+	} {
+		var flags PCRProfileOptionsFlags
+		c.Check(json.Unmarshal([]byte(params.flags), &flags), IsNil, Commentf("flags:%q", params.flags))
+		c.Check(flags, Equals, params.expected, Commentf("flags:%q", params.flags))
+	}
+}
+
+func (s *profileSuite) TestPCRProfileOptionsFlagsString(c *C) {
+	for _, params := range []struct {
+		flags    PCRProfileOptionsFlags
+		expected string
+	}{
+		{flags: PCRProfileOptionsDefault, expected: ""},
+		{flags: PCRProfileOptionMostSecure, expected: "most-secure"},
+		{flags: PCRProfileOptionTrustCAsForBootCode, expected: "trust-cas-for-boot-code"},
+		{flags: PCRProfileOptionTrustCAsForVARSuppliedDrivers, expected: "trust-cas-for-var-supplied-drivers"},
+		{flags: PCRProfileOptionDistrustVARSuppliedNonHostCode, expected: "distrust-var-supplied-nonhost-code"},
+		{flags: PCRProfileOptionPermitNoSecureBootPolicyProfile, expected: "permit-no-secure-boot-policy-profile"},
+		{flags: PCRProfileOptionNoDiscreteTPMResetMitigation, expected: "no-discrete-tpm-reset-mitigation"},
+		{flags: PCRProfileOptionTrustCAsForBootCode | PCRProfileOptionTrustCAsForVARSuppliedDrivers, expected: "trust-cas-for-boot-code,trust-cas-for-var-supplied-drivers"},
+	} {
+		c.Check(params.flags.String(), Equals, params.expected, Commentf("flags:%#08x", params.flags))
+	}
 }
 
 func (s *profileSuite) TestWithAutoTCGPCRProfileDefault(c *C) {
