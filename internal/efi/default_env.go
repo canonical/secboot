@@ -30,15 +30,45 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
+	"github.com/pilebones/go-udev/crawler"
+	"github.com/pilebones/go-udev/netlink"
 	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
 var (
+	crawlerExistingDevices   = crawler.ExistingDevices
+	osOpen                   = os.Open
+	osReadFile               = os.ReadFile
+	osReadlink               = os.Readlink
 	tpm2_deviceDefaultDevice = tpm2_device.DefaultDevice
 
 	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
-	sysfsPath    = "/sys"
 )
+
+// decodeKernelUeventParams decodes the uevent attribute for the device associated
+// with the supplied sysfs path, and returns a map of variables.
+//
+// XXX: This is duplicated in luks2/dm_helper.go. A future PR may move device
+// enumeration into a separate internal package.
+func decodeKernelUeventParams(path string) (map[string]string, error) {
+	data, err := osReadFile(filepath.Join(path, "uevent"))
+	if err != nil {
+		return nil, err
+	}
+
+	entries := bytes.Split(data, []byte("\n"))
+
+	env := make(map[string]string)
+	for i, entry := range entries[:len(entries)-1] {
+		v := bytes.Split(entry, []byte("="))
+		if len(v) != 2 {
+			return nil, fmt.Errorf("invalid entry %d: %q", i, entry)
+		}
+		env[string(v[0])] = string(v[1])
+	}
+
+	return env, nil
+}
 
 type defaultEnvImpl struct{}
 
@@ -90,14 +120,9 @@ func (defaultEnvImpl) DetectVirtMode(mode DetectVirtMode) (string, error) {
 }
 
 type defaultEnvSysfsDevice struct {
-	name      string
 	path      string
+	props     map[string]string
 	subsystem string
-}
-
-// Name implements [SysfsDevice.Name].
-func (d *defaultEnvSysfsDevice) Name() string {
-	return d.name
 }
 
 // Path implements [SysfsDevice.Path].
@@ -105,9 +130,42 @@ func (d *defaultEnvSysfsDevice) Path() string {
 	return d.path
 }
 
+// Properties implements [SysfsDevice.Properties].
+func (d *defaultEnvSysfsDevice) Properties() map[string]string {
+	return d.props
+}
+
 // Subsystem implements [SysfsDevice.Subsystem].
 func (d *defaultEnvSysfsDevice) Subsystem() string {
 	return d.subsystem
+}
+
+func (d *defaultEnvSysfsDevice) Parent() (SysfsDevice, error) {
+	path := d.path
+	for {
+		path = filepath.Dir(path)
+		if path == crawler.BASE_DEVPATH {
+			return nil, nil
+		}
+		props, err := decodeKernelUeventParams(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("cannot decode kernel uevent properties for %s: %w", path, err)
+		}
+
+		subsystem, err := osReadlink(filepath.Join(path, "subsystem"))
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("cannot resolve subsystem for %s: %w", path, err)
+		}
+
+		return &defaultEnvSysfsDevice{
+			path:      path,
+			props:     props,
+			subsystem: filepath.Base(subsystem),
+		}, nil
+	}
 }
 
 // AttributeReader implements [SysfsDevice.AttributeReader].
@@ -116,7 +174,7 @@ func (d *defaultEnvSysfsDevice) AttributeReader(attr string) (rc io.ReadCloser, 
 		return nil, ErrNoDeviceAttribute
 	}
 
-	f, err := os.Open(filepath.Join(d.path, attr))
+	f, err := osOpen(filepath.Join(d.path, attr))
 	switch {
 	case os.IsNotExist(err):
 		return nil, ErrNoDeviceAttribute
@@ -141,41 +199,30 @@ func (d *defaultEnvSysfsDevice) AttributeReader(attr string) (rc io.ReadCloser, 
 	return f, nil
 }
 
-// DeviceForClass implements [HostEnvironment.DevicesForClass].
-func (defaultEnvImpl) DevicesForClass(class string) ([]SysfsDevice, error) {
-	classPath := filepath.Join(sysfsPath, "class", class)
-	f, err := os.Open(classPath)
-	switch {
-	case os.IsNotExist(err):
-		// it's ok to have no devices for the specified class
-		return nil, nil
-	case err != nil:
-		return nil, err
-	}
-	defer f.Close()
+// EnumerateDevices implements [HostEnvironment.EnumerateDevices].
+func (defaultEnvImpl) EnumerateDevices(matcher netlink.Matcher) ([]SysfsDevice, error) {
+	queue := make(chan crawler.Device)
+	errs := make(chan error)
+	crawlerExistingDevices(queue, errs, matcher)
 
-	entries, err := f.ReadDir(-1)
-	if err != nil {
-		return nil, err
-	}
+	var devices []SysfsDevice
 
-	var out []SysfsDevice
-	for _, entry := range entries {
-		path, err := filepath.EvalSymlinks(filepath.Join(classPath, entry.Name()))
-		if err != nil {
-			return nil, fmt.Errorf("cannot resolve path for %s: %w", entry.Name(), err)
+	for {
+		select {
+		case dev, more := <-queue:
+			if !more {
+				return devices, nil
+			}
+			devices = append(devices, &defaultEnvSysfsDevice{
+				path:      dev.KObj,
+				props:     dev.Env,
+				subsystem: dev.Env["SUBSYSTEM"],
+			})
+			delete(dev.Env, "SUBSYSTEM")
+		case err := <-errs:
+			return nil, err
 		}
-		subsystem, err := filepath.EvalSymlinks(filepath.Join(path, "subsystem"))
-		if err != nil {
-			return nil, fmt.Errorf("cannot resolve subsystem for %s: %w", entry.Name(), err)
-		}
-		out = append(out, &defaultEnvSysfsDevice{
-			name:      entry.Name(),
-			path:      path,
-			subsystem: filepath.Base(subsystem),
-		})
 	}
-	return out, nil
 }
 
 // DefaultEnv corresponds to the environment associated with the host

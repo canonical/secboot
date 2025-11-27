@@ -141,14 +141,12 @@ func (s *runChecksSuite) TestRunChecksGood(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -157,7 +155,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -224,14 +222,12 @@ func (s *runChecksSuite) TestRunChecksGoodSHA384(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -242,7 +238,7 @@ C7E003CB
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -307,14 +303,12 @@ func (s *runChecksSuite) TestRunChecksGoodSHA1(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -323,7 +317,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -388,14 +382,12 @@ func (s *runChecksSuite) TestRunChecksGoodEmptySHA384(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -404,7 +396,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -469,14 +461,12 @@ func (s *runChecksSuite) TestRunChecksGoodPostInstall(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -485,7 +475,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -672,14 +662,12 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetected(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -688,7 +676,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -753,14 +741,12 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetectedSL3(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -772,7 +758,7 @@ C7E003CB
 				StartupLocality: 3,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -837,14 +823,12 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetectedSL3NotProtected(c *
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -856,7 +840,7 @@ C7E003CB
 				StartupLocality: 3,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -921,14 +905,12 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetectedHCRTM(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -940,7 +922,7 @@ C7E003CB
 				StartupLocality: 4,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1005,14 +987,12 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetectedHCRTMLocality4NotPr
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1024,7 +1004,7 @@ C7E003CB
 				StartupLocality: 4,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1089,14 +1069,12 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR0Value(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1105,7 +1083,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1179,14 +1157,12 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR0ValueWithDiscreteTPM(c *C) 
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1195,7 +1171,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1271,14 +1247,12 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR2Value(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1287,7 +1261,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1363,14 +1337,12 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR4Value(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1379,7 +1351,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1455,14 +1427,12 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR7Value(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1471,7 +1441,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1545,14 +1515,12 @@ func (s *runChecksSuite) TestRunChecksGoodVARDriversPresent(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1564,7 +1532,7 @@ C7E003CB
 				IncludeDriverLaunch: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1632,14 +1600,12 @@ func (s *runChecksSuite) TestRunChecksGoodVARDriversPresentWithInvalidPCR2Value(
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1651,7 +1617,7 @@ C7E003CB
 				IncludeDriverLaunch: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1728,14 +1694,12 @@ func (s *runChecksSuite) TestRunChecksGoodSysPrepAppsPresent(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1747,7 +1711,7 @@ C7E003CB
 				IncludeSysPrepAppLaunch: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1815,14 +1779,12 @@ func (s *runChecksSuite) TestRunChecksGoodSysPrepAppsPresentWithInvalidPCR4Value
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1834,7 +1796,7 @@ C7E003CB
 				IncludeSysPrepAppLaunch: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1911,14 +1873,12 @@ func (s *runChecksSuite) TestRunChecksGoodAbsoluteActive(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -1930,7 +1890,7 @@ C7E003CB
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -1998,14 +1958,12 @@ func (s *runChecksSuite) TestRunChecksGoodAbsoluteActiveWithInvalidPCR4Value(c *
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2017,7 +1975,7 @@ C7E003CB
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2094,14 +2052,12 @@ func (s *runChecksSuite) TestRunChecksGoodNoBootManagerCodeProfileSupport(c *C) 
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2112,7 +2068,7 @@ C7E003CB
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2185,14 +2141,12 @@ func (s *runChecksSuite) TestRunChecksGoodPreOSVerificationUsingDigests(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2205,7 +2159,7 @@ C7E003CB
 				PreOSVerificationUsesDigests: crypto.SHA256,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2276,14 +2230,12 @@ func (s *runChecksSuite) TestRunChecksGoodPreOSVerificationUsingDigestsWithInval
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2296,7 +2248,7 @@ C7E003CB
 				PreOSVerificationUsesDigests: crypto.SHA256,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2376,14 +2328,12 @@ func (s *runChecksSuite) TestRunChecksGoodWeakSecureBootAlgs(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2396,7 +2346,7 @@ C7E003CB
 				PreOSVerificationUsesDigests: crypto.SHA1,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2470,14 +2420,12 @@ func (s *runChecksSuite) TestRunChecksGoodWeakSecureBootAlgsWithInvalidPCR7Value
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2490,7 +2438,7 @@ C7E003CB
 				PreOSVerificationUsesDigests: crypto.SHA1,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2573,14 +2521,12 @@ func (s *runChecksSuite) TestRunChecksGoodNoSecureBootPolicyProfileSupport(c *C)
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2589,7 +2535,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2657,14 +2603,12 @@ func (s *runChecksSuite) TestRunChecksGoodTPMLockout(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2673,7 +2617,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2750,14 +2694,12 @@ func (s *runChecksSuite) TestRunChecksGoodPostInstallLockoutAvailabilityCheckSki
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	warnings, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2766,7 +2708,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -2824,6 +2766,7 @@ C7E003CB
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
+
 func (s *runChecksSuite) TestRunChecksBadVirtualMachine(c *C) {
 	_, err := s.testRunChecks(c, &testRunChecksParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
@@ -2897,14 +2840,12 @@ func (s *runChecksSuite) TestRunChecksBadTPMOwnedHierarchiesAndLockedOut(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -2913,7 +2854,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -3098,14 +3039,12 @@ func (s *runChecksSuite) TestRunChecksBadNoHardwareRootOfTrustError(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3114,7 +3053,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -3133,13 +3072,12 @@ C7E003CB
 	c.Check(errors.As(hse, &rote), testutil.IsTrue)
 }
 
-func (s *runChecksSuite) TestRunChecksBadHostSecurityMissingIntelMEI(c *C) {
-	// Test case where host security checks fail because the intel MEI kernel module is missing.
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
+func (s *runChecksSuite) TestRunChecksBadHostSecurityMissingIntelMEModule(c *C) {
+	// Test case where host security checks fail because the intel ME kernel module is missing.
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0", map[string]string{"PCI_CLASS": "78000", "PCI_ID": "8086:7E70"}, "pci", nil, nil),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3148,7 +3086,7 @@ func (s *runChecksSuite) TestRunChecksBadHostSecurityMissingIntelMEI(c *C) {
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -3180,14 +3118,12 @@ func (s *runChecksSuite) TestRunChecksBadHostSecurityMissingMSR(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3196,7 +3132,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 0, nil),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -3228,10 +3164,10 @@ func (s *runChecksSuite) TestRunChecksBadUEFIDebuggingEnabledAndNoKernelIOMMU(c 
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3243,7 +3179,7 @@ C7E003CB
 				FirmwareDebugger: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -3287,14 +3223,12 @@ func (s *runChecksSuite) TestRunChecksBadSHA1(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3303,7 +3237,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3360,14 +3294,12 @@ func (s *runChecksSuite) TestRunChecksBadMandatoryPCR1(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3376,7 +3308,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3432,14 +3364,12 @@ func (s *runChecksSuite) TestRunChecksBadMandatoryPCR3(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3448,7 +3378,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3504,14 +3434,12 @@ func (s *runChecksSuite) TestRunChecksBadMandatoryPCR5(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3520,7 +3448,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3576,14 +3504,12 @@ func (s *runChecksSuite) TestRunChecksBadVARDriversPresent(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3595,7 +3521,7 @@ C7E003CB
 				IncludeDriverLaunch: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3650,14 +3576,12 @@ func (s *runChecksSuite) TestRunChecksBadSysPrepAppsPresent(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3669,7 +3593,7 @@ C7E003CB
 				IncludeSysPrepAppLaunch: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3724,14 +3648,12 @@ func (s *runChecksSuite) TestRunChecksBadAbsoluteActive(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3743,7 +3665,7 @@ C7E003CB
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3798,14 +3720,12 @@ func (s *runChecksSuite) TestRunChecksBadNotAllBootManagerCodeDigestsVerified(c 
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3816,7 +3736,7 @@ C7E003CB
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3871,14 +3791,12 @@ func (s *runChecksSuite) TestRunChecksBadWeakSecureBootAlgs(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3891,7 +3809,7 @@ C7E003CB
 				PreOSVerificationUsesDigests: crypto.SHA1,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -3950,14 +3868,12 @@ func (s *runChecksSuite) TestRunChecksBadPreOSVerificationUsingDigests(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -3970,7 +3886,7 @@ C7E003CB
 				PreOSVerificationUsesDigests: crypto.SHA256,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4025,14 +3941,12 @@ func (s *runChecksSuite) TestRunChecksBadEFIVariableAccessErrorBootOptionSupport
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4043,7 +3957,7 @@ C7E003CB
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4092,14 +4006,12 @@ func (s *runChecksSuite) TestRunChecksBadNoBootManagerCodeProfileSupport(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4110,7 +4022,7 @@ C7E003CB
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4169,14 +4081,12 @@ func (s *runChecksSuite) TestRunChecksBadEFIVariableAccessErrorSetupMode(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4185,7 +4095,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4234,14 +4144,12 @@ func (s *runChecksSuite) TestRunChecksBadNoSecureBootPolicyProfileSupport(c *C) 
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4250,7 +4158,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4307,14 +4215,12 @@ func (s *runChecksSuite) TestRunChecksBadNoSecureBootPolicyProfileSupportSecureB
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4326,7 +4232,7 @@ C7E003CB
 				SecureBootDisabled: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4387,14 +4293,12 @@ func (s *runChecksSuite) TestRunChecksBadNoSecureBootPolicyProfileSupportSecureB
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4407,7 +4311,7 @@ C7E003CB
 				NoSBAT:             true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4464,14 +4368,12 @@ func (s *runChecksSuite) TestRunChecksBadDiscreteTPMDetectedSL0NotProtected(c *C
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4480,7 +4382,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4537,14 +4439,12 @@ func (s *runChecksSuite) TestRunChecksBadDiscreteTPMDetectedSL3NotProtected(c *C
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4556,7 +4456,7 @@ C7E003CB
 				StartupLocality: 3,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4613,14 +4513,12 @@ func (s *runChecksSuite) TestRunChecksBadDiscreteTPMDetectedHCRTMLocality4NotPro
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4632,7 +4530,7 @@ C7E003CB
 				StartupLocality: 4,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (2 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4689,14 +4587,12 @@ func (s *runChecksSuite) TestRunChecksBadEmptySHA384(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4705,7 +4601,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4763,14 +4659,12 @@ func (s *runChecksSuite) TestRunChecksBadTPMHierarchiesOwnedAndNoSecureBootPolic
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4779,7 +4673,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4851,14 +4745,12 @@ func (s *runChecksSuite) TestRunChecksBadEmptyPCRBankAndNoBootManagerCodeProfile
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4867,7 +4759,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -4932,10 +4824,10 @@ func (s *runChecksSuite) TestRunChecksBadEmptyPCRBankAndNoKernelIOMMU(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -4944,7 +4836,7 @@ C7E003CB
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
@@ -5009,10 +4901,10 @@ func (s *runChecksSuite) TestRunChecksAllowInsufficientDMAProtection(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": {
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 
 	_, err := s.testRunChecks(c, &testRunChecksParams{
@@ -5024,7 +4916,7 @@ C7E003CB
 				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
-			efitest.WithSysfsDevices(devices),
+			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},

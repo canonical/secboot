@@ -25,6 +25,7 @@ import (
 	"io"
 
 	"github.com/canonical/tcglog-parser"
+	"github.com/pilebones/go-udev/netlink"
 	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
@@ -52,9 +53,11 @@ type HostEnvironmentEFI interface {
 
 // SysfsDevice corresponds to a device in the sysfs tree.
 type SysfsDevice interface {
-	Name() string      // the name of the device
-	Path() string      // the fully evaluated sysfs path for the device
-	Subsystem() string // the device subsystem name
+	Path() string                  // the sysfs path for the device
+	Properties() map[string]string // the kernel properties for the device
+	Subsystem() string             // the device subsystem name
+
+	Parent() (SysfsDevice, error) // the parent device (can be nil)
 
 	// AttributeReader returns an io.ReadCloser to read the specified
 	// attribute for the device. The caller should call Close when
@@ -129,8 +132,9 @@ type HostEnvironment interface {
 	// test for.
 	DetectVirtMode(mode DetectVirtMode) (string, error)
 
-	// DevicesForClass returns a list of devices with the specified class.
-	DevicesForClass(class string) ([]SysfsDevice, error)
+	// EnumerateDevices enumerates devices and returns a slice of devices that match
+	// the supplied matcher.
+	EnumerateDevices(matcher netlink.Matcher) ([]SysfsDevice, error)
 
 	// AMD64 returns an interface that can be used to mock some parts of an AMD64 platform.
 	// This will return ErrNotAMD64CPU on non-AMD64 platforms.

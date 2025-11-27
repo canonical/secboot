@@ -20,7 +20,6 @@
 package preinstall
 
 import (
-	"errors"
 	"fmt"
 
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -46,7 +45,11 @@ func isTPMDiscrete(env internal_efi.HostEnvironment) (bool, error) {
 		}
 		return discrete, nil
 	case cpuVendorAMD:
-		return false, &UnsupportedPlatformError{errors.New("cannot check TPM discreteness on AMD systems")}
+		// Maybe make this do something in the future, but we don't care
+		// whether the TPM is discrete or not on AMD platforms. Return false
+		// here to disable the partial reset attack mitigation for discrete
+		// TPMs on Intel platforms.
+		return false, nil
 	default:
 		panic("not reached")
 	}

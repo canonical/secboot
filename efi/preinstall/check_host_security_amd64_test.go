@@ -36,7 +36,7 @@ type hostSecurityAMD64Suite struct{}
 
 var _ = Suite(&hostSecurityAMD64Suite{})
 
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityGood(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityIntelGood(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -50,17 +50,15 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityGood(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithSysfsDevices(devices),
+		efitest.WithSysfsDevices(devices...),
 		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
@@ -71,7 +69,7 @@ C7E003CB
 	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityNoTXT(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityIntelNoTXT(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -85,17 +83,15 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityNoTXT(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithSysfsDevices(devices),
+		efitest.WithSysfsDevices(devices...),
 		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}),
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
@@ -116,6 +112,29 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrNotAMD64(c *C) {
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityAMDGood(c *C) {
+	pspAttrs := map[string][]byte{
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`1
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", pspAttrs, nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(devices...),
+		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
+	)
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+
+	protectedStartupLocalities, err := CheckHostSecurity(env, log)
+	c.Check(err, IsNil)
+	c.Check(protectedStartupLocalities, Equals, tpm2.Locality(0))
+}
+
 func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrUnrecognizedCpuVendor(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithAMD64Environment("GenuineInte", nil, 0, nil),
@@ -128,18 +147,7 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrUnrecognizedCpuVendor(c
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrAMDNotSupportedYet(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
-	)
-
-	_, err := CheckHostSecurity(env, nil)
-	c.Check(err, ErrorMatches, `unsupported platform: checking host security is not yet implemented for AMD`)
-	var upe *UnsupportedPlatformError
-	c.Check(errors.As(err, &upe), testutil.IsTrue)
-}
-
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrMEI(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityIntelErrMEI(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -153,13 +161,13 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrMEI(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithSysfsDevices(devices),
+		efitest.WithSysfsDevices(devices...),
 		efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil),
 	)
 
@@ -169,6 +177,32 @@ C7E003CB
 	var nhrotErr *NoHardwareRootOfTrustError
 	c.Check(errors.As(err, &nhrotErr), testutil.IsTrue)
 	c.Check(nhrotErr, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode`)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityAMDErrPSP(c *C) {
+	pspAttrs := map[string][]byte{
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`0
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", pspAttrs, nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(devices...),
+		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
+	)
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+
+	_, err := CheckHostSecurity(env, log)
+	c.Check(err, ErrorMatches, `encountered an error when checking the AMD PSP configuration: no hardware root-of-trust properly configured: Platform Secure Boot is not enabled`)
+
+	var nhrotErr *NoHardwareRootOfTrustError
+	c.Check(errors.As(err, &nhrotErr), testutil.IsTrue)
+	c.Check(nhrotErr, ErrorMatches, `no hardware root-of-trust properly configured: Platform Secure Boot is not enabled`)
 }
 
 func (s *hostSecurityAMD64Suite) TestCheckHostSecuritySecureBootPolicyFirmwareDebugging(c *C) {
@@ -185,17 +219,15 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecuritySecureBootPolicyFirmwareDe
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithSysfsDevices(devices),
+		efitest.WithSysfsDevices(devices...),
 		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
@@ -223,13 +255,13 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityNoIOMMU(c *C) {
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithSysfsDevices(devices),
+		efitest.WithSysfsDevices(devices...),
 		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})
@@ -257,13 +289,13 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecuritySecureBootPolicyFirmwareDe
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithSysfsDevices(devices),
+		efitest.WithSysfsDevices(devices...),
 		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
@@ -280,7 +312,7 @@ C7E003CB
 	c.Check(protectedStartupLocalities.Values(), DeepEquals, []uint8{3, 4})
 }
 
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityCPUDebuggingUnlocked(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityIntelErrCPUDebuggingUnlocked(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -294,17 +326,15 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityCPUDebuggingUnlocked(c *C)
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-			efitest.NewMockSysfsDevice("dmar1", "/sys/devices/virtual/iommu/dmar1", "iommu", nil),
-		},
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", meiAttrs),
-		},
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithSysfsDevices(devices),
+		efitest.WithSysfsDevices(devices...),
 		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x0}),
 	)
 	log := efitest.NewLog(c, &efitest.LogOptions{})

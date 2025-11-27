@@ -32,28 +32,14 @@ type hostSecuritySuite struct{}
 
 var _ = Suite(&hostSecuritySuite{})
 
-func (s *hostSecuritySuite) TestCheckForKernelIOMMUNotPresent1(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(make(map[string][]internal_efi.SysfsDevice)))
-	c.Check(CheckForKernelIOMMU(env), Equals, ErrNoKernelIOMMU)
-}
-
-func (s *hostSecuritySuite) TestCheckForKernelIOMMUNotPresent2(c *C) {
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "foo", nil),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+func (s *hostSecuritySuite) TestCheckForKernelIOMMUNotPresent(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices())
 	c.Check(CheckForKernelIOMMU(env), Equals, ErrNoKernelIOMMU)
 }
 
 func (s *hostSecuritySuite) TestCheckForKernelIOMMUPresent(c *C) {
-	devices := map[string][]internal_efi.SysfsDevice{
-		"iommu": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("dmar0", "/sys/devices/virtual/iommu/dmar0", "iommu", nil),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	c.Check(CheckForKernelIOMMU(env), IsNil)
 }
 
