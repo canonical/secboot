@@ -122,59 +122,131 @@ const (
 	InsufficientDMAProtectionDetected
 )
 
-var checkResultFlagToIDStringMap = map[CheckResultFlags]string{
-	NoPlatformFirmwareProfileSupport:     "no-platform-firmware-profile-support",
-	NoPlatformConfigProfileSupport:       "no-platform-config-profile-support",
-	NoDriversAndAppsProfileSupport:       "no-drivers-and-apps-profile-support",
-	NoDriversAndAppsConfigProfileSupport: "no-drivers-and-apps-config-profile-support",
-	NoBootManagerCodeProfileSupport:      "no-boot-manager-code-profile-support",
-	NoBootManagerConfigProfileSupport:    "no-boot-manager-config-profile-support",
-	NoSecureBootPolicyProfileSupport:     "no-secure-boot-policy-profile-support",
-	DiscreteTPMDetected:                  "discrete-tpm-detected",
-	StartupLocalityNotProtected:          "startup-locality-not-protected",
-	InsufficientDMAProtectionDetected:    "insufficient-dma-protection-detected",
+func (f CheckResultFlags) toStringSlice() []string {
+	out := make([]string, 0)
+	for i := 0; i < 64; i++ {
+		flag := CheckResultFlags(1 << i)
+		if f&flag == 0 {
+			continue
+		}
+
+		var str string
+		switch flag {
+		case NoPlatformFirmwareProfileSupport:
+			str = "no-platform-firmware-profile-support"
+		case NoPlatformConfigProfileSupport:
+			str = "no-platform-config-profile-support"
+		case NoDriversAndAppsProfileSupport:
+			str = "no-drivers-and-apps-profile-support"
+		case NoDriversAndAppsConfigProfileSupport:
+			str = "no-drivers-and-apps-config-profile-support"
+		case NoBootManagerCodeProfileSupport:
+			str = "no-boot-manager-code-profile-support"
+		case NoBootManagerConfigProfileSupport:
+			str = "no-boot-manager-config-profile-support"
+		case NoSecureBootPolicyProfileSupport:
+			str = "no-secure-boot-policy-profile-support"
+		case DiscreteTPMDetected:
+			str = "discrete-tpm-detected"
+		case StartupLocalityNotProtected:
+			str = "startup-locality-not-protected"
+		case InsufficientDMAProtectionDetected:
+			str = "insufficient-dma-protection-detected"
+		default:
+			str = fmt.Sprintf("%#08x", uint32(flag))
+		}
+
+		out = append(out, str)
+	}
+
+	return out
+
 }
 
-var checkResultFlagFromIDStringMap = map[string]CheckResultFlags{
-	"no-platform-firmware-profile-support":       NoPlatformFirmwareProfileSupport,
-	"no-platform-config-profile-support":         NoPlatformConfigProfileSupport,
-	"no-drivers-and-apps-profile-support":        NoDriversAndAppsProfileSupport,
-	"no-drivers-and-apps-config-profile-support": NoDriversAndAppsConfigProfileSupport,
-	"no-boot-manager-code-profile-support":       NoBootManagerCodeProfileSupport,
-	"no-boot-manager-config-profile-support":     NoBootManagerConfigProfileSupport,
-	"no-secure-boot-policy-profile-support":      NoSecureBootPolicyProfileSupport,
-	"discrete-tpm-detected":                      DiscreteTPMDetected,
-	"startup-locality-not-protected":             StartupLocalityNotProtected,
-	"insufficient-dma-protection-detected":       InsufficientDMAProtectionDetected,
+// MarshalJSON implements [json.Marshaler].
+func (f CheckResultFlags) MarshalJSON() ([]byte, error) {
+	return json.Marshal(f.toStringSlice())
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (f *CheckResultFlags) UnmarshalJSON(data []byte) error {
+	var flags []string
+	if err := json.Unmarshal(data, &flags); err != nil {
+		return err
+	}
+
+	var out CheckResultFlags
+	for _, flag := range flags {
+		var val CheckResultFlags
+
+		switch flag {
+		case "no-platform-firmware-profile-support":
+			val = NoPlatformFirmwareProfileSupport
+		case "no-platform-config-profile-support":
+			val = NoPlatformConfigProfileSupport
+		case "no-drivers-and-apps-profile-support":
+			val = NoDriversAndAppsProfileSupport
+		case "no-drivers-and-apps-config-profile-support":
+			val = NoDriversAndAppsConfigProfileSupport
+		case "no-boot-manager-code-profile-support":
+			val = NoBootManagerCodeProfileSupport
+		case "no-boot-manager-config-profile-support":
+			val = NoBootManagerConfigProfileSupport
+		case "no-secure-boot-policy-profile-support":
+			val = NoSecureBootPolicyProfileSupport
+		case "discrete-tpm-detected":
+			val = DiscreteTPMDetected
+		case "startup-locality-not-protected":
+			val = StartupLocalityNotProtected
+		case "insufficient-dma-protection-detected":
+			val = InsufficientDMAProtectionDetected
+		default:
+			v, err := strconv.ParseUint(flag, 0, 32)
+			switch {
+			case errors.Is(err, strconv.ErrSyntax) || errors.Is(err, strconv.ErrRange):
+				return fmt.Errorf("unrecognized flag %q", flag)
+			case err != nil:
+				return err
+			}
+			val = CheckResultFlags(v)
+		}
+
+		out |= val
+	}
+
+	*f = out
+	return nil
+}
+
+// String implements [fmt.Stringer].
+func (f CheckResultFlags) String() string {
+	return strings.Join(f.toStringSlice(), ",")
 }
 
 type checkResultJSON struct {
 	PCRAlg            secboot.HashAlg      `json:"pcr-alg"`
 	UsedSecureBootCAs []*X509CertificateID `json:"used-secure-boot-cas"`
-	Flags             []string             `json:"flags"`
+	Flags             CheckResultFlags     `json:"flags"`
 }
 
 func newCheckResultJSON(r *CheckResult) (*checkResultJSON, error) {
-	out := new(checkResultJSON)
+	out := &checkResultJSON{
+		UsedSecureBootCAs: r.UsedSecureBootCAs,
+		Flags:             r.Flags,
+	}
 	out.PCRAlg = secboot.HashAlg(r.PCRAlg.GetHash())
 	if out.PCRAlg == secboot.HashAlg(0) {
 		return nil, errors.New("invalid PCR algorithm")
 	}
 
-	out.UsedSecureBootCAs = r.UsedSecureBootCAs
-
-	for i := 0; i < 64; i++ {
-		if r.Flags&CheckResultFlags(1<<i) > 0 {
-			if str, exists := checkResultFlagToIDStringMap[CheckResultFlags(1<<i)]; exists {
-				out.Flags = append(out.Flags, str)
-			}
-		}
-	}
 	return out, nil
 }
 
 func (r checkResultJSON) toPublic() (*CheckResult, error) {
-	out := new(CheckResult)
+	out := &CheckResult{
+		UsedSecureBootCAs: r.UsedSecureBootCAs,
+		Flags:             r.Flags,
+	}
 
 	switch crypto.Hash(r.PCRAlg) {
 	case crypto.SHA1:
@@ -187,16 +259,6 @@ func (r checkResultJSON) toPublic() (*CheckResult, error) {
 		out.PCRAlg = tpm2.HashAlgorithmSHA512
 	default:
 		return nil, errors.New("unrecognized PCR algorithm")
-	}
-
-	out.UsedSecureBootCAs = r.UsedSecureBootCAs
-
-	for _, flag := range r.Flags {
-		val, exists := checkResultFlagFromIDStringMap[flag]
-		if !exists {
-			return nil, fmt.Errorf("unrecognized flag %q", flag)
-		}
-		out.Flags |= val
 	}
 
 	return out, nil
@@ -232,17 +294,7 @@ func (r CheckResult) String() string {
 		io.WriteString(&b, makeIndentedListItem(2, strconv.Itoa(i+1)+":", fmt.Sprintf("subject=%v, SKID=%#x, pubkeyAlg=%v, issuer=%v, AKID=%#x, sigAlg=%v\n",
 			ca.Subject(), ca.SubjectKeyId(), ca.PublicKeyAlgorithm(), ca.Issuer(), ca.AuthorityKeyId(), ca.SignatureAlgorithm())))
 	}
-	var flags []string
-	for i := 0; i < 64; i++ {
-		if r.Flags&CheckResultFlags(1<<i) > 0 {
-			str, exists := checkResultFlagToIDStringMap[CheckResultFlags(1<<i)]
-			if !exists {
-				str = fmt.Sprintf("%016x", 1<<i)
-			}
-			flags = append(flags, str)
-		}
-	}
-	io.WriteString(&b, makeIndentedListItem(0, "-", fmt.Sprintf("Flags: %s\n", strings.Join(flags, ","))))
+	io.WriteString(&b, makeIndentedListItem(0, "-", fmt.Sprintf("Flags: %s\n", r.Flags)))
 	if r.Warnings != nil {
 		warnings := r.Warnings.Unwrap()
 		io.WriteString(&b, makeIndentedListItem(0, "-", "Warnings:\n"))

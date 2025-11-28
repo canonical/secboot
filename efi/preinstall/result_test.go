@@ -32,6 +32,75 @@ type resultSuite struct{}
 
 var _ = Suite(&resultSuite{})
 
+func (s *resultSuite) TestCheckResultFlagsMarshalJSON(c *C) {
+	for _, params := range []struct {
+		flags    CheckResultFlags
+		expected string
+	}{
+		{flags: NoPlatformFirmwareProfileSupport, expected: `["no-platform-firmware-profile-support"]`},
+		{flags: NoPlatformConfigProfileSupport, expected: `["no-platform-config-profile-support"]`},
+		{flags: NoDriversAndAppsProfileSupport, expected: `["no-drivers-and-apps-profile-support"]`},
+		{flags: NoDriversAndAppsConfigProfileSupport, expected: `["no-drivers-and-apps-config-profile-support"]`},
+		{flags: NoBootManagerCodeProfileSupport, expected: `["no-boot-manager-code-profile-support"]`},
+		{flags: NoBootManagerConfigProfileSupport, expected: `["no-boot-manager-config-profile-support"]`},
+		{flags: NoSecureBootPolicyProfileSupport, expected: `["no-secure-boot-policy-profile-support"]`},
+		{flags: DiscreteTPMDetected, expected: `["discrete-tpm-detected"]`},
+		{flags: StartupLocalityNotProtected, expected: `["startup-locality-not-protected"]`},
+		{flags: InsufficientDMAProtectionDetected, expected: `["insufficient-dma-protection-detected"]`},
+		{flags: NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport, expected: `["no-platform-config-profile-support","no-drivers-and-apps-config-profile-support","no-boot-manager-config-profile-support"]`},
+	} {
+		data, err := json.Marshal(params.flags)
+		c.Check(err, IsNil, Commentf("flags:%v", params.flags))
+		c.Check(data, DeepEquals, []byte(params.expected), Commentf("flags:%v", params.flags))
+	}
+}
+
+func (s *resultSuite) TestCheckResultFlagsUnmarshalJSON(c *C) {
+	for _, params := range []struct {
+		flags    string
+		expected CheckResultFlags
+	}{
+		{flags: `["no-platform-firmware-profile-support"]`, expected: NoPlatformFirmwareProfileSupport},
+		{flags: `["no-platform-config-profile-support"]`, expected: NoPlatformConfigProfileSupport},
+		{flags: `["no-drivers-and-apps-profile-support"]`, expected: NoDriversAndAppsProfileSupport},
+		{flags: `["no-drivers-and-apps-config-profile-support"]`, expected: NoDriversAndAppsConfigProfileSupport},
+		{flags: `["no-boot-manager-code-profile-support"]`, expected: NoBootManagerCodeProfileSupport},
+		{flags: `["no-boot-manager-config-profile-support"]`, expected: NoBootManagerConfigProfileSupport},
+		{flags: `["no-secure-boot-policy-profile-support"]`, expected: NoSecureBootPolicyProfileSupport},
+		{flags: `["discrete-tpm-detected"]`, expected: DiscreteTPMDetected},
+		{flags: `["startup-locality-not-protected"]`, expected: StartupLocalityNotProtected},
+		{flags: `["insufficient-dma-protection-detected"]`, expected: InsufficientDMAProtectionDetected},
+		{flags: `["no-platform-config-profile-support","no-drivers-and-apps-config-profile-support","no-boot-manager-config-profile-support"]`, expected: NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport},
+		{flags: `["0x8"]`, expected: NoDriversAndAppsConfigProfileSupport},
+		{flags: `["32"]`, expected: NoBootManagerConfigProfileSupport},
+	} {
+		var flags CheckResultFlags
+		c.Check(json.Unmarshal([]byte(params.flags), &flags), IsNil, Commentf("flags:%q", params.flags))
+		c.Check(flags, Equals, params.expected, Commentf("flags:%q", params.flags))
+	}
+}
+
+func (s *resultSuite) TestCheckResultFlagsString(c *C) {
+	for _, params := range []struct {
+		flags    CheckResultFlags
+		expected string
+	}{
+		{flags: NoPlatformFirmwareProfileSupport, expected: "no-platform-firmware-profile-support"},
+		{flags: NoPlatformConfigProfileSupport, expected: "no-platform-config-profile-support"},
+		{flags: NoDriversAndAppsProfileSupport, expected: "no-drivers-and-apps-profile-support"},
+		{flags: NoDriversAndAppsConfigProfileSupport, expected: "no-drivers-and-apps-config-profile-support"},
+		{flags: NoBootManagerCodeProfileSupport, expected: "no-boot-manager-code-profile-support"},
+		{flags: NoBootManagerConfigProfileSupport, expected: "no-boot-manager-config-profile-support"},
+		{flags: NoSecureBootPolicyProfileSupport, expected: "no-secure-boot-policy-profile-support"},
+		{flags: DiscreteTPMDetected, expected: "discrete-tpm-detected"},
+		{flags: StartupLocalityNotProtected, expected: "startup-locality-not-protected"},
+		{flags: InsufficientDMAProtectionDetected, expected: "insufficient-dma-protection-detected"},
+		{flags: NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport, expected: "no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support"},
+	} {
+		c.Check(params.flags.String(), Equals, params.expected, Commentf("flags:%#08x", params.flags))
+	}
+}
+
 func (s *resultSuite) TestCheckResultMarshalJSON(c *C) {
 	result := CheckResult{
 		PCRAlg:            tpm2.HashAlgorithmSHA256,
@@ -287,7 +356,7 @@ func (s *resultSuite) TestCheckResultUnmarshalJSONUnrecognizedFlags(c *C) {
 	data := []byte("{\"pcr-alg\":\"sha256\",\"used-secure-boot-cas\":[{\"subject\":\"MIGBMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSswKQYDVQQDEyJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVUVGSSBDQSAyMDEx\",\"subject-key-id\":\"E62/Qwm9gnCcjNVPMW7VIpiKG9Q=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MIGRMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTswOQYDVQQDEzJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVGhpcmQgUGFydHkgTWFya2V0cGxhY2UgUm9vdA==\",\"authority-key-id\":\"RWZSQ+F+WBG/1k6eI1UIOzoiaqg=\",\"signature-algorithm\":\"SHA256-RSA\"}],\"flags\":[\"no-platform-config-profile-support\",\"no-drivers-and-apps-config-profile-support\",\"no-boot-manager-config-profile-support\",\"discrete-tpm-detected\",\"var-drivers-present\"]}")
 
 	var result *CheckResult
-	c.Assert(json.Unmarshal(data, &result), ErrorMatches, `cannot decode CheckResult: unrecognized flag \"var-drivers-present\"`)
+	c.Assert(json.Unmarshal(data, &result), ErrorMatches, `unrecognized flag \"var-drivers-present\"`)
 }
 
 func (s *resultSuite) TestCheckResultString(c *C) {
