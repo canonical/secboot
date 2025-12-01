@@ -348,7 +348,7 @@ func (s *resultSuite) TestCheckResultUnmarshalJSONUnrecognizedPCRAlg(c *C) {
 	data := []byte("{\"pcr-alg\":\"sha3-256\",\"used-secure-boot-cas\":[{\"subject\":\"MIGBMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSswKQYDVQQDEyJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVUVGSSBDQSAyMDEx\",\"subject-key-id\":\"E62/Qwm9gnCcjNVPMW7VIpiKG9Q=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MIGRMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTswOQYDVQQDEzJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVGhpcmQgUGFydHkgTWFya2V0cGxhY2UgUm9vdA==\",\"authority-key-id\":\"RWZSQ+F+WBG/1k6eI1UIOzoiaqg=\",\"signature-algorithm\":\"SHA256-RSA\"}],\"flags\":[\"no-platform-config-profile-support\",\"no-drivers-and-apps-config-profile-support\",\"no-boot-manager-config-profile-support\",\"discrete-tpm-detected\"]}")
 
 	var result *CheckResult
-	c.Assert(json.Unmarshal(data, &result), ErrorMatches, `cannot decode CheckResult: unrecognized PCR algorithm`)
+	c.Assert(json.Unmarshal(data, &result), ErrorMatches, `unrecognized hash algorithm`)
 }
 
 func (s *resultSuite) TestCheckResultUnmarshalJSONCorruptSecureBootCA(c *C) {

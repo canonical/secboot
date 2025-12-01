@@ -30,47 +30,41 @@ import (
 )
 
 type (
-	AuthorityTrust                        = authorityTrust
-	AuthorityTrustData                    = authorityTrustData
-	AuthorityTrustDataSet                 = authorityTrustDataSet
-	BootManagerCodeResultFlags            = bootManagerCodeResultFlags
-	CheckDriversAndAppsMeasurementsResult = checkDriversAndAppsMeasurementsResult
-	CheckFirmwareLogFlags                 = checkFirmwareLogFlags
-	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
-	CpuVendor                             = cpuVendor
-	DetectVirtResult                      = detectVirtResult
-	HfstsRegisters                        = hfstsRegisters
-	HfstsRegistersCsme11                  = hfstsRegistersCsme11
-	HfstsRegistersCsme18                  = hfstsRegistersCsme18
-	JoinError                             = joinError
-	MeVersion                             = meVersion
-	SecureBootPolicyResult                = secureBootPolicyResult
-	SecureBootPolicyResultFlags           = secureBootPolicyResultFlags
+	AuthorityTrust              = authorityTrust
+	AuthorityTrustData          = authorityTrustData
+	AuthorityTrustDataSet       = authorityTrustDataSet
+	BootManagerCodeResult       = bootManagerCodeResult
+	CheckFirmwareLogFlags       = checkFirmwareLogFlags
+	CheckTPM2DeviceFlags        = checkTPM2DeviceFlags
+	CpuVendor                   = cpuVendor
+	DetectVirtResult            = detectVirtResult
+	HfstsRegisters              = hfstsRegisters
+	HfstsRegistersCsme11        = hfstsRegistersCsme11
+	HfstsRegistersCsme18        = hfstsRegistersCsme18
+	JoinError                   = joinError
+	MeVersion                   = meVersion
+	SecureBootPolicyResult      = secureBootPolicyResult
+	SecureBootPolicyResultFlags = secureBootPolicyResultFlags
 )
 
 const (
-	AuthorityTrustBootCode                     = authorityTrustBootCode
-	AuthorityTrustDrivers                      = authorityTrustDrivers
-	BootManagerCodeSysprepAppsPresent          = bootManagerCodeSysprepAppsPresent
-	BootManagerCodeAbsoluteComputraceRunning   = bootManagerCodeAbsoluteComputraceRunning
-	BootManagerCodeNotAllLaunchDigestsVerified = bootManagerCodeNotAllLaunchDigestsVerified
-	CheckFirmwareLogPermitEmptyPCRBanks        = checkFirmwareLogPermitEmptyPCRBanks
-	CheckFirmwareLogPermitWeakPCRBanks         = checkFirmwareLogPermitWeakPCRBanks
-	CheckTPM2DeviceInVM                        = checkTPM2DeviceInVM
-	CheckTPM2DevicePostInstall                 = checkTPM2DevicePostInstall
-	CpuVendorIntel                             = cpuVendorIntel
-	CpuVendorAMD                               = cpuVendorAMD
-	DetectVirtNone                             = detectVirtNone
-	DetectVirtVM                               = detectVirtVM
-	DriversAndAppsPresent                      = driversAndAppsPresent
-	MeFamilyUnknown                            = meFamilyUnknown
-	MeFamilySps                                = meFamilySps
-	MeFamilyTxe                                = meFamilyTxe
-	MeFamilyMe                                 = meFamilyMe
-	MeFamilyCsme                               = meFamilyCsme
-	NoDriversAndAppsPresent                    = noDriversAndAppsPresent
-	SecureBootIncludesWeakAlg                  = secureBootIncludesWeakAlg
-	SecureBootPreOSVerificationIncludesDigest  = secureBootPreOSVerificationIncludesDigest
+	AuthorityTrustBootCode                    = authorityTrustBootCode
+	AuthorityTrustDrivers                     = authorityTrustDrivers
+	CheckFirmwareLogPermitEmptyPCRBanks       = checkFirmwareLogPermitEmptyPCRBanks
+	CheckFirmwareLogPermitWeakPCRBanks        = checkFirmwareLogPermitWeakPCRBanks
+	CheckTPM2DeviceInVM                       = checkTPM2DeviceInVM
+	CheckTPM2DevicePostInstall                = checkTPM2DevicePostInstall
+	CpuVendorIntel                            = cpuVendorIntel
+	CpuVendorAMD                              = cpuVendorAMD
+	DetectVirtNone                            = detectVirtNone
+	DetectVirtVM                              = detectVirtVM
+	MeFamilyUnknown                           = meFamilyUnknown
+	MeFamilySps                               = meFamilySps
+	MeFamilyTxe                               = meFamilyTxe
+	MeFamilyMe                                = meFamilyMe
+	MeFamilyCsme                              = meFamilyCsme
+	SecureBootIncludesWeakAlg                 = secureBootIncludesWeakAlg
+	SecureBootPreOSVerificationIncludesDigest = secureBootPreOSVerificationIncludesDigest
 )
 
 var (
@@ -97,12 +91,14 @@ var (
 	IsTPMDiscrete                                         = isTPMDiscrete
 	IsTPMDiscreteFromIntelBootGuard                       = isTPMDiscreteFromIntelBootGuard
 	JoinErrors                                            = joinErrors
+	MatchLaunchToLoadOption                               = matchLaunchToLoadOption
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
 	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
 	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
 	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
+	ReadOrderedLoadOptionVariables                        = readOrderedLoadOptionVariables
 	RunPPIAction                                          = runPPIAction
 	UnwrapCompoundError                                   = unwrapCompoundError
 )

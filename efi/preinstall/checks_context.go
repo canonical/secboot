@@ -128,7 +128,7 @@ func init() {
 		ErrorKindPCRUnusable: []Action{
 			ActionContactOEM, // suggest contacting the OEM because of a firmware bug
 		},
-		ErrorKindVARSuppliedDriversPresent: []Action{
+		ErrorKindAddonDriversPresent: []Action{
 			// TODO: If the drivers are being loaded from BDS using DriverOrder and DriverXXXX variables, add action to delete these
 		},
 		ErrorKindSysPrepApplicationsPresent: []Action{
@@ -157,7 +157,7 @@ func init() {
 		ErrorKindEmptyPCRBanks:                    PermitEmptyPCRBanks,
 		ErrorKindInsufficientDMAProtection:        PermitInsufficientDMAProtection,
 		ErrorKindNoKernelIOMMU:                    PermitInsufficientDMAProtection,
-		ErrorKindVARSuppliedDriversPresent:        PermitVARSuppliedDrivers,
+		ErrorKindAddonDriversPresent:              PermitAddonDrivers,
 		ErrorKindSysPrepApplicationsPresent:       PermitSysPrepApplications,
 		ErrorKindAbsolutePresent:                  PermitAbsoluteComputrace,
 		ErrorKindWeakSecureBootAlgorithmsDetected: PermitWeakSecureBootAlgorithms,
@@ -520,8 +520,12 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 		}, nil
 	}
 
-	if errors.Is(err, ErrVARSuppliedDriversPresent) {
-		return errorInfo{kind: ErrorKindVARSuppliedDriversPresent}, nil
+	var adpErr *AddonDriversPresentError
+	if errors.As(err, &adpErr) {
+		return errorInfo{
+			kind: ErrorKindAddonDriversPresent,
+			args: LoadedImagesInfoArg(adpErr.Drivers),
+		}, nil
 	}
 
 	var daPcrErr *DriversAndAppsPCRError
@@ -541,8 +545,12 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 		}, nil
 	}
 
-	if errors.Is(err, ErrSysPrepApplicationsPresent) {
-		return errorInfo{kind: ErrorKindSysPrepApplicationsPresent}, nil
+	var spapErr *SysPrepApplicationsPresentError
+	if errors.As(err, &spapErr) {
+		return errorInfo{
+			kind: ErrorKindSysPrepApplicationsPresent,
+			args: LoadedImagesInfoArg(spapErr.Apps),
+		}, nil
 	}
 	if errors.Is(err, ErrAbsoluteComputraceActive) {
 		return errorInfo{kind: ErrorKindAbsolutePresent}, nil

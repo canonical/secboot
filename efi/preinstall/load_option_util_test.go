@@ -20,6 +20,7 @@
 package preinstall_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 
@@ -155,6 +156,172 @@ func (s *loadOptionUtilSuite) TestReadCurrentBootLoadOptionFromLogInvalidBootCur
 
 	_, err = ReadCurrentBootLoadOptionFromLog(env.VarContext(context.Background()), log)
 	c.Check(err, ErrorMatches, `cannot read current Boot000A load option from log: cannot find specified boot option`)
+}
+
+func (s *loadOptionUtilSuite) TestReadOrderedLoadOptionVariables(c *C) {
+	optsPayloads := [][]byte{
+		efitest.MakeVarPayload(c, &efi.LoadOption{
+			Attributes:  1,
+			Description: "ubuntu",
+			FilePath: efi.DevicePath{
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+			},
+		}),
+		efitest.MakeVarPayload(c, &efi.LoadOption{
+			Attributes:  1,
+			Description: "Linux Firmware Updater",
+			FilePath: efi.DevicePath{
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+			},
+			OptionalData: []byte{0x5c, 0x00, 0x66, 0x00, 0x77, 0x00, 0x75, 0x00, 0x70, 0x00, 0x64, 0x00, 0x78, 0x00, 0x36, 0x00, 0x34, 0x00, 0x2e, 0x00, 0x65, 0x00, 0x66, 0x00, 0x69, 0x00, 0x00, 0x00},
+		}),
+		efitest.MakeVarPayload(c, &efi.LoadOption{
+			Attributes:  1,
+			Description: "External USB",
+			FilePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x423f43ec, 0xd34e, 0x4b55, 0xb2d7, [...]uint8{0x42, 0x2b, 0xa5, 0x02, 0x1c, 0xc4})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\BOOT\\BOOTX64.EFI"),
+			},
+		}),
+	}
+
+	var expectedOpts []*efi.LoadOption
+	for _, payload := range optsPayloads {
+		opt, err := efi.ReadLoadOption(bytes.NewReader(payload))
+		c.Assert(err, IsNil)
+		expectedOpts = append(expectedOpts, opt)
+	}
+
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithMockVars(efitest.MockVars{
+			{Name: "BootOrder", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0, 0x1, 0x0, 0x0, 0x0}},
+			{Name: "Boot0000", GUID: efi.GlobalVariable}:  &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: optsPayloads[2]},
+			{Name: "Boot0001", GUID: efi.GlobalVariable}:  &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: optsPayloads[1]},
+			{Name: "Boot0003", GUID: efi.GlobalVariable}:  &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: optsPayloads[0]},
+		}),
+	)
+
+	opts, order, err := ReadOrderedLoadOptionVariables(env.VarContext(context.Background()), efi.LoadOptionClassBoot)
+	c.Check(err, IsNil)
+	c.Check(opts, DeepEquals, expectedOpts)
+	c.Check(order, DeepEquals, []uint16{3, 1, 0})
+}
+
+func (s *loadOptionUtilSuite) TestReadOrderedLoadOptionVariablesIgnoreVariablesNotInOrder(c *C) {
+	payload := efitest.MakeVarPayload(c, &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	})
+
+	expectedOpt, err := efi.ReadLoadOption(bytes.NewReader(payload))
+	c.Assert(err, IsNil)
+
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithMockVars(efitest.MockVars{
+			{Name: "BootOrder", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+			{Name: "Boot0001", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: efitest.MakeVarPayload(c, &efi.LoadOption{
+				Attributes:  1,
+				Description: "Linux Firmware Updater",
+				FilePath: efi.DevicePath{
+					&efi.HardDriveDevicePathNode{
+						PartitionNumber: 1,
+						PartitionStart:  0x800,
+						PartitionSize:   0x100000,
+						Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+						MBRType:         efi.GPT},
+					efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+				},
+				OptionalData: []byte{0x5c, 0x00, 0x66, 0x00, 0x77, 0x00, 0x75, 0x00, 0x70, 0x00, 0x64, 0x00, 0x78, 0x00, 0x36, 0x00, 0x34, 0x00, 0x2e, 0x00, 0x65, 0x00, 0x66, 0x00, 0x69, 0x00, 0x00, 0x00},
+			})},
+			{Name: "Boot0003", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: payload},
+		}),
+	)
+
+	opts, order, err := ReadOrderedLoadOptionVariables(env.VarContext(context.Background()), efi.LoadOptionClassBoot)
+	c.Check(err, IsNil)
+	c.Check(opts, DeepEquals, []*efi.LoadOption{expectedOpt})
+	c.Check(order, DeepEquals, []uint16{3})
+}
+
+func (s *loadOptionUtilSuite) TestReadOrderedLoadOptionVariablesSkipMissing(c *C) {
+	payload := efitest.MakeVarPayload(c, &efi.LoadOption{
+		Attributes:  1,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	})
+
+	expectedOpt, err := efi.ReadLoadOption(bytes.NewReader(payload))
+	c.Assert(err, IsNil)
+
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithMockVars(efitest.MockVars{
+			{Name: "BootOrder", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0, 0x1, 0x0}},
+			{Name: "Boot0003", GUID: efi.GlobalVariable}:  &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: payload},
+		}),
+	)
+
+	opts, order, err := ReadOrderedLoadOptionVariables(env.VarContext(context.Background()), efi.LoadOptionClassBoot)
+	c.Check(err, IsNil)
+	c.Check(opts, DeepEquals, []*efi.LoadOption{expectedOpt})
+	c.Check(order, DeepEquals, []uint16{3})
+}
+
+func (s *loadOptionUtilSuite) TestReadOrderedLoadOptionVariablesInvalidClass(c *C) {
+	_, _, err := ReadOrderedLoadOptionVariables(context.Background(), "Foo")
+	c.Check(err, ErrorMatches, `invalid class "Foo"`)
+}
+
+func (s *loadOptionUtilSuite) TestReadOrderedLoadOptionVariablesMissingOrder(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithMockVars(efitest.MockVars{}),
+	)
+
+	_, _, err := ReadOrderedLoadOptionVariables(env.VarContext(context.Background()), efi.LoadOptionClassBoot)
+	c.Check(err, ErrorMatches, `cannot read load order variable: variable does not exist`)
+	c.Check(errors.Is(err, efi.ErrVarNotExist), testutil.IsTrue)
 }
 
 func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGood(c *C) {
@@ -361,6 +528,55 @@ func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionGoodRemovableUSB(c *C)
 	c.Check(yes, testutil.IsTrue)
 }
 
+func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionNotActive(c *C) {
+	opt := &efi.LoadOption{
+		Attributes:  0,
+		Description: "ubuntu",
+		FilePath: efi.DevicePath{
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+		},
+	}
+	ev := &tcglog.Event{
+		PCRIndex:  internal_efi.BootManagerCodePCR,
+		EventType: tcglog.EventTypeEFIBootServicesApplication,
+		Data: &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0x6556c018,
+			LengthInMemory:   955072,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0},
+				&efi.NVMENamespaceDevicePathNode{
+					NamespaceID:   0x1,
+					NamespaceUUID: efi.EUI64{}},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+			},
+		},
+	}
+
+	yes, err := IsLaunchedFromLoadOption(ev, opt)
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsFalse)
+}
+
 func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionNoMatch(c *C) {
 	opt := &efi.LoadOption{
 		Attributes:  1,
@@ -455,7 +671,7 @@ func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionNoMatchRemovable(c *C)
 
 func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionInvalidEventData(c *C) {
 	opt := &efi.LoadOption{
-		Attributes:  0,
+		Attributes:  efi.LoadOptionActive,
 		Description: "ubuntu",
 		FilePath: efi.DevicePath{
 			&efi.HardDriveDevicePathNode{
@@ -504,50 +720,164 @@ func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionEmptyDevicePath(c *C) 
 	c.Check(err, ErrorMatches, `event has empty device path`)
 }
 
-func (s *loadOptionUtilSuite) TestIsLaunchedFromLoadOptionNotActive(c *C) {
-	opt := &efi.LoadOption{
-		Attributes:  0,
-		Description: "ubuntu",
-		FilePath: efi.DevicePath{
-			&efi.HardDriveDevicePathNode{
-				PartitionNumber: 1,
-				PartitionStart:  0x800,
-				PartitionSize:   0x100000,
-				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
-				MBRType:         efi.GPT},
-			efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
+func (s *loadOptionUtilSuite) TestMatchLaunchToLoadOption(c *C) {
+	path := efi.DevicePath{
+		&efi.ACPIDevicePathNode{
+			HID: 0x0a0341d0,
+			UID: 0x0,
 		},
-	}
-	ev := &tcglog.Event{
-		PCRIndex:  internal_efi.BootManagerCodePCR,
-		EventType: tcglog.EventTypeEFIBootServicesApplication,
-		Data: &tcglog.EFIImageLoadEvent{
-			LocationInMemory: 0x6556c018,
-			LengthInMemory:   955072,
-			DevicePath: efi.DevicePath{
-				&efi.ACPIDevicePathNode{
-					HID: 0x0a0341d0,
-					UID: 0x0},
-				&efi.PCIDevicePathNode{
-					Function: 0x0,
-					Device:   0x1d},
-				&efi.PCIDevicePathNode{
-					Function: 0x0,
-					Device:   0x0},
-				&efi.NVMENamespaceDevicePathNode{
-					NamespaceID:   0x1,
-					NamespaceUUID: efi.EUI64{}},
-				&efi.HardDriveDevicePathNode{
-					PartitionNumber: 1,
-					PartitionStart:  0x800,
-					PartitionSize:   0x100000,
-					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
-					MBRType:         efi.GPT},
-				efi.FilePathDevicePathNode("\\EFI\\ubuntu\\shimx64.efi"),
-			},
+		&efi.PCIDevicePathNode{
+			Function: 0x1c,
+			Device:   0x2,
+		},
+		&efi.PCIDevicePathNode{
+			Function: 0x0,
+			Device:   0x0,
+		},
+		&efi.MediaRelOffsetRangeDevicePathNode{
+			StartingOffset: 0x38,
+			EndingOffset:   0x11dff,
 		},
 	}
 
-	_, err := IsLaunchedFromLoadOption(ev, opt)
-	c.Check(err, ErrorMatches, `boot option is not active`)
+	opts := []*efi.LoadOption{
+		{
+			Attributes: efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+			FilePath:   path,
+		},
+	}
+
+	opt, n, err := MatchLaunchToLoadOption(
+		&tcglog.Event{
+			EventType: tcglog.EventTypeEFIBootServicesDriver,
+			Data: &tcglog.EFIImageLoadEvent{
+				DevicePath: path,
+			},
+		},
+		[]uint16{1},
+		opts...,
+	)
+	c.Check(err, IsNil)
+	c.Check(opt, DeepEquals, opts[0])
+	c.Check(n, Equals, uint16(1))
+}
+
+func (s *loadOptionUtilSuite) TestMatchLaunchToLoadOptionDifferentOrder(c *C) {
+	path := efi.DevicePath{
+		&efi.ACPIDevicePathNode{
+			HID: 0x0a0341d0,
+			UID: 0x0,
+		},
+		&efi.PCIDevicePathNode{
+			Function: 0x1c,
+			Device:   0x2,
+		},
+		&efi.PCIDevicePathNode{
+			Function: 0x0,
+			Device:   0x0,
+		},
+		&efi.MediaRelOffsetRangeDevicePathNode{
+			StartingOffset: 0x38,
+			EndingOffset:   0x11dff,
+		},
+	}
+
+	opts := []*efi.LoadOption{
+		{
+			Attributes: efi.LoadOptionCategoryApp,
+			FilePath:   path,
+		},
+		{
+			Attributes: efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+			FilePath:   path,
+		},
+	}
+
+	opt, n, err := MatchLaunchToLoadOption(
+		&tcglog.Event{
+			EventType: tcglog.EventTypeEFIBootServicesDriver,
+			Data: &tcglog.EFIImageLoadEvent{
+				DevicePath: path,
+			},
+		},
+		[]uint16{1, 5},
+		opts...,
+	)
+	c.Check(err, IsNil)
+	c.Check(opt, DeepEquals, opts[1])
+	c.Check(n, Equals, uint16(5))
+}
+
+func (s *loadOptionUtilSuite) TestMatchLaunchToLoadOptionNoMatch(c *C) {
+	path := efi.DevicePath{
+		&efi.ACPIDevicePathNode{
+			HID: 0x0a0341d0,
+			UID: 0x0,
+		},
+		&efi.PCIDevicePathNode{
+			Function: 0x1c,
+			Device:   0x2,
+		},
+		&efi.PCIDevicePathNode{
+			Function: 0x0,
+			Device:   0x0,
+		},
+		&efi.MediaRelOffsetRangeDevicePathNode{
+			StartingOffset: 0x38,
+			EndingOffset:   0x11dff,
+		},
+	}
+
+	opt, _, err := MatchLaunchToLoadOption(
+		&tcglog.Event{
+			EventType: tcglog.EventTypeEFIBootServicesDriver,
+			Data: &tcglog.EFIImageLoadEvent{
+				DevicePath: path,
+			},
+		},
+		[]uint16{1},
+		&efi.LoadOption{
+			Attributes: efi.LoadOptionCategoryApp,
+			FilePath:   path,
+		},
+	)
+	c.Check(err, IsNil)
+	c.Check(opt, IsNil)
+}
+
+func (s *loadOptionUtilSuite) TestMatchLaunchToLoadOptionInvalidEvent(c *C) {
+	_, _, err := MatchLaunchToLoadOption(
+		&tcglog.Event{
+			EventType: tcglog.EventTypeEFIBootServicesDriver,
+			Data:      &invalidEventData{errors.New("some error")},
+		},
+		[]uint16{1},
+		&efi.LoadOption{
+			Attributes: efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+			FilePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x1c,
+					Device:   0x2,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0,
+				},
+				&efi.MediaRelOffsetRangeDevicePathNode{
+					StartingOffset: 0x38,
+					EndingOffset:   0x11dff,
+				},
+			},
+		},
+	)
+	c.Check(err, ErrorMatches, `event has invalid event data: some error`)
+}
+
+func (s *loadOptionUtilSuite) TestMatchLaunchToLoadOptionInvalidArgs(c *C) {
+	_, _, err := MatchLaunchToLoadOption(new(tcglog.Event), []uint16{1})
+	c.Check(err, ErrorMatches, `order length should match the number of options`)
 }

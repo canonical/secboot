@@ -20,7 +20,6 @@
 package preinstall
 
 import (
-	"crypto"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,7 +29,6 @@ import (
 	"strings"
 
 	"github.com/canonical/go-tpm2"
-	"github.com/snapcore/secboot"
 )
 
 // CheckResultFlags is returned from [RunChecks].
@@ -225,44 +223,9 @@ func (f CheckResultFlags) String() string {
 }
 
 type checkResultJSON struct {
-	PCRAlg            secboot.HashAlg      `json:"pcr-alg"`
+	PCRAlg            hashAlgorithmId      `json:"pcr-alg"`
 	UsedSecureBootCAs []*X509CertificateID `json:"used-secure-boot-cas"`
 	Flags             CheckResultFlags     `json:"flags"`
-}
-
-func newCheckResultJSON(r *CheckResult) (*checkResultJSON, error) {
-	out := &checkResultJSON{
-		UsedSecureBootCAs: r.UsedSecureBootCAs,
-		Flags:             r.Flags,
-	}
-	out.PCRAlg = secboot.HashAlg(r.PCRAlg.GetHash())
-	if out.PCRAlg == secboot.HashAlg(0) {
-		return nil, errors.New("invalid PCR algorithm")
-	}
-
-	return out, nil
-}
-
-func (r checkResultJSON) toPublic() (*CheckResult, error) {
-	out := &CheckResult{
-		UsedSecureBootCAs: r.UsedSecureBootCAs,
-		Flags:             r.Flags,
-	}
-
-	switch crypto.Hash(r.PCRAlg) {
-	case crypto.SHA1:
-		out.PCRAlg = tpm2.HashAlgorithmSHA1
-	case crypto.SHA256:
-		out.PCRAlg = tpm2.HashAlgorithmSHA256
-	case crypto.SHA384:
-		out.PCRAlg = tpm2.HashAlgorithmSHA384
-	case crypto.SHA512:
-		out.PCRAlg = tpm2.HashAlgorithmSHA512
-	default:
-		return nil, errors.New("unrecognized PCR algorithm")
-	}
-
-	return out, nil
 }
 
 // CheckResult is returned from [RunChecks] when it completes successfully.
@@ -285,6 +248,31 @@ type CheckResult struct {
 	Warnings CompoundError
 }
 
+// MarshalJSON implements [json.Marshaler].
+func (r CheckResult) MarshalJSON() ([]byte, error) {
+	res := &checkResultJSON{
+		PCRAlg:            hashAlgorithmId(r.PCRAlg),
+		UsedSecureBootCAs: r.UsedSecureBootCAs,
+		Flags:             r.Flags,
+	}
+	return json.Marshal(res)
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (r *CheckResult) UnmarshalJSON(data []byte) error {
+	var res *checkResultJSON
+	if err := json.Unmarshal(data, &res); err != nil {
+		return err
+	}
+
+	*r = CheckResult{
+		PCRAlg:            tpm2.HashAlgorithmId(res.PCRAlg),
+		UsedSecureBootCAs: res.UsedSecureBootCAs,
+		Flags:             res.Flags,
+	}
+	return nil
+}
+
 // String implements [fmt.Stringer].
 func (r CheckResult) String() string {
 	var b strings.Builder
@@ -304,29 +292,4 @@ func (r CheckResult) String() string {
 		}
 	}
 	return b.String()
-}
-
-// MarshalJSON implements [json.Marshaler].
-func (r CheckResult) MarshalJSON() ([]byte, error) {
-	j, err := newCheckResultJSON(&r)
-	if err != nil {
-		return nil, fmt.Errorf("cannot encode CheckResult: %w", err)
-	}
-	return json.Marshal(j)
-}
-
-// UnmarshalJSON implements [json.Unmarshaler].
-func (r *CheckResult) UnmarshalJSON(data []byte) error {
-	var j *checkResultJSON
-	if err := json.Unmarshal(data, &j); err != nil {
-		return err
-	}
-
-	pub, err := j.toPublic()
-	if err != nil {
-		return fmt.Errorf("cannot decode CheckResult: %w", err)
-	}
-
-	*r = *pub
-	return nil
 }

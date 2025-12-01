@@ -20,14 +20,51 @@
 package preinstall
 
 import (
+	"crypto"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/snapcore/secboot"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
+
+// hashAlgorithmId is an implementation of [tpm2.HashAlgorithmId] that can
+// be serialized to / unserialized from JSON.
+type hashAlgorithmId tpm2.HashAlgorithmId
+
+func (a hashAlgorithmId) MarshalJSON() ([]byte, error) {
+	alg := secboot.HashAlg(tpm2.HashAlgorithmId(a).GetHash())
+	if alg == secboot.HashAlg(0) {
+		return nil, fmt.Errorf("invalid hash algorithm %v", a)
+	}
+
+	return json.Marshal(alg)
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (a *hashAlgorithmId) UnmarshalJSON(data []byte) error {
+	var alg secboot.HashAlg
+	if err := json.Unmarshal(data, &alg); err != nil {
+		return err
+	}
+
+	switch crypto.Hash(alg) {
+	case crypto.SHA1:
+		*a = hashAlgorithmId(tpm2.HashAlgorithmSHA1)
+	case crypto.SHA256:
+		*a = hashAlgorithmId(tpm2.HashAlgorithmSHA256)
+	case crypto.SHA384:
+		*a = hashAlgorithmId(tpm2.HashAlgorithmSHA384)
+	case crypto.SHA512:
+		*a = hashAlgorithmId(tpm2.HashAlgorithmSHA512)
+	default:
+		return errors.New("unrecognized hash algorithm")
+	}
+	return nil
+}
 
 // TPMErrorResponse represents a TPM response that can be serialized to JSON.
 type TPMErrorResponse struct {

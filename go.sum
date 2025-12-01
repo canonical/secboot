@@ -5,6 +5,8 @@ github.com/canonical/go-efilib v1.4.1 h1:/VMNCypz+iVmnNuMcsm7WvmDMI1ObkEP2W1h8Ls
 github.com/canonical/go-efilib v1.4.1/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
 github.com/canonical/go-efilib v1.6.0 h1:0ZFcIclzoMBl6sAaHrSO98YVPUvKAPfXm6kjofhlHHw=
 github.com/canonical/go-efilib v1.6.0/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
+github.com/canonical/go-efilib v1.7.0 h1:QLtWh/x9rtBjokext9c6e+hT/AR3X9D0U8DQN+/BVbM=
+github.com/canonical/go-efilib v1.7.0/go.mod h1:n0Ttsy1JuHAvqaFbZBs6PAzoiiJdfkHsAmDOEbexYEQ=
 github.com/canonical/go-kbkdf v0.0.0-20250104172618-3b1308f9acf9 h1:Twk1ZSTWRClfGShP16ePf2JIiayqWS4ix1rkAR6baag=
 github.com/canonical/go-kbkdf v0.0.0-20250104172618-3b1308f9acf9/go.mod h1:IneQ5/yQcfPXrGekEXpR6yeea55ZD24N5+kHzeDseOM=
 github.com/canonical/go-password-validator v0.0.0-20250617132709-1b205303ca54 h1:JO3wAsxjrvQDf/X3q4RLIdzDCWrFjzhwUmCKrhnrIO8=
