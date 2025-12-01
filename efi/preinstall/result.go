@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/bits"
 	"strconv"
 	"strings"
 
@@ -123,7 +124,7 @@ const (
 )
 
 func (f CheckResultFlags) toStringSlice() []string {
-	out := make([]string, 0)
+	out := make([]string, 0, bits.OnesCount64(uint64(f)))
 	for i := 0; i < 64; i++ {
 		flag := CheckResultFlags(1 << i)
 		if f&flag == 0 {

@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/bits"
 	"strconv"
 	"strings"
 
@@ -147,7 +148,7 @@ const (
 )
 
 func (o PCRProfileOptionsFlags) toStringSlice() []string {
-	out := make([]string, 0)
+	out := make([]string, 0, bits.OnesCount32(uint32(o)))
 	for i := 0; i < 32; i++ {
 		flag := PCRProfileOptionsFlags(1 << i)
 		if o&flag == 0 {
