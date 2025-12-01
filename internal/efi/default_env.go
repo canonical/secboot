@@ -218,6 +218,10 @@ func (defaultEnvImpl) EnumerateDevices(matcher netlink.Matcher) ([]SysfsDevice, 
 				props:     dev.Env,
 				subsystem: dev.Env["SUBSYSTEM"],
 			})
+			// The "SUBSYSTEM" field isn't really part of the device environment
+			// from the kernel in sysfs, it's added synthetically by go-udev for
+			// rule matching. We delete it here because we expose the subsystem
+			// for the device separately.
 			delete(dev.Env, "SUBSYSTEM")
 		case err := <-errs:
 			return nil, err
