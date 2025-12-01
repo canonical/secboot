@@ -388,6 +388,32 @@ func (s *defaultEnvSuite) TestEnumerateDevicesNotExist(c *C) {
 	c.Assert(devices, HasLen, 0)
 }
 
+func (s *defaultEnvSuite) TestEnumerateDevicesError(c *C) {
+	restore := s.mockCrawlerExistingDevices(
+		c,
+		&netlink.RuleDefinition{
+			Env: map[string]string{
+				"SUBSYSTEM": "iommu",
+			},
+		},
+		crawler.Device{
+			KObj: "/sys/devices/virtual/iommu/dmar0",
+			Env: map[string]string{
+				"SUBSYSTEM": "iommu",
+			},
+		},
+		errors.New("some error"),
+	)
+	defer restore()
+
+	_, err := DefaultEnv.EnumerateDevices(&netlink.RuleDefinition{
+		Env: map[string]string{
+			"SUBSYSTEM": "iommu",
+		},
+	})
+	c.Check(err, ErrorMatches, `some error`)
+}
+
 func (s *defaultEnvSuite) TestSysfsDeviceAttributeReader(c *C) {
 	restore := s.mockCrawlerExistingDevices(
 		c,
