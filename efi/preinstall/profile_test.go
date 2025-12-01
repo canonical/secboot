@@ -97,6 +97,16 @@ func (s *profileSuite) TestPCRProfileOptionsFlagsUnmarshalJSON(c *C) {
 	}
 }
 
+func (s *profileSuite) TestPCRProfileOptionsFlagsUnmarshalJSONInvalidSlice(c *C) {
+	var flags PCRProfileOptionsFlags
+	c.Check(json.Unmarshal([]byte("foo"), &flags), ErrorMatches, `invalid character 'o' in literal false \(expecting 'a'\)`)
+}
+
+func (s *profileSuite) TestPCRProfileOptionsFlagsUnmarshalJSONInvalidFlag(c *C) {
+	var flags PCRProfileOptionsFlags
+	c.Check(json.Unmarshal([]byte(`["foo"]`), &flags), ErrorMatches, `unrecognized flag "foo"`)
+}
+
 func (s *profileSuite) TestPCRProfileOptionsFlagsString(c *C) {
 	for _, params := range []struct {
 		flags    PCRProfileOptionsFlags

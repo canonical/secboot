@@ -210,7 +210,10 @@ func (o *PCRProfileOptionsFlags) UnmarshalJSON(data []byte) error {
 			val = PCRProfileOptionNoDiscreteTPMResetMitigation
 		default:
 			v, err := strconv.ParseUint(flag, 0, 32)
-			if err != nil {
+			switch {
+			case errors.Is(err, strconv.ErrSyntax) || errors.Is(err, strconv.ErrRange):
+				return fmt.Errorf("unrecognized flag %q", flag)
+			case err != nil:
 				return err
 			}
 			val = PCRProfileOptionsFlags(v)
