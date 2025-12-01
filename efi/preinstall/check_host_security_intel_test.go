@@ -347,6 +347,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVECSME1
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME18WithOtherMEIDevices(c *C) {
+	// Test that the correct mei device is selected when there are others enumerated.
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:18.0.5.2141
 0:18.0.5.2141
@@ -361,14 +362,14 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME
 `),
 	}
 	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei1", map[string]string{"DEVNAME": "mei1"}, "mei", nil, efitest.NewMockSysfsDevice(
+			"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
+		)),
 		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/0000:00:16.0-082ee5a7-7c25-470a-9643-0c06f0466ea1", nil, "mei", attrs, efitest.NewMockSysfsDevice(
 			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
 		)),
 		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
 			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
-		)),
-		efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei1", map[string]string{"DEVNAME": "mei1"}, "mei", nil, efitest.NewMockSysfsDevice(
-			"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
 		)),
 	}
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices...))
@@ -383,6 +384,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoDevices
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEModule(c *C) {
+	// Test the case where the mei_me module is not loaded.
 	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0", map[string]string{"PCI_CLASS": "78000", "PCI_ID": "8086:7E70"}, "pci", nil, nil)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
@@ -391,6 +393,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEModul
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice1(c *C) {
+	// Test the case where there are no mei devices.
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices())
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
@@ -398,6 +401,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevic
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice2(c *C) {
+	// Test the case where the only mei device is not the required one.
 	device := efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
 		"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
 	))
@@ -407,6 +411,17 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevic
 	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
 }
 
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice3(c *C) {
+	// Test the case where there is a PCI mei device that isn't bound to the mei_me
+	// module. This probably isn't a realistic test case.
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", nil, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
+	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
+}
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFwVer(c *C) {
 	attrs := map[string][]byte{
 		"fw_status": []byte(`94000245
