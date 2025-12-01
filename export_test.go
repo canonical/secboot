@@ -47,6 +47,7 @@ const (
 	LegacyKeyringKeyDescPathsKey    = legacyKeyringKeyDescPathsKey
 	NilHash                         = nilHash
 	PassphraseTriesKey              = passphraseTriesKey
+	PinTriesKey                     = pinTriesKey
 	RecoveryKeyTriesKey             = recoveryKeyTriesKey
 	StderrLoggerKey                 = stderrLoggerKey
 )
