@@ -173,6 +173,7 @@ type LogOptions struct {
 	SecureBootSeparatorOrder          SecureBootSeparatorOrder        // when to emit the EV_SEPARATOR event for PCR7
 	IncludeDriverLaunch               bool                            // include a driver launch from a PCI device in the log
 	IncludeSysPrepAppLaunch           bool                            // include a system-preparation app launch in the log
+	IncludePreOSFirmwareAppLaunch     efi.GUID                        // include a flash based application launch in the log as part of the pre-OS phase
 	NoCallingEFIApplicationEvent      bool                            // omit the EV_EFI_ACTION "Calling EFI Application from Boot Option" event.
 	IncludeOSPresentFirmwareAppLaunch efi.GUID                        // include a flash based application launch in the log as part of the OS-present phase
 	NoSBAT                            bool                            // omit the SbatLevel measurement to mimic older versions of shim
@@ -457,6 +458,22 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			data:      data})
 	}
 
+	// Mock firmware application launch
+	var zeroGuid efi.GUID
+	if opts.IncludePreOSFirmwareAppLaunch != zeroGuid {
+		pe := bytesHashData(opts.IncludePreOSFirmwareAppLaunch[:])
+		data := &tcglog.EFIImageLoadEvent{
+			LocationInMemory: 0xa7b34ff7,
+			LengthInMemory:   56410,
+			DevicePath: efi.DevicePath{
+				efi.MediaFvDevicePathNode(efi.MakeGUID(0x983cc241, 0xb4f6, 0x4a85, 0x9733, [...]uint8{0x4c, 0x15, 0x4b, 0x3a, 0xa3, 0x27})),
+				efi.MediaFvFileDevicePathNode(opts.IncludePreOSFirmwareAppLaunch)}}
+		builder.hashLogExtendEvent(c, pe, &logEvent{
+			pcrIndex:  4,
+			eventType: tcglog.EventTypeEFIBootServicesApplication,
+			data:      data})
+	}
+
 	// Mock sysprep app launch
 	if opts.IncludeSysPrepAppLaunch {
 		pe := bytesHashData("mock sysprep app")
@@ -637,7 +654,6 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 	}
 
 	// Mock firmware application launch
-	var zeroGuid efi.GUID
 	if opts.IncludeOSPresentFirmwareAppLaunch != zeroGuid {
 		pe := bytesHashData(opts.IncludeOSPresentFirmwareAppLaunch[:])
 		data := &tcglog.EFIImageLoadEvent{
