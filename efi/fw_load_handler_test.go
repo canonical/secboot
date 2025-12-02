@@ -629,6 +629,27 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileIgnoreUn
 	})
 }
 
+func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileIncludeAbsoluteAbtInstallerPreOS(c *C) {
+	// Verify the events associated with the "AbsoluteAbtInstaller" application contained in the firmware
+	// that loads as part of pre-OS.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:                    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			IncludePreOSFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.BootManagerCodePCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 4, eventType: mockPcrBranchResetEvent},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "59b1f92051a43fea7ac3a846f2714c3e041a4153d581acd585914bcff2ad2781")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyAndBootManagerCodeProfile(c *C) {
 	vars := makeMockVars(c, withMsSecureBootConfig())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{

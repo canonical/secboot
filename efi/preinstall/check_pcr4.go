@@ -162,10 +162,10 @@ NextEvent:
 				if ev.Data == tcglog.EFICallingEFIApplicationEvent {
 					// This is the signal from BDS that we're about to hand over to the OS.
 					if phase == tcglogPhaseFirmwareLaunch {
-						return 0, fmt.Errorf("unexpected %v event %q (before secure boot config was measured)", ev.EventType, ev.Data)
+						return 0, fmt.Errorf("unexpected EV_EFI_ACTION event %q (before secure boot config was measured)", ev.Data)
 					}
 					if omitBootDeviceEventsSeen {
-						return 0, fmt.Errorf("unexpected %v event %q (because of earlier EV_OMIT_BOOT_DEVICE_EVENTS event)", ev.EventType, ev.Data)
+						return 0, fmt.Errorf("unexpected EV_EFI_ACTION event %q (because of earlier EV_OMIT_BOOT_DEVICE_EVENTS event)", ev.Data)
 					}
 
 					// The next event we're expecting is the pre-OS to OS-present transition.
@@ -181,7 +181,7 @@ NextEvent:
 				} else {
 					// We're not expecting any other EV_EFI_ACTION event types, although see
 					// the TODO above.
-					return 0, fmt.Errorf("unexpected %s event %q", ev.EventType, ev.Data)
+					return 0, fmt.Errorf("unexpected EV_EFI_ACTION event %q", ev.Data)
 				}
 			case tcglog.EventTypeEFIBootServicesApplication:
 				// Assume all pre-OS application launches are SysPrep applications. There shouldn't
@@ -195,17 +195,27 @@ NextEvent:
 				// device path, if it's reachable from the OS. Although this also suffers from a similar
 				// variation of the issue described above - that path could have been updated between
 				// booting and now.
+				data := ev.Data.(*tcglog.EFIImageLoadEvent) // this is safe as we already checked that the data is valid.
+
 				if phase == tcglogPhaseFirmwareLaunch {
 					// Application launches before the secure boot configuration has been measured is a bug.
-					return 0, fmt.Errorf("encountered pre-OS %v event for %v before secure boot configuration has been measured", ev.EventType, ev.Data.(*tcglog.EFIImageLoadEvent).DevicePath)
+					return 0, fmt.Errorf("encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v before secure boot configuration has been measured", data.DevicePath)
 				}
-				if !sysprepSupported {
+				isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev)
+				switch {
+				case err != nil:
+					return 0, fmt.Errorf("cannot determine if pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
+				case isAbsolute && result&bootManagerCodeAbsoluteComputraceRunning > 0:
+					return 0, errors.New("encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute")
+				case isAbsolute:
+					result |= bootManagerCodeAbsoluteComputraceRunning
+				case !sysprepSupported:
 					// The firmware indicated that sysprep applications aren't supported yet it still
 					// loaded one!
-					return 0, fmt.Errorf("encountered pre-OS %v event for %v when SysPrep applications are not supported", ev.EventType, ev.Data.(*tcglog.EFIImageLoadEvent).DevicePath)
-
+					return 0, fmt.Errorf("encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v when SysPrep applications are not supported", data.DevicePath)
+				default:
+					result |= bootManagerCodeSysprepAppsPresent // Record that this boot contains system preparation applications.
 				}
-				result |= bootManagerCodeSysprepAppsPresent // Record that this boot contains system preparation applications.
 			default:
 				// We're not expecting any other event types during the pre-OS phase.
 				return 0, fmt.Errorf("unexpected pre-OS event type %v", ev.EventType)
@@ -241,7 +251,7 @@ NextEvent:
 				} else {
 					// We have an EV_EFI_BOOT_SERVICES_APPLICATION that didn't come from the load option
 					// associated with the current boot.
-					// Test to see if it's part of Absolute. I it is, that's fine - we copy this into
+					// Test to see if it's part of Absolute. If it is, that's fine - we copy this into
 					// the profile, so we don't need to do any other verification of it and we don't have
 					// anything to verify the Authenticode digest against anyway. We have a device path,
 					// but not one that we're able to read back from.
@@ -250,9 +260,6 @@ NextEvent:
 					// loaded here, and ideally Absolute will be turned off as well.
 
 					data := ev.Data.(*tcglog.EFIImageLoadEvent) // this is safe, else the earlier isLaunchedFromLoadOption would have returned an error
-					if result&bootManagerCodeAbsoluteComputraceRunning > 0 {
-						return 0, fmt.Errorf("OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is not associated with the current boot load option and is not Absolute", data.DevicePath)
-					}
 
 					isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev)
 					if err != nil {
@@ -260,6 +267,9 @@ NextEvent:
 					}
 					if !isAbsolute {
 						return 0, fmt.Errorf("OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is not associated with the current boot load option and is not Absolute", data.DevicePath)
+					}
+					if result&bootManagerCodeAbsoluteComputraceRunning > 0 {
+						return 0, errors.New("encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute")
 					}
 					result |= bootManagerCodeAbsoluteComputraceRunning
 					continue NextEvent // We want to start a new iteration, else we'll consume one of the loadImages below.
