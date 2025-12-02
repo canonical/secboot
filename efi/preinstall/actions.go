@@ -60,12 +60,12 @@ const (
 	ActionRebootToFWSettings Action = "reboot-to-fw-settings"
 
 	// ActionContactOEM is a hint that the user should contact the OEM for the
-	// device because of a bug in the platform. It is a pseudo-action and cannnot
+	// device because of a bug in the platform. It is a pseudo-action and cannot
 	// be performed by this package.
 	ActionContactOEM Action = "contact-oem"
 
 	// ActionContactOSVendor is a hint that the user should contact the OS vendor
-	// because of a bug in the OS. It is a pseudo-action and cannnot be performed
+	// because of a bug in the OS. It is a pseudo-action and cannot be performed
 	// by this package.
 	ActionContactOSVendor Action = "contact-os-vendor"
 

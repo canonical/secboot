@@ -53,7 +53,7 @@ func ParsePIN(s string) (PIN, error) {
 		s = s[:len(s)-1]
 
 		if c < '0' || c > '9' {
-			return PIN{}, fmt.Errorf("invalid PIN: unexpected character '%c'", c)
+			return PIN{}, errors.New("invalid PIN: unexpected character")
 		}
 
 		val.Add(val, new(big.Int).Mul(bn, big.NewInt(int64(c)-int64('0')))) // res += int(c)*(10^n)

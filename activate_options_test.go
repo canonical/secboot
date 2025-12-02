@@ -292,6 +292,37 @@ func (*activateOptionsSuite) TestWithExternalKeyDataAndWithExternalKeyDataFromRe
 	})
 }
 
+func (*activateOptionsSuite) TestWithExternalUnlockKey1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	key := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+	opt := WithExternalUnlockKey("foo", key, ExternalUnlockKeyFromPlatformDevice)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalUnlockKey](cfg, ExternalUnlockKeyKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalUnlockKey{NewExternalUnlockKey("foo", key, ExternalUnlockKeyFromPlatformDevice)})
+}
+
+func (*activateOptionsSuite) TestWithExternalUnlockKey2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	key1 := testutil.DecodeHexString(c, "442232215cf79f2fbc6d5c4de44f1b1c48a0d68c6edc7639b28777d7b2a3c243")
+	opt := WithExternalUnlockKey("foo", key1, ExternalUnlockKeyFromStorageContainer)
+	opt.ApplyOptionToConfig(cfg)
+
+	key2 := testutil.DecodeHexString(c, "1f11ea11681129341720cfc1fe475df5fa7873bcd5a020cb7eb0eef5399ba096")
+	opt = WithExternalUnlockKey("bar", key2, ExternalUnlockKeyFromStorageContainer)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[[]*ExternalUnlockKey](cfg, ExternalUnlockKeyKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, DeepEquals, []*ExternalUnlockKey{
+		NewExternalUnlockKey("foo", key1, ExternalUnlockKeyFromStorageContainer),
+		NewExternalUnlockKey("bar", key2, ExternalUnlockKeyFromStorageContainer),
+	})
+}
+
 func (*activateOptionsSuite) TestWithKeyringDescriptionPrefix1(c *C) {
 	cfg := make(mockActivateConfig)
 
@@ -427,6 +458,39 @@ func (*activateOptionsSuite) TestWithPassphraseTriesContext(c *C) {
 	opt.ApplyContextOptionToConfig(cfg)
 
 	v, exists := ActivateConfigGet[uint](cfg, PassphraseTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(3))
+}
+
+func (*activateOptionsSuite) TestWithPINTries1(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPINTries(3)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PinTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(3))
+}
+
+func (*activateOptionsSuite) TestWithPINTries2(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPINTries(5)
+	opt.ApplyOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PinTriesKey)
+	c.Check(exists, testutil.IsTrue)
+	c.Check(v, Equals, uint(5))
+}
+
+func (*activateOptionsSuite) TestWithPINTriesContext(c *C) {
+	cfg := make(mockActivateConfig)
+
+	opt := WithPINTries(3)
+	opt.ApplyContextOptionToConfig(cfg)
+
+	v, exists := ActivateConfigGet[uint](cfg, PinTriesKey)
 	c.Check(exists, testutil.IsTrue)
 	c.Check(v, Equals, uint(3))
 }

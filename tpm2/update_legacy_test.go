@@ -80,7 +80,7 @@ func (s *updateLegacySuite) testUpdatePCRProtectionPolicy(c *C, params *KeyCreat
 	_, err = s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 	c.Check(err, IsNil)
 	_, _, err = k.UnsealFromTPM(s.TPM())
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+	c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 		"cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -143,7 +143,7 @@ func (s *updateLegacySuite) TestRevokeOldPCRProtectionPoliciesWithPCRPolicyCount
 	err := s.testRevokeOldPCRProtectionPolicies(c, &KeyCreationParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
-	c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: the PCR policy has been revoked")
+	c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: the PCR policy has been revoked")
 }
 
 func (s *updateLegacySuite) TestRevokeOldPCRProtectionPoliciesWithoutPCRPolicyCounter(c *C) {
@@ -185,7 +185,7 @@ func (s *updateLegacySuite) TestUpdateKeyPCRProtectionPolicyMultiple(c *C) {
 
 	for _, k := range keys {
 		_, _, err = k.UnsealFromTPM(s.TPM())
-		c.Check(err, ErrorMatches, "invalid key data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
+		c.Check(err, ErrorMatches, "invalid PCR policy data: cannot complete authorization policy assertions: cannot execute PCR assertions: "+
 			"cannot execute PolicyOR assertions: current session digest not found in policy data")
 	}
 }

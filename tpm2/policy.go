@@ -344,7 +344,7 @@ var newKeyDataPolicy = func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role str
 		pcrPolicyCounterName = pcrPolicyCounterPub.Name()
 	}
 
-	pcrPolicyRef := computeV3PcrPolicyRef(key.NameAlg, []byte(role), pcrPolicyCounterName)
+	pcrPolicyRef := computeV3PcrPolicyRef(alg, []byte(role), pcrPolicyCounterName)
 
 	builder := policyutil.NewPolicyBuilder(alg)
 	builder.RootBranch().PolicyAuthorize(pcrPolicyRef, key)
@@ -498,6 +498,23 @@ func (e policyDataError) Unwrap() error {
 func isPolicyDataError(err error) bool {
 	var e policyDataError
 	return xerrors.As(err, &e)
+}
+
+type pcrPolicyDataError struct {
+	err error
+}
+
+func (e pcrPolicyDataError) Error() string {
+	return e.err.Error()
+}
+
+func (e pcrPolicyDataError) Unwrap() error {
+	return e.err
+}
+
+func isPCRPolicyDataError(err error) bool {
+	var e pcrPolicyDataError
+	return errors.As(err, &e)
 }
 
 var errSessionDigestNotFound = errors.New("current session digest not found in policy data")

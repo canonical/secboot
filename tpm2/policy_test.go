@@ -284,8 +284,8 @@ xtjPyepMPNg3K7iPmPopFLA5Ap8RjR1Eu9B8LllUHTqYHJY6YQ3o+CP5TQ==
 			Attrs:   tpm2.NVTypeCounter.WithAttrs(tpm2.AttrNVPolicyWrite | tpm2.AttrNVAuthRead | tpm2.AttrNVNoDA | tpm2.AttrNVWritten),
 			Size:    8},
 		pcrPolicySequence:    0,
-		expectedPcrPolicyRef: testutil.DecodeHexString(c, "fd2ce82dd8a3365dac93cbbace43c1848fb7acce5c9b40e3d795d7c16e2d8d61"),
-		expected:             testutil.DecodeHexString(c, "dcbabe5d40139f6c6f2ff01d28a3c6096b1e58e4")})
+		expectedPcrPolicyRef: testutil.DecodeHexString(c, "cd2ac654411a1b613a544db54067d58cb8a874fc"),
+		expected:             testutil.DecodeHexString(c, "a95536b50e846b6472a7432bcfd51f4cd881779a")})
 }
 
 func (s *policySuiteNoTPM) TestNewKeyDataPolicyNoPCRPolicyCounterHandle(c *C) {

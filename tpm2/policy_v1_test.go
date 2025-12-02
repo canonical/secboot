@@ -112,7 +112,7 @@ func (s *policyV1SuiteNoTPM) testUpdatePCRPolicy(c *C, data *testV1UpdatePCRPoli
 			AuthPublicKey: authPublicKey},
 	}
 
-	params := NewPcrPolicyParams(key.D.Bytes(), data.pcrs, data.pcrDigests, policyCounterPub, data.initialSeq)
+	params := NewPcrPolicyParams(key.D.Bytes(), nil, data.pcrs, data.pcrDigests, policyCounterPub, data.initialSeq)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	c.Check(policyData.(*KeyDataPolicy_v1).PCRData.Selection, tpm2_testutil.TPMValueDeepEquals, data.pcrs)
@@ -274,7 +274,7 @@ func (s *policyV1SuiteNoTPM) TestSetPCRPolicyFrom(c *C) {
 			AuthPublicKey: authPublicKey},
 	}
 
-	params := NewPcrPolicyParams(key.D.Bytes(),
+	params := NewPcrPolicyParams(key.D.Bytes(), nil,
 		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{4, 7, 12}}},
 		tpm2.DigestList{hash(crypto.SHA256, "1"), hash(crypto.SHA256, "2")},
 		policyCounterPub, 5000)
@@ -325,7 +325,7 @@ func (s *policyV1Suite) testExecutePCRPolicy(c *C, data *testV1ExecutePCRPolicyD
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterPub, policyCount)
+	params := NewPcrPolicyParams(authKey.D.Bytes(), nil, data.pcrs, digests, policyCounterPub, policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -677,7 +677,7 @@ func (s *policyV1Suite) testExecutePCRPolicyErrorHandling(c *C, data *testV1Exec
 		digests = append(digests, d)
 	}
 
-	params := NewPcrPolicyParams(authKey.D.Bytes(), data.pcrs, digests, policyCounterPub, policyCount)
+	params := NewPcrPolicyParams(authKey.D.Bytes(), nil, data.pcrs, digests, policyCounterPub, policyCount)
 	c.Check(policyData.UpdatePCRPolicy(data.alg, params), IsNil)
 
 	for _, selection := range data.pcrs {
@@ -740,7 +740,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection1(c *C)
 			data.PCRData.Selection = tpm2.PCRSelectionList{}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -781,7 +781,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection2(c *C)
 			data.PCRData.Selection = tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{50}}}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: invalid PCR selection")
 }
 
@@ -822,7 +822,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree1(c *C) {
 			data.PCRData.OrData = PolicyOrData_v0{}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot resolve PolicyOR tree: no nodes")
 }
 
@@ -863,7 +863,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree2(c *C) {
 			data.PCRData.OrData[0].Next = 10
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot resolve PolicyOR tree: index 10 out of range")
 }
 
@@ -908,7 +908,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree3(c *C) {
 			copy(data.PCRData.OrData[4].Digests[0], make(tpm2.Digest, 32))
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: invalid data")
 }
 
@@ -964,7 +964,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidOrTree4(c *C) {
 			data.PCRData.OrData = NewPolicyOrDataV0(orData)
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy is invalid")
 }
 
@@ -1005,7 +1005,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidPolicySequence(c
 			data.PCRData.PolicySequence += 10
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy is invalid")
 }
 
@@ -1046,7 +1046,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingPCRMismatch(c *C) {
 		},
 		fn: func(data *KeyDataPolicy_v1, _ *ecdsa.PrivateKey) {},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
 }
 
@@ -1175,7 +1175,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounter
 			data.StaticData.PCRPolicyCounterHandle = tpm2.HandleNull
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot verify PCR policy signature: TPM returned an error for parameter 2 whilst executing command TPM_CC_VerifySignature: TPM_RC_SIGNATURE \\(the signature is not valid\\)")
 }
 
@@ -1232,7 +1232,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingRevoked(c *C) {
 			}
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "the PCR policy has been revoked")
 }
 
@@ -1315,7 +1315,7 @@ func (s *policyV1Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 			copy(data.PCRData.AuthorizedPolicy, make(tpm2.Digest, 32))
 		},
 	})
-	c.Check(IsPolicyDataError(err), testutil.IsTrue)
+	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "cannot verify PCR policy signature: TPM returned an error for parameter 2 whilst executing command TPM_CC_VerifySignature: TPM_RC_SIGNATURE \\(the signature is not valid\\)")
 }
 
