@@ -157,7 +157,6 @@ func init() {
 		ErrorKindEmptyPCRBanks:                    PermitEmptyPCRBanks,
 		ErrorKindInsufficientDMAProtection:        PermitInsufficientDMAProtection,
 		ErrorKindNoKernelIOMMU:                    PermitInsufficientDMAProtection,
-		ErrorKindTPMStartupLocalityNotProtected:   PermitNoDiscreteTPMResetMitigation,
 		ErrorKindVARSuppliedDriversPresent:        PermitVARSuppliedDrivers,
 		ErrorKindSysPrepApplicationsPresent:       PermitSysPrepApplications,
 		ErrorKindAbsolutePresent:                  PermitAbsoluteComputrace,
@@ -497,10 +496,6 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 
 	if errors.Is(err, ErrNoKernelIOMMU) {
 		return errorInfo{kind: ErrorKindNoKernelIOMMU}, nil
-	}
-
-	if errors.Is(err, ErrTPMStartupLocalityNotProtected) {
-		return errorInfo{kind: ErrorKindTPMStartupLocalityNotProtected}, nil
 	}
 
 	var hsErr *HostSecurityError

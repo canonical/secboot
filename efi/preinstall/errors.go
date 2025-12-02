@@ -261,12 +261,10 @@ var (
 	// flag is supplied to RunChecks and the current environment is a virtual machine.
 	ErrUEFIDebuggingEnabled = errors.New("the platform firmware contains a debugging endpoint enabled")
 
-	// ErrTPMStartupLocalityNotProtected is returned wrapped in HostSecurityError if access to
-	// the TPM's startup locality is available to platform firmware or privileged code. This
-	// means that it's not possible to provide a mitigation against reset attacks (see the
-	// description of DiscreteTPMDetected). This error is only relevant for discrete TPMs.
-	// It can be permitted by passing the PermitNoDiscreteTPMResetMitigation flag to RunChecks.
-	ErrTPMStartupLocalityNotProtected = errors.New("access to the discrete TPM's startup locality is available to platform firmware and privileged OS code, preventing any mitigation against reset attacks")
+	// ErrNoPartialDiscreteTPMResetAttackMitigation is returned wrapped in HostSecurityError as
+	// a warning in CheckResult if a partial mitigation against TPM reset attacks cannot be used
+	// when required. See the documentation for DiscreteTPMDetected for more information.
+	ErrNoPartialDiscreteTPMResetAttackMitigation = errors.New("cannot enable partial mitigation against discrete TPM reset attacks")
 )
 
 // Errors related to checking the TPM device.
