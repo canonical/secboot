@@ -37,7 +37,7 @@ import (
 // to the supplied string, useful for displaying multiple errors. In a multi-line
 // string, subsequent lines in the supplied string will all be aligned with the start
 // of the first line after the marker. The indentation argument specifies the
-// indentation of the maker, in the number of characters.
+// indentation of the marker, in the number of characters.
 func makeIndentedListItem(indentation int, marker, str string) string {
 	scanner := bufio.NewScanner(bytes.NewReader([]byte(str)))
 
@@ -94,7 +94,7 @@ func makeIndentedListItem(indentation int, marker, str string) string {
 // CompoundError is an interface for accessing wrapped errors from an error type that
 // wraps more than one error. The [RunChecks] and [RunChecksContext.Run] APIs may return
 // multiple errors that are wrapped by a type implementing this interface, as an
-// alternative to aborting early and returning individual errors as the occur. This is
+// alternative to aborting early and returning individual errors as they occur. This is
 // to ensure as much information is gathered as possible.
 type CompoundError interface {
 	Unwrap() []error
@@ -185,7 +185,7 @@ func (e *EFIVariableAccessError) Unwrap() error {
 var (
 	// ErrSystemNotEFI is returned unwrapped from RunChecks if the current host
 	// system does not appear to be an EFI system.
-	ErrSystemNotEFI = errors.New("host system is not a EFI system")
+	ErrSystemNotEFI = errors.New("host system is not an EFI system")
 )
 
 // Errors related to checking platform firmware protections.
@@ -329,7 +329,7 @@ var (
 
 	// ErrNoPCClientTPM is returned wrapped in TPM2DeviceError if a TPM2 device exists but
 	// it doesn't claim to be meet the requirements for PC-Client. Note that swtpm used
-	// by VM's don't behave correctly here, so we account for that instead of returning
+	// by VMs don't behave correctly here, so we account for that instead of returning
 	// an error.
 	ErrNoPCClientTPM = errors.New("TPM2 device is present but it is not a PC-Client TPM")
 
@@ -342,7 +342,7 @@ var (
 	// ErrTPMFailure is returned wrapped in TPM2DeviceError is the TPM device is in
 	// failure mode. A TPM device in failure mode can only execute commands to obtain
 	// test results, or fetch a limited set of permanent properties to determine the
-	// manufactuer, vendor name or firmware version. Resetting a device in failure mode
+	// manufacturer, vendor name or firmware version. Resetting a device in failure mode
 	// may clear it but it's possible that the failure may occur again during the next
 	// boot cycle, in which case, it's likely that there is a fault somewhere with the
 	// TPM's hardware (in the case of dTPMs) or the TPM's firmware.
@@ -505,7 +505,7 @@ func (e *MeasuredBootError) Unwrap() error {
 // cannot be used to generate profiles for PCR 0.
 //
 // If an error occurs, this error will be returned wrapped in
-// [NoSuitablePCRAlgorithmError] if the PermitNolatformFirmwareProfileSupport flag
+// [NoSuitablePCRAlgorithmError] if the PermitNoPlatformFirmwareProfileSupport flag
 // is not supplied to [RunChecks].
 type PlatformFirmwarePCRError struct {
 	err error
@@ -521,7 +521,7 @@ func (e *PlatformFirmwarePCRError) Unwrap() error {
 
 // Errors related to platform config PCR checks
 
-// PlatformConfigPCR may be returned if the PCR 1 value is inconsistent with the
+// PlatformConfigPCRError may be returned if the PCR 1 value is inconsistent with the
 // value reconstructed from the TCG log.
 //
 // This error will currently always be returned as a warning in [CheckResult] if
@@ -551,7 +551,7 @@ func (e *PlatformConfigPCRError) Unwrap() error {
 
 // Errors related to drivers and apps PCR checks.
 
-// DriversAndAppsError may be returned if the PCR 2 value is inconsistent with the
+// DriversAndAppsPCRError may be returned if the PCR 2 value is inconsistent with the
 // value reconstructed from the TCG log.
 //
 // If an error occurs, this error will be returned as a warning in [CheckResult] if
@@ -629,7 +629,7 @@ func (e *DriversAndAppsConfigPCRError) Unwrap() error {
 //   - EV_EFI_BOOT_SERVICES_APPLICATION events that occur before secure boot policy
 //     is measured.
 //   - Unexpected event types before the OS-present phase.
-//   - The presence of system prepartion apps when the firmware indicates they are
+//   - The presence of system preparation apps when the firmware indicates they are
 //     not supported.
 //   - EV_EFI_BOOT_SERVICES_APPLICATION events that occur in the OS-present phase
 //     but aren't associated with the OS launch or Absolute.
@@ -821,7 +821,7 @@ var (
 	// indicates that pre-OS components were authenticated using Authenticode digests rather than a
 	// X.509 certificate. This makes PCR7 inherently fragile with regards to firmware updates because db
 	// has to be changed accordingly each time.
-	// This can be bypassed by supplying the PermitPreOSVeriricationUsingDigests flag to RunChecks, in
+	// This can be bypassed by supplying the PermitPreOSVerificationUsingDigests flag to RunChecks, in
 	// which case, the error is returned as a warning via CheckResult.
 	//
 	// The check for pre-OS components authenticated using a digest may not execute if a

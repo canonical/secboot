@@ -52,3 +52,9 @@ type externalKeyData struct {
 	r    KeyDataReader // nil when WithExternalKeyData is used.
 	data *KeyData      // nil when WithExternalKeyDataFromReader is used.
 }
+
+type externalUnlockKey struct {
+	name string
+	key  DiskUnlockKey
+	src  ExternalUnlockKeySource
+}

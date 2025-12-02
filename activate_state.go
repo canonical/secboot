@@ -75,8 +75,7 @@ func errorToKeyslotError(err error) KeyslotErrorType {
 		return KeyslotErrorIncompatibleRoleParams
 	}
 
-	// XXX: Add the incorrect PIN error here as well.
-	if errors.Is(err, ErrInvalidPassphrase) || errors.Is(err, errInvalidRecoveryKey) {
+	if errors.Is(err, ErrInvalidPassphrase) || errors.Is(err, ErrInvalidPIN) || errors.Is(err, errInvalidRecoveryKey) {
 		return KeyslotErrorIncorrectUserAuth
 	}
 

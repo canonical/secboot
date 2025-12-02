@@ -580,7 +580,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsErrorForTest(
 					ErrorKindEmptyPCRBanks,
 					map[string]json.RawMessage{"algs": []byte("[12]")},
-					[]Action{ActionContactOEM, ActionProceed},
+					[]Action{ActionProceed, ActionContactOEM},
 					&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
 				))
 			}
@@ -744,7 +744,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindInsufficientDMAProtection,
 					nil,
-					[]Action{ActionContactOEM, ActionRebootToFWSettings, ActionProceed},
+					[]Action{ActionRebootToFWSettings, ActionProceed, ActionContactOEM},
 					errs[0].Unwrap(),
 				))
 			}
@@ -2011,7 +2011,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindAbsolutePresent,
 					nil,
-					[]Action{ActionContactOEM, ActionRebootToFWSettings, ActionProceed},
+					[]Action{ActionRebootToFWSettings, ActionProceed, ActionContactOEM},
 					ErrAbsoluteComputraceActive,
 				))
 			}
@@ -2819,7 +2819,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -2929,7 +2929,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -3040,7 +3040,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -3293,7 +3293,7 @@ func (s *runChecksContextSuite) TestRunBadNotEFI(c *C) {
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Assert(errs[0], ErrorMatches, `host system is not a EFI system`)
+	c.Assert(errs[0], ErrorMatches, `host system is not an EFI system`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindSystemNotEFI, nil, nil, ErrSystemNotEFI))
 }
 
@@ -3454,7 +3454,7 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabled(c *C) {
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but is currently disabled by the platform firmware`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
 func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableTPMViaFirmwareAction(c *C) {
@@ -3495,7 +3495,7 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableTPMViaFirmw
 			switch i {
 			case 0:
 				c.Assert(errs, HasLen, 1)
-				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware}, errs[0].Unwrap()))
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionRebootToFWSettings}, errs[0].Unwrap()))
 			}
 		},
 	})
@@ -3544,7 +3544,7 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableAndClearTPM
 			switch i {
 			case 0:
 				c.Assert(errs, HasLen, 1)
-				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware}, errs[0].Unwrap()))
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionEnableTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionRebootToFWSettings}, errs[0].Unwrap()))
 			}
 		},
 	})
@@ -3632,7 +3632,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
-		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 }
@@ -3719,7 +3719,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -3814,7 +3814,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -3914,7 +3914,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMDeviceLockoutLockedOut,
 		TPMDeviceLockoutRecoveryArg(24*time.Hour),
-		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 }
@@ -4014,7 +4014,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMDeviceLockoutLockedOut,
 					TPMDeviceLockoutRecoveryArg(24*time.Hour),
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 
@@ -4124,7 +4124,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMDeviceLockoutLockedOut,
 					TPMDeviceLockoutRecoveryArg(24*time.Hour),
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 
@@ -4206,7 +4206,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInsufficientTPMStorage,
 		nil,
-		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 }
@@ -4281,7 +4281,7 @@ C7E003CB
 			c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 				ErrorKindInsufficientTPMStorage,
 				nil,
-				[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+				[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 				errs[0].Unwrap(),
 			))
 		},
@@ -4363,7 +4363,7 @@ C7E003CB
 			c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 				ErrorKindInsufficientTPMStorage,
 				nil,
-				[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+				[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 				errs[0].Unwrap(),
 			))
 		},
@@ -4463,7 +4463,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}},
-		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPM},
+		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 }
@@ -4825,7 +4825,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInsufficientDMAProtection,
 		nil,
-		[]Action{ActionContactOEM, ActionRebootToFWSettings, ActionProceed},
+		[]Action{ActionRebootToFWSettings, ActionProceed, ActionContactOEM},
 		errs[0].Unwrap(),
 	))
 }
@@ -4873,7 +4873,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindNoKernelIOMMU,
 		nil,
-		[]Action{ActionRebootToFWSettings, ActionContactOSVendor, ActionProceed},
+		[]Action{ActionRebootToFWSettings, ActionProceed, ActionContactOSVendor},
 		errs[0].Unwrap(),
 	))
 }
@@ -5360,7 +5360,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsErrorForTest(
 		ErrorKindEmptyPCRBanks,
 		map[string]json.RawMessage{"algs": []byte("[12]")},
-		[]Action{ActionContactOEM, ActionProceed},
+		[]Action{ActionProceed, ActionContactOEM},
 		&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
 	))
 }
@@ -5588,7 +5588,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindAbsolutePresent,
 		nil,
-		[]Action{ActionContactOEM, ActionRebootToFWSettings, ActionProceed},
+		[]Action{ActionRebootToFWSettings, ActionProceed, ActionContactOEM},
 		ErrAbsoluteComputraceActive,
 	))
 }
@@ -6292,7 +6292,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindEmptyPCRBanks,
 		&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
-		[]Action{ActionContactOEM, ActionProceed},
+		[]Action{ActionProceed, ActionContactOEM},
 		errs[0].Unwrap(),
 	))
 
@@ -6300,7 +6300,7 @@ C7E003CB
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindNoKernelIOMMU,
 		nil,
-		[]Action{ActionRebootToFWSettings, ActionContactOSVendor, ActionProceed},
+		[]Action{ActionRebootToFWSettings, ActionProceed, ActionContactOSVendor},
 		errs[1].Unwrap(),
 	))
 }
@@ -6335,7 +6335,7 @@ func (s *runChecksContextSuite) TestRunChecksActionEnableTPMViaFirmwareNotAvaila
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but is currently disabled by the platform firmware`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableAndClearTPMViaFirmware}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionEnableAndClearTPMViaFirmware, ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
 func (s *runChecksContextSuite) TestRunChecksActionEnableAndClearTPMViaFirmwareNotAvailable(c *C) {
@@ -6368,7 +6368,7 @@ func (s *runChecksContextSuite) TestRunChecksActionEnableAndClearTPMViaFirmwareN
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: TPM2 device is present but is currently disabled by the platform firmware`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionRebootToFWSettings, ActionEnableTPMViaFirmware}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindTPMDeviceDisabled, nil, []Action{ActionEnableTPMViaFirmware, ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
 func (s *runChecksContextSuite) TestRunChecksActionClearTPMViaFirmwareNotAvailable(c *C) {
@@ -6448,7 +6448,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
-		[]Action{ActionRebootToFWSettings, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+		[]Action{ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 }
@@ -6571,7 +6571,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
-		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 
@@ -6579,7 +6579,7 @@ C7E003CB
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInsufficientDMAProtection,
 		nil,
-		[]Action{ActionContactOEM, ActionRebootToFWSettings},
+		[]Action{ActionRebootToFWSettings, ActionContactOEM},
 		errs[1].Unwrap(),
 	))
 }
@@ -7137,7 +7137,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware},
+		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 }
@@ -7217,7 +7217,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}},
-		[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPM},
+		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 }
@@ -7316,7 +7316,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -7433,7 +7433,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -7552,7 +7552,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			case 1:
@@ -7677,7 +7677,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -7796,7 +7796,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -7917,7 +7917,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			}
@@ -8032,7 +8032,7 @@ C7E003CB
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
 					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleLockout}},
-					[]Action{ActionRebootToFWSettings, ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPM},
+					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
 			case 1:
@@ -8065,4 +8065,93 @@ C7E003CB
 		nil, nil, // args, actions
 		errs[0].Unwrap(),
 	))
+}
+
+type insertActionProceedTestSuite struct{}
+
+var _ = Suite(&insertActionProceedTestSuite{})
+
+func (s *insertActionProceedTestSuite) TestInsertActionProceed(c *C) {
+	for _, tc := range []struct {
+		desc     string
+		actions  []Action
+		expected []Action
+	}{
+		{
+			desc: "insert before ActionContactOEM",
+			actions: []Action{
+				ActionClearTPMViaFirmware,
+				ActionRebootToFWSettings,
+				ActionContactOEM,
+			},
+			expected: []Action{
+				ActionClearTPMViaFirmware,
+				ActionRebootToFWSettings,
+				ActionProceed,
+				ActionContactOEM,
+			},
+		},
+		{
+			desc: "insert before ActionContactOSVendor",
+			actions: []Action{
+				ActionRebootToFWSettings,
+				ActionContactOSVendor,
+			},
+			expected: []Action{
+				ActionRebootToFWSettings,
+				ActionProceed,
+				ActionContactOSVendor,
+			},
+		},
+		{
+			desc: "insert before first contact action",
+			actions: []Action{
+				ActionClearTPMViaFirmware,
+				ActionContactOEM,
+				ActionContactOSVendor,
+			},
+			expected: []Action{
+				ActionClearTPMViaFirmware,
+				ActionProceed,
+				ActionContactOEM,
+				ActionContactOSVendor,
+			},
+		},
+		{
+			desc: "append when no contact actions",
+			actions: []Action{
+				ActionClearTPMViaFirmware,
+				ActionRebootToFWSettings,
+			},
+			expected: []Action{
+				ActionClearTPMViaFirmware,
+				ActionRebootToFWSettings,
+				ActionProceed,
+			},
+		},
+		{
+			desc:     "empty slice",
+			actions:  []Action{},
+			expected: []Action{ActionProceed},
+		},
+		{
+			desc:    "only ActionContactOEM",
+			actions: []Action{ActionContactOEM},
+			expected: []Action{
+				ActionProceed,
+				ActionContactOEM,
+			},
+		},
+		{
+			desc:    "only ActionContactOSVendor",
+			actions: []Action{ActionContactOSVendor},
+			expected: []Action{
+				ActionProceed,
+				ActionContactOSVendor,
+			},
+		},
+	} {
+		result := InsertActionProceed(tc.actions)
+		c.Check(result, DeepEquals, tc.expected, Commentf(tc.desc))
+	}
 }

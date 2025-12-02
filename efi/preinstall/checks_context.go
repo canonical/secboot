@@ -35,6 +35,26 @@ import (
 // errorKindToActions maps an error kind to one or more possible actions. The
 // slice of actions is an OR in the sense that any one of these actions can
 // be executed to attempt to resolve the associated error kind.
+//
+// The order of actions is significant as it represents the recommended order
+// in which users should attempt to resolve issues. Actions should generally be
+// ordered using the following rules in order of priority:
+//  1. Fix error before ignoring error before giving up e.g.
+//     [ActionRebootToFWSettings] to attempt to resolve the error before
+//     [ActionProceed] (dynamically added) that ignores error before
+//     [ActionContactOEM] that gives up.
+//  2. Automatic actions before manual actions e.g. automatic PPI-based actions
+//     and direct TPM commands are listed before manual actions that require
+//     rebooting to firmware settings e.g. [ActionClearTPMViaFirmware] and
+//     [ActionClearTPM] before [ActionRebootToFWSettings].
+//  4. More reliable actions before less reliable actions e.g. [ActionClearTPMViaFirmware]
+//     that is PPI-based before [ActionClearTPM] that uses TPM2_Clear which is more likely
+//     to fail.
+//  5. Less destructive actions before more destructive actions e.g.
+//     [ActionEnableTPMViaFirmware] that only enables TPM before
+//     [ActionEnableAndClearTPMViaFirmware] that also clears the TPM.
+//  6. Simplest actions first e.g. [ActionClearTPMSimple] before
+//     [ActionClearTPM].
 var errorKindToActions map[ErrorKind][]Action
 
 // errorKindToProceedFlag maps an error kind to a flag that can be set
@@ -57,30 +77,30 @@ func init() {
 			ActionContactOEM,
 		},
 		ErrorKindTPMDeviceDisabled: []Action{
-			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to enable the TPM
 			ActionEnableTPMViaFirmware,         // suggest enabling the TPM via the PPI
 			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to enable the TPM
 		},
 		ErrorKindTPMHierarchiesOwned: []Action{
-			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
 			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
 			ActionClearTPMSimple,               // suggest clearing the TPM using TPM2_Clear
 			ActionClearTPM,                     // suggest clearing the TPM using TPM2_Clear
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 			// TODO: Add action to clear the authorization values / policies
 		},
 		ErrorKindTPMDeviceLockoutLockedOut: []Action{
-			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
 			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 			// There will be no option to clear the lockout as there isn't a mechanism to do this.
 		},
 		ErrorKindInsufficientTPMStorage: []Action{
-			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 			ActionClearTPMViaFirmware,          // suggest clearing the TPM via the PPI
 			ActionEnableAndClearTPMViaFirmware, // suggest enabling and clearing the TPM via the PPI
 			ActionClearTPMSimple,               // suggest clearing the TPM using TPM2_Clear
 			ActionClearTPM,                     // suggest clearing the TPM using TPM2_Clear
+			ActionRebootToFWSettings,           // suggest rebooting to the firmware settings UI to clear the TPM
 		},
 		ErrorKindNoSuitablePCRBank: []Action{
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable other PCR banks
@@ -95,8 +115,8 @@ func init() {
 			ActionContactOEM, // suggest contacting the OEM because of a firmware bug
 		},
 		ErrorKindInsufficientDMAProtection: []Action{
-			ActionContactOEM,         // suggest contacting the OEM because of a firmware bug.
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable DMA protection.
+			ActionContactOEM,         // suggest contacting the OEM because of a firmware bug.
 		},
 		ErrorKindNoKernelIOMMU: []Action{
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable DMA protection.
@@ -115,8 +135,8 @@ func init() {
 			// TODO: Add an action to just disable these by erasing the SysPrepOrder and SysPrepXXXX variables
 		},
 		ErrorKindAbsolutePresent: []Action{
-			ActionContactOEM,         // suggest contacting the OEM if there's no way to disable it.
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to disable it.
+			ActionContactOEM,         // suggest contacting the OEM if there's no way to disable it.
 			// TODO: Add an action to just disable this automatically on supported platforms (eg, Dell via the WMI interface)
 		},
 		ErrorKindInvalidSecureBootMode: []Action{
@@ -315,6 +335,24 @@ func (c *RunChecksContext) isActionExpected(action Action) bool {
 	return false
 }
 
+// insertActionProceed inserts [ActionProceed] into the actions slice.
+// It inserts before [ActionContactOEM] or [ActionContactOSVendor] if present,
+// otherwise appends to the end. This ensures [ActionProceed] (which ignores
+// the error) appears before "give up" actions per Rule 1.
+func insertActionProceed(actions []Action) []Action {
+	for i, action := range actions {
+		if action == ActionContactOEM || action == ActionContactOSVendor {
+			// Create new slice with capacity for the additional action.
+			result := make([]Action, len(actions)+1)
+			copy(result, actions[:i])
+			result[i] = ActionProceed
+			copy(result[i+1:], actions[i:])
+			return result
+		}
+	}
+	return append(actions, ActionProceed)
+}
+
 // classifyRunChecksError converts the supplied error which is returned from
 // [RunChecks] into an [ErrorKind] and associated arguments where applicable
 // (see the documentation for each error kind).
@@ -396,7 +434,7 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 		return errorInfo{kind: ErrorKindInsufficientTPMStorage}, nil
 	}
 
-	// This has to become before MeasuredBootError because that error wraps this one.
+	// This has to come before MeasuredBootError because that error wraps this one.
 	var pcrAlgErr *NoSuitablePCRAlgorithmError
 	if errors.As(err, &pcrAlgErr) {
 		// RunChecks indicates that there is no suitable PCR bank. The possibilities here:
@@ -874,7 +912,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 				if permitActionProceed {
 					flag := errorKindToProceedFlag[e.Kind]
 					c.proceedFlags |= flag
-					e.Actions = append(e.Actions, ActionProceed)
+					e.Actions = insertActionProceed(e.Actions)
 				}
 				errs = append(errs, e)
 			}
