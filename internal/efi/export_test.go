@@ -20,6 +20,10 @@
 package efi
 
 import (
+	"os"
+
+	"github.com/pilebones/go-udev/crawler"
+	"github.com/pilebones/go-udev/netlink"
 	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
@@ -39,10 +43,34 @@ func MockDefaultTPM2Device(fn func(tpm2_device.DeviceMode) (tpm2_device.TPMDevic
 	}
 }
 
-func MockSysfsPath(path string) (restore func()) {
-	orig := sysfsPath
-	sysfsPath = path
+func MockCrawlerExistingDevices(fn func(chan crawler.Device, chan error, netlink.Matcher) chan struct{}) (restore func()) {
+	orig := crawlerExistingDevices
+	crawlerExistingDevices = fn
 	return func() {
-		sysfsPath = orig
+		crawlerExistingDevices = orig
+	}
+}
+
+func MockOsOpen(fn func(string) (*os.File, error)) (restore func()) {
+	orig := osOpen
+	osOpen = fn
+	return func() {
+		osOpen = orig
+	}
+}
+
+func MockOsReadFile(fn func(string) ([]byte, error)) (restore func()) {
+	orig := osReadFile
+	osReadFile = fn
+	return func() {
+		osReadFile = orig
+	}
+}
+
+func MockOsReadlink(fn func(string) (string, error)) (restore func()) {
+	orig := osReadlink
+	osReadlink = fn
+	return func() {
+		osReadlink = orig
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/tcglog-parser"
+	"github.com/pilebones/go-udev/netlink"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
@@ -40,20 +41,19 @@ import (
 //
 // This function is going to need some additional work later on.
 func checkForKernelIOMMU(env internal_efi.HostEnvironment) error {
-	devices, err := env.DevicesForClass("iommu")
+	devices, err := env.EnumerateDevices(&netlink.RuleDefinition{
+		Env: map[string]string{
+			"SUBSYSTEM": "iommu",
+		},
+	})
 	switch {
 	case err != nil:
 		return err
 	case len(devices) == 0:
 		return ErrNoKernelIOMMU
+	default:
+		return nil
 	}
-
-	for _, device := range devices {
-		if device.Subsystem() == "iommu" {
-			return nil
-		}
-	}
-	return ErrNoKernelIOMMU
 }
 
 // checkSecureBootPolicyPCRForDegradedFirmwareSettings checks PCR7 for the indication of degraded

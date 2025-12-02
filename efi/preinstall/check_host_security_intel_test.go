@@ -44,9 +44,10 @@ type mockMEISysfsDevice struct {
 	fwStatus []byte
 }
 
-func (*mockMEISysfsDevice) Name() string      { return "mei0" }
-func (*mockMEISysfsDevice) Path() string      { return "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0" }
-func (*mockMEISysfsDevice) Subsystem() string { return "mei" }
+func (*mockMEISysfsDevice) Path() string                              { return "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0" }
+func (*mockMEISysfsDevice) Properties() map[string]string             { return nil }
+func (*mockMEISysfsDevice) Subsystem() string                         { return "mei" }
+func (*mockMEISysfsDevice) Parent() (internal_efi.SysfsDevice, error) { return nil, nil }
 
 func (d *mockMEISysfsDevice) AttributeReader(attr string) (io.ReadCloser, error) {
 	switch attr {
@@ -271,12 +272,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, IsNil)
 }
@@ -295,12 +294,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVECSME1
 C7E002CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, IsNil)
 }
@@ -319,12 +316,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME
 40200000
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, IsNil)
 }
@@ -343,12 +338,41 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVECSME1
 40200000
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, IsNil)
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME18WithOtherMEIDevices(c *C) {
+	// Test that the correct mei device is selected when there are others enumerated.
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
+`),
+		"fw_status": []byte(`A4000245
+09110500
+00000020
+00000000
+02F61F03
+40200000
+`),
 	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei1", map[string]string{"DEVNAME": "mei1"}, "mei", nil, efitest.NewMockSysfsDevice(
+			"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
+		)),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/0000:00:16.0-082ee5a7-7c25-470a-9643-0c06f0466ea1", nil, "mei", attrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices...))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, IsNil)
 }
@@ -356,16 +380,48 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVECSME1
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoDevices(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `cannot obtain devices with \"mei\" class: nil devices`)
+	c.Check(err, ErrorMatches, `cannot obtain devices for mei subsystem: nil devices`)
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEIDevice(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(make(map[string][]internal_efi.SysfsDevice)))
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEModule(c *C) {
+	// Test the case where the mei_me module is not loaded.
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0", map[string]string{"PCI_CLASS": "78000", "PCI_ID": "8086:7E70"}, "pci", nil, nil)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `the kernel module "mei_me" must be loaded`)
 	c.Check(err, Equals, MissingKernelModuleError("mei_me"))
 }
 
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice1(c *C) {
+	// Test the case where there are no mei devices.
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices())
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
+	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice2(c *C) {
+	// Test the case where the only mei device is not the required one.
+	device := efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
+		"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
+	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice3(c *C) {
+	// Test the case where there is a PCI mei device that isn't bound to the mei_me
+	// module. This probably isn't a realistic test case.
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", nil, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
+	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
+}
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFwVer(c *C) {
 	attrs := map[string][]byte{
 		"fw_status": []byte(`94000245
@@ -376,12 +432,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFwVer(c *
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `cannot obtain ME version from sysfs: device attribute does not exist`)
 }
@@ -393,12 +447,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrHFSTSRegi
 0:16.0.15.1624
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `cannot read HFSTS registers from sysfs: device attribute does not exist`)
 }
@@ -417,12 +469,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupport
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `unsupported platform: unsupported ME family`)
 	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
@@ -442,12 +492,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrOperation
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid ME operation mode`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -467,12 +515,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrOperation
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid ME operation mode`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -492,12 +538,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrMfgMode(c
 C7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -517,12 +561,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrACMNotAct
 40200000
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard ACM is not active`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -542,12 +584,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrACMNotDon
 40200000
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard ACM is not active`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -567,12 +607,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoFPFSOCL
 87E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard OTP fuses are not locked`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -592,12 +630,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrBootGuard
 D7E003CB
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard is disabled`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -617,12 +653,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupport
 C7E00002
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -642,12 +676,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupport
 C7E0030A
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -667,12 +699,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrInvalidPr
 C7E0024A
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: cannot determine BootGuard profile: invalid profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -692,12 +722,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrInvalidPr
 40200000
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -717,12 +745,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupport
 40200000
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
@@ -742,12 +768,10 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupport
 40200000
 `),
 	}
-	devices := map[string][]internal_efi.SysfsDevice{
-		"mei": []internal_efi.SysfsDevice{
-			efitest.NewMockSysfsDevice("mei0", "/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", "mei", attrs),
-		},
-	}
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices))
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
