@@ -811,6 +811,12 @@ func (c *RunChecksContext) Result() *CheckResult {
 	return c.result
 }
 
+// ProfileOpts returns the [PCRProfileOptionsFlags] that were specified when this
+// context was created with [NewRunChecksContext].
+func (c *RunChecksContext) ProfileOpts() PCRProfileOptionsFlags {
+	return c.profileOpts
+}
+
 // Run will run the specified action, and if that completes successfully will run another
 // iteration of [RunChecks] and test the result against the preferred [WithAutoTCGPCRProfile]
 // configuration. On success, this will return the CheckResult. On failure, this will return
