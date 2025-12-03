@@ -21,8 +21,12 @@ package preinstall
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math/bits"
+	"strconv"
+	"strings"
 
 	"github.com/canonical/go-tpm2"
 	secboot_efi "github.com/snapcore/secboot/efi"
@@ -94,10 +98,6 @@ var (
 type PCRProfileOptionsFlags uint32
 
 const (
-	// PCRProfileOptionsDefault is the default PCR configuration. WithAutoTCGPCRProfile
-	// will select the most appropriate configuration depending on the CheckResult.
-	PCRProfileOptionsDefault PCRProfileOptionsFlags = 0
-
 	// PCRProfileOptionMostSecure is the most secure configuration by
 	// including all relevant TCG defined PCRs supported by the efi package
 	// (PCRs 0, 1, 2, 3, 4, 5 and 7).
@@ -141,7 +141,94 @@ const (
 	// mitigations. See the DiscreteTPMDetected CheckResultFlags flag description for more
 	// information.
 	PCRProfileOptionNoDiscreteTPMResetMitigation
+
+	// PCRProfileOptionsDefault is the default PCR configuration. WithAutoTCGPCRProfile
+	// will select the most appropriate configuration depending on the CheckResult.
+	PCRProfileOptionsDefault PCRProfileOptionsFlags = 0
 )
+
+func (o PCRProfileOptionsFlags) toStringSlice() []string {
+	out := make([]string, 0, bits.OnesCount32(uint32(o)))
+	for i := 0; i < 32; i++ {
+		flag := PCRProfileOptionsFlags(1 << i)
+		if o&flag == 0 {
+			continue
+		}
+
+		var str string
+		switch flag {
+		case PCRProfileOptionMostSecure:
+			str = "most-secure"
+		case PCRProfileOptionTrustCAsForBootCode:
+			str = "trust-cas-for-boot-code"
+		case PCRProfileOptionTrustCAsForVARSuppliedDrivers:
+			str = "trust-cas-for-var-supplied-drivers"
+		case PCRProfileOptionDistrustVARSuppliedNonHostCode:
+			str = "distrust-var-supplied-nonhost-code"
+		case PCRProfileOptionPermitNoSecureBootPolicyProfile:
+			str = "permit-no-secure-boot-policy-profile"
+		case PCRProfileOptionNoDiscreteTPMResetMitigation:
+			str = "no-discrete-tpm-reset-mitigation"
+		default:
+			str = fmt.Sprintf("%#08x", uint32(flag))
+		}
+
+		out = append(out, str)
+	}
+
+	return out
+}
+
+// MarshalJSON implements [json.Marshaler].
+func (o PCRProfileOptionsFlags) MarshalJSON() ([]byte, error) {
+	return json.Marshal(o.toStringSlice())
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (o *PCRProfileOptionsFlags) UnmarshalJSON(data []byte) error {
+	var flags []string
+	if err := json.Unmarshal(data, &flags); err != nil {
+		return err
+	}
+
+	var out PCRProfileOptionsFlags
+	for _, flag := range flags {
+		var val PCRProfileOptionsFlags
+
+		switch flag {
+		case "most-secure":
+			val = PCRProfileOptionMostSecure
+		case "trust-cas-for-boot-code":
+			val = PCRProfileOptionTrustCAsForBootCode
+		case "trust-cas-for-var-supplied-drivers":
+			val = PCRProfileOptionTrustCAsForVARSuppliedDrivers
+		case "distrust-var-supplied-nonhost-code":
+			val = PCRProfileOptionDistrustVARSuppliedNonHostCode
+		case "permit-no-secure-boot-policy-profile":
+			val = PCRProfileOptionPermitNoSecureBootPolicyProfile
+		case "no-discrete-tpm-reset-mitigation":
+			val = PCRProfileOptionNoDiscreteTPMResetMitigation
+		default:
+			v, err := strconv.ParseUint(flag, 0, 32)
+			switch {
+			case errors.Is(err, strconv.ErrSyntax) || errors.Is(err, strconv.ErrRange):
+				return fmt.Errorf("unrecognized flag %q", flag)
+			case err != nil:
+				return err
+			}
+			val = PCRProfileOptionsFlags(v)
+		}
+
+		out |= val
+	}
+
+	*o = out
+	return nil
+}
+
+func (o PCRProfileOptionsFlags) String() string {
+	return strings.Join(o.toStringSlice(), ",")
+}
 
 // PCRProfileAutoEnablePCRsOption is an option for AddPCRProfile that adds one or more PCRs
 // based on a set of tests done at some point in the past.
