@@ -205,6 +205,7 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 	c.Check(result.Warnings, ErrorMatches, params.expectedWarningsMatch)
 
 	c.Check(ctx.Result(), DeepEquals, result)
+	c.Check(ctx.ProfileOpts(), DeepEquals, params.profileOpts)
 
 	return nil
 }
