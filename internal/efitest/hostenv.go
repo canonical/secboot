@@ -27,6 +27,7 @@ import (
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
+	"github.com/pilebones/go-udev/netlink"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/tpm2_device"
 )
@@ -44,7 +45,7 @@ type MockHostEnvironment struct {
 	VirtModeErr            error
 	DelayedVirtModeOptions []MockHostEnvironmentOption
 
-	Devices map[string][]internal_efi.SysfsDevice
+	Devices map[string]internal_efi.SysfsDevice
 
 	AMD64Env internal_efi.HostEnvironmentAMD64
 }
@@ -145,16 +146,22 @@ func (e *mockHostEnvironmentAMD64) ReadMSRs(msr uint32) (map[uint32]uint64, erro
 
 // MockSysfsDevice is a mock implementation of [internal_efi.SysfsDevice].
 type MockSysfsDevice struct {
-	DeviceName      string
-	DevicePath      string
-	DeviceSubsystem string
+	DevicePath       string
+	DeviceProperties map[string]string
+	DeviceSubsystem  string
 
 	DeviceAttributeVals map[string][]byte
+
+	DeviceParent *MockSysfsDevice
 }
 
-func (d *MockSysfsDevice) Name() string      { return d.DeviceName }
-func (d *MockSysfsDevice) Path() string      { return d.DevicePath }
-func (d *MockSysfsDevice) Subsystem() string { return d.DeviceSubsystem }
+func (d *MockSysfsDevice) Path() string                  { return d.DevicePath }
+func (d *MockSysfsDevice) Properties() map[string]string { return d.DeviceProperties }
+func (d *MockSysfsDevice) Subsystem() string             { return d.DeviceSubsystem }
+
+func (d *MockSysfsDevice) Parent() (internal_efi.SysfsDevice, error) {
+	return d.DeviceParent, nil
+}
 
 func (d *MockSysfsDevice) AttributeReader(attr string) (rc io.ReadCloser, err error) {
 	if d.DeviceAttributeVals == nil {
@@ -168,19 +175,26 @@ func (d *MockSysfsDevice) AttributeReader(attr string) (rc io.ReadCloser, err er
 }
 
 // NewMockSysfsDevice returns a new MockSysfsDevice.
-func NewMockSysfsDevice(name, path, subsystem string, attributeVals map[string][]byte) *MockSysfsDevice {
+func NewMockSysfsDevice(path string, properties map[string]string, subsystem string, attributeVals map[string][]byte, parent *MockSysfsDevice) *MockSysfsDevice {
+	if properties == nil {
+		properties = make(map[string]string)
+	}
 	return &MockSysfsDevice{
-		DeviceName:          name,
 		DevicePath:          path,
+		DeviceProperties:    properties,
 		DeviceSubsystem:     subsystem,
 		DeviceAttributeVals: attributeVals,
+		DeviceParent:        parent,
 	}
 }
 
 // WithSysfsDevices adds the supplied devices, keyed by class, to the [MockHostEnvironment].
-func WithSysfsDevices(devices map[string][]internal_efi.SysfsDevice) MockHostEnvironmentOption {
+func WithSysfsDevices(devices ...internal_efi.SysfsDevice) MockHostEnvironmentOption {
 	return func(env *MockHostEnvironment) {
-		env.Devices = devices
+		env.Devices = make(map[string]internal_efi.SysfsDevice)
+		for _, dev := range devices {
+			env.Devices[dev.Path()] = dev
+		}
 	}
 }
 
@@ -256,15 +270,28 @@ func (e *MockHostEnvironment) DetectVirtMode(mode internal_efi.DetectVirtMode) (
 	return internal_efi.VirtModeNone, nil
 }
 
-// DevicesForClass implements [github.com/snapcore/secboot/internal/efi.HostEnvironment.DevicesForClass].
-func (e *MockHostEnvironment) DevicesForClass(class string) ([]internal_efi.SysfsDevice, error) {
+// EnumerateDevices implements [github.com/snapcore/secboot/internal/efi.HostEnvironment.EnumerateDevices].
+func (e *MockHostEnvironment) EnumerateDevices(matcher netlink.Matcher) ([]internal_efi.SysfsDevice, error) {
 	if e.Devices == nil {
 		return nil, errors.New("nil devices")
 	}
-	devices, exists := e.Devices[class]
-	if !exists {
-		return nil, nil
+
+	var devices []internal_efi.SysfsDevice
+	for _, dev := range e.Devices {
+		env := make(map[string]string)
+		for k, v := range dev.Properties() {
+			env[k] = v
+		}
+		subsystem := dev.Subsystem()
+		if subsystem != "" {
+			env["SUBSYSTEM"] = subsystem
+		}
+
+		if matcher.EvaluateEnv(env) {
+			devices = append(devices, dev)
+		}
 	}
+
 	return devices, nil
 }
 

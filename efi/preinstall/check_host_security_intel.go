@@ -28,6 +28,7 @@ import (
 
 	"github.com/canonical/cpuid"
 	"github.com/canonical/go-tpm2"
+	"github.com/pilebones/go-udev/netlink"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
@@ -240,14 +241,60 @@ func calculateIntelMEFamily(vers meVersion, hfsts1Reg hfsts1) meFamily {
 }
 
 func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
-	devices, err := env.DevicesForClass("mei")
+	// Enumerate mei subsystem devices.
+	devices, err := env.EnumerateDevices(&netlink.RuleDefinition{
+		Env: map[string]string{
+			"SUBSYSTEM": "mei",
+			"DEVNAME":   "mei[0-9]+",
+		},
+	})
 	if err != nil {
-		return fmt.Errorf("cannot obtain devices with \"mei\" class: %w", err)
+		return fmt.Errorf("cannot obtain devices for mei subsystem: %w", err)
 	}
-	if len(devices) == 0 {
+
+	// We have one or more mei devices. Find the one associated with the ME.
+	var device internal_efi.SysfsDevice
+	for _, candidate := range devices {
+		parent, err := candidate.Parent()
+		if err != nil {
+			return fmt.Errorf("cannot determine parent device of %s: %w", candidate.Path(), err)
+		}
+
+		if parent.Subsystem() != "pci" {
+			// The ME should be a PCI device.
+			continue
+		}
+		if parent.Properties()["DRIVER"] != "mei_me" {
+			// The ME device should be bound to the mei_me driver.
+			continue
+		}
+
+		device = candidate
+		break
+	}
+
+	if device == nil {
+		// We didn't find the ME device, so try to find the PCI device.
+		devices, err = env.EnumerateDevices(&netlink.RuleDefinition{
+			Env: map[string]string{
+				"SUBSYSTEM": "pci",
+				"PCI_CLASS": "78000", // MEI controller class
+				"PCI_ID":    "8086:[[:xdigit:]]{4}",
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("cannot obtain PCI devices with MEI class: %w", err)
+		}
+		if len(devices) == 0 {
+			// We didn't find the PCI device, so indicate that this platform
+			// isn't supported.
+			return &UnsupportedPlatformError{errors.New("no MEI PCI device")}
+		}
+
+		// We did find the PCI device, so indicate that we need the mei_me module
+		// to be loaded.
 		return MissingKernelModuleError("mei_me")
 	}
-	device := devices[0]
 
 	vers, err := readIntelMEVersionFromMEISysfs(device)
 	if err != nil {

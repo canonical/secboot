@@ -80,6 +80,15 @@ func (s *resultSuite) TestCheckResultFlagsUnmarshalJSON(c *C) {
 	}
 }
 
+func (s *resultSuite) TestCheckResultFlagsUnmarshalJSONInvalidSlice(c *C) {
+	var flags CheckResultFlags
+	c.Check(json.Unmarshal([]byte("foo"), &flags), ErrorMatches, `invalid character 'o' in literal false \(expecting 'a'\)`)
+}
+
+func (s *resultSuite) TestCheckResultFlagsUnmarshalJSONInvalidFlag(c *C) {
+	var flags CheckResultFlags
+	c.Check(json.Unmarshal([]byte(`["foo"]`), &flags), ErrorMatches, `unrecognized flag "foo"`)
+}
 func (s *resultSuite) TestCheckResultFlagsString(c *C) {
 	for _, params := range []struct {
 		flags    CheckResultFlags
