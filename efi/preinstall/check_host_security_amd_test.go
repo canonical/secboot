@@ -61,8 +61,21 @@ func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrNoPSPDevice(c *C) {
 	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
 }
 
-func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrNoSecurityReporting(c *C) {
+func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrNoSecurityReporting1(c *C) {
 	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", nil, nil)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityAMDPSP(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: PSP security reporting not available`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrNoSecurityReporting2(c *C) {
+	attrs := map[string][]byte{
+		"debug_lock_on": []byte(`1
+`),
+	}
+
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", attrs, nil)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityAMDPSP(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: PSP security reporting not available`)
