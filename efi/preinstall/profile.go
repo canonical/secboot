@@ -131,16 +131,16 @@ const (
 	// indicates that PCR7 cannot be used.
 	PCRProfileOptionPermitNoSecureBootPolicyProfile
 
-	// PCRProfileOptionNoDiscreteTPMResetMitigation can be used to omit PCR0 from the
-	// profile on platforms that have a discrete TPM and where including PCR0 can provide
-	// limited mitigation of TPM reset attacks by preventing the PCR values from being
-	// reconstructed from software. This should only be used if a system administrator makes
-	// an explicit decision that they don't want the additional PCR fragility caused by this
-	// mitigation, perhaps because they consider that discrete TPMs still have other
+	// PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation can be used to omit PCR0
+	// from the profile on platforms that have a discrete TPM and where including PCR0 can
+	// provide limited mitigation of TPM reset attacks by preventing the PCR values from
+	// being reconstructed from software. This should only be used if a system administrator
+	// makes an explicit decision that they don't want the additional PCR fragility caused by
+	// this mitigation, perhaps because they consider that discrete TPMs still have other
 	// weaknesses to anyone with physical access to the device without any of their own
-	// mitigations. See the DiscreteTPMDetected CheckResultFlags flag description for more
-	// information.
-	PCRProfileOptionNoDiscreteTPMResetMitigation
+	// mitigations. See the RequestPartialDiscreteTPMResetAttackMitigation CheckResultFlags
+	// flag description for more information.
+	PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation
 
 	// PCRProfileOptionsDefault is the default PCR configuration. WithAutoTCGPCRProfile
 	// will select the most appropriate configuration depending on the CheckResult.
@@ -167,8 +167,8 @@ func (o PCRProfileOptionsFlags) toStringSlice() []string {
 			str = "distrust-var-supplied-nonhost-code"
 		case PCRProfileOptionPermitNoSecureBootPolicyProfile:
 			str = "permit-no-secure-boot-policy-profile"
-		case PCRProfileOptionNoDiscreteTPMResetMitigation:
-			str = "no-discrete-tpm-reset-mitigation"
+		case PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation:
+			str = "no-partial-dtpm-reset-attack-mitigation"
 		default:
 			str = fmt.Sprintf("%#08x", uint32(flag))
 		}
@@ -206,8 +206,8 @@ func (o *PCRProfileOptionsFlags) UnmarshalJSON(data []byte) error {
 			val = PCRProfileOptionDistrustVARSuppliedNonHostCode
 		case "permit-no-secure-boot-policy-profile":
 			val = PCRProfileOptionPermitNoSecureBootPolicyProfile
-		case "no-discrete-tpm-reset-mitigation":
-			val = PCRProfileOptionNoDiscreteTPMResetMitigation
+		case "no-partial-dtpm-reset-attack-mitigation":
+			val = PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation
 		default:
 			v, err := strconv.ParseUint(flag, 0, 32)
 			switch {
@@ -369,21 +369,14 @@ func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnab
 			//			)
 
 		}
-		if o.opts&PCRProfileOptionNoDiscreteTPMResetMitigation == 0 {
-			const mask = DiscreteTPMDetected | StartupLocalityNotProtected
-			if o.result.Flags&mask == DiscreteTPMDetected {
-				// Enable reset attack mitigations by including PCR0, because the startup locality
-				// is protected making it impossible to reconstruct PCR0 from software if the TPM is
-				// reset indepdendently of the host platform. Note that it is still possible for an
-				// adversary with physical access to reconstruct PCR0 by manipulating the bus between
-				// the host CPU and the discrete TPM directly, as this will allow them access to all
-				// localities.
-				if o.result.Flags&NoPlatformFirmwareProfileSupport > 0 {
-					return nil, fmt.Errorf("cannot enable a discrete TPM reset attack mitigation and the "+
-						"PCRProfileOptionNoDiscreteTPMResetMitigation was not supplied: %w", newUnsupportedRequiredPCRsError(tpm2.HandleList{0}, o.result.Flags))
-				}
-				opts = append(opts, secboot_efi.WithPlatformFirmwareProfile())
-			}
+		if o.opts&PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation == 0 && o.result.Flags&RequestPartialDiscreteTPMResetAttackMitigation > 0 {
+			// Enable reset attack mitigations by including PCR0, because the startup locality
+			// is protected making it impossible to reconstruct PCR0 from software if the TPM is
+			// reset indepdendently of the host platform. Note that it is still possible for an
+			// adversary with physical access to reconstruct PCR0 by manipulating the bus between
+			// the host CPU and the discrete TPM directly, as this will allow them access to all
+			// localities.
+			opts = append(opts, secboot_efi.WithPlatformFirmwareProfile())
 		}
 		return opts, nil
 	}

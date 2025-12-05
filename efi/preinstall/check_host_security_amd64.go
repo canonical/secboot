@@ -23,8 +23,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/canonical/cpuid"
-	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
@@ -33,43 +31,27 @@ import (
 // is sufficient. Errors that can't be resolved or which should prevent further checks from running
 // are returned immediately and without any wrapping. Errors that can be resolved and which shouldn't
 // prevent further checks from running are returned wrapped in [joinError].
-func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (protectedStartupLocalities tpm2.Locality, err error) {
+func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) error {
 	cpuVendor, err := determineCPUVendor(env)
 	if err != nil {
-		return 0, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+		return &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
 	}
 
 	amd64Env, err := env.AMD64()
 	if err != nil {
-		return 0, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
+		return fmt.Errorf("cannot obtain AMD64 environment: %w", err)
 	}
 
 	switch cpuVendor {
 	case cpuVendorIntel:
 		if err := checkHostSecurityIntelBootGuard(env); err != nil {
-			return 0, fmt.Errorf("encountered an error when checking Intel BootGuard configuration: %w", err)
+			return fmt.Errorf("encountered an error when checking Intel BootGuard configuration: %w", err)
 		}
 		if err := checkHostSecurityIntelCPUDebuggingLocked(amd64Env); err != nil {
-			return 0, fmt.Errorf("encountered an error when checking Intel CPU debugging configuration: %w", err)
-		}
-		if amd64Env.HasCPUIDFeature(cpuid.SMX) {
-			// The Intel TXT spec says that locality 4 is basically only available
-			// to microcode, and is locked before handing over to an ACM which
-			// has access to locality 3. Access to this is meant to be locked at the
-			// hardware level before running non-Intel code, although I'm not sure if
-			// this is only relevant in the D-CRTM case where the SINIT ACM has access
-			// to locality 3, and it locks access to it, leaving access to localities 2
-			// and 1 to the measured launch environment and dynamic OS respectively. We
-			// rely on the property of localities 3 and 4 being protected somewhat in order
-			// to attempt to mitigate discrete TPM reset attacks on Intel platforms (basically
-			// by including PCR0 in the policy, even though it's otherwise useless to include
-			// it, but locality 3 or 4 access is required in order to reconstruct PCR0 after a
-			// TPM reset. Mark localities 3 and 4 as protected if we have the right instructions
-			// for implementing a D-CRTM with Intel TXT (which I think is SMX).
-			protectedStartupLocalities |= tpm2.LocalityThree | tpm2.LocalityFour
+			return fmt.Errorf("encountered an error when checking Intel CPU debugging configuration: %w", err)
 		}
 	case cpuVendorAMD:
-		return 0, &UnsupportedPlatformError{errors.New("checking host security is not yet implemented for AMD")}
+		return &UnsupportedPlatformError{errors.New("checking host security is not yet implemented for AMD")}
 	default:
 		panic("not reached")
 	}
@@ -79,7 +61,7 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (prote
 	if err := checkSecureBootPolicyPCRForDegradedFirmwareSettings(log); err != nil {
 		var ce CompoundError
 		if !errors.As(err, &ce) {
-			return 0, fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
+			return fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
 		}
 		errs = append(errs, ce.Unwrap()...)
 	}
@@ -88,13 +70,62 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (prote
 		case errors.Is(err, ErrNoKernelIOMMU):
 			errs = append(errs, err)
 		default:
-			return 0, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
+			return fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
 		}
 	}
 
 	if len(errs) > 0 {
-		return protectedStartupLocalities, joinErrors(errs...)
+		return joinErrors(errs...)
 	}
 
-	return protectedStartupLocalities, nil
+	return nil
+}
+
+// checkDiscreteTPMPartialResetAttackMitigationStatus determines whether a partial mitigation
+// against discrete TPM reset attacks should be enabled. See the documentation for
+// RequestPartialDiscreteTPMResetAttackMitigation.
+func checkDiscreteTPMPartialResetAttackMitigationStatus(env internal_efi.HostEnvironment, logResults *pcrBankResults) (discreteTPMPartialResetAttackMitigationStatus, error) {
+	cpuVendor, err := determineCPUVendor(env)
+	if err != nil {
+		return dtpmPartialResetAttackMitigationNotRequired, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+	}
+
+	if cpuVendor != cpuVendorIntel {
+		// Only enable this on Intel systems.
+		return dtpmPartialResetAttackMitigationNotRequired, nil
+	}
+
+	amd64Env, err := env.AMD64()
+	if err != nil {
+		return dtpmPartialResetAttackMitigationNotRequired, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
+	}
+
+	discreteTPM, err := isTPMDiscrete(env)
+	if err != nil {
+		return dtpmPartialResetAttackMitigationNotRequired, &TPM2DeviceError{err}
+	}
+
+	switch {
+	case !discreteTPM:
+		// Not a discrete TPM.
+		return dtpmPartialResetAttackMitigationNotRequired, nil
+	case !logResults.Lookup(internal_efi.PlatformFirmwarePCR).Ok():
+		// PCR0 is unusable.
+		return dtpmPartialResetAttackMitigationUnavailable, nil
+	}
+
+	restrictedLocalities := restrictedTPMLocalitiesIntel(amd64Env)
+	for _, locality := range restrictedLocalities.Values() {
+		if locality == logResults.StartupLocality {
+			// The startup locality is not available to the OS, so
+			// we can enable the migitation because PCR0 cannot
+			// be recreated from the OS.
+			return dtpmPartialResetAttackMitigationPreferred, nil
+		}
+	}
+
+	// The startup locality is available to the OS, so the mitigation
+	// is unavailable even though it would have been desired because
+	// PCR0 can be recreated from the OS.
+	return dtpmPartialResetAttackMitigationUnavailable, nil
 }
