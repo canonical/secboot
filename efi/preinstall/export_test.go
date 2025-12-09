@@ -56,7 +56,6 @@ const (
 	BootManagerCodeNotAllLaunchDigestsVerified = bootManagerCodeNotAllLaunchDigestsVerified
 	CheckFirmwareLogPermitEmptyPCRBanks        = checkFirmwareLogPermitEmptyPCRBanks
 	CheckFirmwareLogPermitWeakPCRBanks         = checkFirmwareLogPermitWeakPCRBanks
-	CheckTPM2DeviceInVM                        = checkTPM2DeviceInVM
 	CheckTPM2DevicePostInstall                 = checkTPM2DevicePostInstall
 	CpuVendorIntel                             = cpuVendorIntel
 	CpuVendorAMD                               = cpuVendorAMD
@@ -87,6 +86,7 @@ var (
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
 	CheckSystemIsEFI                                      = checkSystemIsEFI
+	CheckTPM2ForRequiredPCClientFeatures                  = checkTPM2ForRequiredPCClientFeatures
 	ClearTPM                                              = clearTPM
 	DetectVirtualization                                  = detectVirtualization
 	DetermineCPUVendor                                    = determineCPUVendor

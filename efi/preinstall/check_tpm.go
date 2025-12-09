@@ -20,6 +20,7 @@
 package preinstall
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
@@ -30,17 +31,190 @@ const (
 	pcClientClass uint32 = 0x00000001
 )
 
+func checkTPM2ForRequiredPCClientFeatures(tpm *tpm2.TPMContext) (ok bool, err error) {
+	// Check permanent properties.
+	type cmpFn func(x, y uint32) bool
+	var (
+		cmpGE       = func(x, y uint32) bool { return x >= y }
+		cmpGEOrZero = func(x, y uint32) bool {
+			if x == 0 {
+				return true
+			}
+			return x >= y
+		}
+	)
+
+	for _, data := range [...]struct {
+		prop     tpm2.Property
+		expected uint32
+		cmp      cmpFn
+	}{
+		{prop: tpm2.PropertyHRTransientMin, expected: 3, cmp: cmpGE},  // We use transient objects, so expect the PC-Client minimum
+		{prop: tpm2.PropertyHRPersistentMin, expected: 7, cmp: cmpGE}, // We store persistent objects, so expect the PC-Client minimum
+		{prop: tpm2.PropertyHRLoadedMin, expected: 3, cmp: cmpGE},     // We make use of multiple loaded sessions, so expect the PC-Client minimum
+		{prop: tpm2.PropertyPCRCount, expected: 24, cmp: cmpGE},
+		// If TPM2_PT_NV_COUNTERS_MAX is zero, then the either the number of NV
+		// counters is only limited by the amount of NV storage space available,
+		// or no NV counters are supported. In the latter case, this should be
+		// caught by missing support for TPM_CC_NV_INCREMENT.
+		{prop: tpm2.PropertyNVCountersMax, expected: 6, cmp: cmpGEOrZero},
+	} {
+		switch val, err := tpm.GetCapabilityTPMProperty(data.prop); {
+		case err != nil:
+			return false, fmt.Errorf("cannot obtain value of %v: %w", data.prop, err)
+		case !data.cmp(val, data.expected):
+			return false, nil
+		}
+	}
+
+	// Check algorithms.
+	for _, alg := range [...]tpm2.AlgorithmId{
+		tpm2.AlgorithmRSA,            // Required for primary keys.
+		tpm2.AlgorithmAES,            // Required for primary keys and parameter encryption.
+		tpm2.AlgorithmKeyedHash,      // Required for sealed objects.
+		tpm2.AlgorithmSHA256,         // Required for name algorithm and PCR banks.
+		tpm2.AlgorithmOAEP,           // Required for parameter encryption.
+		tpm2.AlgorithmECDSA,          // Required for PCR policy signatures.
+		tpm2.AlgorithmKDF1_SP800_108, // Required for deriving session keys.
+		tpm2.AlgorithmECC,            // Required for PCR policy signing keys.
+		tpm2.AlgorithmCFB,            // Required for primary keys and parameter encryption.
+	} {
+		if !tpm.IsAlgorithmSupported(alg) {
+			return false, nil
+		}
+	}
+
+	// Check elliptic curves.
+	if !tpm.IsECCCurveSupported(tpm2.ECCCurveNIST_P256) {
+		return false, nil
+	}
+
+	// Check PCR attributes.
+	for _, data := range []struct {
+		prop     tpm2.PropertyPCR
+		expected tpm2.PCRSelect
+		required bool
+	}{
+		// All S-RTM PCRs should be saved on TPM2_Shutdown(STATE) so they can be restored on resume.
+		{prop: tpm2.PropertyPCRSave, expected: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, required: true},
+
+		// All S-RTM PCRs are extendable from locality 0.
+		{prop: tpm2.PropertyPCRExtendL0, expected: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}, // won't be present if localities aren't supported.
+
+		// No S-RTM PCRs are resettable from any locality.
+		{prop: tpm2.PropertyPCRResetL0, expected: []int{}},   // won't be present if localities aren't supported.
+		{prop: tpm2.PropertyPCRResetL1, expected: []int{}},   // won't be present if localities aren't supported.
+		{prop: tpm2.PropertyPCRResetL2, expected: []int{}},   // won't be present if localities aren't supported.
+		{prop: tpm2.PropertyPCRResetL3, expected: []int{}},   // won't be present if localities aren't supported.
+		{prop: tpm2.PropertyPCRResetL4, expected: []int{}},   // won't be present if localities aren't supported.
+		{prop: tpm2.PropertyPCRDRTMReset, expected: []int{}}, // optional feature.
+
+		// Extending any S-RTM increments the PCR update counter.
+		{prop: tpm2.PropertyPCRNoIncrement, expected: []int{}}, // optional feature.
+
+		// No S-RTM PCR is part of a policy or auth group.
+		{prop: tpm2.PropertyPCRPolicy, expected: []int{}}, // optional feature.
+		{prop: tpm2.PropertyPCRAuth, expected: []int{}},   // optional feature.
+	} {
+		// XXX: TPMContext should have a GetCapabilityPCRProperty method (equivalent to
+		// GetCapabilityTPMProperty, used above) which simplifies things here.
+		switch props, err := tpm.GetCapabilityPCRProperties(data.prop, 1); {
+		case err != nil:
+			return false, fmt.Errorf("cannot obtain value of %v: %w", data.prop, err)
+		case (len(props) < 1 || props[0].Tag != data.prop) && data.required:
+			return false, fmt.Errorf("cannot obtain value of %v: missing property", data.prop)
+		case len(props) < 1 || props[0].Tag != data.prop:
+			// ok
+		default:
+			// Filter out PCRs not associated with the S-RTM from the result.
+			var pcrs tpm2.PCRSelect
+			for _, pcr := range props[0].Select {
+				if pcr > 15 {
+					continue
+				}
+				pcrs = append(pcrs, pcr)
+			}
+
+			expectedBitmap, err := data.expected.ToBitmap(0)
+			if err != nil {
+				// The PCR selection is hard-coded.
+				panic(err)
+			}
+			bitmap, err := pcrs.ToBitmap(0)
+			if err != nil {
+				// This value was unmarshaled from a PCRSelectBitmap by
+				// go-tpm2 and we've also pruned the PCRs so there's no
+				// way this can fail.
+				panic(err)
+			}
+			if !bytes.Equal(bitmap.Bytes, expectedBitmap.Bytes) {
+				return false, nil
+			}
+		}
+	}
+
+	// Check commands.
+	for _, command := range []tpm2.CommandCode{
+		tpm2.CommandSelfTest,
+		tpm2.CommandGetTestResult,
+		tpm2.CommandStartAuthSession,
+		tpm2.CommandCreate,
+		tpm2.CommandLoad,
+		tpm2.CommandLoadExternal,
+		tpm2.CommandReadPublic,
+		tpm2.CommandUnseal,
+		tpm2.CommandObjectChangeAuth,
+		tpm2.CommandImport,
+		tpm2.CommandHashSequenceStart,
+		tpm2.CommandSequenceUpdate,
+		tpm2.CommandEventSequenceComplete,
+		tpm2.CommandVerifySignature,
+		tpm2.CommandPCRRead,
+		tpm2.CommandPolicySigned,
+		tpm2.CommandPolicySecret,
+		tpm2.CommandPolicyOR,
+		tpm2.CommandPolicyPCR,
+		tpm2.CommandPolicyNV,
+		tpm2.CommandPolicyCommandCode,
+		tpm2.CommandPolicyAuthorize,
+		tpm2.CommandPolicyAuthValue,
+		tpm2.CommandPolicyGetDigest,
+		tpm2.CommandPolicyNvWritten,
+		tpm2.CommandCreatePrimary,
+		tpm2.CommandClear,
+		tpm2.CommandClearControl,
+		tpm2.CommandHierarchyChangeAuth,
+		tpm2.CommandDictionaryAttackLockReset,
+		tpm2.CommandDictionaryAttackParameters,
+		tpm2.CommandContextSave,
+		tpm2.CommandContextLoad,
+		tpm2.CommandFlushContext,
+		tpm2.CommandEvictControl,
+		tpm2.CommandGetCapability,
+		tpm2.CommandNVDefineSpace,
+		tpm2.CommandNVUndefineSpace,
+		tpm2.CommandNVReadPublic,
+		tpm2.CommandNVWrite,
+		tpm2.CommandNVIncrement,
+		tpm2.CommandNVWriteLock,
+		tpm2.CommandNVRead,
+	} {
+		if !tpm.IsCommandSupported(command) {
+			return false, nil
+		}
+	}
+
+	// XXX: We can't check NV storage size, but we don't check that in the normal case either.
+	return true, nil
+}
+
 // checkTPM2DeviceFlags are passed to openAndCheckTPM2Device
 type checkTPM2DeviceFlags int
 
 const (
-	// checkTPM2DeviceInVM indicates that the current environment is a
-	// virtual machine.
-	checkTPM2DeviceInVM checkTPM2DeviceFlags = 1 << iota
-
 	// checkTPM2DevicePostInstall indicates that this function is being
 	// executed post-install as opposed to pre-install.
-	checkTPM2DevicePostInstall
+	checkTPM2DevicePostInstall = 1 << iota
 )
 
 // openAndCheckTPM2Device opens the default TPM device for the associated environment and
@@ -131,6 +305,31 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		// been performed successfully.
 	}
 
+	// Check that the TPM2 device class is TPM_PS_PC (0x1). We can then make assumptions about
+	// the supported features (such as mandatory commands, algorithms, PCR banks etc) based on
+	// the TPM PC Client Platform TPM Profile (PTP) spec. In all honesty, we're only ever likely
+	// to see PC-Client devices here because that's basically all that exists, but check anyway
+	// just in case.
+	switch psFamily, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPSFamilyIndicator); {
+	case err != nil:
+		return nil, fmt.Errorf("cannot obtain value for TPM_PT_PS_FAMILY_INDICATOR: %w", err)
+	case psFamily != pcClientClass:
+		// Some devices return TPM_PS_PDA (0x2) here, and there doesn't seem to be a corresponding
+		// PTP spec. Also, swtpm sets TPM_PT_PS_FAMILY_INDICATOR to the same value as
+		// TPM_PT_FAMILY_INDICATOR, which is the major version of the TCG reference library
+		// supported by the TPM ("2.0"). For these cases, perform feature detection instead.
+		switch ok, err := checkTPM2ForRequiredPCClientFeatures(tpm); {
+		case err != nil:
+			return nil, fmt.Errorf("cannot check TPM2 device for required PC-Client features: %w", err)
+		case !ok:
+			return nil, ErrNoPCClientTPM
+		default:
+			// This TPM has the required features.
+		}
+	default:
+		// This is a PC-Client TPM.
+	}
+
 	// Make sure that the TPM is enabled. The firmware disables the TPM by disabling the
 	// storage and endorsement hierarchies. Of course, user-space can do this as well, although
 	// it requires a TPM reset to restore them anyway.
@@ -141,39 +340,6 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	const enabledMask = tpm2.AttrShEnable | tpm2.AttrEhEnable
 	if tpm2.StartupClearAttributes(sc)&enabledMask != enabledMask {
 		return nil, ErrTPMDisabled
-	}
-
-	// Check TPM2 device class. The class is associated with a TPM Profile (PTP) spec
-	// which says a lot about the TPM such as mandatory commands, algorithms, PCR banks
-	// and the minimum number of PCRs. In all honesty, we're only ever likely to see
-	// PC-Client devices here because that's basically all that exists, but check anyway
-	// just in case.
-	psFamily, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPSFamilyIndicator)
-	if err != nil {
-		return nil, fmt.Errorf("cannot obtain value for TPM_PT_PS_FAMILY_INDICATOR: %w", err)
-	}
-	if psFamily != pcClientClass {
-		// swtpm sets TPM_PT_PS_FAMILY_INDICATOR to the same value as TPM_PT_FAMILY_INDICATOR,
-		// which is incorrect - the latter is "2.0" in ASCII with a NULL terminator and is used
-		// to indicate the major version of the TCG reference library supported by the TPM. The
-		// former indicates the class, as described earlier, and is 0 in the reference
-		// implementation and should be 1 for PC-Client. Permit this bug if we are running in a VM.
-		if flags&checkTPM2DeviceInVM == 0 {
-			// We're not in a VM, so expect the proper PC-Client value.
-			return nil, ErrNoPCClientTPM
-		}
-		// In a VM, make sure that the value of TPM_PT_PS_FAMILY_INDICATOR == TPM_PT_FAMILY_INDICATOR.
-		// I think that this is always the case, but we might need to add additional VM-specific quirks here.
-		family, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyFamilyIndicator)
-		if err != nil {
-			return nil, fmt.Errorf("cannot obtain value for TPM_PT_FAMILY_INDICATOR: %w", err)
-		}
-		if family != psFamily {
-			// This doesn't have the swtpm quirk, so we have no idea what sort of vTPM we have
-			// at this point - just return an error because we aren't going to check for every
-			// individual TPM feature.
-			return nil, ErrNoPCClientTPM
-		}
 	}
 
 	// Some errors from this point may be collected and returned together.

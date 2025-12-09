@@ -3170,6 +3170,9 @@ func (s *runChecksContextSuite) TestRunBadExternalAction(c *C) {
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		iterations:   2,
@@ -3373,6 +3376,9 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabled(c *C) {
 			)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
@@ -3407,6 +3413,9 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableTPMViaFirmw
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(i int) {
@@ -3456,6 +3465,9 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableAndClearTPM
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), p, nil)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(i int) {
@@ -6190,6 +6202,9 @@ func (s *runChecksContextSuite) TestRunChecksActionEnableTPMViaFirmwareNotAvaila
 			)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
@@ -6223,6 +6238,9 @@ func (s *runChecksContextSuite) TestRunChecksActionEnableAndClearTPMViaFirmwareN
 			)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
@@ -6338,6 +6356,9 @@ func (s *runChecksContextSuite) TestRunChecksPPIActionWithShutdownTransition(c *
 			)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyPSFamilyIndicator: 1,
+		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		iterations:   2,
