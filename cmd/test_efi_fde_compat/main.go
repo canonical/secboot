@@ -27,12 +27,11 @@ type options struct {
 	} `group:"Initial check options"`
 
 	Profile struct {
-		MostSecure                     bool `long:"most-secure" description:"Select the most secure PCR profile"`
-		TrustCAsForBootCode            bool `long:"trust-authorities-for-boot-code" description:"Trust the secure boot CAs used to authenticate code on this system to authenticate any boot code (definitely not advisable for the Microsoft UEFI CA)"`
-		TrustCAsForAddonDrivers        bool `long:"trust-authorities-for-addon-drivers" description:"Trust the secure boot CAs used to authenticate code on this system to authenticate any addon driver (most likely not advisable for the Microsoft UEFI CA)"`
-		DistrustVARSuppliedNonHostCode bool `long:"distrust-var-supplied-nonhost-code" description:"Distrust code running in value-added-retailer supplied embedded controllers. This code doesn't run on the CPU and isn't part of the trust chain, but can potentially still affect trust"`
-		PermitNoSecureBoot             bool `long:"permit-no-secure-boot" description:"Permit profiles that don't include the secure boot policy"`
-		NoDiscreteTPMResetMitigation   bool `long:"no-discrete-tpm-reset-mitigation" description:"Disable mitigations against discrete TPM reset attacks where appropriate"`
+		MostSecure                   bool `long:"most-secure" description:"Select the most secure PCR profile"`
+		TrustCAsForBootCode          bool `long:"trust-authorities-for-boot-code" description:"Trust the secure boot CAs used to authenticate code on this system to authenticate any boot code (definitely not advisable for the Microsoft UEFI CA)"`
+		TrustCAsForAddonDrivers      bool `long:"trust-authorities-for-addon-drivers" description:"Trust the secure boot CAs used to authenticate code on this system to authenticate any addon driver (most likely not advisable for the Microsoft UEFI CA)"`
+		PermitNoSecureBoot           bool `long:"permit-no-secure-boot" description:"Permit profiles that don't include the secure boot policy"`
+		NoDiscreteTPMResetMitigation bool `long:"no-discrete-tpm-reset-mitigation" description:"Disable mitigations against discrete TPM reset attacks where appropriate"`
 	} `group:"PCR profile options"`
 
 	Action preinstall.Action `long:"action" description:"What action to run"`
@@ -101,13 +100,10 @@ func run() error {
 		pcrFlags |= preinstall.PCRProfileOptionMostSecure
 	}
 	if opts.Profile.TrustCAsForBootCode {
-		pcrFlags |= preinstall.PCRProfileOptionTrustCAsForBootCode
+		pcrFlags |= preinstall.PCRProfileOptionTrustSecureBootAuthoritiesForBootCode
 	}
 	if opts.Profile.TrustCAsForAddonDrivers {
-		pcrFlags |= preinstall.PCRProfileOptionTrustCAsForAddonDrivers
-	}
-	if opts.Profile.DistrustVARSuppliedNonHostCode {
-		pcrFlags |= preinstall.PCRProfileOptionDistrustVARSuppliedNonHostCode
+		pcrFlags |= preinstall.PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers
 	}
 	if opts.Profile.PermitNoSecureBoot {
 		pcrFlags |= preinstall.PCRProfileOptionPermitNoSecureBootPolicyProfile
