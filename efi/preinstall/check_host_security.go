@@ -34,9 +34,13 @@ import (
 type discreteTPMPartialResetAttackMitigationStatus int
 
 const (
+	// dtpmPartialResetAttackMitigationUnknown indicates that it is not known if
+	// partial mitigation is required, because of an error.
+	dtpmPartialResetAttackMitigationUnknown discreteTPMPartialResetAttackMitigationStatus = iota
+
 	// dtpmPartialResetAttackMitigationNotRequired indicates that no partial mitigation
 	// is required.
-	dtpmPartialResetAttackMitigationNotRequired discreteTPMPartialResetAttackMitigationStatus = iota
+	dtpmPartialResetAttackMitigationNotRequired
 
 	// dtpmPartialResetAttackMitigationPreferred indicates that a partial mitigation
 	// is desired.

@@ -87,7 +87,7 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) error 
 func checkDiscreteTPMPartialResetAttackMitigationStatus(env internal_efi.HostEnvironment, logResults *pcrBankResults) (discreteTPMPartialResetAttackMitigationStatus, error) {
 	cpuVendor, err := determineCPUVendor(env)
 	if err != nil {
-		return dtpmPartialResetAttackMitigationNotRequired, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+		return dtpmPartialResetAttackMitigationUnknown, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
 	}
 
 	if cpuVendor != cpuVendorIntel {
@@ -97,12 +97,12 @@ func checkDiscreteTPMPartialResetAttackMitigationStatus(env internal_efi.HostEnv
 
 	amd64Env, err := env.AMD64()
 	if err != nil {
-		return dtpmPartialResetAttackMitigationNotRequired, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
+		return dtpmPartialResetAttackMitigationUnknown, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
 	}
 
 	discreteTPM, err := isTPMDiscrete(env)
 	if err != nil {
-		return dtpmPartialResetAttackMitigationNotRequired, &TPM2DeviceError{err}
+		return dtpmPartialResetAttackMitigationUnknown, &TPM2DeviceError{err}
 	}
 
 	switch {
