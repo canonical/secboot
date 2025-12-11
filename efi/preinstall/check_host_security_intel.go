@@ -249,7 +249,7 @@ func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("cannot obtain devices for mei subsystem: %w", err)
+		return fmt.Errorf("cannot enumerate devices for mei subsystem: %w", err)
 	}
 
 	// We have one or more mei devices. Find the one associated with the ME.
@@ -283,7 +283,7 @@ func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
 			},
 		})
 		if err != nil {
-			return fmt.Errorf("cannot obtain PCI devices with MEI class: %w", err)
+			return fmt.Errorf("cannot enumerate PCI devices with MEI class: %w", err)
 		}
 		if len(devices) == 0 {
 			// We didn't find the PCI device, so indicate that this platform

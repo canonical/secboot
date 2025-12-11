@@ -36,7 +36,7 @@ type hostSecurityAMD64Suite struct{}
 
 var _ = Suite(&hostSecurityAMD64Suite{})
 
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityGood(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityIntelGood(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -76,6 +76,27 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrNotAMD64(c *C) {
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityAMDGood(c *C) {
+	pspAttrs := map[string][]byte{
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`1
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", pspAttrs, nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(devices...),
+		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
+	)
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+
+	c.Check(CheckHostSecurity(env, log), IsNil)
+}
+
 func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrUnrecognizedCpuVendor(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithAMD64Environment("GenuineInte", nil, 0, nil),
@@ -88,18 +109,7 @@ func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrUnrecognizedCpuVendor(c
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrAMDNotSupportedYet(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
-	)
-
-	err := CheckHostSecurity(env, nil)
-	c.Check(err, ErrorMatches, `unsupported platform: checking host security is not yet implemented for AMD`)
-	var upe *UnsupportedPlatformError
-	c.Check(errors.As(err, &upe), testutil.IsTrue)
-}
-
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityErrMEI(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityIntelErrMEI(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -129,6 +139,32 @@ C7E003CB
 	var nhrotErr *NoHardwareRootOfTrustError
 	c.Check(errors.As(err, &nhrotErr), testutil.IsTrue)
 	c.Check(nhrotErr, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode`)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityAMDErrPSP(c *C) {
+	pspAttrs := map[string][]byte{
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`0
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", pspAttrs, nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(devices...),
+		efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil),
+	)
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+
+	err := CheckHostSecurity(env, log)
+	c.Check(err, ErrorMatches, `encountered an error when checking the AMD PSP configuration: no hardware root-of-trust properly configured: Platform Secure Boot is not enabled`)
+
+	var nhrotErr *NoHardwareRootOfTrustError
+	c.Check(errors.As(err, &nhrotErr), testutil.IsTrue)
+	c.Check(nhrotErr, ErrorMatches, `no hardware root-of-trust properly configured: Platform Secure Boot is not enabled`)
 }
 
 func (s *hostSecurityAMD64Suite) TestCheckHostSecuritySecureBootPolicyFirmwareDebugging(c *C) {
@@ -232,7 +268,7 @@ C7E003CB
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled, ErrNoKernelIOMMU})
 }
 
-func (s *hostSecurityAMD64Suite) TestCheckHostSecurityCPUDebuggingUnlocked(c *C) {
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityIntelErrCPUDebuggingUnlocked(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176

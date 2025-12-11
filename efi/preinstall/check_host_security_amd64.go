@@ -51,7 +51,9 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) error 
 			return fmt.Errorf("encountered an error when checking Intel CPU debugging configuration: %w", err)
 		}
 	case cpuVendorAMD:
-		return &UnsupportedPlatformError{errors.New("checking host security is not yet implemented for AMD")}
+		if err := checkHostSecurityAMDPSP(env); err != nil {
+			return fmt.Errorf("encountered an error when checking the AMD PSP configuration: %w", err)
+		}
 	default:
 		panic("not reached")
 	}
