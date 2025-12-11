@@ -113,12 +113,12 @@ const (
 	// CAs that are unrecognized for trust by this package.
 	PCRProfileOptionTrustCAsForBootCode
 
-	// PCRProfileOptionTrustCAsForVARSuppliedDrivers can omit PCR2 if the CAs in the
+	// PCRProfileOptionTrustCAsForAddonDrivers can omit PCR2 if the CAs in the
 	// authorized signature database that were used to authenticate code on the current
 	// boot are not directly trusted to sign UEFI drivers, but a system administrator
 	// makes an explicit decision to trust these CAs. This might be because it uses
 	// custom CAs that are unrecognized for trust by this package.
-	PCRProfileOptionTrustCAsForVARSuppliedDrivers
+	PCRProfileOptionTrustCAsForAddonDrivers
 
 	// PCRProfileOptionDistrustVARSuppliedNonHostCode can be used to include PCR2 if a
 	// system administrator makes an explicit decision to not trust non host code running
@@ -161,8 +161,8 @@ func (o PCRProfileOptionsFlags) toStringSlice() []string {
 			str = "most-secure"
 		case PCRProfileOptionTrustCAsForBootCode:
 			str = "trust-cas-for-boot-code"
-		case PCRProfileOptionTrustCAsForVARSuppliedDrivers:
-			str = "trust-cas-for-var-supplied-drivers"
+		case PCRProfileOptionTrustCAsForAddonDrivers:
+			str = "trust-cas-for-addon-drivers"
 		case PCRProfileOptionDistrustVARSuppliedNonHostCode:
 			str = "distrust-var-supplied-nonhost-code"
 		case PCRProfileOptionPermitNoSecureBootPolicyProfile:
@@ -200,8 +200,8 @@ func (o *PCRProfileOptionsFlags) UnmarshalJSON(data []byte) error {
 			val = PCRProfileOptionMostSecure
 		case "trust-cas-for-boot-code":
 			val = PCRProfileOptionTrustCAsForBootCode
-		case "trust-cas-for-var-supplied-drivers":
-			val = PCRProfileOptionTrustCAsForVARSuppliedDrivers
+		case "trust-cas-for-addon-drivers":
+			val = PCRProfileOptionTrustCAsForAddonDrivers
 		case "distrust-var-supplied-nonhost-code":
 			val = PCRProfileOptionDistrustVARSuppliedNonHostCode
 		case "permit-no-secure-boot-policy-profile":
@@ -317,17 +317,17 @@ func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnab
 				// in attached embedded controllers.
 				return nil, fmt.Errorf("PCRProfileOptionDistrustVARSuppliedNonHostCode cannot be used: %w", newUnsupportedRequiredPCRsError(tpm2.HandleList{2}, o.result.Flags))
 			}
-			if !knownCAs.trustedForDrivers(o.result.UsedSecureBootCAs) && o.opts&PCRProfileOptionTrustCAsForVARSuppliedDrivers == 0 {
+			if !knownCAs.trustedForDrivers(o.result.UsedSecureBootCAs) && o.opts&PCRProfileOptionTrustCAsForAddonDrivers == 0 {
 				// We need to include PCR2 if any CAs used for verification are not generally trusted to sign UEFI drivers
 				// (ie, they may have signed code in the past that can defeat our security model. This is true of the Microsoft
 				// UEFI CA 2011, and for now, we assume to be true of the 2023 UEFI CA unless Microsoft are more transparent about
 				// what they sign under this CA). It's also assumed to be true for any unrecognized CAs.
-				// This can be overridden with PCRProfileOptionTrustCAsForVARSuppliedDrivers.
+				// This can be overridden with PCRProfileOptionTrustCAsForAddonDrivers.
 				includePcr2 = true
 				if !isPcr2Supported {
 					return nil, fmt.Errorf("cannot create a valid secure boot configuration: one or more CAs used for secure boot "+
 						"verification are not trusted to authenticate value-added-retailer suppled drivers and the "+
-						"PCRProfileOptionTrustCAsForVARSuppliedDrivers option was not supplied: %w",
+						"PCRProfileOptionTrustCAsForAddonDrivers option was not supplied: %w",
 						newUnsupportedRequiredPCRsError(tpm2.HandleList{2}, o.result.Flags))
 				}
 			}

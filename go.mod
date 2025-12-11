@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/canonical/cpuid v0.0.0-20220614022739-219e067757cb
-	github.com/canonical/go-efilib v1.6.0
+	github.com/canonical/go-efilib v1.7.0
 	github.com/canonical/go-kbkdf v0.0.0-20250104172618-3b1308f9acf9
 	github.com/canonical/go-password-validator v0.0.0-20250617132709-1b205303ca54
 	github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3

@@ -97,13 +97,13 @@ const (
 	// are skipped entirely.
 	PermitVirtualMachine
 
-	// PermitVARSuppliedDrivers will prevent RunChecks from returning an error if the
-	// platform is running any value-added-retailer supplied drivers, which are included in
-	// a PCR policy when using [secboot_efi.WithDriversAndAppsProfile]. These can be loaded
-	// by BDS by the presence of "Driver####" variables containing load options and a
-	// "DriverOrder" variable, or automatically if the firmware finds a PE image in the ROM
-	// of a connected PCI device (a so-called option ROM).
-	PermitVARSuppliedDrivers
+	// PermitAddonDrivers will prevent RunChecks from returning an error if the platform is
+	// running any addon drivers, which are included in a PCR policy when using
+	// [secboot_efi.WithDriversAndAppsProfile]. These can be loaded by BDS by the presence of
+	// "Driver####" variables containing load options and a/ "DriverOrder" variable, or
+	// automatically if the firmware finds a PE image in the ROM of a connected PCI device
+	// (a so-called option ROM).
+	PermitAddonDrivers
 
 	// PermitSysPrepApplications will prevent RunChecks from returning an error if the
 	// platform boot contained any system preparation applications, which are included in
@@ -362,10 +362,17 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		}
 	}
 
-	// Check PCR2 for value-added-retailer supplied drivers.
-	pcr2Results := checkDriversAndAppsMeasurements(log)
-	if pcr2Results == driversAndAppsPresent {
-		addDeferredErrorOrWarning(ErrVARSuppliedDriversPresent, PermitVARSuppliedDrivers)
+	// Check PCR2 for addon drivers.
+	switch addonDrivers, err := checkDriversAndAppsMeasurements(ctx, runChecksEnv, log, result.PCRAlg); {
+	case err != nil && !logResults.Lookup(internal_efi.DriversAndAppsPCR).Ok():
+		// Don't record another error for this PCR
+	case err != nil && flags&PermitNoDriversAndAppsProfileSupport == 0:
+		deferredErrs = append(deferredErrs, &DriversAndAppsPCRError{err})
+	case err != nil:
+		result.Flags |= NoDriversAndAppsProfileSupport
+		warnings = append(warnings, &DriversAndAppsPCRError{err})
+	case len(addonDrivers) > 0:
+		addDeferredErrorOrWarning(&AddonDriversPresentError{Drivers: addonDrivers}, PermitAddonDrivers)
 	}
 
 	if logResults.Lookup(internal_efi.DriversAndAppsConfigPCR).Ok() {
@@ -380,8 +387,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		}
 	}
 
-	pcr4Result, err := checkBootManagerCodeMeasurements(ctx, runChecksEnv, log, result.PCRAlg, loadedImages)
-	switch {
+	switch pcrResult, err := checkBootManagerCodeMeasurements(ctx, runChecksEnv, log, result.PCRAlg, loadedImages); {
 	case isEFIVariableAccessError(err):
 		// Always return EFI variable access errors.
 		return nil, &EFIVariableAccessError{err: err}
@@ -393,15 +399,11 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		result.Flags |= NoBootManagerCodeProfileSupport
 		warnings = append(warnings, &BootManagerCodePCRError{err})
 	default:
-		if pcr4Result&bootManagerCodeSysprepAppsPresent > 0 {
-			addDeferredErrorOrWarning(ErrSysPrepApplicationsPresent, PermitSysPrepApplications)
-		}
-		if pcr4Result&bootManagerCodeAbsoluteComputraceRunning > 0 {
+		if pcrResult.HasAbsolute {
 			addDeferredErrorOrWarning(ErrAbsoluteComputraceActive, PermitAbsoluteComputrace)
 		}
-		if pcr4Result&bootManagerCodeNotAllLaunchDigestsVerified > 0 {
-			// TODO: Return this error from checkBootManagerCodeMeasurements
-			deferredErrs = append(deferredErrs, &BootManagerCodePCRError{errors.New("cannot verify the correctness of all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch event digests")})
+		if len(pcrResult.SysprepApps) > 0 {
+			addDeferredErrorOrWarning(&SysPrepApplicationsPresentError{Apps: pcrResult.SysprepApps}, PermitSysPrepApplications)
 		}
 	}
 

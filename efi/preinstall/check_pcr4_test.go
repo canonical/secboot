@@ -22,6 +22,7 @@ package preinstall_test
 import (
 	"context"
 	"crypto"
+	"errors"
 	"io"
 
 	efi "github.com/canonical/go-efilib"
@@ -43,7 +44,7 @@ type testCheckBootManagerCodeMeasurementsParams struct {
 	env            internal_efi.HostEnvironment
 	pcrAlg         tpm2.HashAlgorithmId
 	images         []secboot_efi.Image
-	expectedResult BootManagerCodeResultFlags
+	expectedResult *BootManagerCodeResult
 }
 
 func (s *pcr4Suite) testCheckBootManagerCodeMeasurements(c *C, params *testCheckBootManagerCodeMeasurementsParams) error {
@@ -63,7 +64,7 @@ func (s *pcr4Suite) testCheckBootManagerCodeMeasurements(c *C, params *testCheck
 	if err != nil {
 		return err
 	}
-	c.Check(result, Equals, params.expectedResult)
+	c.Check(result, DeepEquals, params.expectedResult)
 	return nil
 }
 
@@ -83,7 +84,7 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodSHA256(c *C) {
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		expectedResult: 0,
+		expectedResult: new(BootManagerCodeResult),
 	})
 	c.Check(err, IsNil)
 }
@@ -104,7 +105,7 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodSHA384(c *C) {
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "6c2df9007211786438be210b6908f2935d0b25ebdcd2c65621826fd2ec55fb9fbacbfe080d48db98f0ef970273b8254a")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "42f61b3089f5ce0646b422a59c9632065db2630f3e5b01690e63c41420ed31f10ff2a191f3440f9501109fc85f7fb00f")},
 		},
-		expectedResult: 0,
+		expectedResult: new(BootManagerCodeResult),
 	})
 	c.Check(err, IsNil)
 }
@@ -116,6 +117,20 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithSysprepApp(c *C)
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
 				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "SysPrepOrder", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1, 0x0}},
+				{Name: "SysPrep0001", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: efitest.MakeVarPayload(c, &efi.LoadOption{
+					Attributes:  efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+					Description: "Mock sysprep app",
+					FilePath: efi.DevicePath{
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+					},
+				})},
 			}),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
@@ -128,7 +143,107 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithSysprepApp(c *C)
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		expectedResult: BootManagerCodeSysprepAppsPresent,
+		expectedResult: &BootManagerCodeResult{
+			SysprepApps: []*LoadedImageInfo{
+				{
+					Format:         LoadedImageFormatPE,
+					Description:    "Mock sysprep app",
+					LoadOptionName: "SysPrep0001",
+					DevicePath: efi.DevicePath{
+						&efi.ACPIDevicePathNode{
+							HID: 0x0a0341d0,
+							UID: 0x0},
+						&efi.PCIDevicePathNode{
+							Function: 0x0,
+							Device:   0x1d},
+						&efi.PCIDevicePathNode{
+							Function: 0x0,
+							Device:   0x0},
+						&efi.NVMENamespaceDevicePathNode{
+							NamespaceID:   0x1,
+							NamespaceUUID: efi.EUI64{}},
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+					},
+					DigestAlg: tpm2.HashAlgorithmSHA256,
+					Digest:    testutil.DecodeHexString(c, "11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4"),
+				},
+			},
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithSysprepAppSHA384(c *C) {
+	// Test good result with sysprep application in log before OS-present
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "SysPrepOrder", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1, 0x0}},
+				{Name: "SysPrep0001", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: efitest.MakeVarPayload(c, &efi.LoadOption{
+					Attributes:  efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+					Description: "Mock sysprep app",
+					FilePath: efi.DevicePath{
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+					},
+				})},
+			}),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
+				IncludeSysPrepAppLaunch: true,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA384,
+		images: []secboot_efi.Image{
+			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "030ac3c913dab858f1d69239115545035cff671d6229f95577bb0ffbd827b35abaf6af6bfd223e04ecc9b60a9803642d")},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "6c2df9007211786438be210b6908f2935d0b25ebdcd2c65621826fd2ec55fb9fbacbfe080d48db98f0ef970273b8254a")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "42f61b3089f5ce0646b422a59c9632065db2630f3e5b01690e63c41420ed31f10ff2a191f3440f9501109fc85f7fb00f")},
+		},
+		expectedResult: &BootManagerCodeResult{
+			SysprepApps: []*LoadedImageInfo{
+				{
+					Format:         LoadedImageFormatPE,
+					Description:    "Mock sysprep app",
+					LoadOptionName: "SysPrep0001",
+					DevicePath: efi.DevicePath{
+						&efi.ACPIDevicePathNode{
+							HID: 0x0a0341d0,
+							UID: 0x0},
+						&efi.PCIDevicePathNode{
+							Function: 0x0,
+							Device:   0x1d},
+						&efi.PCIDevicePathNode{
+							Function: 0x0,
+							Device:   0x0},
+						&efi.NVMENamespaceDevicePathNode{
+							NamespaceID:   0x1,
+							NamespaceUUID: efi.EUI64{}},
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+					},
+					DigestAlg: tpm2.HashAlgorithmSHA384,
+					Digest:    testutil.DecodeHexString(c, "11a4d03833dafa0f99ba8d983c52b35d0b26ed97d9600313ba7c27fbecda6fccba0a1f0a94c9970e73ce7596d3a4bf44"),
+				},
+			},
+		},
 	})
 	c.Check(err, IsNil)
 }
@@ -152,7 +267,7 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithAbsolutePreOS(c 
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		expectedResult: BootManagerCodeAbsoluteComputraceRunning,
+		expectedResult: &BootManagerCodeResult{HasAbsolute: true},
 	})
 	c.Check(err, IsNil)
 }
@@ -176,29 +291,7 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithAbsoluteOSPresen
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		expectedResult: BootManagerCodeAbsoluteComputraceRunning,
-	})
-	c.Check(err, IsNil)
-}
-
-func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithMissingImages(c *C) {
-	// Test good result with missing boot images - the function needs at least the IBL (in our case, shim) and SBL (in our case, grub)
-	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-			}),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-			})),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-		images: []secboot_efi.Image{
-			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-		},
-		expectedResult: BootManagerCodeNotAllLaunchDigestsVerified,
+		expectedResult: &BootManagerCodeResult{HasAbsolute: true},
 	})
 	c.Check(err, IsNil)
 }
@@ -222,7 +315,7 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithoutCallingEFIApp
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		expectedResult: 0,
+		expectedResult: new(BootManagerCodeResult),
 	})
 	c.Check(err, IsNil)
 }
@@ -261,24 +354,9 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodSkipOtherEventTypesI
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		expectedResult: 0,
+		expectedResult: new(BootManagerCodeResult),
 	})
 	c.Check(err, IsNil)
-}
-
-func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadNoImages(c *C) {
-	// Test error result because no load images were supplied
-	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-			}),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-	})
-	c.Check(err, ErrorMatches, `at least the initial EFI application loaded during this boot must be supplied`)
 }
 
 func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadBootOptionSupport(c *C) {
@@ -286,17 +364,26 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadBootOptionSupport(c *
 	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00, 0x00}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Err: efi.ErrVarDeviceError},
 			}),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 		),
 		pcrAlg: tpm2.HashAlgorithmSHA256,
-		images: []secboot_efi.Image{
-			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
-		},
 	})
-	c.Check(err, ErrorMatches, `cannot obtain boot option support: variable contents has an unexpected size \(5 bytes\)`)
+	c.Check(err, ErrorMatches, `cannot obtain boot option support: variable access failed because of a hardware error`)
+	c.Check(errors.Is(err, efi.ErrVarDeviceError), testutil.IsTrue)
+}
+
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsMissingBootOptionSupport(c *C) {
+	// Test error result because of invalid BootOptionSupport
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{}),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Check(err, ErrorMatches, `cannot obtain boot option support: variable doesn't exist`)
 }
 
 func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadBootCurrent(c *C) {
@@ -310,9 +397,6 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadBootCurrent(c *C) {
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 		),
 		pcrAlg: tpm2.HashAlgorithmSHA256,
-		images: []secboot_efi.Image{
-			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
-		},
 	})
 	c.Check(err, ErrorMatches, `cannot read BootCurrent variable: BootCurrent variable contents has the wrong size \(1 bytes\)`)
 }
@@ -328,14 +412,42 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadLoadOption(c *C) {
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 		),
 		pcrAlg: tpm2.HashAlgorithmSHA256,
-		images: []secboot_efi.Image{
-			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
-		},
 	})
 	c.Check(err, ErrorMatches, `cannot read current Boot0005 load option from log: cannot find specified boot option`)
 }
 
-func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadMissingInitialLaunch(c *C) {
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadSysPrepVariables(c *C) {
+	// Test error case where there is an invalid SysPrepOrder variable.
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "SysPrepOrder", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1, 0x0, 0x2}},
+			}),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Check(err, ErrorMatches, `cannot read sysprep app load option variables: cannot read load order variable: SysPrepOrder variable contents has odd size \(3 bytes\)`)
+}
+
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadNoImages(c *C) {
+	// Test error result because no load images were supplied.
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+			}),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Check(err, ErrorMatches, `cannot verify correctness of EV_EFI_BOOT_SERVICES_APPLICATION event digest for \\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\ubuntu\\shimx64.efi: not enough images supplied`)
+}
+
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadUnrecognizedInitialLaunch(c *C) {
 	// Test error result because IBL launch can't be identified - it doesn't match boot entry in log that BootCurrent points to
 	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
@@ -353,7 +465,7 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadMissingInitialLaunch(
 	c.Check(err, ErrorMatches, `OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for \\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\ubuntu\\shimx64\.efi is not associated with the current boot load option and is not Absolute`)
 }
 
-func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadMissingSBL(c *C) {
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadMissingImage(c *C) {
 	// Test error result because it wasn't possible to verify Authenticode digest for SBL launch (in our case, grub), as it wasn't supplied
 	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
@@ -368,7 +480,7 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadMissingSBL(c *C) {
 			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
 		},
 	})
-	c.Check(err, ErrorMatches, `cannot verify digest for EV_EFI_BOOT_SERVICES_APPLICATION event associated with the secondary boot loader`)
+	c.Check(err, ErrorMatches, `cannot verify correctness of EV_EFI_BOOT_SERVICES_APPLICATION event digest: not enough images supplied`)
 }
 
 func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadSBLMeasuredFlatFileDigest_NoEFITCG2Protocol(c *C) {
@@ -421,6 +533,20 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadWithUnsupportedSyspre
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
 				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x03, 0x03, 0x00, 0x00}},
+				{Name: "SysPrepOrder", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1, 0x0}},
+				{Name: "SysPrep0001", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: efitest.MakeVarPayload(c, &efi.LoadOption{
+					Attributes:  efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+					Description: "Mock sysprep app",
+					FilePath: efi.DevicePath{
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+					},
+				})},
 			}),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
@@ -428,11 +554,58 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadWithUnsupportedSyspre
 			})),
 		),
 		pcrAlg: tpm2.HashAlgorithmSHA256,
-		images: []secboot_efi.Image{
-			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
-		},
 	})
-	c.Check(err, ErrorMatches, `encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for \\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi when SysPrep applications are not supported`)
+	c.Check(err, ErrorMatches, `encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for \\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi when no sysprep applications are expected`)
+}
+
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadWithUnexpectedSysprepApp1(c *C) {
+	// Test error result because a sysprep app was detected when there are no corresponding SysPrep variables.
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+			}),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeSysPrepAppLaunch: true,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Check(err, ErrorMatches, `encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for \\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi when no sysprep applications are expected`)
+}
+
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadWithUnexpectedSysprepApp2(c *C) {
+	// Test error result because a sysprep app was detected but it doesn't match the expected next SysPrep variable.
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "SysPrepOrder", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1, 0x0}},
+				{Name: "SysPrep0001", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: efitest.MakeVarPayload(c, &efi.LoadOption{
+					Attributes:  efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+					Description: "Mock sysprep app",
+					FilePath: efi.DevicePath{
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Foo\\sysprep.efi"),
+					},
+				})},
+			}),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeSysPrepAppLaunch: true,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Check(err, ErrorMatches, `encountered unexpected pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for \\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi`)
 }
 
 func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadUnexpectedTransitionToOSPresentEvent(c *C) {

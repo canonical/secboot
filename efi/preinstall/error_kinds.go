@@ -192,14 +192,14 @@ const (
 	// PCRUnsupportedArgs type describes the JSON format of the arguments.
 	ErrorKindPCRUnsupported ErrorKind = "tpm-pcr-unsupported"
 
-	// ErrorKindVARSuppliedDriversPresent indicates that drivers running from value-added-retailer
+	// ErrorKindAddonDriversPresent indicates that drivers running from value-added-retailer
 	// components were detected. Whilst these should generally be authenticated as part of the
 	// secure boot chain and the digsts of the executed code measured to the TPM, the presence of
 	// these does increase PCR fragility, and a user may choose not to trust this code (in which
 	// case, they will need to disable it somehow).
 	// TODO: it might be worth including the device paths from the launch events in PCR2 as an
 	// argument.
-	ErrorKindVARSuppliedDriversPresent ErrorKind = "var-supplied-drivers-present"
+	ErrorKindAddonDriversPresent ErrorKind = "addon-drivers-present"
 
 	// ErrorKindSysPrepApplicationsPresent indicates that system preparation applications were
 	// detected to be running before the operating system. The OS does not use these and they
@@ -269,6 +269,29 @@ func (a PCRUnusableArg) PCR() tpm2.Handle {
 type PCRUnsupportedArgs struct {
 	PCR tpm2.Handle `json:"pcr"` // The unsupported PCR.
 	URL string      `json:"url"` // A URL to a github issue.
+}
+
+// LoadedImagesInfoArg provides information about loaded drivers or applications.
+type LoadedImagesInfoArg []*LoadedImageInfo
+
+// MarshalJSON implements [json.Marshaler].
+func (a LoadedImagesInfoArg) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string][]*LoadedImageInfo{"images": []*LoadedImageInfo(a)})
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (a *LoadedImagesInfoArg) UnmarshalJSON(data []byte) error {
+	var arg map[string][]*LoadedImageInfo
+	if err := json.Unmarshal(data, &arg); err != nil {
+		return err
+	}
+
+	images, exists := arg["images"]
+	if !exists {
+		return errors.New("no \"images\" field")
+	}
+	*a = LoadedImagesInfoArg(images)
+	return nil
 }
 
 // InvalidActionArgumentReason specifies why an argument supplied with an

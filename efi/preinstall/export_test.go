@@ -31,26 +31,22 @@ import (
 )
 
 type (
-	AuthorityTrust                        = authorityTrust
-	AuthorityTrustData                    = authorityTrustData
-	AuthorityTrustDataSet                 = authorityTrustDataSet
-	BootManagerCodeResultFlags            = bootManagerCodeResultFlags
-	CheckDriversAndAppsMeasurementsResult = checkDriversAndAppsMeasurementsResult
-	CheckFirmwareLogFlags                 = checkFirmwareLogFlags
-	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
-	DetectVirtResult                      = detectVirtResult
-	JoinError                             = joinError
-	PcrResults                            = pcrResults
-	SecureBootPolicyResult                = secureBootPolicyResult
-	SecureBootPolicyResultFlags           = secureBootPolicyResultFlags
+	AuthorityTrust              = authorityTrust
+	AuthorityTrustData          = authorityTrustData
+	AuthorityTrustDataSet       = authorityTrustDataSet
+	BootManagerCodeResult       = bootManagerCodeResult
+	CheckFirmwareLogFlags       = checkFirmwareLogFlags
+	CheckTPM2DeviceFlags        = checkTPM2DeviceFlags
+	DetectVirtResult            = detectVirtResult
+	JoinError                   = joinError
+	PcrResults                  = pcrResults
+	SecureBootPolicyResult      = secureBootPolicyResult
+	SecureBootPolicyResultFlags = secureBootPolicyResultFlags
 )
 
 const (
 	AuthorityTrustBootCode                      = authorityTrustBootCode
 	AuthorityTrustDrivers                       = authorityTrustDrivers
-	BootManagerCodeSysprepAppsPresent           = bootManagerCodeSysprepAppsPresent
-	BootManagerCodeAbsoluteComputraceRunning    = bootManagerCodeAbsoluteComputraceRunning
-	BootManagerCodeNotAllLaunchDigestsVerified  = bootManagerCodeNotAllLaunchDigestsVerified
 	CheckFirmwareLogPermitEmptyPCRBanks         = checkFirmwareLogPermitEmptyPCRBanks
 	CheckFirmwareLogPermitWeakPCRBanks          = checkFirmwareLogPermitWeakPCRBanks
 	CheckTPM2DeviceInVM                         = checkTPM2DeviceInVM
@@ -58,11 +54,9 @@ const (
 	DetectVirtNone                              = detectVirtNone
 	DetectVirtVM                                = detectVirtVM
 	DiscreteTPMDetected                         = discreteTPMDetected
-	DriversAndAppsPresent                       = driversAndAppsPresent
 	DtpmPartialResetAttackMitigationNotRequired = dtpmPartialResetAttackMitigationNotRequired
 	DtpmPartialResetAttackMitigationPreferred   = dtpmPartialResetAttackMitigationPreferred
 	DtpmPartialResetAttackMitigationUnavailable = dtpmPartialResetAttackMitigationUnavailable
-	NoDriversAndAppsPresent                     = noDriversAndAppsPresent
 	SecureBootIncludesWeakAlg                   = secureBootIncludesWeakAlg
 	SecureBootPreOSVerificationIncludesDigest   = secureBootPreOSVerificationIncludesDigest
 	StartupLocalityNotProtected                 = startupLocalityNotProtected
@@ -86,10 +80,12 @@ var (
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete
 	JoinErrors                                            = joinErrors
+	MatchLaunchToLoadOption                               = matchLaunchToLoadOption
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
 	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
+	ReadOrderedLoadOptionVariables                        = readOrderedLoadOptionVariables
 	RestrictedTPMLocalitiesIntel                          = restrictedTPMLocalitiesIntel
 	RunPPIAction                                          = runPPIAction
 	UnwrapCompoundError                                   = unwrapCompoundError

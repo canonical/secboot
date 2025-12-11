@@ -34,6 +34,7 @@ import (
 type VarEntry struct {
 	Attrs   efi.VariableAttributes
 	Payload []byte
+	Err     error
 }
 
 type VarPayloadWriter interface {
@@ -63,6 +64,9 @@ func (v MockVars) Get(name string, guid efi.GUID) (efi.VariableAttributes, []byt
 	entry, found := v[efi.VariableDescriptor{Name: name, GUID: guid}]
 	if !found {
 		return 0, nil, efi.ErrVarNotExist
+	}
+	if entry.Err != nil {
+		return 0, nil, entry.Err
 	}
 	return entry.Attrs, entry.Payload, nil
 }
